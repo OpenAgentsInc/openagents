@@ -2,6 +2,8 @@ use super::services::{
     deepseek::DeepSeekService,
     github_auth::{GitHubAuthService, GitHubConfig},
     github_issue::GitHubService,
+    openrouter::OpenRouterService,
+    solver::SolverService,
 };
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
@@ -55,24 +57,14 @@ impl Default for AppConfig {
     }
 }
 
-pub fn configure_app() -> Router {
-    configure_app_with_config(None)
-}
-
-pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
+pub fn configure_app(pool: PgPool) -> Router {
     // Load environment variables
     dotenvy::dotenv().ok();
 
-    let config = config.unwrap_or_default();
-
-    // Create shared services
-    let tool_model = Arc::new(DeepSeekService::new(
-        env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set"),
-    ));
-
-    let chat_model = Arc::new(DeepSeekService::new(
-        env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set"),
-    ));
+    // Initialize services with proper configuration
+    let openrouter = OpenRouterService::new(
+        env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set"),
+    );
 
     let github_service = Arc::new(
         GitHubService::new(Some(
@@ -81,16 +73,31 @@ pub fn configure_app_with_config(config: Option<AppConfig>) -> Router {
         .expect("Failed to create GitHub service"),
     );
 
-    // Create available tools
+    let solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
+
+    let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
+    let base_url =
+        env::var("DEEPSEEK_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+
+    let tool_model = Arc::new(DeepSeekService::with_base_url(
+        api_key.clone(),
+        base_url.clone(),
+    ));
+
+    let chat_model = Arc::new(DeepSeekService::with_base_url(api_key, base_url));
+
     let tools = create_tools();
 
-    // Create WebSocket state with services
     let ws_state = Arc::new(WebSocketState::new(
         tool_model,
         chat_model,
         github_service.clone(),
+        solver_service.clone(),
         tools,
     ));
+
+    // Create config
+    let config = AppConfig::default();
 
     // Create auth state with OIDC config
     let oidc_config = server::services::auth::OIDCConfig::new(

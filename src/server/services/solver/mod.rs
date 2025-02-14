@@ -1,17 +1,24 @@
-mod types;
+pub mod types;
 
 pub use types::*;
 
 use super::StreamUpdate;
-use crate::server::services::{gateway::Gateway, openrouter::OpenRouterService};
+use crate::server::services::{
+    gateway::Gateway, github_issue::GitHubService, openrouter::OpenRouterService,
+};
 use anyhow::Result;
+use axum::extract::ws::Message;
+use chrono::Utc;
 use futures_util::StreamExt;
+use git2::Repository;
 use sqlx::PgPool;
 use std::fs;
 use std::path::Path;
+use tempfile;
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, error, info};
 
-#[allow(dead_code)] // These methods will be used in future
+#[derive(Clone)]
 pub struct SolverService {
     pool: PgPool,
     openrouter: OpenRouterService,
@@ -83,33 +90,28 @@ impl SolverService {
     }
 
     pub async fn start_generating_changes(
-        &self,
+        &mut self,
         state: &mut SolverState,
         repo_dir: &str,
-        tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
+        tx: Option<UnboundedSender<String>>,
     ) -> Result<()> {
         info!("🚀 Starting to generate changes for solver {}", state.id);
         state.status = SolverStatus::GeneratingChanges;
         state.set_repo_path(repo_dir.to_string());
         self.update_solver(state).await?;
 
-        // First get OpenRouter's analysis of all files
+        // Gather file contents for analysis
         let mut file_contents = String::new();
         info!("📂 Gathering file contents for analysis...");
-
-        // Send status update
         if let Some(tx) = &tx {
             let _ = tx.send("Gathering file contents for analysis...".to_string());
         }
-
         for file in &state.files {
             info!("   Reading file: {}", file.path);
             let path = Path::new(repo_dir).join(&file.path);
             file_contents.push_str(&format!("\nFile: {}\n", file.path));
-
-            // Check if file exists
             if path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(content) = fs::read_to_string(&path) {
                     info!("   ✅ Successfully read {}", file.path);
                     file_contents.push_str(&format!("Content:\n{}\n", content));
                     if let Some(tx) = &tx {
@@ -131,12 +133,10 @@ impl SolverService {
             }
         }
 
-        // Create the prompt for analysis
         info!("📝 Creating analysis prompt...");
         if let Some(tx) = &tx {
             let _ = tx.send("Creating analysis prompt...".to_string());
         }
-
         let prompt = format!(
             "Analyze these files and suggest specific code changes to implement the following issue:\n\n\
             Issue Title: {}\n\n\
@@ -152,12 +152,11 @@ impl SolverService {
             file_contents
         );
 
-        // Get analysis from OpenRouter
+        // Start analysis stream
         info!("🤖 Starting OpenRouter analysis stream...");
         if let Some(tx) = &tx {
             let _ = tx.send("Starting OpenRouter analysis...".to_string());
         }
-
         let mut response = String::new();
         let mut stream = match self.openrouter.chat_stream(prompt, true).await {
             Ok(stream) => {
@@ -170,32 +169,49 @@ impl SolverService {
             Err(e) => {
                 error!("❌ Failed to start OpenRouter stream: {}", e);
                 if let Some(tx) = &tx {
-                    let _ = tx.send(format!("❌ Error: {}", e));
+                    let error_msg = if e.to_string().contains("Rate limit exceeded") {
+                        "❌ Error: OpenRouter API rate limit exceeded. Please try again later or upgrade your API plan.".to_string()
+                    } else {
+                        format!("❌ Error: {}", e)
+                    };
+                    let _ = tx.send(error_msg);
                 }
                 return Err(anyhow::anyhow!("Failed to start OpenRouter stream: {}", e));
             }
         };
 
         let mut chunk_count = 0;
-        while let Some(Ok(chunk)) = stream.next().await {
-            chunk_count += 1;
-            debug!("📨 Received chunk #{}: {}", chunk_count, chunk);
-            response.push_str(&chunk);
-
-            // Forward raw chunks to UI with debug info
-            if let Some(tx) = &tx {
-                let _ = tx.send(format!("CHUNK #{}: {}\n", chunk_count, chunk));
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(chunk) => {
+                    chunk_count += 1;
+                    debug!("📨 Received chunk #{}: {}", chunk_count, chunk);
+                    response.push_str(&chunk);
+                    if let Some(tx) = &tx {
+                        let _ = tx.send(format!("CHUNK #{}: {}\n", chunk_count, chunk));
+                    }
+                }
+                Err(e) => {
+                    error!("❌ Error receiving chunk: {}", e);
+                    if let Some(tx) = &tx {
+                        let error_msg = if e.to_string().contains("Rate limit exceeded") {
+                            "❌ Error: OpenRouter API rate limit exceeded. Please try again later or upgrade your API plan.".to_string()
+                        } else {
+                            format!("❌ Error receiving chunk: {}", e)
+                        };
+                        let _ = tx.send(error_msg);
+                    }
+                    return Err(anyhow::anyhow!("Error receiving chunk: {}", e));
+                }
             }
         }
 
-        // Send final response for debugging
         if let Some(tx) = &tx {
             let _ = tx.send(format!(
                 "\n=== COMPLETE RAW RESPONSE ===\n{}\n=== END RESPONSE ===\n",
                 response
             ));
         }
-
         info!(
             "✅ Analysis stream complete - received {} chunks",
             chunk_count
@@ -207,17 +223,16 @@ impl SolverService {
             ));
         }
 
-        // Now use OpenRouter to generate specific changes for each file
         info!("🔄 Generating changes for each file...");
         if let Some(tx) = &tx {
             let _ = tx.send("\n🔄 Generating specific changes for each file...".to_string());
         }
 
+        // Process each file to generate changes
         for file in &mut state.files {
             info!("   Processing file: {}", file.path);
             let path = Path::new(repo_dir).join(&file.path);
             let file_exists = path.exists();
-
             let prompt = format!(
                 "Based on the analysis below, generate specific Rust code changes for this file.\n\n\
                 Analysis:\n{}\n\n\
@@ -227,7 +242,7 @@ impl SolverService {
                 response,
                 file.path,
                 if file_exists {
-                    if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(content) = fs::read_to_string(&path) {
                         format!("Existing file content:\n{}", content)
                     } else {
                         "Error reading existing file".to_string()
@@ -310,15 +325,14 @@ impl SolverService {
                 );
                 info!("       Description: {}", change.comment);
                 if !change.search.is_empty() {
-                    debug!("       Replacing: \n{}", change.search);
-                    debug!("       With: \n{}", change.replace);
+                    debug!("       Replacing:\n{}", change.search);
+                    debug!("       With:\n{}", change.replace);
                 }
             }
 
-            // Apply changes to file
+            // Apply changes
             for change in changes.files {
                 if change.search.is_empty() {
-                    // This is a new file
                     info!("   📝 Creating new file: {}", file.path);
                     info!("      Reason: {}", change.comment);
                     info!("      Content to write:\n{}", change.replace);
@@ -334,8 +348,6 @@ impl SolverService {
                         continue;
                     }
                     info!("      ✅ Successfully created new file");
-
-                    // Forward change info to UI
                     if let Some(tx) = &tx {
                         let _ = tx.send(format!(
                             "\n=== NEW FILE: {} ===\nReason: {}\nContent:\n{}\n=== END FILE ===\n",
@@ -343,7 +355,6 @@ impl SolverService {
                         ));
                     }
                 } else {
-                    // This is an existing file
                     info!("   🔄 Modifying file: {}", file.path);
                     info!("      Change description: {}", change.comment);
                     info!("      Replacing:\n{}", change.search);
@@ -362,11 +373,11 @@ impl SolverService {
                                         continue;
                                     }
                                     info!("      ✅ Successfully applied change to file");
-
-                                    // Forward change info to UI
                                     if let Some(tx) = &tx {
-                                        let _ = tx.send(format!("\n=== MODIFYING FILE: {} ===\nReason: {}\nReplacing:\n{}\nWith:\n{}\n=== END CHANGE ===\n",
-                                            file.path, change.comment, change.search, change.replace));
+                                        let _ = tx.send(format!(
+                                            "\n=== MODIFYING FILE: {} ===\nReason: {}\nReplacing:\n{}\nWith:\n{}\n=== END CHANGE ===\n",
+                                            file.path, change.comment, change.search, change.replace
+                                        ));
                                     }
                                 } else {
                                     error!(
@@ -375,11 +386,11 @@ impl SolverService {
                                     );
                                     error!("      Search string: {}", change.search);
                                     error!("      This change was skipped");
-
-                                    // Forward error to UI
                                     if let Some(tx) = &tx {
-                                        let _ = tx.send(format!("\n=== ERROR: Failed to modify {} ===\nCould not find text to replace:\n{}\n=== END ERROR ===\n",
-                                            file.path, change.search));
+                                        let _ = tx.send(format!(
+                                            "\n=== ERROR: Failed to modify {} ===\nCould not find text to replace:\n{}\n=== END ERROR ===\n",
+                                            file.path, change.search
+                                        ));
                                     }
                                 }
                             }
@@ -400,14 +411,11 @@ impl SolverService {
         for file in &state.files {
             info!("   - {}: {}", file.path, file.reason);
         }
-
         state.status = SolverStatus::Complete;
         self.update_solver(state).await?;
-
         Ok(())
     }
 
-    // Keep these methods but mark as unused for future use
     #[allow(dead_code)]
     pub async fn approve_change(&self, state: &mut SolverState, change_id: &str) -> Result<()> {
         info!("Approving change {} for solver {}", change_id, state.id);
@@ -426,13 +434,10 @@ impl SolverService {
     }
 
     pub async fn analyze_issue(
-        &self,
+        &mut self,
         prompt: String,
     ) -> tokio::sync::mpsc::UnboundedReceiver<StreamUpdate> {
-        // Create an unbounded channel
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-
-        // Get the stream from OpenRouter
         let mut stream = match self.openrouter.chat_stream(prompt, true).await {
             Ok(stream) => stream,
             Err(e) => {
@@ -442,31 +447,210 @@ impl SolverService {
                 return rx;
             }
         };
-
-        // Spawn a task to forward messages
         tokio::spawn(async move {
             let mut is_reasoning = true;
-            while let Some(Ok(chunk)) = stream.next().await {
-                // Check for transition marker
-                if chunk.contains("Final Changes:") {
-                    is_reasoning = false;
-                    continue;
-                }
-
-                // Send appropriate update type
-                let update = if is_reasoning {
-                    StreamUpdate::Reasoning(chunk)
-                } else {
-                    StreamUpdate::Content(chunk)
-                };
-
-                if tx.send(update).is_err() {
-                    break;
+            while let Some(result) = stream.next().await {
+                match result {
+                    Ok(chunk) => {
+                        if chunk.contains("Final Changes:") {
+                            is_reasoning = false;
+                            continue;
+                        }
+                        let update = if is_reasoning {
+                            StreamUpdate::Reasoning(chunk)
+                        } else {
+                            StreamUpdate::Content(chunk)
+                        };
+                        if tx.send(update).is_err() {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error receiving chunk: {}", e);
+                        break;
+                    }
                 }
             }
             let _ = tx.send(StreamUpdate::Done);
         });
-
         rx
+    }
+
+    pub async fn solve_demo_repo(&mut self, ws_tx: UnboundedSender<Message>) -> Result<()> {
+        let mut state = SolverState::new(
+            579,
+            "Add repomap caching by branch+sha".to_string(),
+            "Add caching for repository maps to avoid regenerating them unnecessarily. Cache key should be based on repository branch and commit SHA.".to_string(),
+        );
+        state.status = SolverStatus::Analyzing;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        state.add_file(
+            "src/server/services/repomap/mod.rs".to_string(),
+            0.9,
+            "Main repomap service module that needs caching".to_string(),
+        );
+        state.add_file(
+            "src/server/services/repomap/cache.rs".to_string(),
+            0.9,
+            "New file for cache implementation".to_string(),
+        );
+        state.add_file(
+            "src/server/services/repomap/types.rs".to_string(),
+            0.8,
+            "Shared types for repomap caching".to_string(),
+        );
+        state.add_file(
+            "migrations/YYYYMMDDHHMMSS_add_repomap_cache.sql".to_string(),
+            0.7,
+            "Database migration for cache table".to_string(),
+        );
+        state.status = SolverStatus::GeneratingChanges;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: generating_changes, progress: 25.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let ws_tx_clone = ws_tx.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = string_rx.recv().await {
+                let _ = ws_tx_clone.send(Message::Text(msg.into()));
+            }
+        });
+        self.start_generating_changes(&mut state, "/tmp/openagents", Some(string_tx))
+            .await?;
+        state.status = SolverStatus::Complete;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: complete, progress: 100.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        Ok(())
+    }
+
+    pub async fn solve_repo(
+        &mut self,
+        ws_tx: UnboundedSender<Message>,
+        repository: String,
+        issue_number: i32,
+    ) -> Result<()> {
+        info!(
+            "Starting repo solver process for {}, issue #{}",
+            repository, issue_number
+        );
+
+        // Check OpenRouter API key
+        if std::env::var("OPENROUTER_API_KEY").is_err() {
+            let error_msg = "OpenRouter API key not found. Please set the OPENROUTER_API_KEY environment variable.";
+            error!("{}", error_msg);
+            ws_tx
+                .send(Message::Text(format!("❌ Error: {}", error_msg).into()))
+                .map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
+            return Err(anyhow::anyhow!(error_msg));
+        }
+
+        // Parse repository owner and name
+        let parts: Vec<&str> = repository.split('/').collect();
+        if parts.len() != 2 {
+            return Err(anyhow::anyhow!(
+                "Invalid repository format. Expected owner/name"
+            ));
+        }
+        let (owner, name) = (parts[0], parts[1]);
+
+        // Get GitHub token from environment
+        let github_token =
+            std::env::var("GITHUB_TOKEN").map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not set"))?;
+
+        // Initialize GitHub service
+        let github = GitHubService::new(Some(github_token.clone()))
+            .map_err(|e| anyhow::anyhow!("Failed to initialize GitHub service: {}", e))?;
+
+        // Fetch issue details
+        info!("Fetching issue #{} from {}/{}", issue_number, owner, name);
+        let issue = github.get_issue(owner, name, issue_number).await?;
+
+        // Create solver state
+        let mut state = self
+            .create_solver(
+                issue_number,
+                issue.title.clone(),
+                issue.body.unwrap_or_default(),
+            )
+            .await?;
+
+        // Send initial status
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+
+        // Create temporary directory for repository
+        let temp_dir = tempfile::tempdir()?;
+        let repo_path = temp_dir.path().to_path_buf();
+        info!("Created temporary directory at {:?}", repo_path);
+
+        // Clone repository
+        let repo_url = format!("https://github.com/{}/{}.git", owner, name);
+        info!("Cloning repository from {}", repo_url);
+        if let Err(e) = Repository::clone(&repo_url, &repo_path) {
+            error!("Failed to clone repository: {}", e);
+            return Err(anyhow::anyhow!("Failed to clone repository: {}", e));
+        }
+        info!("Repository cloned successfully");
+
+        // Create a channel for string messages
+        let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let ws_tx_clone = ws_tx.clone();
+
+        // Spawn a task to forward string messages to WebSocket
+        tokio::spawn(async move {
+            while let Some(msg) = string_rx.recv().await {
+                let _ = ws_tx_clone.send(Message::Text(msg.into()));
+            }
+        });
+
+        // Start generating changes
+        self.start_generating_changes(&mut state, &repo_path.to_string_lossy(), Some(string_tx))
+            .await?;
+
+        // Clean up temporary directory
+        if let Err(e) = std::fs::remove_dir_all(&repo_path) {
+            error!("Failed to clean up temporary directory: {}", e);
+        }
+
+        // Send completion status
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: complete, progress: 100.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+
+        Ok(())
     }
 }

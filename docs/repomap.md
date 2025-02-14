@@ -19,48 +19,6 @@ docs/repomap.md:
 
 docs/repomap_generation.md:
 
-docs/solve-runs/20250130-1045.md:
-
-docs/solve-runs/20250130-1105.md:
-
-docs/solve-runs/20250130-1120.md:
-
-docs/solve-runs/20250130-1130.md:
-
-docs/solve-runs/20250130-1145.md:
-
-docs/solve-runs/20250130-1225.md:
-
-docs/solve-runs/20250130-1240.md:
-
-docs/solve-runs/20250131-1830.md:
-
-docs/solve-runs/20250131-1845.md:
-
-docs/solve-runs/20250131-1905.md:
-
-docs/solve-runs/20250131-1915.md:
-
-docs/solve-runs/20250131-1925.md:
-
-docs/solve-runs/20250131-1940.md:
-
-docs/solve-runs/20250131-1945.md:
-
-docs/solve-runs/20250131-1950.md:
-
-docs/solve-runs/20250131-2025.md:
-
-docs/solve-runs/20250131-2050.md:
-
-docs/solve-runs/20250131-2150.md:
-
-docs/solve-runs/20250202-1640.md:
-
-docs/solve-runs/20250202-1720.md:
-
-docs/solve-runs/20250202-1730.md:
-
 docs/solver.md:
 
 docs/templates.md:
@@ -68,8 +26,6 @@ docs/templates.md:
 docs/test-failures-analysis.md:
 
 docs/transcribe.md:
-
-docs/transcripts/20250203-1157-ep-157.md:
 
 src/bin/analyze-issue.rs:
 │fn main
@@ -262,6 +218,9 @@ src/server/hyperview/handlers/issue_analysis.rs:
 │fn analyze_issue
 │fn analyze_issue_internal
 
+src/server/hyperview/handlers/mod.rs:
+│fn append_content
+
 src/server/hyperview/handlers/pages.rs:
 │#id: container
 │#id: title
@@ -291,10 +250,15 @@ src/server/hyperview/handlers/repos.rs:
 │fn github_issues_internal
 
 src/server/hyperview/handlers/solver.rs:
+│#id: solver-status
 │#id: solver_status
 │#id: solver_status
 │#id: solver_status
-│#id: solver_status
+│#id: file-changes
+│#id: files
+│#id: code-diffs
+│#id: diffs
+│#id: lines
 │fn solver_status
 │fn solver_status_internal
 │fn error_xml
@@ -302,6 +266,10 @@ src/server/hyperview/handlers/solver.rs:
 │fn reject_change
 │fn approve_change_internal
 │fn reject_change_internal
+│fn solver_files
+│fn solver_files_internal
+│fn solver_diffs
+│fn solver_diffs_internal
 
 src/server/hyperview/handlers/status.rs:
 │fn connected_status
@@ -314,13 +282,44 @@ src/server/hyperview/handlers/user.rs:
 │fn auth_error_fragment_response
 
 src/server/hyperview/routes.rs:
+│#id: container
+│#id: userInfoText
+│#id: Description
+│#id: Basic
+│#id: Bold
+│#id: Color
+│#id: container
+│#id: Basic
+│#id: Color
+│#id: button
+│#id: buttonText
+│#id: container
+│#id: Basic
+│#id: Color
+│#id: modalHeader
+│#id: modalTitle
+│#id: closeButton
+│#id: modalBody
+│#id: content
 │fn hyperview_routes
+│fn demo_home
+│fn demo_screen2
+│fn demo_screen3
+│fn solve_demo_modal
+│fn screen2_redirect
+│fn modal_redirect
 
 src/server/hyperview/services/github_repos.rs:
 │fn new
 │fn get_user_repos
 
 src/server/hyperview/ws.rs:
+│#id: solve-demo-items
+│#id: deepseek-output
+│#id: stream-content
+│#id: stream-content
+│#id: stream_content
+│#id: stream_content
 │fn hyperview_ws_handler
 │fn handle_socket
 
@@ -357,7 +356,6 @@ src/server/services/deepseek/methods/chat.rs:
 
 src/server/services/deepseek/methods/chat_stream.rs:
 │fn chat_stream
-│fn process_chunk
 
 src/server/services/deepseek/methods/chat_with_tool_response.rs:
 │fn chat_with_tool_response
@@ -480,6 +478,7 @@ src/server/services/solver/mod.rs:
 │fn approve_change
 │fn reject_change
 │fn check_all_changes_reviewed
+│fn analyze_issue
 
 src/server/services/solver/types.rs:
 │fn new
@@ -739,6 +738,51 @@ templates/components/chat/websocket_scripts.html:
 │const errorSection
 │const errorMessage
 
+templates/components/code_diffs.xml:
+│#id: code-diffs-component
+│#id: diffsContainer
+│#id: sectionTitle
+│#id: diffList
+│#id: diffItem
+│#id: diffHeader
+│#id: diffPath
+│#id: diffActions
+│#id: actionButton
+│#id: approveButton
+│#id: rejectButton
+│#id: buttonText
+│#id: codeBlock
+│#id: codeLine
+│#id: addedLine
+│#id: removedLine
+│#id: emptyState
+│#id: emptyText
+│#id: diffs
+│#id: lines
+
+templates/components/file_changes.xml:
+│#id: file-changes-component
+│#id: changesContainer
+│#id: sectionTitle
+│#id: fileList
+│#id: fileItem
+│#id: fileIcon
+│#id: fileName
+│#id: fileStatus
+│#id: emptyState
+│#id: emptyText
+│#id: files
+
+templates/components/solver_status.xml:
+│#id: solver-status-component
+│#id: statusContainer
+│#id: statusHeader
+│#id: statusTitle
+│#id: statusBadge
+│#id: statusText
+│#id: progressBar
+│#id: progressFill
+
 templates/layouts/base.html:
 │const newTitle
 │const currentPath
@@ -809,6 +853,59 @@ templates/pages/login.html:
 │const location
 │const data
 
+templates/pages/main copy 2.xml:
+│#id: screen
+│#id: body
+│#id: device
+│#id: inputBox
+│#id: voiceContainer
+│#id: askAnything
+│#id: sendContainer
+│#id: menuItem
+│#id: menuText
+│#id: menuIconContainer
+│#id: whiteText
+│#id: conversationText
+│#id: menuContainerTop
+│#id: menuContainerBottom
+│#id: conversationContainer
+│#id: logo
+│#id: logoContainer
+│#id: topContainer
+│#id: demoButton
+│#id: wsOutput
+│#id: wsOutputContent
+│#id: message
+│#id: messageText
+│#id: deepseekOutput
+│#id: deepseekText
+│#id: deepseekContent
+│#id: deepseekChunk
+│#id: buttonText
+│#id: backButton
+│#id: backArrow
+│#id: mainContent
+│#id: solverContent
+│#id: loadingSpinner
+│#id: solver-ui
+│#id: solver-status
+│#id: file-changes
+│#id: files
+│#id: code-diffs
+│#id: diffs
+│#id: solve-demo-output
+│#id: solverModal
+│#id: modalHeader
+│#id: modalTitle
+│#id: closeButton
+│#id: modalBody
+│#id: outputScroll
+│#id: deepseekOutput
+│#id: deepseekText
+│#id: deepseekChunk
+│#id: deepseek-output
+│#id: stream-content
+
 templates/pages/main copy.xml:
 │#id: container
 │#id: safeArea
@@ -834,33 +931,18 @@ templates/pages/main copy.xml:
 │#id: repos-list
 
 templates/pages/main.xml:
-│#id: screen
-│#id: body
-│#id: device
-│#id: inputBox
-│#id: voiceContainer
-│#id: askAnything
-│#id: sendContainer
-│#id: menuItem
-│#id: menuText
-│#id: menuIconContainer
-│#id: whiteText
-│#id: conversationText
-│#id: menuContainerTop
-│#id: menuContainerBottom
-│#id: conversationContainer
-│#id: logo
-│#id: logoContainer
-│#id: topContainer
-│#id: demoButton
-│#id: wsOutput
-│#id: wsOutputContent
-│#id: message
-│#id: messageText
+│#id: container
+│#id: userInfoText
+│#id: Description
+│#id: Basic
+│#id: Bold
+│#id: Color
+│#id: buttonContainer
+│#id: button
 │#id: buttonText
-│#id: backButton
-│#id: backArrow
-│#id: solve-demo-output
+│#id: spinnerStyle
+│#id: loadingSpinner
+│#id: redirectContainer
 
 templates/pages/repomap.html:
 │#id: repo_url

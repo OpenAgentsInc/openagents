@@ -91,22 +91,29 @@ pub struct OpenRouterUsage {
     pub total_tokens: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct OpenRouterConfig {
     pub model: String,
     pub test_mode: bool,
     pub use_reasoner: bool,
+    pub rate_limited_models: std::collections::HashSet<String>,
 }
 
 impl Default for OpenRouterConfig {
     fn default() -> Self {
         Self {
-            model: "deepseek/deepseek-chat".to_string(),
-            use_reasoner: false,
+            model: "google/gemini-2.0-flash-001:free".to_string(),
             test_mode: false,
+            use_reasoner: false,
+            rate_limited_models: std::collections::HashSet::new(),
         }
     }
 }
+
+pub const FREE_MODELS: [&str; 2] = [
+    "deepseek/deepseek-coder-33b-instruct:free",
+    "google/gemini-2.0-flash-001:free",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubIssueAnalysis {

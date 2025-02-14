@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
 
     // Clone the repository
     let repo_url = "https://github.com/OpenAgentsInc/openagents";
-    let _repo = clone_repository(repo_url, &ctx.temp_dir)?;
+    let _repo = clone_repository(repo_url, &ctx.temp_dir, ctx.github_token.as_deref())?;
 
     // Checkout the specified branch
     let status = Command::new("git")

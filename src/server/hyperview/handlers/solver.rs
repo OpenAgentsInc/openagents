@@ -1,9 +1,7 @@
 use crate::repo::cleanup_temp_dir;
 use crate::server::config::AppState;
-use crate::server::services::{
-    openrouter::OpenRouterService,
-    solver::{SolverService, SolverStatus},
-};
+use crate::server::services::solver::types::SolverStatus;
+use crate::server::services::{openrouter::OpenRouterService, solver::SolverService};
 use anyhow::{anyhow, Result};
 use axum::{
     extract::{Path, Query, State},
@@ -60,7 +58,7 @@ async fn solver_status_internal(
 
     // Initialize services
     let openrouter = OpenRouterService::new(std::env::var("OPENROUTER_API_KEY")?);
-    let solver = SolverService::new(state.pool.clone(), openrouter);
+    let mut solver = SolverService::new(state.pool.clone(), openrouter);
 
     // Get solver state
     let mut solver_state = solver

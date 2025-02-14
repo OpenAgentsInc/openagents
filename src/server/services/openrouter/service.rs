@@ -1,7 +1,10 @@
 use crate::server::services::gateway::types::GatewayMetadata;
 use crate::server::services::gateway::Gateway;
-use crate::server::services::openrouter::types::{CodeChanges, GitHubIssueFiles, OpenRouterConfig};
+use crate::server::services::openrouter::types::{
+    CodeChanges, GitHubIssueFiles, OpenRouterConfig, FREE_MODELS,
+};
 use anyhow::{anyhow, Result};
+use futures::future;
 use futures::StreamExt;
 use reqwest::{Client, ClientBuilder};
 use serde_json::{json, Value};
@@ -24,11 +27,7 @@ impl OpenRouterService {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
-            config: OpenRouterConfig {
-                model: "google/gemini-2.0-flash-lite-preview-02-05:free".to_string(),
-                test_mode: false,
-                use_reasoner: false,
-            },
+            config: OpenRouterConfig::default(),
             client: ClientBuilder::new()
                 .timeout(REQUEST_TIMEOUT)
                 .build()
@@ -55,11 +54,35 @@ impl OpenRouterService {
         self.config.model.clone()
     }
 
-    fn prepare_messages(&self, prompt: &str) -> Vec<Value> {
-        vec![serde_json::json!({
+    fn get_next_available_model(&self) -> String {
+        for model in FREE_MODELS.iter() {
+            if !self.config.rate_limited_models.contains(*model) {
+                return model.to_string();
+            }
+        }
+        // If all models are rate limited, use the first one
+        FREE_MODELS[0].to_string()
+    }
+
+    fn mark_model_rate_limited(&mut self, model: &str) {
+        info!("Marking model {} as rate limited", model);
+        self.config.rate_limited_models.insert(model.to_string());
+
+        // Schedule removal of rate limit after 1 hour
+        let model = model.to_string();
+        let mut rate_limited_models = self.config.rate_limited_models.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+            rate_limited_models.remove(&model);
+            info!("Removed rate limit for model {}", model);
+        });
+    }
+
+    fn prepare_messages(&self, prompt: &str) -> Value {
+        json!([{
             "role": "user",
             "content": prompt
-        })]
+        }])
     }
 
     async fn make_request(&self, prompt: &str, stream: bool) -> Result<reqwest::Response> {
@@ -157,7 +180,7 @@ impl OpenRouterService {
         Ok(response)
     }
 
-    fn process_stream_chunk(chunk: &[u8]) -> Result<Option<String>> {
+    async fn process_stream_chunk(chunk: &[u8]) -> Result<Option<String>> {
         if chunk.is_empty() {
             return Ok(None);
         }
@@ -190,37 +213,10 @@ impl OpenRouterService {
         Ok(None)
     }
 
-    async fn make_request_with_retry(
-        &self,
+    async fn make_structured_request_with_retry(
+        &mut self,
         prompt: &str,
-        stream: bool,
     ) -> Result<reqwest::Response> {
-        let mut last_error = None;
-
-        for retry in 0..=MAX_RETRIES {
-            if retry > 0 {
-                debug!("Retrying OpenRouter request (attempt {})", retry);
-                tokio::time::sleep(RETRY_DELAY).await;
-            }
-
-            match self.make_request(prompt, stream).await {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        return Ok(response);
-                    }
-                    let error = response.text().await?;
-                    last_error = Some(anyhow!("OpenRouter API error: {}", error));
-                }
-                Err(e) => {
-                    last_error = Some(anyhow!("Request failed: {}", e));
-                }
-            }
-        }
-
-        Err(last_error.unwrap_or_else(|| anyhow!("Request failed after retries")))
-    }
-
-    async fn make_structured_request_with_retry(&self, prompt: &str) -> Result<reqwest::Response> {
         let mut last_error = None;
 
         for retry in 0..=MAX_RETRIES {
@@ -229,12 +225,23 @@ impl OpenRouterService {
                 tokio::time::sleep(RETRY_DELAY).await;
             }
 
+            let current_model = self.get_model();
             match self.make_structured_request(prompt).await {
                 Ok(response) => {
                     if response.status().is_success() {
                         return Ok(response);
                     }
                     let error = response.text().await?;
+
+                    // Check for rate limit error
+                    if error.contains("Rate limit exceeded") {
+                        self.mark_model_rate_limited(&current_model);
+                        let next_model = self.get_next_available_model();
+                        info!("Switching to model: {}", next_model);
+                        self.config.model = next_model;
+                        continue;
+                    }
+
                     error!("OpenRouter API error response: {}", error);
                     last_error = Some(anyhow!("OpenRouter API error: {}", error));
                 }
@@ -248,7 +255,7 @@ impl OpenRouterService {
         Err(last_error.unwrap_or_else(|| anyhow!("Request failed after retries")))
     }
 
-    pub async fn analyze_issue(&self, content: &str) -> Result<GitHubIssueFiles> {
+    pub async fn analyze_issue(&mut self, content: &str) -> Result<GitHubIssueFiles> {
         let json_schema = json!({
             "type": "object",
             "properties": {
@@ -326,7 +333,7 @@ impl OpenRouterService {
     }
 
     pub async fn analyze_issue_with_schema(
-        &self,
+        &mut self,
         _prompt: &str,
         request_body: serde_json::Value,
     ) -> Result<CodeChanges> {
@@ -383,10 +390,10 @@ impl Gateway for OpenRouterService {
             name: "OpenRouter".to_string(),
             openai_compatible: true,
             supported_features: vec!["chat".to_string(), "streaming".to_string()],
-            default_model: "anthropic/claude-3.5-sonnet".to_string(),
+            default_model: "google/gemini-2.0-flash-001:free".to_string(),
             available_models: vec![
-                "anthropic/claude-3.5-sonnet".to_string(),
-                "deepseek/deepseek-chat".to_string(),
+                "google/gemini-2.0-flash-001:free".to_string(),
+                "deepseek/deepseek-coder-33b-instruct:free".to_string(),
             ],
         }
     }
@@ -397,7 +404,7 @@ impl Gateway for OpenRouterService {
             return Ok(("Test response".to_string(), None));
         }
 
-        let response = self.make_request_with_retry(&prompt, false).await?;
+        let response = self.make_request(&prompt, false).await?;
 
         if !response.status().is_success() {
             let error = response.text().await?;
@@ -428,7 +435,7 @@ impl Gateway for OpenRouterService {
             return Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)));
         }
 
-        let response = self.make_request_with_retry(&prompt, true).await?;
+        let response = self.make_request(&prompt, true).await?;
 
         if !response.status().is_success() {
             let error = response.text().await?;
@@ -436,40 +443,27 @@ impl Gateway for OpenRouterService {
             return Err(anyhow!("OpenRouter API error: {}", error));
         }
 
-        let mut stream = response.bytes_stream();
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut buffer = Vec::new();
-
-            while let Some(chunk_result) = stream.next().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        buffer.extend_from_slice(&chunk);
-
-                        // Process complete messages
-                        while let Some(pos) = buffer.windows(2).position(|w| w == b"\n\n") {
-                            let message = buffer[..pos].to_vec();
-                            buffer = buffer[pos + 2..].to_vec();
-
-                            // Log the raw message for debugging
-                            info!("Raw SSE message: {}", String::from_utf8_lossy(&message));
-
-                            if let Ok(Some(content)) = Self::process_stream_chunk(&message) {
-                                info!("Extracted content: {}", content);
-                                tx.send(Ok(content)).await.ok();
-                            }
+        let stream = response
+            .bytes_stream()
+            .then(move |result| async move {
+                match result {
+                    Ok(bytes) => {
+                        match Self::process_stream_chunk(&bytes).await {
+                            Ok(Some(content)) => Ok(content),
+                            Ok(None) => Ok(String::new()), // Return empty string for keep-alive messages
+                            Err(e) => Err(anyhow!("Error processing chunk: {}", e)),
                         }
                     }
-                    Err(e) => {
-                        error!("Stream error: {}", e);
-                        tx.send(Err(anyhow!("Stream error: {}", e))).await.ok();
-                        break;
-                    }
+                    Err(e) => Err(anyhow!("Error reading stream: {}", e)),
                 }
-            }
-        });
+            })
+            .filter(|result| {
+                future::ready(match result {
+                    Ok(content) => !content.is_empty(), // Filter out empty strings (keep-alive messages)
+                    Err(_) => true,                     // Keep errors in the stream
+                })
+            });
 
-        Ok(Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)))
+        Ok(Box::pin(stream))
     }
 }

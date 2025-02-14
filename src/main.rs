@@ -1,4 +1,5 @@
 use openagents::server::config::configure_app;
+use sqlx::postgres::PgPoolOptions;
 use tracing::info;
 
 #[tokio::main]
@@ -15,8 +16,15 @@ async fn main() {
     // Load environment variables
     dotenvy::dotenv().ok();
 
-    // Create and configure the app
-    let app = configure_app();
+    // Create database pool
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"))
+        .await
+        .expect("Failed to create database pool");
+
+    // Configure and start the application
+    let app = configure_app(pool);
 
     // Get port from environment variable or use default
     let port = std::env::var("PORT")

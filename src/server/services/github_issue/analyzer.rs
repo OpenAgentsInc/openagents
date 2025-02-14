@@ -11,7 +11,7 @@ impl GitHubIssueAnalyzer {
         Self { openrouter }
     }
 
-    pub async fn analyze_issue(&self, issue_content: &str) -> Result<GitHubIssueFiles> {
+    pub async fn analyze_issue(&mut self, issue_content: &str) -> Result<GitHubIssueFiles> {
         self.openrouter.analyze_issue(issue_content).await
     }
 }
@@ -40,7 +40,7 @@ mod tests {
             ..Default::default()
         };
         let openrouter = OpenRouterService::with_config(api_key, config);
-        let analyzer = GitHubIssueAnalyzer::new(openrouter);
+        let mut analyzer = GitHubIssueAnalyzer::new(openrouter);
 
         let test_issue = r#"
             Title: Add dark mode support
