@@ -31,8 +31,7 @@ async fn main() -> Result<()> {
     };
 
     let openrouter = OpenRouterService::with_config(args.api_key, config);
-    let analyzer = GitHubIssueAnalyzer::new(openrouter);
-
+    let mut analyzer = GitHubIssueAnalyzer::new(openrouter);
     let analysis = analyzer.analyze_issue(&args.content).await?;
 
     println!("Analysis Results:");

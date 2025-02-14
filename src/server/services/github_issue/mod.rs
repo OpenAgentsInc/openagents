@@ -428,7 +428,7 @@ mod tests {
             ..Default::default()
         };
         let openrouter = OpenRouterService::with_config(api_key, config);
-        let analyzer = GitHubIssueAnalyzer::new(openrouter);
+        let mut analyzer = GitHubIssueAnalyzer::new(openrouter);
 
         let test_issue = r#"
             Title: Add dark mode support

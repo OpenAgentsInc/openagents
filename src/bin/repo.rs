@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
 
     // Clone repository
     info!("Cloning repository...");
-    clone_repository(&cli.url, &ctx.temp_dir)?;
+    clone_repository(&cli.url, &ctx.temp_dir, ctx.github_token.as_deref())?;
 
     // Run tests if requested
     if cli.test {
