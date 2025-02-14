@@ -6,9 +6,9 @@ use crate::server::ws::{
 };
 use async_trait::async_trait;
 use chrono::Utc;
+use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use std::error::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -38,28 +38,39 @@ impl SolverJsonHandler {
                 let mut solver = self.solver_service.lock().await;
                 if let Err(e) = solver.solve_demo_repo(tx).await {
                     error!("Error in demo repo solver process: {}", e);
-                    ws_state.send_to(
-                        &conn_id,
-                        &serde_json::to_string(&SolverJsonMessage::Error {
-                            message: format!("Error in demo repo solver process: {}", e),
-                            timestamp: Utc::now().to_rfc3339(),
-                        })?,
-                    ).await?;
+                    ws_state
+                        .send_to(
+                            &conn_id,
+                            &serde_json::to_string(&SolverJsonMessage::Error {
+                                message: format!("Error in demo repo solver process: {}", e),
+                                timestamp: Utc::now().to_rfc3339(),
+                            })?,
+                        )
+                        .await?;
                 }
             }
-            SolverJsonMessage::SolveRepo { repository, issue_number, .. } => {
-                info!("Starting repo solver process for {}, issue #{}", repository, issue_number);
+            SolverJsonMessage::SolveRepo {
+                repository,
+                issue_number,
+                ..
+            } => {
+                info!(
+                    "Starting repo solver process for {}, issue #{}",
+                    repository, issue_number
+                );
                 let tx = ws_state.get_tx(&conn_id).await?;
                 let mut solver = self.solver_service.lock().await;
                 if let Err(e) = solver.solve_repo(tx, repository, issue_number).await {
                     error!("Error in repo solver process: {}", e);
-                    ws_state.send_to(
-                        &conn_id,
-                        &serde_json::to_string(&SolverJsonMessage::Error {
-                            message: format!("Error in repo solver process: {}", e),
-                            timestamp: Utc::now().to_rfc3339(),
-                        })?,
-                    ).await?;
+                    ws_state
+                        .send_to(
+                            &conn_id,
+                            &serde_json::to_string(&SolverJsonMessage::Error {
+                                message: format!("Error in repo solver process: {}", e),
+                                timestamp: Utc::now().to_rfc3339(),
+                            })?,
+                        )
+                        .await?;
                 }
             }
             _ => {
@@ -181,7 +192,8 @@ impl MessageHandler for SolverJsonHandler {
         conn_id: String,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Handling solver JSON message: {:?}", msg);
-        self.handle_message(msg, self.ws_state.clone(), conn_id).await
+        self.handle_message(msg, self.ws_state.clone(), conn_id)
+            .await
     }
 
     async fn broadcast(&self, msg: Self::Message) -> Result<(), Box<dyn Error + Send + Sync>> {

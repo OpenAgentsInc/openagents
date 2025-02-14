@@ -3,18 +3,20 @@ pub mod types;
 pub use types::*;
 
 use super::StreamUpdate;
-use crate::server::services::{gateway::Gateway, openrouter::OpenRouterService, github_issue::GitHubService};
+use crate::server::services::{
+    gateway::Gateway, github_issue::GitHubService, openrouter::OpenRouterService,
+};
 use anyhow::Result;
+use axum::extract::ws::Message;
+use chrono::Utc;
 use futures_util::StreamExt;
+use git2::Repository;
 use sqlx::PgPool;
 use std::fs;
 use std::path::Path;
-use tracing::{debug, error, info};
-use chrono::Utc;
-use axum::extract::ws::Message;
-use tokio::sync::mpsc::UnboundedSender;
 use tempfile;
-use git2::Repository;
+use tokio::sync::mpsc::UnboundedSender;
+use tracing::{debug, error, info};
 
 #[derive(Clone)]
 pub struct SolverService {
@@ -210,9 +212,15 @@ impl SolverService {
                 response
             ));
         }
-        info!("✅ Analysis stream complete - received {} chunks", chunk_count);
+        info!(
+            "✅ Analysis stream complete - received {} chunks",
+            chunk_count
+        );
         if let Some(tx) = &tx {
-            let _ = tx.send(format!("\n✅ Analysis complete - received {} chunks", chunk_count));
+            let _ = tx.send(format!(
+                "\n✅ Analysis complete - received {} chunks",
+                chunk_count
+            ));
         }
 
         info!("🔄 Generating changes for each file...");
@@ -372,7 +380,10 @@ impl SolverService {
                                         ));
                                     }
                                 } else {
-                                    error!("      ❌ Could not find search string in {}", file.path);
+                                    error!(
+                                        "      ❌ Could not find search string in {}",
+                                        file.path
+                                    );
                                     error!("      Search string: {}", change.search);
                                     error!("      This change was skipped");
                                     if let Some(tx) = &tx {
@@ -472,11 +483,15 @@ impl SolverService {
             "Add caching for repository maps to avoid regenerating them unnecessarily. Cache key should be based on repository branch and commit SHA.".to_string(),
         );
         state.status = SolverStatus::Analyzing;
-        ws_tx.send(Message::Text(format!(
-            "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
-            Utc::now().to_rfc3339()
-        ).into()))
-        .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         state.add_file(
             "src/server/services/repomap/mod.rs".to_string(),
             0.9,
@@ -498,11 +513,15 @@ impl SolverService {
             "Database migration for cache table".to_string(),
         );
         state.status = SolverStatus::GeneratingChanges;
-        ws_tx.send(Message::Text(format!(
-            "Status Update: generating_changes, progress: 25.0, timestamp: {}",
-            Utc::now().to_rfc3339()
-        ).into()))
-        .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: generating_changes, progress: 25.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let ws_tx_clone = ws_tx.clone();
         tokio::spawn(async move {
@@ -513,11 +532,15 @@ impl SolverService {
         self.start_generating_changes(&mut state, "/tmp/openagents", Some(string_tx))
             .await?;
         state.status = SolverStatus::Complete;
-        ws_tx.send(Message::Text(format!(
-            "Status Update: complete, progress: 100.0, timestamp: {}",
-            Utc::now().to_rfc3339()
-        ).into()))
-        .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: complete, progress: 100.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         Ok(())
     }
 
@@ -527,29 +550,33 @@ impl SolverService {
         repository: String,
         issue_number: i32,
     ) -> Result<()> {
-        info!("Starting repo solver process for {}, issue #{}", repository, issue_number);
+        info!(
+            "Starting repo solver process for {}, issue #{}",
+            repository, issue_number
+        );
 
         // Check OpenRouter API key
         if std::env::var("OPENROUTER_API_KEY").is_err() {
             let error_msg = "OpenRouter API key not found. Please set the OPENROUTER_API_KEY environment variable.";
             error!("{}", error_msg);
-            ws_tx.send(Message::Text(format!(
-                "❌ Error: {}", error_msg
-            ).into()))
-            .map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
+            ws_tx
+                .send(Message::Text(format!("❌ Error: {}", error_msg).into()))
+                .map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
             return Err(anyhow::anyhow!(error_msg));
         }
 
         // Parse repository owner and name
         let parts: Vec<&str> = repository.split('/').collect();
         if parts.len() != 2 {
-            return Err(anyhow::anyhow!("Invalid repository format. Expected owner/name"));
+            return Err(anyhow::anyhow!(
+                "Invalid repository format. Expected owner/name"
+            ));
         }
         let (owner, name) = (parts[0], parts[1]);
 
         // Get GitHub token from environment
-        let github_token = std::env::var("GITHUB_TOKEN")
-            .map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not set"))?;
+        let github_token =
+            std::env::var("GITHUB_TOKEN").map_err(|_| anyhow::anyhow!("GITHUB_TOKEN not set"))?;
 
         // Initialize GitHub service
         let github = GitHubService::new(Some(github_token.clone()))
@@ -560,18 +587,24 @@ impl SolverService {
         let issue = github.get_issue(owner, name, issue_number).await?;
 
         // Create solver state
-        let mut state = self.create_solver(
-            issue_number,
-            issue.title.clone(),
-            issue.body.unwrap_or_default(),
-        ).await?;
+        let mut state = self
+            .create_solver(
+                issue_number,
+                issue.title.clone(),
+                issue.body.unwrap_or_default(),
+            )
+            .await?;
 
         // Send initial status
-        ws_tx.send(Message::Text(format!(
-            "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
-            Utc::now().to_rfc3339()
-        ).into()))
-        .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
 
         // Create temporary directory for repository
         let temp_dir = tempfile::tempdir()?;
@@ -608,11 +641,15 @@ impl SolverService {
         }
 
         // Send completion status
-        ws_tx.send(Message::Text(format!(
-            "Status Update: complete, progress: 100.0, timestamp: {}",
-            Utc::now().to_rfc3339()
-        ).into()))
-        .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
+        ws_tx
+            .send(Message::Text(
+                format!(
+                    "Status Update: complete, progress: 100.0, timestamp: {}",
+                    Utc::now().to_rfc3339()
+                )
+                .into(),
+            ))
+            .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
 
         Ok(())
     }

@@ -1,10 +1,7 @@
 use crate::repo::cleanup_temp_dir;
 use crate::server::config::AppState;
-use crate::server::services::{
-    openrouter::OpenRouterService,
-    solver::SolverService,
-};
 use crate::server::services::solver::types::SolverStatus;
+use crate::server::services::{openrouter::OpenRouterService, solver::SolverService};
 use anyhow::{anyhow, Result};
 use axum::{
     extract::{Path, Query, State},

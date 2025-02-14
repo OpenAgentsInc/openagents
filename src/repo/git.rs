@@ -14,7 +14,11 @@ pub fn cleanup_temp_dir(temp_dir: &PathBuf) {
     }
 }
 
-pub fn clone_repository(url: &str, temp_dir: &PathBuf, github_token: Option<&str>) -> Result<Repository> {
+pub fn clone_repository(
+    url: &str,
+    temp_dir: &PathBuf,
+    github_token: Option<&str>,
+) -> Result<Repository> {
     println!("Cloning repository: {}", url);
 
     let mut callbacks = RemoteCallbacks::new();
@@ -30,7 +34,8 @@ pub fn clone_repository(url: &str, temp_dir: &PathBuf, github_token: Option<&str
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fetch_options);
 
-    let repo = builder.clone(url, temp_dir)
+    let repo = builder
+        .clone(url, temp_dir)
         .map_err(|e| anyhow!("Failed to clone repository: {}", e))?;
     println!("Repository cloned successfully into: {:?}", temp_dir);
     Ok(repo)

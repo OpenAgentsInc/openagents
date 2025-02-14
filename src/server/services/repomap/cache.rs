@@ -13,7 +13,12 @@ pub struct RepomapCache {
 }
 
 impl RepomapCache {
-    pub fn new(repo_name: String, branch: String, commit_sha: String, map_data: serde_json::Value) -> Self {
+    pub fn new(
+        repo_name: String,
+        branch: String,
+        commit_sha: String,
+        map_data: serde_json::Value,
+    ) -> Self {
         Self {
             repo_name,
             branch,
@@ -43,7 +48,12 @@ impl RepomapCache {
         Ok(())
     }
 
-    pub async fn get(pool: &PgPool, repo_name: &str, branch: &str, commit_sha: &str) -> Result<Option<Self>> {
+    pub async fn get(
+        pool: &PgPool,
+        repo_name: &str,
+        branch: &str,
+        commit_sha: &str,
+    ) -> Result<Option<Self>> {
         let record = sqlx::query!(
             r#"
             SELECT repo_name, branch, commit_sha, map_data, created_at
@@ -66,7 +76,12 @@ impl RepomapCache {
         }))
     }
 
-    pub async fn delete(pool: &PgPool, repo_name: &str, branch: &str, commit_sha: &str) -> Result<()> {
+    pub async fn delete(
+        pool: &PgPool,
+        repo_name: &str,
+        branch: &str,
+        commit_sha: &str,
+    ) -> Result<()> {
         sqlx::query!(
             r#"
             DELETE FROM repomap_cache

@@ -1,14 +1,14 @@
 use axum::extract::ws::{Message, WebSocket};
+use axum::extract::Request;
 use axum_extra::extract::cookie::CookieJar;
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock, Mutex};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
-use axum::extract::Request;
 use url::form_urlencoded;
+use uuid::Uuid;
 
 use super::handlers::{chat::ChatHandler, solver_json::SolverJsonHandler, MessageHandler};
 use super::types::{ChatMessage, ConnectionState, WebSocketError};
@@ -56,7 +56,11 @@ impl WebSocketState {
         )
     }
 
-    pub async fn validate_session(&self, jar: &CookieJar, request: Request<axum::body::Body>) -> Result<i32, WebSocketError> {
+    pub async fn validate_session(
+        &self,
+        jar: &CookieJar,
+        request: Request<axum::body::Body>,
+    ) -> Result<i32, WebSocketError> {
         // First try to get session from cookie
         if let Some(session_cookie) = jar.get("session") {
             let session_id = session_cookie.value();
@@ -84,13 +88,21 @@ impl WebSocketState {
             if let Some(session_token) = params.get("session") {
                 // Try parsing as numeric session ID
                 if let Ok(session_id) = session_token.parse::<i32>() {
-                    debug!("Found numeric session token in query params with id: {}", session_id);
+                    debug!(
+                        "Found numeric session token in query params with id: {}",
+                        session_id
+                    );
                     return Ok(session_id);
                 }
                 // Try parsing as GitHub session ID
                 if session_token.starts_with("github_") {
-                    if let Ok(github_id) = session_token.trim_start_matches("github_").parse::<i32>() {
-                        debug!("Found GitHub session token in query params with id: {}", github_id);
+                    if let Ok(github_id) =
+                        session_token.trim_start_matches("github_").parse::<i32>()
+                    {
+                        debug!(
+                            "Found GitHub session token in query params with id: {}",
+                            github_id
+                        );
                         return Ok(github_id);
                     }
                 }
@@ -154,7 +166,10 @@ impl WebSocketState {
                                     content: content_str.to_string(),
                                 };
                                 info!("Created chat message: {:?}", chat_msg);
-                                if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
+                                if let Err(e) = chat_handler
+                                    .handle_message(chat_msg, receive_conn_id.clone())
+                                    .await
+                                {
                                     error!("Error handling chat message: {}", e);
                                 }
                             }
@@ -163,9 +178,14 @@ impl WebSocketState {
                                 Some("chat") => {
                                     info!("Processing chat message");
                                     if let Some(message) = data.get("message") {
-                                        if let Ok(chat_msg) = serde_json::from_value(message.clone()) {
+                                        if let Ok(chat_msg) =
+                                            serde_json::from_value(message.clone())
+                                        {
                                             info!("Parsed chat message: {:?}", chat_msg);
-                                            if let Err(e) = chat_handler.handle_message(chat_msg, receive_conn_id.clone()).await {
+                                            if let Err(e) = chat_handler
+                                                .handle_message(chat_msg, receive_conn_id.clone())
+                                                .await
+                                            {
                                                 error!("Error handling chat message: {}", e);
                                             }
                                         }
@@ -264,11 +284,17 @@ impl WebSocketState {
         rx
     }
 
-    pub async fn get_tx(&self, conn_id: &str) -> Result<mpsc::UnboundedSender<Message>, Box<dyn Error + Send + Sync>> {
+    pub async fn get_tx(
+        &self,
+        conn_id: &str,
+    ) -> Result<mpsc::UnboundedSender<Message>, Box<dyn Error + Send + Sync>> {
         if let Some(conn) = self.connections.read().await.get(conn_id) {
             Ok(conn.tx.clone())
         } else {
-            Err(Box::new(WebSocketError::ConnectionError(format!("Connection {} not found", conn_id))))
+            Err(Box::new(WebSocketError::ConnectionError(format!(
+                "Connection {} not found",
+                conn_id
+            ))))
         }
     }
 }

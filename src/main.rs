@@ -1,6 +1,6 @@
-use tracing::info;
-use sqlx::postgres::PgPoolOptions;
 use openagents::server::config::configure_app;
+use sqlx::postgres::PgPoolOptions;
+use tracing::info;
 
 #[tokio::main]
 async fn main() {

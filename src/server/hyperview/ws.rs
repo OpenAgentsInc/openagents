@@ -1,22 +1,22 @@
-use std::sync::Arc;
 use axum::{
     extract::{
-        ws::{WebSocket, WebSocketUpgrade, Message},
+        ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    response::IntoResponse,
     http::{Request, StatusCode},
+    response::IntoResponse,
 };
 use axum_extra::extract::cookie::CookieJar;
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
+use serde_json;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use serde_json;
 
 use crate::server::config::AppState;
-use crate::server::ws::transport::WebSocketState;
 use crate::server::ws::handlers::MessageHandler;
+use crate::server::ws::transport::WebSocketState;
 
 #[axum::debug_handler]
 pub async fn hyperview_ws_handler(
@@ -28,10 +28,21 @@ pub async fn hyperview_ws_handler(
 
     match state.ws_state.validate_session(&jar, request).await {
         Ok(user_id) => {
-            info!("Hyperview WebSocket connection authenticated for user_id: {}", user_id);
+            info!(
+                "Hyperview WebSocket connection authenticated for user_id: {}",
+                user_id
+            );
             // Create handlers
             let (chat_handler, solver_handler) = state.ws_state.create_handlers();
-            ws.on_upgrade(move |socket| handle_socket(socket, state.ws_state, chat_handler, solver_handler, user_id))
+            ws.on_upgrade(move |socket| {
+                handle_socket(
+                    socket,
+                    state.ws_state,
+                    chat_handler,
+                    solver_handler,
+                    user_id,
+                )
+            })
         }
         Err(e) => {
             warn!("Hyperview WebSocket authentication failed: {:?}", e);
@@ -48,7 +59,10 @@ async fn handle_socket(
     user_id: i32,
 ) {
     // Handle the WebSocket connection
-    info!("New hyperview WebSocket connection established for user_id: {}", user_id);
+    info!(
+        "New hyperview WebSocket connection established for user_id: {}",
+        user_id
+    );
 
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -97,7 +111,11 @@ async fn handle_socket(
                             Some("solver") => {
                                 if let Ok(solver_msg) = serde_json::from_value(data.clone()) {
                                     if let Err(e) = solver_handler
-                                        .handle_message(solver_msg, state.clone(), receive_conn_id.clone())
+                                        .handle_message(
+                                            solver_msg,
+                                            state.clone(),
+                                            receive_conn_id.clone(),
+                                        )
                                         .await
                                     {
                                         error!("Error handling solver message: {}", e);

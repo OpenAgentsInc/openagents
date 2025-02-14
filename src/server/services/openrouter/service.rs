@@ -1,14 +1,16 @@
 use crate::server::services::gateway::types::GatewayMetadata;
 use crate::server::services::gateway::Gateway;
-use crate::server::services::openrouter::types::{CodeChanges, GitHubIssueFiles, OpenRouterConfig, FREE_MODELS};
+use crate::server::services::openrouter::types::{
+    CodeChanges, GitHubIssueFiles, OpenRouterConfig, FREE_MODELS,
+};
 use anyhow::{anyhow, Result};
+use futures::future;
 use futures::StreamExt;
 use reqwest::{Client, ClientBuilder};
 use serde_json::{json, Value};
 use std::{pin::Pin, time::Duration};
 use tokio_stream::Stream;
 use tracing::{debug, error, info, warn};
-use futures::future;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_RETRIES: u32 = 2;
@@ -211,7 +213,10 @@ impl OpenRouterService {
         Ok(None)
     }
 
-    async fn make_structured_request_with_retry(&mut self, prompt: &str) -> Result<reqwest::Response> {
+    async fn make_structured_request_with_retry(
+        &mut self,
+        prompt: &str,
+    ) -> Result<reqwest::Response> {
         let mut last_error = None;
 
         for retry in 0..=MAX_RETRIES {
@@ -296,7 +301,8 @@ impl OpenRouterService {
             }
         });
 
-        let response = self.make_structured_request_with_retry(&request_body.to_string())
+        let response = self
+            .make_structured_request_with_retry(&request_body.to_string())
             .await?;
         info!("Raw OpenRouter response: {:?}", response);
 
@@ -437,21 +443,26 @@ impl Gateway for OpenRouterService {
             return Err(anyhow!("OpenRouter API error: {}", error));
         }
 
-        let stream = response.bytes_stream().then(move |result| async move {
-            match result {
-                Ok(bytes) => {
-                    match Self::process_stream_chunk(&bytes).await {
-                        Ok(Some(content)) => Ok(content),
-                        Ok(None) => Ok(String::new()), // Return empty string for keep-alive messages
-                        Err(e) => Err(anyhow!("Error processing chunk: {}", e)),
+        let stream = response
+            .bytes_stream()
+            .then(move |result| async move {
+                match result {
+                    Ok(bytes) => {
+                        match Self::process_stream_chunk(&bytes).await {
+                            Ok(Some(content)) => Ok(content),
+                            Ok(None) => Ok(String::new()), // Return empty string for keep-alive messages
+                            Err(e) => Err(anyhow!("Error processing chunk: {}", e)),
+                        }
                     }
+                    Err(e) => Err(anyhow!("Error reading stream: {}", e)),
                 }
-                Err(e) => Err(anyhow!("Error reading stream: {}", e)),
-            }
-        }).filter(|result| future::ready(match result {
-            Ok(content) => !content.is_empty(), // Filter out empty strings (keep-alive messages)
-            Err(_) => true, // Keep errors in the stream
-        }));
+            })
+            .filter(|result| {
+                future::ready(match result {
+                    Ok(content) => !content.is_empty(), // Filter out empty strings (keep-alive messages)
+                    Err(_) => true,                     // Keep errors in the stream
+                })
+            });
 
         Ok(Box::pin(stream))
     }

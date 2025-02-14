@@ -2,23 +2,23 @@ use std::sync::Arc;
 
 use axum::{
     extract::{
-        ws::{WebSocket, WebSocketUpgrade, Message},
+        ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    response::IntoResponse,
     http::{Request, StatusCode},
+    response::IntoResponse,
 };
 use axum_extra::extract::cookie::CookieJar;
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
+use serde_json;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use serde_json;
 
-use crate::server::config::AppState;
-use self::types::ChatMessage;
 use self::handlers::MessageHandler;
 use self::transport::WebSocketState;
+use self::types::ChatMessage;
+use crate::server::config::AppState;
 
 pub mod handlers;
 pub mod transport;
@@ -35,10 +35,21 @@ pub async fn ws_handler(
 
     match state.ws_state.validate_session(&jar, request).await {
         Ok(user_id) => {
-            info!("WebSocket connection authenticated for user_id: {}", user_id);
+            info!(
+                "WebSocket connection authenticated for user_id: {}",
+                user_id
+            );
             // Create handlers
             let (chat_handler, solver_handler) = state.ws_state.create_handlers();
-            ws.on_upgrade(move |socket| handle_socket(socket, state.ws_state, chat_handler, solver_handler, user_id))
+            ws.on_upgrade(move |socket| {
+                handle_socket(
+                    socket,
+                    state.ws_state,
+                    chat_handler,
+                    solver_handler,
+                    user_id,
+                )
+            })
         }
         Err(e) => {
             warn!("WebSocket authentication failed: {:?}", e);
@@ -114,7 +125,11 @@ async fn handle_socket(
                                 if let Ok(solver_msg) = serde_json::from_value(data.clone()) {
                                     info!("Parsed solver message: {:?}", solver_msg);
                                     if let Err(e) = solver_handler
-                                        .handle_message(solver_msg, state.clone(), receive_conn_id.clone())
+                                        .handle_message(
+                                            solver_msg,
+                                            state.clone(),
+                                            receive_conn_id.clone(),
+                                        )
                                         .await
                                     {
                                         error!("Error handling solver message: {}", e);

@@ -67,24 +67,24 @@ pub fn configure_app(pool: PgPool) -> Router {
     );
 
     let github_service = Arc::new(
-        GitHubService::new(Some(env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set")))
-            .expect("Failed to create GitHub service"),
+        GitHubService::new(Some(
+            env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
+        ))
+        .expect("Failed to create GitHub service"),
     );
 
     let solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
 
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
-    let base_url = env::var("DEEPSEEK_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        env::var("DEEPSEEK_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
     let tool_model = Arc::new(DeepSeekService::with_base_url(
         api_key.clone(),
         base_url.clone(),
     ));
 
-    let chat_model = Arc::new(DeepSeekService::with_base_url(
-        api_key,
-        base_url,
-    ));
+    let chat_model = Arc::new(DeepSeekService::with_base_url(api_key, base_url));
 
     let tools = create_tools();
 

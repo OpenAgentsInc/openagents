@@ -32,21 +32,34 @@ impl RepomapService {
     }
 
     pub async fn generate_repomap(&self, owner: &str, repo: &str) -> Result<(String, PathBuf)> {
-        let map = self.generate_repository_map(&format!("{}/{}", owner, repo)).await?;
+        let map = self
+            .generate_repository_map(&format!("{}/{}", owner, repo))
+            .await?;
         Ok((serde_json::to_string(&map)?, self.temp_dir.clone()))
     }
 
-    pub async fn get_repository_map(&self, repo_name: &str, branch: &str, commit_sha: &str) -> Result<serde_json::Value> {
+    pub async fn get_repository_map(
+        &self,
+        repo_name: &str,
+        branch: &str,
+        commit_sha: &str,
+    ) -> Result<serde_json::Value> {
         // Try to get from cache first if pool is available
         if let Some(pool) = &self.pool {
             if let Some(cached) = RepomapCache::get(pool, repo_name, branch, commit_sha).await? {
-                info!("Found cached repomap for {}/{} at {}", repo_name, branch, commit_sha);
+                info!(
+                    "Found cached repomap for {}/{} at {}",
+                    repo_name, branch, commit_sha
+                );
                 return Ok(cached.map_data);
             }
         }
 
         // If not in cache or no pool available, generate the map
-        info!("Generating repomap for {}/{} at {}", repo_name, branch, commit_sha);
+        info!(
+            "Generating repomap for {}/{} at {}",
+            repo_name, branch, commit_sha
+        );
         let map_data = self.generate_repository_map(repo_name).await?;
 
         // Cache the result if pool is available
@@ -80,7 +93,12 @@ impl RepomapService {
         Ok(serde_json::Value::String(map))
     }
 
-    pub async fn invalidate_cache(&self, repo_name: &str, branch: &str, commit_sha: &str) -> Result<()> {
+    pub async fn invalidate_cache(
+        &self,
+        repo_name: &str,
+        branch: &str,
+        commit_sha: &str,
+    ) -> Result<()> {
         if let Some(pool) = &self.pool {
             RepomapCache::delete(pool, repo_name, branch, commit_sha).await?;
         }
