@@ -8,16 +8,28 @@
       <style fontFamily="HKGrotesk-Medium" color="white" fontSize="24" id="Basic" margin="24" />
       <style fontFamily="HKGrotesk-Bold" color="white" fontSize="16" id="Bold" margin="24" />
       <style backgroundColor="#63CB76" color="white" fontSize="32" id="Color" margin="24" padding="16" />
+      <style id="buttonContainer" flexDirection="column" margin="24" />
+      <style id="button" backgroundColor="#444" padding="16" marginBottom="16" borderRadius="8" alignItems="center" />
+      <style id="buttonText" color="white" fontSize="16" />
+      <style id="spinnerStyle" color="white" />
     </styles>
 
     <body scroll="true" style="container">
-      <text style="Basic">Hello, world!</text>
+      <text style="Basic">Screen 1 (Home)</text>
+      <text style="Color">Welcome to Demo!</text>
 
-      <text style="Basic">Hello,
-        <text style="Bold">World of
-          <text style="Color">HyperView!</text>
-        </text>
-      </text>
+      <view style="buttonContainer">
+        <view style="button">
+          <text style="buttonText" action="replace-inner" target="redirectContainer" show-during-load="loadingSpinner" href="/hyperview/screen2-redirect">Navigate to Screen 2</text>
+        </view>
+
+        <view style="button">
+          <text style="buttonText" action="replace-inner" target="redirectContainer" show-during-load="loadingSpinner" href="/hyperview/modal-redirect">Open Demo Modal</text>
+        </view>
+      </view>
+
+      <spinner id="loadingSpinner" hide="true" style="spinnerStyle" />
+      <view id="redirectContainer" />
     </body>
   </screen>
 </doc>
