@@ -163,21 +163,31 @@ impl OpenRouterService {
         }
 
         let chunk_str = String::from_utf8_lossy(chunk);
+        debug!("Processing chunk: {}", chunk_str);
+
         if chunk_str == "[DONE]" {
+            debug!("Received [DONE] message");
             return Ok(None);
         }
 
-        let value: Value = serde_json::from_str(&chunk_str)?;
-        let content = value["choices"][0]["delta"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-
-        if content.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(content))
+        // Check if it's a keep-alive message
+        if chunk_str.starts_with(": OPENROUTER PROCESSING") {
+            return Ok(None);
         }
+
+        // Extract just the content from the JSON
+        if let Some(data) = chunk_str.strip_prefix("data: ") {
+            if let Ok(value) = serde_json::from_str::<Value>(data) {
+                if let Some(content) = value["choices"][0]["delta"]["content"].as_str() {
+                    if !content.is_empty() {
+                        debug!("Extracted content token: {}", content);
+                        return Ok(Some(content.to_string()));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     async fn make_request_with_retry(
@@ -442,12 +452,17 @@ impl Gateway for OpenRouterService {
                             let message = buffer[..pos].to_vec();
                             buffer = buffer[pos + 2..].to_vec();
 
+                            // Log the raw message for debugging
+                            info!("Raw SSE message: {}", String::from_utf8_lossy(&message));
+
                             if let Ok(Some(content)) = Self::process_stream_chunk(&message) {
+                                info!("Extracted content: {}", content);
                                 tx.send(Ok(content)).await.ok();
                             }
                         }
                     }
                     Err(e) => {
+                        error!("Stream error: {}", e);
                         tx.send(Err(anyhow!("Stream error: {}", e))).await.ok();
                         break;
                     }
