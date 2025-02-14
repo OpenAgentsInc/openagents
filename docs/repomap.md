@@ -166,11 +166,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -182,15 +182,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -289,6 +289,19 @@ src/server/hyperview/handlers/repos.rs:
 │fn github_repos
 │fn github_issues
 │fn github_issues_internal
+
+src/server/hyperview/handlers/solver.rs:
+│#id: solver_status
+│#id: solver_status
+│#id: solver_status
+│#id: solver_status
+│fn solver_status
+│fn solver_status_internal
+│fn error_xml
+│fn approve_change
+│fn reject_change
+│fn approve_change_internal
+│fn reject_change_internal
 
 src/server/hyperview/handlers/status.rs:
 │fn connected_status
@@ -441,6 +454,7 @@ src/server/services/openrouter/service.rs:
 │fn make_request_with_retry
 │fn make_structured_request_with_retry
 │fn analyze_issue
+│fn analyze_issue_with_schema
 │fn metadata
 │fn chat
 │fn chat_stream
@@ -455,6 +469,23 @@ src/server/services/openrouter/types.rs:
 src/server/services/repomap/mod.rs:
 │fn new
 │fn generate_repomap
+│fn cleanup
+
+src/server/services/solver/mod.rs:
+│fn new
+│fn create_solver
+│fn get_solver
+│fn update_solver
+│fn start_generating_changes
+│fn approve_change
+│fn reject_change
+│fn check_all_changes_reviewed
+
+src/server/services/solver/types.rs:
+│fn new
+│fn add_file
+│fn set_repo_path
+│fn add_change
 
 src/server/tools.rs:
 │fn create_tools
@@ -477,6 +508,7 @@ src/server/ws/transport.rs:
 │fn new
 │fn create_handlers
 │fn validate_session
+│fn validate_session_token
 │fn handle_socket
 │fn broadcast
 │fn send_to
@@ -620,7 +652,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -720,7 +752,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/auth/callback.xml:
 │#id: container
@@ -777,15 +809,14 @@ templates/pages/login.html:
 │const location
 │const data
 
-templates/pages/main.xml:
+templates/pages/main copy.xml:
 │#id: container
 │#id: safeArea
 │#id: header
-│#id: title
+│#id: MyHeader
+│#id: MyHeaderText
 │#id: button
 │#id: buttonText
-│#id: logoutButton
-│#id: logoutText
 │#id: reposList
 │#id: reposScroll
 │#id: reposScrollContent
@@ -801,7 +832,35 @@ templates/pages/main.xml:
 │#id: user-info
 │#id: redirectContainer
 │#id: repos-list
-│#id: content
+
+templates/pages/main.xml:
+│#id: screen
+│#id: body
+│#id: device
+│#id: inputBox
+│#id: voiceContainer
+│#id: askAnything
+│#id: sendContainer
+│#id: menuItem
+│#id: menuText
+│#id: menuIconContainer
+│#id: whiteText
+│#id: conversationText
+│#id: menuContainerTop
+│#id: menuContainerBottom
+│#id: conversationContainer
+│#id: logo
+│#id: logoContainer
+│#id: topContainer
+│#id: demoButton
+│#id: wsOutput
+│#id: wsOutputContent
+│#id: message
+│#id: messageText
+│#id: buttonText
+│#id: backButton
+│#id: backArrow
+│#id: solve-demo-output
 
 templates/pages/repomap.html:
 │#id: repo_url
@@ -1032,3 +1091,4 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+
