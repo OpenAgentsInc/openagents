@@ -30,12 +30,14 @@
         justifyContent="space-between"
         alignItems="center"
         width="100%"
-        height="74" />
+        height="74"
+        marginBottom="8" />
 
       <style id="voiceContainer"
         flexDirection="row"
         alignItems="center"
-        paddingLeft="24" />
+        paddingLeft="24"
+        flex="1" />
 
       <style id="askAnything"
         color="#515151"
@@ -43,7 +45,7 @@
         fontSize="16" />
 
       <style id="sendContainer"
-        marginRight="30" />
+        marginRight="24" />
 
       <style id="menuItem"
         flexDirection="row"
@@ -69,7 +71,10 @@
       <style id="menuContainerTop"
         width="100%"
         paddingTop="12"
-        paddingLeft="12" />
+        paddingLeft="12"
+        flexDirection="row"
+        justifyContent="space-between"
+        alignItems="center" />
 
       <style id="menuContainerBottom"
         width="100%" />
@@ -77,36 +82,102 @@
       <style id="conversationContainer"
         width="100%"
         flex="1"
-        justifyContent="center"
-        alignItems="center" />
+        position="relative" />
 
       <style id="logo"
         width="256"
-        height="256"
-        marginBottom="24"
-        marginTop="-20" />
+        height="256" />
 
       <style id="logoContainer"
         width="100%"
+        height="100%"
+        position="absolute"
+        top="0"
+        left="0"
         alignItems="center"
-        marginBottom="24" />
+        justifyContent="center"
+        opacity="0.5" />
+
+      <style id="topContainer"
+        flexDirection="row"
+        justifyContent="space-between"
+        alignItems="center"
+        width="100%" />
+
+      <style id="demoButton"
+        color="#fff"
+        fontSize="16"
+        borderWidth="1"
+        borderColor="#fff"
+        borderRadius="8"
+        paddingVertical="8"
+        paddingHorizontal="16" />
+
+      <style id="wsOutput"
+        width="100%"
+        height="40%"
+        padding="16"
+        flexDirection="column-reverse"
+        position="absolute"
+        bottom="0"
+        left="0"
+        zIndex="1"
+        scroll="true"
+        scroll-orientation="vertical"
+        shows-scroll-indicator="true"
+        content-container-style="wsOutputContent" />
+
+      <style id="wsOutputContent"
+        flexDirection="column-reverse" />
+
+      <style id="message"
+        backgroundColor="#222"
+        borderRadius="8"
+        padding="16"
+        marginTop="8"
+        width="100%" />
+
+      <style id="messageText"
+        color="#fff"
+        fontSize="16" />
+
+      <style id="buttonText"
+        fontSize="16"
+        fontWeight="500"
+        color="#515151" />
+
+      <style id="backButton"
+        flexDirection="row"
+        alignItems="center"
+        marginRight="16" />
+
+      <style id="backArrow"
+        color="#fff"
+        fontSize="24"
+        fontWeight="300" />
     </styles>
 
     <body style="body">
       <view style="device">
         <!-- Top Section -->
-        <view style="menuContainerTop">
-          <local:svg src="arrow-right" width="20" height="20" />
-        </view>
-
-        <!-- Middle Section -->
-        <view style="conversationContainer">
-          <view>
-            <local:image src="loading" style="logo" />
+        <view style="topContainer">
+          <view style="menuContainerTop">
+            <view style="backButton">
+              <behavior trigger="press" href="/back" />
+              <local:svg src="arrow-left" width="14" height="25" />
+            </view>
+            <text style="demoButton" href="/solve-demo-repo" action="solve-demo-repo">Solve Demo Issue</text>
           </view>
         </view>
 
-        <!-- Bottom Section -->
+        <view style="conversationContainer">
+          <view style="logoContainer">
+            <image style="logo" source="/static/images/logo.png" />
+          </view>
+          <view style="wsOutput" id="solve-demo-output" />
+        </view>
+
+        <!-- Bottom Input Section -->
         <view style="inputBox">
           <view style="voiceContainer">
             <local:svg src="voice" width="26" height="26" color="#515151" />

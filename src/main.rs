@@ -3,8 +3,14 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
+    // Initialize logging with more detail
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true)
+        .with_env_filter("openagents=debug,tower_http=debug")
+        .init();
 
     // Load environment variables
     dotenvy::dotenv().ok();

@@ -5,8 +5,10 @@ use axum::{
 };
 use axum_extra::extract::cookie::CookieJar;
 use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{error, info};
+use url::form_urlencoded;
 
 use crate::server::config::AppState;
 use crate::server::ws::{handlers::MessageHandler, transport::WebSocketState, types::ChatMessage};
@@ -17,28 +19,94 @@ pub async fn hyperview_ws_handler(
     State(state): State<AppState>,
     request: Request<axum::body::Body>,
 ) -> impl IntoResponse {
-    // Extract cookies from request
-    let jar = CookieJar::from_headers(request.headers());
+    info!("Handling WebSocket upgrade request");
 
-    // Validate session and get user_id
-    match state.ws_state.validate_session(&jar).await {
-        Ok(user_id) => {
-            info!(
-                "Hyperview WebSocket connection authenticated for user {}",
-                user_id
-            );
+    // Log headers for debugging
+    info!("Request headers: {:?}", request.headers());
 
-            // Create chat handler
-            let chat_handler = state.ws_state.create_handlers();
-
-            // Upgrade connection with user_id
-            ws.on_upgrade(move |socket| {
-                handle_socket(socket, state.ws_state, chat_handler, user_id)
-            })
+    // Get session token from either cookie or query param
+    let session_token: Option<String> = {
+        // First try cookie
+        let jar = CookieJar::from_headers(request.headers());
+        let cookie_token = jar.get("session").map(|c| c.value().to_string());
+        if let Some(ref _token) = cookie_token {
+            info!("Found session token in cookie");
+        } else {
+            info!("No session token found in cookie, checking query params");
         }
-        Err(e) => {
-            error!("Hyperview WebSocket authentication failed: {}", e);
-            (axum::http::StatusCode::UNAUTHORIZED, "Unauthorized").into_response()
+
+        // If no cookie, try query param
+        if cookie_token.is_none() {
+            let query_params = request.uri().query().unwrap_or("");
+            info!("Query parameters: {}", query_params);
+
+            let params: HashMap<String, String> = form_urlencoded::parse(query_params.as_bytes())
+                .into_iter()
+                .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                .collect();
+
+            info!("Parsed query parameters: {:?}", params);
+            let token = params.get("session").cloned();
+            if token.is_some() {
+                info!("Found session token in query parameters");
+            } else {
+                info!("No session token found in query parameters");
+            }
+            token
+        } else {
+            cookie_token
+        }
+    };
+
+    info!(
+        "Session token extraction result: {}",
+        session_token.is_some()
+    );
+
+    // Validate session token and get user_id
+    match session_token {
+        Some(token) => {
+            info!("Attempting to validate session token");
+            match state.ws_state.validate_session_token(&token).await {
+                Ok(user_id) => {
+                    info!(
+                        "Hyperview WebSocket connection authenticated for user {}",
+                        user_id
+                    );
+
+                    // Create chat handler
+                    let chat_handler = state.ws_state.create_handlers();
+                    info!("Created chat handler for user {}", user_id);
+
+                    // Upgrade connection with user_id
+                    info!("Upgrading WebSocket connection for user {}", user_id);
+                    ws.on_upgrade(move |socket| {
+                        handle_socket(socket, state.ws_state, chat_handler, user_id)
+                    })
+                }
+                Err(e) => {
+                    error!("Hyperview WebSocket token validation failed: {}", e);
+                    error!("Token validation error details: {:?}", e);
+                    (
+                        axum::http::StatusCode::UNAUTHORIZED,
+                        "Invalid session token",
+                    )
+                        .into_response()
+                }
+            }
+        }
+        None => {
+            error!("No session token found in cookie or query params");
+            error!("Request URI: {}", request.uri());
+            error!(
+                "Available cookies: {:?}",
+                CookieJar::from_headers(request.headers())
+            );
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                "No session token provided",
+            )
+                .into_response()
         }
     }
 }
@@ -86,32 +154,68 @@ async fn handle_socket(
 
                 // Parse the message
                 if let Ok(data) = serde_json::from_str::<serde_json::Value>(&text) {
-                    if let Some(content) = data.get("content") {
-                        if let Some(content_str) = content.as_str() {
-                            // Create chat message
-                            let chat_msg = ChatMessage::UserMessage {
-                                content: content_str.to_string(),
-                            };
+                    if let Some(message_type) = data.get("type") {
+                        match message_type.as_str() {
+                            Some("solve_demo_repo") => {
+                                info!("Handling solve_demo_repo request");
 
-                            // Handle the message
-                            if let Err(e) =
-                                chat_handler.handle_message(chat_msg, conn_id.clone()).await
-                            {
-                                error!("Error handling chat message: {}", e);
+                                // Send initial status
+                                let status_xml = r###"<?xml version="1.0" encoding="UTF-8"?>
+<view xmlns="https://hyperview.org/hyperview" style="message">
+  <text style="messageText">Starting demo repo analysis...</text>
+</view>"###;
 
-                                // Send error response as HXML
-                                let error_xml = format!(
-                                    r###"<?xml version="1.0" encoding="UTF-8"?>
+                                if let Err(e) =
+                                    tx.send(axum::extract::ws::Message::Text(status_xml.into()))
+                                {
+                                    error!("Failed to send status message: {}", e);
+                                }
+
+                                // TODO: Implement actual demo repo solving logic
+                                // For now, just send a mock response
+                                let result_xml = r###"<?xml version="1.0" encoding="UTF-8"?>
+<view xmlns="https://hyperview.org/hyperview" style="message">
+  <text style="messageText">Demo repo analysis complete!</text>
+  <text style="messageText">Found 3 issues to solve.</text>
+</view>"###;
+
+                                if let Err(e) =
+                                    tx.send(axum::extract::ws::Message::Text(result_xml.into()))
+                                {
+                                    error!("Failed to send result message: {}", e);
+                                }
+                            }
+                            _ => {
+                                if let Some(content) = data.get("content") {
+                                    if let Some(content_str) = content.as_str() {
+                                        // Create chat message
+                                        let chat_msg = ChatMessage::UserMessage {
+                                            content: content_str.to_string(),
+                                        };
+
+                                        // Handle the message
+                                        if let Err(e) = chat_handler
+                                            .handle_message(chat_msg, conn_id.clone())
+                                            .await
+                                        {
+                                            error!("Error handling chat message: {}", e);
+
+                                            // Send error response as HXML
+                                            let error_xml = format!(
+                                                r###"<?xml version="1.0" encoding="UTF-8"?>
 <view xmlns="https://hyperview.org/hyperview" style="message">
   <text style="messageText">Error: {}</text>
 </view>"###,
-                                    e
-                                );
+                                                e
+                                            );
 
-                                if let Err(e) =
-                                    tx.send(axum::extract::ws::Message::Text(error_xml.into()))
-                                {
-                                    error!("Failed to send error message: {}", e);
+                                            if let Err(e) = tx.send(
+                                                axum::extract::ws::Message::Text(error_xml.into()),
+                                            ) {
+                                                error!("Failed to send error message: {}", e);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
