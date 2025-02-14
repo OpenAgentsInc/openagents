@@ -105,7 +105,8 @@
         flexDirection="row"
         justifyContent="space-between"
         alignItems="center"
-        width="100%" />
+        width="100%"
+        marginBottom="24" />
 
       <style id="demoButton"
         color="#fff"
@@ -151,13 +152,21 @@
 
       <style id="backButton"
         flexDirection="row"
-        alignItems="center"
-        marginRight="16" />
+        alignItems="center" />
 
       <style id="backArrow"
         color="#fff"
         fontSize="24"
         fontWeight="300" />
+
+      <style id="mainContent"
+        flex="1"
+        width="100%"
+        marginBottom="24" />
+
+      <style id="solverContent"
+        flex="1"
+        width="100%" />
     </styles>
 
     <body style="body">
@@ -169,25 +178,128 @@
               <behavior trigger="press" href="/back" />
               <local:svg src="arrow-left" width="14" height="25" />
             </view>
-            <text style="demoButton" href="/solve-demo-repo" action="solve-demo-repo">Solve Demo Issue</text>
+            <text style="demoButton">
+              <behavior trigger="press" href="/solve-demo-repo" action="solve-demo-repo" />
+              Solve Demo Issue
+            </text>
           </view>
         </view>
 
-        <view style="conversationContainer">
-          <view style="logoContainer">
+        <!-- Main Content -->
+        <view style="mainContent">
+          <view style="solverContent">
+            <!-- Solver Status Section -->
+            <view id="solver-status" style="statusContainer">
+              <view style="statusHeader">
+                <text style="statusTitle">Solving Issue #{issue_number}</text>
+                <view style="statusBadge">
+                  <text style="statusText">{status}</text>
+                </view>
+              </view>
+              <text style="statusText">{status_message}</text>
+              <view style="progressBar">
+                <view style="progressFill" width="{progress_percent}%" />
+              </view>
+
+              <!-- Auto-refresh behavior -->
+              <behavior
+                trigger="load"
+                action="replace"
+                href="/solver/{solver_id}/status"
+                target="solver-status"
+                delay="2000" />
+            </view>
+
+            <!-- File Changes Section -->
+            <view id="file-changes" style="changesContainer">
+              <text style="sectionTitle">File Changes</text>
+              <view style="fileList">
+                <list id="files">
+                  <item key="empty" show-if="files.length === 0">
+                    <view style="emptyState">
+                      <text style="emptyText">No files have been analyzed yet</text>
+                    </view>
+                  </item>
+                  <item key="{file.path}" foreach="file in files">
+                    <view style="fileItem">
+                      <local:svg src="file" style="fileIcon" />
+                      <text style="fileName">{file.path}</text>
+                      <text style="fileStatus">{file.status}</text>
+                    </view>
+                  </item>
+                </list>
+              </view>
+
+              <!-- Auto-refresh behavior -->
+              <behavior
+                trigger="load"
+                action="replace"
+                href="/solver/{solver_id}/files"
+                target="file-changes"
+                delay="2000" />
+            </view>
+
+            <!-- Code Diffs Section -->
+            <view id="code-diffs" style="diffsContainer">
+              <text style="sectionTitle">Generated Changes</text>
+              <view style="diffList">
+                <list id="diffs">
+                  <item key="empty" show-if="diffs.length === 0">
+                    <view style="emptyState">
+                      <text style="emptyText">No changes have been generated yet</text>
+                    </view>
+                  </item>
+                  <item key="{diff.id}" foreach="diff in diffs">
+                    <view style="diffItem">
+                      <view style="diffHeader">
+                        <text style="diffPath">{diff.file_path}</text>
+                        <view style="diffActions">
+                          <view style="actionButton approveButton">
+                            <behavior
+                              trigger="press"
+                              action="replace"
+                              href="/solver/{solver_id}/approve/{diff.id}"
+                              target="code-diffs" />
+                            <text style="buttonText">Approve</text>
+                          </view>
+                          <view style="actionButton rejectButton">
+                            <behavior
+                              trigger="press"
+                              action="replace"
+                              href="/solver/{solver_id}/reject/{diff.id}"
+                              target="code-diffs" />
+                            <text style="buttonText">Reject</text>
+                          </view>
+                        </view>
+                      </view>
+                      <view style="codeBlock">
+                        <list id="lines">
+                          <item key="{line.number}" foreach="line in diff.lines">
+                            <text style="codeLine {line.type === 'add' ? 'addedLine' : line.type === 'remove' ? 'removedLine' : ''}">{line.content}</text>
+                          </item>
+                        </list>
+                      </view>
+                    </view>
+                  </item>
+                </list>
+              </view>
+
+              <!-- Auto-refresh behavior -->
+              <behavior
+                trigger="load"
+                action="replace"
+                href="/solver/{solver_id}/diffs"
+                target="code-diffs"
+                delay="2000" />
+            </view>
+
+            <!-- Keep the WebSocket output target -->
+            <view style="wsOutput" id="solve-demo-output" />
+          </view>
+
+          <!-- Background Logo -->
+          <view style="logoContainer" show-if="!solver_id">
             <local:image src="loading" style="logo" />
-          </view>
-          <view style="wsOutput" id="solve-demo-output" />
-        </view>
-
-        <!-- Bottom Input Section -->
-        <view style="inputBox">
-          <view style="voiceContainer">
-            <local:svg src="voice" width="26" height="26" color="#515151" />
-            <text style="askAnything">Ask anything</text>
-          </view>
-          <view style="sendContainer">
-            <local:svg src="send" width="19" height="19" color="#515151" />
           </view>
         </view>
       </view>

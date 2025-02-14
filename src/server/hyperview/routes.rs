@@ -37,6 +37,22 @@ pub fn hyperview_routes() -> Router<AppState> {
             "/hyperview/solver/{solver_id}/status",
             get(handlers::solver_status),
         )
+        .route(
+            "/hyperview/solver/{solver_id}/files",
+            get(handlers::solver_files),
+        )
+        .route(
+            "/hyperview/solver/{solver_id}/diffs",
+            get(handlers::solver_diffs),
+        )
+        .route(
+            "/hyperview/solver/{solver_id}/approve/{change_id}",
+            get(handlers::approve_change),
+        )
+        .route(
+            "/hyperview/solver/{solver_id}/reject/{change_id}",
+            get(handlers::reject_change),
+        )
         .route("/hyperview/ws", get(ws::hyperview_ws_handler))
         .route("/hyperview/fragments/user-info", get(handlers::user_info))
         .route(
