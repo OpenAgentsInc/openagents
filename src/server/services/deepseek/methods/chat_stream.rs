@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use tokio::sync::mpsc;
-use tracing::{info, error, debug};
+use tracing::{debug, error, info};
 
 use crate::server::services::deepseek::streaming::{StreamResponse, StreamUpdate};
 use crate::server::services::deepseek::types::{ChatMessage, ChatRequest};
@@ -117,21 +117,41 @@ impl DeepSeekService {
                                                 debug!("Parsed stream response: {:?}", response);
                                                 if let Some(choice) = response.choices.first() {
                                                     // First check for reasoning content since it comes first
-                                                    if let Some(ref reasoning) = choice.delta.reasoning_content {
+                                                    if let Some(ref reasoning) =
+                                                        choice.delta.reasoning_content
+                                                    {
                                                         if !reasoning.is_empty() {
-                                                            info!("Sending reasoning update: {:?}", reasoning);
-                                                            let _ = tx.send(StreamUpdate::Reasoning(reasoning.to_string())).await;
+                                                            info!(
+                                                                "Sending reasoning update: {:?}",
+                                                                reasoning
+                                                            );
+                                                            let _ = tx
+                                                                .send(StreamUpdate::Reasoning(
+                                                                    reasoning.to_string(),
+                                                                ))
+                                                                .await;
                                                         }
                                                     }
                                                     // Then check for regular content
-                                                    if let Some(ref content) = choice.delta.content {
+                                                    if let Some(ref content) = choice.delta.content
+                                                    {
                                                         if !content.is_empty() {
-                                                            info!("Sending content update: {:?}", content);
-                                                            let _ = tx.send(StreamUpdate::Content(content.to_string())).await;
+                                                            info!(
+                                                                "Sending content update: {:?}",
+                                                                content
+                                                            );
+                                                            let _ = tx
+                                                                .send(StreamUpdate::Content(
+                                                                    content.to_string(),
+                                                                ))
+                                                                .await;
                                                         }
                                                     }
                                                     if choice.finish_reason.is_some() {
-                                                        info!("Received finish reason: {:?}", choice.finish_reason);
+                                                        info!(
+                                                            "Received finish reason: {:?}",
+                                                            choice.finish_reason
+                                                        );
                                                         let _ = tx.send(StreamUpdate::Done).await;
                                                         break;
                                                     }

@@ -7,16 +7,14 @@ use axum_extra::extract::cookie::CookieJar;
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, info, debug};
+use tracing::{debug, error, info};
 use url::form_urlencoded;
 
 use crate::server::config::AppState;
-use crate::server::ws::{handlers::MessageHandler, transport::WebSocketState, types::ChatMessage};
 use crate::server::services::{
-    openrouter::OpenRouterService,
-    solver::SolverService,
-    gateway::Gateway,
+    gateway::Gateway, openrouter::OpenRouterService, solver::SolverService,
 };
+use crate::server::ws::{handlers::MessageHandler, transport::WebSocketState, types::ChatMessage};
 
 #[axum::debug_handler]
 pub async fn hyperview_ws_handler(
@@ -147,7 +145,8 @@ async fn handle_socket(
     let connected_xml = r###"<?xml version="1.0" encoding="UTF-8"?>
 <view xmlns="https://hyperview.org/hyperview" style="message">
   <text style="messageText">Connected to chat server</text>
-</view>"###;
+</view>"###
+        .to_string();
 
     if let Err(e) = tx.send(axum::extract::ws::Message::Text(connected_xml.into())) {
         error!("Failed to send connected status: {}", e);
@@ -171,13 +170,14 @@ async fn handle_socket(
                                     Ok(key) => key,
                                     Err(e) => {
                                         error!("Failed to get OpenRouter API key: {}", e);
-                                        let error_xml = format!(
-                                            r###"<?xml version="1.0" encoding="UTF-8"?>
+                                        let error_xml = r###"<?xml version="1.0" encoding="UTF-8"?>
 <view xmlns="https://hyperview.org/hyperview" style="message">
   <text style="messageText">Error: Failed to get OpenRouter API key</text>
 </view>"###
-                                        );
-                                        if let Err(e) = tx.send(axum::extract::ws::Message::Text(error_xml.into())) {
+                                            .to_string();
+                                        if let Err(e) = tx.send(axum::extract::ws::Message::Text(
+                                            error_xml.into(),
+                                        )) {
                                             error!("Failed to send error message: {}", e);
                                         }
                                         continue;
@@ -188,22 +188,27 @@ async fn handle_socket(
                                 let openrouter = OpenRouterService::with_config(
                                     openrouter_key,
                                     crate::server::services::openrouter::types::OpenRouterConfig {
-                                        model: "deepseek/deepseek-r1-distill-llama-70b:free".to_string(),
+                                        model: "deepseek/deepseek-r1-distill-llama-70b:free"
+                                            .to_string(),
                                         test_mode: false,
                                         use_reasoner: true,
-                                    }
+                                    },
                                 );
-                                let solver = SolverService::new(app_state.pool.clone(), openrouter.clone());
+                                let solver =
+                                    SolverService::new(app_state.pool.clone(), openrouter.clone());
 
                                 // Create a new solver state for demo
-                                match solver.create_solver(
-                                    1, // Demo issue number
-                                    "Demo Issue".to_string(),
-                                    "This is a demo issue to test the solver".to_string(),
-                                ).await {
+                                match solver
+                                    .create_solver(
+                                        1, // Demo issue number
+                                        "Demo Issue".to_string(),
+                                        "This is a demo issue to test the solver".to_string(),
+                                    )
+                                    .await
+                                {
                                     Ok(mut solver_state) => {
                                         // Send initial status with solver ID
-                                        let status_xml = format!(
+                                        let status_xml =
                                             r###"<?xml version="1.0" encoding="UTF-8"?>
 <list xmlns="https://hyperview.org/hyperview">
   <section-list>
@@ -219,9 +224,11 @@ async fn handle_socket(
     </section>
   </section-list>
 </list>"###
-                                        );
+                                                .to_string();
 
-                                        if let Err(e) = tx.send(axum::extract::ws::Message::Text(status_xml.into())) {
+                                        if let Err(e) = tx.send(axum::extract::ws::Message::Text(
+                                            status_xml.into(),
+                                        )) {
                                             error!("Failed to send status message: {}", e);
                                             continue;
                                         }
@@ -233,16 +240,21 @@ async fn handle_socket(
                                             solver_state.issue_body
                                         );
 
-                                        let mut stream = match openrouter.chat_stream(prompt, true).await {
+                                        let mut stream = match openrouter
+                                            .chat_stream(prompt, true)
+                                            .await
+                                        {
                                             Ok(stream) => {
                                                 // Send status update
-                                                let update_xml = format!(
-                                                    r###"<?xml version="1.0" encoding="UTF-8"?>
+                                                let update_xml = r###"<?xml version="1.0" encoding="UTF-8"?>
 <view xmlns="https://hyperview.org/hyperview">
   <text id="stream-content" style="deepseekChunk" action="replace">Connected to OpenRouter, waiting for response...</text>
-</view>"###
-                                                );
-                                                if let Err(e) = tx.send(axum::extract::ws::Message::Text(update_xml.into())) {
+</view>"###.to_string();
+                                                if let Err(e) =
+                                                    tx.send(axum::extract::ws::Message::Text(
+                                                        update_xml.into(),
+                                                    ))
+                                                {
                                                     error!("Failed to send update message: {}", e);
                                                 }
                                                 stream
@@ -258,7 +270,10 @@ async fn handle_socket(
                                         let mut accumulated_content = String::new();
                                         while let Some(Ok(chunk)) = stream.next().await {
                                             chunk_count += 1;
-                                            debug!("Received content token #{}: {}", chunk_count, chunk);
+                                            debug!(
+                                                "Received content token #{}: {}",
+                                                chunk_count, chunk
+                                            );
                                             accumulated_content.push_str(&chunk);
 
                                             // Send content token to UI
@@ -269,13 +284,18 @@ async fn handle_socket(
 </doc>"###,
                                                 html_escape::encode_text(&accumulated_content)
                                             );
-                                            if let Err(e) = tx.send(axum::extract::ws::Message::Text(xml.into())) {
+                                            if let Err(e) = tx
+                                                .send(axum::extract::ws::Message::Text(xml.into()))
+                                            {
                                                 error!("Failed to send content token: {}", e);
                                             }
                                         }
 
                                         // Create a channel for solver updates
-                                        let (solver_tx, mut solver_rx): (tokio::sync::mpsc::UnboundedSender<String>, tokio::sync::mpsc::UnboundedReceiver<String>) = tokio::sync::mpsc::unbounded_channel();
+                                        let (solver_tx, mut solver_rx): (
+                                            tokio::sync::mpsc::UnboundedSender<String>,
+                                            tokio::sync::mpsc::UnboundedReceiver<String>,
+                                        ) = tokio::sync::mpsc::unbounded_channel();
 
                                         // Spawn a task to handle solver updates
                                         let solver_ws_tx = tx.clone();
@@ -290,7 +310,11 @@ async fn handle_socket(
 </doc>"###,
                                                     html_escape::encode_text(&solver_content)
                                                 );
-                                                if let Err(e) = solver_ws_tx.send(axum::extract::ws::Message::Text(update_xml.into())) {
+                                                if let Err(e) = solver_ws_tx.send(
+                                                    axum::extract::ws::Message::Text(
+                                                        update_xml.into(),
+                                                    ),
+                                                ) {
                                                     error!("Failed to send solver update: {}", e);
                                                     break;
                                                 }
@@ -298,7 +322,14 @@ async fn handle_socket(
                                         });
 
                                         // Start actual changes generation with the channel
-                                        if let Err(e) = solver.start_generating_changes(&mut solver_state, "/tmp/repo", Some(solver_tx)).await {
+                                        if let Err(e) = solver
+                                            .start_generating_changes(
+                                                &mut solver_state,
+                                                "/tmp/repo",
+                                                Some(solver_tx),
+                                            )
+                                            .await
+                                        {
                                             error!("Failed to start generating changes: {}", e);
                                             let error_xml = format!(
                                                 r###"<?xml version="1.0" encoding="UTF-8"?>
@@ -307,20 +338,23 @@ async fn handle_socket(
 </view>"###,
                                                 e
                                             );
-                                            if let Err(e) = tx.send(axum::extract::ws::Message::Text(error_xml.into())) {
+                                            if let Err(e) = tx.send(
+                                                axum::extract::ws::Message::Text(error_xml.into()),
+                                            ) {
                                                 error!("Failed to send error message: {}", e);
                                             }
                                         }
                                     }
                                     Err(e) => {
                                         error!("Failed to create solver: {}", e);
-                                        let error_xml = format!(
-                                            r###"<?xml version="1.0" encoding="UTF-8"?>
+                                        let error_xml = r###"<?xml version="1.0" encoding="UTF-8"?>
 <view xmlns="https://hyperview.org/hyperview" style="message">
   <text style="messageText">Error: Failed to create solver</text>
 </view>"###
-                                        );
-                                        if let Err(e) = tx.send(axum::extract::ws::Message::Text(error_xml.into())) {
+                                            .to_string();
+                                        if let Err(e) = tx.send(axum::extract::ws::Message::Text(
+                                            error_xml.into(),
+                                        )) {
                                             error!("Failed to send error message: {}", e);
                                         }
                                     }

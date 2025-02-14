@@ -3,8 +3,8 @@ use crate::server::models::user::User;
 use crate::server::services::{
     github_issue::{GitHubIssueAnalyzer, GitHubService},
     openrouter::OpenRouterService,
-    solver::SolverService,
     repomap::RepomapService,
+    solver::SolverService,
 };
 use anyhow::{anyhow, Result};
 use axum::{

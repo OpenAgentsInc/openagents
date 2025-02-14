@@ -2,14 +2,14 @@ mod types;
 
 pub use types::*;
 
-use crate::server::services::{openrouter::OpenRouterService, gateway::Gateway};
+use super::StreamUpdate;
+use crate::server::services::{gateway::Gateway, openrouter::OpenRouterService};
 use anyhow::Result;
+use futures_util::StreamExt;
 use sqlx::PgPool;
 use std::fs;
 use std::path::Path;
 use tracing::{debug, error, info};
-use futures_util::StreamExt;
-use super::StreamUpdate;
 
 #[allow(dead_code)] // These methods will be used in future
 pub struct SolverService {
@@ -19,10 +19,7 @@ pub struct SolverService {
 
 impl SolverService {
     pub fn new(pool: PgPool, openrouter: OpenRouterService) -> Self {
-        Self {
-            pool,
-            openrouter,
-        }
+        Self { pool, openrouter }
     }
 
     pub async fn create_solver(
@@ -193,12 +190,21 @@ impl SolverService {
 
         // Send final response for debugging
         if let Some(tx) = &tx {
-            let _ = tx.send(format!("\n=== COMPLETE RAW RESPONSE ===\n{}\n=== END RESPONSE ===\n", response));
+            let _ = tx.send(format!(
+                "\n=== COMPLETE RAW RESPONSE ===\n{}\n=== END RESPONSE ===\n",
+                response
+            ));
         }
 
-        info!("✅ Analysis stream complete - received {} chunks", chunk_count);
+        info!(
+            "✅ Analysis stream complete - received {} chunks",
+            chunk_count
+        );
         if let Some(tx) = &tx {
-            let _ = tx.send(format!("\n✅ Analysis complete - received {} chunks", chunk_count));
+            let _ = tx.send(format!(
+                "\n✅ Analysis complete - received {} chunks",
+                chunk_count
+            ));
         }
 
         // Now use OpenRouter to generate specific changes for each file
@@ -279,16 +285,17 @@ impl SolverService {
             let changes = match self
                 .openrouter
                 .analyze_issue_with_schema(&prompt, request_body)
-                .await {
-                    Ok(changes) => {
-                        info!("   ✅ Successfully generated changes for {}", file.path);
-                        changes
-                    }
-                    Err(e) => {
-                        error!("   ❌ Failed to generate changes for {}: {}", file.path, e);
-                        continue;
-                    }
-                };
+                .await
+            {
+                Ok(changes) => {
+                    info!("   ✅ Successfully generated changes for {}", file.path);
+                    changes
+                }
+                Err(e) => {
+                    error!("   ❌ Failed to generate changes for {}: {}", file.path, e);
+                    continue;
+                }
+            };
 
             info!("   📊 Change summary for {}:", file.path);
             for (i, change) in changes.files.iter().enumerate() {
@@ -330,8 +337,10 @@ impl SolverService {
 
                     // Forward change info to UI
                     if let Some(tx) = &tx {
-                        let _ = tx.send(format!("\n=== NEW FILE: {} ===\nReason: {}\nContent:\n{}\n=== END FILE ===\n",
-                            file.path, change.comment, change.replace));
+                        let _ = tx.send(format!(
+                            "\n=== NEW FILE: {} ===\nReason: {}\nContent:\n{}\n=== END FILE ===\n",
+                            file.path, change.comment, change.replace
+                        ));
                     }
                 } else {
                     // This is an existing file
@@ -344,8 +353,10 @@ impl SolverService {
                             Ok(content) => {
                                 if let Some(start) = content.find(&change.search) {
                                     let mut new_content = content.clone();
-                                    new_content
-                                        .replace_range(start..start + change.search.len(), &change.replace);
+                                    new_content.replace_range(
+                                        start..start + change.search.len(),
+                                        &change.replace,
+                                    );
                                     if let Err(e) = fs::write(&path, new_content) {
                                         error!("      ❌ Failed to write changes: {}", e);
                                         continue;
@@ -358,7 +369,10 @@ impl SolverService {
                                             file.path, change.comment, change.search, change.replace));
                                     }
                                 } else {
-                                    error!("      ❌ Could not find search string in {}", file.path);
+                                    error!(
+                                        "      ❌ Could not find search string in {}",
+                                        file.path
+                                    );
                                     error!("      Search string: {}", change.search);
                                     error!("      This change was skipped");
 
@@ -411,7 +425,10 @@ impl SolverService {
         true
     }
 
-    pub async fn analyze_issue(&self, prompt: String) -> tokio::sync::mpsc::UnboundedReceiver<StreamUpdate> {
+    pub async fn analyze_issue(
+        &self,
+        prompt: String,
+    ) -> tokio::sync::mpsc::UnboundedReceiver<StreamUpdate> {
         // Create an unbounded channel
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 

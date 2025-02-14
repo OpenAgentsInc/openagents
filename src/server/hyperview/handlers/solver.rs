@@ -376,7 +376,8 @@ async fn solver_files_internal(
                 <view style="emptyState">
                     <text style="emptyText">No files have been analyzed yet</text>
                 </view>
-            </item>"#.to_string()
+            </item>"#
+                .to_string()
         } else {
             solver_state
                 .files
@@ -493,7 +494,8 @@ async fn solver_diffs_internal(
                 <view style="emptyState">
                     <text style="emptyText">No changes have been generated yet</text>
                 </view>
-            </item>"#.to_string()
+            </item>"#
+                .to_string()
         } else {
             all_changes
                 .iter()

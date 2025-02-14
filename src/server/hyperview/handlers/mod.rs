@@ -18,15 +18,10 @@ pub use solver::*;
 pub use status::{connected_status, disconnected_status};
 pub use user::user_info;
 
-use axum::{
-    extract::Query,
-    response::Response,
-};
+use axum::{extract::Query, response::Response};
 use std::collections::HashMap;
 
-pub async fn append_content(
-    Query(params): Query<HashMap<String, String>>,
-) -> Response {
+pub async fn append_content(Query(params): Query<HashMap<String, String>>) -> Response {
     let content = params.get("content").map(|s| s.as_str()).unwrap_or("");
     let xml = format!(
         r###"<?xml version="1.0" encoding="UTF-8"?>
