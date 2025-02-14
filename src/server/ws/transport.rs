@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::handlers::{chat::ChatHandler, MessageHandler};
@@ -53,6 +53,26 @@ impl WebSocketState {
         // TODO: Validate session and get user_id from the session store
         // For now, return a mock user_id
         Ok(1)
+    }
+
+    pub async fn validate_session_token(&self, token: &str) -> Result<i32, WebSocketError> {
+        // TODO: Implement actual token validation logic
+        // This should:
+        // 1. Verify the token is valid
+        // 2. Extract and return the user_id from the token
+        // 3. Return WebSocketError if token is invalid
+
+        debug!("Validating session token: {}", token);
+
+        if !token.is_empty() {
+            info!("Session token validated successfully");
+            debug!("Using mock user_id=1 for development");
+            Ok(1) // Mock user_id for now
+        } else {
+            warn!("Session token validation failed: empty token");
+            debug!("Token validation details: length=0");
+            Err(WebSocketError::AuthenticationError("Invalid token".into()))
+        }
     }
 
     pub async fn handle_socket(
