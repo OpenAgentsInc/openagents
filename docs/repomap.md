@@ -122,11 +122,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -138,15 +138,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -165,7 +165,6 @@ src/routes.rs:
 src/server/config.rs:
 │fn default
 │fn configure_app
-│fn configure_app_with_config
 
 src/server/handlers/auth/forms.rs:
 │fn deserialize_checkbox
@@ -314,12 +313,6 @@ src/server/hyperview/services/github_repos.rs:
 │fn get_user_repos
 
 src/server/hyperview/ws.rs:
-│#id: solve-demo-items
-│#id: deepseek-output
-│#id: stream-content
-│#id: stream-content
-│#id: stream_content
-│#id: stream_content
 │fn hyperview_ws_handler
 │fn handle_socket
 
@@ -445,11 +438,12 @@ src/server/services/openrouter/service.rs:
 │fn with_config
 │fn is_test_mode
 │fn get_model
+│fn get_next_available_model
+│fn mark_model_rate_limited
 │fn prepare_messages
 │fn make_request
 │fn make_structured_request
 │fn process_stream_chunk
-│fn make_request_with_retry
 │fn make_structured_request_with_retry
 │fn analyze_issue
 │fn analyze_issue_with_schema
@@ -463,10 +457,21 @@ src/server/services/openrouter/service.rs:
 src/server/services/openrouter/types.rs:
 │fn from
 │fn default
+│const FREE_MODELS
+
+src/server/services/repomap/cache.rs:
+│fn new
+│fn save
+│fn get
+│fn delete
 
 src/server/services/repomap/mod.rs:
 │fn new
+│fn with_pool
 │fn generate_repomap
+│fn get_repository_map
+│fn generate_repository_map
+│fn invalidate_cache
 │fn cleanup
 
 src/server/services/solver/mod.rs:
@@ -479,6 +484,8 @@ src/server/services/solver/mod.rs:
 │fn reject_change
 │fn check_all_changes_reviewed
 │fn analyze_issue
+│fn solve_demo_repo
+│fn solve_repo
 
 src/server/services/solver/types.rs:
 │fn new
@@ -499,6 +506,23 @@ src/server/ws/handlers/mod.rs:
 │fn handle_message
 │fn broadcast
 
+src/server/ws/handlers/solver.rs:
+│fn new
+│fn handle_solver_event
+│fn handle_message
+│fn broadcast
+
+src/server/ws/handlers/solver_json.rs:
+│fn new
+│fn handle_message
+│fn emit_state_update
+│fn emit_file_analysis
+│fn emit_change_generated
+│fn emit_change_applied
+│fn emit_error
+│fn handle_message
+│fn broadcast
+
 src/server/ws/mod.rs:
 │fn ws_handler
 │fn handle_socket
@@ -507,7 +531,6 @@ src/server/ws/transport.rs:
 │fn new
 │fn create_handlers
 │fn validate_session
-│fn validate_session_token
 │fn handle_socket
 │fn broadcast
 │fn send_to
@@ -515,6 +538,7 @@ src/server/ws/transport.rs:
 │fn add_connection
 │fn remove_connection
 │fn add_test_connection
+│fn get_tx
 │fn clone
 
 src/server/ws/types.rs:
@@ -651,7 +675,7 @@ src/solver/types.rs:
 │fn test_change_error_equality
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -796,7 +820,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/auth/callback.xml:
 │#id: container
@@ -1173,3 +1197,4 @@ tests/tool_selection.rs:
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+
