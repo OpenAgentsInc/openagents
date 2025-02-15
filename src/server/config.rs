@@ -180,10 +180,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
             ServeDir::new("./templates").precompressed_gzip(),
         )
         // Serve all Vite files from dist
-        .nest_service(
-            "/chat",
-            ServeDir::new("./chat/dist").precompressed_gzip(),
-        )
+        .nest_service("/chat", ServeDir::new("./chat/dist").precompressed_gzip())
         // State
         .with_state(app_state)
 }
