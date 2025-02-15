@@ -45,21 +45,9 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Text",
-        "Jsonb"
-      ]
+      "Left": ["Text", "Jsonb"]
     },
-    "nullable": [
-      false,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true,
-      true
-    ]
+    "nullable": [false, true, true, true, true, true, true, true]
   },
   "hash": "91bd907adb5e37bda7ef01e44d6960b1c2aa051ed2a88c9822944cf08110e3ce"
 }

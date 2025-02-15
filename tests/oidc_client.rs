@@ -43,11 +43,7 @@ impl TestContext {
         info!("Mock server started at: {}", mock_server.uri());
 
         // Set up test database
-        let _pool = setup_test_db().await;
-
-        // Use DATABASE_URL from environment, fall back to CI default
-        let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+        let pool = setup_test_db().await;
 
         // Create config for this test's mock server
         let config = AppConfig {
@@ -56,13 +52,13 @@ impl TestContext {
             oidc_client_id: "test_client".to_string(),
             oidc_client_secret: "test_secret".to_string(),
             oidc_redirect_uri: "http://localhost:8000/auth/callback".to_string(),
-            database_url,
+            database_url: pool.connect_options().get_database().unwrap().to_string(),
             github_client_id: "test_github_client".to_string(),
             github_client_secret: "test_github_secret".to_string(),
             github_redirect_uri: "http://localhost:8000/auth/github/callback".to_string(),
         };
 
-        let app = configure_app_with_config(Some(config));
+        let app = configure_app_with_config(pool, Some(config));
         info!("App configured");
 
         let user_id = format!("test_user_{}", Uuid::new_v4());
@@ -111,7 +107,7 @@ impl TestContext {
 
 async fn setup_test_app() -> Router {
     // Set up database first
-    let _pool = setup_test_db().await;
+    let pool = setup_test_db().await;
 
     // Create config for test
     let config = AppConfig {
@@ -120,13 +116,13 @@ async fn setup_test_app() -> Router {
         oidc_client_id: "test_client".to_string(),
         oidc_client_secret: "test_secret".to_string(),
         oidc_redirect_uri: "http://localhost:8000/auth/callback".to_string(),
-        database_url: "postgres://postgres:postgres@localhost:5432/postgres".to_string(),
+        database_url: pool.connect_options().get_database().unwrap().to_string(),
         github_client_id: "test_github_client".to_string(),
         github_client_secret: "test_github_secret".to_string(),
         github_redirect_uri: "http://localhost:8000/auth/github/callback".to_string(),
     };
 
-    configure_app_with_config(Some(config))
+    configure_app_with_config(pool, Some(config))
 }
 
 #[tokio::test]

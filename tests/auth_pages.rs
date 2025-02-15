@@ -2,6 +2,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 use wiremock::{
     matchers::{method, path},
@@ -9,6 +10,18 @@ use wiremock::{
 };
 
 use openagents::server::config::configure_app;
+
+async fn setup_test_db() -> sqlx::PgPool {
+    // Use test database URL from environment or fall back to default test database
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".to_string());
+
+    PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect to Postgres")
+}
 
 fn setup_test_env() {
     // Load .env file
@@ -34,6 +47,9 @@ async fn test_login_page() {
     // Load environment variables
     setup_test_env();
 
+    // Set up test database
+    let pool = setup_test_db().await;
+
     // Create mock server for DeepSeek API
     let mock_server = MockServer::start().await;
 
@@ -51,8 +67,8 @@ async fn test_login_page() {
         .mount(&mock_server)
         .await;
 
-    // Initialize the app
-    let app = configure_app();
+    // Initialize the app with the database pool
+    let app = configure_app(pool);
 
     // Create a request to the login page
     let request = Request::builder()
@@ -86,6 +102,9 @@ async fn test_signup_page() {
     // Load environment variables
     setup_test_env();
 
+    // Set up test database
+    let pool = setup_test_db().await;
+
     // Create mock server for DeepSeek API
     let mock_server = MockServer::start().await;
 
@@ -103,8 +122,8 @@ async fn test_signup_page() {
         .mount(&mock_server)
         .await;
 
-    // Initialize the app
-    let app = configure_app();
+    // Initialize the app with the database pool
+    let app = configure_app(pool);
 
     // Create a request to the signup page
     let request = Request::builder()

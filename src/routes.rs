@@ -1,4 +1,6 @@
 use askama::Template;
+use axum::body::Body;
+use axum::http::StatusCode;
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
@@ -18,16 +20,6 @@ struct PageTemplate<'a> {
 struct ContentTemplate<'a> {
     path: &'a str,
 }
-
-#[derive(Template)]
-#[template(path = "layouts/chat_base.html")]
-struct ChatPageTemplate<'a> {
-    title: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "layouts/chat_content.html")]
-struct ChatContentTemplate;
 
 #[derive(Template)]
 #[template(path = "pages/login.html")]
@@ -101,20 +93,26 @@ pub async fn signup(headers: HeaderMap) -> Response {
 }
 
 pub async fn chat(headers: HeaderMap) -> Response {
+    // Serve the Expo web build from the chat/web-build directory
     let is_htmx = headers.contains_key("hx-request");
-    let title = "Chat";
 
     if is_htmx {
-        let content = ChatContentTemplate.render().unwrap();
-        let mut response = Response::new(content.into());
-        response.headers_mut().insert(
-            "HX-Title",
-            HeaderValue::from_str(&format!("OpenAgents - {}", title)).unwrap(),
-        );
-        response
+        // Return 404 for HTMX requests since we're serving a SPA
+        Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::empty())
+            .unwrap()
+            .into_response()
     } else {
-        let template = ChatPageTemplate { title };
-        Html(template.render().unwrap()).into_response()
+        // Serve the index.html from the Expo web build
+        match std::fs::read_to_string("chat/web-build/index.html") {
+            Ok(content) => Html(content).into_response(),
+            Err(_) => Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::empty())
+                .unwrap()
+                .into_response(),
+        }
     }
 }
 
