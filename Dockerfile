@@ -22,7 +22,9 @@ WORKDIR /app
 COPY chat/package.json chat/yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY chat/ .
-RUN yarn build:web:prod
+# Install expo-cli globally and build
+RUN yarn global add expo-cli
+RUN npx expo export:web --mode production
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app

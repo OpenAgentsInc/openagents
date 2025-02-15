@@ -7,8 +7,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build:web": "expo build:web",
-    "build:web:prod": "expo build:web --no-dev --mode production"
+    "build:web": "npx expo export:web",
+    "build:web:prod": "npx expo export:web --mode production"
   },
   "dependencies": {
     "@expo/webpack-config": "^19.0.1",
