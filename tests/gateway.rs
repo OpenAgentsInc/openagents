@@ -3,7 +3,7 @@ use openagents::server::services::{
     gateway::Gateway,
     openrouter::{OpenRouterConfig, OpenRouterService},
 };
-use std::time::Duration;
+use std::{collections::HashSet, time::Duration};
 use tokio::time::timeout;
 
 #[tokio::test]
@@ -12,6 +12,7 @@ async fn test_openrouter_metadata() {
         model: "test-model".to_string(),
         use_reasoner: false,
         test_mode: true,
+        rate_limited_models: HashSet::new(),
     };
 
     let service = OpenRouterService::with_config("test-key".to_string(), config);
@@ -27,6 +28,7 @@ async fn test_openrouter_chat() {
         model: "test-model".to_string(),
         use_reasoner: false,
         test_mode: true,
+        rate_limited_models: HashSet::new(),
     };
 
     let service = OpenRouterService::with_config("test-key".to_string(), config);
@@ -44,6 +46,7 @@ async fn test_openrouter_chat_stream() {
         model: "test-model".to_string(),
         use_reasoner: false,
         test_mode: true,
+        rate_limited_models: HashSet::new(),
     };
 
     let service = OpenRouterService::with_config("test-key".to_string(), config);
@@ -73,6 +76,7 @@ async fn test_openrouter_with_config() {
         model: "test-model".to_string(),
         use_reasoner: true,
         test_mode: true,
+        rate_limited_models: HashSet::new(),
     };
 
     let service = OpenRouterService::with_config("test-key".to_string(), config);
@@ -87,6 +91,7 @@ async fn test_openrouter_error_handling() {
         model: "test-model".to_string(),
         use_reasoner: false,
         test_mode: false, // Not in test mode to test error handling
+        rate_limited_models: HashSet::new(),
     };
 
     let service = OpenRouterService::with_config("invalid-key".to_string(), config);

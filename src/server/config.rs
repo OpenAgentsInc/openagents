@@ -58,6 +58,11 @@ impl Default for AppConfig {
 }
 
 pub fn configure_app(pool: PgPool) -> Router {
+    // Use default config
+    configure_app_with_config(pool, None)
+}
+
+pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Router {
     // Load environment variables
     dotenvy::dotenv().ok();
 
@@ -96,8 +101,8 @@ pub fn configure_app(pool: PgPool) -> Router {
         tools,
     ));
 
-    // Create config
-    let config = AppConfig::default();
+    // Use provided config or default
+    let config = config.unwrap_or_default();
 
     // Create auth state with OIDC config
     let oidc_config = server::services::auth::OIDCConfig::new(
@@ -108,9 +113,6 @@ pub fn configure_app(pool: PgPool) -> Router {
         config.oidc_token_url,
     )
     .expect("Failed to create OIDC config");
-
-    let pool =
-        sqlx::PgPool::connect_lazy(&config.database_url).expect("Failed to create database pool");
 
     let auth_state = Arc::new(server::handlers::auth::AuthState::new(
         oidc_config,
@@ -168,7 +170,7 @@ pub fn configure_app(pool: PgPool) -> Router {
         )
         .route(
             "/auth/github/callback",
-            get(server::handlers::auth::handle_github_callback), // Changed from post to get
+            get(server::handlers::auth::handle_github_callback),
         )
         // Hyperview routes
         .merge(server::hyperview::hyperview_routes())
@@ -177,6 +179,15 @@ pub fn configure_app(pool: PgPool) -> Router {
         .nest_service(
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
+        )
+        // Serve Expo web build static files
+        .nest_service(
+            "/chat/assets",
+            ServeDir::new("./chat/web-build/assets").precompressed_gzip(),
+        )
+        .nest_service(
+            "/chat/static",
+            ServeDir::new("./chat/web-build/static").precompressed_gzip(),
         )
         // State
         .with_state(app_state)
