@@ -102,7 +102,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     ));
 
     // Use provided config or default
-    let config = config.unwrap_or_else(AppConfig::default);
+    let config = config.unwrap_or_default();
 
     // Create auth state with OIDC config
     let oidc_config = server::services::auth::OIDCConfig::new(
