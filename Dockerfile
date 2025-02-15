@@ -19,8 +19,6 @@ RUN cargo build --release --bin openagents
 # Add Node.js build stage for chat app
 FROM node:18 AS chat-builder
 WORKDIR /app
-# Install yarn
-RUN npm install -g yarn
 COPY chat/package.json chat/yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY chat/ .
