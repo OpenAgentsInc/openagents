@@ -9,9 +9,9 @@ echo "Building chat app..."
 cd chat
 
 # Install dependencies
-npm install
+yarn install --frozen-lockfile
 
-# Build for web
-npm run build:web:prod
+# Build for production
+yarn build
 
 echo "Chat app built successfully!"

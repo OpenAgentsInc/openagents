@@ -18,13 +18,11 @@ RUN cargo build --release --bin openagents
 
 # Add Node.js build stage for chat app
 FROM node:18 AS chat-builder
-WORKDIR /app
+WORKDIR /app/chat
 COPY chat/package.json chat/yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY chat/ .
-# Install expo-cli globally and build
-RUN yarn global add expo-cli
-RUN npx expo export:web
+RUN yarn build
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
@@ -36,7 +34,7 @@ RUN apt-get update -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/openagents openagents
 COPY --from=builder /app/assets assets
-COPY --from=chat-builder /app/web-build chat/web-build
+COPY --from=chat-builder /app/chat/dist chat/web-build
 COPY configuration configuration
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./openagents"]
