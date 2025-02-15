@@ -1,6 +1,4 @@
 use askama::Template;
-use axum::body::Body;
-use axum::http::StatusCode;
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
@@ -89,30 +87,6 @@ pub async fn signup(headers: HeaderMap) -> Response {
     } else {
         let template = SignupTemplate { title };
         Html(template.render().unwrap()).into_response()
-    }
-}
-
-pub async fn chat(headers: HeaderMap) -> Response {
-    // Serve the Expo web build from the chat/dist directory
-    let is_htmx = headers.contains_key("hx-request");
-
-    if is_htmx {
-        // Return 404 for HTMX requests since we're serving a SPA
-        Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body(Body::empty())
-            .unwrap()
-            .into_response()
-    } else {
-        // Serve the index.html from the Vite dist
-        match std::fs::read_to_string("chat/dist/index.html") {
-            Ok(content) => Html(content).into_response(),
-            Err(_) => Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())
-                .unwrap()
-                .into_response(),
-        }
     }
 }
 
