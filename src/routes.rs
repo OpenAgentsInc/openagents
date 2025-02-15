@@ -93,7 +93,7 @@ pub async fn signup(headers: HeaderMap) -> Response {
 }
 
 pub async fn chat(headers: HeaderMap) -> Response {
-    // Serve the Expo web build from the chat/web-build directory
+    // Serve the Expo web build from the chat/dist directory
     let is_htmx = headers.contains_key("hx-request");
 
     if is_htmx {
@@ -104,8 +104,8 @@ pub async fn chat(headers: HeaderMap) -> Response {
             .unwrap()
             .into_response()
     } else {
-        // Serve the index.html from the Expo web build
-        match std::fs::read_to_string("chat/web-build/index.html") {
+        // Serve the index.html from the Vite dist
+        match std::fs::read_to_string("chat/dist/index.html") {
             Ok(content) => Html(content).into_response(),
             Err(_) => Response::builder()
                 .status(StatusCode::NOT_FOUND)
