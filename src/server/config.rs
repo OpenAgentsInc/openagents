@@ -139,7 +139,6 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     Router::new()
         // Main routes
         .route("/", get(routes::home))
-        .route("/chat", get(routes::chat))
         .route("/ws", get(server::ws::ws_handler))
         .route("/onyx", get(routes::mobile_app))
         .route("/services", get(routes::business))
@@ -180,15 +179,8 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
             "/templates",
             ServeDir::new("./templates").precompressed_gzip(),
         )
-        // Serve Expo web build static files
-        .nest_service(
-            "/chat/assets",
-            ServeDir::new("./chat/web-build/assets").precompressed_gzip(),
-        )
-        .nest_service(
-            "/chat/static",
-            ServeDir::new("./chat/web-build/static").precompressed_gzip(),
-        )
+        // Serve all Vite files from dist
+        .nest_service("/chat", ServeDir::new("./chat/dist").precompressed_gzip())
         // State
         .with_state(app_state)
 }
