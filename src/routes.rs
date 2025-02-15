@@ -1,12 +1,12 @@
 use askama::Template;
+use axum::body::Body;
+use axum::http::StatusCode;
 use axum::{
     http::header::{HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Response},
     Json,
 };
 use serde_json::json;
-use axum::http::StatusCode;
-use axum::body::Body;
 
 #[derive(Template)]
 #[template(path = "layouts/base.html", escape = "none")]
@@ -20,16 +20,6 @@ struct PageTemplate<'a> {
 struct ContentTemplate<'a> {
     path: &'a str,
 }
-
-#[derive(Template)]
-#[template(path = "layouts/chat_base.html")]
-struct ChatPageTemplate<'a> {
-    title: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "layouts/chat_content.html")]
-struct ChatContentTemplate;
 
 #[derive(Template)]
 #[template(path = "pages/login.html")]

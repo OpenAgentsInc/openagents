@@ -174,10 +174,19 @@ pub fn configure_app(pool: PgPool) -> Router {
         .merge(server::hyperview::hyperview_routes())
         // Static files
         .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
-        .nest_service("/templates", ServeDir::new("./templates").precompressed_gzip())
+        .nest_service(
+            "/templates",
+            ServeDir::new("./templates").precompressed_gzip(),
+        )
         // Serve Expo web build static files
-        .nest_service("/chat/assets", ServeDir::new("./chat/web-build/assets").precompressed_gzip())
-        .nest_service("/chat/static", ServeDir::new("./chat/web-build/static").precompressed_gzip())
+        .nest_service(
+            "/chat/assets",
+            ServeDir::new("./chat/web-build/assets").precompressed_gzip(),
+        )
+        .nest_service(
+            "/chat/static",
+            ServeDir::new("./chat/web-build/static").precompressed_gzip(),
+        )
         // State
         .with_state(app_state)
 }
