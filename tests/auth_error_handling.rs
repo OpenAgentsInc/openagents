@@ -26,9 +26,9 @@ async fn test_error_component_accessibility() {
         "http://localhost:3000/token".to_string(),
     )
     .unwrap();
-    let _auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool.clone());
 
-    let app = openagents::server::config::configure_app();
+    let app = openagents::server::config::configure_app(pool);
 
     // Submit signup request with missing terms acceptance
     let request = Request::builder()
@@ -74,9 +74,9 @@ async fn test_error_component_included() {
         "http://localhost:3000/token".to_string(),
     )
     .unwrap();
-    let _auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool.clone());
 
-    let app = openagents::server::config::configure_app();
+    let app = openagents::server::config::configure_app(pool);
 
     // Submit signup request
     let request = Request::builder()
@@ -122,9 +122,9 @@ async fn test_error_js_included() {
         "http://localhost:3000/token".to_string(),
     )
     .unwrap();
-    let _auth_state = AuthState::new(config, pool);
+    let _auth_state = AuthState::new(config, pool.clone());
 
-    let app = openagents::server::config::configure_app();
+    let app = openagents::server::config::configure_app(pool);
 
     // Submit signup request with mismatched passwords
     let request = Request::builder()
