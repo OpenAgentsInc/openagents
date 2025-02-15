@@ -24,7 +24,7 @@ RUN yarn install --frozen-lockfile
 COPY chat/ .
 # Install expo-cli globally and build
 RUN yarn global add expo-cli
-RUN npx expo export:web --mode production
+RUN npx expo export:web
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
