@@ -1,13 +1,15 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 function App() {
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <Card className="bg-zinc-900 border-zinc-800 w-full max-w-sm mx-4">
-        <CardContent className="pt-6 text-center">
-          <h1 className="text-4xl font-bold mb-6 text-white">OpenAgents</h1>
-          <Button variant="outline" className="w-full">
+    <div className="dark min-h-screen bg-black flex items-center justify-center">
+      <Card className="-mt-4 bg-card w-full max-w-sm mx-4">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl text-white">OpenAgents Chat</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button className="w-full">
             Log in with GitHub
           </Button>
         </CardContent>
