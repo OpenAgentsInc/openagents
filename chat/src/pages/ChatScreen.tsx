@@ -12,7 +12,7 @@ function ChatScreen() {
       <SidebarProvider defaultOpen>
         <div className="flex h-screen w-screen bg-background text-foreground">
           <Sidebar>
-            <SidebarHeader className="border-b border-border px-4 py-2">
+            <SidebarHeader className="px-4 py-2">
               <h2 className="text-lg font-semibold text-foreground">OpenAgents</h2>
             </SidebarHeader>
             <SidebarContent>
@@ -56,22 +56,22 @@ function ChatScreen() {
 
               <div className="flex-1 overflow-auto p-4">
                 <div className="space-y-4">
-                  <div className="bg-muted rounded-lg p-4 max-w-[80%]">
-                    <p className="text-muted-foreground">Hello! How can I help you today?</p>
+                  <div className="border border-border rounded-lg p-4 max-w-[80%]">
+                    <p className="text-foreground">Hello! How can I help you today?</p>
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-border p-4">
-                <Card className="bg-background">
+              <div className="p-4">
+                <Card className="border border-border">
                   <CardContent className="p-2">
                     <div className="flex gap-2">
                       <input
                         type="text"
                         placeholder="Type your message..."
-                        className="flex-1 bg-transparent border-0 focus:outline-none text-foreground placeholder:text-muted-foreground"
+                        className="flex-1 bg-transparent border-0 focus:outline-none text-foreground placeholder:text-foreground/50"
                       />
-                      <Button size="sm" variant="ghost">
+                      <Button size="sm" variant="outline">
                         <Send className="h-4 w-4" />
                       </Button>
                     </div>
