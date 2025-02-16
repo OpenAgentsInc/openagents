@@ -1,6 +1,463 @@
 build.rs:
 │fn main
 
+chat/index.html:
+│#id: root
+
+chat/public/vite.svg:
+│#id: IconifyId1813088fe1fbc01fb466
+
+chat/src/components/ui/accordion.tsx:
+│const Accordion
+│const AccordionItem
+│const AccordionTrigger
+│const AccordionContent
+
+chat/src/components/ui/alert-dialog.tsx:
+│const AlertDialog
+│const AlertDialogTrigger
+│const AlertDialogPortal
+│const AlertDialogOverlay
+│const AlertDialogContent
+│const AlertDialogHeader
+│const AlertDialogFooter
+│const AlertDialogTitle
+│const AlertDialogDescription
+│const AlertDialogAction
+│const AlertDialogCancel
+
+chat/src/components/ui/alert.tsx:
+│const alertVariants
+│const Alert
+│const AlertTitle
+│const AlertDescription
+
+chat/src/components/ui/aspect-ratio.tsx:
+│const AspectRatio
+
+chat/src/components/ui/avatar.tsx:
+│const Avatar
+│const AvatarImage
+│const AvatarFallback
+
+chat/src/components/ui/badge.tsx:
+│const badgeVariants
+
+chat/src/components/ui/breadcrumb.tsx:
+│const Breadcrumb
+│const BreadcrumbList
+│const BreadcrumbItem
+│const BreadcrumbLink
+│const Comp
+│const BreadcrumbPage
+│const BreadcrumbSeparator
+│const BreadcrumbEllipsis
+
+chat/src/components/ui/button.tsx:
+│const buttonVariants
+│const Button
+│const Comp
+
+chat/src/components/ui/card.tsx:
+│const Card
+│const CardHeader
+│const CardTitle
+│const CardDescription
+│const CardContent
+│const CardFooter
+
+chat/src/components/ui/carousel.tsx:
+│const CarouselContext
+│const context
+│const Carousel
+│const
+│const
+│const
+│const onSelect
+│const scrollPrev
+│const scrollNext
+│const handleKeyDown
+│const CarouselContent
+│const
+│const CarouselItem
+│const
+│const CarouselPrevious
+│const
+│const CarouselNext
+│const
+
+chat/src/components/ui/chart.tsx:
+│const THEMES
+│const ChartContext
+│const context
+│const ChartContainer
+│const uniqueId
+│const chartId
+│const ChartStyle
+│const colorConfig
+│const color
+│const ChartTooltip
+│const ChartTooltipContent
+│const
+│const tooltipLabel
+│const
+│const key
+│const itemConfig
+│const value
+│const nestLabel
+│const key
+│const itemConfig
+│const indicatorColor
+│const ChartLegend
+│const ChartLegendContent
+│const
+│const key
+│const itemConfig
+│const payloadPayload
+
+chat/src/components/ui/checkbox.tsx:
+│const Checkbox
+
+chat/src/components/ui/collapsible.tsx:
+│const Collapsible
+│const CollapsibleTrigger
+│const CollapsibleContent
+
+chat/src/components/ui/command.tsx:
+│const Command
+│const CommandDialog
+│const CommandInput
+│const CommandList
+│const CommandEmpty
+│const CommandGroup
+│const CommandSeparator
+│const CommandItem
+│const CommandShortcut
+
+chat/src/components/ui/context-menu.tsx:
+│const ContextMenu
+│const ContextMenuTrigger
+│const ContextMenuGroup
+│const ContextMenuPortal
+│const ContextMenuSub
+│const ContextMenuRadioGroup
+│const ContextMenuSubTrigger
+│const ContextMenuSubContent
+│const ContextMenuContent
+│const ContextMenuItem
+│const ContextMenuCheckboxItem
+│const ContextMenuRadioItem
+│const ContextMenuLabel
+│const ContextMenuSeparator
+│const ContextMenuShortcut
+
+chat/src/components/ui/dialog.tsx:
+│const Dialog
+│const DialogTrigger
+│const DialogPortal
+│const DialogClose
+│const DialogOverlay
+│const DialogContent
+│const DialogHeader
+│const DialogFooter
+│const DialogTitle
+│const DialogDescription
+
+chat/src/components/ui/drawer.tsx:
+│const Drawer
+│const DrawerTrigger
+│const DrawerPortal
+│const DrawerClose
+│const DrawerOverlay
+│const DrawerContent
+│const DrawerHeader
+│const DrawerFooter
+│const DrawerTitle
+│const DrawerDescription
+
+chat/src/components/ui/dropdown-menu.tsx:
+│const DropdownMenu
+│const DropdownMenuTrigger
+│const DropdownMenuGroup
+│const DropdownMenuPortal
+│const DropdownMenuSub
+│const DropdownMenuRadioGroup
+│const DropdownMenuSubTrigger
+│const DropdownMenuSubContent
+│const DropdownMenuContent
+│const DropdownMenuItem
+│const DropdownMenuCheckboxItem
+│const DropdownMenuRadioItem
+│const DropdownMenuLabel
+│const DropdownMenuSeparator
+│const DropdownMenuShortcut
+
+chat/src/components/ui/form.tsx:
+│const Form
+│const FormFieldContext
+│const FormField
+│const useFormField
+│const fieldContext
+│const itemContext
+│const
+│const fieldState
+│const
+│const FormItemContext
+│const FormItem
+│const id
+│const FormLabel
+│const
+│const FormControl
+│const
+│const FormDescription
+│const
+│const FormMessage
+│const
+│const body
+
+chat/src/components/ui/hover-card.tsx:
+│const HoverCard
+│const HoverCardTrigger
+│const HoverCardContent
+
+chat/src/components/ui/input-otp.tsx:
+│const InputOTP
+│const InputOTPGroup
+│const InputOTPSlot
+│const inputOTPContext
+│const
+│const InputOTPSeparator
+
+chat/src/components/ui/input.tsx:
+│const Input
+
+chat/src/components/ui/label.tsx:
+│const labelVariants
+│const Label
+
+chat/src/components/ui/menubar.tsx:
+│const MenubarMenu
+│const MenubarGroup
+│const MenubarPortal
+│const MenubarSub
+│const MenubarRadioGroup
+│const Menubar
+│const MenubarTrigger
+│const MenubarSubTrigger
+│const MenubarSubContent
+│const MenubarContent
+│const MenubarItem
+│const MenubarCheckboxItem
+│const MenubarRadioItem
+│const MenubarLabel
+│const MenubarSeparator
+│const MenubarShortcut
+
+chat/src/components/ui/navigation-menu.tsx:
+│const NavigationMenu
+│const NavigationMenuList
+│const NavigationMenuItem
+│const navigationMenuTriggerStyle
+│const NavigationMenuTrigger
+│const NavigationMenuContent
+│const NavigationMenuLink
+│const NavigationMenuViewport
+│const NavigationMenuIndicator
+
+chat/src/components/ui/pagination.tsx:
+│const Pagination
+│const PaginationContent
+│const PaginationItem
+│const PaginationLink
+│const PaginationPrevious
+│const PaginationNext
+│const PaginationEllipsis
+
+chat/src/components/ui/popover.tsx:
+│const Popover
+│const PopoverTrigger
+│const PopoverAnchor
+│const PopoverContent
+
+chat/src/components/ui/progress.tsx:
+│const Progress
+
+chat/src/components/ui/radio-group.tsx:
+│const RadioGroup
+│const RadioGroupItem
+
+chat/src/components/ui/resizable.tsx:
+│const ResizablePanelGroup
+│const ResizablePanel
+│const ResizableHandle
+
+chat/src/components/ui/scroll-area.tsx:
+│const ScrollArea
+│const ScrollBar
+
+chat/src/components/ui/select.tsx:
+│const Select
+│const SelectGroup
+│const SelectValue
+│const SelectTrigger
+│const SelectScrollUpButton
+│const SelectScrollDownButton
+│const SelectContent
+│const SelectLabel
+│const SelectItem
+│const SelectSeparator
+
+chat/src/components/ui/separator.tsx:
+│const Separator
+
+chat/src/components/ui/sheet.tsx:
+│const Sheet
+│const SheetTrigger
+│const SheetClose
+│const SheetPortal
+│const SheetOverlay
+│const sheetVariants
+│const SheetContent
+│const SheetHeader
+│const SheetFooter
+│const SheetTitle
+│const SheetDescription
+
+chat/src/components/ui/sidebar.tsx:
+│const SIDEBAR_COOKIE_NAME
+│const SIDEBAR_COOKIE_MAX_AGE
+│const SIDEBAR_WIDTH
+│const SIDEBAR_WIDTH_MOBILE
+│const SIDEBAR_WIDTH_ICON
+│const SIDEBAR_KEYBOARD_SHORTCUT
+│const SidebarContext
+│const context
+│const SidebarProvider
+│const isMobile
+│const
+│const
+│const open
+│const setOpen
+│const openState
+│const toggleSidebar
+│const handleKeyDown
+│const state
+│const contextValue
+│const Sidebar
+│const
+│const SidebarTrigger
+│const
+│const SidebarRail
+│const
+│const SidebarInset
+│const SidebarInput
+│const SidebarHeader
+│const SidebarFooter
+│const SidebarSeparator
+│const SidebarContent
+│const SidebarGroup
+│const SidebarGroupLabel
+│const Comp
+│const SidebarGroupAction
+│const Comp
+│const SidebarGroupContent
+│const SidebarMenu
+│const SidebarMenuItem
+│const sidebarMenuButtonVariants
+│const SidebarMenuButton
+│const Comp
+│const
+│const button
+│const SidebarMenuAction
+│const Comp
+│const SidebarMenuBadge
+│const SidebarMenuSkeleton
+│const width
+│const SidebarMenuSub
+│const SidebarMenuSubItem
+│const SidebarMenuSubButton
+│const Comp
+
+chat/src/components/ui/slider.tsx:
+│const Slider
+
+chat/src/components/ui/sonner.tsx:
+│const Toaster
+│const
+
+chat/src/components/ui/switch.tsx:
+│const Switch
+
+chat/src/components/ui/table.tsx:
+│const Table
+│const TableHeader
+│const TableBody
+│const TableFooter
+│const TableRow
+│const TableHead
+│const TableCell
+│const TableCaption
+
+chat/src/components/ui/tabs.tsx:
+│const Tabs
+│const TabsList
+│const TabsTrigger
+│const TabsContent
+
+chat/src/components/ui/textarea.tsx:
+│const Textarea
+
+chat/src/components/ui/toast.tsx:
+│const ToastProvider
+│const ToastViewport
+│const toastVariants
+│const Toast
+│const ToastAction
+│const ToastClose
+│const ToastTitle
+│const ToastDescription
+
+chat/src/components/ui/toaster.tsx:
+│const
+
+chat/src/components/ui/toggle-group.tsx:
+│const ToggleGroupContext
+│const ToggleGroup
+│const ToggleGroupItem
+│const context
+
+chat/src/components/ui/toggle.tsx:
+│const toggleVariants
+│const Toggle
+
+chat/src/components/ui/tooltip.tsx:
+│const TooltipProvider
+│const Tooltip
+│const TooltipTrigger
+│const TooltipContent
+
+chat/src/hooks/use-mobile.tsx:
+│const MOBILE_BREAKPOINT
+│const
+│const mql
+│const onChange
+
+chat/src/hooks/use-toast.ts:
+│const TOAST_LIMIT
+│const TOAST_REMOVE_DELAY
+│const actionTypes
+│const toastTimeouts
+│const addToRemoveQueue
+│const timeout
+│const reducer
+│const
+│const listeners
+│const id
+│const update
+│const dismiss
+│const
+│const index
+
 docs/adding-tools.md:
 
 docs/chat_template.md:
@@ -154,7 +611,6 @@ src/routes.rs:
 │fn home
 │fn login
 │fn signup
-│fn chat
 │fn mobile_app
 │fn business
 │fn video_series
@@ -165,6 +621,7 @@ src/routes.rs:
 src/server/config.rs:
 │fn default
 │fn configure_app
+│fn configure_app_with_config
 
 src/server/handlers/auth/forms.rs:
 │fn deserialize_checkbox
@@ -1020,6 +1477,7 @@ tests/auth_error_handling.rs:
 │const MAX_SIZE
 
 tests/auth_pages.rs:
+│fn setup_test_db
 │fn setup_test_env
 │fn test_login_page
 │fn test_signup_page
@@ -1037,6 +1495,7 @@ tests/chat_database.rs:
 
 tests/chat_router_integration.rs:
 │fn init_logging
+│fn setup_test_db
 │fn test_chat_router_integration
 │fn test_chat_router_streaming
 
