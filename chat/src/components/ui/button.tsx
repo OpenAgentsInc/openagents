@@ -1,7 +1,7 @@
-import { cva, VariantProps } from "class-variance-authority"
-import * as React from "react"
-import { cn } from "@/lib/utils"
-import { Slot } from "@radix-ui/react-slot"
+import { cva, VariantProps } from "class-variance-authority";
+import * as React from "react";
+import { cn } from "@/lib/utils";
+import { Slot } from "@radix-ui/react-slot";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-4 whitespace-nowrap text-sm font-medium select-none text-center align-middle transition-all duration-nav ease-nav focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
@@ -35,7 +35,7 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-  VariantProps<typeof buttonVariants> {
+    VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }
 
