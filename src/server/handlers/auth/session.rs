@@ -1,95 +1,55 @@
+use crate::server::models::user::User;
 use axum::{
-    http::{header, StatusCode},
-    response::Response,
+    http::{header::SET_COOKIE, HeaderValue},
+    response::{IntoResponse, Redirect, Response},
 };
-use axum_extra::extract::cookie::{Cookie, SameSite};
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 use tracing::info;
 
-use crate::server::models::user::User;
+pub const SESSION_COOKIE_NAME: &str = "session";
+pub const SESSION_DURATION_DAYS: i64 = 30;
+pub const MOBILE_APP_SCHEME: &str = "openagents://";
 
-use super::SESSION_COOKIE_NAME;
+pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Response {
+    info!("Creating session for user ID: {}", user.id);
 
-const MOBILE_APP_SCHEME: &str = "onyx";
-
-pub async fn create_session_and_redirect(user: User, is_mobile: bool) -> Response {
-    info!("Creating session for user: {:?}", user);
-    info!("Is mobile: {}", is_mobile);
-
-    let session_token = user.scramble_id.clone();
-    let cookie = Cookie::build((
+    // Create session cookie
+    let expiry = OffsetDateTime::now_utc() + Duration::days(SESSION_DURATION_DAYS);
+    let cookie = format!(
+        "{}={}; Path=/; HttpOnly; SameSite=Lax; Expires={}",
         SESSION_COOKIE_NAME,
-        session_token.clone().unwrap_or_default(),
-    ))
-    .path("/")
-    .secure(true)
-    .http_only(true)
-    .same_site(SameSite::Lax)
-    .max_age(Duration::days(7))
-    .build();
+        user.id,
+        expiry.format("%a, %d %b %Y %H:%M:%S GMT").unwrap()
+    );
 
-    // For mobile app, redirect to deep link with session token
-    let redirect_url = if is_mobile {
-        info!("Redirecting to mobile app with token");
-        format!(
-            "{}://{}",
-            MOBILE_APP_SCHEME,
-            session_token.unwrap_or_default()
-        )
+    let mut response = if is_mobile {
+        let mobile_url = format!("{}auth?token={}", MOBILE_APP_SCHEME, user.id);
+        info!("Redirecting to mobile URL: {}", mobile_url);
+        Redirect::temporary(&mobile_url).into_response()
     } else {
-        info!("Redirecting to web app");
-        "/".to_string()
+        info!("Redirecting to web chat interface");
+        Redirect::temporary("/chat").into_response()
     };
 
-    info!("Redirect URL: {}", redirect_url);
+    response
+        .headers_mut()
+        .insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
 
-    Response::builder()
-        .status(StatusCode::TEMPORARY_REDIRECT)
-        .header(header::SET_COOKIE, cookie.to_string())
-        .header(header::LOCATION, redirect_url)
-        .body(axum::body::Body::empty())
-        .unwrap()
+    response
 }
 
 pub async fn clear_session_and_redirect() -> Response {
-    info!("Clearing session");
+    info!("Clearing session cookie and redirecting to login");
 
-    let cookie = Cookie::build((SESSION_COOKIE_NAME, ""))
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .max_age(Duration::seconds(0))
-        .build();
+    let cookie = format!(
+        "{}=; Path=/; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+        SESSION_COOKIE_NAME
+    );
 
-    Response::builder()
-        .status(StatusCode::TEMPORARY_REDIRECT)
-        .header(header::SET_COOKIE, cookie.to_string())
-        .header(header::LOCATION, "/login")
-        .body(axum::body::Body::empty())
-        .unwrap()
-}
+    let mut response = Redirect::temporary("/login").into_response();
+    response
+        .headers_mut()
+        .insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
 
-pub async fn render_login_template() -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html")
-        .body(axum::body::Body::from(include_str!(
-            "../../../../templates/pages/login.html"
-        )))
-        .unwrap()
-}
-
-pub async fn render_signup_template() -> Response {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html")
-        .body(axum::body::Body::from(include_str!(
-            "../../../../templates/pages/signup.html"
-        )))
-        .unwrap()
-}
-
-pub fn clear_session_cookie() -> String {
-    "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT".to_string()
+    response
 }
