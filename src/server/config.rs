@@ -8,7 +8,7 @@ use super::services::{
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use crate::{routes, server};
-use axum::{routing::{get, post}, Router};
+use axum::{routing::{get, post, get_service}, Router};
 use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
@@ -198,11 +198,13 @@ pub fn app_router(state: AppState) -> Router<AppState> {
             Router::new()
                 .route(
                     "/login",
-                    get(server::handlers::oauth::scramble::scramble_login),
+                    get(server::handlers::oauth::scramble::scramble_login)
+                        .post(server::handlers::oauth::scramble::scramble_login),
                 )
                 .route(
                     "/signup",
-                    get(server::handlers::oauth::scramble::scramble_signup),
+                    get(server::handlers::oauth::scramble::scramble_signup)
+                        .post(server::handlers::oauth::scramble::scramble_signup),
                 )
                 .route(
                     "/callback",
