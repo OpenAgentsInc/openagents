@@ -1,8 +1,11 @@
-use crate::server::config::AppState;
+use crate::server::{
+    config::AppState,
+    models::user::User,
+    services::oauth::OAuthError,
+};
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
-    Extension,
 };
 use serde::Deserialize;
 use tracing::info;
@@ -59,18 +62,13 @@ pub async fn callback(
 }
 
 pub async fn clear_session_and_redirect() -> impl IntoResponse {
-    Redirect::to("/")
+    session::clear_session_and_redirect().await
 }
 
 pub async fn create_session_and_redirect(
     user: &User,
     is_mobile: Option<bool>,
 ) -> Result<impl IntoResponse, OAuthError> {
-    let session = session::create_session(user).await?;
-    let response = if is_mobile.unwrap_or(false) {
-        Redirect::to(&format!("/mobile/auth?session={}", session.id))
-    } else {
-        Redirect::to("/")
-    };
+    let response = session::create_session_and_redirect(user, is_mobile.unwrap_or(false)).await;
     Ok(response)
 }

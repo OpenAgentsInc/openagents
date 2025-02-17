@@ -20,10 +20,7 @@ use crate::server::{
         auth::{login, signup},
         oauth::{github, scramble},
     },
-    services::{
-        oauth::{OAuthConfig, OAuthState},
-        AppState,
-    },
+    services::oauth::{OAuthConfig, OAuthState},
 };
 
 #[derive(Clone)]
@@ -204,17 +201,17 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .with_state(app_state)
 }
 
-pub fn app_router() -> Router<AppState> {
+pub fn app_router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/auth/login", get(login::login_page))
         .route("/auth/signup", get(signup::signup_page))
-        .route("/auth/logout", get(clear_session_and_redirect))
+        .route("/auth/logout", get(server::handlers::auth::clear_session_and_redirect))
         .nest(
             "/auth/github",
             Router::new()
                 .route("/login", get(github::github_login))
                 .route("/callback", get(github::github_callback))
-                .with_state(()),
+                .with_state(state.clone()),
         )
         .nest(
             "/auth/scramble",
@@ -222,6 +219,7 @@ pub fn app_router() -> Router<AppState> {
                 .route("/login", get(scramble::scramble_login))
                 .route("/signup", get(scramble::scramble_signup))
                 .route("/callback", get(scramble::scramble_callback))
-                .with_state(()),
+                .with_state(state.clone()),
         )
+        .with_state(state)
 }

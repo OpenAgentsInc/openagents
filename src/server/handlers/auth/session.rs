@@ -3,11 +3,10 @@ use axum::{
     http::{header::SET_COOKIE, HeaderValue},
     response::{IntoResponse, Redirect, Response},
 };
+use axum_extra::extract::cookie::{Cookie, SameSite};
 use time::{Duration, OffsetDateTime};
 use tracing::info;
 use time::format_description::well_known::Rfc2822;
-use axum::http::Cookie;
-use axum::http::SameSite;
 
 pub const SESSION_COOKIE_NAME: &str = "session";
 pub const SESSION_DURATION_DAYS: i64 = 30;
@@ -16,14 +15,8 @@ pub const MOBILE_APP_SCHEME: &str = "openagents://";
 pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Response {
     info!("Creating session for user ID: {}", user.id);
 
-    // Create session cookie
     let expiry = OffsetDateTime::now_utc() + Duration::days(SESSION_DURATION_DAYS);
-    let cookie = format!(
-        "{}={}; Path=/; HttpOnly; SameSite=Lax; Expires={}",
-        SESSION_COOKIE_NAME,
-        user.id,
-        expiry.format("%a, %d %b %Y %H:%M:%S GMT").unwrap()
-    );
+    let cookie = create_session_cookie(&user.id.to_string(), expiry);
 
     let mut response = if is_mobile {
         let mobile_url = format!("{}auth?token={}", MOBILE_APP_SCHEME, user.id);
@@ -34,9 +27,10 @@ pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Respon
         Redirect::temporary("/chat").into_response()
     };
 
-    response
-        .headers_mut()
-        .insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    response.headers_mut().insert(
+        SET_COOKIE,
+        HeaderValue::from_str(&cookie.to_string()).unwrap(),
+    );
 
     response
 }
@@ -44,21 +38,18 @@ pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Respon
 pub async fn clear_session_and_redirect() -> Response {
     info!("Clearing session cookie and redirecting to login");
 
-    let cookie = format!(
-        "{}=; Path=/; HttpOnly; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
-        SESSION_COOKIE_NAME
-    );
-
+    let cookie = clear_session_cookie();
     let mut response = Redirect::temporary("/login").into_response();
-    response
-        .headers_mut()
-        .insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    response.headers_mut().insert(
+        SET_COOKIE,
+        HeaderValue::from_str(&cookie.to_string()).unwrap(),
+    );
 
     response
 }
 
 pub fn create_session_cookie(session_id: &str, expiry: OffsetDateTime) -> Cookie<'static> {
-    Cookie::build("session", session_id.to_string())
+    Cookie::build(SESSION_COOKIE_NAME, session_id.to_string())
         .path("/")
         .secure(true)
         .http_only(true)
@@ -68,7 +59,7 @@ pub fn create_session_cookie(session_id: &str, expiry: OffsetDateTime) -> Cookie
 }
 
 pub fn clear_session_cookie() -> Cookie<'static> {
-    Cookie::build("session", "")
+    Cookie::build(SESSION_COOKIE_NAME, "")
         .path("/")
         .secure(true)
         .http_only(true)

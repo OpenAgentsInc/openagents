@@ -2,7 +2,7 @@ use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::user::User;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use oauth2::{TokenResponse, CsrfToken};
+use oauth2::{TokenResponse, CsrfToken, PkceCodeVerifier};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info};
@@ -27,37 +27,18 @@ impl ScrambleOAuth {
         })
     }
 
-    pub fn authorization_url_for_login(&self, email: &str) -> (String, CsrfToken) {
+    pub fn authorization_url_for_login(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
         info!("Generating login authorization URL for email: {}", email);
-
-        let csrf_token = CsrfToken::new_random();
-        let url = self.service.authorization_url(
-            None,
-            vec![
-                ("flow", "login"),
-                ("email", email),
-                ("scope", "openid"),
-            ],
-        );
-
-        (url, csrf_token)
+        let (mut url, csrf_token, pkce_verifier) = self.service.authorization_url(None);
+        url = format!("{}&flow=login&email={}&scope=openid", url, email);
+        (url, csrf_token, pkce_verifier)
     }
 
-    pub fn authorization_url_for_signup(&self, email: &str) -> (String, CsrfToken) {
+    pub fn authorization_url_for_signup(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
         info!("Generating signup authorization URL for email: {}", email);
-
-        let csrf_token = CsrfToken::new_random();
-        let url = self.service.authorization_url(
-            None,
-            vec![
-                ("flow", "signup"),
-                ("prompt", "create"),
-                ("email", email),
-                ("scope", "openid"),
-            ],
-        );
-
-        (url, csrf_token)
+        let (mut url, csrf_token, pkce_verifier) = self.service.authorization_url(None);
+        url = format!("{}&flow=signup&prompt=create&email={}&scope=openid", url, email);
+        (url, csrf_token, pkce_verifier)
     }
 
     pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
@@ -80,14 +61,18 @@ impl ScrambleOAuth {
         );
 
         // Exchange code for tokens
-        let token = self.service.exchange_token(code).await?;
+        let (pkce_challenge, pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+        let token = self.service.exchange_token(code, pkce_verifier).await?;
 
         // Extract claims from ID token
-        let id_token = token.id_token.ok_or_else(|| {
-            OAuthError::TokenExchangeFailed("No id_token in response".to_string())
-        })?;
+        let id_token = token.extra_fields()
+            .get("id_token")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                OAuthError::TokenExchangeFailed("No id_token in response".to_string())
+            })?;
 
-        let pseudonym = self.extract_pseudonym(&id_token)?;
+        let pseudonym = self.extract_pseudonym(id_token)?;
 
         // Handle user creation/update based on signup vs login
         if is_signup {

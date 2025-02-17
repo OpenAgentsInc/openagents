@@ -1,19 +1,24 @@
-import { Home, MessageSquare, Send, Settings, Users } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Home, MessageSquare, Settings, Users } from "lucide-react"
+import { Chat } from "@/components/ui/chat"
 import {
   Sidebar, SidebarContent, SidebarHeader, SidebarInset, SidebarMenu,
   SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger
 } from "@/components/ui/sidebar"
+import { useChat } from "@ai-sdk/react"
 
 function ChatScreen() {
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
+    useChat();
+
   return (
     <div className="dark">
       <SidebarProvider defaultOpen>
         <div className="flex h-screen w-screen bg-background text-foreground">
           <Sidebar>
             <SidebarHeader className="px-4 py-2">
-              <h2 className="text-lg font-semibold text-foreground">OpenAgents</h2>
+              <h2 className="text-lg font-semibold text-foreground">
+                OpenAgents
+              </h2>
             </SidebarHeader>
             <SidebarContent>
               <SidebarMenu>
@@ -46,7 +51,7 @@ function ChatScreen() {
           </Sidebar>
 
           <SidebarInset>
-            <div className="flex h-full flex-col bg-background">
+            <div className="flex flex-col h-full bg-background">
               <header className="border-b border-border p-4">
                 <div className="flex items-center gap-2">
                   <SidebarTrigger />
@@ -54,29 +59,17 @@ function ChatScreen() {
                 </div>
               </header>
 
-              <div className="flex-1 overflow-auto p-4">
-                <div className="space-y-4">
-                  <div className="border border-border rounded-lg p-4 max-w-[80%]">
-                    <p className="text-foreground">Hello! How can I help you today?</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4">
-                <Card className="border border-border">
-                  <CardContent className="p-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Type your message..."
-                        className="flex-1 bg-transparent border-0 focus:outline-none text-foreground placeholder:text-foreground/50"
-                      />
-                      <Button size="sm" variant="outline">
-                        <Send className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+              {/* This container fills the rest of the space */}
+              <div className="p-6 flex-1 flex flex-col overflow-hidden">
+                <Chat
+                  messages={messages}
+                  input={input}
+                  handleInputChange={handleInputChange}
+                  handleSubmit={handleSubmit}
+                  isGenerating={isLoading}
+                  stop={stop}
+                  className="flex-1" // Ensure the Chat component fills its container
+                />
               </div>
             </div>
           </SidebarInset>
