@@ -40,23 +40,24 @@ log = "0.4"
 uuid = { version = "1.4", features = ["v4", "serde"] }
 bitcoin_hashes = "0.12"
 secp256k1 = { version = "0.27", features = ["rand", "bitcoin_hashes", "global-context"] }
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.4"
-sqlx = { version = "0.8.3", features = ["time", "uuid", "runtime-tokio", "postgres", "json", "tls-native-tls", "bigdecimal"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-native-tls", "postgres", "uuid", "time", "chrono"] }
 config = "0.14"
 secrecy = { version = "0.8", features = ["serde"] }
-tracing = { version = "0.1", features = ["log"] }
+tracing = "0.1"
 url = "2.4"
-time = { version = "0.3.37", features = ["serde", "serde-well-known"] }
+time = "0.3"
 anyhow = "1.0"
-askama = { version = "0.12.1", features = ["with-axum"] }
-askama_axum = "0.4.0"
-axum = { version = "0.8.1", features = ["ws", "macros"] }
-axum-extra = { version = "0.9.2", features = ["cookie"] }
-tower = "0.5.2"
-tower-http = { version = "0.6.2", features = ["fs", "trace", "cors"] }
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-reqwest = { version = "0.11.27", features = ["json", "stream", "multipart", "blocking"] }
+askama = "0.12"
+askama_axum = "0.4"
+axum = { version = "0.7", features = ["ws", "macros"] }
+axum-extra = { version = "0.9", features = ["cookie"] }
+axum-macros = "0.4"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "trace"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
 native-tls = "0.2.13"
 openssl = { version = "0.10.70", features = ["vendored"] }
 pulldown-cmark = "0.9"
@@ -86,7 +87,8 @@ ignore = "0.4"  # Added ignore crate for .gitignore support
 glob = "0.3"    # Added glob crate for pattern matching
 serde_urlencoded = "0.7.1"
 octocrab = "0.43.0"
-oauth2 = "5.0.0"
+oauth2 = "4.4"
+cookie = "0.18"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }

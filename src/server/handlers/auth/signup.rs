@@ -1,8 +1,9 @@
 use crate::server::config::AppState;
 use askama::Template;
+use askama_axum::IntoResponse as AskamaIntoResponse;
 use axum::{
     extract::{Query, State},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
 use tracing::info;
@@ -41,5 +42,5 @@ pub async fn handle_signup(
         .scramble_oauth
         .authorization_url_for_signup(&request.email);
 
-    axum::response::Redirect::temporary(&url).into_response()
+    Redirect::temporary(&url).into_response()
 }

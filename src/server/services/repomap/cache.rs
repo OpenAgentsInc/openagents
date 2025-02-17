@@ -1,30 +1,30 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use time::OffsetDateTime;
+use crate::server::models::timestamp::Timestamp;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RepomapCache {
+pub struct RepoMapCache {
     pub repo_name: String,
     pub branch: String,
     pub commit_sha: String,
-    pub map_data: serde_json::Value,
-    pub created_at: OffsetDateTime,
+    pub map_data: String,
+    pub created_at: Timestamp,
 }
 
-impl RepomapCache {
+impl RepoMapCache {
     pub fn new(
         repo_name: String,
         branch: String,
         commit_sha: String,
-        map_data: serde_json::Value,
+        map_data: String,
     ) -> Self {
         Self {
             repo_name,
             branch,
             commit_sha,
             map_data,
-            created_at: OffsetDateTime::now_utc(),
+            created_at: Timestamp::now(),
         }
     }
 
@@ -40,7 +40,7 @@ impl RepomapCache {
             self.branch,
             self.commit_sha,
             self.map_data,
-            self.created_at,
+            self.created_at as Timestamp,
         )
         .execute(pool)
         .await?;
@@ -72,7 +72,7 @@ impl RepomapCache {
             branch: r.branch,
             commit_sha: r.commit_sha,
             map_data: r.map_data,
-            created_at: r.created_at,
+            created_at: Timestamp::from(r.created_at),
         }))
     }
 

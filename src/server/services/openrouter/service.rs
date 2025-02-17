@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 use std::{pin::Pin, time::Duration};
 use tokio_stream::Stream;
 use tracing::{debug, error, info, warn};
+use futures_util::StreamExt;
+use bytes::Bytes;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_RETRIES: u32 = 2;

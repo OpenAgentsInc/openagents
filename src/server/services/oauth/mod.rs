@@ -1,7 +1,7 @@
 use oauth2::{
     basic::BasicClient,
     AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl,
-    EmptyExtraTokenFields, StandardTokenResponse, TokenResponse,
+    EmptyExtraTokenFields, StandardTokenResponse,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -47,10 +47,7 @@ impl OAuthService {
         let redirect_url = RedirectUrl::new(config.redirect_url.clone())
             .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
 
-        let client = BasicClient::new(client_id)
-            .set_client_secret(Some(client_secret))
-            .set_auth_uri(auth_url)
-            .set_token_uri(Some(token_url))
+        let client = BasicClient::new(client_id, Some(client_secret), auth_url, Some(token_url))
             .set_redirect_uri(redirect_url);
 
         Ok(Self {

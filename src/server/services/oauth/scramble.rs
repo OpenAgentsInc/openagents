@@ -2,7 +2,10 @@ use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::user::User;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use oauth2::TokenResponse;
+use oauth2::{
+    AccessToken, BasicTokenResponse, EmptyExtraTokenFields, RefreshToken, Scope, StandardTokenResponse,
+    TokenResponse, TokenType,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info};
@@ -11,8 +14,46 @@ use tracing::{error, info};
 pub struct ScrambleTokenResponse {
     access_token: String,
     token_type: String,
-    expires_in: Option<i32>,
-    id_token: String,
+    expires_in: Option<u64>,
+    refresh_token: Option<String>,
+    id_token: Option<String>,
+}
+
+impl TokenResponse<BasicTokenResponse> for ScrambleTokenResponse {
+    fn access_token(&self) -> &AccessToken {
+        // SAFETY: This is safe because we store the access token as a string
+        unsafe { std::mem::transmute(&self.access_token) }
+    }
+
+    fn token_type(&self) -> &BasicTokenType {
+        // SAFETY: This is safe because we store the token type as a string
+        unsafe { std::mem::transmute(&self.token_type) }
+    }
+
+    fn expires_in(&self) -> Option<u64> {
+        self.expires_in
+    }
+
+    fn refresh_token(&self) -> Option<&RefreshToken> {
+        // SAFETY: This is safe because we store the refresh token as an Option<String>
+        self.refresh_token.as_ref().map(|t| unsafe { std::mem::transmute(t) })
+    }
+
+    fn scopes(&self) -> Option<&Vec<Scope>> {
+        None
+    }
+}
+
+impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for ScrambleTokenResponse {
+    fn from(token: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>) -> Self {
+        Self {
+            access_token: token.access_token().secret().to_string(),
+            token_type: token.token_type().as_str().to_string(),
+            expires_in: token.expires_in(),
+            refresh_token: token.refresh_token().map(|t| t.secret().to_string()),
+            id_token: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -59,14 +100,26 @@ impl ScrambleOAuth {
         &self,
         code: String,
         pkce_verifier: oauth2::PkceCodeVerifier,
-    ) -> Result<impl TokenResponse, OAuthError> {
-        let token = self.service.exchange_code(code, pkce_verifier).await?;
-        let id_token = token
-            .extra_fields()
-            .id_token
-            .ok_or_else(|| OAuthError::TokenExchange("Missing ID token".to_string()))?;
+    ) -> Result<impl TokenResponse<BasicTokenResponse>, OAuthError> {
+        let token = self.service
+            .exchange_code(code)
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(oauth2::reqwest::async_http_client)
+            .await
+            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
 
-        Ok(token)
+        let id_token = token.extra_fields()
+            .get("id_token")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| OAuthError::TokenExchangeFailed("Missing ID token".to_string()))?;
+
+        Ok(ScrambleTokenResponse {
+            access_token: token.access_token().secret().to_string(),
+            token_type: token.token_type().as_ref().to_string(),
+            expires_in: token.expires_in().map(|d| d.as_secs()),
+            refresh_token: token.refresh_token().map(|t| t.secret().to_string()),
+            id_token: Some(id_token.to_string()),
+        })
     }
 
     pub async fn authenticate(&self, code: String, is_signup: bool) -> Result<User, OAuthError> {
@@ -81,8 +134,8 @@ impl ScrambleOAuth {
         let token = self.service.exchange_code(code, pkce_verifier).await?;
 
         // Extract claims from ID token
-        let id_token = token
-            .extra_fields()
+        let extra_fields = token.extra_fields();
+        let id_token = extra_fields
             .get("id_token")
             .and_then(|v| v.as_str())
             .ok_or_else(|| OAuthError::TokenExchangeFailed("No id_token in response".to_string()))?;

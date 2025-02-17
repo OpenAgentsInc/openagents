@@ -1,6 +1,6 @@
 use crate::server::{
     config::AppState,
-    handlers::auth::session::{create_session_and_redirect, clear_session_and_redirect},
+    handlers::auth::session::create_session_and_redirect,
 };
 use axum::{
     extract::{Query, State},
@@ -16,7 +16,7 @@ pub struct LoginParams {
 
 pub async fn github_login(
     State(state): State<AppState>,
-    Query(params): Query<LoginParams>,
+    Query(_params): Query<LoginParams>,
 ) -> Response {
     info!("Handling GitHub login request");
 
@@ -53,7 +53,7 @@ pub async fn github_callback(
     match state.github_oauth.authenticate(params.code, false).await {
         Ok(user) => {
             info!("Successfully authenticated GitHub user: {:?}", user);
-            create_session_and_redirect(&user, Some(is_mobile)).await
+            create_session_and_redirect(&user, is_mobile).await
         }
         Err(error) => {
             info!("Authentication failed: {}", error);

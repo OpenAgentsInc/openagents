@@ -7,7 +7,7 @@ import {
 import { useChat } from "@ai-sdk/react"
 
 function ChatScreen() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop, append } =
     useChat();
 
   return (
@@ -72,6 +72,8 @@ function ChatScreen() {
                   isGenerating={isLoading}
                   stop={stop}
                   className="flex-1 text-foreground"
+                // append={append}
+                // suggestions={["Generate a tasty lasagna recipe for 3 people.", "Generate a list of 5 questions for a frontend job interview.", "Who won the 2022 FIFA World Cup?"]}
                 />
               </div>
             </main>

@@ -1,6 +1,6 @@
 use crate::server::{
     config::AppState,
-    handlers::auth::session::{create_session_and_redirect, clear_session_and_redirect},
+    handlers::auth::session::create_session_and_redirect,
 };
 use axum::{
     extract::{Query, State},
@@ -77,7 +77,7 @@ pub async fn scramble_callback(
     {
         Ok(user) => {
             info!("Successfully authenticated Scramble user: {:?}", user);
-            create_session_and_redirect(&user, None).await
+            create_session_and_redirect(&user, false).await
         }
         Err(error) => {
             info!("Authentication failed: {}", error);

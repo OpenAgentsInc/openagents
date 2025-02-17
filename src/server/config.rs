@@ -151,8 +151,6 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .route("/cota", get(routes::cota))
         // Merge auth router
         .merge(app_router(app_state.clone()))
-        // Hyperview routes
-        .merge(server::hyperview::hyperview_routes())
         // Static files
         .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
         .nest_service(
