@@ -1,12 +1,12 @@
-use super::{OAuthConfig, OAuthError, OAuthService};
+use super::{OAuthConfig, OAuthError, OAuthService, TokenInfo};
 use crate::server::models::user::User;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use oauth2::{
-    basic::BasicClient,
-    reqwest::async_http_client as oauth_async_http_client,
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    PkceCodeChallenge, PkceCodeVerifier, TokenResponse, TokenUrl,
+    basic::BasicClient, basic::BasicTokenType,
+    reqwest::async_http_client as oauth_async_http_client, AuthUrl, AuthorizationCode, ClientId,
+    ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, StandardTokenResponse,
+    TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -32,19 +32,31 @@ impl ScrambleOAuth {
         })
     }
 
-    pub fn authorization_url_for_login(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
+    pub fn authorization_url_for_login(
+        &self,
+        email: &str,
+    ) -> (String, CsrfToken, PkceCodeVerifier) {
         let mut url = self.service.authorization_url();
         url.0 = format!("{}&flow=login&email={}&scope=openid", url.0, email);
         url
     }
 
-    pub fn authorization_url_for_signup(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
+    pub fn authorization_url_for_signup(
+        &self,
+        email: &str,
+    ) -> (String, CsrfToken, PkceCodeVerifier) {
         let mut url = self.service.authorization_url();
-        url.0 = format!("{}&flow=signup&prompt=create&email={}&scope=openid", url.0, email);
+        url.0 = format!(
+            "{}&flow=signup&prompt=create&email={}&scope=openid",
+            url.0, email
+        );
         url
     }
 
-    pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
+    pub fn authorization_url(
+        &self,
+        platform: Option<String>,
+    ) -> (String, CsrfToken, PkceCodeVerifier) {
         self.service.authorization_url(platform)
     }
 
@@ -54,7 +66,8 @@ impl ScrambleOAuth {
         pkce_verifier: PkceCodeVerifier,
     ) -> Result<impl TokenResponse, OAuthError> {
         let token = self.service.exchange_code(code, pkce_verifier).await?;
-        let id_token = token.extra_fields()
+        let id_token = token
+            .extra_fields()
             .id_token
             .ok_or_else(|| OAuthError::TokenExchange("Missing ID token".to_string()))?;
 
@@ -73,10 +86,9 @@ impl ScrambleOAuth {
         let token = self.service.exchange_code(code, pkce_verifier).await?;
 
         // Extract claims from ID token
-        let id_token = token.extra_fields()
-            .get("id_token")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| OAuthError::TokenExchangeFailed("No id_token in response".to_string()))?;
+        let id_token = token.extra_fields().id_token.as_ref().ok_or_else(|| {
+            OAuthError::TokenExchangeFailed("No id_token in response".to_string())
+        })?;
 
         let pseudonym = self.extract_pseudonym(id_token)?;
 
@@ -107,7 +119,9 @@ impl ScrambleOAuth {
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
         if existing_user.is_some() {
-            return Err(OAuthError::UserCreationError("User already exists".to_string()));
+            return Err(OAuthError::UserCreationError(
+                "User already exists".to_string(),
+            ));
         }
 
         // Create new user

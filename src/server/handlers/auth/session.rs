@@ -4,9 +4,9 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
+use time::format_description::well_known::Rfc2822;
 use time::{Duration, OffsetDateTime};
 use tracing::info;
-use time::format_description::well_known::Rfc2822;
 
 pub const SESSION_COOKIE_NAME: &str = "session";
 pub const SESSION_DURATION_DAYS: i64 = 30;

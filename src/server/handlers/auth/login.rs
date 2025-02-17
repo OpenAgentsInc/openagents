@@ -1,10 +1,10 @@
 use crate::server::config::AppState;
 use askama::Template;
+use askama_axum::IntoResponse as AskamaIntoResponse;
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
 };
-use askama_axum::IntoResponse as AskamaIntoResponse;
 use serde::Deserialize;
 use tracing::info;
 
@@ -19,9 +19,7 @@ pub struct LoginRequest {
     email: String,
 }
 
-pub async fn login_page(
-    State(_state): State<AppState>,
-) -> impl AskamaIntoResponse {
+pub async fn login_page(State(_state): State<AppState>) -> impl AskamaIntoResponse {
     let template = LoginTemplate {
         title: "Login - OpenAgents".to_string(),
     };

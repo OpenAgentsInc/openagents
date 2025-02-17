@@ -1,8 +1,4 @@
-use crate::server::{
-    config::AppState,
-    models::user::User,
-    services::oauth::OAuthError,
-};
+use crate::server::{config::AppState, models::user::User, services::oauth::OAuthError};
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect, Response},
@@ -35,8 +31,16 @@ pub async fn callback(
         return Redirect::temporary(&format!("/login?error={}", error)).into_response();
     }
 
-    let is_signup = params.state.as_deref().map(|s| s.contains("signup")).unwrap_or(false);
-    let is_mobile = params.state.as_deref().map(|s| s.contains("mobile")).unwrap_or(false);
+    let is_signup = params
+        .state
+        .as_deref()
+        .map(|s| s.contains("signup"))
+        .unwrap_or(false);
+    let is_mobile = params
+        .state
+        .as_deref()
+        .map(|s| s.contains("mobile"))
+        .unwrap_or(false);
 
     // Authenticate with Scramble
     let result = state
@@ -56,7 +60,8 @@ pub async fn callback(
                 "/{}{}",
                 if is_signup { "signup" } else { "login" },
                 format!("?error={}", urlencoding::encode(&e.to_string()))
-            )).into_response()
+            ))
+            .into_response()
         }
     }
 }

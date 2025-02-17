@@ -16,16 +16,14 @@ pub struct LoginParams {
 
 pub async fn github_login(
     State(state): State<AppState>,
-    Query(params): Query<LoginParams>,
-) -> impl IntoResponse {
+    Query(_params): Query<LoginParams>,
+) -> Response {
     info!("Handling GitHub login request");
 
-    let (url, _csrf_token, _pkce_verifier) = state
-        .oauth_state
-        .github
-        .authorization_url_for_login(""); // Email not used for GitHub
+    let (url, _csrf_token, _pkce_verifier) =
+        state.oauth_state.github.authorization_url_for_login(""); // Email not used for GitHub
 
-    axum::response::Redirect::temporary(&url)
+    axum::response::Redirect::temporary(&url).into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,18 +44,21 @@ pub async fn github_callback(
         return handle_oauth_error(error.into()).into_response();
     }
 
-    let platform = params.state.as_deref().and_then(|s| {
-        if s.contains("mobile") {
-            Some("mobile".to_string())
-        } else {
-            None
-        }
-    });
+    let is_mobile = params
+        .state
+        .as_deref()
+        .map(|s| s.contains("mobile"))
+        .unwrap_or(false);
 
-    match state.oauth_state.github.authenticate(params.code, false).await {
+    match state
+        .oauth_state
+        .github
+        .authenticate(params.code, false)
+        .await
+    {
         Ok(user) => {
             info!("Successfully authenticated GitHub user: {:?}", user);
-            match create_session_and_redirect(&user, platform).await {
+            match create_session_and_redirect(&user, Some(is_mobile)).await {
                 Ok(response) => response,
                 Err(error) => handle_oauth_error(error).into_response(),
             }

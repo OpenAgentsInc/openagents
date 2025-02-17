@@ -1,7 +1,7 @@
 interface PromptSuggestionsProps {
-  label: string
-  append: (message: { role: "user"; content: string }) => void
-  suggestions: string[]
+  label: string;
+  append: (message: { role: "user"; content: string }) => void;
+  suggestions: string[];
 }
 
 export function PromptSuggestions({
@@ -24,5 +24,5 @@ export function PromptSuggestions({
         ))}
       </div>
     </div>
-  )
+  );
 }

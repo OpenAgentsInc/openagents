@@ -1,12 +1,12 @@
-import React, { Suspense } from "react"
-import Markdown from "react-markdown"
-import remarkGfm from "remark-gfm"
+import React, { Suspense } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-import { cn } from "@/lib/utils"
-import { CopyButton } from "@/components/ui/copy-button"
+import { cn } from "@/lib/utils";
+import { CopyButton } from "@/components/ui/copy-button";
 
 interface MarkdownRendererProps {
-  children: string
+  children: string;
 }
 
 export function MarkdownRenderer({ children }: MarkdownRendererProps) {
@@ -18,20 +18,20 @@ export function MarkdownRenderer({ children }: MarkdownRendererProps) {
     >
       {children}
     </Markdown>
-  )
+  );
 }
 
 interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
-  children: string
-  language: string
+  children: string;
+  language: string;
 }
 
 const HighlightedPre = React.memo(
   async ({ children, language, ...props }: HighlightedPre) => {
-    const { codeToTokens, bundledLanguages } = await import("shiki")
+    const { codeToTokens, bundledLanguages } = await import("shiki");
 
     if (!(language in bundledLanguages)) {
-      return <pre {...props}>{children}</pre>
+      return <pre {...props}>{children}</pre>;
     }
 
     const { tokens } = await codeToTokens(children, {
@@ -41,7 +41,7 @@ const HighlightedPre = React.memo(
         light: "github-light",
         dark: "github-dark",
       },
-    })
+    });
 
     return (
       <pre {...props}>
@@ -53,7 +53,7 @@ const HighlightedPre = React.memo(
                   const style =
                     typeof token.htmlStyle === "string"
                       ? undefined
-                      : token.htmlStyle
+                      : token.htmlStyle;
 
                   return (
                     <span
@@ -63,7 +63,7 @@ const HighlightedPre = React.memo(
                     >
                       {token.content}
                     </span>
-                  )
+                  );
                 })}
               </span>
               {lineIndex !== tokens.length - 1 && "\n"}
@@ -71,15 +71,15 @@ const HighlightedPre = React.memo(
           ))}
         </code>
       </pre>
-    )
-  }
-)
-HighlightedPre.displayName = "HighlightedCode"
+    );
+  },
+);
+HighlightedPre.displayName = "HighlightedCode";
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
-  children: React.ReactNode
-  className?: string
-  language: string
+  children: React.ReactNode;
+  className?: string;
+  language: string;
 }
 
 const CodeBlock = ({
@@ -91,12 +91,12 @@ const CodeBlock = ({
   const code =
     typeof children === "string"
       ? children
-      : childrenTakeAllStringContents(children)
+      : childrenTakeAllStringContents(children);
 
   const preClass = cn(
     "overflow-x-scroll rounded-md border bg-background/50 p-4 font-mono text-sm [scrollbar-width:none]",
-    className
-  )
+    className,
+  );
 
   return (
     <div className="group/code relative mb-4">
@@ -116,27 +116,27 @@ const CodeBlock = ({
         <CopyButton content={code} copyMessage="Copied code to clipboard" />
       </div>
     </div>
-  )
-}
+  );
+};
 
 function childrenTakeAllStringContents(element: any): string {
   if (typeof element === "string") {
-    return element
+    return element;
   }
 
   if (element?.props?.children) {
-    let children = element.props.children
+    let children = element.props.children;
 
     if (Array.isArray(children)) {
       return children
         .map((child) => childrenTakeAllStringContents(child))
-        .join("")
+        .join("");
     } else {
-      return childrenTakeAllStringContents(children)
+      return childrenTakeAllStringContents(children);
     }
   }
 
-  return ""
+  return "";
 }
 
 const COMPONENTS = {
@@ -149,7 +149,7 @@ const COMPONENTS = {
   a: withClass("a", "text-primary underline underline-offset-2"),
   blockquote: withClass("blockquote", "border-l-2 border-primary pl-4"),
   code: ({ children, className, node, ...rest }: any) => {
-    const match = /language-(\w+)/.exec(className || "")
+    const match = /language-(\w+)/.exec(className || "");
     return match ? (
       <CodeBlock className={className} language={match[1]} {...rest}>
         {children}
@@ -157,13 +157,13 @@ const COMPONENTS = {
     ) : (
       <code
         className={cn(
-          "font-mono [:not(pre)>&]:rounded-md [:not(pre)>&]:bg-background/50 [:not(pre)>&]:px-1 [:not(pre)>&]:py-0.5"
+          "font-mono [:not(pre)>&]:rounded-md [:not(pre)>&]:bg-background/50 [:not(pre)>&]:px-1 [:not(pre)>&]:py-0.5",
         )}
         {...rest}
       >
         {children}
       </code>
-    )
+    );
   },
   pre: ({ children }: any) => children,
   ol: withClass("ol", "list-decimal space-y-2 pl-6"),
@@ -171,27 +171,27 @@ const COMPONENTS = {
   li: withClass("li", "my-1.5"),
   table: withClass(
     "table",
-    "w-full border-collapse overflow-y-auto rounded-md border border-foreground/20"
+    "w-full border-collapse overflow-y-auto rounded-md border border-foreground/20",
   ),
   th: withClass(
     "th",
-    "border border-foreground/20 px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right"
+    "border border-foreground/20 px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right",
   ),
   td: withClass(
     "td",
-    "border border-foreground/20 px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right"
+    "border border-foreground/20 px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right",
   ),
   tr: withClass("tr", "m-0 border-t p-0 even:bg-muted"),
   p: withClass("p", "whitespace-pre-wrap"),
   hr: withClass("hr", "border-foreground/20"),
-}
+};
 
 function withClass(Tag: keyof JSX.IntrinsicElements, classes: string) {
   const Component = ({ node, ...props }: any) => (
     <Tag className={classes} {...props} />
-  )
-  Component.displayName = Tag
-  return Component
+  );
+  Component.displayName = Tag;
+  return Component;
 }
 
-export default MarkdownRenderer
+export default MarkdownRenderer;

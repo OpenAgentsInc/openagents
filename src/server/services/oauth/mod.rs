@@ -1,7 +1,7 @@
 use oauth2::{
     basic::{BasicClient, BasicTokenType},
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, StandardTokenResponse, TokenResponse, TokenUrl,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -57,13 +57,18 @@ impl OAuthService {
         let client = BasicClient::new(client_id, Some(client_secret), auth_url, Some(token_url))
             .set_redirect_uri(redirect_url);
 
-        Ok(Self { client, config, pool })
+        Ok(Self {
+            client,
+            config,
+            pool,
+        })
     }
 
     pub fn authorization_url(&self) -> (String, CsrfToken, PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
         let csrf_token = CsrfToken::new_random();
-        let auth_url = self.client
+        let auth_url = self
+            .client
             .authorize_url(|| csrf_token.clone())
             .set_pkce_challenge(pkce_challenge)
             .url();
@@ -75,7 +80,7 @@ impl OAuthService {
         &self,
         code: String,
         pkce_verifier: PkceCodeVerifier,
-    ) -> Result<impl TokenResponse, OAuthError> {
+    ) -> Result<StandardTokenResponse<TokenInfo, BasicTokenType>, OAuthError> {
         self.client
             .exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)

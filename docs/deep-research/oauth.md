@@ -11,9 +11,10 @@ Implementing OAuth2 authentication in a Rust backend (using Axum) with a React/V
 
 - **Multiple Auth Endpoints:**
   Expose distinct endpoints for each provider’s login and callback. For instance:
+
   - `/auth/github/login` and `/auth/github/callback`
   - `/auth/google/login` and `/auth/google/callback`
-  Each login endpoint initiates the OAuth redirect to the provider’s authorization URL, and each callback endpoint processes the provider’s response.
+    Each login endpoint initiates the OAuth redirect to the provider’s authorization URL, and each callback endpoint processes the provider’s response.
 
 - **User Account Linking/Creation:**
   After a successful OAuth login, create or update a user record in your database for that provider. Use the provider name and the user’s external ID (e.g., GitHub user ID, Google sub) in the user record for future reference.
@@ -90,12 +91,14 @@ Managing the OAuth flow across the React frontend and Rust backend (using Axum) 
 2. **User Authorizes and Provider Redirects (Provider → Backend):**
    The OAuth provider prompts the user to sign in and authorize your app. After consent, it redirects the user to the **redirect URI** you specified (e.g., `/auth/github/callback`) with an authorization `code` and the `state` parameter.
    Your Axum handler for this route should:
+
    - Verify the `state` parameter to prevent CSRF.
    - Exchange the authorization code for tokens using the provider’s token endpoint.
    - Parse the token response and handle errors if the exchange fails.
 
 3. **Fetch User Info & Finalize Login (Backend):**
    With the access (and possibly ID) token, the backend fetches the user’s profile information from the provider. Then:
+
    - **Find or Create the User:**
      Use the provider’s unique ID (or email) to find an existing user in your database. If the user doesn’t exist, create a new record.
    - **Generate a Session Token:**
@@ -107,6 +110,7 @@ Managing the OAuth flow across the React frontend and Rust backend (using Axum) 
 
 4. **Frontend Receives Redirect and Session:**
    Once redirected, the user returns to your React app. The session cookie is automatically sent with requests to the backend.
+
    - On the protected route (e.g., a profile or chat page), immediately make a request to an endpoint like `/api/users/me` (with `credentials: 'include'`) to confirm the session and retrieve user data.
    - Store the returned user data in a React context or global state, so your UI knows the user is authenticated.
    - Use this state to protect further routes and content.
@@ -121,11 +125,13 @@ Managing the OAuth flow across the React frontend and Rust backend (using Axum) 
 **Rust Backend (Axum):**
 
 - **Configuration:**
+
   - Store OAuth credentials (client IDs, secrets, redirect URIs) in configuration files or environment variables.
   - Load these at startup into a configuration struct (e.g., `Config { google_client_id, google_client_secret, github_client_id, ... }`).
   - Also configure your JWT secret and token expiry settings here.
 
 - **OAuth Routes:**
+
   - Implement route handlers for each provider’s login and callback in Axum. For example, `GET /auth/github/login` and `GET /auth/github/callback`.
   - Organize these handlers in a dedicated module (e.g., `auth_handlers.rs`).
   - Use Axum’s router to group these endpoints, for example:
@@ -138,13 +144,16 @@ Managing the OAuth flow across the React frontend and Rust backend (using Axum) 
   - In the callback handler, exchange the code for tokens, look up or create the user, generate a session token, set the cookie, and finally redirect the user back to the frontend.
 
 - **State Management:**
+
   - Use Axum’s shared state (via `axum::extract::Extension`) to pass around your configuration, database connection pool, or OAuth client instances.
 
 - **Session Verification Middleware:**
+
   - Implement middleware (or use an extractor) to verify the session token (e.g., decode the JWT from the cookie) on protected routes.
   - This middleware should validate the token’s signature and expiration, and then attach the user’s identity to the request context.
 
 - **Database Integration:**
+
   - Set up your user model and database interactions (using an ORM like Diesel or SQLx) to store and manage user information.
 
 - **Testing:**
@@ -155,14 +164,18 @@ Managing the OAuth flow across the React frontend and Rust backend (using Axum) 
 **React Frontend (Vite + React):**
 
 - **Environment Config:**
+
   - Store the base URL of your backend API and any public OAuth configuration (like client IDs) in environment variables (e.g., `.env` files with `VITE_API_URL`).
 
 - **Auth Context/State:**
+
   - Create a context or state management solution (using React Context, Zustand, or Redux) to manage authentication status and user data.
   - On app startup or on protected route load, call the backend (e.g., `/api/users/me`) to verify if the user is authenticated by sending credentials (with `fetch` or Axios configured with `credentials: 'include'`).
 
 - **Login Buttons:**
+
   - In your login component, implement buttons for each OAuth provider. For example:
+
     ```jsx
     import { Github } from "lucide-react";
     import { Button } from "@/components/ui/button";
@@ -176,7 +189,9 @@ Managing the OAuth flow across the React frontend and Rust backend (using Axum) 
         <div className="fixed inset-0 dark bg-black flex items-center justify-center">
           <Card className="-mt-12 w-full max-w-sm mx-4">
             <CardHeader className="text-center">
-              <CardTitle className="text-2xl text-white">OpenAgents Chat</CardTitle>
+              <CardTitle className="text-2xl text-white">
+                OpenAgents Chat
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <Button className="w-full" size="lg" onClick={handleGitHubLogin}>
@@ -189,13 +204,16 @@ Managing the OAuth flow across the React frontend and Rust backend (using Axum) 
       );
     }
     ```
+
   - The backend login endpoint handles the redirect to GitHub (or another provider).
 
 - **Handling Post-Login Redirect:**
+
   - Once the user is redirected back to the frontend, the session cookie is sent along with requests.
   - Immediately fetch the authenticated user’s data and update your auth context.
 
 - **Protected Routes:**
+
   - Use React Router to guard routes that require authentication. For example, create a component that checks for authentication and either renders the protected component or redirects to the login page.
 
 - **Logout Button:**
@@ -215,7 +233,6 @@ By following these practices – using a robust OAuth library (or carefully impl
 - **Session Management in Axum:** [`axum-extra`](https://crates.io/crates/axum-extra)
 - **General OAuth2 Best Practices:** Refer to the OAuth2 RFC 6749 and community guides for secure implementation details.
 
-
 ---
 
 ## Addendum: oauth2 vs. openidconnect
@@ -223,6 +240,7 @@ By following these practices – using a robust OAuth library (or carefully impl
 The main difference is that the `oauth2` crate is a general-purpose OAuth2 client library, whereas `openidconnect` builds on top of OAuth2 to add an identity layer.
 
 ### `oauth2` Crate
+
 - **General OAuth2 Flow:**
   It helps you implement standard OAuth2 flows (authorization code, client credentials, etc.) with endpoints for authorization and token exchange. It’s designed to work with any provider that uses OAuth2, whether you’re obtaining access tokens for APIs or performing user authentication.
 - **Flexibility:**
@@ -231,6 +249,7 @@ The main difference is that the `oauth2` crate is a general-purpose OAuth2 clien
   Use `oauth2` if you need a generic OAuth2 client for accessing APIs or if you want to build a custom authentication system where you handle user info manually.
 
 ### `openidconnect` Crate
+
 - **Built on OAuth2:**
   OpenID Connect (OIDC) is an extension to OAuth2 that provides a standard way to verify user identities. The `openidconnect` crate leverages the `oauth2` crate to perform the underlying OAuth2 flows.
 - **Identity Layer:**
@@ -239,6 +258,7 @@ The main difference is that the `oauth2` crate is a general-purpose OAuth2 clien
   Use `openidconnect` if your primary goal is user authentication and you need robust handling of identity verification. It simplifies the process of obtaining trusted user data from providers that support OpenID Connect (such as Google, Microsoft, etc.).
 
 ### Summary
+
 - **`oauth2` Crate:**
   Good for any OAuth2 implementation where you might be accessing APIs or handling authentication in a custom way. You manage user info extraction manually.
 - **`openidconnect` Crate:**

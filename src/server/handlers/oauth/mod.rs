@@ -31,7 +31,11 @@ pub struct OAuthCallback {
 }
 
 impl OAuthState {
-    pub fn new(pool: PgPool, github_config: OAuthConfig, scramble_config: OAuthConfig) -> Result<Self, OAuthError> {
+    pub fn new(
+        pool: PgPool,
+        github_config: OAuthConfig,
+        scramble_config: OAuthConfig,
+    ) -> Result<Self, OAuthError> {
         Ok(Self {
             github: GitHubOAuth::new(pool.clone(), github_config)?,
             scramble: ScrambleOAuth::new(pool.clone(), scramble_config)?,
@@ -66,7 +70,7 @@ pub async fn create_session_and_redirect(
 
 pub fn handle_oauth_error(error: OAuthError) -> impl IntoResponse {
     error!("OAuth error: {}", error);
-    
+
     // Log detailed error info
     match &error {
         OAuthError::InvalidConfig(msg) => error!("Invalid config: {}", msg),

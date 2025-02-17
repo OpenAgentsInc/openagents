@@ -1,3 +1,9 @@
+use super::services::{
+    deepseek::DeepSeekService, github_issue::GitHubService, openrouter::OpenRouterService,
+    solver::SolverService,
+};
+use super::tools::create_tools;
+use super::ws::transport::WebSocketState;
 use crate::server::{
     handlers::{
         auth::{login, signup},
@@ -5,19 +11,8 @@ use crate::server::{
     },
     services::oauth::OAuthConfig,
 };
-use super::services::{
-    deepseek::DeepSeekService,
-    github_issue::GitHubService,
-    openrouter::OpenRouterService,
-    solver::SolverService,
-};
-use super::tools::create_tools;
-use super::ws::transport::WebSocketState;
 use crate::{routes, server};
-use axum::{
-    routing::get,
-    Router,
-};
+use axum::{routing::get, Router};
 use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
@@ -45,9 +40,12 @@ pub struct AppConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            scramble_auth_url: env::var("SCRAMBLE_AUTH_URL").expect("SCRAMBLE_AUTH_URL must be set"),
-            scramble_token_url: env::var("SCRAMBLE_TOKEN_URL").expect("SCRAMBLE_TOKEN_URL must be set"),
-            scramble_client_id: env::var("SCRAMBLE_CLIENT_ID").expect("SCRAMBLE_CLIENT_ID must be set"),
+            scramble_auth_url: env::var("SCRAMBLE_AUTH_URL")
+                .expect("SCRAMBLE_AUTH_URL must be set"),
+            scramble_token_url: env::var("SCRAMBLE_TOKEN_URL")
+                .expect("SCRAMBLE_TOKEN_URL must be set"),
+            scramble_client_id: env::var("SCRAMBLE_CLIENT_ID")
+                .expect("SCRAMBLE_CLIENT_ID must be set"),
             scramble_client_secret: env::var("SCRAMBLE_CLIENT_SECRET")
                 .expect("SCRAMBLE_CLIENT_SECRET must be set"),
             scramble_redirect_uri: env::var("SCRAMBLE_REDIRECT_URI")
@@ -178,7 +176,10 @@ pub fn app_router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/auth/login", get(login::login_page))
         .route("/auth/signup", get(signup::signup_page))
-        .route("/auth/logout", get(server::handlers::auth::clear_session_and_redirect))
+        .route(
+            "/auth/logout",
+            get(server::handlers::auth::clear_session_and_redirect),
+        )
         .nest(
             "/auth/github",
             Router::new()

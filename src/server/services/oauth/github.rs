@@ -1,10 +1,10 @@
-use super::{OAuthConfig, OAuthError, OAuthService};
+use super::{OAuthConfig, OAuthError, OAuthService, TokenInfo};
 use crate::server::models::user::User;
 use oauth2::{
-    basic::BasicClient,
-    reqwest::async_http_client as oauth_async_http_client,
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    PkceCodeChallenge, PkceCodeVerifier, TokenResponse, TokenUrl,
+    basic::BasicClient, basic::BasicTokenType,
+    reqwest::async_http_client as oauth_async_http_client, AuthUrl, AuthorizationCode, ClientId,
+    ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, StandardTokenResponse,
+    TokenResponse, TokenUrl,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -36,24 +36,29 @@ impl GitHubOAuth {
         })
     }
 
-    pub fn authorization_url_for_login(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
-        let mut url = self.service.authorization_url();
-        url.0 = format!("{}&login_hint={}", url.0, email);
-        url
-    }
-
-    pub fn authorization_url_for_signup(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
-        let mut url = self.service.authorization_url();
-        url.0 = format!("{}&login_hint={}", url.0, email);
-        url
-    }
-
-    pub async fn authenticate(
+    pub fn authorization_url_for_login(
         &self,
-        code: String,
-        is_signup: bool,
-    ) -> Result<User, OAuthError> {
-        info!("Processing GitHub authentication with code length: {}", code.len());
+        email: &str,
+    ) -> (String, CsrfToken, PkceCodeVerifier) {
+        let mut url = self.service.authorization_url();
+        url.0 = format!("{}&login_hint={}", url.0, email);
+        url
+    }
+
+    pub fn authorization_url_for_signup(
+        &self,
+        email: &str,
+    ) -> (String, CsrfToken, PkceCodeVerifier) {
+        let mut url = self.service.authorization_url();
+        url.0 = format!("{}&login_hint={}", url.0, email);
+        url
+    }
+
+    pub async fn authenticate(&self, code: String, _is_signup: bool) -> Result<User, OAuthError> {
+        info!(
+            "Processing GitHub authentication with code length: {}",
+            code.len()
+        );
 
         // Exchange code for token using PKCE
         let (_, _, pkce_verifier) = self.service.authorization_url();
@@ -70,7 +75,8 @@ impl GitHubOAuth {
     async fn get_github_user(&self, token: &str) -> Result<GitHubUser, OAuthError> {
         info!("Fetching GitHub user info");
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .get("https://api.github.com/user")
             .header("Authorization", format!("Bearer {}", token))
             .header("User-Agent", "OpenAgents")
@@ -93,7 +99,11 @@ impl GitHubOAuth {
         })
     }
 
-    async fn get_or_create_user(&self, github_user: GitHubUser, access_token: &str) -> Result<User, OAuthError> {
+    async fn get_or_create_user(
+        &self,
+        github_user: GitHubUser,
+        access_token: &str,
+    ) -> Result<User, OAuthError> {
         info!("Getting or creating user for GitHub ID: {}", github_user.id);
 
         // Store tokens and user info in metadata

@@ -1,14 +1,20 @@
-import { Home, MessageSquare, Settings, Users } from "lucide-react"
-import { Chat } from "@/components/ui/chat"
+import { Home, MessageSquare, Settings, Users } from "lucide-react";
+import { Chat } from "@/components/ui/chat";
 import {
-  Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton,
-  SidebarMenuItem, SidebarProvider, SidebarTrigger
-} from "@/components/ui/sidebar"
-import { useChat } from "@ai-sdk/react"
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { useChat } from "@ai-sdk/react";
 
 function ChatScreen() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
-    useChat()
+    useChat();
 
   return (
     <div className="dark">
@@ -79,7 +85,7 @@ function ChatScreen() {
         </div>
       </SidebarProvider>
     </div>
-  )
+  );
 }
 
-export default ChatScreen
+export default ChatScreen;
