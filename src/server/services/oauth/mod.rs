@@ -1,5 +1,7 @@
 use oauth2::{
-    basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl,
+    basic::{BasicClient, BasicTokenType},
+    reqwest::async_http_client,
+    AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -26,8 +28,8 @@ pub struct OAuthService {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenInfo {
     pub access_token: String,
-    pub token_type: String,
-    pub scope: String,
+    pub token_type: BasicTokenType,
+    pub scope: Option<String>,
     pub id_token: Option<String>,
 }
 
@@ -78,6 +80,22 @@ impl OAuthService {
 
     pub fn client(&self) -> &BasicClient {
         &self.client
+    }
+
+    pub async fn exchange_token(&self, code: String) -> Result<TokenInfo, OAuthError> {
+        let token = self
+            .client
+            .exchange_code(oauth2::AuthorizationCode::new(code))
+            .request_async(async_http_client)
+            .await
+            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
+
+        Ok(TokenInfo {
+            access_token: token.access_token().secret().to_string(),
+            token_type: token.token_type(),
+            scope: token.scopes().map(|s| s.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" ")),
+            id_token: token.extra_fields().get("id_token").and_then(|v| v.as_str()).map(String::from),
+        })
     }
 }
 
