@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT repo_name, branch, commit_sha, map_data, created_at as \"created_at: Timestamp\"\n            FROM repomap_cache\n            WHERE repo_name = $1 AND branch = $2 AND commit_sha = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "repo_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "branch",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "commit_sha",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "map_data",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at: Timestamp",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": ["Text", "Text", "Text"]
+    },
+    "nullable": [false, false, false, false, false]
+  },
+  "hash": "0f8f9b88833944a066d047ac79cc47c4cce79d1e40079f3fb9dbbba5d435971c"
+}

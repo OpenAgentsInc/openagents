@@ -1,9 +1,12 @@
 use axum::{extract::State, http::StatusCode, Json};
 use serde_json::json;
-use sqlx::PgPool;
+use sqlx::{types::JsonValue, PgPool};
 use tracing::{debug, error};
 
-use crate::server::models::user::{CreateUser, User};
+use crate::server::models::{
+    timestamp::DateTimeWrapper,
+    user::{CreateUser, User},
+};
 
 pub async fn create_user(
     State(pool): State<PgPool>,
@@ -25,21 +28,36 @@ pub async fn create_user(
     };
 
     // Attempt to create the user
-    let result = sqlx::query_as!(
-        User,
+    let result = sqlx::query!(
         r#"
-        INSERT INTO users (scramble_id, metadata)
-        VALUES ($1, $2)
-        RETURNING id, scramble_id, metadata, last_login_at, created_at, updated_at
+        INSERT INTO users (scramble_id, metadata, github_id, github_token, pseudonym)
+        VALUES ($1, $2, $3, $4, $1)
+        RETURNING id, scramble_id, github_id, github_token, metadata,
+                 created_at, last_login_at, pseudonym
         "#,
         input.scramble_id,
-        input.metadata.unwrap_or_else(|| json!({}))
+        input.metadata.unwrap_or_else(|| json!({})) as JsonValue,
+        input.github_id,
+        input.github_token
     )
     .fetch_one(&pool)
     .await;
 
     match result {
-        Ok(user) => Ok(Json(user)),
+        Ok(row) => {
+            let user = User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build();
+            Ok(Json(user))
+        }
         Err(err) => {
             // Handle specific error cases
             match err {
@@ -65,5 +83,48 @@ pub async fn create_user(
                 }
             }
         }
+    }
+}
+
+pub async fn get_user(
+    State(pool): State<PgPool>,
+    Json(id): Json<i32>,
+) -> Result<Json<User>, (StatusCode, String)> {
+    let row = sqlx::query!(
+        r#"
+        SELECT id, scramble_id, github_id, github_token, metadata,
+        created_at, last_login_at, pseudonym
+        FROM users
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(&pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to fetch user: {}", e),
+        )
+    })?;
+
+    match row {
+        Some(row) => Ok(Json(
+            User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build(),
+        )),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            format!("User with id {} not found", id),
+        )),
     }
 }

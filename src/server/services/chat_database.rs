@@ -5,25 +5,25 @@ use anyhow::{Context, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub struct ChatDatabase {
+pub struct ChatDatabaseService {
     pool: PgPool,
 }
 
-impl ChatDatabase {
+impl ChatDatabaseService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
     pub async fn create_conversation(
         &self,
-        request: CreateConversationRequest,
+        request: &CreateConversationRequest,
     ) -> Result<Conversation> {
         let conversation = sqlx::query_as!(
             Conversation,
             r#"
-            INSERT INTO conversations (user_id, title)
-            VALUES ($1, $2)
-            RETURNING id, user_id, title, created_at, updated_at
+            INSERT INTO conversations (user_id, title, created_at, updated_at)
+            VALUES ($1, $2, NOW(), NOW())
+            RETURNING id, user_id, title, created_at as "created_at: _", updated_at as "updated_at: _"
             "#,
             request.user_id,
             request.title
@@ -35,18 +35,13 @@ impl ChatDatabase {
         Ok(conversation)
     }
 
-    pub async fn add_message(&self, request: CreateMessageRequest) -> Result<Message> {
-        // First verify the conversation exists
-        self.get_conversation(request.conversation_id)
-            .await
-            .context("Conversation not found")?;
-
+    pub async fn create_message(&self, request: &CreateMessageRequest) -> Result<Message> {
         let message = sqlx::query_as!(
             Message,
             r#"
-            INSERT INTO messages (conversation_id, role, content, metadata, tool_calls)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, conversation_id, role, content, created_at, metadata, tool_calls
+            INSERT INTO messages (conversation_id, role, content, metadata, tool_calls, created_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            RETURNING id, conversation_id, role, content, created_at as "created_at: _", metadata, tool_calls
             "#,
             request.conversation_id,
             request.role,
@@ -58,19 +53,6 @@ impl ChatDatabase {
         .await
         .context("Failed to create message")?;
 
-        // Update conversation updated_at timestamp
-        sqlx::query!(
-            r#"
-            UPDATE conversations 
-            SET updated_at = NOW() 
-            WHERE id = $1
-            "#,
-            request.conversation_id
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to update conversation timestamp")?;
-
         Ok(message)
     }
 
@@ -78,7 +60,7 @@ impl ChatDatabase {
         let conversation = sqlx::query_as!(
             Conversation,
             r#"
-            SELECT id, user_id, title, created_at, updated_at
+            SELECT id, user_id, title, created_at as "created_at: _", updated_at as "updated_at: _"
             FROM conversations
             WHERE id = $1
             "#,
@@ -95,7 +77,7 @@ impl ChatDatabase {
         let messages = sqlx::query_as!(
             Message,
             r#"
-            SELECT id, conversation_id, role, content, created_at, metadata, tool_calls
+            SELECT id, conversation_id, role, content, created_at as "created_at: _", metadata, tool_calls
             FROM messages
             WHERE conversation_id = $1
             ORDER BY created_at ASC
@@ -113,7 +95,7 @@ impl ChatDatabase {
         let conversations = sqlx::query_as!(
             Conversation,
             r#"
-            SELECT id, user_id, title, created_at, updated_at
+            SELECT id, user_id, title, created_at as "created_at: _", updated_at as "updated_at: _"
             FROM conversations
             WHERE user_id = $1
             ORDER BY updated_at DESC

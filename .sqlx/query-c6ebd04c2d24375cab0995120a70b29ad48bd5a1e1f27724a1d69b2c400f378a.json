@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO users (pseudonym, metadata)\n        VALUES ($1, $2)\n        RETURNING id, scramble_id, github_id, github_token, metadata,\n        created_at, last_login_at, pseudonym\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "scramble_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "github_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "github_token",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "last_login_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "pseudonym",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": ["Text", "Jsonb"]
+    },
+    "nullable": [false, true, true, true, true, true, true, true]
+  },
+  "hash": "c6ebd04c2d24375cab0995120a70b29ad48bd5a1e1f27724a1d69b2c400f378a"
+}
