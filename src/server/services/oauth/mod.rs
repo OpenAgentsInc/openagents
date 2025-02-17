@@ -1,6 +1,6 @@
 use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use thiserror::Error;
-use tracing::error;
+use tracing::{error, info};
 
 pub mod github;
 pub mod scramble;
@@ -75,11 +75,19 @@ impl OAuthService {
 
     pub fn authorization_url(&self) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+        info!("Generated PKCE challenge and verifier");
+
         let (auth_url, csrf_token) = self
             .client
             .authorize_url(oauth2::CsrfToken::new_random)
             .set_pkce_challenge(pkce_challenge)
             .url();
+
+        info!(
+            "Generated base authorization URL: {} with state: {}",
+            auth_url,
+            csrf_token.secret()
+        );
 
         (auth_url.to_string(), csrf_token, pkce_verifier)
     }
@@ -89,11 +97,25 @@ impl OAuthService {
         code: String,
         pkce_verifier: oauth2::PkceCodeVerifier,
     ) -> Result<oauth2::basic::BasicTokenResponse, OAuthError> {
-        self.client
+        info!("OAuth service exchanging code for tokens");
+        info!(
+            "Code length: {}, PKCE verifier length: {}",
+            code.len(),
+            pkce_verifier.secret().len()
+        );
+
+        let result = self
+            .client
             .exchange_code(oauth2::AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
             .request_async(oauth2::reqwest::async_http_client)
-            .await
-            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
+            .await;
+
+        match &result {
+            Ok(_) => info!("Token exchange successful"),
+            Err(e) => error!("Token exchange failed: {}", e),
+        }
+
+        result.map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
     }
 }

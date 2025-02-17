@@ -4,11 +4,17 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
 pub struct LoginParams {
     email: String,
+    #[serde(rename = "password")]
+    password: Option<String>,
+    #[serde(rename = "password-confirm")]
+    password_confirm: Option<String>,
+    #[serde(rename = "terms")]
+    terms: Option<bool>,
 }
 
 pub async fn scramble_login(
@@ -17,16 +23,20 @@ pub async fn scramble_login(
     form: Option<Form<LoginParams>>,
 ) -> Response {
     // Try to get email from either query params or form data
-    let email = match (params, form) {
-        (Some(query), _) => query.email.clone(),
-        (_, Some(form)) => form.email.clone(),
+    let form_data = match (params, form) {
+        (Some(query), _) => query.0,
+        (_, Some(form)) => form.0,
         _ => return axum::response::Redirect::temporary("/login").into_response(),
     };
 
-    info!("Handling Scramble login request for email: {}", email);
+    info!(
+        "Handling Scramble login request for email: {}",
+        form_data.email
+    );
 
-    let (url, _csrf_token, _pkce_verifier) =
-        state.scramble_oauth.authorization_url_for_login(&email);
+    let (url, _csrf_token, _pkce_verifier) = state
+        .scramble_oauth
+        .authorization_url_for_login(&form_data.email);
 
     axum::response::Redirect::temporary(&url).into_response()
 }
@@ -37,16 +47,55 @@ pub async fn scramble_signup(
     form: Option<Form<LoginParams>>,
 ) -> Response {
     // Try to get email from either query params or form data
-    let email = match (params, form) {
-        (Some(query), _) => query.email.clone(),
-        (_, Some(form)) => form.email.clone(),
-        _ => return axum::response::Redirect::temporary("/signup").into_response(),
+    let form_data = match (params, form) {
+        (Some(query), _) => query.0,
+        (_, Some(form)) => form.0,
+        _ => {
+            info!("No email provided in signup request, redirecting to /signup");
+            return axum::response::Redirect::temporary("/signup").into_response();
+        }
     };
 
-    info!("Handling Scramble signup request for email: {}", email);
+    // Validate form data
+    if let Some(password) = &form_data.password {
+        if password.len() < 8 {
+            return axum::response::Redirect::temporary(
+                "/signup?error=Password+must+be+at+least+8+characters",
+            )
+            .into_response();
+        }
 
-    let (url, _csrf_token, _pkce_verifier) =
-        state.scramble_oauth.authorization_url_for_signup(&email);
+        if let Some(confirm) = &form_data.password_confirm {
+            if password != confirm {
+                return axum::response::Redirect::temporary("/signup?error=Passwords+do+not+match")
+                    .into_response();
+            }
+        }
+    }
+
+    if form_data.terms != Some(true) {
+        return axum::response::Redirect::temporary("/signup?error=You+must+accept+the+terms")
+            .into_response();
+    }
+
+    info!(
+        "Handling Scramble signup request for email: {}",
+        form_data.email
+    );
+
+    let (url, csrf_token, _pkce_verifier) = state
+        .scramble_oauth
+        .authorization_url_for_signup(&form_data.email);
+
+    info!(
+        "Generated signup authorization URL: {} with state: {}",
+        url,
+        csrf_token.secret()
+    );
+
+    // Add signup-specific state to help identify this flow in the callback
+    let url = format!("{}&signup=true", url);
+    info!("Final signup URL with state: {}", url);
 
     axum::response::Redirect::temporary(&url).into_response()
 }
@@ -62,7 +111,7 @@ pub async fn scramble_callback(
     State(state): State<AppState>,
     Query(params): Query<CallbackParams>,
 ) -> Response {
-    info!("Processing Scramble callback");
+    info!("Processing Scramble callback with params: {:?}", params);
 
     if let Some(error) = params.error {
         info!("Scramble OAuth error: {}", error);
@@ -75,12 +124,17 @@ pub async fn scramble_callback(
         .as_deref()
         .map(|s| s.contains("signup"))
         .unwrap_or(false);
+    info!(
+        "Callback is for {}",
+        if is_signup { "signup" } else { "login" }
+    );
 
-    let state_param = params.state.unwrap_or_default();
+    let state_param = params.state.clone().unwrap_or_default();
+    info!("Using state token: {}", state_param);
 
     match state
         .scramble_oauth
-        .authenticate(params.code, state_param, is_signup)
+        .authenticate(params.code.clone(), state_param, is_signup)
         .await
     {
         Ok(user) => {
@@ -88,7 +142,7 @@ pub async fn scramble_callback(
             create_session_and_redirect(&user, false).await
         }
         Err(error) => {
-            info!("Authentication failed: {}", error);
+            error!("Authentication failed: {}", error);
             axum::response::Redirect::temporary(&format!(
                 "/{}?error={}",
                 if is_signup { "signup" } else { "login" },
