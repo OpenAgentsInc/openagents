@@ -29,7 +29,7 @@ impl From<DateTime<Utc>> for Timestamp {
         let secs = nanos / 1_000_000_000;
         let subsec_nanos = (nanos % 1_000_000_000) as u32;
         Self(
-            OffsetDateTime::from_unix_timestamp(secs.try_into().unwrap())
+            OffsetDateTime::from_unix_timestamp(secs)
                 .unwrap()
                 .replace_nanosecond(subsec_nanos)
                 .unwrap(),

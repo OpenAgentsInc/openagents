@@ -217,7 +217,7 @@ impl WebSocketState {
         info!("Broadcasting message: {}", msg);
         let conns = self.connections.read().await;
         for conn in conns.values() {
-            conn.tx.send(Message::Text(msg.to_string().into()))?;
+            conn.tx.send(Message::Text(msg.to_string()))?;
         }
         Ok(())
     }
@@ -229,7 +229,7 @@ impl WebSocketState {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         info!("Sending message to {}: {}", conn_id, msg);
         if let Some(conn) = self.connections.read().await.get(conn_id) {
-            conn.tx.send(Message::Text(msg.to_string().into()))?;
+            conn.tx.send(Message::Text(msg.to_string()))?;
             info!("Message sent successfully");
         } else {
             error!("Connection {} not found", conn_id);

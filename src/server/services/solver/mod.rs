@@ -488,8 +488,7 @@ impl SolverService {
                 format!(
                     "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
                     Utc::now().to_rfc3339()
-                )
-                .into(),
+                ),
             ))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         state.add_file(
@@ -518,15 +517,14 @@ impl SolverService {
                 format!(
                     "Status Update: generating_changes, progress: 25.0, timestamp: {}",
                     Utc::now().to_rfc3339()
-                )
-                .into(),
+                ),
             ))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let ws_tx_clone = ws_tx.clone();
         tokio::spawn(async move {
             while let Some(msg) = string_rx.recv().await {
-                let _ = ws_tx_clone.send(Message::Text(msg.into()));
+                let _ = ws_tx_clone.send(Message::Text(msg));
             }
         });
         self.start_generating_changes(&mut state, "/tmp/openagents", Some(string_tx))
@@ -537,8 +535,7 @@ impl SolverService {
                 format!(
                     "Status Update: complete, progress: 100.0, timestamp: {}",
                     Utc::now().to_rfc3339()
-                )
-                .into(),
+                ),
             ))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         Ok(())
@@ -560,7 +557,7 @@ impl SolverService {
             let error_msg = "OpenRouter API key not found. Please set the OPENROUTER_API_KEY environment variable.";
             error!("{}", error_msg);
             ws_tx
-                .send(Message::Text(format!("❌ Error: {}", error_msg).into()))
+                .send(Message::Text(format!("❌ Error: {}", error_msg)))
                 .map_err(|e| anyhow::anyhow!("Failed to send error message: {}", e))?;
             return Err(anyhow::anyhow!(error_msg));
         }
@@ -601,8 +598,7 @@ impl SolverService {
                 format!(
                     "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
                     Utc::now().to_rfc3339()
-                )
-                .into(),
+                ),
             ))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
 
@@ -627,7 +623,7 @@ impl SolverService {
         // Spawn a task to forward string messages to WebSocket
         tokio::spawn(async move {
             while let Some(msg) = string_rx.recv().await {
-                let _ = ws_tx_clone.send(Message::Text(msg.into()));
+                let _ = ws_tx_clone.send(Message::Text(msg));
             }
         });
 
@@ -646,8 +642,7 @@ impl SolverService {
                 format!(
                     "Status Update: complete, progress: 100.0, timestamp: {}",
                     Utc::now().to_rfc3339()
-                )
-                .into(),
+                ),
             ))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
 
