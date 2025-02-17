@@ -1,8 +1,5 @@
 use dotenvy::dotenv;
-use openagents::server::{
-    models::{chat::*, timestamp::Timestamp},
-    services::chat_database::ChatDatabaseService,
-};
+use openagents::server::{models::chat::*, services::chat_database::ChatDatabaseService};
 use serde_json::json;
 use sqlx::PgPool;
 use tracing::{info, Level};
