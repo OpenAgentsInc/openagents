@@ -1,7 +1,7 @@
-use super::{OAuthConfig, OAuthError, OAuthService, TokenInfo};
+use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::user::User;
 use oauth2::{
-    AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, TokenResponse,
+    PkceCodeChallenge, PkceCodeVerifier, TokenResponse,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -32,29 +32,23 @@ impl GitHubOAuth {
         })
     }
 
-    pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
+    pub fn authorization_url(&self, platform: Option<String>) -> (String, PkceCodeVerifier) {
+        info!("Generating GitHub authorization URL with platform: {:?}", platform);
+
         // Generate PKCE challenge
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-        // Get the auth URL with PKCE challenge
-        let mut auth_request = self
-            .service
-            .client()
-            .authorize_url(CsrfToken::new_random)
-            .set_pkce_challenge(pkce_challenge);
+        // Add scopes and PKCE
+        let url = self.service.authorization_url(
+            platform,
+            vec![
+                ("scope", "user repo"),
+                ("code_challenge", pkce_challenge.as_str()),
+                ("code_challenge_method", "S256"),
+            ],
+        );
 
-        // Add scopes
-        auth_request = auth_request.add_scope("user".into());
-        auth_request = auth_request.add_scope("repo".into());
-
-        // Add platform if provided
-        if let Some(platform) = platform {
-            auth_request = auth_request.add_extra_param("platform", platform);
-        }
-
-        let (auth_url, csrf_token) = auth_request.url();
-
-        (auth_url.to_string(), csrf_token, pkce_verifier)
+        (url, pkce_verifier)
     }
 
     pub async fn authenticate(
@@ -62,11 +56,11 @@ impl GitHubOAuth {
         code: String,
         pkce_verifier: PkceCodeVerifier,
     ) -> Result<User, OAuthError> {
-        // Exchange the code for a token using PKCE
-        let token = self
-            .service
-            .client()
-            .exchange_code(AuthorizationCode::new(code))
+        info!("Processing GitHub authentication with code length: {}", code.len());
+
+        // Exchange code for token using PKCE
+        let token = self.service.client()
+            .exchange_code(oauth2::AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
             .request_async(oauth2::reqwest::async_http_client)
             .await
@@ -83,8 +77,7 @@ impl GitHubOAuth {
     async fn get_github_user(&self, token: &str) -> Result<GitHubUser, OAuthError> {
         info!("Fetching GitHub user info");
 
-        let response = self
-            .http_client
+        let response = self.http_client
             .get("https://api.github.com/user")
             .header("Authorization", format!("Bearer {}", token))
             .header("User-Agent", "OpenAgents")
