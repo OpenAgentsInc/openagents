@@ -5,11 +5,30 @@ use oauth2::{
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::{info, error};
 use thiserror::Error;
+use tracing::{error, info};
 
 pub mod github;
 pub mod scramble;
+
+#[derive(Debug, Default, Clone)]
+pub struct EmptyExtraTokenFields {
+    id_token: Option<String>,
+}
+
+impl EmptyExtraTokenFields {
+    pub fn new() -> Self {
+        Self { id_token: None }
+    }
+
+    pub fn id_token(&self) -> Option<&str> {
+        self.id_token.as_deref()
+    }
+
+    pub fn set_id_token(&mut self, token: String) {
+        self.id_token = Some(token);
+    }
+}
 
 #[derive(Debug)]
 pub struct OAuthConfig {
@@ -20,7 +39,7 @@ pub struct OAuthConfig {
     pub token_url: String,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum OAuthError {
     #[error("Failed to create OAuth client: {0}")]
     ClientCreationFailed(String),
@@ -44,8 +63,12 @@ impl OAuthService {
         let client = BasicClient::new(
             ClientId::new(config.client_id),
             Some(ClientSecret::new(config.client_secret)),
-            AuthUrl::new(config.auth_url).map_err(|e| OAuthError::ClientCreationFailed(e.to_string()))?,
-            Some(TokenUrl::new(config.token_url).map_err(|e| OAuthError::ClientCreationFailed(e.to_string()))?),
+            AuthUrl::new(config.auth_url)
+                .map_err(|e| OAuthError::ClientCreationFailed(e.to_string()))?,
+            Some(
+                TokenUrl::new(config.token_url)
+                    .map_err(|e| OAuthError::ClientCreationFailed(e.to_string()))?,
+            ),
         )
         .set_redirect_uri(
             RedirectUrl::new(config.redirect_url)
@@ -79,17 +102,3 @@ impl OAuthService {
             .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
     }
 }
-
-impl std::fmt::Display for OAuthError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OAuthError::ClientCreationFailed(msg) => write!(f, "Failed to create OAuth client: {}", msg),
-            OAuthError::TokenExchangeFailed(msg) => write!(f, "Failed to exchange token: {}", msg),
-            OAuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
-            OAuthError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {}", msg),
-            OAuthError::UserCreationError(msg) => write!(f, "User creation error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for OAuthError {}

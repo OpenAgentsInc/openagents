@@ -8,6 +8,7 @@ use oauth2::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
 use std::time::Duration;
 use tracing::{error, info};
 
@@ -15,9 +16,9 @@ use tracing::{error, info};
 pub struct ScrambleTokenResponse {
     access_token: AccessToken,
     token_type: BasicTokenType,
-    expires_in: Option<Duration>,
+    expires_in: Option<std::time::Duration>,
     refresh_token: Option<RefreshToken>,
-    extra_fields: EmptyExtraTokenFields,
+    extra_fields: HashMap<String, String>,
 }
 
 impl TokenResponse<BasicTokenType> for ScrambleTokenResponse {
@@ -29,7 +30,7 @@ impl TokenResponse<BasicTokenType> for ScrambleTokenResponse {
         &self.token_type
     }
 
-    fn expires_in(&self) -> Option<Duration> {
+    fn expires_in(&self) -> Option<std::time::Duration> {
         self.expires_in
     }
 
@@ -37,8 +38,8 @@ impl TokenResponse<BasicTokenType> for ScrambleTokenResponse {
         self.refresh_token.as_ref()
     }
 
-    fn extra_fields(&self) -> &EmptyExtraTokenFields {
-        &self.extra_fields
+    fn scopes(&self) -> Option<&Vec<Scope>> {
+        None
     }
 }
 
@@ -49,7 +50,7 @@ impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for Scra
             token_type: token.token_type().clone(),
             expires_in: token.expires_in(),
             refresh_token: token.refresh_token().cloned(),
-            extra_fields: EmptyExtraTokenFields::default(),
+            extra_fields: HashMap::new(),
         }
     }
 }
@@ -89,11 +90,16 @@ impl ScrambleOAuth {
         url
     }
 
-    pub fn authorization_url(
+    pub async fn authorization_url(
         &self,
         platform: Option<String>,
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
-        self.service.authorization_url(platform)
+        let (url, token, verifier) = self.service.authorization_url();
+        if let Some(platform) = platform {
+            (format!("{}&platform={}", url, platform), token, verifier)
+        } else {
+            (url, token, verifier)
+        }
     }
 
     pub async fn exchange_code(
@@ -113,16 +119,15 @@ impl ScrambleOAuth {
 
         // Exchange code for tokens
         let (_, _, pkce_verifier) = self.service.authorization_url();
-        let token = self.service.exchange_code(code, pkce_verifier).await?;
+        let token_response = self.service.exchange_code(code, pkce_verifier).await?;
+
+        // Convert to our token response type
+        let token: ScrambleTokenResponse = token_response.into();
 
         // Extract claims from ID token
-        let extra_fields = token.extra_fields();
-        let id_token = extra_fields
-            .get("id_token")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                OAuthError::TokenExchangeFailed("No id_token in response".to_string())
-            })?;
+        let id_token = token.extra_fields.get("id_token").ok_or_else(|| {
+            OAuthError::TokenExchangeFailed("No id_token in response".to_string())
+        })?;
 
         let pseudonym = self.extract_pseudonym(id_token)?;
 

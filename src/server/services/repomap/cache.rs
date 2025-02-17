@@ -1,10 +1,8 @@
+use crate::server::models::timestamp::Timestamp;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::PgPool;
-use time::OffsetDateTime;
-
-use crate::server::models::timestamp::Timestamp;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RepomapCacheEntry {
@@ -13,6 +11,23 @@ pub struct RepomapCacheEntry {
     pub commit_sha: String,
     pub map_data: Value,
     pub created_at: Timestamp,
+}
+
+impl RepomapCacheEntry {
+    pub fn new(
+        repo_name: String,
+        branch: String,
+        commit_sha: String,
+        map_data: serde_json::Value,
+    ) -> Self {
+        Self {
+            repo_name,
+            branch,
+            commit_sha,
+            map_data,
+            created_at: Timestamp::now(),
+        }
+    }
 }
 
 pub struct RepoMapCache {
@@ -24,7 +39,12 @@ impl RepoMapCache {
         Self { pool }
     }
 
-    pub async fn get(&self, repo_name: &str, branch: &str, commit_sha: &str) -> Result<Option<RepomapCacheEntry>> {
+    pub async fn get(
+        &self,
+        repo_name: &str,
+        branch: &str,
+        commit_sha: &str,
+    ) -> Result<Option<RepomapCacheEntry>> {
         let record = sqlx::query_as!(
             RepomapCacheEntry,
             r#"
@@ -46,15 +66,14 @@ impl RepoMapCache {
         sqlx::query!(
             r#"
             INSERT INTO repomap_cache (repo_name, branch, commit_sha, map_data, created_at)
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, NOW())
             ON CONFLICT (repo_name, branch, commit_sha) DO UPDATE
-            SET map_data = $4, created_at = $5
+            SET map_data = $4, created_at = NOW()
             "#,
             entry.repo_name,
             entry.branch,
             entry.commit_sha,
-            entry.map_data,
-            entry.created_at.into_inner()
+            entry.map_data
         )
         .execute(&self.pool)
         .await?;

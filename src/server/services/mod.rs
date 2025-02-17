@@ -12,13 +12,13 @@ pub mod openrouter;
 pub mod repomap;
 pub mod solver;
 
-pub use auth::OIDCConfig;
-pub use chat_database::ChatDatabase;
-pub use deepseek::{DeepSeekService, StreamUpdate};
+pub use auth::AuthService;
+pub use chat_database::ChatDatabaseService;
+pub use deepseek::DeepseekService;
 pub use gateway::{types::GatewayMetadata, Gateway};
 pub use github_issue::{GitHubComment, GitHubIssue, GitHubService, GitHubUser};
 pub use model_router::ModelRouter;
-pub use oauth::{OAuthConfig, OAuthService};
+pub use oauth::{github::GitHubOAuth, scramble::ScrambleOAuth};
 pub use ollama::OllamaService;
 pub use openrouter::OpenRouterService;
-pub use repomap::*;
+pub use repomap::RepomapService;

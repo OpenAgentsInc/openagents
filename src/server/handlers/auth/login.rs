@@ -3,7 +3,7 @@ use askama::Template;
 use askama_axum::IntoResponse as AskamaIntoResponse;
 use axum::{
     extract::{Query, State},
-    response::{IntoResponse, Redirect, Response},
+    response::{Redirect, Response},
 };
 use serde::Deserialize;
 use tracing::info;
