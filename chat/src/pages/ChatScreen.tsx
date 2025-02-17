@@ -53,11 +53,11 @@ function ChatScreen() {
           </div>
 
           {/* Main (Chat) Container */}
-          <div className="flex-1 flex flex-col bg-background">
+          <div className="flex-1 flex flex-col bg-background text-foreground">
             <header className="border-b border-border p-4">
               <div className="flex items-center gap-2">
                 <SidebarTrigger />
-                <h1 className="text-xl font-semibold text-foreground">Chat</h1>
+                <h1 className="text-xl font-semibold">Chat</h1>
               </div>
             </header>
             {/* This area will scroll if content overflows */}
