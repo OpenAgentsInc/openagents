@@ -54,7 +54,7 @@ askama_axum = "0.4"
 axum = { version = "0.7", features = ["ws", "macros"] }
 axum-extra = { version = "0.9", features = ["cookie"] }
 axum-macros = "0.4"
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["fs", "trace"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest = { version = "0.11", features = ["json", "stream", "multipart"] }

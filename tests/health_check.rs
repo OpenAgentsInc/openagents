@@ -1,24 +1,14 @@
-use axum::{routing::get, Json, Router};
+use axum::{routing::get, Router};
 use axum_test::TestServer;
-use serde_json::json;
 
 #[tokio::test]
-async fn health_check_works() {
-    // Arrange
-    let app = Router::new().route(
-        "/health",
-        get(|| async { Json(json!({"status": "healthy"})) }),
-    );
+async fn test_health_check() {
+    // Create a simple router with just the health check endpoint
+    let app = Router::new().route("/health", get(|| async { "OK" }));
+    let server = TestServer::new(app.into_make_service()).unwrap();
 
-    // Create test server
-    let server = TestServer::new(app).unwrap();
-
-    // Act
+    // Test health check endpoint
     let response = server.get("/health").await;
-
-    // Assert
     assert_eq!(response.status_code(), 200);
-
-    let body: serde_json::Value = response.json();
-    assert_eq!(body["status"], "healthy");
+    assert_eq!(response.text(), "OK");
 }

@@ -1,7 +1,7 @@
 use dotenvy::dotenv;
 use openagents::server::{
-    models::chat::{CreateConversationRequest, CreateMessageRequest},
-    services::ChatDatabase,
+    models::{chat::*, timestamp::Timestamp},
+    services::chat_database::ChatDatabaseService,
 };
 use serde_json::json;
 use sqlx::PgPool;
@@ -38,7 +38,7 @@ async fn test_chat_persistence() {
         .expect("Failed to clean up existing test data");
 
     // Create ChatDatabase instance
-    let chat_db = ChatDatabase::new(pool.clone());
+    let chat_db = ChatDatabaseService::new(pool.clone());
 
     // Test conversation creation
     info!("Testing conversation creation...");
@@ -48,7 +48,7 @@ async fn test_chat_persistence() {
     };
 
     let conversation = chat_db
-        .create_conversation(create_conv_req)
+        .create_conversation(&create_conv_req)
         .await
         .expect("Failed to create conversation");
 
@@ -91,7 +91,7 @@ async fn test_chat_persistence() {
 
     for msg_req in messages {
         let message = chat_db
-            .add_message(msg_req.clone())
+            .create_message(&msg_req)
             .await
             .expect("Failed to create message");
 
