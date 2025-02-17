@@ -183,6 +183,11 @@ pub fn app_router(state: AppState) -> Router<AppState> {
             "/auth/logout",
             get(server::handlers::oauth::session::clear_session_and_redirect),
         )
+        // Add root callback route for Scramble
+        .route(
+            "/auth/callback",
+            get(server::handlers::oauth::scramble::scramble_callback),
+        )
         .nest(
             "/auth/github",
             Router::new()
