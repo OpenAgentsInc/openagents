@@ -27,9 +27,9 @@ content %}
       </div>
       <div>
         <form
-          action="/auth/scramble/signup"
-          method="GET"
+          id="scramble-signup-form"
           class="space-y-4"
+          onsubmit="handleScrambleSignup(event)"
         >
           <div>
             <label for="email" class="block text-sm font-medium text-gray-700">
@@ -57,4 +57,13 @@ content %}
     </div>
   </div>
 </div>
+
+<script>
+function handleScrambleSignup(event) {
+  event.preventDefault();
+  const form = event.target;
+  const email = form.querySelector('#email').value;
+  window.location.href = `/auth/scramble/signup?email=${encodeURIComponent(email)}`;
+}
+</script>
 {% endblock %}
