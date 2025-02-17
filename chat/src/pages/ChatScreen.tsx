@@ -1,16 +1,10 @@
-import { Home, MessageSquare, Settings, Users } from "lucide-react";
-import { Chat } from "@/components/ui/chat";
+import { Home, MessageSquare, Settings, Users } from "lucide-react"
+import { Chat } from "@/components/ui/chat"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { useChat } from "@ai-sdk/react";
+  Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton,
+  SidebarMenuItem, SidebarProvider, SidebarTrigger
+} from "@/components/ui/sidebar"
+import { useChat } from "@ai-sdk/react"
 
 function ChatScreen() {
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
@@ -63,7 +57,7 @@ function ChatScreen() {
             <header className="border-b border-border p-4">
               <div className="flex items-center gap-2">
                 <SidebarTrigger />
-                <h1 className="text-xl font-semibold">Chat</h1>
+                <h1 className="text-lg font-semibold">Chat</h1>
               </div>
             </header>
             {/* This area will scroll if content overflows */}
