@@ -8,8 +8,8 @@ chat/public/vite.svg:
 │#id: IconifyId1813088fe1fbc01fb466
 
 chat/src/components/HeaderBar.tsx:
-│#id: login-button
-│#id: signup-button
+│const 
+│const navigateTo
 
 chat/src/components/ui/accordion.tsx:
 │const Accordion
@@ -721,6 +721,7 @@ src/routes.rs:
 │fn company
 │fn coming_soon
 │fn cota
+│fn get_user_info
 
 src/server/config.rs:
 │fn default
@@ -1064,6 +1065,12 @@ templates/admin/dashboard.html:
 templates/admin/login.html:
 │#id: bg
 │#id: error-message
+
+templates/auth/login.html:
+│#id: email
+
+templates/auth/signup.html:
+│#id: email
 
 templates/components/auth/auth_scripts.html:
 │const errorDiv
