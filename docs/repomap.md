@@ -727,6 +727,7 @@ src/server/config.rs:
 │fn default
 │fn configure_app
 │fn configure_app_with_config
+│fn log_request
 │fn app_router
 
 src/server/handlers/oauth/github.rs:
@@ -926,6 +927,7 @@ src/server/services/oauth/scramble.rs:
 │fn get_or_create_user
 
 src/server/services/oauth/verifier_store.rs:
+│fn clone
 │fn new
 │fn store_verifier
 │fn get_verifier
