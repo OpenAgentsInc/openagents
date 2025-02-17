@@ -1,12 +1,15 @@
 use super::services::{
     deepseek::DeepSeekService,
+    github_issue::GitHubService,
     oauth::{OAuthConfig, OAuthState},
+    openrouter::OpenRouterService,
+    solver::SolverService,
 };
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use crate::{routes, server};
 use axum::{
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use sqlx::PgPool;
@@ -67,6 +70,13 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set"),
     );
 
+    let github_service = Arc::new(
+        GitHubService::new(Some(
+            env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
+        ))
+        .expect("Failed to create GitHub service"),
+    );
+
     let solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
 
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
@@ -85,6 +95,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     let ws_state = Arc::new(WebSocketState::new(
         tool_model,
         chat_model,
+        github_service.clone(),
         solver_service.clone(),
         tools,
     ));
