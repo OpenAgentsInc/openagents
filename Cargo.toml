@@ -47,11 +47,11 @@ config = "0.14"
 secrecy = { version = "0.8", features = ["serde"] }
 tracing = "0.1"
 url = "2.4"
-time = "0.3"
+time = { version = "0.3", features = ["serde"] }
 anyhow = "1.0"
 askama = "0.12"
 askama_axum = "0.4"
-axum = { version = "0.7", features = ["ws", "macros"] }
+axum = { version = "0.7", features = ["ws"] }
 axum-extra = { version = "0.9", features = ["cookie"] }
 axum-macros = "0.4"
 tower = "0.4"
@@ -68,7 +68,7 @@ tokio-tungstenite = "0.21"
 hyper = { version = "1.2", features = ["full"] }
 http-body-util = "0.1"
 http = "1.0"
-tokio-stream = "0.1.17"
+tokio-stream = "0.1"
 clap = { version = "4.5", features = ["derive", "env"] }
 termcolor = "1.4"
 async-trait = "0.1"

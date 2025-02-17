@@ -3,31 +3,27 @@ use crate::server::models::user::User;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use oauth2::{
-    AccessToken, BasicTokenResponse, EmptyExtraTokenFields, RefreshToken, Scope, StandardTokenResponse,
-    TokenResponse, TokenType,
+    basic::BasicTokenType,
+    AccessToken, EmptyExtraTokenFields, RefreshToken, Scope, StandardTokenResponse, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info};
 
-#[derive(Debug, Serialize, Deserialize)]
 pub struct ScrambleTokenResponse {
-    access_token: String,
-    token_type: String,
+    access_token: AccessToken,
+    token_type: BasicTokenType,
     expires_in: Option<u64>,
-    refresh_token: Option<String>,
-    id_token: Option<String>,
+    refresh_token: Option<RefreshToken>,
 }
 
-impl TokenResponse<BasicTokenResponse> for ScrambleTokenResponse {
+impl TokenResponse for ScrambleTokenResponse {
     fn access_token(&self) -> &AccessToken {
-        // SAFETY: This is safe because we store the access token as a string
-        unsafe { std::mem::transmute(&self.access_token) }
+        &self.access_token
     }
 
     fn token_type(&self) -> &BasicTokenType {
-        // SAFETY: This is safe because we store the token type as a string
-        unsafe { std::mem::transmute(&self.token_type) }
+        &self.token_type
     }
 
     fn expires_in(&self) -> Option<u64> {
@@ -35,8 +31,7 @@ impl TokenResponse<BasicTokenResponse> for ScrambleTokenResponse {
     }
 
     fn refresh_token(&self) -> Option<&RefreshToken> {
-        // SAFETY: This is safe because we store the refresh token as an Option<String>
-        self.refresh_token.as_ref().map(|t| unsafe { std::mem::transmute(t) })
+        self.refresh_token.as_ref()
     }
 
     fn scopes(&self) -> Option<&Vec<Scope>> {
@@ -47,11 +42,10 @@ impl TokenResponse<BasicTokenResponse> for ScrambleTokenResponse {
 impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for ScrambleTokenResponse {
     fn from(token: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>) -> Self {
         Self {
-            access_token: token.access_token().secret().to_string(),
-            token_type: token.token_type().as_str().to_string(),
-            expires_in: token.expires_in(),
-            refresh_token: token.refresh_token().map(|t| t.secret().to_string()),
-            id_token: None,
+            access_token: token.access_token().clone(),
+            token_type: token.token_type().clone(),
+            expires_in: token.expires_in().map(|d| d.as_secs()),
+            refresh_token: token.refresh_token().cloned(),
         }
     }
 }
@@ -114,11 +108,10 @@ impl ScrambleOAuth {
             .ok_or_else(|| OAuthError::TokenExchangeFailed("Missing ID token".to_string()))?;
 
         Ok(ScrambleTokenResponse {
-            access_token: token.access_token().secret().to_string(),
-            token_type: token.token_type().as_ref().to_string(),
+            access_token: token.access_token().clone(),
+            token_type: token.token_type().clone(),
             expires_in: token.expires_in().map(|d| d.as_secs()),
-            refresh_token: token.refresh_token().map(|t| t.secret().to_string()),
-            id_token: Some(id_token.to_string()),
+            refresh_token: token.refresh_token().cloned(),
         })
     }
 
