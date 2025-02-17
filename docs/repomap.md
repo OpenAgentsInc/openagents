@@ -7,6 +7,10 @@ chat/index.html:
 chat/public/vite.svg:
 │#id: IconifyId1813088fe1fbc01fb466
 
+chat/src/components/HeaderBar.tsx:
+│#id: login-button
+│#id: signup-button
+
 chat/src/components/ui/accordion.tsx:
 │const Accordion
 │const AccordionItem
@@ -70,21 +74,21 @@ chat/src/components/ui/carousel.tsx:
 │const CarouselContext
 │const context
 │const Carousel
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const onSelect
 │const scrollPrev
 │const scrollNext
 │const handleKeyDown
 │const CarouselContent
-│const
+│const 
 │const CarouselItem
-│const
+│const 
 │const CarouselPrevious
-│const
+│const 
 │const CarouselNext
-│const
+│const 
 
 chat/src/components/ui/chart.tsx:
 │const THEMES
@@ -98,9 +102,9 @@ chat/src/components/ui/chart.tsx:
 │const color
 │const ChartTooltip
 │const ChartTooltipContent
-│const
+│const 
 │const tooltipLabel
-│const
+│const 
 │const key
 │const itemConfig
 │const value
@@ -110,10 +114,35 @@ chat/src/components/ui/chart.tsx:
 │const indicatorColor
 │const ChartLegend
 │const ChartLegendContent
-│const
+│const 
 │const key
 │const itemConfig
 │const payloadPayload
+
+chat/src/components/ui/chat-message.tsx:
+│const chatBubbleVariants
+│const ChatMessage
+│const files
+│const dataArray
+│const file
+│const isUser
+│const formattedTime
+│const base64
+│const buf
+
+chat/src/components/ui/chat.tsx:
+│const lastMessage
+│const isEmpty
+│const isTyping
+│const messageOptions
+│const 
+│const ChatContainer
+│const ChatForm
+│const 
+│const onSubmit
+│const fileList
+│const dataTransfer
+│const file
 
 chat/src/components/ui/checkbox.tsx:
 │const Checkbox
@@ -150,6 +179,9 @@ chat/src/components/ui/context-menu.tsx:
 │const ContextMenuLabel
 │const ContextMenuSeparator
 │const ContextMenuShortcut
+
+chat/src/components/ui/copy-button.tsx:
+│const 
 
 chat/src/components/ui/dialog.tsx:
 │const Dialog
@@ -192,6 +224,15 @@ chat/src/components/ui/dropdown-menu.tsx:
 │const DropdownMenuSeparator
 │const DropdownMenuShortcut
 
+chat/src/components/ui/file-preview.tsx:
+│const FilePreview
+│const ImageFilePreview
+│const TextFilePreview
+│const 
+│const reader
+│const text
+│const GenericFilePreview
+
 chat/src/components/ui/form.tsx:
 │const Form
 │const FormFieldContext
@@ -199,20 +240,20 @@ chat/src/components/ui/form.tsx:
 │const useFormField
 │const fieldContext
 │const itemContext
-│const
+│const 
 │const fieldState
-│const
+│const 
 │const FormItemContext
 │const FormItem
 │const id
 │const FormLabel
-│const
+│const 
 │const FormControl
-│const
+│const 
 │const FormDescription
-│const
+│const 
 │const FormMessage
-│const
+│const 
 │const body
 
 chat/src/components/ui/hover-card.tsx:
@@ -225,7 +266,7 @@ chat/src/components/ui/input-otp.tsx:
 │const InputOTPGroup
 │const InputOTPSlot
 │const inputOTPContext
-│const
+│const 
 │const InputOTPSeparator
 
 chat/src/components/ui/input.tsx:
@@ -234,6 +275,18 @@ chat/src/components/ui/input.tsx:
 chat/src/components/ui/label.tsx:
 │const labelVariants
 │const Label
+
+chat/src/components/ui/markdown-renderer.tsx:
+│const HighlightedPre
+│const 
+│const 
+│const style
+│const CodeBlock
+│const code
+│const preClass
+│const COMPONENTS
+│const match
+│const Component
 
 chat/src/components/ui/menubar.tsx:
 │const MenubarMenu
@@ -252,6 +305,31 @@ chat/src/components/ui/menubar.tsx:
 │const MenubarLabel
 │const MenubarSeparator
 │const MenubarShortcut
+
+chat/src/components/ui/message-input.tsx:
+│const 
+│const 
+│const addFiles
+│const onDragOver
+│const onDragLeave
+│const onDrop
+│const dataTransfer
+│const onPaste
+│const items
+│const text
+│const blob
+│const file
+│const files
+│const onKeyDown
+│const textAreaRef
+│const showFileList
+│const filtered
+│const files
+│const input
+│const files
+
+chat/src/components/ui/message-list.tsx:
+│const additionalOptions
 
 chat/src/components/ui/navigation-menu.tsx:
 │const NavigationMenu
@@ -334,8 +412,8 @@ chat/src/components/ui/sidebar.tsx:
 │const context
 │const SidebarProvider
 │const isMobile
-│const
-│const
+│const 
+│const 
 │const open
 │const setOpen
 │const openState
@@ -344,11 +422,11 @@ chat/src/components/ui/sidebar.tsx:
 │const state
 │const contextValue
 │const Sidebar
-│const
+│const 
 │const SidebarTrigger
-│const
+│const 
 │const SidebarRail
-│const
+│const 
 │const SidebarInset
 │const SidebarInput
 │const SidebarHeader
@@ -366,7 +444,7 @@ chat/src/components/ui/sidebar.tsx:
 │const sidebarMenuButtonVariants
 │const SidebarMenuButton
 │const Comp
-│const
+│const 
 │const button
 │const SidebarMenuAction
 │const Comp
@@ -383,7 +461,7 @@ chat/src/components/ui/slider.tsx:
 
 chat/src/components/ui/sonner.tsx:
 │const Toaster
-│const
+│const 
 
 chat/src/components/ui/switch.tsx:
 │const Switch
@@ -418,7 +496,7 @@ chat/src/components/ui/toast.tsx:
 │const ToastDescription
 
 chat/src/components/ui/toaster.tsx:
-│const
+│const 
 
 chat/src/components/ui/toggle-group.tsx:
 │const ToggleGroupContext
@@ -436,9 +514,34 @@ chat/src/components/ui/tooltip.tsx:
 │const TooltipTrigger
 │const TooltipContent
 
+chat/src/hooks/use-auto-scroll.ts:
+│const ACTIVATION_THRESHOLD
+│const containerRef
+│const previousScrollTop
+│const 
+│const scrollToBottom
+│const handleScroll
+│const 
+│const isScrollingUp
+│const isScrolledToBottom
+│const handleTouchStart
+
+chat/src/hooks/use-autosize-textarea.ts:
+│const originalHeight
+│const currentRef
+│const borderAdjustment
+│const scrollHeight
+│const clampedToMax
+│const clampedToMin
+
+chat/src/hooks/use-copy-to-clipboard.ts:
+│const 
+│const timeoutRef
+│const handleCopy
+
 chat/src/hooks/use-mobile.tsx:
 │const MOBILE_BREAKPOINT
-│const
+│const 
 │const mql
 │const onChange
 
@@ -450,19 +553,28 @@ chat/src/hooks/use-toast.ts:
 │const addToRemoveQueue
 │const timeout
 │const reducer
-│const
+│const 
 │const listeners
 │const id
 │const update
 │const dismiss
-│const
+│const 
 │const index
 
+chat/src/pages/ChatScreen.tsx:
+│const 
+
 docs/adding-tools.md:
+
+docs/chat-routing.md:
 
 docs/chat_template.md:
 
 docs/configuration.md:
+
+docs/consolidation.md:
+
+docs/deep-research/oauth.md:
 
 docs/hierarchy.md:
 
@@ -471,6 +583,8 @@ docs/hyperview.md:
 docs/hyperview_logout.md:
 
 docs/local-repos.md:
+
+docs/oauth-fixes.md:
 
 docs/repomap.md:
 
@@ -481,6 +595,8 @@ docs/solver.md:
 docs/templates.md:
 
 docs/test-failures-analysis.md:
+
+docs/timestamp.md:
 
 docs/transcribe.md:
 
@@ -503,15 +619,6 @@ src/bin/generate-repomap.rs:
 src/bin/repo.rs:
 │fn main
 
-src/bin/solver.rs:
-│fn new
-│fn get_logs
-│fn write
-│fn flush
-│fn make_writer
-│fn main
-│const OLLAMA_URL
-
 src/bin/solver_impl/changes.rs:
 │fn generate_changes
 │fn apply_file_changes
@@ -531,9 +638,6 @@ src/bin/solver_impl/issue.rs:
 
 src/bin/solver_impl/pre_analysis.rs:
 │fn analyze_with_deepseek
-
-src/bin/solver_orig.rs:
-│fn main
 
 src/bin/transcribe.rs:
 │fn main
@@ -579,11 +683,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -595,15 +699,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -622,160 +726,58 @@ src/server/config.rs:
 │fn default
 │fn configure_app
 │fn configure_app_with_config
+│fn app_router
 
-src/server/handlers/auth/forms.rs:
-│fn deserialize_checkbox
-│fn validate
+src/server/handlers/oauth/github.rs:
+│fn github_login
+│fn github_callback
 
-src/server/handlers/auth/github.rs:
-│fn github_login_page
-│fn handle_github_login
-│fn handle_github_callback
+src/server/handlers/oauth/scramble.rs:
+│fn scramble_login
+│fn scramble_signup
+│fn scramble_callback
 
-src/server/handlers/auth/login.rs:
-│fn login_page
-│fn handle_login
-│fn handle_login_callback
-
-src/server/handlers/auth/mod.rs:
-│fn new
-│fn handle_auth_error
-│fn callback
-│const SESSION_COOKIE_NAME
-│const SESSION_DURATION_DAYS
-
-src/server/handlers/auth/session.rs:
+src/server/handlers/oauth/session.rs:
 │fn create_session_and_redirect
 │fn clear_session_and_redirect
-│fn render_login_template
-│fn render_signup_template
+│fn create_session_cookie
 │fn clear_session_cookie
+│const SESSION_COOKIE_NAME
+│const SESSION_DURATION_DAYS
 │const MOBILE_APP_SCHEME
-
-src/server/handlers/auth/signup.rs:
-│fn signup_page
-│fn handle_signup
-│fn handle_signup_callback
 
 src/server/handlers/user.rs:
 │fn create_user
-
-src/server/hyperview/handlers/auth.rs:
-│fn mobile_logout
-
-src/server/hyperview/handlers/content.rs:
-│#id: content
-│fn content
-
-src/server/hyperview/handlers/issue_analysis.rs:
-│#id: issue_analysis
-│#id: issue_analysis
-│#id: issue_analysis
-│fn analyze_issue
-│fn analyze_issue_internal
-
-src/server/hyperview/handlers/mod.rs:
-│fn append_content
-
-src/server/hyperview/handlers/pages.rs:
-│#id: container
-│#id: title
-│#id: button
-│#id: buttonText
-│#id: loading
-│#id: loading-text
-│#id: login-button
-│fn main_page
-│fn login_page
-│fn auth_error_response
-
-src/server/hyperview/handlers/repomap.rs:
-│#id: repos_list
-│#id: container
-│#id: error
-│fn generate_repomap
-│fn error_response
-
-src/server/hyperview/handlers/repos.rs:
-│#id: repos-list
-│#id: repos-list
-│#id: issues_list
-│fn error_response
-│fn github_repos
-│fn github_issues
-│fn github_issues_internal
-
-src/server/hyperview/handlers/solver.rs:
-│#id: solver-status
-│#id: solver_status
-│#id: solver_status
-│#id: solver_status
-│#id: file-changes
-│#id: files
-│#id: code-diffs
-│#id: diffs
-│#id: lines
-│fn solver_status
-│fn solver_status_internal
-│fn error_xml
-│fn approve_change
-│fn reject_change
-│fn approve_change_internal
-│fn reject_change_internal
-│fn solver_files
-│fn solver_files_internal
-│fn solver_diffs
-│fn solver_diffs_internal
-
-src/server/hyperview/handlers/status.rs:
-│fn connected_status
-│fn disconnected_status
-
-src/server/hyperview/handlers/user.rs:
-│#id: user-info
-│fn user_info
-│fn get_user_from_github_id
-│fn auth_error_fragment_response
-
-src/server/hyperview/routes.rs:
-│#id: container
-│#id: userInfoText
-│#id: Description
-│#id: Basic
-│#id: Bold
-│#id: Color
-│#id: container
-│#id: Basic
-│#id: Color
-│#id: button
-│#id: buttonText
-│#id: container
-│#id: Basic
-│#id: Color
-│#id: modalHeader
-│#id: modalTitle
-│#id: closeButton
-│#id: modalBody
-│#id: content
-│fn hyperview_routes
-│fn demo_home
-│fn demo_screen2
-│fn demo_screen3
-│fn solve_demo_modal
-│fn screen2_redirect
-│fn modal_redirect
-
-src/server/hyperview/services/github_repos.rs:
-│fn new
-│fn get_user_repos
-
-src/server/hyperview/ws.rs:
-│fn hyperview_ws_handler
-│fn handle_socket
+│fn get_user
 
 src/server/models/chat.rs:
 │fn new
 │fn new
+
+src/server/models/timestamp.rs:
+│fn to_timestamp
+│fn now
+│fn into_inner
+│fn from
+│fn from
+│fn to_timestamp
+│fn type_info
+│fn encode_by_ref
+│fn decode
+│fn from
+│fn to_timestamp
+
+src/server/models/user.rs:
+│fn new
+│fn scramble_id
+│fn github_id
+│fn github_token
+│fn metadata
+│fn created_at
+│fn last_login_at
+│fn pseudonym
+│fn build
+│fn builder
 
 src/server/services/auth.rs:
 │fn new
@@ -788,13 +790,25 @@ src/server/services/auth.rs:
 │fn login
 │fn signup
 │fn exchange_code
+│fn get_user_by_id
+│fn get_user_by_github_id
+│fn get_user_by_scramble_id
+│fn get_user_by_pseudonym
+│fn create_user
+│fn update_user_token
+│fn update_user_metadata
+│fn update_user_last_login
 │fn is_valid_jwt_format
 │fn extract_pseudonym
+│fn get_user_by_id
+│fn get_user_by_scramble_id
+│fn update_user_by_id
+│fn create_user
 
 src/server/services/chat_database.rs:
 │fn new
 │fn create_conversation
-│fn add_message
+│fn create_message
 │fn get_conversation
 │fn get_conversation_messages
 │fn list_user_conversations
@@ -874,6 +888,42 @@ src/server/services/model_router.rs:
 │fn chat_stream
 │fn handle_tool_response
 
+src/server/services/oauth/github.rs:
+│fn new
+│fn authorization_url_for_login
+│fn authorization_url_for_signup
+│fn authenticate
+│fn get_github_user
+│fn get_or_create_user
+
+src/server/services/oauth/mod.rs:
+│fn new
+│fn id_token
+│fn set_id_token
+│fn new
+│fn authorization_url
+│fn exchange_code
+
+src/server/services/oauth/scramble.rs:
+│fn access_token
+│fn token_type
+│fn expires_in
+│fn refresh_token
+│fn scopes
+│fn from
+│fn new
+│fn authorization_url_for_login
+│fn authorization_url_for_signup
+│fn authorization_url
+│fn exchange_code
+│fn authenticate
+│fn handle_signup
+│fn handle_login
+│fn extract_pseudonym
+│fn get_user_by_scramble_id
+│fn update_user_token
+│fn get_or_create_user
+
 src/server/services/ollama/config.rs:
 │fn default
 │fn global
@@ -918,17 +968,18 @@ src/server/services/openrouter/types.rs:
 
 src/server/services/repomap/cache.rs:
 │fn new
-│fn save
+│fn new
 │fn get
+│fn set
 │fn delete
 
 src/server/services/repomap/mod.rs:
 │fn new
-│fn with_pool
 │fn generate_repomap
-│fn get_repository_map
+│fn get_map
+│fn set_map
+│fn delete_map
 │fn generate_repository_map
-│fn invalidate_cache
 │fn cleanup
 
 src/server/services/solver/mod.rs:
@@ -1001,138 +1052,8 @@ src/server/ws/transport.rs:
 src/server/ws/types.rs:
 │fn fmt
 
-src/solver/changes/apply.rs:
-│fn apply_change_to_file
-│fn apply_changes
-│fn test_apply_change_to_file
-│fn test_apply_changes
-
-src/solver/changes/generation.rs:
-│fn extract_json_from_markdown
-│fn parse_llm_response
-│fn validate_changes_relevance
-│fn extract_keywords
-│fn is_common_word
-│fn generate_changes
-│fn add
-│fn add
-│fn test_extract_json_from_markdown
-│fn test_validate_changes_relevance
-│fn test_extract_keywords
-│const MAX_RETRIES
-
-src/solver/changes/parsing.rs:
-│fn parse_search_replace
-
-src/solver/changes/tests.rs:
-│fn test_generate_changes
-│fn test_generate_changes_no_changes
-│fn test_parse_search_replace
-│fn test_parse_search_replace_multiple
-│fn test_parse_search_replace_invalid
-
-src/solver/changes/types.rs:
-│fn validate
-│fn test_change_block_validation
-
-src/solver/config.rs:
-│fn load
-
-src/solver/context.rs:
-│fn new
-│fn new_with_dir
-│fn with_github
-│fn create_branch
-│fn create_pull_request
-│fn generate_file_list
-│fn generate_changes
-│fn parse_changes
-│fn apply_changes
-│fn cleanup
-│fn test_apply_changes
-│fn test
-│fn test
-│fn test
-│fn test_cleanup
-
-src/solver/display.rs:
-│fn print_colored
-│fn flush_stdout
-
-src/solver/file_list.rs:
-│fn extract_json
-│fn generate_file_list
-│fn test_extract_json
-│fn setup_test_repo
-│fn main
-│fn add
-│fn test_generate_file_list
-│fn test_invalid_files_filtered
-│fn test_empty_repo
-
-src/solver/github.rs:
-│fn new
-│fn create_branch
-│fn generate_pr_title
-│fn create_pull_request
-│fn post_comment
-│fn get_issue
-│fn get_issue_comments
-│fn test_generate_pr_title
-│fn test_new_with_invalid_repo
-
-src/solver/json.rs:
-│fn escape_json_string
-│fn is_valid_json_string
-│fn fix_common_json_issues
-│fn test_escape_json_string
-│fn test_is_valid_json_string
-│fn test_fix_common_json_issues
-
-src/solver/planning.rs:
-│fn new
-│fn validate_llm_response
-│fn generate_prompt
-│fn retry_with_feedback
-│fn generate_plan
-│fn generate_plan_sync
-│fn test_validate_llm_response
-│fn generate_pr_title
-│fn generate_pr_title
-│fn test_something
-│fn test_something_new
-│fn test_generate_prompt
-│const MAX_RETRIES
-
-src/solver/solution.rs:
-│fn handle_solution
-
-src/solver/state.rs:
-│fn new
-│fn add_file
-│fn update_status
-│fn add_change
-│fn test_solver_state_creation
-│fn test_add_file
-│fn test_add_change
-│fn test_update_status
-
-src/solver/streaming.rs:
-│fn handle_plan_stream
-
-src/solver/types.rs:
-│fn new
-│fn with_reason
-│fn validate
-│fn eq
-│fn validate_pr_title
-│fn test_change_with_reason
-│fn test_validate_pr_title
-│fn test_change_validation
-│fn test_change_error_equality
-
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -1277,7 +1198,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/auth/callback.xml:
 │#id: container
@@ -1334,97 +1255,6 @@ templates/pages/login.html:
 │const location
 │const data
 
-templates/pages/main copy 2.xml:
-│#id: screen
-│#id: body
-│#id: device
-│#id: inputBox
-│#id: voiceContainer
-│#id: askAnything
-│#id: sendContainer
-│#id: menuItem
-│#id: menuText
-│#id: menuIconContainer
-│#id: whiteText
-│#id: conversationText
-│#id: menuContainerTop
-│#id: menuContainerBottom
-│#id: conversationContainer
-│#id: logo
-│#id: logoContainer
-│#id: topContainer
-│#id: demoButton
-│#id: wsOutput
-│#id: wsOutputContent
-│#id: message
-│#id: messageText
-│#id: deepseekOutput
-│#id: deepseekText
-│#id: deepseekContent
-│#id: deepseekChunk
-│#id: buttonText
-│#id: backButton
-│#id: backArrow
-│#id: mainContent
-│#id: solverContent
-│#id: loadingSpinner
-│#id: solver-ui
-│#id: solver-status
-│#id: file-changes
-│#id: files
-│#id: code-diffs
-│#id: diffs
-│#id: solve-demo-output
-│#id: solverModal
-│#id: modalHeader
-│#id: modalTitle
-│#id: closeButton
-│#id: modalBody
-│#id: outputScroll
-│#id: deepseekOutput
-│#id: deepseekText
-│#id: deepseekChunk
-│#id: deepseek-output
-│#id: stream-content
-
-templates/pages/main copy.xml:
-│#id: container
-│#id: safeArea
-│#id: header
-│#id: MyHeader
-│#id: MyHeaderText
-│#id: button
-│#id: buttonText
-│#id: reposList
-│#id: reposScroll
-│#id: reposScrollContent
-│#id: repoItem
-│#id: repoName
-│#id: repoDescription
-│#id: repoUpdated
-│#id: repoActions
-│#id: repoButton
-│#id: repoButtonText
-│#id: error
-│#id: welcomeText
-│#id: user-info
-│#id: redirectContainer
-│#id: repos-list
-
-templates/pages/main.xml:
-│#id: container
-│#id: userInfoText
-│#id: Description
-│#id: Basic
-│#id: Bold
-│#id: Color
-│#id: buttonContainer
-│#id: button
-│#id: buttonText
-│#id: spinnerStyle
-│#id: loadingSpinner
-│#id: redirectContainer
-
 templates/pages/repomap.html:
 │#id: repo_url
 │#id: submit-button
@@ -1470,12 +1300,6 @@ templates/pages/solver.html:
 │const formData
 │const data
 
-tests/auth_error_handling.rs:
-│fn test_error_component_accessibility
-│fn test_error_component_included
-│fn test_error_js_included
-│const MAX_SIZE
-
 tests/auth_pages.rs:
 │fn setup_test_db
 │fn setup_test_env
@@ -1513,9 +1337,6 @@ tests/gateway.rs:
 │fn test_openrouter_chat_stream
 │fn test_openrouter_with_config
 │fn test_openrouter_error_handling
-
-tests/health_check.rs:
-│fn health_check_works
 
 tests/model_router.rs:
 │fn test_routing_decision
@@ -1573,86 +1394,15 @@ tests/solver.rs:
 │fn test_issue_comments
 │fn test_comment_context_generation
 
-tests/solver_changes.rs:
-│fn test_change_generation
-│fn add
-│fn test_change_generation_no_changes
-
-tests/solver_context.rs:
-│fn setup_test_context
-│fn test_context_initialization
-│fn test_apply_changes_new_file
-│fn new_function
-│fn new_function
-│fn test_apply_changes_modify_file
-│fn old_function
-│fn old_function
-│fn new_function
-│fn new_function
-│fn test_apply_changes_no_match
-│fn existing_function
-│fn non_existent
-│fn new_function
-│fn existing_function
-│fn test_apply_changes_file_not_found
-│fn old
-│fn new
-│fn test_cleanup
-
-tests/solver_file_list.rs:
-│fn setup_test_repo
-│fn main
-│fn add
-│fn test_file_list_generation
-│fn main
-│fn add
-│fn test_file_list_with_invalid_paths
-│fn main
-│fn add
-│fn test_file_list_empty_repo
-
-tests/solver_loop.rs:
-│fn test_solver_loop_state_transitions
-│fn test_solver_loop_error_handling
-│fn test_solver_loop_file_management
-
-tests/solver_ollama.rs:
-│fn setup_test_repo
-│fn main
-│fn add
-│fn load_env
-│fn test_ollama_file_list
-│fn test_ollama_planning
-│fn test_ollama_changes
-│fn add
-
-tests/solver_state.rs:
-│fn test_state_serialization
-│fn old_code
-│fn new_code
-│fn test_state_transitions
-│fn test_file_management
-│fn test_json_schema_compatibility
-
-tests/solver_types.rs:
-│fn test_change_validation
-│fn old
-│fn new
-│fn old
-│fn new
-│fn new
-│fn old
-│fn test_change_equality
-│fn old
-│fn new
-│fn old
-│fn new
-│fn old
-│fn new
-
 tests/tool_selection.rs:
 │fn test_tool_selection
 
 tests/user.rs:
 │fn test_user_creation
 │fn create_test_user
+│fn retry_db_operation
+│fn test_user_serialization
+│fn test_user_debug
+│const MAX_RETRIES
+│const RETRY_DELAY
+
