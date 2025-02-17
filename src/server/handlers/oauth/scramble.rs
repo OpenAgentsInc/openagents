@@ -1,4 +1,5 @@
 use crate::server::{config::AppState, handlers::oauth::session::create_session_and_redirect};
+use axum::response::Redirect;
 use axum::{
     extract::{Form, Query, State},
     response::{IntoResponse, Response},
@@ -101,8 +102,8 @@ pub async fn scramble_signup(
         csrf_token.secret()
     );
 
-    // Redirect to the Scramble auth URL (no need to append &signup=true)
-    axum::response::Redirect::temporary(&url).into_response()
+    // Try using a different redirect approach
+    Redirect::to(&url).into_response()
 }
 
 #[derive(Debug, Deserialize)]

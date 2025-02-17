@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
+use tracing::{error, info};
 
 #[derive(Debug)]
 struct StoredVerifier {
@@ -27,13 +28,25 @@ pub struct VerifierStore {
 
 impl VerifierStore {
     pub fn new() -> Self {
+        info!("Creating new VerifierStore");
         Self {
             store: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     pub fn store_verifier(&self, state: &str, verifier: PkceCodeVerifier) {
-        let mut store = self.store.write().unwrap();
+        info!("Storing verifier for state: {}", state);
+        info!("Verifier secret length: {}", verifier.secret().len());
+
+        let mut store = match self.store.write() {
+            Ok(store) => store,
+            Err(e) => {
+                error!("Failed to acquire write lock: {}", e);
+                return;
+            }
+        };
+
+        let current_count = store.len();
         store.insert(
             state.to_string(),
             StoredVerifier {
@@ -41,22 +54,73 @@ impl VerifierStore {
                 created_at: Instant::now(),
             },
         );
+        info!(
+            "Stored verifier. Store size before: {}, after: {}",
+            current_count,
+            store.len()
+        );
+
         self.cleanup_old_verifiers();
     }
 
     pub fn get_verifier(&self, state: &str) -> Option<PkceCodeVerifier> {
-        let mut store = self.store.write().unwrap();
-        store
-            .remove(state)
-            .map(|stored| PkceCodeVerifier::new(stored.verifier.secret().to_string()))
+        info!("Attempting to get verifier for state: {}", state);
+
+        let mut store = match self.store.write() {
+            Ok(store) => store,
+            Err(e) => {
+                error!("Failed to acquire write lock: {}", e);
+                return None;
+            }
+        };
+
+        let current_keys: Vec<String> = store.keys().cloned().collect();
+        info!("Current states in store: {:?}", current_keys);
+
+        let result = store.remove(state).map(|stored| {
+            info!(
+                "Found and removed verifier for state: {}. Age: {:?}",
+                state,
+                stored.created_at.elapsed()
+            );
+            PkceCodeVerifier::new(stored.verifier.secret().to_string())
+        });
+
+        if result.is_none() {
+            error!("No verifier found for state: {}", state);
+        }
+
+        result
     }
 
     fn cleanup_old_verifiers(&self) {
-        let mut store = self.store.write().unwrap();
+        let mut store = match self.store.write() {
+            Ok(store) => store,
+            Err(e) => {
+                error!("Failed to acquire write lock for cleanup: {}", e);
+                return;
+            }
+        };
+
+        let before_count = store.len();
         let now = Instant::now();
-        store.retain(|_, stored| {
-            now.duration_since(stored.created_at) < Duration::from_secs(300) // 5 minutes
+        store.retain(|state, stored| {
+            let age = now.duration_since(stored.created_at);
+            let keep = age < Duration::from_secs(300); // 5 minutes
+            if !keep {
+                info!(
+                    "Removing expired verifier for state: {}. Age: {:?}",
+                    state, age
+                );
+            }
+            keep
         });
+
+        info!(
+            "Cleaned up verifiers. Before: {}, After: {}",
+            before_count,
+            store.len()
+        );
     }
 }
 

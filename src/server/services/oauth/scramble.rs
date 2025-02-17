@@ -103,6 +103,7 @@ impl ScrambleOAuth {
 
         // Add signup flag to state before storing
         let state_with_signup = format!("{}_signup", csrf_token.secret());
+        info!("Created state with signup flag: {}", state_with_signup);
 
         self.verifier_store.store_verifier(
             &state_with_signup,
@@ -114,7 +115,7 @@ impl ScrambleOAuth {
             "{}&state={}&flow=signup&prompt=create&email={}&scope=openid",
             url, state_with_signup, email
         );
-        info!("Final authorization URL: {}", final_url);
+        info!("Constructed final authorization URL: {}", final_url);
 
         (final_url, csrf_token, pkce_verifier)
     }
