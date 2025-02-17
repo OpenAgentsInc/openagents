@@ -19,6 +19,7 @@ pub struct GitHubUser {
     email: Option<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct GitHubOAuth {
     service: OAuthService,
     http_client: Client,

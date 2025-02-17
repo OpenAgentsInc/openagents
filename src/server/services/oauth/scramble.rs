@@ -15,6 +15,7 @@ pub struct ScrambleTokenResponse {
     id_token: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct ScrambleOAuth {
     service: OAuthService,
 }
@@ -28,7 +29,7 @@ impl ScrambleOAuth {
 
     pub fn authorization_url_for_login(&self, email: &str) -> (String, CsrfToken) {
         info!("Generating login authorization URL for email: {}", email);
-        
+
         let csrf_token = CsrfToken::new_random();
         let url = self.service.authorization_url(
             None,
@@ -44,7 +45,7 @@ impl ScrambleOAuth {
 
     pub fn authorization_url_for_signup(&self, email: &str) -> (String, CsrfToken) {
         info!("Generating signup authorization URL for email: {}", email);
-        
+
         let csrf_token = CsrfToken::new_random();
         let url = self.service.authorization_url(
             None,

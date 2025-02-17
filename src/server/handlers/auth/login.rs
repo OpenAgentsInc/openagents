@@ -1,4 +1,4 @@
-use crate::server::AppState;
+use crate::server::config::AppState;
 use askama::Template;
 use axum::{
     extract::{Query, State},

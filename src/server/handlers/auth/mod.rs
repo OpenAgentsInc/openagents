@@ -1,4 +1,4 @@
-use crate::server::AppState;
+use crate::server::config::AppState;
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
@@ -49,7 +49,7 @@ pub async fn callback(
         Err(e) => {
             info!("Authentication failed: {}", e);
             Redirect::temporary(&format!(
-                "/{}{}", 
+                "/{}{}",
                 if is_signup { "signup" } else { "login" },
                 format!("?error={}", urlencoding::encode(&e.to_string()))
             ))

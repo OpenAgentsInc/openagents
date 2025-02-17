@@ -1,7 +1,8 @@
 use oauth2::{
-    basic::{BasicClient, BasicTokenType},
-    reqwest::async_http_client,
-    AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenResponse, TokenUrl,
+    basic::BasicClient,
+    reqwest::async_http_client as oauth_async_http_client,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -13,7 +14,7 @@ pub mod scramble;
 pub struct OAuthConfig {
     pub client_id: String,
     pub client_secret: String,
-    pub redirect_uri: String,
+    pub redirect_url: String,
     pub auth_url: String,
     pub token_url: String,
 }
@@ -47,11 +48,13 @@ impl OAuthService {
         let client = BasicClient::new(
             ClientId::new(config.client_id.clone()),
             Some(ClientSecret::new(config.client_secret.clone())),
-            AuthUrl::new(config.auth_url.clone()).map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
-            Some(TokenUrl::new(config.token_url.clone()).map_err(|e| OAuthError::InvalidConfig(e.to_string()))?),
+            AuthUrl::new(config.auth_url.clone())
+                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
+            Some(TokenUrl::new(config.token_url.clone())
+                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?),
         )
         .set_redirect_uri(
-            RedirectUrl::new(config.redirect_uri.clone())
+            RedirectUrl::new(config.redirect_url.clone())
                 .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
         );
 
@@ -62,40 +65,34 @@ impl OAuthService {
         })
     }
 
-    pub fn authorization_url(&self, platform: Option<String>, extra_params: Vec<(&str, &str)>) -> String {
-        let mut auth_request = self.client.authorize_url(|| uuid::Uuid::new_v4().to_string());
+    pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
+        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+        let (auth_url, csrf_token) = self.client
+            .authorize_url(CsrfToken::new_random)
+            .set_pkce_challenge(pkce_challenge)
+            .url();
 
-        // Add platform to state if provided
-        if let Some(platform) = platform {
-            auth_request = auth_request.add_extra_param("platform", platform);
-        }
-
-        // Add any additional parameters
-        for (key, value) in extra_params {
-            auth_request = auth_request.add_extra_param(key, value);
-        }
-
-        auth_request.url().to_string()
+        (auth_url.to_string(), csrf_token, pkce_verifier)
     }
 
     pub fn client(&self) -> &BasicClient {
         &self.client
     }
 
-    pub async fn exchange_token(&self, code: String) -> Result<TokenInfo, OAuthError> {
+    pub async fn exchange_token(
+        &self,
+        code: String,
+        pkce_verifier: PkceCodeVerifier,
+    ) -> Result<impl TokenResponse, OAuthError> {
         let token = self
             .client
-            .exchange_code(oauth2::AuthorizationCode::new(code))
-            .request_async(async_http_client)
+            .exchange_code(AuthorizationCode::new(code))
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(oauth_async_http_client)
             .await
             .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
 
-        Ok(TokenInfo {
-            access_token: token.access_token().secret().to_string(),
-            token_type: token.token_type(),
-            scope: token.scopes().map(|s| s.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(" ")),
-            id_token: token.extra_fields().get("id_token").and_then(|v| v.as_str()).map(String::from),
-        })
+        Ok(token)
     }
 }
 
