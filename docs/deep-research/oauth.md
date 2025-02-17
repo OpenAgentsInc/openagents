@@ -1,117 +1,216 @@
-# Implementing OAuth in a Rust Backend with a React/Vite Frontend
+# Implementing OAuth in a Rust Backend with a React/Vite Frontend Using Axum
 
-Implementing OAuth2 authentication in a Rust backend (e.g. using Actix-web) with a React/Vite frontend involves coordinating the OAuth flow across multiple providers, maintaining user sessions securely, and structuring your code on both server and client. Below are best practices and recommendations in key areas:
+Implementing OAuth2 authentication in a Rust backend (using Axum) with a React/Vite frontend involves coordinating the OAuth flow across multiple providers, maintaining user sessions securely, and structuring your code on both server and client. Below are best practices and recommendations in key areas:
+
+---
 
 ## Supporting Multiple OAuth Providers (Google, GitHub, etc.)
 
-* **Abstract Provider Configurations**: Design your Rust backend to handle multiple OAuth providers by abstracting provider-specific details (client IDs, secrets, authorization and token URLs, scopes). For example, you might define an enum or configuration struct for each provider containing its OAuth endpoints and scopes. This allows using the same code path for the OAuth flow with different provider settings.
+- **Abstract Provider Configurations:**
+  Design your Rust backend to handle multiple OAuth providers by abstracting provider-specific details (client IDs, secrets, authorization and token URLs, scopes). For example, define an enum or configuration struct for each provider containing its OAuth endpoints and scopes. This allows you to use the same code path for the OAuth flow with different provider settings.
 
-* **Multiple Auth Endpoints**: Expose distinct endpoints for each provider's login and callback. For instance: `/auth/github/login` and `/auth/github/callback`, `/auth/google/login` and `/auth/google/callback`, etc. Each login endpoint initiates the OAuth redirect to the provider's authorization URL, and each callback endpoint processes the provider's response.
+- **Multiple Auth Endpoints:**
+  Expose distinct endpoints for each provider’s login and callback. For instance:
+  - `/auth/github/login` and `/auth/github/callback`
+  - `/auth/google/login` and `/auth/google/callback`
+  Each login endpoint initiates the OAuth redirect to the provider’s authorization URL, and each callback endpoint processes the provider’s response.
 
-* **User Account Linking/Creation**: After a successful OAuth login, create or update a user record in your database for that provider. A demo project shows how multiple providers (Google, GitHub, Kakao, etc.) can be supported in one app, and how new users are created in the database after authentication. You can store the provider name and the user's external ID (e.g., Google sub or GitHub user ID) in the user record for future reference.
+- **User Account Linking/Creation:**
+  After a successful OAuth login, create or update a user record in your database for that provider. Use the provider name and the user’s external ID (e.g., GitHub user ID, Google sub) in the user record for future reference.
 
-* **Unified Flow Logic**: Encapsulate the common OAuth flow: redirecting to provider, exchanging code for tokens, fetching user info, and creating a session. This can be implemented in a shared function or using a library that supports multiple providers. By centralizing this logic, adding a new provider is mainly a matter of adding its configuration.
+- **Unified Flow Logic:**
+  Encapsulate the common OAuth flow: redirecting to the provider, exchanging the code for tokens, fetching user info, and creating a session. This can be implemented in a shared function or an auth service module. By centralizing this logic, adding a new provider becomes mainly a matter of adding its configuration.
+
+---
 
 ## Session Token Management on the Backend
 
-* **Session vs Token-Based Auth**: Decide whether to use server-side sessions or token-based stateless authentication. In a session-based approach, the server keeps track of logged-in users (e.g., via an in-memory store or database) and issues a cookie as a session identifier. In a token-based approach, the server issues a JWT or similar token that encodes the session state. Many Rust examples prefer JWT for stateless auth, issuing a JWT to the client upon successful login. This JWT serves as the session token.
+- **Session vs. Token-Based Auth:**
+  Decide whether to use server-side sessions or token-based stateless authentication. In a session-based approach, the server tracks logged-in users (e.g., via an in-memory store or database) and issues a cookie as a session identifier. In a token-based approach, the server issues a JWT (or similar token) that encodes the session state. Many Rust examples prefer JWTs for stateless authentication. With JWTs, generate a token containing a user identifier (and an expiration claim) after OAuth login. The backend can use the [`jsonwebtoken`](https://crates.io/crates/jsonwebtoken) crate to create and sign the token. Store this JWT in an HTTP-only cookie before redirecting the user back to the frontend.
 
-* **Using JWTs**: If using JWTs, generate a JWT containing a user identifier (and an expiration claim) after OAuth login. The Rust backend can use the `jsonwebtoken` crate to create and sign the token. In the OAuth callback handler, for example, you would create claims (user ID, issued-at, expiry) and sign them with your secret key. Store this JWT in an HTTP-only cookie before redirecting the user back to the frontend. The demo project mentioned above uses JWT-based token issuance and validation for authenticated users as part of its token management strategy. Alternatively, you could return the JWT in the response body, but a cookie is often more secure for web clients.
+- **Using Server Sessions:**
+  If you prefer a server-managed session, consider using middleware (for example, with [`axum-extra`](https://crates.io/crates/axum-extra)'s session support) or a database-backed session store. Generate a random session ID, store session data (like user ID and provider tokens) on the server, and send the session ID in a cookie. This approach allows easy server-side invalidation of sessions.
 
-* **Using Server Sessions**: If you prefer a server-managed session (to avoid storing session info in the token), use a session middleware (e.g., `actix-session` for Actix Web) or a database store. The backend can generate a random session ID, store session data (like user ID and provider tokens) on the server, and send the session ID in a cookie. This is more stateful but allows easy server-side invalidation.
+- **Cookie Configuration:**
+  Configure cookies with security in mind. Mark the session cookie as **HttpOnly** (to prevent access via JavaScript) and set the **Secure** flag in production (ensuring it’s only sent over HTTPS). If your frontend and backend are on different domains or ports (common in development), set `SameSite=None` with `Secure=true` in production. During development on HTTP, adjust these settings appropriately.
 
-* **Cookie Configuration**: Whichever method you choose, configure cookies with security in mind. Mark the session cookie as `HttpOnly` (so JavaScript cannot read it) and set the `Secure` flag in production (so it's only sent over HTTPS). If your frontend is on a different domain or port (common in dev setups), you may need to set `SameSite=None` and `Secure=true` on the cookie to allow it to be accepted in cross-site requests. In development (HTTP), Secure cookies won't be saved by the browser, so consider using the same domain for front and back, or relax security only for localhost development.
+---
 
 ## Security Considerations
 
-* **CSRF Protection with State Parameter**: Always use the OAuth2 state parameter when redirecting to the OAuth provider. The state is a random token that you generate on the initial login request and verify upon callback. This prevents CSRF attacks by ensuring the callback is tied to an initiated login attempt. The Rust OAuth libraries handle state for you, or you can store a generated state string in the user's session or a temporary cookie before redirecting. On callback, compare the received state with the expected value. (In our flow, we can also encode useful info in the state, like the target frontend route – see below.)
+- **CSRF Protection with State Parameter:**
+  Always use the OAuth2 `state` parameter when redirecting to the OAuth provider. Generate a random token on the initial login request and verify it upon callback. This prevents CSRF attacks by ensuring the callback is tied to an initiated login attempt. You can store the generated state in a server-side session or in a temporary cookie.
 
-* **OAuth Flow Security**: Use the Authorization Code flow (with PKCE if the frontend initiates it) rather than implicit flow. In the Rust backend, never expose your OAuth client secret to the frontend; perform the code-to-token exchange on the server side. As a best practice, Google redirects back with a code, and the backend exchanges it for a token (including sending client ID and secret) – keeping the secret on the server. If using PKCE (Proof Key for Code Exchange), the frontend can initiate the flow without a secret, but the backend should still verify the code and token.
+- **OAuth Flow Security:**
+  Use the Authorization Code flow (with PKCE if the frontend initiates it) rather than the implicit flow. Perform the code-to-token exchange on the backend so that your OAuth client secret is never exposed to the frontend.
 
-* **Secure Storage of Credentials**: Store sensitive credentials (OAuth client secrets, JWT signing keys) in secure configuration, e.g., environment variables or a secrets manager. Do not hard-code these values or expose them in the frontend. For example, put your Google/GitHub client ID and secret in a `.env` file or in the server's config. In Rust, you can load these via the `dotenv` crate or your configuration system.
+- **Secure Storage of Credentials:**
+  Store sensitive credentials (OAuth client secrets, JWT signing keys) in secure configuration (e.g., environment variables or a secrets manager). Do not hard-code these values or expose them in the frontend. Use crates like [`dotenv`](https://crates.io/crates/dotenv) to load these values at runtime.
 
-* **Scope and Permissions**: Request the minimal OAuth scopes needed for your app. For instance, to get basic profile info, you might request email and profile scopes. Limiting scopes reduces exposure of user data and simplifies compliance.
+- **Scope and Permissions:**
+  Request only the minimal OAuth scopes needed for your app. For example, for basic profile info, request the `email` and `profile` scopes. Limiting scopes reduces exposure of user data.
 
-* **HTTPS and SameSite**: Ensure your authentication flow runs over HTTPS in production. OAuth tokens and session cookies should never be transmitted over plain HTTP. Also, use `SameSite=Lax` or `Strict` for session cookies if possible to mitigate CSRF (Lax allows the cookie to be sent on top-level navigations, which works for OAuth redirects; Strict would not send the cookie when coming from the provider's domain, so Lax is usually a good balance). When cross-site requests are necessary (e.g., API served on a different domain than the SPA), use `SameSite=None` + `Secure` as noted, and implement explicit CSRF tokens or double-submit cookie technique for state-changing requests.
+- **HTTPS and SameSite:**
+  Ensure that your OAuth flow runs over HTTPS in production. OAuth tokens and session cookies should only be transmitted over secure connections. Use appropriate SameSite cookie settings (typically `Lax` for OAuth flows).
 
-* **Logout and Token Revocation**: Provide a logout endpoint that clears the session cookie or invalidates the session token. If your app uses refresh tokens or if you want to log out from the OAuth provider, you may also revoke the provider token (some providers offer a revocation endpoint). At minimum, removing the session on your side prevents reuse of the cookie/JWT after logout.
+- **Logout and Token Revocation:**
+  Provide a logout endpoint that clears the session cookie or invalidates the session token. If applicable, also revoke the provider’s token by calling its revocation endpoint.
 
-## Recommended Rust OAuth Libraries (vs Rolling Your Own)
+---
 
-You have a choice between using a library to handle the OAuth details or implementing the flow manually:
+## Recommended Rust OAuth Libraries (vs. Rolling Your Own)
 
-* **Using an OAuth2 Crate**: The `oauth2` crate is a widely used, production-ready library for OAuth2 in Rust. It provides an extensible, strongly-typed API for setting up OAuth clients, generating authorization URLs with state and PKCE, handling token exchanges, and refreshing tokens. Notably, it implements the OAuth2 spec (RFC 6749) fully, including security features like state validation and PKCE by default. It supports async operations and is framework-agnostic, meaning you can use it with Actix-web, Rocket, or any HTTP client. The crate comes with examples for providers like Google and GitHub, making it straightforward to integrate common OAuth providers. Using this library reduces the chance of mistakes in the OAuth flow.
+- **Using an OAuth2 Crate:**
+  The [`oauth2` crate](https://crates.io/crates/oauth2) is a widely used, production-ready library for OAuth2 in Rust. It provides an extensible, strongly-typed API for setting up OAuth clients, generating authorization URLs (with state and PKCE), handling token exchanges, and refreshing tokens. It supports async operations and is framework-agnostic, so it works well with Axum.
 
-* **Other Libraries**: If you plan to integrate with OpenID Connect (OIDC) for identity, consider the `openidconnect` crate (built on top of `oauth2` crate) for handling ID tokens and discovery. For low-level needs or service accounts, Google's `yup-oauth2` can handle server-to-server OAuth flows (though that's more for API auth than user login). For session handling, crates like `cookie` (for cookie parsing/creation) and `actix-session` can be useful.
+- **Other Libraries:**
+  If you plan to integrate with OpenID Connect (OIDC), consider the [`openidconnect` crate](https://crates.io/crates/openidconnect) for handling ID tokens and provider discovery. For service accounts, [`yup-oauth2`](https://crates.io/crates/yup-oauth2) might be useful, though it’s more suited for server-to-server authentication.
 
-* **Rolling Your Own**: It's entirely possible to implement OAuth2 without a specialized crate – using an HTTP client like `reqwest` to make requests to OAuth endpoints and a JWT library for tokens. In fact, tutorials exist on how to integrate Google OAuth2 without third-party OAuth crates. If you go this route, you must manually: build the authorization URL, generate/verify a state parameter, handle the redirect, exchange the authorization code for tokens via an HTTP POST to the provider's token endpoint, and validate the response. You'll also need to parse ID tokens (JWT) if provided, and fetch user info from the provider's API. While this gives you full control, be cautious – ensure you follow the OAuth2 spec closely and include all security checks. For most cases, using a well-tested library (like `oauth2`) is recommended to avoid subtle bugs in the flow.
+- **Rolling Your Own:**
+  It’s possible to implement OAuth2 without a specialized crate by using an HTTP client like [`reqwest`](https://crates.io/crates/reqwest) to make HTTP requests to OAuth endpoints and a JWT library for token handling. However, using a well-tested library (like `oauth2`) is generally recommended to avoid subtle bugs.
 
-* **Combining Approaches**: You could use the library for core OAuth operations (building URLs, exchanging tokens) and still manage the session and database logic yourself. For example, use `BasicClient` from `oauth2` crate to get the auth URL and token response, then use your own code to create the user and session.
+- **Combining Approaches:**
+  Use the OAuth library for core operations (building URLs, exchanging tokens) and manage session/database logic yourself. For example, use the library to obtain the authorization URL and token response, then create or update your user record and generate a session token (JWT or session ID) for your own application.
+
+---
 
 ## Handling the OAuth Flow: Frontend to Backend
 
-Managing the OAuth flow across the React frontend and Rust backend requires coordination. Here's a typical flow and how to implement it:
+Managing the OAuth flow across the React frontend and Rust backend (using Axum) requires careful coordination. Here’s a typical flow and how to implement it:
 
-1. **User Initiates Login (Frontend)**: In your React app, provide a way for the user to choose a login provider (e.g., "Continue with Google", "Login with GitHub" buttons). When clicked, you have two main options:
-   * **Redirect to Backend Login Endpoint**: Your React code can simply do `window.location = "<BACKEND_URL>/auth/google/login"` (or open a new window for it). The Rust backend's `/auth/google/login` handler will construct the Google authorization URL (using the client ID, redirect URI, scopes, and a generated state) and respond with an HTTP redirect to that URL. This method keeps the OAuth details in the backend.
-   * **Direct to Provider (with Frontend State)**: Alternatively, the frontend can build the Google authorization URL if you embed the client ID and redirect URI in your frontend config. For example, the React app could redirect the browser to `https://accounts.google.com/o/oauth2/v2/auth?...&client_id=XYZ&redirect_uri=<YOUR_BACKEND_CALLBACK>&state=<STATE>...`. This is what a typical React-only OAuth flow does. You would generate a state on the frontend (e.g., a random string or a JWT) and possibly store it in localStorage or a cookie for later verification. Using the backend login endpoint is slightly more secure (the backend can generate the state and store it server-side), but either approach can work.
+1. **User Initiates Login (Frontend):**
+   In your React app, provide buttons for each login provider (e.g., “Login with GitHub”, “Continue with Google”). When clicked, you have two main options:
 
-2. **User Authorizes and Provider Redirects (OAuth Provider -> Backend)**: The provider will prompt the user to sign in and authorize your app. After consent, it redirects the user to the redirect URI you specified. This should be an endpoint on your Rust backend, e.g. `/auth/google/callback`. The provider will include an authorization code (and the original state) as query parameters in this redirect. For example: `GET /auth/google/callback?code=abc123&state=<STATE>`. Your Actix handler for this route should:
-   * Verify that the state parameter matches what you expect (to ensure the request wasn't forged). If you used the backend to generate state, retrieve the originally stored value (e.g., from a server session or a signed cookie) and compare. If you used frontend-generated state, you might need to have passed it through or compare to a cookie value. This is crucial for CSRF protection.
-   * Exchange the authorization code for tokens. Using the provider's token endpoint, perform a server-side request (commonly via the `oauth2` crate's client or using `reqwest`) to swap the code for an access token (and possibly a refresh token and ID token). This request will include your client ID & secret, and the redirect URI, so it must be done on the backend.
-   * Parse the token response. Ensure you successfully obtained an access token (and possibly an ID token or user info). If the provider returned an ID token (JWT), you can optionally verify its signature and extract claims (like the user's email) using a JWT library.
+   - **Redirect to Backend Login Endpoint:**
+     Have the React code set `window.location.href` to something like `"<BACKEND_URL>/auth/github/login"`. The Rust backend’s `/auth/github/login` handler constructs the GitHub authorization URL (using the client ID, redirect URI, scopes, and a generated state) and responds with an HTTP redirect.
 
-3. **Fetch User Info & Finalize Login (Backend)**: With an access token (or ID token), the backend can obtain the user's profile info from the provider. For example, Google's OAuth response may include an `id_token` JWT that already contains the user's Google ID, email, and name, or you might call the provider's user info API with the access token. Gather the necessary profile details (at least an external user ID, email, and name). Next:
-   * **Find or Create User in DB**: Use the provider's unique ID (or email) to find an existing user in your database. If none exists, create a new user record tied to that provider (e.g., create a new user with their Google name/email). Mark the account as verified (OAuth providers usually already verified the email) or store additional info as needed.
-   * **Generate Session Token**: Create a session for the user. If using JWT, generate a JWT containing your app's user ID and any claims, and sign it with your secret key. If using server sessions, store the session and prepare a cookie with the session ID.
-   * **Set Cookie**: Set the JWT or session ID in an HTTP-only cookie on the response. In Actix-web, you can build a cookie with properties (`HttpOnly`, `max-age`, etc.) and attach it to the `HttpResponse`. This cookie will be sent to the browser. Ensure CORS is configured to allow the frontend domain to receive this cookie (set `Access-Control-Allow-Credentials: true` and the appropriate `Access-Control-Allow-Origin` for your domain). In codevoweb's example, after getting the tokens and user info, a JWT token is generated and returned to the frontend as an HTTP-only cookie.
-   * **Redirect to Frontend**: Once the session cookie is set, have the backend redirect the user's browser back to your frontend application. Typically, you would redirect to a specific route, such as a dashboard or profile page, indicating login success. If you saved a "post-login redirect path" in the OAuth state, you can retrieve it and redirect the user accordingly. For example, the guide stored the path to the Profile page in the state, and after setting the cookie, the backend redirects the user to the URL path stored in the state parameter (e.g. `/profile`). In Actix, you can return an `HttpResponse::Found` (302) with a `Location` header pointing to your React app's URL. The codevoweb Rust example does exactly this – appending the state value to the frontend origin and redirecting.
+   - **Direct to Provider (with Frontend State):**
+     Alternatively, the frontend can construct the provider’s URL if you expose the client ID (never the secret) in your config. This is less secure than having the backend initiate the flow.
 
-4. **Frontend Receives Redirect and Session**: After the redirect, the user is back on the React app (at the specified route, e.g. `/profile`). The session cookie from the backend is now stored in the browser (provided the domain matches and cookie policy allows it). On this page (or globally, e.g. in an Auth context), the React app should verify the user is logged in:
-   * Typically, the React app will immediately make a request to a "get current user" endpoint (e.g. `GET /api/users/me`) on the backend. Since the cookie is sent along (you must call `fetch` or Axios with `credentials: 'include'` to include cookies), the backend will recognize the session/JWT and return the user's info. The codevoweb flow describes that when the user is redirected to the Profile page, a GET request is fired (with the cookie) to retrieve the user's information, then the React app re-renders with the profile data.
-   * Store the user data in React state (perhaps via a context or a global store like Zustand or Redux) so the UI knows the user is authenticated. From here on, you can show the user's info and allow access to protected routes in the SPA.
-   * Any subsequent API calls from the React app to the Rust backend (e.g., to fetch protected data) should include credentials so that the cookie (session or JWT) is sent. The backend can verify the session on each request (e.g., using a middleware or manually decoding the JWT) and authorize the action.
+2. **User Authorizes and Provider Redirects (Provider → Backend):**
+   The OAuth provider prompts the user to sign in and authorize your app. After consent, it redirects the user to the **redirect URI** you specified (e.g., `/auth/github/callback`) with an authorization `code` and the `state` parameter.
+   Your Axum handler for this route should:
+   - Verify the `state` parameter to prevent CSRF.
+   - Exchange the authorization code for tokens using the provider’s token endpoint.
+   - Parse the token response and handle errors if the exchange fails.
 
-5. **Logout Flow**: Implement a logout on both sides. On the frontend, provide a logout button that calls the backend logout endpoint (e.g., `DELETE /auth/logout` or `GET /auth/logout`). The backend should clear the session cookie (set it with an expired date or remove it) and if applicable, invalidate the server-side session or JWT. After a successful logout response, the frontend can redirect the user to a logged-out page or the home page. Also clear any user state in React.
+3. **Fetch User Info & Finalize Login (Backend):**
+   With the access (and possibly ID) token, the backend fetches the user’s profile information from the provider. Then:
+   - **Find or Create the User:**
+     Use the provider’s unique ID (or email) to find an existing user in your database. If the user doesn’t exist, create a new record.
+   - **Generate a Session Token:**
+     Create a session token (typically a JWT) that includes the user’s ID and claims. Sign this token with your secret key.
+   - **Set the Cookie:**
+     Attach the session token in an HTTP-only cookie on the response. In Axum, use the response builder to set a cookie with properties like `HttpOnly`, `Secure`, and appropriate `SameSite` settings.
+   - **Redirect to Frontend:**
+     Redirect the user’s browser back to the frontend (e.g., to `/profile` or the chat interface) using a 302 redirect. If you stored a “post-login redirect path” in the `state` parameter, use it here.
 
-## Structuring the Code in Rust and React
+4. **Frontend Receives Redirect and Session:**
+   Once redirected, the user returns to your React app. The session cookie is automatically sent with requests to the backend.
+   - On the protected route (e.g., a profile or chat page), immediately make a request to an endpoint like `/api/users/me` (with `credentials: 'include'`) to confirm the session and retrieve user data.
+   - Store the returned user data in a React context or global state, so your UI knows the user is authenticated.
+   - Use this state to protect further routes and content.
 
-Finally, how to integrate these changes into your project structure:
+5. **Logout Flow:**
+   Implement a logout endpoint on the backend (e.g., `/auth/logout`) that clears the session cookie (by setting an expired cookie). On the frontend, provide a logout button that calls this endpoint and then updates the client’s state accordingly.
 
-### Rust Backend (Actix-web example):
+---
 
-* **Configuration**: Store OAuth credentials (client IDs, secrets, redirect URIs) in a config file or environment variables. Load them at startup into a struct (e.g., `Config { google_client_id, google_client_secret, github_client_id, ... }`). Also configure your JWT secret and any other constants (token expiry, etc.) in this config.
+## Structuring the Code in Rust (Axum) and React
 
-* **OAuth Routes**: Implement route handlers for each provider's login and callback. For example, `GET /api/oauth/google/login` and `GET /api/oauth/google/callback`. In Actix-web, you might organize these in a module (e.g., `auth_handlers.rs`). Use Actix's `web::scope` to group them under a common path like `/api/oauth` for clarity. The login handler will create the `authorize_url` using the `oauth2` crate or manually, then redirect. The callback handler will do the code exchange, user lookup/creation, token generation, and set the cookie + redirect. Keep these handlers concise by delegating to helper functions or an auth service module where appropriate.
+**Rust Backend (Axum):**
 
-* **State Management**: Use Actix's application state (`web::Data<AppState>`) to share things like database connection or an in-memory store and your config (including OAuth credentials) with the handlers. This `AppState` can also hold an instance of the OAuth client if using a library (to avoid recreating clients on each request).
+- **Configuration:**
+  - Store OAuth credentials (client IDs, secrets, redirect URIs) in configuration files or environment variables.
+  - Load these at startup into a configuration struct (e.g., `Config { google_client_id, google_client_secret, github_client_id, ... }`).
+  - Also configure your JWT secret and token expiry settings here.
 
-* **Session Verification Middleware**: Protect subsequent requests by verifying the session token. For example, if using JWT in a cookie, implement an Actix middleware or use an extractor that reads the cookie, decodes and verifies the JWT (using your secret), and stores the user ID in the request context. CodevoWeb's example uses an `AuthenticationGuard` to ensure the user is logged in for protected routes. Register this middleware on routes that require auth (e.g., `/api/users/me`). If using `actix-session`, the middleware is provided by the crate, but you'd still ensure the user's identity is present in the session.
+- **OAuth Routes:**
+  - Implement route handlers for each provider’s login and callback in Axum. For example, `GET /auth/github/login` and `GET /auth/github/callback`.
+  - Organize these handlers in a dedicated module (e.g., `auth_handlers.rs`).
+  - Use Axum’s router to group these endpoints, for example:
+    ```rust
+    let app = Router::new()
+      .nest("/auth", auth_routes)
+      .route("/api/users/me", get_me_handler);
+    ```
+  - In the login handler, generate the authorization URL (using the `oauth2` crate or your own implementation) and issue a redirect.
+  - In the callback handler, exchange the code for tokens, look up or create the user, generate a session token, set the cookie, and finally redirect the user back to the frontend.
 
-* **Database Integration**: Have a user model and database setup to store user info. The callback handler will query or insert into this DB. In development or small projects, an in-memory store can be used (as CodevoWeb did for simplicity), but in a real app use a persistent DB.
+- **State Management:**
+  - Use Axum’s shared state (via `axum::extract::Extension`) to pass around your configuration, database connection pool, or OAuth client instances.
 
-* **Testing**: Test the flow locally by running the Rust server and the React dev server. Use a browser to click the OAuth buttons and observe the redirects, or use tools like Postman to simulate parts of it. Ensure that after a login, the cookie is set and the `/users/me` endpoint returns the correct user data when the cookie is present.
+- **Session Verification Middleware:**
+  - Implement middleware (or use an extractor) to verify the session token (e.g., decode the JWT from the cookie) on protected routes.
+  - This middleware should validate the token’s signature and expiration, and then attach the user’s identity to the request context.
 
-### React Frontend (Vite + React):
+- **Database Integration:**
+  - Set up your user model and database interactions (using an ORM like Diesel or SQLx) to store and manage user information.
 
-* **Environment Config**: Store the base URL of your backend API and the OAuth client IDs if needed in environment variables (e.g., `.env` files) for the React app. For example, `VITE_API_URL=http://localhost:8000` and perhaps `VITE_GOOGLE_CLIENT_ID` if constructing the Google URL on the client. Make sure to prefix with `VITE_` so Vite exposes them. Never expose client secrets to the frontend – those remain on the server.
+- **Testing:**
+  - Test the OAuth flow locally by running your Axum server and React dev server, and simulate OAuth logins using test credentials.
 
-* **Auth Context/State**: Create a context or store for authentication state. This can hold the current user object and a loading/error state. On app startup or on certain route loads, you might call the backend (`/users/me`) to check if the user is already authenticated (cookie might still be there from a previous session). If the response is 200 with user data, update the state to logged-in. If 401, ensure state reflects logged-out.
+---
 
-* **Login Buttons**: Implement a login component/page with options for each provider. For example, a "Login with Google" button that triggers `window.location.href = API_URL + "/api/oauth/google/login"` (if using backend to redirect) or constructs the Google OAuth URL. Similarly for GitHub. If using a backend redirect endpoint, the backend will handle the next steps; if directly going to provider, ensure the redirect URI is set to your backend callback.
+**React Frontend (Vite + React):**
 
-* **Handling Post-Login Redirect**: If you expect the user to be returned to a specific route (like `/profile` or `/dashboard`) after login, set up a React route for that. For instance, have a `<Profile>` component at `/profile` that will fetch the user's profile data from the backend on mount. As noted, the React app should include credentials in the fetch so that the cookie is sent. In fetch: `fetch("/api/users/me", { credentials: 'include' })`. Make sure your fetch base URL points to your backend (e.g., use the environment variable). Once the data comes back, populate your auth context with the user info and render the protected content. If the backend instead redirects to a generic route (like `/` with some state), you could also have a special component that detects a successful login (maybe by parsing the URL or by immediately calling `/me`).
+- **Environment Config:**
+  - Store the base URL of your backend API and any public OAuth configuration (like client IDs) in environment variables (e.g., `.env` files with `VITE_API_URL`).
 
-* **Protected Routes**: Set up React Router to guard routes that need auth. For example, if using a context, create a component that checks `isAuthenticated` and either renders the child component or redirects to login. In our case, since the OAuth flow is redirect-based, you might not need a heavy guard – the user will either have a session (cookie) or not. You can optimistically load the page and handle 401 failures by redirecting. After login, the user is anyway navigated to the protected page by the backend.
+- **Auth Context/State:**
+  - Create a context or state management solution (using React Context, Zustand, or Redux) to manage authentication status and user data.
+  - On app startup or on protected route load, call the backend (e.g., `/api/users/me`) to verify if the user is authenticated by sending credentials (with `fetch` or Axios configured with `credentials: 'include'`).
 
-* **Logout Button**: On clicking logout in React, call `fetch("/api/auth/logout", { method: "GET", credentials: 'include' })` (or whatever the endpoint is) to clear the session. When the promise resolves, also clear the user from your React state and navigate to a public route. The backend will have cleared the cookie, so further `/me` requests will return unauthorized until the user logs in again.
+- **Login Buttons:**
+  - In your login component, implement buttons for each OAuth provider. For example:
+    ```jsx
+    import { Github } from "lucide-react";
+    import { Button } from "@/components/ui/button";
 
-By following these practices – using a robust OAuth library or carefully implementing the flow, securing the session token, protecting against CSRF, and coordinating redirects – you can build a secure OAuth login in your Rust/React application. This structure (Rust backend handling multi-provider OAuth, React frontend for UI and state) will scale to additional providers easily and keeps sensitive logic on the server. With the above setup, logging in via Google or GitHub becomes a smooth process where the backend handles the heavy lifting (secure token exchange, user session) and the frontend handles user interaction and state updates to reflect the authenticated status.
+    function LoginScreen() {
+      const handleGitHubLogin = () => {
+        window.location.href = `${import.meta.env.VITE_API_URL}/auth/github/login`;
+      };
 
-## Sources:
-* OAuth2 crate capabilities and usage with common providers
-* Codevoweb Rust & React OAuth2 example (Google) – explaining OAuth flow, token exchange, JWT cookie, and redirect to frontend
-* Demo project for Rust Actix OAuth with multiple providers – showing multi-provider support and JWT token management
-* Actix-web cookie example for JWT session (HttpOnly cookie with max-age)
-* Discussion of SameSite and Secure cookie requirements for cross-site usage
-* Codevoweb tutorial (no third-party crate) illustrating manual OAuth token exchange and user info retrieval
+      return (
+        <div className="fixed inset-0 dark bg-black flex items-center justify-center">
+          <Card className="-mt-12 w-full max-w-sm mx-4">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl text-white">OpenAgents Chat</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button className="w-full" size="lg" onClick={handleGitHubLogin}>
+                <Github />
+                Log in with GitHub
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+    ```
+  - The backend login endpoint handles the redirect to GitHub (or another provider).
+
+- **Handling Post-Login Redirect:**
+  - Once the user is redirected back to the frontend, the session cookie is sent along with requests.
+  - Immediately fetch the authenticated user’s data and update your auth context.
+
+- **Protected Routes:**
+  - Use React Router to guard routes that require authentication. For example, create a component that checks for authentication and either renders the protected component or redirects to the login page.
+
+- **Logout Button:**
+  - Provide a logout button that calls the backend logout endpoint, clears the auth context, and navigates the user back to the login page.
+
+---
+
+By following these practices – using a robust OAuth library (or carefully implementing the flow), securing session tokens, protecting against CSRF, and coordinating redirects – you can build a secure OAuth login in your Axum/React application. This structure (with the Rust backend handling multi-provider OAuth and session management, and the React frontend managing user interaction and state) scales well to additional providers and keeps sensitive logic on the server.
+
+---
+
+**Sources & References:**
+
+- **OAuth2 Crate:** [https://crates.io/crates/oauth2](https://crates.io/crates/oauth2)
+- **JSON Web Tokens:** [`jsonwebtoken` crate](https://crates.io/crates/jsonwebtoken)
+- **Axum Documentation:** [https://docs.rs/axum](https://docs.rs/axum)
+- **Session Management in Axum:** [`axum-extra`](https://crates.io/crates/axum-extra)
+- **General OAuth2 Best Practices:** Refer to the OAuth2 RFC 6749 and community guides for secure implementation details.
