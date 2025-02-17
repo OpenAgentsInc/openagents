@@ -1,9 +1,6 @@
 use super::services::{
     deepseek::DeepSeekService,
-    github_auth::{GitHubAuthService, GitHubConfig},
-    github_issue::GitHubService,
-    openrouter::OpenRouterService,
-    solver::SolverService,
+    oauth::{OAuthConfig, OAuthState},
 };
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
@@ -19,33 +16,32 @@ use tower_http::services::ServeDir;
 #[derive(Clone)]
 pub struct AppState {
     pub ws_state: Arc<WebSocketState>,
-    pub auth_state: Arc<server::handlers::auth::AuthState>,
-    pub github_auth: Arc<GitHubAuthService>,
+    pub oauth_state: Arc<OAuthState>,
     pub pool: PgPool,
 }
 
 #[derive(Clone)]
 pub struct AppConfig {
-    pub oidc_auth_url: String,
-    pub oidc_token_url: String,
-    pub oidc_client_id: String,
-    pub oidc_client_secret: String,
-    pub oidc_redirect_uri: String,
-    pub database_url: String,
+    pub scramble_auth_url: String,
+    pub scramble_token_url: String,
+    pub scramble_client_id: String,
+    pub scramble_client_secret: String,
+    pub scramble_redirect_uri: String,
     pub github_client_id: String,
     pub github_client_secret: String,
     pub github_redirect_uri: String,
+    pub database_url: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            oidc_auth_url: env::var("OIDC_AUTH_URL").expect("OIDC_AUTH_URL must be set"),
-            oidc_token_url: env::var("OIDC_TOKEN_URL").expect("OIDC_TOKEN_URL must be set"),
-            oidc_client_id: env::var("OIDC_CLIENT_ID").expect("OIDC_CLIENT_ID must be set"),
-            oidc_client_secret: env::var("OIDC_CLIENT_SECRET")
-                .expect("OIDC_CLIENT_SECRET must be set"),
-            oidc_redirect_uri: env::var("OIDC_REDIRECT_URI")
+            scramble_auth_url: env::var("SCRAMBLE_AUTH_URL").expect("SCRAMBLE_AUTH_URL must be set"),
+            scramble_token_url: env::var("SCRAMBLE_TOKEN_URL").expect("SCRAMBLE_TOKEN_URL must be set"),
+            scramble_client_id: env::var("SCRAMBLE_CLIENT_ID").expect("SCRAMBLE_CLIENT_ID must be set"),
+            scramble_client_secret: env::var("SCRAMBLE_CLIENT_SECRET")
+                .expect("SCRAMBLE_CLIENT_SECRET must be set"),
+            scramble_redirect_uri: env::var("SCRAMBLE_REDIRECT_URI")
                 .unwrap_or_else(|_| "http://localhost:8000/auth/callback".to_string()),
             database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
             github_client_id: env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID must be set"),
@@ -71,13 +67,6 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set"),
     );
 
-    let github_service = Arc::new(
-        GitHubService::new(Some(
-            env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
-        ))
-        .expect("Failed to create GitHub service"),
-    );
-
     let solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
 
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
@@ -96,7 +85,6 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     let ws_state = Arc::new(WebSocketState::new(
         tool_model,
         chat_model,
-        github_service.clone(),
         solver_service.clone(),
         tools,
     ));
@@ -104,34 +92,33 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     // Use provided config or default
     let config = config.unwrap_or_default();
 
-    // Create auth state with OIDC config
-    let oidc_config = server::services::auth::OIDCConfig::new(
-        config.oidc_client_id,
-        config.oidc_client_secret,
-        config.oidc_redirect_uri,
-        config.oidc_auth_url,
-        config.oidc_token_url,
-    )
-    .expect("Failed to create OIDC config");
-
-    let auth_state = Arc::new(server::handlers::auth::AuthState::new(
-        oidc_config,
-        pool.clone(),
-    ));
-
-    // Create GitHub auth service
-    let github_config = GitHubConfig {
+    // Create OAuth configs
+    let github_config = OAuthConfig {
         client_id: config.github_client_id,
         client_secret: config.github_client_secret,
         redirect_uri: config.github_redirect_uri,
+        auth_url: "https://github.com/login/oauth/authorize".to_string(),
+        token_url: "https://github.com/login/oauth/access_token".to_string(),
     };
-    let github_auth = Arc::new(GitHubAuthService::new(pool.clone(), github_config));
+
+    let scramble_config = OAuthConfig {
+        client_id: config.scramble_client_id,
+        client_secret: config.scramble_client_secret,
+        redirect_uri: config.scramble_redirect_uri,
+        auth_url: config.scramble_auth_url,
+        token_url: config.scramble_token_url,
+    };
+
+    // Create OAuth state
+    let oauth_state = Arc::new(
+        OAuthState::new(pool.clone(), github_config, scramble_config)
+            .expect("Failed to create OAuth state"),
+    );
 
     // Create shared app state
     let app_state = AppState {
         ws_state,
-        auth_state,
-        github_auth,
+        oauth_state,
         pool: pool.clone(),
     };
 
@@ -150,26 +137,30 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         // Auth pages
         .route("/login", get(server::handlers::login_page))
         .route("/signup", get(server::handlers::signup_page))
-        // Auth routes
-        .route("/auth/login", post(server::handlers::handle_login))
-        .route("/auth/signup", post(server::handlers::handle_signup))
-        .route("/auth/callback", get(server::handlers::callback))
-        .route(
-            "/auth/logout",
-            get(server::handlers::auth::clear_session_and_redirect),
-        )
-        // GitHub auth routes
-        .route(
-            "/auth/github",
-            get(server::handlers::auth::github_login_page),
-        )
+        // OAuth routes
         .route(
             "/auth/github/login",
-            get(server::handlers::auth::handle_github_login),
+            get(server::handlers::oauth::github::github_login),
         )
         .route(
             "/auth/github/callback",
-            get(server::handlers::auth::handle_github_callback),
+            get(server::handlers::oauth::github::github_callback),
+        )
+        .route(
+            "/auth/scramble/login",
+            get(server::handlers::oauth::scramble::scramble_login),
+        )
+        .route(
+            "/auth/scramble/signup",
+            get(server::handlers::oauth::scramble::scramble_signup),
+        )
+        .route(
+            "/auth/scramble/callback",
+            get(server::handlers::oauth::scramble::scramble_callback),
+        )
+        .route(
+            "/auth/logout",
+            get(server::handlers::auth::clear_session_and_redirect),
         )
         // Hyperview routes
         .merge(server::hyperview::hyperview_routes())
