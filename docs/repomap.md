@@ -1066,12 +1066,6 @@ templates/admin/login.html:
 │#id: bg
 │#id: error-message
 
-templates/auth/login.html:
-│#id: email
-
-templates/auth/signup.html:
-│#id: email
-
 templates/components/auth/auth_scripts.html:
 │const errorDiv
 │const errorMessage
@@ -1206,38 +1200,6 @@ templates/layouts/content.html:
 
 templates/macros/ui.html:
 │class 
-
-templates/pages/auth/callback.xml:
-│#id: container
-│#id: loading
-│#id: error
-│#id: loading-text
-│#id: error-message
-│#id: callback-response
-
-templates/pages/auth/error.xml:
-│#id: container
-│#id: title
-│#id: error
-│#id: button
-│#id: buttonText
-
-templates/pages/auth/loading.xml:
-│#id: container
-│#id: title
-│#id: message
-│#id: spinner
-
-templates/pages/auth/login.xml:
-│#id: container
-│#id: title
-│#id: button
-│#id: buttonText
-│#id: error
-│#id: loading
-│#id: loading-text
-│#id: login-button
-│#id: error-message
 
 templates/pages/company.html:
 │class of
