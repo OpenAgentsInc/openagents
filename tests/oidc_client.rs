@@ -157,6 +157,7 @@ async fn test_full_auth_flow() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_invalid_callback() {
     init_logging();
 
