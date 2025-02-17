@@ -83,6 +83,7 @@ pub async fn scramble_signup(
         form_data.email
     );
 
+    // Generate the authorization URL
     let (url, csrf_token, _pkce_verifier) = state
         .scramble_oauth
         .authorization_url_for_signup(&form_data.email);
@@ -94,10 +95,11 @@ pub async fn scramble_signup(
     );
 
     // Add signup-specific state to help identify this flow in the callback
-    let url = format!("{}&signup=true", url);
-    info!("Final signup URL with state: {}", url);
+    let final_url = format!("{}&signup=true", url);
+    info!("Final signup URL with state: {}", final_url);
 
-    axum::response::Redirect::temporary(&url).into_response()
+    // Redirect to the Scramble auth URL
+    axum::response::Redirect::temporary(&final_url).into_response()
 }
 
 #[derive(Debug, Deserialize)]
