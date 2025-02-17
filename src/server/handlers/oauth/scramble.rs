@@ -1,7 +1,4 @@
-use crate::server::{
-    config::AppState,
-    handlers::auth::session::create_session_and_redirect,
-};
+use crate::server::{config::AppState, handlers::oauth::session::create_session_and_redirect};
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Response},
@@ -61,7 +58,8 @@ pub async fn scramble_callback(
 
     if let Some(error) = params.error {
         info!("Scramble OAuth error: {}", error);
-        return axum::response::Redirect::temporary(&format!("/login?error={}", error)).into_response();
+        return axum::response::Redirect::temporary(&format!("/login?error={}", error))
+            .into_response();
     }
 
     let is_signup = params

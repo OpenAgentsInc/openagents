@@ -1,12 +1,6 @@
-use oauth2::{
-    basic::{BasicClient, BasicTokenType},
-    AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl,
-};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use thiserror::Error;
-use tracing::{error, info};
+use tracing::error;
 
 pub mod github;
 pub mod scramble;

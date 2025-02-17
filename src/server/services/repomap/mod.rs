@@ -1,18 +1,16 @@
 use crate::repo::{cleanup_temp_dir, clone_repository};
 use crate::repomap::generate_repo_map;
 use anyhow::Result;
+use serde_json::Value;
 use sqlx::PgPool;
 use std::path::PathBuf;
-use tracing::{info, warn};
 use std::sync::Arc;
-use serde_json::Value;
 use tokio::sync::RwLock;
 
 mod cache;
 use cache::{RepoMapCache, RepomapCacheEntry};
 
 pub struct RepomapService {
-    pool: PgPool,
     cache: Arc<RwLock<RepoMapCache>>,
     temp_dir: PathBuf,
     github_token: Option<String>,
@@ -22,7 +20,6 @@ impl RepomapService {
     pub fn new(pool: PgPool, temp_dir: PathBuf, github_token: Option<String>) -> Self {
         Self {
             cache: Arc::new(RwLock::new(RepoMapCache::new(pool.clone()))),
-            pool,
             temp_dir,
             github_token,
         }
@@ -67,12 +64,7 @@ impl RepomapService {
         Ok(())
     }
 
-    pub async fn delete_map(
-        &self,
-        repo_name: &str,
-        branch: &str,
-        commit_sha: &str,
-    ) -> Result<()> {
+    pub async fn delete_map(&self, repo_name: &str, branch: &str, commit_sha: &str) -> Result<()> {
         let cache = self.cache.write().await;
         cache.delete(repo_name, branch, commit_sha).await?;
         Ok(())

@@ -1,13 +1,10 @@
 use super::{OAuthConfig, OAuthError, OAuthService};
-use crate::server::models::user::User;
-use oauth2::{basic::BasicTokenType, TokenResponse};
+use crate::server::models::{timestamp::DateTimeWrapper, user::User};
+use oauth2::TokenResponse;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{types::JsonValue, PgPool};
 use tracing::{error, info};
-
-const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
-const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GitHubUser {
@@ -15,6 +12,7 @@ pub struct GitHubUser {
     login: String,
     name: Option<String>,
     email: Option<String>,
+    avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -96,44 +94,47 @@ impl GitHubOAuth {
         })
     }
 
-    async fn get_or_create_user(
+    pub async fn get_or_create_user(
         &self,
         github_user: GitHubUser,
         access_token: &str,
     ) -> Result<User, OAuthError> {
         info!("Getting or creating user for GitHub ID: {}", github_user.id);
 
-        // Store tokens and user info in metadata
         let metadata = serde_json::json!({
-            "github": {
-                "login": github_user.login,
-                "name": github_user.name,
-                "email": github_user.email
-            }
+            "name": github_user.name,
+            "login": github_user.login,
+            "avatar_url": github_user.avatar_url,
         });
 
-        let user = sqlx::query_as!(
-            User,
+        let row = sqlx::query!(
             r#"
             INSERT INTO users (github_id, github_token, metadata)
             VALUES ($1, $2, $3)
-            ON CONFLICT (github_id) DO UPDATE
-            SET github_token = $2,
-                metadata = $3,
+            ON CONFLICT (github_id)
+            DO UPDATE SET
+                github_token = EXCLUDED.github_token,
+                metadata = EXCLUDED.metadata,
                 last_login_at = NOW()
-            RETURNING *
+            RETURNING id, scramble_id, github_id, github_token, metadata, created_at, last_login_at, pseudonym
             "#,
             github_user.id,
             access_token,
-            metadata as _
+            metadata as JsonValue
         )
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| {
-            error!("Database error during user creation: {}", e);
-            OAuthError::DatabaseError(e.to_string())
-        })?;
+        .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        Ok(user)
+        Ok(User::new(
+            row.id,
+            row.scramble_id,
+            row.github_id,
+            row.github_token,
+            row.metadata.expect("metadata should never be null"),
+            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+            row.last_login_at.map(DateTimeWrapper),
+            row.pseudonym,
+        ))
     }
 }

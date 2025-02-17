@@ -11,7 +11,6 @@ pub struct Timestamp(OffsetDateTime);
 
 pub trait TimestampExt {
     fn to_timestamp(self) -> Option<Timestamp>;
-    fn from_timestamp(ts: Option<Timestamp>) -> Self;
 }
 
 impl Timestamp {
@@ -46,19 +45,9 @@ impl From<Timestamp> for DateTime<Utc> {
     }
 }
 
-impl From<Option<DateTime<Utc>>> for Option<Timestamp> {
-    fn from(opt: Option<DateTime<Utc>>) -> Self {
-        opt.map(Into::into)
-    }
-}
-
 impl TimestampExt for Option<DateTime<Utc>> {
     fn to_timestamp(self) -> Option<Timestamp> {
         self.map(Into::into)
-    }
-
-    fn from_timestamp(ts: Option<Timestamp>) -> Self {
-        ts.map(Into::into)
     }
 }
 
@@ -79,5 +68,20 @@ impl<'r> Decode<'r, Postgres> for Timestamp {
         value: <Postgres as sqlx::database::HasValueRef<'r>>::ValueRef,
     ) -> Result<Self, sqlx::error::BoxDynError> {
         Ok(Self(OffsetDateTime::decode(value)?))
+    }
+}
+
+#[derive(Debug)]
+pub struct DateTimeWrapper(pub DateTime<Utc>);
+
+impl From<DateTimeWrapper> for Timestamp {
+    fn from(wrapper: DateTimeWrapper) -> Self {
+        wrapper.0.into()
+    }
+}
+
+impl TimestampExt for Option<DateTimeWrapper> {
+    fn to_timestamp(self) -> Option<Timestamp> {
+        self.map(Into::into)
     }
 }

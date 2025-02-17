@@ -1,6 +1,9 @@
 use super::services::{
-    deepseek::DeepSeekService, github_issue::GitHubService, openrouter::OpenRouterService,
-    solver::SolverService, oauth::{github::GitHubOAuth, scramble::ScrambleOAuth, OAuthConfig},
+    deepseek::DeepSeekService,
+    github_issue::GitHubService,
+    oauth::{github::GitHubOAuth, scramble::ScrambleOAuth, OAuthConfig},
+    openrouter::OpenRouterService,
+    solver::SolverService,
 };
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
@@ -172,25 +175,35 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
 
 pub fn app_router(state: AppState) -> Router<AppState> {
     Router::new()
-        .route("/auth/login", get(server::handlers::auth::login::login_page))
-        .route("/auth/signup", get(server::handlers::auth::signup::signup_page))
         .route(
             "/auth/logout",
-            get(server::handlers::auth::session::clear_session_and_redirect),
+            get(server::handlers::oauth::session::clear_session_and_redirect),
         )
         .nest(
             "/auth/github",
             Router::new()
                 .route("/login", get(server::handlers::oauth::github::github_login))
-                .route("/callback", get(server::handlers::oauth::github::github_callback))
+                .route(
+                    "/callback",
+                    get(server::handlers::oauth::github::github_callback),
+                )
                 .with_state(state.clone()),
         )
         .nest(
             "/auth/scramble",
             Router::new()
-                .route("/login", get(server::handlers::oauth::scramble::scramble_login))
-                .route("/signup", get(server::handlers::oauth::scramble::scramble_signup))
-                .route("/callback", get(server::handlers::oauth::scramble::scramble_callback))
+                .route(
+                    "/login",
+                    get(server::handlers::oauth::scramble::scramble_login),
+                )
+                .route(
+                    "/signup",
+                    get(server::handlers::oauth::scramble::scramble_signup),
+                )
+                .route(
+                    "/callback",
+                    get(server::handlers::oauth::scramble::scramble_callback),
+                )
                 .with_state(state.clone()),
         )
         .with_state(state)

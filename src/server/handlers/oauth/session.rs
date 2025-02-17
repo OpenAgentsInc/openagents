@@ -48,7 +48,7 @@ pub async fn clear_session_and_redirect() -> Response {
     response
 }
 
-pub fn create_session_cookie(session_id: &str, expiry: OffsetDateTime) -> Cookie<'static> {
+fn create_session_cookie(session_id: &str, expiry: OffsetDateTime) -> Cookie<'static> {
     let mut cookie = Cookie::new(SESSION_COOKIE_NAME, session_id.to_string());
     cookie.set_path("/");
     cookie.set_secure(true);
@@ -58,7 +58,7 @@ pub fn create_session_cookie(session_id: &str, expiry: OffsetDateTime) -> Cookie
     cookie
 }
 
-pub fn clear_session_cookie() -> Cookie<'static> {
+fn clear_session_cookie() -> Cookie<'static> {
     let mut cookie = Cookie::new(SESSION_COOKIE_NAME, "");
     cookie.set_path("/");
     cookie.set_secure(true);

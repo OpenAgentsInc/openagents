@@ -6,13 +6,11 @@ use crate::server::services::openrouter::types::{
 use anyhow::{anyhow, Result};
 use futures::future;
 use futures::StreamExt;
-use reqwest::{Client, ClientBuilder, Response};
+use reqwest::{Client, ClientBuilder};
 use serde_json::{json, Value};
 use std::{pin::Pin, time::Duration};
 use tokio_stream::Stream;
 use tracing::{debug, error, info, warn};
-use serde::{Deserialize, Serialize};
-use bytes::Bytes;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_RETRIES: u32 = 2;

@@ -1,10 +1,6 @@
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
-use bytes::Bytes;
-use reqwest::Response;
-use tokio_stream::Stream;
-use serde::Deserialize;
 
 use crate::server::services::deepseek::streaming::{StreamResponse, StreamUpdate};
 use crate::server::services::deepseek::types::{ChatMessage, ChatRequest};
@@ -186,11 +182,4 @@ impl DeepSeekService {
 
         rx
     }
-}
-
-async fn handle_stream(response: Response) -> impl Stream<Item = Result<Bytes, anyhow::Error>> {
-    let stream = response.bytes_stream();
-    tokio_stream::StreamExt::map(stream, |chunk| {
-        chunk.map_err(anyhow::Error::from)
-    })
 }

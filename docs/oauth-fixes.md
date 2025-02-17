@@ -348,6 +348,32 @@ Major issues identified:
    - Added service initialization
    - Improved error handling
 
+### [Fix Group 16] - Timestamp and Metadata Handling
+
+1. Fixed timestamp handling:
+   - Added custom `Timestamp` type with proper PostgreSQL integration
+   - Implemented `TimestampExt` trait for optional timestamp conversions
+   - Fixed `last_login_at` field conversion using `to_timestamp()`
+   - Ensured proper handling of `created_at` timestamps
+
+2. Fixed metadata handling:
+   - Updated metadata field to use `JsonValue` type consistently
+   - Added proper null checks with `expect()` messages
+   - Fixed metadata type mismatches in OAuth providers
+   - Improved error handling for metadata operations
+
+3. Fixed User model:
+   - Added `pseudonym` field support
+   - Updated SQL queries to include pseudonym
+   - Added proper type conversions for all fields
+   - Improved error handling for user operations
+
+4. Fixed database operations:
+   - Updated all SQL queries to handle nullable fields correctly
+   - Added proper error handling for database operations
+   - Fixed type conversions for database operations
+   - Added migration for pseudonym field
+
 ## Current Status
 
 All major issues have been resolved:
@@ -357,12 +383,16 @@ All major issues have been resolved:
 - ✅ Router and handler state issues resolved
 - ✅ Template and response issues fixed
 - ✅ Time formatting issues resolved
+- ✅ Timestamp handling standardized
+- ✅ Metadata handling improved
+- ✅ User model updated with pseudonym support
 
 Next steps:
-1. Add comprehensive tests for OAuth flows
-2. Improve error messages and user experience
-3. Add logging for better debugging
-4. Consider adding rate limiting
+1. Clean up unused imports
+2. Add comprehensive tests for OAuth flows
+3. Improve error messages and user experience
+4. Add logging for better debugging
+5. Consider adding rate limiting
 
 1. Fix remaining state type mismatches
 2. Fix response type conversions in handlers

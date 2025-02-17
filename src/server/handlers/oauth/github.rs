@@ -1,7 +1,4 @@
-use crate::server::{
-    config::AppState,
-    handlers::auth::session::create_session_and_redirect,
-};
+use crate::server::{config::AppState, handlers::oauth::session::create_session_and_redirect};
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Response},
@@ -11,7 +8,7 @@ use tracing::info;
 
 #[derive(Debug, Deserialize)]
 pub struct LoginParams {
-    platform: Option<String>,
+    // Platform is handled via state parameter in the OAuth flow
 }
 
 pub async fn github_login(
@@ -20,8 +17,7 @@ pub async fn github_login(
 ) -> Response {
     info!("Handling GitHub login request");
 
-    let (url, _csrf_token, _pkce_verifier) =
-        state.github_oauth.authorization_url_for_login(""); // Email not used for GitHub
+    let (url, _csrf_token, _pkce_verifier) = state.github_oauth.authorization_url_for_login(""); // Email not used for GitHub
 
     axum::response::Redirect::temporary(&url).into_response()
 }
@@ -41,7 +37,8 @@ pub async fn github_callback(
 
     if let Some(error) = params.error {
         info!("GitHub OAuth error: {}", error);
-        return axum::response::Redirect::temporary(&format!("/login?error={}", error)).into_response();
+        return axum::response::Redirect::temporary(&format!("/login?error={}", error))
+            .into_response();
     }
 
     let is_mobile = params

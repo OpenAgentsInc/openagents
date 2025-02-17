@@ -2,11 +2,15 @@ use axum::http::StatusCode;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use sqlx::types::JsonValue;
 use sqlx::Error as SqlxError;
 use sqlx::PgPool;
 use tracing::{error, info};
 
-use crate::server::models::user::User;
+use crate::server::models::{
+    timestamp::DateTimeWrapper,
+    user::{CreateUser, User},
+};
 
 #[derive(Debug, Clone)]
 pub struct OIDCService {
@@ -145,11 +149,10 @@ impl OIDCService {
             "Attempting to get or create user with pseudonym: {}",
             pseudonym
         );
-        let user = sqlx::query_as!(
-            User,
+        let user = sqlx::query!(
             r#"
             SELECT id, scramble_id, github_id, github_token, metadata,
-                   last_login_at, created_at, updated_at
+                   created_at, last_login_at, pseudonym
             FROM users
             WHERE scramble_id = $1
             "#,
@@ -161,14 +164,13 @@ impl OIDCService {
         if let Some(_user) = user {
             info!("User already exists with pseudonym: {}", pseudonym);
             // Update last_login_at and return as UserAlreadyExists error
-            let updated_user = sqlx::query_as!(
-                User,
+            let updated_user = sqlx::query!(
                 r#"
                 UPDATE users
                 SET last_login_at = NOW()
                 WHERE scramble_id = $1
                 RETURNING id, scramble_id, github_id, github_token, metadata,
-                          last_login_at, created_at, updated_at
+                          created_at, last_login_at, pseudonym
                 "#,
                 pseudonym
             )
@@ -176,27 +178,50 @@ impl OIDCService {
             .await?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Ok(updated_user);
+            return Ok(User::new(
+                updated_user.id,
+                updated_user.scramble_id,
+                updated_user.github_id,
+                updated_user.github_token,
+                updated_user
+                    .metadata
+                    .expect("metadata should never be null"),
+                DateTimeWrapper(
+                    updated_user
+                        .created_at
+                        .expect("created_at should never be null"),
+                ),
+                updated_user.last_login_at.map(DateTimeWrapper),
+                updated_user.pseudonym,
+            ));
         }
 
         // Create new user
         info!("Creating new user with pseudonym: {}", pseudonym);
-        let user = sqlx::query_as!(
-            User,
+        let user = sqlx::query!(
             r#"
-            INSERT INTO users (scramble_id, metadata, github_id, github_token)
-            VALUES ($1, $2, NULL, NULL)
+            INSERT INTO users (scramble_id, metadata, github_id, github_token, pseudonym)
+            VALUES ($1, $2, NULL, NULL, $1)
             RETURNING id, scramble_id, github_id, github_token, metadata,
-                      last_login_at, created_at, updated_at
+                      created_at, last_login_at, pseudonym
             "#,
             pseudonym,
-            serde_json::json!({}) as _
+            serde_json::json!({}) as JsonValue
         )
         .fetch_one(&self.pool)
         .await?;
 
         info!("Successfully created new user: {:?}", user);
-        Ok(user)
+        Ok(User::new(
+            user.id,
+            user.scramble_id,
+            user.github_id,
+            user.github_token,
+            user.metadata.expect("metadata should never be null"),
+            DateTimeWrapper(user.created_at.expect("created_at should never be null")),
+            user.last_login_at.map(DateTimeWrapper),
+            user.pseudonym,
+        ))
     }
 
     pub async fn signup(&self, code: String) -> Result<User, AuthError> {
@@ -212,11 +237,10 @@ impl OIDCService {
 
         // Check if user already exists
         info!("Checking if user exists with pseudonym: {}", pseudonym);
-        let existing_user = sqlx::query_as!(
-            User,
+        let existing_user = sqlx::query!(
             r#"
             SELECT id, scramble_id, github_id, github_token, metadata,
-                   last_login_at, created_at, updated_at
+                   created_at, last_login_at, pseudonym
             FROM users
             WHERE scramble_id = $1
             "#,
@@ -228,14 +252,13 @@ impl OIDCService {
         if let Some(_user) = existing_user {
             info!("User already exists with pseudonym: {}", pseudonym);
             // Update last_login_at and return as UserAlreadyExists error
-            let updated_user = sqlx::query_as!(
-                User,
+            let updated_user = sqlx::query!(
                 r#"
                 UPDATE users
                 SET last_login_at = NOW()
                 WHERE scramble_id = $1
                 RETURNING id, scramble_id, github_id, github_token, metadata,
-                          last_login_at, created_at, updated_at
+                          created_at, last_login_at, pseudonym
                 "#,
                 pseudonym
             )
@@ -243,27 +266,50 @@ impl OIDCService {
             .await?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Err(AuthError::UserAlreadyExists(updated_user));
+            return Err(AuthError::UserAlreadyExists(User::new(
+                updated_user.id,
+                updated_user.scramble_id,
+                updated_user.github_id,
+                updated_user.github_token,
+                updated_user
+                    .metadata
+                    .expect("metadata should never be null"),
+                DateTimeWrapper(
+                    updated_user
+                        .created_at
+                        .expect("created_at should never be null"),
+                ),
+                updated_user.last_login_at.map(DateTimeWrapper),
+                updated_user.pseudonym,
+            )));
         }
 
         // Create new user
         info!("Creating new user with pseudonym: {}", pseudonym);
-        let user = sqlx::query_as!(
-            User,
+        let user = sqlx::query!(
             r#"
-            INSERT INTO users (scramble_id, metadata, github_id, github_token)
-            VALUES ($1, $2, NULL, NULL)
+            INSERT INTO users (scramble_id, metadata, github_id, github_token, pseudonym)
+            VALUES ($1, $2, NULL, NULL, $1)
             RETURNING id, scramble_id, github_id, github_token, metadata,
-                      last_login_at, created_at, updated_at
+                      created_at, last_login_at, pseudonym
             "#,
             pseudonym,
-            serde_json::json!({}) as _
+            serde_json::json!({}) as JsonValue
         )
         .fetch_one(&self.pool)
         .await?;
 
         info!("Successfully created new user: {:?}", user);
-        Ok(user)
+        Ok(User::new(
+            user.id,
+            user.scramble_id,
+            user.github_id,
+            user.github_token,
+            user.metadata.expect("metadata should never be null"),
+            DateTimeWrapper(user.created_at.expect("created_at should never be null")),
+            user.last_login_at.map(DateTimeWrapper),
+            user.pseudonym,
+        ))
     }
 
     async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
@@ -398,4 +444,129 @@ fn extract_pseudonym(id_token: &str) -> Result<String, AuthError> {
             AuthError::TokenExchangeFailed("No 'sub' claim found in token".to_string())
         })
         .map(String::from)
+}
+
+pub async fn get_user_by_id(pool: &PgPool, id: i32) -> Result<Option<User>, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        SELECT id, scramble_id, github_id, github_token, metadata,
+        created_at, last_login_at, pseudonym
+        FROM users
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| {
+        User::new(
+            row.id,
+            row.scramble_id,
+            row.github_id,
+            row.github_token,
+            row.metadata.expect("metadata should never be null"),
+            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+            row.last_login_at.map(DateTimeWrapper),
+            row.pseudonym,
+        )
+    }))
+}
+
+pub async fn get_user_by_scramble_id(
+    pool: &PgPool,
+    scramble_id: &str,
+) -> Result<Option<User>, sqlx::Error> {
+    let user = sqlx::query!(
+        r#"
+        SELECT id, scramble_id, github_id, github_token, metadata,
+        created_at, last_login_at, pseudonym
+        FROM users
+        WHERE scramble_id = $1
+        "#,
+        scramble_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(user.map(|row| {
+        User::new(
+            row.id,
+            row.scramble_id,
+            row.github_id,
+            row.github_token,
+            row.metadata.expect("metadata should never be null"),
+            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+            row.last_login_at.map(DateTimeWrapper),
+            row.pseudonym,
+        )
+    }))
+}
+
+pub async fn update_user_by_id(
+    pool: &PgPool,
+    id: i32,
+    user: &CreateUser,
+) -> Result<User, sqlx::Error> {
+    let default_metadata = serde_json::json!({});
+    let metadata = user.metadata.as_ref().unwrap_or(&default_metadata);
+
+    let row = sqlx::query!(
+        r#"
+        UPDATE users
+        SET scramble_id = $1, metadata = $2, github_id = $3, github_token = $4
+        WHERE id = $5
+        RETURNING id, scramble_id, github_id, github_token, metadata,
+        created_at, last_login_at, pseudonym
+        "#,
+        user.scramble_id,
+        metadata,
+        user.github_id,
+        user.github_token,
+        id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(User::new(
+        row.id,
+        row.scramble_id,
+        row.github_id,
+        row.github_token,
+        row.metadata.expect("metadata should never be null"),
+        DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+        row.last_login_at.map(DateTimeWrapper),
+        row.pseudonym,
+    ))
+}
+
+pub async fn create_user(pool: &PgPool, user: &CreateUser) -> Result<User, sqlx::Error> {
+    let default_metadata = serde_json::json!({});
+    let metadata = user.metadata.as_ref().unwrap_or(&default_metadata);
+
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO users (scramble_id, metadata, github_id, github_token)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, scramble_id, github_id, github_token, metadata,
+        created_at, last_login_at, pseudonym
+        "#,
+        user.scramble_id,
+        metadata,
+        user.github_id,
+        user.github_token
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(User::new(
+        row.id,
+        row.scramble_id,
+        row.github_id,
+        row.github_token,
+        row.metadata.expect("metadata should never be null"),
+        DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+        row.last_login_at.map(DateTimeWrapper),
+        row.pseudonym,
+    ))
 }

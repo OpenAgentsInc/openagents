@@ -2,7 +2,7 @@ pub mod types;
 
 pub use types::*;
 
-use super::StreamUpdate;
+use crate::server::services::deepseek::StreamUpdate;
 use crate::server::services::{
     gateway::Gateway, github_issue::GitHubService, openrouter::OpenRouterService,
 };

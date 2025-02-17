@@ -1,5 +1,5 @@
 use super::{OAuthConfig, OAuthError, OAuthService};
-use crate::server::models::user::User;
+use crate::server::models::{timestamp::DateTimeWrapper, user::User};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use oauth2::{
@@ -7,9 +7,8 @@ use oauth2::{
     AccessToken, EmptyExtraTokenFields, RefreshToken, Scope, StandardTokenResponse, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{types::JsonValue, PgPool};
 use std::collections::HashMap;
-use std::time::Duration;
 use tracing::{error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,11 +142,10 @@ impl ScrambleOAuth {
         info!("Handling signup for pseudonym: {}", pseudonym);
 
         // Check if user exists
-        let existing_user = sqlx::query_as!(
-            User,
+        let row = sqlx::query!(
             r#"
             SELECT id, scramble_id, github_id, github_token, metadata,
-                   last_login_at, created_at, updated_at
+                   created_at, last_login_at, pseudonym
             FROM users
             WHERE scramble_id = $1
             "#,
@@ -157,41 +155,55 @@ impl ScrambleOAuth {
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        if existing_user.is_some() {
-            return Err(OAuthError::UserCreationError(
-                "User already exists".to_string(),
+        if let Some(row) = row {
+            return Ok(User::new(
+                row.id,
+                row.scramble_id,
+                row.github_id,
+                row.github_token,
+                row.metadata.expect("metadata should never be null"),
+                DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+                row.last_login_at.map(DateTimeWrapper),
+                row.pseudonym,
             ));
         }
 
         // Create new user
-        let user = sqlx::query_as!(
-            User,
+        let row = sqlx::query!(
             r#"
             INSERT INTO users (scramble_id, metadata, github_id, github_token)
             VALUES ($1, $2, NULL, NULL)
-            RETURNING *
+            RETURNING id, scramble_id, github_id, github_token, metadata, created_at, last_login_at, pseudonym
             "#,
             pseudonym,
-            serde_json::json!({}) as _
+            serde_json::json!({}) as JsonValue
         )
         .fetch_one(&self.pool)
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        Ok(user)
+        Ok(User::new(
+            row.id,
+            row.scramble_id,
+            row.github_id,
+            row.github_token,
+            row.metadata.expect("metadata should never be null"),
+            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+            row.last_login_at.map(DateTimeWrapper),
+            row.pseudonym,
+        ))
     }
 
     async fn handle_login(&self, pseudonym: String) -> Result<User, OAuthError> {
         info!("Handling login for pseudonym: {}", pseudonym);
 
         // Get and update existing user
-        let user = sqlx::query_as!(
-            User,
+        let row = sqlx::query!(
             r#"
             UPDATE users
             SET last_login_at = NOW()
             WHERE scramble_id = $1
-            RETURNING *
+            RETURNING id, scramble_id, github_id, github_token, metadata, created_at, last_login_at, pseudonym
             "#,
             pseudonym
         )
@@ -199,7 +211,22 @@ impl ScrambleOAuth {
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        user.ok_or_else(|| OAuthError::AuthenticationFailed("User not found".to_string()))
+        if let Some(row) = row {
+            Ok(User::new(
+                row.id,
+                row.scramble_id,
+                row.github_id,
+                row.github_token,
+                row.metadata.expect("metadata should never be null"),
+                DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+                row.last_login_at.map(DateTimeWrapper),
+                row.pseudonym,
+            ))
+        } else {
+            Err(OAuthError::AuthenticationFailed(
+                "User not found".to_string(),
+            ))
+        }
     }
 
     fn extract_pseudonym(&self, id_token: &str) -> Result<String, OAuthError> {
@@ -235,4 +262,61 @@ impl ScrambleOAuth {
             })
             .map(String::from)
     }
+}
+
+pub async fn get_or_create_user(pool: &PgPool, pseudonym: &str) -> Result<User, OAuthError> {
+    let row = sqlx::query!(
+        r#"
+        SELECT id, scramble_id, github_id, github_token, metadata,
+        created_at, last_login_at, pseudonym
+        FROM users
+        WHERE pseudonym = $1
+        "#,
+        pseudonym
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
+
+    if let Some(row) = row {
+        return Ok(User::new(
+            row.id,
+            row.scramble_id,
+            row.github_id,
+            row.github_token,
+            row.metadata.expect("metadata should never be null"),
+            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+            row.last_login_at.map(DateTimeWrapper),
+            row.pseudonym,
+        ));
+    }
+
+    let metadata = serde_json::json!({
+        "pseudonym": pseudonym,
+    });
+
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO users (pseudonym, metadata)
+        VALUES ($1, $2)
+        RETURNING id, scramble_id, github_id, github_token, metadata,
+        created_at, last_login_at, pseudonym
+        "#,
+        pseudonym,
+        metadata
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
+
+    Ok(User::new(
+        row.id,
+        row.scramble_id,
+        row.github_id,
+        row.github_token,
+        row.metadata.expect("metadata should never be null"),
+        DateTimeWrapper(row.created_at.expect("created_at should never be null")),
+        row.last_login_at.map(DateTimeWrapper),
+        row.pseudonym,
+    ))
 }

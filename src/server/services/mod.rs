@@ -12,9 +12,8 @@ pub mod openrouter;
 pub mod repomap;
 pub mod solver;
 
-pub use auth::AuthService;
 pub use chat_database::ChatDatabaseService;
-pub use deepseek::DeepseekService;
+pub use deepseek::DeepSeekService;
 pub use gateway::{types::GatewayMetadata, Gateway};
 pub use github_issue::{GitHubComment, GitHubIssue, GitHubService, GitHubUser};
 pub use model_router::ModelRouter;

@@ -1,6 +1,5 @@
-use crate::server::models::{
-    chat::{Conversation, CreateConversationRequest, CreateMessageRequest, Message},
-    timestamp::TimestampExt,
+use crate::server::models::chat::{
+    Conversation, CreateConversationRequest, CreateMessageRequest, Message,
 };
 use anyhow::{Context, Result};
 use sqlx::PgPool;

@@ -14,6 +14,7 @@ pub struct RepomapCacheEntry {
 }
 
 impl RepomapCacheEntry {
+    #[allow(dead_code)]
     pub fn new(
         repo_name: String,
         branch: String,
