@@ -101,15 +101,18 @@ impl ScrambleOAuth {
         let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
         info!("Base authorization URL: {}", url);
 
+        // Add signup flag to state before storing
+        let state_with_signup = format!("{}_signup", csrf_token.secret());
+
         self.verifier_store.store_verifier(
-            csrf_token.secret(),
+            &state_with_signup,
             oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
         );
-        info!("Stored PKCE verifier for state: {}", csrf_token.secret());
+        info!("Stored PKCE verifier for state: {}", state_with_signup);
 
         let final_url = format!(
-            "{}&flow=signup&prompt=create&email={}&scope=openid",
-            url, email
+            "{}&state={}&flow=signup&prompt=create&email={}&scope=openid",
+            url, state_with_signup, email
         );
         info!("Final authorization URL: {}", final_url);
 

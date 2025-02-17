@@ -46,7 +46,10 @@ pub async fn scramble_signup(
     params: Option<Query<LoginParams>>,
     form: Option<Form<LoginParams>>,
 ) -> Response {
-    info!("Received signup request with params: {:?}, form: {:?}", params, form);
+    info!(
+        "Received signup request with params: {:?}, form: {:?}",
+        params, form
+    );
 
     // Try to get email from either query params or form data
     let form_data = match (params, form) {
@@ -125,18 +128,14 @@ pub async fn scramble_callback(
             .into_response();
     }
 
-    let is_signup = params
-        .state
-        .as_deref()
-        .map(|s| s.contains("signup"))
-        .unwrap_or(false);
-    info!(
-        "Callback is for {}",
-        if is_signup { "signup" } else { "login" }
-    );
-
     let state_param = params.state.clone().unwrap_or_default();
-    info!("Using state token: {}", state_param);
+    let is_signup = state_param.ends_with("_signup");
+
+    info!(
+        "Callback is for {} with state: {}",
+        if is_signup { "signup" } else { "login" },
+        state_param
+    );
 
     match state
         .scramble_oauth
