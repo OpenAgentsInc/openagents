@@ -1,12 +1,11 @@
-import React, { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowUp, Paperclip, Square, X } from "lucide-react"
+import React, { useEffect, useRef, useState } from "react"
 import { omit } from "remeda"
-
-import { cn } from "@/lib/utils"
-import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea"
 import { Button } from "@/components/ui/button"
 import { FilePreview } from "@/components/ui/file-preview"
+import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea"
+import { cn } from "@/lib/utils"
 
 interface MessageInputBaseProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -32,7 +31,7 @@ type MessageInputProps =
   | MessageInputWithAttachmentsProps
 
 export function MessageInput({
-  placeholder = "Ask AI...",
+  placeholder = "Ask OpenAgents",
   className,
   onKeyDown: onKeyDownProp,
   submitOnEnter = true,
@@ -169,6 +168,7 @@ export function MessageInput({
         ref={textAreaRef}
         onPaste={onPaste}
         onKeyDown={onKeyDown}
+        autoFocus={true}
         className={cn(
           "z-10 w-full grow resize-none rounded-xl border border-input bg-background p-3 pr-24 text-sm ring-offset-background transition-[border] placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
           showFileList && "pb-16",

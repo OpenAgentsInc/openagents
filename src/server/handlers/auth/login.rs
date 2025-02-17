@@ -3,7 +3,6 @@ use askama::Template;
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
-    Extension,
 };
 use serde::Deserialize;
 use tracing::info;
@@ -20,11 +19,13 @@ pub struct LoginRequest {
     email: String,
 }
 
-pub async fn login_page() -> impl IntoResponse {
+pub async fn login_page(
+    State(state): State<AppState>,
+) -> impl AskamaIntoResponse {
     let template = LoginTemplate {
         title: "Login - OpenAgents".to_string(),
     };
-    template.into_response()
+    template
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,7 +40,7 @@ pub async fn handle_login(
     info!("Handling login request for email: {}", request.email);
 
     // Generate Scramble login URL
-    let (url, _csrf_token) = state
+    let (url, _csrf_token, _pkce_verifier) = state
         .oauth_state
         .scramble
         .authorization_url_for_login(&request.email);

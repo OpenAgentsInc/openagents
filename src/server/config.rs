@@ -1,7 +1,13 @@
+use crate::server::{
+    handlers::{
+        auth::{login, signup},
+        oauth::{github, scramble, OAuthState},
+    },
+    services::oauth::OAuthConfig,
+};
 use super::services::{
     deepseek::DeepSeekService,
     github_issue::GitHubService,
-    oauth::{OAuthConfig, OAuthState},
     openrouter::OpenRouterService,
     solver::SolverService,
 };
@@ -15,13 +21,6 @@ use axum::{
 use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
-use crate::server::{
-    handlers::{
-        auth::{login, signup},
-        oauth::{github, scramble},
-    },
-    services::oauth::{OAuthConfig, OAuthState},
-};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -114,7 +113,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     let github_config = OAuthConfig {
         client_id: config.github_client_id,
         client_secret: config.github_client_secret,
-        redirect_uri: config.github_redirect_uri,
+        redirect_url: config.github_redirect_uri,
         auth_url: "https://github.com/login/oauth/authorize".to_string(),
         token_url: "https://github.com/login/oauth/access_token".to_string(),
     };
@@ -122,7 +121,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     let scramble_config = OAuthConfig {
         client_id: config.scramble_client_id,
         client_secret: config.scramble_client_secret,
-        redirect_uri: config.scramble_redirect_uri,
+        redirect_url: config.scramble_redirect_uri,
         auth_url: config.scramble_auth_url,
         token_url: config.scramble_token_url,
     };
@@ -152,34 +151,8 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .route("/coming-soon", get(routes::coming_soon))
         .route("/health", get(routes::health_check))
         .route("/cota", get(routes::cota))
-        // Auth pages
-        .route("/login", get(login::login_page))
-        .route("/signup", get(signup::signup_page))
-        // OAuth routes
-        .route(
-            "/auth/github/login",
-            get(server::handlers::oauth::github::github_login),
-        )
-        .route(
-            "/auth/github/callback",
-            get(server::handlers::oauth::github::github_callback),
-        )
-        .route(
-            "/auth/scramble/login",
-            get(server::handlers::oauth::scramble::scramble_login),
-        )
-        .route(
-            "/auth/scramble/signup",
-            get(server::handlers::oauth::scramble::scramble_signup),
-        )
-        .route(
-            "/auth/scramble/callback",
-            get(server::handlers::oauth::scramble::scramble_callback),
-        )
-        .route(
-            "/auth/logout",
-            get(server::handlers::auth::clear_session_and_redirect),
-        )
+        // Merge auth router
+        .merge(app_router(app_state.clone()))
         // Hyperview routes
         .merge(server::hyperview::hyperview_routes())
         // Static files
@@ -211,7 +184,7 @@ pub fn app_router(state: AppState) -> Router<AppState> {
             Router::new()
                 .route("/login", get(github::github_login))
                 .route("/callback", get(github::github_callback))
-                .with_state(state.clone()),
+                .with_state(state.oauth_state.clone()),
         )
         .nest(
             "/auth/scramble",
@@ -219,7 +192,7 @@ pub fn app_router(state: AppState) -> Router<AppState> {
                 .route("/login", get(scramble::scramble_login))
                 .route("/signup", get(scramble::scramble_signup))
                 .route("/callback", get(scramble::scramble_callback))
-                .with_state(state.clone()),
+                .with_state(state.oauth_state.clone()),
         )
         .with_state(state)
 }

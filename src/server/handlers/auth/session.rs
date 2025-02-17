@@ -29,7 +29,7 @@ pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Respon
 
     response.headers_mut().insert(
         SET_COOKIE,
-        HeaderValue::from_str(&cookie.to_string()).unwrap(),
+        HeaderValue::from_str(&cookie.encoded().to_string()).unwrap(),
     );
 
     response
@@ -42,28 +42,28 @@ pub async fn clear_session_and_redirect() -> Response {
     let mut response = Redirect::temporary("/login").into_response();
     response.headers_mut().insert(
         SET_COOKIE,
-        HeaderValue::from_str(&cookie.to_string()).unwrap(),
+        HeaderValue::from_str(&cookie.encoded().to_string()).unwrap(),
     );
 
     response
 }
 
 pub fn create_session_cookie(session_id: &str, expiry: OffsetDateTime) -> Cookie<'static> {
-    Cookie::build(SESSION_COOKIE_NAME, session_id.to_string())
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .expires(expiry)
-        .same_site(SameSite::Lax)
-        .build()
+    let mut cookie = Cookie::new(SESSION_COOKIE_NAME, session_id.to_string());
+    cookie.set_path("/");
+    cookie.set_secure(true);
+    cookie.set_http_only(true);
+    cookie.set_expires(expiry);
+    cookie.set_same_site(SameSite::Lax);
+    cookie
 }
 
 pub fn clear_session_cookie() -> Cookie<'static> {
-    Cookie::build(SESSION_COOKIE_NAME, "")
-        .path("/")
-        .secure(true)
-        .http_only(true)
-        .expires(OffsetDateTime::now_utc() - Duration::days(1))
-        .same_site(SameSite::Lax)
-        .build()
+    let mut cookie = Cookie::new(SESSION_COOKIE_NAME, "");
+    cookie.set_path("/");
+    cookie.set_secure(true);
+    cookie.set_http_only(true);
+    cookie.set_expires(OffsetDateTime::now_utc() - Duration::days(1));
+    cookie.set_same_site(SameSite::Lax);
+    cookie
 }

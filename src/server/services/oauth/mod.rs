@@ -1,8 +1,8 @@
 use oauth2::{
-    basic::{BasicClient, BasicTokenType},
+    basic::BasicClient,
     reqwest::async_http_client as oauth_async_http_client,
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    PkceCodeChallenge, PkceCodeVerifier, TokenResponse, TokenUrl,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -44,7 +44,7 @@ pub enum OAuthError {
 }
 
 impl OAuthService {
-    pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
+    pub fn new(config: OAuthConfig) -> Result<Self, OAuthError> {
         let client = BasicClient::new(
             ClientId::new(config.client_id.clone()),
             Some(ClientSecret::new(config.client_secret.clone())),
@@ -58,45 +58,34 @@ impl OAuthService {
                 .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
         );
 
-        Ok(Self {
-            config,
-            pool,
-            client,
-        })
+        Ok(Self { client, config })
     }
 
-    pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
+    pub fn authorization_url(&self) -> (String, CsrfToken, PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-        let mut auth_url = self.client
+        let (auth_url, csrf_token) = self.client
             .authorize_url(CsrfToken::new_random)
-            .set_pkce_challenge(pkce_challenge);
+            .set_pkce_challenge(pkce_challenge)
+            .url();
 
-        // Add platform to state if provided
-        if let Some(platform) = platform {
-            auth_url = auth_url.add_extra_param("platform", platform);
-        }
-
-        let (url, csrf_token) = auth_url.url();
-        (url.to_string(), csrf_token, pkce_verifier)
+        (auth_url.to_string(), csrf_token, pkce_verifier)
     }
 
     pub fn client(&self) -> &BasicClient {
         &self.client
     }
 
-    pub async fn exchange_token(
+    pub async fn exchange_code(
         &self,
         code: String,
         pkce_verifier: PkceCodeVerifier,
     ) -> Result<impl TokenResponse, OAuthError> {
-        let token = self.client
+        self.client
             .exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
             .request_async(oauth_async_http_client)
             .await
-            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
-
-        Ok(token)
+            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
     }
 }
 

@@ -1,7 +1,10 @@
 use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::user::User;
 use oauth2::{
-    PkceCodeChallenge, PkceCodeVerifier, TokenResponse,
+    basic::BasicClient,
+    reqwest::async_http_client as oauth_async_http_client,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    PkceCodeChallenge, PkceCodeVerifier, TokenResponse, TokenUrl,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -28,37 +31,33 @@ pub struct GitHubOAuth {
 impl GitHubOAuth {
     pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
         Ok(Self {
-            service: OAuthService::new(pool, config)?,
+            service: OAuthService::new(config)?,
             http_client: Client::new(),
         })
     }
 
-    pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
-        self.service.authorization_url(platform)
+    pub fn authorization_url_for_login(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
+        let mut url = self.service.authorization_url();
+        url.0 = format!("{}&login_hint={}", url.0, email);
+        url
     }
 
-    pub async fn exchange_token(
-        &self,
-        code: String,
-        pkce_verifier: PkceCodeVerifier,
-    ) -> Result<impl TokenResponse, OAuthError> {
-        self.service.exchange_token(code, pkce_verifier).await
+    pub fn authorization_url_for_signup(&self, email: &str) -> (String, CsrfToken, PkceCodeVerifier) {
+        let mut url = self.service.authorization_url();
+        url.0 = format!("{}&login_hint={}", url.0, email);
+        url
     }
 
     pub async fn authenticate(
         &self,
         code: String,
-        pkce_verifier: PkceCodeVerifier,
+        is_signup: bool,
     ) -> Result<User, OAuthError> {
         info!("Processing GitHub authentication with code length: {}", code.len());
 
         // Exchange code for token using PKCE
-        let token = self.service.client()
-            .exchange_code(oauth2::AuthorizationCode::new(code))
-            .set_pkce_verifier(pkce_verifier)
-            .request_async(oauth2::reqwest::async_http_client)
-            .await
-            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
+        let (_, _, pkce_verifier) = self.service.authorization_url();
+        let token = self.service.exchange_code(code, pkce_verifier).await?;
 
         // Get GitHub user info
         let github_user = self.get_github_user(token.access_token().secret()).await?;
