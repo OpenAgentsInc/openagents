@@ -4,8 +4,8 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use time::format_description::well_known::Rfc2822;
-use time::{Duration, OffsetDateTime};
+use time::Duration;
+use time::OffsetDateTime;
 use tracing::info;
 
 pub const SESSION_COOKIE_NAME: &str = "session";
@@ -29,7 +29,7 @@ pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Respon
 
     response.headers_mut().insert(
         SET_COOKIE,
-        HeaderValue::from_str(&cookie.encoded().to_string()).unwrap(),
+        HeaderValue::from_str(&cookie.to_string()).unwrap(),
     );
 
     response
@@ -42,7 +42,7 @@ pub async fn clear_session_and_redirect() -> Response {
     let mut response = Redirect::temporary("/login").into_response();
     response.headers_mut().insert(
         SET_COOKIE,
-        HeaderValue::from_str(&cookie.encoded().to_string()).unwrap(),
+        HeaderValue::from_str(&cookie.to_string()).unwrap(),
     );
 
     response

@@ -1,6 +1,6 @@
 use crate::server::{
     config::AppState,
-    handlers::auth::{create_session_and_redirect, handle_oauth_error},
+    handlers::auth::session::{create_session_and_redirect, clear_session_and_redirect},
 };
 use axum::{
     extract::{Query, State},
@@ -16,12 +16,12 @@ pub struct LoginParams {
 
 pub async fn github_login(
     State(state): State<AppState>,
-    Query(_params): Query<LoginParams>,
+    Query(params): Query<LoginParams>,
 ) -> Response {
     info!("Handling GitHub login request");
 
     let (url, _csrf_token, _pkce_verifier) =
-        state.oauth_state.github.authorization_url_for_login(""); // Email not used for GitHub
+        state.github_oauth.authorization_url_for_login(""); // Email not used for GitHub
 
     axum::response::Redirect::temporary(&url).into_response()
 }
@@ -41,7 +41,7 @@ pub async fn github_callback(
 
     if let Some(error) = params.error {
         info!("GitHub OAuth error: {}", error);
-        return handle_oauth_error(error.into()).into_response();
+        return axum::response::Redirect::temporary(&format!("/login?error={}", error)).into_response();
     }
 
     let is_mobile = params
@@ -50,19 +50,14 @@ pub async fn github_callback(
         .map(|s| s.contains("mobile"))
         .unwrap_or(false);
 
-    match state
-        .oauth_state
-        .github
-        .authenticate(params.code, false)
-        .await
-    {
+    match state.github_oauth.authenticate(params.code, false).await {
         Ok(user) => {
             info!("Successfully authenticated GitHub user: {:?}", user);
-            match create_session_and_redirect(&user, Some(is_mobile)).await {
-                Ok(response) => response,
-                Err(error) => handle_oauth_error(error).into_response(),
-            }
+            create_session_and_redirect(&user, Some(is_mobile)).await
         }
-        Err(error) => handle_oauth_error(error).into_response(),
+        Err(error) => {
+            info!("Authentication failed: {}", error);
+            axum::response::Redirect::temporary(&format!("/login?error={}", error)).into_response()
+        }
     }
 }

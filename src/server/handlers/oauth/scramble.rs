@@ -1,6 +1,6 @@
 use crate::server::{
     config::AppState,
-    handlers::auth::{create_session_and_redirect, handle_oauth_error},
+    handlers::auth::session::{create_session_and_redirect, clear_session_and_redirect},
 };
 use axum::{
     extract::{Query, State},
@@ -24,8 +24,7 @@ pub async fn scramble_login(
     );
 
     let (url, _csrf_token, _pkce_verifier) = state
-        .oauth_state
-        .scramble
+        .scramble_oauth
         .authorization_url_for_login(&params.email);
 
     axum::response::Redirect::temporary(&url).into_response()
@@ -41,8 +40,7 @@ pub async fn scramble_signup(
     );
 
     let (url, _csrf_token, _pkce_verifier) = state
-        .oauth_state
-        .scramble
+        .scramble_oauth
         .authorization_url_for_signup(&params.email);
 
     axum::response::Redirect::temporary(&url).into_response()
@@ -63,7 +61,7 @@ pub async fn scramble_callback(
 
     if let Some(error) = params.error {
         info!("Scramble OAuth error: {}", error);
-        return handle_oauth_error(error.into()).into_response();
+        return axum::response::Redirect::temporary(&format!("/login?error={}", error)).into_response();
     }
 
     let is_signup = params
@@ -73,18 +71,22 @@ pub async fn scramble_callback(
         .unwrap_or(false);
 
     match state
-        .oauth_state
-        .scramble
+        .scramble_oauth
         .authenticate(params.code, is_signup)
         .await
     {
         Ok(user) => {
             info!("Successfully authenticated Scramble user: {:?}", user);
-            match create_session_and_redirect(&user, None).await {
-                Ok(response) => response,
-                Err(error) => handle_oauth_error(error).into_response(),
-            }
+            create_session_and_redirect(&user, None).await
         }
-        Err(error) => handle_oauth_error(error).into_response(),
+        Err(error) => {
+            info!("Authentication failed: {}", error);
+            axum::response::Redirect::temporary(&format!(
+                "/{}?error={}",
+                if is_signup { "signup" } else { "login" },
+                error
+            ))
+            .into_response()
+        }
     }
 }

@@ -6,6 +6,7 @@ use oauth2::{
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use tracing::info;
 
 pub mod github;
 pub mod scramble;
@@ -37,22 +38,20 @@ pub enum OAuthError {
 
 impl OAuthService {
     pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
-        let client = BasicClient::new(
-            ClientId::new(config.client_id.clone()),
-            Some(ClientSecret::new(config.client_secret.clone())),
-        )
-        .set_auth_uri(
-            AuthUrl::new(config.auth_url.clone())
-                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
-        )
-        .set_token_uri(
-            TokenUrl::new(config.token_url.clone())
-                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
-        )
-        .set_redirect_uri(
-            RedirectUrl::new(config.redirect_url.clone())
-                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
-        );
+        let client_id = ClientId::new(config.client_id.clone());
+        let client_secret = ClientSecret::new(config.client_secret.clone());
+        let auth_url = AuthUrl::new(config.auth_url.clone())
+            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
+        let token_url = TokenUrl::new(config.token_url.clone())
+            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
+        let redirect_url = RedirectUrl::new(config.redirect_url.clone())
+            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
+
+        let client = BasicClient::new(client_id)
+            .set_client_secret(Some(client_secret))
+            .set_auth_uri(auth_url)
+            .set_token_uri(Some(token_url))
+            .set_redirect_uri(redirect_url);
 
         Ok(Self {
             client,

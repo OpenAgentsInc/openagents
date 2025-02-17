@@ -1,9 +1,8 @@
 use crate::server::config::AppState;
 use askama::Template;
-use askama_axum::IntoResponse as AskamaIntoResponse;
 use axum::{
     extract::{Query, State},
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Response},
 };
 use serde::Deserialize;
 use tracing::info;
@@ -19,11 +18,11 @@ pub struct LoginRequest {
     email: String,
 }
 
-pub async fn login_page(State(_state): State<AppState>) -> impl AskamaIntoResponse {
+pub async fn login_page(State(_state): State<AppState>) -> Response {
     let template = LoginTemplate {
         title: "Login - OpenAgents".to_string(),
     };
-    template
+    template.into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,14 +33,13 @@ pub struct LoginParams {
 pub async fn handle_login(
     State(state): State<AppState>,
     Query(request): Query<LoginRequest>,
-) -> impl IntoResponse {
+) -> Response {
     info!("Handling login request for email: {}", request.email);
 
     // Generate Scramble login URL
     let (url, _csrf_token, _pkce_verifier) = state
-        .oauth_state
-        .scramble
+        .scramble_oauth
         .authorization_url_for_login(&request.email);
 
-    Redirect::temporary(&url)
+    axum::response::Redirect::temporary(&url).into_response()
 }
