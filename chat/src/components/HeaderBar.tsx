@@ -8,6 +8,15 @@ import {
 } from "./ui/dropdown-menu";
 
 export function HeaderBar() {
+  // Handle login/signup clicks by navigating to the root-level auth pages
+  const handleLogin = () => {
+    window.location.href = "/login";
+  };
+
+  const handleSignup = () => {
+    window.location.href = "/signup";
+  };
+
   return (
     <div className="draggable no-draggable-children sticky top-0 p-3 mb-1.5 flex items-center justify-between z-10 h-header-height font-semibold bg-token-main-surface-primary max-md:hidden">
       {/* Centered empty div for future content or alignment */}
@@ -88,13 +97,18 @@ export function HeaderBar() {
       {/* Right Section */}
       <div className="gap-2 flex items-center pr-1 leading-[0]">
         <div className="flex items-center justify-center gap-2">
-          <Button variant="secondary" data-testid="login-button">
+          <Button 
+            variant="secondary" 
+            data-testid="login-button"
+            onClick={handleLogin}
+          >
             Log in
           </Button>
           <Button
             variant="default"
             className="screen-arch:hidden md:screen-arch:flex"
             data-testid="signup-button"
+            onClick={handleSignup}
           >
             Sign up
           </Button>
