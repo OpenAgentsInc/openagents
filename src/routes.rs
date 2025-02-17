@@ -5,11 +5,10 @@ use axum::{
     response::{Html, IntoResponse, Response},
     Json,
 };
-use serde_json::json;
-use sqlx::PgPool;
 use axum_extra::extract::cookie::CookieJar;
+use serde_json::json;
 
-use crate::server::{models::user::User, AppState};
+use crate::server::AppState;
 
 #[derive(Template)]
 #[template(path = "layouts/base.html", escape = "none")]
@@ -218,20 +217,21 @@ pub async fn get_user_info(
         if let Some(id) = user_id {
             if let Ok(user) = sqlx::query!(
                 r#"
-                SELECT 
-                    id, 
-                    scramble_id, 
-                    github_id, 
-                    github_token, 
+                SELECT
+                    id,
+                    scramble_id,
+                    github_id,
+                    github_token,
                     metadata as "metadata: sqlx::types::JsonValue",
                     pseudonym
-                FROM users 
+                FROM users
                 WHERE id = $1
                 "#,
                 id
             )
             .fetch_one(&state.pool)
-            .await {
+            .await
+            {
                 return Json(json!({
                     "authenticated": true,
                     "user": {

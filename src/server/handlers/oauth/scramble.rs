@@ -1,6 +1,6 @@
 use crate::server::{config::AppState, handlers::oauth::session::create_session_and_redirect};
 use axum::{
-    extract::{Query, State, Form},
+    extract::{Form, Query, State},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -23,14 +23,10 @@ pub async fn scramble_login(
         _ => return axum::response::Redirect::temporary("/login").into_response(),
     };
 
-    info!(
-        "Handling Scramble login request for email: {}",
-        email
-    );
+    info!("Handling Scramble login request for email: {}", email);
 
-    let (url, _csrf_token, _pkce_verifier) = state
-        .scramble_oauth
-        .authorization_url_for_login(&email);
+    let (url, _csrf_token, _pkce_verifier) =
+        state.scramble_oauth.authorization_url_for_login(&email);
 
     axum::response::Redirect::temporary(&url).into_response()
 }
@@ -47,14 +43,10 @@ pub async fn scramble_signup(
         _ => return axum::response::Redirect::temporary("/signup").into_response(),
     };
 
-    info!(
-        "Handling Scramble signup request for email: {}",
-        email
-    );
+    info!("Handling Scramble signup request for email: {}", email);
 
-    let (url, _csrf_token, _pkce_verifier) = state
-        .scramble_oauth
-        .authorization_url_for_signup(&email);
+    let (url, _csrf_token, _pkce_verifier) =
+        state.scramble_oauth.authorization_url_for_signup(&email);
 
     axum::response::Redirect::temporary(&url).into_response()
 }
@@ -84,9 +76,11 @@ pub async fn scramble_callback(
         .map(|s| s.contains("signup"))
         .unwrap_or(false);
 
+    let state_param = params.state.unwrap_or_default();
+
     match state
         .scramble_oauth
-        .authenticate(params.code, is_signup)
+        .authenticate(params.code, state_param, is_signup)
         .await
     {
         Ok(user) => {

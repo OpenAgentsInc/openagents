@@ -1,3 +1,4 @@
+use super::verifier_store::VerifierStore;
 use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::{timestamp::DateTimeWrapper, user::User};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -58,6 +59,7 @@ impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for Scra
 pub struct ScrambleOAuth {
     service: OAuthService,
     pool: PgPool,
+    verifier_store: VerifierStore,
 }
 
 impl ScrambleOAuth {
@@ -65,6 +67,7 @@ impl ScrambleOAuth {
         Ok(Self {
             service: OAuthService::new(config)?,
             pool,
+            verifier_store: VerifierStore::new(),
         })
     }
 
@@ -72,32 +75,54 @@ impl ScrambleOAuth {
         &self,
         email: &str,
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
-        let mut url = self.service.authorization_url();
-        url.0 = format!("{}&flow=login&email={}&scope=openid", url.0, email);
-        url
+        let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
+        self.verifier_store.store_verifier(
+            csrf_token.secret(),
+            oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
+        );
+        (
+            format!("{}&flow=login&email={}&scope=openid", url, email),
+            csrf_token,
+            pkce_verifier,
+        )
     }
 
     pub fn authorization_url_for_signup(
         &self,
         email: &str,
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
-        let mut url = self.service.authorization_url();
-        url.0 = format!(
-            "{}&flow=signup&prompt=create&email={}&scope=openid",
-            url.0, email
+        let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
+        self.verifier_store.store_verifier(
+            csrf_token.secret(),
+            oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
         );
-        url
+        (
+            format!(
+                "{}&flow=signup&prompt=create&email={}&scope=openid",
+                url, email
+            ),
+            csrf_token,
+            pkce_verifier,
+        )
     }
 
     pub async fn authorization_url(
         &self,
         platform: Option<String>,
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
-        let (url, token, verifier) = self.service.authorization_url();
+        let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
+        self.verifier_store.store_verifier(
+            csrf_token.secret(),
+            oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
+        );
         if let Some(platform) = platform {
-            (format!("{}&platform={}", url, platform), token, verifier)
+            (
+                format!("{}&platform={}", url, platform),
+                csrf_token,
+                pkce_verifier,
+            )
         } else {
-            (url, token, verifier)
+            (url, csrf_token, pkce_verifier)
         }
     }
 
@@ -109,15 +134,25 @@ impl ScrambleOAuth {
         self.service.exchange_code(code, pkce_verifier).await
     }
 
-    pub async fn authenticate(&self, code: String, is_signup: bool) -> Result<User, OAuthError> {
+    pub async fn authenticate(
+        &self,
+        code: String,
+        state: String,
+        is_signup: bool,
+    ) -> Result<User, OAuthError> {
         info!(
             "Processing {} with code length: {}",
             if is_signup { "signup" } else { "login" },
             code.len()
         );
 
+        // Get stored verifier
+        let pkce_verifier = self
+            .verifier_store
+            .get_verifier(&state)
+            .ok_or_else(|| OAuthError::TokenExchangeFailed("No PKCE verifier found".to_string()))?;
+
         // Exchange code for tokens
-        let (_, _, pkce_verifier) = self.service.authorization_url();
         let token_response = self.service.exchange_code(code, pkce_verifier).await?;
 
         // Convert to our token response type

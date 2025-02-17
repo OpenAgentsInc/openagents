@@ -4,6 +4,7 @@ use tracing::error;
 
 pub mod github;
 pub mod scramble;
+pub mod verifier_store;
 
 #[derive(Debug, Default, Clone)]
 pub struct EmptyExtraTokenFields {

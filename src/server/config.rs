@@ -8,7 +8,7 @@ use super::services::{
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use crate::{routes, server};
-use axum::{routing::{get, post, get_service}, Router};
+use axum::{routing::get, Router};
 use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;

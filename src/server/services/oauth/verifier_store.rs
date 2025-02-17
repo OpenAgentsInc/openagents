@@ -11,6 +11,15 @@ struct StoredVerifier {
     created_at: Instant,
 }
 
+impl Clone for StoredVerifier {
+    fn clone(&self) -> Self {
+        Self {
+            verifier: PkceCodeVerifier::new(self.verifier.secret().to_string()),
+            created_at: self.created_at,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VerifierStore {
     store: Arc<RwLock<HashMap<String, StoredVerifier>>>,
@@ -37,7 +46,9 @@ impl VerifierStore {
 
     pub fn get_verifier(&self, state: &str) -> Option<PkceCodeVerifier> {
         let mut store = self.store.write().unwrap();
-        store.remove(state).map(|stored| stored.verifier)
+        store
+            .remove(state)
+            .map(|stored| PkceCodeVerifier::new(stored.verifier.secret().to_string()))
     }
 
     fn cleanup_old_verifiers(&self) {
