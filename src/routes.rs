@@ -218,7 +218,19 @@ pub async fn get_user_info(
         if let Some(id) = user_id {
             if let Ok(user) = sqlx::query_as!(
                 User,
-                "SELECT * FROM users WHERE id = $1",
+                r#"
+                SELECT 
+                    id, 
+                    scramble_id, 
+                    github_id, 
+                    github_token, 
+                    metadata as "metadata: sqlx::types::JsonValue",
+                    created_at,
+                    last_login_at,
+                    pseudonym
+                FROM users 
+                WHERE id = $1
+                "#,
                 id
             )
             .fetch_one(&pool)
