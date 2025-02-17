@@ -35,9 +35,11 @@ pub async fn scramble_login(
         form_data.email
     );
 
-    let (url, _csrf_token, _pkce_verifier) = state
+    let (url, csrf_token, pkce_verifier) = state
         .scramble_oauth
         .authorization_url_for_login(&form_data.email);
+
+    info!("Generated login URL with state: {}", csrf_token.secret());
 
     axum::response::Redirect::temporary(&url).into_response()
 }
@@ -92,7 +94,7 @@ pub async fn scramble_signup(
     );
 
     // Generate the authorization URL
-    let (url, csrf_token, _pkce_verifier) = state
+    let (url, csrf_token, pkce_verifier) = state
         .scramble_oauth
         .authorization_url_for_signup(&form_data.email);
 
