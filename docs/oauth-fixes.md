@@ -59,8 +59,62 @@ Major issues identified:
    - Added `#[derive(Debug, Clone)]` to `GitHubOAuth`
    - Added `#[derive(Debug, Clone)]` to `ScrambleOAuth`
 
-### [Fix Group 2] - Starting OAuth2 v5 API Changes
-Next steps:
-1. Update `BasicClient::new()` implementation
-2. Fix authorization URL generation
-3. Fix token exchange implementation
+### [Fix Group 2] - OAuth2 v5 API Changes
+1. Updated BasicClient implementation:
+   - Fixed `BasicClient::new()` constructor usage
+   - Updated redirect URL handling
+   - Fixed parameter naming consistency
+
+2. Implemented PKCE and CSRF token support:
+   - Added PKCE challenge/verifier generation
+   - Added CSRF token generation
+   - Updated authorization URL generation to include both
+
+3. Updated token exchange implementation:
+   - Added PKCE verifier to token exchange
+   - Updated return types to use impl TokenResponse
+   - Simplified token response handling
+
+4. Updated provider implementations:
+   - Updated GitHub OAuth to use new API
+   - Updated Scramble OAuth to use new API
+   - Ensured consistent interface across providers
+
+### [Fix Group 3] - Template and Response Fixes
+1. Fixed template implementations:
+   - Added `askama_axum::IntoResponse` trait
+   - Updated template paths
+   - Added missing title fields
+
+2. Fixed login template:
+   - Added title field
+   - Updated template path to "auth/login.html"
+   - Simplified handler function
+
+3. Fixed signup template:
+   - Added title field
+   - Updated template path to "auth/signup.html"
+   - Simplified handler function
+
+4. Fixed session cookie handling:
+   - Added proper cookie builder implementation
+   - Fixed time formatting using Cookie's native expiry support
+   - Added clear session cookie function
+
+### [Fix Group 4] - Router and Handler State Fixes
+1. Fixed router configuration:
+   - Created separate `app_router()` function
+   - Properly nested OAuth routes
+   - Fixed state type consistency
+
+2. Fixed handler state types:
+   - Updated handler signatures to use correct state types
+   - Added missing state extensions
+   - Fixed state sharing between nested routers
+
+3. Fixed response type conversions:
+   - Implemented proper redirect responses
+   - Added session management functions
+   - Fixed mobile auth handling
+
+Let's run cargo check again to see if we've resolved all issues.

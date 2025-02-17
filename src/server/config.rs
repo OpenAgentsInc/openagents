@@ -15,6 +15,16 @@ use axum::{
 use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
+use crate::server::{
+    handlers::{
+        auth::{login, signup},
+        oauth::{github, scramble},
+    },
+    services::{
+        oauth::{OAuthConfig, OAuthState},
+        AppState,
+    },
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -146,8 +156,8 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .route("/health", get(routes::health_check))
         .route("/cota", get(routes::cota))
         // Auth pages
-        .route("/login", get(server::handlers::login_page))
-        .route("/signup", get(server::handlers::signup_page))
+        .route("/login", get(login::login_page))
+        .route("/signup", get(signup::signup_page))
         // OAuth routes
         .route(
             "/auth/github/login",
@@ -192,4 +202,26 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         )
         // State
         .with_state(app_state)
+}
+
+pub fn app_router() -> Router<AppState> {
+    Router::new()
+        .route("/auth/login", get(login::login_page))
+        .route("/auth/signup", get(signup::signup_page))
+        .route("/auth/logout", get(clear_session_and_redirect))
+        .nest(
+            "/auth/github",
+            Router::new()
+                .route("/login", get(github::github_login))
+                .route("/callback", get(github::github_callback))
+                .with_state(()),
+        )
+        .nest(
+            "/auth/scramble",
+            Router::new()
+                .route("/login", get(scramble::scramble_login))
+                .route("/signup", get(scramble::scramble_signup))
+                .route("/callback", get(scramble::scramble_callback))
+                .with_state(()),
+        )
 }

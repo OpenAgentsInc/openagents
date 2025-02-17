@@ -60,6 +60,18 @@ impl ScrambleOAuth {
         (url, csrf_token)
     }
 
+    pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
+        self.service.authorization_url(platform)
+    }
+
+    pub async fn exchange_token(
+        &self,
+        code: String,
+        pkce_verifier: PkceCodeVerifier,
+    ) -> Result<impl TokenResponse, OAuthError> {
+        self.service.exchange_token(code, pkce_verifier).await
+    }
+
     pub async fn authenticate(&self, code: String, is_signup: bool) -> Result<User, OAuthError> {
         info!(
             "Processing {} with code length: {}",

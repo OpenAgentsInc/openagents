@@ -3,14 +3,16 @@ use askama::Template;
 use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
+    Extension,
 };
 use serde::Deserialize;
 use tracing::info;
+use askama_axum::IntoResponse as AskamaIntoResponse;
 
 #[derive(Template)]
-#[template(path = "pages/login.html")]
+#[template(path = "auth/login.html")]
 struct LoginTemplate {
-    error: Option<String>,
+    title: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -18,9 +20,9 @@ pub struct LoginRequest {
     email: String,
 }
 
-pub async fn login_page(Query(params): Query<LoginParams>) -> impl IntoResponse {
+pub async fn login_page() -> impl IntoResponse {
     let template = LoginTemplate {
-        error: params.error,
+        title: "Login - OpenAgents".to_string(),
     };
     template.into_response()
 }

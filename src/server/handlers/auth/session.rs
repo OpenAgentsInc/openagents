@@ -5,6 +5,9 @@ use axum::{
 };
 use time::{Duration, OffsetDateTime};
 use tracing::info;
+use time::format_description::well_known::Rfc2822;
+use axum::http::Cookie;
+use axum::http::SameSite;
 
 pub const SESSION_COOKIE_NAME: &str = "session";
 pub const SESSION_DURATION_DAYS: i64 = 30;
@@ -52,4 +55,24 @@ pub async fn clear_session_and_redirect() -> Response {
         .insert(SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
 
     response
+}
+
+pub fn create_session_cookie(session_id: &str, expiry: OffsetDateTime) -> Cookie<'static> {
+    Cookie::build("session", session_id.to_string())
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .expires(expiry)
+        .same_site(SameSite::Lax)
+        .build()
+}
+
+pub fn clear_session_cookie() -> Cookie<'static> {
+    Cookie::build("session", "")
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .expires(OffsetDateTime::now_utc() - Duration::days(1))
+        .same_site(SameSite::Lax)
+        .build()
 }

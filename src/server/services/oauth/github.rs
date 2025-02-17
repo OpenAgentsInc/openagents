@@ -33,23 +33,16 @@ impl GitHubOAuth {
         })
     }
 
-    pub fn authorization_url(&self, platform: Option<String>) -> (String, PkceCodeVerifier) {
-        info!("Generating GitHub authorization URL with platform: {:?}", platform);
+    pub fn authorization_url(&self, platform: Option<String>) -> (String, CsrfToken, PkceCodeVerifier) {
+        self.service.authorization_url(platform)
+    }
 
-        // Generate PKCE challenge
-        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-
-        // Add scopes and PKCE
-        let url = self.service.authorization_url(
-            platform,
-            vec![
-                ("scope", "user repo"),
-                ("code_challenge", pkce_challenge.as_str()),
-                ("code_challenge_method", "S256"),
-            ],
-        );
-
-        (url, pkce_verifier)
+    pub async fn exchange_token(
+        &self,
+        code: String,
+        pkce_verifier: PkceCodeVerifier,
+    ) -> Result<impl TokenResponse, OAuthError> {
+        self.service.exchange_token(code, pkce_verifier).await
     }
 
     pub async fn authenticate(
