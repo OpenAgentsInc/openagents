@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, scramble_id, github_id, github_token, metadata,\n        created_at, last_login_at, pseudonym\n        FROM users\n        WHERE scramble_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "scramble_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "github_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "github_token",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "last_login_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "pseudonym",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": ["Text"]
+    },
+    "nullable": [false, true, true, true, true, true, true, true]
+  },
+  "hash": "afd18f14da6d8400765b4c51083c05a8e0cce80151b580f326cc1216ee4b70f4"
+}

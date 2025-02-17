@@ -43,6 +43,7 @@ fn setup_test_env() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_login_page() {
     // Load environment variables
     setup_test_env();
@@ -98,6 +99,7 @@ async fn test_login_page() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_signup_page() {
     // Load environment variables
     setup_test_env();

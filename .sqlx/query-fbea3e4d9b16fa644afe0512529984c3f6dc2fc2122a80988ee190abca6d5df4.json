@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE users\n                SET last_login_at = NOW()\n                WHERE scramble_id = $1\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": ["Text"]
+    },
+    "nullable": []
+  },
+  "hash": "fbea3e4d9b16fa644afe0512529984c3f6dc2fc2122a80988ee190abca6d5df4"
+}

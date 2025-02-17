@@ -1,35 +1,98 @@
-import { Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Home, MessageSquare, Settings, Users } from "lucide-react";
+import { Chat } from "@/components/ui/chat";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { useChat } from "@ai-sdk/react";
 
 function ChatScreen() {
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    isLoading,
+    stop,
+    append,
+  } = useChat();
+
   return (
-    <div className="fixed inset-0 dark bg-black flex flex-col">
-      <div className="flex-1 overflow-auto p-4">
-        {/* Messages will go here */}
-        <div className="space-y-4">
-          <div className="bg-gray-800 rounded-lg p-4 max-w-[80%]">
-            <p className="text-white">Hello! How can I help you today?</p>
+    <div className="dark">
+      <SidebarProvider defaultOpen>
+        {/* Fixed container for sidebar and main content */}
+        <div className="fixed inset-0 flex">
+          {/* Sidebar */}
+          <div className="flex-none">
+            <Sidebar className="h-full w-64">
+              <SidebarHeader className="border-b border-border p-4 text-center">
+                <h2 className="text-lg font-semibold">OpenAgents</h2>
+              </SidebarHeader>
+              <SidebarContent className="p-4">
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton>
+                      <Home className="h-4 w-4" />
+                      <span>Home</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton>
+                      <MessageSquare className="h-4 w-4" />
+                      <span>Chats</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton>
+                      <Users className="h-4 w-4" />
+                      <span>Agents</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton>
+                      <Settings className="h-4 w-4" />
+                      <span>Settings</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarContent>
+            </Sidebar>
+          </div>
+
+          {/* Main (Chat) Container */}
+          <div className="flex-1 flex flex-col bg-background text-foreground">
+            <header className="border-b border-border p-4">
+              <div className="flex items-center gap-2">
+                <SidebarTrigger />
+                <h1 className="text-lg font-semibold">Chat</h1>
+              </div>
+            </header>
+            {/* This area will scroll if content overflows */}
+            <main className="flex-1 overflow-y-auto">
+              {/* Wrapping Chat in a flex container ensures it expands vertically */}
+              <div className="p-6 flex flex-col h-full">
+                <Chat
+                  messages={messages}
+                  input={input}
+                  handleInputChange={handleInputChange}
+                  handleSubmit={handleSubmit}
+                  isGenerating={isLoading}
+                  stop={stop}
+                  className="flex-1 text-foreground"
+                  // append={append}
+                  // suggestions={["Generate a tasty lasagna recipe for 3 people.", "Generate a list of 5 questions for a frontend job interview.", "Who won the 2022 FIFA World Cup?"]}
+                />
+              </div>
+            </main>
           </div>
         </div>
-      </div>
-
-      <div className="p-4 border-t border-gray-800">
-        <Card className="w-full">
-          <CardContent className="p-2">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Type your message..."
-                className="flex-1 bg-transparent border-0 focus:outline-none text-white"
-              />
-              <Button size="sm">
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      </SidebarProvider>
     </div>
   );
 }

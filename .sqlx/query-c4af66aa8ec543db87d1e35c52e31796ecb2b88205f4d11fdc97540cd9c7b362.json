@@ -1,0 +1,48 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO messages (conversation_id, role, content, metadata, tool_calls, created_at)\n            VALUES ($1, $2, $3, $4, $5, NOW())\n            RETURNING id, conversation_id, role, content, created_at as \"created_at: _\", metadata, tool_calls\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "conversation_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at: _",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "tool_calls",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": ["Uuid", "Text", "Text", "Jsonb", "Jsonb"]
+    },
+    "nullable": [false, false, false, false, false, true, true]
+  },
+  "hash": "c4af66aa8ec543db87d1e35c52e31796ecb2b88205f4d11fdc97540cd9c7b362"
+}

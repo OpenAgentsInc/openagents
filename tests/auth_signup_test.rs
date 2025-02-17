@@ -6,7 +6,7 @@ use axum::{
     routing::get,
     Router,
 };
-use tower::ServiceExt;
+use tower::util::ServiceExt;
 use wiremock::MockServer;
 
 #[derive(Clone)]

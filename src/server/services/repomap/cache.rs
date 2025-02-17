@@ -1,18 +1,20 @@
+use crate::server::models::timestamp::Timestamp;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::PgPool;
-use time::OffsetDateTime;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RepomapCache {
+pub struct RepomapCacheEntry {
     pub repo_name: String,
     pub branch: String,
     pub commit_sha: String,
-    pub map_data: serde_json::Value,
-    pub created_at: OffsetDateTime,
+    pub map_data: Value,
+    pub created_at: Timestamp,
 }
 
-impl RepomapCache {
+impl RepomapCacheEntry {
+    #[allow(dead_code)]
     pub fn new(
         repo_name: String,
         branch: String,
@@ -24,39 +26,30 @@ impl RepomapCache {
             branch,
             commit_sha,
             map_data,
-            created_at: OffsetDateTime::now_utc(),
+            created_at: Timestamp::now(),
         }
     }
+}
 
-    pub async fn save(&self, pool: &PgPool) -> Result<()> {
-        sqlx::query!(
-            r#"
-            INSERT INTO repomap_cache (repo_name, branch, commit_sha, map_data, created_at)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (repo_name, branch, commit_sha)
-            DO UPDATE SET map_data = $4, created_at = $5
-            "#,
-            self.repo_name,
-            self.branch,
-            self.commit_sha,
-            self.map_data,
-            self.created_at,
-        )
-        .execute(pool)
-        .await?;
+pub struct RepoMapCache {
+    pool: PgPool,
+}
 
-        Ok(())
+impl RepoMapCache {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
     }
 
     pub async fn get(
-        pool: &PgPool,
+        &self,
         repo_name: &str,
         branch: &str,
         commit_sha: &str,
-    ) -> Result<Option<Self>> {
-        let record = sqlx::query!(
+    ) -> Result<Option<RepomapCacheEntry>> {
+        let record = sqlx::query_as!(
+            RepomapCacheEntry,
             r#"
-            SELECT repo_name, branch, commit_sha, map_data, created_at
+            SELECT repo_name, branch, commit_sha, map_data, created_at as "created_at: Timestamp"
             FROM repomap_cache
             WHERE repo_name = $1 AND branch = $2 AND commit_sha = $3
             "#,
@@ -64,24 +57,32 @@ impl RepomapCache {
             branch,
             commit_sha
         )
-        .fetch_optional(pool)
+        .fetch_optional(&self.pool)
         .await?;
 
-        Ok(record.map(|r| Self {
-            repo_name: r.repo_name,
-            branch: r.branch,
-            commit_sha: r.commit_sha,
-            map_data: r.map_data,
-            created_at: r.created_at,
-        }))
+        Ok(record)
     }
 
-    pub async fn delete(
-        pool: &PgPool,
-        repo_name: &str,
-        branch: &str,
-        commit_sha: &str,
-    ) -> Result<()> {
+    pub async fn set(&self, entry: RepomapCacheEntry) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO repomap_cache (repo_name, branch, commit_sha, map_data, created_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (repo_name, branch, commit_sha) DO UPDATE
+            SET map_data = $4, created_at = NOW()
+            "#,
+            entry.repo_name,
+            entry.branch,
+            entry.commit_sha,
+            entry.map_data
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn delete(&self, repo_name: &str, branch: &str, commit_sha: &str) -> Result<()> {
         sqlx::query!(
             r#"
             DELETE FROM repomap_cache
@@ -91,7 +92,7 @@ impl RepomapCache {
             branch,
             commit_sha
         )
-        .execute(pool)
+        .execute(&self.pool)
         .await?;
 
         Ok(())

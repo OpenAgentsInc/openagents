@@ -1,31 +1,25 @@
 use crate::repo::{cleanup_temp_dir, clone_repository};
 use crate::repomap::generate_repo_map;
 use anyhow::Result;
+use serde_json::Value;
 use sqlx::PgPool;
 use std::path::PathBuf;
-use tracing::{info, warn};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 mod cache;
-use cache::RepomapCache;
+use cache::{RepoMapCache, RepomapCacheEntry};
 
 pub struct RepomapService {
-    pool: Option<PgPool>,
+    cache: Arc<RwLock<RepoMapCache>>,
     temp_dir: PathBuf,
     github_token: Option<String>,
 }
 
 impl RepomapService {
-    pub fn new(temp_dir: PathBuf, github_token: Option<String>) -> Self {
+    pub fn new(pool: PgPool, temp_dir: PathBuf, github_token: Option<String>) -> Self {
         Self {
-            pool: None,
-            temp_dir,
-            github_token,
-        }
-    }
-
-    pub fn with_pool(pool: PgPool, temp_dir: PathBuf, github_token: Option<String>) -> Self {
-        Self {
-            pool: Some(pool),
+            cache: Arc::new(RwLock::new(RepoMapCache::new(pool.clone()))),
             temp_dir,
             github_token,
         }
@@ -38,44 +32,42 @@ impl RepomapService {
         Ok((serde_json::to_string(&map)?, self.temp_dir.clone()))
     }
 
-    pub async fn get_repository_map(
+    pub async fn get_map(
         &self,
         repo_name: &str,
         branch: &str,
         commit_sha: &str,
-    ) -> Result<serde_json::Value> {
-        // Try to get from cache first if pool is available
-        if let Some(pool) = &self.pool {
-            if let Some(cached) = RepomapCache::get(pool, repo_name, branch, commit_sha).await? {
-                info!(
-                    "Found cached repomap for {}/{} at {}",
-                    repo_name, branch, commit_sha
-                );
-                return Ok(cached.map_data);
-            }
+    ) -> Result<Option<Value>> {
+        let cache = self.cache.read().await;
+        if let Some(entry) = cache.get(repo_name, branch, commit_sha).await? {
+            return Ok(Some(entry.map_data));
         }
+        Ok(None)
+    }
 
-        // If not in cache or no pool available, generate the map
-        info!(
-            "Generating repomap for {}/{} at {}",
-            repo_name, branch, commit_sha
-        );
-        let map_data = self.generate_repository_map(repo_name).await?;
+    pub async fn set_map(
+        &self,
+        repo_name: String,
+        branch: String,
+        commit_sha: String,
+        map_data: Value,
+    ) -> Result<()> {
+        let cache = self.cache.write().await;
+        let entry = RepomapCacheEntry {
+            repo_name,
+            branch,
+            commit_sha,
+            map_data,
+            created_at: crate::server::models::timestamp::Timestamp::now(),
+        };
+        cache.set(entry).await?;
+        Ok(())
+    }
 
-        // Cache the result if pool is available
-        if let Some(pool) = &self.pool {
-            let cache = RepomapCache::new(
-                repo_name.to_string(),
-                branch.to_string(),
-                commit_sha.to_string(),
-                map_data.clone(),
-            );
-            if let Err(e) = cache.save(pool).await {
-                warn!("Failed to cache repomap: {}", e);
-            }
-        }
-
-        Ok(map_data)
+    pub async fn delete_map(&self, repo_name: &str, branch: &str, commit_sha: &str) -> Result<()> {
+        let cache = self.cache.write().await;
+        cache.delete(repo_name, branch, commit_sha).await?;
+        Ok(())
     }
 
     async fn generate_repository_map(&self, repo_name: &str) -> Result<serde_json::Value> {
@@ -91,18 +83,6 @@ impl RepomapService {
 
         // Convert to serde_json::Value
         Ok(serde_json::Value::String(map))
-    }
-
-    pub async fn invalidate_cache(
-        &self,
-        repo_name: &str,
-        branch: &str,
-        commit_sha: &str,
-    ) -> Result<()> {
-        if let Some(pool) = &self.pool {
-            RepomapCache::delete(pool, repo_name, branch, commit_sha).await?;
-        }
-        Ok(())
     }
 
     pub fn cleanup(&self) {

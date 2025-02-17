@@ -152,27 +152,20 @@ async fn main() -> Result<()> {
     }
 
     // Get transcription text
-    let transcription = response.text().await?;
+    let transcription: String = response.text().await?;
     println!("Transcription complete");
 
     // Format transcription with line breaks using llama-3.3-70b-versatile
     println!("Formatting transcription for Markdown...");
     let format_response = client
-        .post("https://api.groq.com/openai/v1/chat/completions")
+        .post("https://api.groq.com/v1/chat/completions")
         .header("Authorization", format!("Bearer {}", api_key))
-        .json(&json!({
-            "model": "llama-3.3-70b-versatile",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a Markdown text formatter. Format the given transcription text with proper Markdown line breaks. In Markdown, a single line break is ignored, so use double line breaks (two newlines) between paragraphs or logical sections. Keep the original text exactly as is, just add double line breaks at natural pauses, speaker changes, or topic transitions. Do not add any other Markdown formatting, just the double line breaks."
-                },
-                {
-                    "role": "user",
-                    "content": transcription
-                }
-            ],
-            "temperature": 0.0
+        .json(&serde_json::json!({
+            "model": "mixtral-8x7b-32768",
+            "messages": [{
+                "role": "user",
+                "content": format!("Format this transcription with proper punctuation and paragraphs:\n\n{}", transcription)
+            }]
         }))
         .send()
         .await?;
@@ -184,8 +177,7 @@ async fn main() -> Result<()> {
             .unwrap_or(&transcription)
             .to_string()
     } else {
-        println!("Warning: Failed to format text, using original transcription");
-        transcription
+        transcription.to_string()
     };
 
     // Write output file with metadata
