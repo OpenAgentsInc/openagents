@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO conversations (user_id, title)\n            VALUES ($1, $2)\n            RETURNING id, user_id, title, created_at, updated_at\n            ",
+  "query": "\n            INSERT INTO conversations (user_id, title, created_at, updated_at)\n            VALUES ($1, $2, NOW(), NOW())\n            RETURNING id, user_id, title, created_at as \"created_at: _\", updated_at as \"updated_at: _\"\n            ",
   "describe": {
     "columns": [
       {
@@ -20,12 +20,12 @@
       },
       {
         "ordinal": 3,
-        "name": "created_at",
+        "name": "created_at: _",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 4,
-        "name": "updated_at",
+        "name": "updated_at: _",
         "type_info": "Timestamptz"
       }
     ],
@@ -34,5 +34,5 @@
     },
     "nullable": [false, false, true, false, false]
   },
-  "hash": "bc09eb7fc2c0ab1240adf1f759c4915319e79a486f9be844ea05e7edbba4dfd3"
+  "hash": "b6feba76f08506d1b626dd9b30aedf3ba60fbc03b7532906164bf0e7764291a3"
 }

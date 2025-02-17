@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO users (github_id, github_token, metadata)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (github_id) DO UPDATE\n            SET github_token = $2,\n                metadata = $3,\n                last_login_at = NOW()\n            RETURNING *\n            ",
+  "query": "\n            UPDATE users\n            SET last_login_at = NOW()\n            WHERE scramble_id = $1\n            RETURNING id, scramble_id, github_id, github_token, metadata,\n                      created_at, last_login_at, pseudonym\n            ",
   "describe": {
     "columns": [
       {
@@ -30,24 +30,24 @@
       },
       {
         "ordinal": 5,
-        "name": "last_login_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
-        "name": "updated_at",
+        "ordinal": 6,
+        "name": "last_login_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "pseudonym",
+        "type_info": "Text"
       }
     ],
     "parameters": {
-      "Left": ["Int8", "Text", "Jsonb"]
+      "Left": ["Text"]
     },
     "nullable": [false, true, true, true, true, true, true, true]
   },
-  "hash": "4110d19f82e795f86cfb8c538ea7c8da0e9954cfeed72f344cc79ab1242ba7c2"
+  "hash": "94e61726f9710c33d37b83e2c80f285455f9b5accf3d6e2972a6fbdb89cd0a5c"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, scramble_id, github_id, github_token, metadata,\n                   last_login_at, created_at, updated_at\n            FROM users\n            WHERE scramble_id = $1\n            ",
+  "query": "\n            UPDATE users\n            SET last_login_at = NOW()\n            WHERE id = $1\n            RETURNING id, scramble_id, github_id, github_token, metadata,\n                      created_at, last_login_at, pseudonym\n            ",
   "describe": {
     "columns": [
       {
@@ -30,24 +30,24 @@
       },
       {
         "ordinal": 5,
-        "name": "last_login_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
-        "name": "updated_at",
+        "ordinal": 6,
+        "name": "last_login_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "pseudonym",
+        "type_info": "Text"
       }
     ],
     "parameters": {
-      "Left": ["Text"]
+      "Left": ["Int4"]
     },
     "nullable": [false, true, true, true, true, true, true, true]
   },
-  "hash": "086e13fdd0e6deb25aa3c0088a071a5caf8a36e8bf141fea8f54968f85563397"
+  "hash": "4460a8bff36c5b7dc3e3d9cdc3b485ce610f17f59b9ee20909fc84e277d8bd1c"
 }

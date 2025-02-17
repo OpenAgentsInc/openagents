@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO messages (conversation_id, role, content, metadata, tool_calls)\n            VALUES ($1, $2, $3, $4, $5)\n            RETURNING id, conversation_id, role, content, created_at, metadata, tool_calls\n            ",
+  "query": "\n            SELECT id, conversation_id, role, content, created_at as \"created_at: _\", metadata, tool_calls\n            FROM messages\n            WHERE conversation_id = $1\n            ORDER BY created_at ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -25,7 +25,7 @@
       },
       {
         "ordinal": 4,
-        "name": "created_at",
+        "name": "created_at: _",
         "type_info": "Timestamptz"
       },
       {
@@ -40,9 +40,9 @@
       }
     ],
     "parameters": {
-      "Left": ["Uuid", "Text", "Text", "Jsonb", "Jsonb"]
+      "Left": ["Uuid"]
     },
     "nullable": [false, false, false, false, false, true, true]
   },
-  "hash": "af6f51a83cd0974a9182266763c37e977b4735f7fa159529d915ea182da96c9a"
+  "hash": "248be338c0ab9b90fce1bbbe90a8c438c82d0b646e0dd81f505ddec38916860e"
 }

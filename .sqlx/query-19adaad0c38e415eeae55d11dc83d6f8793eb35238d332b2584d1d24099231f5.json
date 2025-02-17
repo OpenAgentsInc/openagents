@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, user_id, title, created_at, updated_at\n            FROM conversations\n            WHERE user_id = $1\n            ORDER BY updated_at DESC\n            ",
+  "query": "\n            SELECT id, user_id, title, created_at as \"created_at: _\", updated_at as \"updated_at: _\"\n            FROM conversations\n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -20,19 +20,19 @@
       },
       {
         "ordinal": 3,
-        "name": "created_at",
+        "name": "created_at: _",
         "type_info": "Timestamptz"
       },
       {
         "ordinal": 4,
-        "name": "updated_at",
+        "name": "updated_at: _",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
-      "Left": ["Text"]
+      "Left": ["Uuid"]
     },
     "nullable": [false, false, true, false, false]
   },
-  "hash": "4162f888f554515936fc3b050578a4727f145969131243483b9c6be9e8721086"
+  "hash": "19adaad0c38e415eeae55d11dc83d6f8793eb35238d332b2584d1d24099231f5"
 }

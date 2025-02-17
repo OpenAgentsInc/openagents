@@ -108,10 +108,7 @@ where
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use openagents::server::models::{
-        timestamp::{DateTimeWrapper, Timestamp},
-        User,
-    };
+    use openagents::server::models::{timestamp::DateTimeWrapper, User};
     use serde_json::json;
 
     #[test]
