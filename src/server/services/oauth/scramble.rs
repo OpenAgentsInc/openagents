@@ -153,7 +153,7 @@ impl ScrambleOAuth {
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        if let Some(_) = row {
+        if row.is_some() {
             info!("User already exists with pseudonym: {}", pseudonym);
             // Update last_login_at and return as AuthenticationFailed error
             sqlx::query!(
