@@ -86,7 +86,7 @@ ignore = "0.4"  # Added ignore crate for .gitignore support
 glob = "0.3"    # Added glob crate for pattern matching
 serde_urlencoded = "0.7.1"
 octocrab = "0.43.0"
-oauth2 = "4.4"  # Added oauth2 crate
+oauth2 = "5.0.0"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "macros", "rt-multi-thread"] }
