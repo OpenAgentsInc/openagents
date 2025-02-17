@@ -9,12 +9,12 @@ export function HeaderBar() {
 
       {/* Left/Middle Section */}
       <div className="flex items-center gap-0 overflow-hidden">
-        <div className="flex items-center">
-          <span className="flex items-center" data-state="closed">
-            <Link to="/new">
+        <div className="flex items-center h-10">
+          <span className="flex items-center h-full" data-state="closed">
+            <Link to="/new" className="h-full">
               <button
                 aria-label="New chat"
-                className="h-10 rounded-lg px-2 text-token-text-secondary focus-visible:bg-token-surface-hover focus-visible:outline-0 enabled:hover:bg-token-surface-hover disabled:text-token-text-quaternary"
+                className="h-full rounded-lg px-2 text-token-text-secondary focus-visible:bg-token-surface-hover focus-visible:outline-0 enabled:hover:bg-token-surface-hover disabled:text-token-text-quaternary flex items-center"
               >
                 <svg
                   width="24"
@@ -41,7 +41,7 @@ export function HeaderBar() {
           aria-expanded="false"
           data-state="closed"
           data-testid="model-switcher-dropdown-button"
-          className="group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-lg hover:bg-token-main-surface-secondary radix-state-open:bg-token-main-surface-secondary font-semibold text-token-text-secondary overflow-hidden whitespace-nowrap h-10"
+          className="group flex cursor-pointer items-center gap-1 rounded-lg px-3 text-lg hover:bg-token-main-surface-secondary radix-state-open:bg-token-main-surface-secondary font-semibold text-token-text-secondary overflow-hidden whitespace-nowrap h-10"
           style={{ viewTransitionName: "var(--vt-thread-model-switcher)" }}
         >
           <div className="text-token-text-secondary">OpenAgents</div>
@@ -66,12 +66,11 @@ export function HeaderBar() {
       {/* Right Section */}
       <div className="gap-2 flex items-center pr-1 leading-[0]">
         <div className="flex items-center justify-center gap-2">
-          <Button variant="secondary" size="lg" data-testid="login-button">
+          <Button variant="secondary" data-testid="login-button">
             Log in
           </Button>
           <Button
             variant="default"
-            size="lg"
             className="screen-arch:hidden md:screen-arch:flex"
             data-testid="signup-button"
           >
