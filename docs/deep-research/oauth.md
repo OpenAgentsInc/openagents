@@ -214,3 +214,34 @@ By following these practices – using a robust OAuth library (or carefully impl
 - **Axum Documentation:** [https://docs.rs/axum](https://docs.rs/axum)
 - **Session Management in Axum:** [`axum-extra`](https://crates.io/crates/axum-extra)
 - **General OAuth2 Best Practices:** Refer to the OAuth2 RFC 6749 and community guides for secure implementation details.
+
+
+---
+
+## Addendum: oauth2 vs. openidconnect
+
+The main difference is that the `oauth2` crate is a general-purpose OAuth2 client library, whereas `openidconnect` builds on top of OAuth2 to add an identity layer.
+
+### `oauth2` Crate
+- **General OAuth2 Flow:**
+  It helps you implement standard OAuth2 flows (authorization code, client credentials, etc.) with endpoints for authorization and token exchange. It’s designed to work with any provider that uses OAuth2, whether you’re obtaining access tokens for APIs or performing user authentication.
+- **Flexibility:**
+  It provides the building blocks for constructing authorization URLs, handling token exchanges, and managing refresh tokens. However, it doesn’t include extra logic for interpreting identity data (like user claims).
+- **Use Case:**
+  Use `oauth2` if you need a generic OAuth2 client for accessing APIs or if you want to build a custom authentication system where you handle user info manually.
+
+### `openidconnect` Crate
+- **Built on OAuth2:**
+  OpenID Connect (OIDC) is an extension to OAuth2 that provides a standard way to verify user identities. The `openidconnect` crate leverages the `oauth2` crate to perform the underlying OAuth2 flows.
+- **Identity Layer:**
+  In addition to the usual token exchange, `openidconnect` provides features for handling ID tokens (which are JWTs containing user identity information). It can automatically perform discovery (fetching provider metadata), validate ID tokens (checking signatures, expiry, etc.), and parse standard claims like the user’s name and email.
+- **Use Case:**
+  Use `openidconnect` if your primary goal is user authentication and you need robust handling of identity verification. It simplifies the process of obtaining trusted user data from providers that support OpenID Connect (such as Google, Microsoft, etc.).
+
+### Summary
+- **`oauth2` Crate:**
+  Good for any OAuth2 implementation where you might be accessing APIs or handling authentication in a custom way. You manage user info extraction manually.
+- **`openidconnect` Crate:**
+  Ideal for modern authentication scenarios where you need to verify the identity of the user using standardized ID tokens, as it takes care of token validation and user info extraction.
+
+In short, if you only need to perform a generic OAuth2 flow (e.g., accessing a third-party API), the `oauth2` crate might be sufficient. But if you want to securely authenticate users and obtain verified identity information, then using `openidconnect` provides additional features and security guarantees that are specifically tailored for that purpose.
