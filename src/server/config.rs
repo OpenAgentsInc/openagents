@@ -8,7 +8,7 @@ use super::services::{
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use crate::{routes, server};
-use axum::{routing::get, Router};
+use axum::{routing::{get, post}, Router};
 use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
@@ -155,6 +155,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         // Auth routes
         .route("/login", get(routes::login))
         .route("/signup", get(routes::signup))
+        .route("/api/user", get(routes::get_user_info))
         // Merge auth router
         .merge(app_router(app_state.clone()))
         // Static files
