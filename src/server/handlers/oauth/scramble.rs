@@ -46,6 +46,8 @@ pub async fn scramble_signup(
     params: Option<Query<LoginParams>>,
     form: Option<Form<LoginParams>>,
 ) -> Response {
+    info!("Received signup request with params: {:?}, form: {:?}", params, form);
+
     // Try to get email from either query params or form data
     let form_data = match (params, form) {
         (Some(query), _) => query.0,
@@ -55,6 +57,8 @@ pub async fn scramble_signup(
             return axum::response::Redirect::temporary("/signup").into_response();
         }
     };
+
+    info!("Form data: {:?}", form_data);
 
     // Validate form data
     if let Some(password) = &form_data.password {
