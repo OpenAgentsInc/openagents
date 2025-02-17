@@ -51,7 +51,7 @@ time = { version = "0.3", features = ["serde"] }
 anyhow = "1.0"
 askama = "0.12"
 askama_axum = "0.4"
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.7", features = ["ws", "macros"] }
 axum-extra = { version = "0.9", features = ["cookie"] }
 axum-macros = "0.4"
 tower = "0.4"

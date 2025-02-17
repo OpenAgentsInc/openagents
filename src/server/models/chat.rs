@@ -1,6 +1,6 @@
+use crate::server::models::timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::types::time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -8,8 +8,8 @@ pub struct Conversation {
     pub id: Uuid,
     pub user_id: String,
     pub title: Option<String>,
-    pub created_at: Option<OffsetDateTime>,
-    pub updated_at: Option<OffsetDateTime>,
+    pub created_at: Option<Timestamp>,
+    pub updated_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -18,7 +18,7 @@ pub struct Message {
     pub conversation_id: Uuid,
     pub role: String,
     pub content: String,
-    pub created_at: Option<OffsetDateTime>,
+    pub created_at: Option<Timestamp>,
     pub metadata: Option<Value>,
     pub tool_calls: Option<Value>,
 }
@@ -44,8 +44,8 @@ impl Conversation {
             id: Uuid::new_v4(),
             user_id,
             title,
-            created_at: Some(OffsetDateTime::now_utc()),
-            updated_at: Some(OffsetDateTime::now_utc()),
+            created_at: Some(Timestamp::now()),
+            updated_at: Some(Timestamp::now()),
         }
     }
 }
@@ -63,7 +63,7 @@ impl Message {
             conversation_id,
             role,
             content,
-            created_at: Some(OffsetDateTime::now_utc()),
+            created_at: Some(Timestamp::now()),
             metadata,
             tool_calls,
         }

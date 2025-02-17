@@ -1,23 +1,22 @@
-use crate::server::models::chat::{
-    Conversation, CreateConversationRequest, CreateMessageRequest, Message,
+use crate::server::models::{
+    chat::{Conversation, Message},
+    timestamp::TimestampExt,
 };
 use anyhow::{Context, Result};
+use chrono::Utc;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-pub struct ChatDatabase {
+pub struct ChatDatabaseService {
     pool: PgPool,
 }
 
-impl ChatDatabase {
+impl ChatDatabaseService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
-    pub async fn create_conversation(
-        &self,
-        request: CreateConversationRequest,
-    ) -> Result<Conversation> {
+    pub async fn create_conversation(&self, request: &crate::server::models::chat::CreateConversationRequest) -> Result<Conversation> {
         let conversation = sqlx::query_as!(
             Conversation,
             r#"
@@ -35,12 +34,7 @@ impl ChatDatabase {
         Ok(conversation)
     }
 
-    pub async fn add_message(&self, request: CreateMessageRequest) -> Result<Message> {
-        // First verify the conversation exists
-        self.get_conversation(request.conversation_id)
-            .await
-            .context("Conversation not found")?;
-
+    pub async fn create_message(&self, request: &crate::server::models::chat::CreateMessageRequest) -> Result<Message> {
         let message = sqlx::query_as!(
             Message,
             r#"
@@ -57,19 +51,6 @@ impl ChatDatabase {
         .fetch_one(&self.pool)
         .await
         .context("Failed to create message")?;
-
-        // Update conversation updated_at timestamp
-        sqlx::query!(
-            r#"
-            UPDATE conversations 
-            SET updated_at = NOW() 
-            WHERE id = $1
-            "#,
-            request.conversation_id
-        )
-        .execute(&self.pool)
-        .await
-        .context("Failed to update conversation timestamp")?;
 
         Ok(message)
     }

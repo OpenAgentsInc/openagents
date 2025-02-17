@@ -21,13 +21,15 @@ pub struct GitHubUser {
 pub struct GitHubOAuth {
     service: OAuthService,
     http_client: Client,
+    pool: PgPool,
 }
 
 impl GitHubOAuth {
     pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
         Ok(Self {
-            service: OAuthService::new(pool, config)?,
+            service: OAuthService::new(config)?,
             http_client: Client::new(),
+            pool,
         })
     }
 
@@ -125,7 +127,7 @@ impl GitHubOAuth {
             access_token,
             metadata as _
         )
-        .fetch_one(&self.service.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| {
             error!("Database error during user creation: {}", e);

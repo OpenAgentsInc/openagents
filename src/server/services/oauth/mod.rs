@@ -1,17 +1,17 @@
 use oauth2::{
-    basic::BasicClient,
+    basic::{BasicClient, BasicTokenType},
     AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl,
-    EmptyExtraTokenFields, StandardTokenResponse,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::info;
+use tracing::{info, error};
+use thiserror::Error;
 
 pub mod github;
 pub mod scramble;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct OAuthConfig {
     pub client_id: String,
     pub client_secret: String,
@@ -20,50 +20,46 @@ pub struct OAuthConfig {
     pub token_url: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct OAuthService {
-    pub config: OAuthConfig,
-    pub pool: PgPool,
-    client: BasicClient,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, thiserror::Error)]
 pub enum OAuthError {
-    InvalidConfig(String),
-    AuthenticationFailed(String),
+    #[error("Failed to create OAuth client: {0}")]
+    ClientCreationFailed(String),
+    #[error("Failed to exchange token: {0}")]
     TokenExchangeFailed(String),
+    #[error("Database error: {0}")]
     DatabaseError(String),
+    #[error("Authentication failed: {0}")]
+    AuthenticationFailed(String),
+    #[error("User creation error: {0}")]
     UserCreationError(String),
 }
 
+#[derive(Debug, Clone)]
+pub struct OAuthService {
+    client: BasicClient,
+}
+
 impl OAuthService {
-    pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
-        let client_id = ClientId::new(config.client_id.clone());
-        let client_secret = ClientSecret::new(config.client_secret.clone());
-        let auth_url = AuthUrl::new(config.auth_url.clone())
-            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
-        let token_url = TokenUrl::new(config.token_url.clone())
-            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
-        let redirect_url = RedirectUrl::new(config.redirect_url.clone())
-            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
+    pub fn new(config: OAuthConfig) -> Result<Self, OAuthError> {
+        let client = BasicClient::new(
+            ClientId::new(config.client_id),
+            Some(ClientSecret::new(config.client_secret)),
+            AuthUrl::new(config.auth_url).map_err(|e| OAuthError::ClientCreationFailed(e.to_string()))?,
+            Some(TokenUrl::new(config.token_url).map_err(|e| OAuthError::ClientCreationFailed(e.to_string()))?),
+        )
+        .set_redirect_uri(
+            RedirectUrl::new(config.redirect_url)
+                .map_err(|e| OAuthError::ClientCreationFailed(e.to_string()))?,
+        );
 
-        let client = BasicClient::new(client_id, Some(client_secret), auth_url, Some(token_url))
-            .set_redirect_uri(redirect_url);
-
-        Ok(Self {
-            client,
-            config,
-            pool,
-        })
+        Ok(Self { client })
     }
 
     pub fn authorization_url(&self) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
-        let csrf_token = oauth2::CsrfToken::new_random();
-
-        let auth_url = self
+        let (auth_url, csrf_token) = self
             .client
-            .authorize_url(|| csrf_token.clone())
+            .authorize_url(oauth2::CsrfToken::new_random)
             .set_pkce_challenge(pkce_challenge)
             .url();
 
@@ -74,11 +70,11 @@ impl OAuthService {
         &self,
         code: String,
         pkce_verifier: oauth2::PkceCodeVerifier,
-    ) -> Result<StandardTokenResponse<EmptyExtraTokenFields, oauth2::basic::BasicTokenType>, OAuthError> {
+    ) -> Result<oauth2::basic::BasicTokenResponse, OAuthError> {
         self.client
             .exchange_code(oauth2::AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
-            .request_async(reqwest::Client::new())
+            .request_async(oauth2::reqwest::async_http_client)
             .await
             .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
     }
@@ -87,10 +83,10 @@ impl OAuthService {
 impl std::fmt::Display for OAuthError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OAuthError::InvalidConfig(msg) => write!(f, "Invalid OAuth configuration: {}", msg),
-            OAuthError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {}", msg),
-            OAuthError::TokenExchangeFailed(msg) => write!(f, "Token exchange failed: {}", msg),
+            OAuthError::ClientCreationFailed(msg) => write!(f, "Failed to create OAuth client: {}", msg),
+            OAuthError::TokenExchangeFailed(msg) => write!(f, "Failed to exchange token: {}", msg),
             OAuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
+            OAuthError::AuthenticationFailed(msg) => write!(f, "Authentication failed: {}", msg),
             OAuthError::UserCreationError(msg) => write!(f, "User creation error: {}", msg),
         }
     }

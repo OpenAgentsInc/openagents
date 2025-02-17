@@ -3,21 +3,24 @@ use crate::server::models::user::User;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use oauth2::{
-    basic::BasicTokenType,
+    basic::{BasicTokenResponse, BasicTokenType},
     AccessToken, EmptyExtraTokenFields, RefreshToken, Scope, StandardTokenResponse, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::time::Duration;
 use tracing::{error, info};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScrambleTokenResponse {
     access_token: AccessToken,
     token_type: BasicTokenType,
-    expires_in: Option<u64>,
+    expires_in: Option<Duration>,
     refresh_token: Option<RefreshToken>,
+    extra_fields: EmptyExtraTokenFields,
 }
 
-impl TokenResponse for ScrambleTokenResponse {
+impl TokenResponse<BasicTokenType> for ScrambleTokenResponse {
     fn access_token(&self) -> &AccessToken {
         &self.access_token
     }
@@ -26,7 +29,7 @@ impl TokenResponse for ScrambleTokenResponse {
         &self.token_type
     }
 
-    fn expires_in(&self) -> Option<u64> {
+    fn expires_in(&self) -> Option<Duration> {
         self.expires_in
     }
 
@@ -34,8 +37,8 @@ impl TokenResponse for ScrambleTokenResponse {
         self.refresh_token.as_ref()
     }
 
-    fn scopes(&self) -> Option<&Vec<Scope>> {
-        None
+    fn extra_fields(&self) -> &EmptyExtraTokenFields {
+        &self.extra_fields
     }
 }
 
@@ -44,8 +47,9 @@ impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for Scra
         Self {
             access_token: token.access_token().clone(),
             token_type: token.token_type().clone(),
-            expires_in: token.expires_in().map(|d| d.as_secs()),
+            expires_in: token.expires_in(),
             refresh_token: token.refresh_token().cloned(),
+            extra_fields: EmptyExtraTokenFields::default(),
         }
     }
 }
@@ -53,12 +57,14 @@ impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for Scra
 #[derive(Debug, Clone)]
 pub struct ScrambleOAuth {
     service: OAuthService,
+    pool: PgPool,
 }
 
 impl ScrambleOAuth {
     pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
         Ok(Self {
-            service: OAuthService::new(pool, config)?,
+            service: OAuthService::new(config)?,
+            pool,
         })
     }
 
@@ -94,25 +100,8 @@ impl ScrambleOAuth {
         &self,
         code: String,
         pkce_verifier: oauth2::PkceCodeVerifier,
-    ) -> Result<impl TokenResponse<BasicTokenResponse>, OAuthError> {
-        let token = self.service
-            .exchange_code(code)
-            .set_pkce_verifier(pkce_verifier)
-            .request_async(oauth2::reqwest::async_http_client)
-            .await
-            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
-
-        let id_token = token.extra_fields()
-            .get("id_token")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| OAuthError::TokenExchangeFailed("Missing ID token".to_string()))?;
-
-        Ok(ScrambleTokenResponse {
-            access_token: token.access_token().clone(),
-            token_type: token.token_type().clone(),
-            expires_in: token.expires_in().map(|d| d.as_secs()),
-            refresh_token: token.refresh_token().cloned(),
-        })
+    ) -> Result<BasicTokenResponse, OAuthError> {
+        self.service.exchange_code(code, pkce_verifier).await
     }
 
     pub async fn authenticate(&self, code: String, is_signup: bool) -> Result<User, OAuthError> {
@@ -131,7 +120,9 @@ impl ScrambleOAuth {
         let id_token = extra_fields
             .get("id_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| OAuthError::TokenExchangeFailed("No id_token in response".to_string()))?;
+            .ok_or_else(|| {
+                OAuthError::TokenExchangeFailed("No id_token in response".to_string())
+            })?;
 
         let pseudonym = self.extract_pseudonym(id_token)?;
 
@@ -157,7 +148,7 @@ impl ScrambleOAuth {
             "#,
             pseudonym
         )
-        .fetch_optional(&self.service.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
@@ -178,7 +169,7 @@ impl ScrambleOAuth {
             pseudonym,
             serde_json::json!({}) as _
         )
-        .fetch_one(&self.service.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
@@ -199,7 +190,7 @@ impl ScrambleOAuth {
             "#,
             pseudonym
         )
-        .fetch_optional(&self.service.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
