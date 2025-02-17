@@ -2,7 +2,7 @@ use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::user::User;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use oauth2::{AuthorizationCode, CsrfToken, TokenResponse};
+use oauth2::{TokenResponse, CsrfToken};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info};
@@ -29,30 +29,34 @@ impl ScrambleOAuth {
     pub fn authorization_url_for_login(&self, email: &str) -> (String, CsrfToken) {
         info!("Generating login authorization URL for email: {}", email);
         
-        let auth_request = self
-            .service
-            .client()
-            .authorize_url(CsrfToken::new_random)
-            .add_scope("openid".into())
-            .add_extra_param("flow", "login")
-            .add_extra_param("email", email);
+        let csrf_token = CsrfToken::new_random();
+        let url = self.service.authorization_url(
+            None,
+            vec![
+                ("flow", "login"),
+                ("email", email),
+                ("scope", "openid"),
+            ],
+        );
 
-        auth_request.url()
+        (url, csrf_token)
     }
 
     pub fn authorization_url_for_signup(&self, email: &str) -> (String, CsrfToken) {
         info!("Generating signup authorization URL for email: {}", email);
         
-        let auth_request = self
-            .service
-            .client()
-            .authorize_url(CsrfToken::new_random)
-            .add_scope("openid".into())
-            .add_extra_param("flow", "signup")
-            .add_extra_param("prompt", "create")
-            .add_extra_param("email", email);
+        let csrf_token = CsrfToken::new_random();
+        let url = self.service.authorization_url(
+            None,
+            vec![
+                ("flow", "signup"),
+                ("prompt", "create"),
+                ("email", email),
+                ("scope", "openid"),
+            ],
+        );
 
-        auth_request.url()
+        (url, csrf_token)
     }
 
     pub async fn authenticate(&self, code: String, is_signup: bool) -> Result<User, OAuthError> {
@@ -63,23 +67,14 @@ impl ScrambleOAuth {
         );
 
         // Exchange code for tokens
-        let token = self
-            .service
-            .client()
-            .exchange_code(AuthorizationCode::new(code))
-            .request_async(oauth2::reqwest::async_http_client)
-            .await
-            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
+        let token = self.service.exchange_token(code).await?;
 
         // Extract claims from ID token
-        let id_token = token
-            .extra_fields()
-            .get("id_token")
-            .ok_or_else(|| OAuthError::TokenExchangeFailed("No id_token in response".to_string()))?
-            .as_str()
-            .ok_or_else(|| OAuthError::TokenExchangeFailed("id_token is not a string".to_string()))?;
+        let id_token = token.id_token.ok_or_else(|| {
+            OAuthError::TokenExchangeFailed("No id_token in response".to_string())
+        })?;
 
-        let pseudonym = self.extract_pseudonym(id_token)?;
+        let pseudonym = self.extract_pseudonym(&id_token)?;
 
         // Handle user creation/update based on signup vs login
         if is_signup {
