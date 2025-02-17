@@ -1,6 +1,6 @@
 use crate::server::{config::AppState, handlers::oauth::session::create_session_and_redirect};
 use axum::{
-    extract::{Query, State},
+    extract::{Query, State, Form},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -13,32 +13,48 @@ pub struct LoginParams {
 
 pub async fn scramble_login(
     State(state): State<AppState>,
-    Query(params): Query<LoginParams>,
+    params: Option<Query<LoginParams>>,
+    form: Option<Form<LoginParams>>,
 ) -> Response {
+    // Try to get email from either query params or form data
+    let email = match (params, form) {
+        (Some(query), _) => query.email.clone(),
+        (_, Some(form)) => form.email.clone(),
+        _ => return axum::response::Redirect::temporary("/login").into_response(),
+    };
+
     info!(
         "Handling Scramble login request for email: {}",
-        params.email
+        email
     );
 
     let (url, _csrf_token, _pkce_verifier) = state
         .scramble_oauth
-        .authorization_url_for_login(&params.email);
+        .authorization_url_for_login(&email);
 
     axum::response::Redirect::temporary(&url).into_response()
 }
 
 pub async fn scramble_signup(
     State(state): State<AppState>,
-    Query(params): Query<LoginParams>,
+    params: Option<Query<LoginParams>>,
+    form: Option<Form<LoginParams>>,
 ) -> Response {
+    // Try to get email from either query params or form data
+    let email = match (params, form) {
+        (Some(query), _) => query.email.clone(),
+        (_, Some(form)) => form.email.clone(),
+        _ => return axum::response::Redirect::temporary("/signup").into_response(),
+    };
+
     info!(
         "Handling Scramble signup request for email: {}",
-        params.email
+        email
     );
 
     let (url, _csrf_token, _pkce_verifier) = state
         .scramble_oauth
-        .authorization_url_for_signup(&params.email);
+        .authorization_url_for_signup(&email);
 
     axum::response::Redirect::temporary(&url).into_response()
 }
