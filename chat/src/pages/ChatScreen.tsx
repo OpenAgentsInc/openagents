@@ -1,14 +1,27 @@
-import { Home, MessageSquare, Settings, Users } from "lucide-react"
-import { Chat } from "@/components/ui/chat"
+import { Home, MessageSquare, Settings, Users } from "lucide-react";
+import { Chat } from "@/components/ui/chat";
 import {
-  Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton,
-  SidebarMenuItem, SidebarProvider, SidebarTrigger
-} from "@/components/ui/sidebar"
-import { useChat } from "@ai-sdk/react"
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { useChat } from "@ai-sdk/react";
 
 function ChatScreen() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading, stop, append } =
-    useChat();
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    isLoading,
+    stop,
+    append,
+  } = useChat();
 
   return (
     <div className="dark">
@@ -72,8 +85,8 @@ function ChatScreen() {
                   isGenerating={isLoading}
                   stop={stop}
                   className="flex-1 text-foreground"
-                // append={append}
-                // suggestions={["Generate a tasty lasagna recipe for 3 people.", "Generate a list of 5 questions for a frontend job interview.", "Who won the 2022 FIFA World Cup?"]}
+                  // append={append}
+                  // suggestions={["Generate a tasty lasagna recipe for 3 people.", "Generate a list of 5 questions for a frontend job interview.", "Who won the 2022 FIFA World Cup?"]}
                 />
               </div>
             </main>

@@ -126,15 +126,16 @@ impl GitHubOAuth {
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        Ok(User::new(
-            row.id,
-            row.scramble_id,
-            row.github_id,
-            row.github_token,
-            row.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-            row.last_login_at.map(DateTimeWrapper),
-            row.pseudonym,
-        ))
+        Ok(User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build())
     }
 }

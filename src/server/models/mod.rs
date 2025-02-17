@@ -1,5 +1,5 @@
 pub mod chat;
-pub mod user;
 pub mod timestamp;
+pub mod user;
 
 pub use user::User;

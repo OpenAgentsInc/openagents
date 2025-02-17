@@ -65,6 +65,7 @@ pub enum AuthError {
     DatabaseError(String),
     UserAlreadyExists(User),
     NotAuthenticated,
+    UserNotFound,
 }
 
 impl std::fmt::Display for AuthError {
@@ -76,6 +77,7 @@ impl std::fmt::Display for AuthError {
             AuthError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
             AuthError::UserAlreadyExists(_) => write!(f, "User already exists"),
             AuthError::NotAuthenticated => write!(f, "Not authenticated"),
+            AuthError::UserNotFound => write!(f, "User not found"),
         }
     }
 }
@@ -91,6 +93,7 @@ impl From<AuthError> for StatusCode {
             AuthError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AuthError::UserAlreadyExists(_) => StatusCode::TEMPORARY_REDIRECT,
             AuthError::NotAuthenticated => StatusCode::UNAUTHORIZED,
+            AuthError::UserNotFound => StatusCode::NOT_FOUND,
         }
     }
 }
@@ -178,22 +181,23 @@ impl OIDCService {
             .await?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Ok(User::new(
-                updated_user.id,
-                updated_user.scramble_id,
-                updated_user.github_id,
-                updated_user.github_token,
-                updated_user
-                    .metadata
-                    .expect("metadata should never be null"),
-                DateTimeWrapper(
+            return Ok(User::builder(updated_user.id)
+                .scramble_id(updated_user.scramble_id)
+                .github_id(updated_user.github_id)
+                .github_token(updated_user.github_token)
+                .metadata(
+                    updated_user
+                        .metadata
+                        .expect("metadata should never be null"),
+                )
+                .created_at(DateTimeWrapper(
                     updated_user
                         .created_at
                         .expect("created_at should never be null"),
-                ),
-                updated_user.last_login_at.map(DateTimeWrapper),
-                updated_user.pseudonym,
-            ));
+                ))
+                .last_login_at(updated_user.last_login_at.map(DateTimeWrapper))
+                .pseudonym(updated_user.pseudonym)
+                .build());
         }
 
         // Create new user
@@ -212,16 +216,17 @@ impl OIDCService {
         .await?;
 
         info!("Successfully created new user: {:?}", user);
-        Ok(User::new(
-            user.id,
-            user.scramble_id,
-            user.github_id,
-            user.github_token,
-            user.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(user.created_at.expect("created_at should never be null")),
-            user.last_login_at.map(DateTimeWrapper),
-            user.pseudonym,
-        ))
+        Ok(User::builder(user.id)
+            .scramble_id(user.scramble_id)
+            .github_id(user.github_id)
+            .github_token(user.github_token)
+            .metadata(user.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                user.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(user.last_login_at.map(DateTimeWrapper))
+            .pseudonym(user.pseudonym)
+            .build())
     }
 
     pub async fn signup(&self, code: String) -> Result<User, AuthError> {
@@ -266,22 +271,25 @@ impl OIDCService {
             .await?;
 
             info!("Successfully updated existing user: {:?}", updated_user);
-            return Err(AuthError::UserAlreadyExists(User::new(
-                updated_user.id,
-                updated_user.scramble_id,
-                updated_user.github_id,
-                updated_user.github_token,
-                updated_user
-                    .metadata
-                    .expect("metadata should never be null"),
-                DateTimeWrapper(
-                    updated_user
-                        .created_at
-                        .expect("created_at should never be null"),
-                ),
-                updated_user.last_login_at.map(DateTimeWrapper),
-                updated_user.pseudonym,
-            )));
+            return Err(AuthError::UserAlreadyExists(
+                User::builder(updated_user.id)
+                    .scramble_id(updated_user.scramble_id)
+                    .github_id(updated_user.github_id)
+                    .github_token(updated_user.github_token)
+                    .metadata(
+                        updated_user
+                            .metadata
+                            .expect("metadata should never be null"),
+                    )
+                    .created_at(DateTimeWrapper(
+                        updated_user
+                            .created_at
+                            .expect("created_at should never be null"),
+                    ))
+                    .last_login_at(updated_user.last_login_at.map(DateTimeWrapper))
+                    .pseudonym(updated_user.pseudonym)
+                    .build(),
+            ));
         }
 
         // Create new user
@@ -300,16 +308,17 @@ impl OIDCService {
         .await?;
 
         info!("Successfully created new user: {:?}", user);
-        Ok(User::new(
-            user.id,
-            user.scramble_id,
-            user.github_id,
-            user.github_token,
-            user.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(user.created_at.expect("created_at should never be null")),
-            user.last_login_at.map(DateTimeWrapper),
-            user.pseudonym,
-        ))
+        Ok(User::builder(user.id)
+            .scramble_id(user.scramble_id)
+            .github_id(user.github_id)
+            .github_token(user.github_token)
+            .metadata(user.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                user.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(user.last_login_at.map(DateTimeWrapper))
+            .pseudonym(user.pseudonym)
+            .build())
     }
 
     async fn exchange_code(&self, code: String) -> Result<TokenResponse, AuthError> {
@@ -389,6 +398,282 @@ impl OIDCService {
         info!("Successfully parsed token response");
         Ok(token_response)
     }
+
+    pub async fn get_user_by_id(&self, id: i32) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   created_at, last_login_at, pseudonym
+            FROM users
+            WHERE id = $1
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        match row {
+            Some(row) => Ok(User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build()),
+            None => Err(AuthError::UserNotFound),
+        }
+    }
+
+    pub async fn get_user_by_github_id(&self, github_id: i64) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   created_at, last_login_at, pseudonym
+            FROM users
+            WHERE github_id = $1
+            "#,
+            github_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        match row {
+            Some(row) => Ok(User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build()),
+            None => Err(AuthError::UserNotFound),
+        }
+    }
+
+    pub async fn get_user_by_scramble_id(&self, scramble_id: String) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   created_at, last_login_at, pseudonym
+            FROM users
+            WHERE scramble_id = $1
+            "#,
+            scramble_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        match row {
+            Some(row) => Ok(User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build()),
+            None => Err(AuthError::UserNotFound),
+        }
+    }
+
+    pub async fn get_user_by_pseudonym(&self, pseudonym: String) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   created_at, last_login_at, pseudonym
+            FROM users
+            WHERE pseudonym = $1
+            "#,
+            pseudonym
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        match row {
+            Some(row) => Ok(User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build()),
+            None => Err(AuthError::UserNotFound),
+        }
+    }
+
+    pub async fn create_user(
+        &self,
+        github_id: i64,
+        github_token: String,
+    ) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   created_at, last_login_at, pseudonym
+            FROM users
+            WHERE github_id = $1
+            "#,
+            github_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        if let Some(row) = row {
+            return Err(AuthError::UserAlreadyExists(
+                User::builder(row.id)
+                    .scramble_id(row.scramble_id)
+                    .github_id(row.github_id)
+                    .github_token(row.github_token)
+                    .metadata(row.metadata.expect("metadata should never be null"))
+                    .created_at(DateTimeWrapper(
+                        row.created_at.expect("created_at should never be null"),
+                    ))
+                    .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                    .pseudonym(row.pseudonym)
+                    .build(),
+            ));
+        }
+
+        let row = sqlx::query!(
+            r#"
+            INSERT INTO users (github_id, github_token, metadata)
+            VALUES ($1, $2, $3)
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      created_at, last_login_at, pseudonym
+            "#,
+            github_id,
+            github_token,
+            serde_json::json!({}) as JsonValue
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build())
+    }
+
+    pub async fn update_user_token(
+        &self,
+        id: i32,
+        github_token: String,
+    ) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE users
+            SET github_token = $1
+            WHERE id = $2
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      created_at, last_login_at, pseudonym
+            "#,
+            github_token,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build())
+    }
+
+    pub async fn update_user_metadata(
+        &self,
+        id: i32,
+        metadata: JsonValue,
+    ) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE users
+            SET metadata = $1
+            WHERE id = $2
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      created_at, last_login_at, pseudonym
+            "#,
+            metadata,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build())
+    }
+
+    pub async fn update_user_last_login(&self, id: i32) -> Result<User, AuthError> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE users
+            SET last_login_at = NOW()
+            WHERE id = $1
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      created_at, last_login_at, pseudonym
+            "#,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+
+        Ok(User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build())
+    }
 }
 
 fn is_valid_jwt_format(token: &str) -> bool {
@@ -460,16 +745,17 @@ pub async fn get_user_by_id(pool: &PgPool, id: i32) -> Result<Option<User>, sqlx
     .await?;
 
     Ok(row.map(|row| {
-        User::new(
-            row.id,
-            row.scramble_id,
-            row.github_id,
-            row.github_token,
-            row.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-            row.last_login_at.map(DateTimeWrapper),
-            row.pseudonym,
-        )
+        User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build()
     }))
 }
 
@@ -490,16 +776,17 @@ pub async fn get_user_by_scramble_id(
     .await?;
 
     Ok(user.map(|row| {
-        User::new(
-            row.id,
-            row.scramble_id,
-            row.github_id,
-            row.github_token,
-            row.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-            row.last_login_at.map(DateTimeWrapper),
-            row.pseudonym,
-        )
+        User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build()
     }))
 }
 
@@ -528,16 +815,17 @@ pub async fn update_user_by_id(
     .fetch_one(pool)
     .await?;
 
-    Ok(User::new(
-        row.id,
-        row.scramble_id,
-        row.github_id,
-        row.github_token,
-        row.metadata.expect("metadata should never be null"),
-        DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-        row.last_login_at.map(DateTimeWrapper),
-        row.pseudonym,
-    ))
+    Ok(User::builder(row.id)
+        .scramble_id(row.scramble_id)
+        .github_id(row.github_id)
+        .github_token(row.github_token)
+        .metadata(row.metadata.expect("metadata should never be null"))
+        .created_at(DateTimeWrapper(
+            row.created_at.expect("created_at should never be null"),
+        ))
+        .last_login_at(row.last_login_at.map(DateTimeWrapper))
+        .pseudonym(row.pseudonym)
+        .build())
 }
 
 pub async fn create_user(pool: &PgPool, user: &CreateUser) -> Result<User, sqlx::Error> {
@@ -559,14 +847,15 @@ pub async fn create_user(pool: &PgPool, user: &CreateUser) -> Result<User, sqlx:
     .fetch_one(pool)
     .await?;
 
-    Ok(User::new(
-        row.id,
-        row.scramble_id,
-        row.github_id,
-        row.github_token,
-        row.metadata.expect("metadata should never be null"),
-        DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-        row.last_login_at.map(DateTimeWrapper),
-        row.pseudonym,
-    ))
+    Ok(User::builder(row.id)
+        .scramble_id(row.scramble_id)
+        .github_id(row.github_id)
+        .github_token(row.github_token)
+        .metadata(row.metadata.expect("metadata should never be null"))
+        .created_at(DateTimeWrapper(
+            row.created_at.expect("created_at should never be null"),
+        ))
+        .last_login_at(row.last_login_at.map(DateTimeWrapper))
+        .pseudonym(row.pseudonym)
+        .build())
 }

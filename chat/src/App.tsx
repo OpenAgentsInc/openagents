@@ -1,7 +1,7 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
-import ChatScreen from "./pages/ChatScreen"
-import HomeScreen from "./pages/HomeScreen"
-import LoginScreen from "./pages/LoginScreen"
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import ChatScreen from "./pages/ChatScreen";
+import HomeScreen from "./pages/HomeScreen";
+import LoginScreen from "./pages/LoginScreen";
 
 function App() {
   return (

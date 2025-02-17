@@ -278,12 +278,14 @@ Major issues identified:
 ### [Fix Group 12] - OAuth Handler Implementations
 
 1. Fixed GitHub OAuth handler:
+
    - Updated `github_login` to use proper state and params
    - Improved callback handling with proper error responses
    - Added mobile platform support
    - Fixed response type conversions
 
 2. Fixed Scramble OAuth handler:
+
    - Updated login and signup handlers with proper email handling
    - Improved callback handling with signup vs login logic
    - Fixed response type conversions
@@ -297,12 +299,14 @@ Major issues identified:
 ### [Fix Group 13] - OAuth Service Implementations
 
 1. Fixed GitHub OAuth service:
+
    - Implemented proper token exchange with PKCE
    - Added user info fetching with error handling
    - Fixed user creation/update logic
    - Added proper metadata handling
 
 2. Fixed Scramble OAuth service:
+
    - Implemented proper authorization URL generation
    - Added PKCE and CSRF token support
    - Fixed ID token handling and claims extraction
@@ -317,12 +321,14 @@ Major issues identified:
 ### [Fix Group 14] - Template and Response Fixes
 
 1. Fixed login template:
+
    - Added proper title field
    - Updated template path to auth/login.html
    - Added GitHub and Scramble login buttons
    - Improved styling with Tailwind CSS
 
 2. Fixed signup template:
+
    - Added proper title field
    - Updated template path to auth/signup.html
    - Added GitHub and Scramble signup buttons
@@ -337,6 +343,7 @@ Major issues identified:
 ### [Fix Group 15] - Router and Configuration
 
 1. Fixed app router:
+
    - Created dedicated auth router
    - Added proper state handling
    - Fixed route organization
@@ -351,18 +358,21 @@ Major issues identified:
 ### [Fix Group 16] - Timestamp and Metadata Handling
 
 1. Fixed timestamp handling:
+
    - Added custom `Timestamp` type with proper PostgreSQL integration
    - Implemented `TimestampExt` trait for optional timestamp conversions
    - Fixed `last_login_at` field conversion using `to_timestamp()`
    - Ensured proper handling of `created_at` timestamps
 
 2. Fixed metadata handling:
+
    - Updated metadata field to use `JsonValue` type consistently
    - Added proper null checks with `expect()` messages
    - Fixed metadata type mismatches in OAuth providers
    - Improved error handling for metadata operations
 
 3. Fixed User model:
+
    - Added `pseudonym` field support
    - Updated SQL queries to include pseudonym
    - Added proper type conversions for all fields
@@ -377,6 +387,7 @@ Major issues identified:
 ## Current Status
 
 All major issues have been resolved:
+
 - ✅ Import paths and module structure fixed
 - ✅ OAuth2 v5 API compatibility achieved
 - ✅ Type system and trait implementations corrected
@@ -388,12 +399,13 @@ All major issues have been resolved:
 - ✅ User model updated with pseudonym support
 
 Next steps:
+
 1. Clean up unused imports
 2. Add comprehensive tests for OAuth flows
 3. Improve error messages and user experience
 4. Add logging for better debugging
 5. Consider adding rate limiting
 
-1. Fix remaining state type mismatches
-2. Fix response type conversions in handlers
-3. Fix remaining import issues
+6. Fix remaining state type mismatches
+7. Fix response type conversions in handlers
+8. Fix remaining import issues

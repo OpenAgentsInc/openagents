@@ -1,8 +1,6 @@
 use crate::server::models::timestamp::{DateTimeWrapper, Timestamp, TimestampExt};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::types::JsonValue;
-use time::OffsetDateTime;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct User {
@@ -91,28 +89,6 @@ impl UserBuilder {
 impl User {
     pub fn builder(id: i32) -> UserBuilder {
         UserBuilder::new(id)
-    }
-
-    pub fn new(
-        id: i32,
-        scramble_id: Option<String>,
-        github_id: Option<i64>,
-        github_token: Option<String>,
-        metadata: JsonValue,
-        created_at: DateTimeWrapper,
-        last_login_at: Option<DateTimeWrapper>,
-        pseudonym: Option<String>,
-    ) -> Self {
-        Self {
-            id,
-            scramble_id,
-            github_id,
-            github_token,
-            metadata,
-            created_at: created_at.0.into(),
-            last_login_at: last_login_at.map(|dt| dt.0.into()),
-            pseudonym,
-        }
     }
 }
 

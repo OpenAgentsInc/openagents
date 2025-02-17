@@ -7,12 +7,14 @@ This document explains why we implemented a custom `Timestamp` type in our Rust 
 ## Background
 
 In our codebase, we deal with timestamps in several contexts:
+
 1. Database storage and retrieval (PostgreSQL)
 2. JSON serialization/deserialization (for APIs)
 3. Business logic operations
 4. Time-based comparisons and calculations
 
 The main challenges we faced were:
+
 - Inconsistency between different timestamp types (`chrono::DateTime`, `time::OffsetDateTime`, PostgreSQL timestamps)
 - Serialization/deserialization complexity
 - Type conversion overhead
@@ -22,6 +24,7 @@ The main challenges we faced were:
 ## Solution
 
 We implemented a custom `Timestamp` type that wraps `time::OffsetDateTime` and provides:
+
 1. Consistent behavior across the application
 2. Safe conversions between different timestamp formats
 3. Proper database integration
@@ -35,6 +38,7 @@ pub struct Timestamp(OffsetDateTime);
 ```
 
 Key features:
+
 1. **Internal Storage**: Uses `OffsetDateTime` from the `time` crate
 2. **Database Integration**: Implements `Type<Postgres>`, `Encode`, and `Decode` traits
 3. **Serialization**: Implements `Serialize` and `Deserialize`
@@ -43,16 +47,19 @@ Key features:
 ## Benefits
 
 1. **Type Safety**
+
    - Prevents accidental mixing of different timestamp types
    - Ensures consistent timezone handling (always UTC)
    - Makes timestamp-related bugs more obvious at compile time
 
 2. **Database Compatibility**
+
    - Direct mapping to PostgreSQL's timestamp type
    - No precision loss during database operations
    - Proper handling of NULL values
 
 3. **API Consistency**
+
    - Uniform timestamp representation across the API
    - Predictable serialization format
    - Clear handling of optional timestamps
@@ -99,10 +106,12 @@ struct Message {
 ## Implementation Challenges
 
 1. **Orphan Rules**
+
    - Cannot implement `From` for `Option<DateTime>` directly
    - Solved by providing conversion methods instead
 
 2. **PostgreSQL Integration**
+
    - Need to implement custom encode/decode logic
    - Careful handling of timezone information
 
@@ -113,10 +122,12 @@ struct Message {
 ## Future Improvements
 
 1. **Additional Conversions**
+
    - Support for more timestamp formats
    - Better error handling for invalid timestamps
 
 2. **Performance Optimizations**
+
    - Cached conversions for common operations
    - Reduced allocation overhead
 

@@ -23,14 +23,17 @@ pub async fn setup_test_db() -> PgPool {
     let lock = DB_SETUP.get_or_init(|| Mutex::new(()));
     let _guard = lock.lock().await;
 
+    // Execute all setup in a single transaction
+    let mut tx = pool.begin().await.expect("Failed to start transaction");
+
     // Drop existing sequence and table if they exist
-    sqlx::query!("DROP TABLE IF EXISTS users CASCADE")
-        .execute(&pool)
+    sqlx::query("DROP TABLE IF EXISTS users CASCADE")
+        .execute(&mut *tx)
         .await
         .expect("Failed to drop table");
 
     // Create users table with sequence
-    sqlx::query!(
+    sqlx::query(
         r#"
         CREATE TABLE users (
             id SERIAL PRIMARY KEY,
@@ -40,40 +43,39 @@ pub async fn setup_test_db() -> PgPool {
             metadata JSONB DEFAULT '{}'::jsonb,
             last_login_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            pseudonym TEXT
         )
-        "#
+        "#,
     )
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .expect("Failed to create users table");
 
-    // Add unique constraint if it doesn't exist
-    sqlx::query!(
-        r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint
-                WHERE conname = 'users_github_id_key'
-            ) THEN
-                ALTER TABLE users ADD CONSTRAINT users_github_id_key UNIQUE (github_id);
-            END IF;
-        END $$;
-        "#
-    )
-    .execute(&pool)
-    .await
-    .expect("Failed to add unique constraint");
-
-    // Add indexes
-    sqlx::query!("CREATE INDEX IF NOT EXISTS idx_users_scramble_id ON users(scramble_id)")
-        .execute(&pool)
+    // Create indexes
+    sqlx::query("CREATE INDEX idx_users_scramble_id ON users(scramble_id)")
+        .execute(&mut *tx)
         .await
         .expect("Failed to create scramble_id index");
 
+    sqlx::query("CREATE INDEX idx_users_github_id ON users(github_id)")
+        .execute(&mut *tx)
+        .await
+        .expect("Failed to create github_id index");
+
+    sqlx::query("CREATE INDEX idx_users_pseudonym ON users(pseudonym)")
+        .execute(&mut *tx)
+        .await
+        .expect("Failed to create pseudonym index");
+
+    // Add unique constraint
+    sqlx::query("ALTER TABLE users ADD CONSTRAINT users_github_id_key UNIQUE (github_id)")
+        .execute(&mut *tx)
+        .await
+        .expect("Failed to add unique constraint");
+
     // Add updated_at trigger
-    sqlx::query!(
+    sqlx::query(
         r#"
         CREATE OR REPLACE FUNCTION update_updated_at_column()
         RETURNS TRIGGER AS $$
@@ -82,40 +84,35 @@ pub async fn setup_test_db() -> PgPool {
             RETURN NEW;
         END;
         $$ language 'plpgsql'
-        "#
+        "#,
     )
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .expect("Failed to create trigger function");
 
-    // Drop existing trigger first
-    sqlx::query!("DROP TRIGGER IF EXISTS update_users_updated_at ON users")
-        .execute(&pool)
-        .await
-        .expect("Failed to drop trigger");
-
-    // Create new trigger
-    sqlx::query!(
+    // Create trigger
+    sqlx::query(
         r#"
         CREATE TRIGGER update_users_updated_at
             BEFORE UPDATE ON users
             FOR EACH ROW
             EXECUTE FUNCTION update_updated_at_column()
-        "#
+        "#,
     )
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .expect("Failed to create trigger");
 
-    info!("Users table created/verified");
-
     // Clean up any existing test data
-    sqlx::query!("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
-        .execute(&pool)
+    sqlx::query("DELETE FROM users WHERE scramble_id LIKE 'test_%'")
+        .execute(&mut *tx)
         .await
         .expect("Failed to clean up test data");
 
-    info!("Cleaned up existing test data");
+    // Commit transaction
+    tx.commit().await.expect("Failed to commit transaction");
+
+    info!("Test database setup completed successfully");
 
     pool
 }

@@ -45,16 +45,17 @@ pub async fn create_user(
 
     match result {
         Ok(row) => {
-            let user = User::new(
-                row.id,
-                row.scramble_id,
-                row.github_id,
-                row.github_token,
-                row.metadata.expect("metadata should never be null"),
-                DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-                row.last_login_at.map(DateTimeWrapper),
-                row.pseudonym,
-            );
+            let user = User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build();
             Ok(Json(user))
         }
         Err(err) => {
@@ -108,16 +109,19 @@ pub async fn get_user(
     })?;
 
     match row {
-        Some(row) => Ok(Json(User::new(
-            row.id,
-            row.scramble_id,
-            row.github_id,
-            row.github_token,
-            row.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-            row.last_login_at.map(DateTimeWrapper),
-            row.pseudonym,
-        ))),
+        Some(row) => Ok(Json(
+            User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build(),
+        )),
         None => Err((
             StatusCode::NOT_FOUND,
             format!("User with id {} not found", id),

@@ -484,12 +484,10 @@ impl SolverService {
         );
         state.status = SolverStatus::Analyzing;
         ws_tx
-            .send(Message::Text(
-                format!(
-                    "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
-                    Utc::now().to_rfc3339()
-                ),
-            ))
+            .send(Message::Text(format!(
+                "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
+                Utc::now().to_rfc3339()
+            )))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         state.add_file(
             "src/server/services/repomap/mod.rs".to_string(),
@@ -513,12 +511,10 @@ impl SolverService {
         );
         state.status = SolverStatus::GeneratingChanges;
         ws_tx
-            .send(Message::Text(
-                format!(
-                    "Status Update: generating_changes, progress: 25.0, timestamp: {}",
-                    Utc::now().to_rfc3339()
-                ),
-            ))
+            .send(Message::Text(format!(
+                "Status Update: generating_changes, progress: 25.0, timestamp: {}",
+                Utc::now().to_rfc3339()
+            )))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         let (string_tx, mut string_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let ws_tx_clone = ws_tx.clone();
@@ -531,12 +527,10 @@ impl SolverService {
             .await?;
         state.status = SolverStatus::Complete;
         ws_tx
-            .send(Message::Text(
-                format!(
-                    "Status Update: complete, progress: 100.0, timestamp: {}",
-                    Utc::now().to_rfc3339()
-                ),
-            ))
+            .send(Message::Text(format!(
+                "Status Update: complete, progress: 100.0, timestamp: {}",
+                Utc::now().to_rfc3339()
+            )))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
         Ok(())
     }
@@ -594,12 +588,10 @@ impl SolverService {
 
         // Send initial status
         ws_tx
-            .send(Message::Text(
-                format!(
-                    "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
-                    Utc::now().to_rfc3339()
-                ),
-            ))
+            .send(Message::Text(format!(
+                "Status Update: analyzing_files, progress: 0.0, timestamp: {}",
+                Utc::now().to_rfc3339()
+            )))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
 
         // Create temporary directory for repository
@@ -638,12 +630,10 @@ impl SolverService {
 
         // Send completion status
         ws_tx
-            .send(Message::Text(
-                format!(
-                    "Status Update: complete, progress: 100.0, timestamp: {}",
-                    Utc::now().to_rfc3339()
-                ),
-            ))
+            .send(Message::Text(format!(
+                "Status Update: complete, progress: 100.0, timestamp: {}",
+                Utc::now().to_rfc3339()
+            )))
             .map_err(|e| anyhow::anyhow!("Failed to send status message: {}", e))?;
 
         Ok(())

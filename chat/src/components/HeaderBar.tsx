@@ -1,8 +1,11 @@
-import { Link } from "react-router-dom"
-import { Button } from "./ui/button"
+import { Link } from "react-router-dom";
+import { Button } from "./ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "./ui/dropdown-menu"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 export function HeaderBar() {
   return (
@@ -45,7 +48,9 @@ export function HeaderBar() {
               className="group flex cursor-pointer items-center gap-1 rounded-lg px-3 text-lg hover:bg-token-main-surface-secondary radix-state-open:bg-token-main-surface-secondary font-semibold text-token-text-secondary overflow-hidden whitespace-nowrap h-10 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:ring-0 focus:ring-offset-0"
               style={{ viewTransitionName: "var(--vt-thread-model-switcher)" }}
             >
-              <div className="text-token-text-secondary select-none">OpenAgents</div>
+              <div className="text-token-text-secondary select-none">
+                OpenAgents
+              </div>
               <svg
                 width="24"
                 height="24"
@@ -68,7 +73,11 @@ export function HeaderBar() {
               <a href="https://openagents.com">Homepage</a>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer">
+              <a
+                href="https://github.com/OpenAgentsInc/openagents"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 GitHub
               </a>
             </DropdownMenuItem>

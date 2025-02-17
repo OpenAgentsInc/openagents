@@ -139,9 +139,7 @@ impl ScrambleOAuth {
     }
 
     async fn handle_signup(&self, pseudonym: String) -> Result<User, OAuthError> {
-        info!("Handling signup for pseudonym: {}", pseudonym);
-
-        // Check if user exists
+        info!("Checking if user exists with pseudonym: {}", pseudonym);
         let row = sqlx::query!(
             r#"
             SELECT id, scramble_id, github_id, github_token, metadata,
@@ -155,25 +153,35 @@ impl ScrambleOAuth {
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        if let Some(row) = row {
-            return Ok(User::new(
-                row.id,
-                row.scramble_id,
-                row.github_id,
-                row.github_token,
-                row.metadata.expect("metadata should never be null"),
-                DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-                row.last_login_at.map(DateTimeWrapper),
-                row.pseudonym,
-            ));
+        if let Some(_) = row {
+            info!("User already exists with pseudonym: {}", pseudonym);
+            // Update last_login_at and return as AuthenticationFailed error
+            sqlx::query!(
+                r#"
+                UPDATE users
+                SET last_login_at = NOW()
+                WHERE scramble_id = $1
+                "#,
+                pseudonym
+            )
+            .execute(&self.pool)
+            .await
+            .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
+
+            return Err(OAuthError::AuthenticationFailed(format!(
+                "User already exists with pseudonym: {}",
+                pseudonym
+            )));
         }
 
         // Create new user
-        let row = sqlx::query!(
+        info!("Creating new user with pseudonym: {}", pseudonym);
+        let user = sqlx::query!(
             r#"
-            INSERT INTO users (scramble_id, metadata, github_id, github_token)
-            VALUES ($1, $2, NULL, NULL)
-            RETURNING id, scramble_id, github_id, github_token, metadata, created_at, last_login_at, pseudonym
+            INSERT INTO users (scramble_id, metadata, github_id, github_token, pseudonym)
+            VALUES ($1, $2, NULL, NULL, $1)
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      created_at, last_login_at, pseudonym
             "#,
             pseudonym,
             serde_json::json!({}) as JsonValue
@@ -182,28 +190,28 @@ impl ScrambleOAuth {
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        Ok(User::new(
-            row.id,
-            row.scramble_id,
-            row.github_id,
-            row.github_token,
-            row.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-            row.last_login_at.map(DateTimeWrapper),
-            row.pseudonym,
-        ))
+        Ok(User::builder(user.id)
+            .scramble_id(user.scramble_id)
+            .github_id(user.github_id)
+            .github_token(user.github_token)
+            .metadata(user.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                user.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(user.last_login_at.map(DateTimeWrapper))
+            .pseudonym(user.pseudonym)
+            .build())
     }
 
     async fn handle_login(&self, pseudonym: String) -> Result<User, OAuthError> {
-        info!("Handling login for pseudonym: {}", pseudonym);
-
         // Get and update existing user
         let row = sqlx::query!(
             r#"
             UPDATE users
             SET last_login_at = NOW()
             WHERE scramble_id = $1
-            RETURNING id, scramble_id, github_id, github_token, metadata, created_at, last_login_at, pseudonym
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      created_at, last_login_at, pseudonym
             "#,
             pseudonym
         )
@@ -211,21 +219,21 @@ impl ScrambleOAuth {
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-        if let Some(row) = row {
-            Ok(User::new(
-                row.id,
-                row.scramble_id,
-                row.github_id,
-                row.github_token,
-                row.metadata.expect("metadata should never be null"),
-                DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-                row.last_login_at.map(DateTimeWrapper),
-                row.pseudonym,
-            ))
-        } else {
-            Err(OAuthError::AuthenticationFailed(
+        match row {
+            Some(row) => Ok(User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build()),
+            None => Err(OAuthError::AuthenticationFailed(
                 "User not found".to_string(),
-            ))
+            )),
         }
     }
 
@@ -262,6 +270,69 @@ impl ScrambleOAuth {
             })
             .map(String::from)
     }
+
+    #[allow(dead_code)]
+    async fn get_user_by_scramble_id(&self, scramble_id: String) -> Result<User, OAuthError> {
+        let row = sqlx::query!(
+            r#"
+            SELECT id, scramble_id, github_id, github_token, metadata,
+                   created_at, last_login_at, pseudonym
+            FROM users
+            WHERE scramble_id = $1
+            "#,
+            scramble_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
+
+        match row {
+            Some(row) => Ok(User::builder(row.id)
+                .scramble_id(row.scramble_id)
+                .github_id(row.github_id)
+                .github_token(row.github_token)
+                .metadata(row.metadata.expect("metadata should never be null"))
+                .created_at(DateTimeWrapper(
+                    row.created_at.expect("created_at should never be null"),
+                ))
+                .last_login_at(row.last_login_at.map(DateTimeWrapper))
+                .pseudonym(row.pseudonym)
+                .build()),
+            None => Err(OAuthError::AuthenticationFailed(
+                "User not found".to_string(),
+            )),
+        }
+    }
+
+    #[allow(dead_code)]
+    async fn update_user_token(&self, id: i32, token: String) -> Result<User, OAuthError> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE users
+            SET github_token = $1
+            WHERE id = $2
+            RETURNING id, scramble_id, github_id, github_token, metadata,
+                      created_at, last_login_at, pseudonym
+            "#,
+            token,
+            id
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
+
+        Ok(User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build())
+    }
 }
 
 pub async fn get_or_create_user(pool: &PgPool, pseudonym: &str) -> Result<User, OAuthError> {
@@ -279,16 +350,17 @@ pub async fn get_or_create_user(pool: &PgPool, pseudonym: &str) -> Result<User, 
     .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
     if let Some(row) = row {
-        return Ok(User::new(
-            row.id,
-            row.scramble_id,
-            row.github_id,
-            row.github_token,
-            row.metadata.expect("metadata should never be null"),
-            DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-            row.last_login_at.map(DateTimeWrapper),
-            row.pseudonym,
-        ));
+        return Ok(User::builder(row.id)
+            .scramble_id(row.scramble_id)
+            .github_id(row.github_id)
+            .github_token(row.github_token)
+            .metadata(row.metadata.expect("metadata should never be null"))
+            .created_at(DateTimeWrapper(
+                row.created_at.expect("created_at should never be null"),
+            ))
+            .last_login_at(row.last_login_at.map(DateTimeWrapper))
+            .pseudonym(row.pseudonym)
+            .build());
     }
 
     let metadata = serde_json::json!({
@@ -309,14 +381,15 @@ pub async fn get_or_create_user(pool: &PgPool, pseudonym: &str) -> Result<User, 
     .await
     .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-    Ok(User::new(
-        row.id,
-        row.scramble_id,
-        row.github_id,
-        row.github_token,
-        row.metadata.expect("metadata should never be null"),
-        DateTimeWrapper(row.created_at.expect("created_at should never be null")),
-        row.last_login_at.map(DateTimeWrapper),
-        row.pseudonym,
-    ))
+    Ok(User::builder(row.id)
+        .scramble_id(row.scramble_id)
+        .github_id(row.github_id)
+        .github_token(row.github_token)
+        .metadata(row.metadata.expect("metadata should never be null"))
+        .created_at(DateTimeWrapper(
+            row.created_at.expect("created_at should never be null"),
+        ))
+        .last_login_at(row.last_login_at.map(DateTimeWrapper))
+        .pseudonym(row.pseudonym)
+        .build())
 }
