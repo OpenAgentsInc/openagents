@@ -9,7 +9,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use axum_extra::extract::cookie::CookieJar;
 
-use crate::server::models::user::User;
+use crate::server::{models::user::User, AppState};
 
 #[derive(Template)]
 #[template(path = "layouts/base.html", escape = "none")]
@@ -211,13 +211,12 @@ pub async fn cota(headers: HeaderMap) -> Response {
 
 pub async fn get_user_info(
     cookies: CookieJar,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Json<serde_json::Value> {
     if let Some(session_cookie) = cookies.get("session") {
         let user_id = session_cookie.value().parse::<i32>().ok();
         if let Some(id) = user_id {
-            if let Ok(user) = sqlx::query_as!(
-                User,
+            if let Ok(user) = sqlx::query!(
                 r#"
                 SELECT 
                     id, 
@@ -225,15 +224,13 @@ pub async fn get_user_info(
                     github_id, 
                     github_token, 
                     metadata as "metadata: sqlx::types::JsonValue",
-                    created_at,
-                    last_login_at,
                     pseudonym
                 FROM users 
                 WHERE id = $1
                 "#,
                 id
             )
-            .fetch_one(&pool)
+            .fetch_one(&state.pool)
             .await {
                 return Json(json!({
                     "authenticated": true,
