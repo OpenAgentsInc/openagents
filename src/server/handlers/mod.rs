@@ -1,7 +1,6 @@
 pub mod auth;
 pub mod oauth;
 pub mod user;
-pub mod ws;
 
 pub use auth::{
     login::{handle_login, login_page},

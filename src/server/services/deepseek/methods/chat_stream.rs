@@ -1,10 +1,10 @@
 use futures::StreamExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
-use futures_util::StreamExt;
 use bytes::Bytes;
 use reqwest::Response;
 use tokio_stream::Stream;
+use serde::Deserialize;
 
 use crate::server::services::deepseek::streaming::{StreamResponse, StreamUpdate};
 use crate::server::services::deepseek::types::{ChatMessage, ChatRequest};
