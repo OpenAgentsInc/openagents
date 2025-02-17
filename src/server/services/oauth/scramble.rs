@@ -28,7 +28,7 @@ pub struct ScrambleOAuth {
 impl ScrambleOAuth {
     pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
         Ok(Self {
-            service: OAuthService::new(config)?,
+            service: OAuthService::new(pool, config)?,
         })
     }
 
@@ -76,9 +76,7 @@ impl ScrambleOAuth {
         let id_token = token.extra_fields()
             .get("id_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                OAuthError::TokenExchangeFailed("No id_token in response".to_string())
-            })?;
+            .ok_or_else(|| OAuthError::TokenExchangeFailed("No id_token in response".to_string()))?;
 
         let pseudonym = self.extract_pseudonym(id_token)?;
 

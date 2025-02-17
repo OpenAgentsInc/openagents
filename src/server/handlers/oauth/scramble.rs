@@ -11,12 +11,12 @@ pub async fn scramble_login(
     Query(params): Query<ScrambleLoginParams>,
 ) -> impl IntoResponse {
     info!("Starting Scramble login flow for email: {}", params.email);
-    
+
     // Generate authorization URL
     let (auth_url, _csrf_token) = state
         .scramble
         .authorization_url_for_login(&params.email);
-    
+
     Redirect::temporary(&auth_url)
 }
 
@@ -25,12 +25,12 @@ pub async fn scramble_signup(
     Query(params): Query<ScrambleLoginParams>,
 ) -> impl IntoResponse {
     info!("Starting Scramble signup flow for email: {}", params.email);
-    
+
     // Generate authorization URL
     let (auth_url, _csrf_token) = state
         .scramble
         .authorization_url_for_signup(&params.email);
-    
+
     Redirect::temporary(&auth_url)
 }
 

@@ -1,9 +1,9 @@
 use oauth2::{
-    basic::BasicClient,
-    reqwest::async_http_client as oauth_async_http_client,
+    basic::{BasicClient, BasicTokenType},
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    PkceCodeChallenge, PkceCodeVerifier, TokenResponse, TokenUrl,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenResponse, TokenUrl,
 };
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -44,35 +44,31 @@ pub enum OAuthError {
 }
 
 impl OAuthService {
-    pub fn new(config: OAuthConfig) -> Result<Self, OAuthError> {
-        let client = BasicClient::new(
-            ClientId::new(config.client_id.clone()),
-            Some(ClientSecret::new(config.client_secret.clone())),
-            AuthUrl::new(config.auth_url.clone())
-                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
-            Some(TokenUrl::new(config.token_url.clone())
-                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?),
-        )
-        .set_redirect_uri(
-            RedirectUrl::new(config.redirect_url.clone())
-                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
-        );
+    pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
+        let client_id = ClientId::new(config.client_id.clone());
+        let client_secret = ClientSecret::new(config.client_secret.clone());
+        let auth_url = AuthUrl::new(config.auth_url.clone())
+            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
+        let token_url = TokenUrl::new(config.token_url.clone())
+            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
+        let redirect_url = RedirectUrl::new(config.redirect_url.clone())
+            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
 
-        Ok(Self { client, config })
+        let client = BasicClient::new(client_id, Some(client_secret), auth_url, Some(token_url))
+            .set_redirect_uri(redirect_url);
+
+        Ok(Self { client, config, pool })
     }
 
     pub fn authorization_url(&self) -> (String, CsrfToken, PkceCodeVerifier) {
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-        let (auth_url, csrf_token) = self.client
-            .authorize_url(CsrfToken::new_random)
+        let csrf_token = CsrfToken::new_random();
+        let auth_url = self.client
+            .authorize_url(|| csrf_token.clone())
             .set_pkce_challenge(pkce_challenge)
             .url();
 
         (auth_url.to_string(), csrf_token, pkce_verifier)
-    }
-
-    pub fn client(&self) -> &BasicClient {
-        &self.client
     }
 
     pub async fn exchange_code(
@@ -83,7 +79,7 @@ impl OAuthService {
         self.client
             .exchange_code(AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
-            .request_async(oauth_async_http_client)
+            .request_async(reqwest::Client::new())
             .await
             .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
     }

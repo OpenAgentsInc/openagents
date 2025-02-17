@@ -2,7 +2,7 @@ use crate::server::config::AppState;
 use askama::Template;
 use axum::{
     extract::{Query, State},
-    response::{Redirect},
+    response::{IntoResponse, Redirect},
 };
 use askama_axum::IntoResponse as AskamaIntoResponse;
 use serde::Deserialize;
@@ -15,7 +15,7 @@ struct SignupTemplate {
 }
 
 pub async fn signup_page(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
 ) -> impl AskamaIntoResponse {
     let template = SignupTemplate {
         title: "Sign Up - OpenAgents".to_string(),
@@ -36,7 +36,7 @@ pub struct SignupParams {
 pub async fn handle_signup(
     State(state): State<AppState>,
     Query(request): Query<SignupRequest>,
-) -> impl AskamaIntoResponse {
+) -> impl IntoResponse {
     info!("Handling signup request for email: {}", request.email);
 
     // Generate Scramble signup URL

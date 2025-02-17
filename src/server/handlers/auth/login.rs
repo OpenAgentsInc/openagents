@@ -4,9 +4,9 @@ use axum::{
     extract::{Query, State},
     response::{IntoResponse, Redirect},
 };
+use askama_axum::IntoResponse as AskamaIntoResponse;
 use serde::Deserialize;
 use tracing::info;
-use askama_axum::IntoResponse as AskamaIntoResponse;
 
 #[derive(Template)]
 #[template(path = "auth/login.html")]
@@ -20,7 +20,7 @@ pub struct LoginRequest {
 }
 
 pub async fn login_page(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
 ) -> impl AskamaIntoResponse {
     let template = LoginTemplate {
         title: "Login - OpenAgents".to_string(),

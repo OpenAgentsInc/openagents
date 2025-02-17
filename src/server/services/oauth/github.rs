@@ -31,7 +31,7 @@ pub struct GitHubOAuth {
 impl GitHubOAuth {
     pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
         Ok(Self {
-            service: OAuthService::new(config)?,
+            service: OAuthService::new(pool, config)?,
             http_client: Client::new(),
         })
     }

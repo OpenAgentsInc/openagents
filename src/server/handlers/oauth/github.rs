@@ -1,60 +1,67 @@
-use super::{create_session_and_redirect, handle_oauth_error, OAuthCallback, OAuthState};
+use crate::server::{
+    config::AppState,
+    handlers::auth::{create_session_and_redirect, handle_oauth_error},
+};
 use axum::{
     extract::{Query, State},
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Response},
 };
-use oauth2::PkceCodeVerifier;
+use serde::Deserialize;
 use tracing::info;
 
+#[derive(Debug, Deserialize)]
+pub struct LoginParams {
+    platform: Option<String>,
+}
+
 pub async fn github_login(
-    State(state): State<OAuthState>,
-    Query(params): Query<GitHubLoginParams>,
+    State(state): State<AppState>,
+    Query(params): Query<LoginParams>,
 ) -> impl IntoResponse {
-    info!("Starting GitHub login flow");
-    
-    // Generate authorization URL with PKCE
-    let (auth_url, _csrf_token, pkce_verifier) = state.github.authorization_url(params.platform);
-    
-    // Store PKCE verifier in session or secure cookie
-    // TODO: Implement secure storage of PKCE verifier
-    
-    Redirect::temporary(&auth_url)
+    info!("Handling GitHub login request");
+
+    let (url, _csrf_token, _pkce_verifier) = state
+        .oauth_state
+        .github
+        .authorization_url_for_login(""); // Email not used for GitHub
+
+    axum::response::Redirect::temporary(&url)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CallbackParams {
+    code: String,
+    state: Option<String>,
+    error: Option<String>,
 }
 
 pub async fn github_callback(
-    State(state): State<OAuthState>,
-    Query(params): Query<OAuthCallback>,
-) -> impl IntoResponse {
-    info!("Handling GitHub callback");
+    State(state): State<AppState>,
+    Query(params): Query<CallbackParams>,
+) -> Response {
+    info!("Processing GitHub callback");
 
-    match params.error {
-        Some(error) => {
-            info!("GitHub auth error: {}", error);
-            Redirect::temporary("/auth/error")
+    if let Some(error) = params.error {
+        info!("GitHub OAuth error: {}", error);
+        return handle_oauth_error(error.into()).into_response();
+    }
+
+    let platform = params.state.as_deref().and_then(|s| {
+        if s.contains("mobile") {
+            Some("mobile".to_string())
+        } else {
+            None
         }
-        None => {
-            let code = params.code;
-            let platform = params.state;
+    });
 
-            // Get stored PKCE verifier
-            // TODO: Implement secure retrieval of PKCE verifier
-            let pkce_verifier = PkceCodeVerifier::new("temporary_verifier".to_string()); // This is just a placeholder
-
-            // Authenticate with GitHub
-            match state.github.authenticate(code, pkce_verifier).await {
-                Ok(user) => {
-                    match create_session_and_redirect(&user, platform).await {
-                        Ok(response) => response,
-                        Err(error) => handle_oauth_error(error),
-                    }
-                }
-                Err(error) => handle_oauth_error(error),
+    match state.oauth_state.github.authenticate(params.code, false).await {
+        Ok(user) => {
+            info!("Successfully authenticated GitHub user: {:?}", user);
+            match create_session_and_redirect(&user, platform).await {
+                Ok(response) => response,
+                Err(error) => handle_oauth_error(error).into_response(),
             }
         }
+        Err(error) => handle_oauth_error(error).into_response(),
     }
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct GitHubLoginParams {
-    platform: Option<String>,
 }

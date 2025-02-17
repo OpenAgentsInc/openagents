@@ -184,7 +184,7 @@ pub fn app_router(state: AppState) -> Router<AppState> {
             Router::new()
                 .route("/login", get(github::github_login))
                 .route("/callback", get(github::github_callback))
-                .with_state(state.oauth_state.clone()),
+                .with_state(state.clone()),
         )
         .nest(
             "/auth/scramble",
@@ -192,7 +192,7 @@ pub fn app_router(state: AppState) -> Router<AppState> {
                 .route("/login", get(scramble::scramble_login))
                 .route("/signup", get(scramble::scramble_signup))
                 .route("/callback", get(scramble::scramble_callback))
-                .with_state(state.oauth_state.clone()),
+                .with_state(state.clone()),
         )
         .with_state(state)
 }

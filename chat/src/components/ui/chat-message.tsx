@@ -1,19 +1,18 @@
 "use client"
 
-import React, { useMemo } from "react"
-import { cva, type VariantProps } from "class-variance-authority"
+import { cva, type, VariantProps } from "class-variance-authority"
 import { Code2, Loader2, Terminal } from "lucide-react"
-
-import { cn } from "@/lib/utils"
+import React, { useMemo } from "react"
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
+import { cn } from "@/lib/utils"
 
 const chatBubbleVariants = cva(
   "group/message relative break-words rounded-lg p-3 text-sm sm:max-w-[70%]",
   {
     variants: {
       isUser: {
-        true: "bg-primary text-primary-foreground",
+        true: "border border-foreground bg-background",
         false: "bg-muted text-foreground",
       },
       animation: {
