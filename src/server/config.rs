@@ -152,6 +152,9 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .route("/coming-soon", get(routes::coming_soon))
         .route("/health", get(routes::health_check))
         .route("/cota", get(routes::cota))
+        // Auth routes
+        .route("/login", get(routes::login))
+        .route("/signup", get(routes::signup))
         // Merge auth router
         .merge(app_router(app_state.clone()))
         // Static files
