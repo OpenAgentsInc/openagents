@@ -101,12 +101,8 @@ pub async fn scramble_signup(
         csrf_token.secret()
     );
 
-    // Add signup-specific state to help identify this flow in the callback
-    let final_url = format!("{}&signup=true", url);
-    info!("Final signup URL with state: {}", final_url);
-
-    // Redirect to the Scramble auth URL
-    axum::response::Redirect::temporary(&final_url).into_response()
+    // Redirect to the Scramble auth URL (no need to append &signup=true)
+    axum::response::Redirect::temporary(&url).into_response()
 }
 
 #[derive(Debug, Deserialize)]
