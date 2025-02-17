@@ -1,7 +1,7 @@
 use oauth2::{
-    basic::{BasicClient, BasicTokenType},
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, StandardTokenResponse, TokenResponse, TokenUrl,
+    basic::BasicClient,
+    AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl,
+    EmptyExtraTokenFields, StandardTokenResponse, TokenResponse,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -26,14 +26,6 @@ pub struct OAuthService {
     client: BasicClient,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TokenInfo {
-    pub access_token: String,
-    pub token_type: BasicTokenType,
-    pub scope: Option<String>,
-    pub id_token: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 pub enum OAuthError {
     InvalidConfig(String),
@@ -45,17 +37,22 @@ pub enum OAuthError {
 
 impl OAuthService {
     pub fn new(pool: PgPool, config: OAuthConfig) -> Result<Self, OAuthError> {
-        let client_id = ClientId::new(config.client_id.clone());
-        let client_secret = ClientSecret::new(config.client_secret.clone());
-        let auth_url = AuthUrl::new(config.auth_url.clone())
-            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
-        let token_url = TokenUrl::new(config.token_url.clone())
-            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
-        let redirect_url = RedirectUrl::new(config.redirect_url.clone())
-            .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?;
-
-        let client = BasicClient::new(client_id, Some(client_secret), auth_url, Some(token_url))
-            .set_redirect_uri(redirect_url);
+        let client = BasicClient::new(
+            ClientId::new(config.client_id.clone()),
+            Some(ClientSecret::new(config.client_secret.clone())),
+        )
+        .set_auth_uri(
+            AuthUrl::new(config.auth_url.clone())
+                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
+        )
+        .set_token_uri(
+            TokenUrl::new(config.token_url.clone())
+                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
+        )
+        .set_redirect_uri(
+            RedirectUrl::new(config.redirect_url.clone())
+                .map_err(|e| OAuthError::InvalidConfig(e.to_string()))?,
+        );
 
         Ok(Self {
             client,
@@ -64,9 +61,10 @@ impl OAuthService {
         })
     }
 
-    pub fn authorization_url(&self) -> (String, CsrfToken, PkceCodeVerifier) {
-        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-        let csrf_token = CsrfToken::new_random();
+    pub fn authorization_url(&self) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
+        let (pkce_challenge, pkce_verifier) = oauth2::PkceCodeChallenge::new_random_sha256();
+        let csrf_token = oauth2::CsrfToken::new_random();
+
         let auth_url = self
             .client
             .authorize_url(|| csrf_token.clone())
@@ -79,10 +77,10 @@ impl OAuthService {
     pub async fn exchange_code(
         &self,
         code: String,
-        pkce_verifier: PkceCodeVerifier,
-    ) -> Result<StandardTokenResponse<TokenInfo, BasicTokenType>, OAuthError> {
+        pkce_verifier: oauth2::PkceCodeVerifier,
+    ) -> Result<StandardTokenResponse<EmptyExtraTokenFields, oauth2::basic::BasicTokenType>, OAuthError> {
         self.client
-            .exchange_code(AuthorizationCode::new(code))
+            .exchange_code(oauth2::AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
             .request_async(reqwest::Client::new())
             .await

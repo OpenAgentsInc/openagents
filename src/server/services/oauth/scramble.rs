@@ -1,13 +1,8 @@
-use super::{OAuthConfig, OAuthError, OAuthService, TokenInfo};
+use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::user::User;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use oauth2::{
-    basic::BasicClient, basic::BasicTokenType,
-    reqwest::async_http_client as oauth_async_http_client, AuthUrl, AuthorizationCode, ClientId,
-    ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, StandardTokenResponse,
-    TokenResponse, TokenUrl,
-};
+use oauth2::TokenResponse;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info};
@@ -35,7 +30,7 @@ impl ScrambleOAuth {
     pub fn authorization_url_for_login(
         &self,
         email: &str,
-    ) -> (String, CsrfToken, PkceCodeVerifier) {
+    ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         let mut url = self.service.authorization_url();
         url.0 = format!("{}&flow=login&email={}&scope=openid", url.0, email);
         url
@@ -44,7 +39,7 @@ impl ScrambleOAuth {
     pub fn authorization_url_for_signup(
         &self,
         email: &str,
-    ) -> (String, CsrfToken, PkceCodeVerifier) {
+    ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         let mut url = self.service.authorization_url();
         url.0 = format!(
             "{}&flow=signup&prompt=create&email={}&scope=openid",
@@ -56,14 +51,14 @@ impl ScrambleOAuth {
     pub fn authorization_url(
         &self,
         platform: Option<String>,
-    ) -> (String, CsrfToken, PkceCodeVerifier) {
+    ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         self.service.authorization_url(platform)
     }
 
     pub async fn exchange_code(
         &self,
         code: String,
-        pkce_verifier: PkceCodeVerifier,
+        pkce_verifier: oauth2::PkceCodeVerifier,
     ) -> Result<impl TokenResponse, OAuthError> {
         let token = self.service.exchange_code(code, pkce_verifier).await?;
         let id_token = token
@@ -86,9 +81,11 @@ impl ScrambleOAuth {
         let token = self.service.exchange_code(code, pkce_verifier).await?;
 
         // Extract claims from ID token
-        let id_token = token.extra_fields().id_token.as_ref().ok_or_else(|| {
-            OAuthError::TokenExchangeFailed("No id_token in response".to_string())
-        })?;
+        let id_token = token
+            .extra_fields()
+            .get("id_token")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| OAuthError::TokenExchangeFailed("No id_token in response".to_string()))?;
 
         let pseudonym = self.extract_pseudonym(id_token)?;
 

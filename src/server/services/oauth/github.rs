@@ -1,11 +1,6 @@
-use super::{OAuthConfig, OAuthError, OAuthService, TokenInfo};
+use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::user::User;
-use oauth2::{
-    basic::BasicClient, basic::BasicTokenType,
-    reqwest::async_http_client as oauth_async_http_client, AuthUrl, AuthorizationCode, ClientId,
-    ClientSecret, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, StandardTokenResponse,
-    TokenResponse, TokenUrl,
-};
+use oauth2::{basic::BasicTokenType, TokenResponse};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -39,7 +34,7 @@ impl GitHubOAuth {
     pub fn authorization_url_for_login(
         &self,
         email: &str,
-    ) -> (String, CsrfToken, PkceCodeVerifier) {
+    ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         let mut url = self.service.authorization_url();
         url.0 = format!("{}&login_hint={}", url.0, email);
         url
@@ -48,7 +43,7 @@ impl GitHubOAuth {
     pub fn authorization_url_for_signup(
         &self,
         email: &str,
-    ) -> (String, CsrfToken, PkceCodeVerifier) {
+    ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         let mut url = self.service.authorization_url();
         url.0 = format!("{}&login_hint={}", url.0, email);
         url

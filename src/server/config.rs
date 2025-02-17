@@ -1,16 +1,9 @@
 use super::services::{
     deepseek::DeepSeekService, github_issue::GitHubService, openrouter::OpenRouterService,
-    solver::SolverService,
+    solver::SolverService, oauth::{github::GitHubOAuth, scramble::ScrambleOAuth, OAuthConfig},
 };
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
-use crate::server::{
-    handlers::{
-        auth::{login, signup},
-        oauth::{github, scramble, OAuthState},
-    },
-    services::oauth::OAuthConfig,
-};
 use crate::{routes, server};
 use axum::{routing::get, Router};
 use sqlx::PgPool;
@@ -20,7 +13,8 @@ use tower_http::services::ServeDir;
 #[derive(Clone)]
 pub struct AppState {
     pub ws_state: Arc<WebSocketState>,
-    pub oauth_state: Arc<OAuthState>,
+    pub github_oauth: Arc<GitHubOAuth>,
+    pub scramble_oauth: Arc<ScrambleOAuth>,
     pub pool: PgPool,
 }
 
@@ -124,16 +118,22 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         token_url: config.scramble_token_url,
     };
 
-    // Create OAuth state
-    let oauth_state = Arc::new(
-        OAuthState::new(pool.clone(), github_config, scramble_config)
-            .expect("Failed to create OAuth state"),
+    // Initialize OAuth services
+    let github_oauth = Arc::new(
+        GitHubOAuth::new(pool.clone(), github_config)
+            .expect("Failed to create GitHub OAuth service"),
+    );
+
+    let scramble_oauth = Arc::new(
+        ScrambleOAuth::new(pool.clone(), scramble_config)
+            .expect("Failed to create Scramble OAuth service"),
     );
 
     // Create shared app state
     let app_state = AppState {
         ws_state,
-        oauth_state,
+        github_oauth,
+        scramble_oauth,
         pool: pool.clone(),
     };
 
@@ -174,25 +174,25 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
 
 pub fn app_router(state: AppState) -> Router<AppState> {
     Router::new()
-        .route("/auth/login", get(login::login_page))
-        .route("/auth/signup", get(signup::signup_page))
+        .route("/auth/login", get(server::handlers::auth::login::login_page))
+        .route("/auth/signup", get(server::handlers::auth::signup::signup_page))
         .route(
             "/auth/logout",
-            get(server::handlers::auth::clear_session_and_redirect),
+            get(server::handlers::auth::session::clear_session_and_redirect),
         )
         .nest(
             "/auth/github",
             Router::new()
-                .route("/login", get(github::github_login))
-                .route("/callback", get(github::github_callback))
+                .route("/login", get(server::handlers::oauth::github::github_login))
+                .route("/callback", get(server::handlers::oauth::github::github_callback))
                 .with_state(state.clone()),
         )
         .nest(
             "/auth/scramble",
             Router::new()
-                .route("/login", get(scramble::scramble_login))
-                .route("/signup", get(scramble::scramble_signup))
-                .route("/callback", get(scramble::scramble_callback))
+                .route("/login", get(server::handlers::oauth::scramble::scramble_login))
+                .route("/signup", get(server::handlers::oauth::scramble::scramble_signup))
+                .route("/callback", get(server::handlers::oauth::scramble::scramble_callback))
                 .with_state(state.clone()),
         )
         .with_state(state)
