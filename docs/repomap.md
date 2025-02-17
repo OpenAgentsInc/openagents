@@ -925,6 +925,13 @@ src/server/services/oauth/scramble.rs:
 │fn update_user_token
 │fn get_or_create_user
 
+src/server/services/oauth/verifier_store.rs:
+│fn new
+│fn store_verifier
+│fn get_verifier
+│fn cleanup_old_verifiers
+│fn default
+
 src/server/services/ollama/config.rs:
 │fn default
 │fn global
