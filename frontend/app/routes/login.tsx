@@ -1,6 +1,5 @@
 import type { Route } from "../+types/root";
 import { Github } from "lucide-react"
-import { Link } from "react-router"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 
@@ -12,6 +11,11 @@ export function meta({ }: Route.MetaArgs) {
 }
 
 export default function Login() {
+  const handleGitHubLogin = () => {
+    // Use window.location for auth routes to bypass React Router
+    window.location.href = '/auth/github/login';
+  };
+
   return (
     <div className="flex justify-center items-center min-h-[50vh]">
       <Card className="w-full max-w-sm">
@@ -21,12 +25,15 @@ export default function Login() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Link to="/auth/github/login" className="block w-full">
-            <Button className="w-full" size="lg" variant="nav">
-              <Github className="w-5 h-5" />
-              Log in with GitHub
-            </Button>
-          </Link>
+          <Button 
+            className="w-full" 
+            size="lg" 
+            variant="nav"
+            onClick={handleGitHubLogin}
+          >
+            <Github className="w-5 h-5" />
+            Log in with GitHub
+          </Button>
         </CardContent>
       </Card>
     </div>
