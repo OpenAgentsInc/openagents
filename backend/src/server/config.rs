@@ -48,17 +48,18 @@ impl Default for AppConfig {
     fn default() -> Self {
         // Load .env file if it exists
         dotenvy::dotenv().ok();
-
+        
         // Determine if we're in development mode
         let is_dev = env::var("APP_ENVIRONMENT").unwrap_or_default() != "production";
-
+        
         // Get frontend URL from .env, with different defaults for dev/prod
         let frontend_url = env::var("FRONTEND_URL").unwrap_or_else(|_| {
             if is_dev {
                 "http://localhost:5173".to_string()
             } else {
-                // In production, default to same host
-                "".to_string() // Empty string means use same host
+                // In production, default to http://localhost:8000
+                // This ensures we have a valid base URL for OAuth
+                "http://localhost:8000".to_string()
             }
         });
 
