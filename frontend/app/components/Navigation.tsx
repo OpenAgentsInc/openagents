@@ -1,4 +1,4 @@
-import { NavLink } from '@remix-run/react';
+import { NavLink } from 'react-router-dom';
 
 const navItems = [
   { href: '/', text: 'Home' },
