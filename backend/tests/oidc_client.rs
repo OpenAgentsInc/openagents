@@ -56,6 +56,7 @@ impl TestContext {
             github_client_id: "test_github_client".to_string(),
             github_client_secret: "test_github_secret".to_string(),
             github_redirect_uri: "http://localhost:8000/auth/github/callback".to_string(),
+            frontend_url: "http://localhost:3000".to_string(),
         };
 
         let app = configure_app_with_config(pool, Some(config));
@@ -120,6 +121,7 @@ async fn setup_test_app() -> Router {
         github_client_id: "test_github_client".to_string(),
         github_client_secret: "test_github_secret".to_string(),
         github_redirect_uri: "http://localhost:8000/auth/github/callback".to_string(),
+        frontend_url: "http://localhost:3000".to_string(),
     };
 
     configure_app_with_config(pool, Some(config))
