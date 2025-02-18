@@ -17,7 +17,6 @@ backend/src/bin/deepseek-cli.rs:
 
 backend/src/bin/generate-repomap.rs:
 │fn get_current_branch
-│fn run_git_command
 │fn main
 
 backend/src/bin/repo.rs:
@@ -466,6 +465,9 @@ backend/src/server/ws/transport.rs:
 backend/src/server/ws/types.rs:
 │fn fmt
 
+backend/tailwind.config.cjs:
+│const 
+
 backend/templates/admin/dashboard.html:
 │#id: bg
 │#id: solver-progress
@@ -821,8 +823,33 @@ docs/timestamp.md:
 
 docs/transcribe.md:
 
+frontend/app/+types/home.ts:
+│const BLOG_POSTS
+
+frontend/app/+types/onyx.ts:
+│const CHANGELOG
+
+frontend/app/+types/video-series.ts:
+│const VIDEOS
+
 frontend/app/root.tsx:
 │const links
+
+frontend/app/routes/_layout.tsx:
+│const navItems
+
+frontend/app/routes/company.tsx:
+│class of
+
+frontend/app/routes/repomap.tsx:
+│#id: repo_url
+│const 
+│const 
+│const handleSubmit
+│const formData
+│const repoUrl
+│const response
+│const data
 
 frontend/app/welcome/logo-dark.svg:
 │#id: clip0_202_2131
@@ -1394,8 +1421,5 @@ frontend_old/src/hooks/use-toast.ts:
 │const index
 
 frontend_old/src/pages/ChatScreen.tsx:
-│const 
-
-frontend_old/tailwind.config.cjs:
 │const 
 
