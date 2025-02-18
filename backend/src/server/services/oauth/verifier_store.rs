@@ -28,7 +28,6 @@ pub struct VerifierStore {
 
 impl VerifierStore {
     pub fn new() -> Self {
-        info!("Creating new VerifierStore");
         Self {
             store: Arc::new(RwLock::new(HashMap::new())),
         }

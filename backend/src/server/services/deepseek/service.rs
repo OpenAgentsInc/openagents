@@ -1,6 +1,5 @@
 use reqwest::{Client, ClientBuilder};
 use std::time::Duration;
-use tracing::info;
 
 use super::types::{FunctionDefinition, Tool};
 
@@ -21,8 +20,6 @@ impl DeepSeekService {
         let base_url = std::env::var("DEEPSEEK_API_URL")
             .unwrap_or_else(|_| "https://api.deepseek.com/v1".to_string());
 
-        info!("Using DeepSeek API URL: {}", base_url);
-
         Self {
             client,
             api_key,
@@ -35,8 +32,6 @@ impl DeepSeekService {
             .timeout(Duration::from_secs(180)) // 3 minutes timeout
             .build()
             .expect("Failed to create HTTP client");
-
-        info!("Using custom DeepSeek API URL: {}", base_url);
 
         Self {
             client,
