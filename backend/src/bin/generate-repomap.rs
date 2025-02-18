@@ -106,15 +106,15 @@ async fn main() -> Result<()> {
     println!("Committing and pushing changes...");
     Command::new("git")
         .current_dir(workspace_root)
-        .args(&["add", "docs/repomap.md"])
+        .args(["add", "docs/repomap.md"])
         .status()?;
     Command::new("git")
         .current_dir(workspace_root)
-        .args(&["commit", "-m", "Update repomap"])
+        .args(["commit", "-m", "Update repomap"])
         .status()?;
     Command::new("git")
         .current_dir(workspace_root)
-        .args(&["push"])
+        .args(["push"])
         .status()?;
     println!("Changes pushed successfully");
 
