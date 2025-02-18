@@ -15,3 +15,6 @@ services:
     instance_size_slug: basic-xxs
     routes:
       - path: /
+    env:
+      - key: APP_ENVIRONMENT
+        value: production
