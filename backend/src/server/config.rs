@@ -161,11 +161,10 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
             "/assets",
             ServeDir::new("../frontend/build/client/assets").precompressed_gzip(),
         )
-        // React app server
-        .nest_service(
-            "/",
-            tower_http::services::fs::ServeFile::new("../frontend/build/server/index.js"),
-        )
+        // Serve index.html for all other routes (SPA)
+        .fallback_service(tower_http::services::fs::ServeFile::new(
+            "../frontend/build/client/index.html",
+        ))
         .with_state(app_state)
 }
 
