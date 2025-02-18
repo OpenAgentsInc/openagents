@@ -15,4 +15,11 @@ export default [
       { file: "routes/login.tsx", path: "login" },
     ],
   },
+  {
+    file: "routes/chat/_layout.tsx",
+    path: "chat",
+    children: [
+      { file: "routes/chat/index.tsx", index: true },
+    ],
+  },
 ] satisfies RouteConfig;
