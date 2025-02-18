@@ -1,4 +1,4 @@
-name: Rust
+name: CI
 
 on:
   push:
@@ -17,14 +17,13 @@ env:
   APP_USER_PWD: secret
   APP_DB_NAME: newsletter
 
-defaults:
-  run:
-    working-directory: backend
-
 jobs:
-  test:
-    name: Test
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     env:
       AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
       DATABASE_URL: "postgres://postgres:password@localhost:5432/openagents_test"
@@ -134,9 +133,38 @@ jobs:
           ls -la .sqlx || true
           cargo sqlx prepare --workspace --check
 
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Type check
+        run: pnpm run typecheck
+
+      - name: Build
+        run: pnpm run build
+
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - name: Install the Rust toolchain
@@ -149,6 +177,9 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - name: Install the Rust toolchain
@@ -161,6 +192,9 @@ jobs:
   coverage:
     name: Code coverage
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     env:
       APP_ENVIRONMENT: "production"
       AIDER_API_KEY: ${{ secrets.AIDER_API_KEY }}
