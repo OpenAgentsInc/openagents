@@ -17,6 +17,10 @@ env:
   APP_USER_PWD: secret
   APP_DB_NAME: newsletter
 
+defaults:
+  run:
+    working-directory: backend
+
 jobs:
   test:
     name: Test
