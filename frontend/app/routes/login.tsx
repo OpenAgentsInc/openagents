@@ -1,5 +1,6 @@
 import type { Route } from "../+types/root";
 import { Github } from "lucide-react"
+import { Link } from "react-router"
 import { LoginForm } from "../components/login-form"
 import { Button } from "../components/ui/button"
 
@@ -38,8 +39,8 @@ export default function Login() {
             </Button>
           </div>
           <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance mt-6 *:[a]:underline *:[a]:underline-offset-4">
-            By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
-            and <a href="#">Privacy Policy</a>.
+            By clicking continue, you agree to our <Link to="/terms">Terms of Service</Link>{" "}
+            and <Link to="/privacy">Privacy Policy</Link>.
           </div>
         </div>
       </div>
