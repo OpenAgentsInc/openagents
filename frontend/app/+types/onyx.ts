@@ -17,17 +17,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "Basic Bitcoin Lightning wallet (experimental)",
       "Improved error handling",
-      "Performance optimizations"
-    ]
+      "Performance optimizations",
+    ],
   },
   {
     version: "v0.0.9",
     date: "January 1, 2025",
-    changes: [
-      "Added settings page",
-      "Dark mode toggle",
-      "Chat history search"
-    ]
+    changes: ["Added settings page", "Dark mode toggle", "Chat history search"],
   },
   {
     version: "v0.0.8",
@@ -35,8 +31,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "Chat history export",
       "Voice recording improvements",
-      "Bug fixes"
-    ]
+      "Bug fixes",
+    ],
   },
   {
     version: "v0.0.7",
@@ -44,8 +40,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "Chat history persistence",
       "UI polish",
-      "Performance improvements"
-    ]
+      "Performance improvements",
+    ],
   },
   {
     version: "v0.0.6",
@@ -53,8 +49,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "New chat/recording UI",
       "Multiple GitHub tokens support",
-      "Better error messages"
-    ]
+      "Better error messages",
+    ],
   },
   {
     version: "v0.0.5",
@@ -62,8 +58,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "Voice recording stability",
       "Chat history fixes",
-      "UI improvements"
-    ]
+      "UI improvements",
+    ],
   },
   {
     version: "v0.0.4",
@@ -71,8 +67,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "Coder tools via GitHub API",
       "Upgraded to Gemini 1.5 Pro model",
-      "Initial voice chat support"
-    ]
+      "Initial voice chat support",
+    ],
   },
   {
     version: "v0.0.3",
@@ -80,17 +76,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "Basic chat functionality",
       "Initial GitHub integration",
-      "Bug fixes"
-    ]
+      "Bug fixes",
+    ],
   },
   {
     version: "v0.0.2",
     date: "December 22, 2024",
-    changes: [
-      "UI improvements",
-      "Performance optimizations",
-      "Bug fixes"
-    ]
+    changes: ["UI improvements", "Performance optimizations", "Bug fixes"],
   },
   {
     version: "v0.0.1",
@@ -98,7 +90,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       "Initial beta release",
       "Basic chat interface",
-      "Local Llama 3.2 1B model"
-    ]
-  }
+      "Local Llama 3.2 1B model",
+    ],
+  },
 ];

@@ -1,9 +1,14 @@
 import type { Route } from "../+types/root";
-import { Github } from "lucide-react"
-import { Button } from "../components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
+import { Github } from "lucide-react";
+import { Button } from "../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Login" },
     { name: "description", content: "Login to OpenAgents" },

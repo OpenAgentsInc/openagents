@@ -1,6 +1,6 @@
 import type { Route } from "../+types/services";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Services" },
     { name: "description", content: "OpenAgents Business Services" },
@@ -14,13 +14,15 @@ export default function Services() {
         <h1 className="text-lg font-bold mb-4">Business Pro</h1>
         <p className="text-sm">We offer managed coding agent services.</p>
         <p className="text-sm">
-          They're best for small businesses that need software development and don't
-          want the hassle of hiring new developers.
+          They're best for small businesses that need software development and
+          don't want the hassle of hiring new developers.
         </p>
         <p className="text-sm">
           Describe the software you want, we supervise our agents to build it.
         </p>
-        <p className="text-sm">Plans start at $500/month. Limited availability.</p>
+        <p className="text-sm">
+          Plans start at $500/month. Limited availability.
+        </p>
         <p className="text-sm">
           <a
             href="https://pay.openagents.com/b/6oEeW91rx3XG5K89AE"

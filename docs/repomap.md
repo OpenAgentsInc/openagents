@@ -86,11 +86,11 @@ backend/src/repo/types.rs:
 backend/src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn 
+│fn
 │fn extract_id
 │fn extract_function_name
-│fn 
-│fn 
+│fn
+│fn
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -102,15 +102,15 @@ backend/src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class 
-│class 
-│class 
-│class 
+│class
+│class
+│class
+│class
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const 
-│const 
-│const 
+│const
+│const
+│const
 │const TEST_CONST
 
 backend/src/routes.rs:
@@ -466,7 +466,7 @@ backend/src/server/ws/types.rs:
 │fn fmt
 
 backend/tailwind.config.cjs:
-│const 
+│const
 
 backend/templates/admin/dashboard.html:
 │#id: bg
@@ -611,7 +611,7 @@ backend/templates/layouts/content.html:
 │#id: content
 
 backend/templates/macros/ui.html:
-│class 
+│class
 
 backend/templates/pages/company.html:
 │class of
@@ -813,7 +813,7 @@ frontend/app/+types/video-series.ts:
 frontend/app/root.tsx:
 │const links
 
-frontend/app/routes/_layout.tsx:
+frontend/app/routes/\_layout.tsx:
 │const navItems
 
 frontend/app/routes/company.tsx:
@@ -821,8 +821,8 @@ frontend/app/routes/company.tsx:
 
 frontend/app/routes/repomap.tsx:
 │#id: repo_url
-│const 
-│const 
+│const
+│const
 │const handleSubmit
 │const formData
 │const repoUrl
@@ -837,4 +837,3 @@ frontend/app/welcome/logo-light.svg:
 
 frontend/app/welcome/welcome.tsx:
 │const resources
-

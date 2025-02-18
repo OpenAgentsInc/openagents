@@ -111,7 +111,7 @@
 
 @layer utilities {
   :root {
-    font-family: 'Berkeley Mono', 'Courier New', monospace !important;
+    font-family: "Berkeley Mono", "Courier New", monospace !important;
     line-height: 1.5;
     font-weight: 400;
     color-scheme: light dark;
