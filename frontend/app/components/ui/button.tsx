@@ -1,9 +1,9 @@
-import { cva } from "class-variance-authority"
-import * as React from "react"
-import { cn } from "~/lib/utils"
-import { Slot } from "@radix-ui/react-slot"
+import { cva } from "class-variance-authority";
+import * as React from "react";
+import { cn } from "~/lib/utils";
+import { Slot } from "@radix-ui/react-slot";
 
-import type { VariantProps } from "class-variance-authority"
+import type { VariantProps } from "class-variance-authority";
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-3 whitespace-nowrap text-sm font-medium transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 [&_svg]:shrink-0 ring-ring/10 dark:ring-ring/20 dark:outline-ring/40 outline-ring/50 focus-visible:ring-4 focus-visible:outline-1 aria-invalid:focus-visible:ring-0 cursor-pointer relative",
   {
@@ -56,9 +56,7 @@ function Button({
       {...props}
     >
       {props.children}
-      {showDot && (
-        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-      )}
+      {showDot && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
     </Comp>
   );
 }
