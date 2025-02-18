@@ -1,4 +1,4 @@
-import type { MetaFunction } from '@remix-run/node';
+import type { MetaFunction } from 'react-router';
 import Navigation from '~/components/Navigation';
 
 export const meta: MetaFunction = () => {
