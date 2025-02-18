@@ -40,7 +40,7 @@ export function HeaderBar() {
   };
 
   return (
-    <div className="draggable no-draggable-children sticky top-0 p-3 mb-1.5 flex items-center justify-between z-10 h-header-height font-semibold bg-token-main-surface-primary max-md:hidden">
+    <div className="draggable no-draggable-children sticky top-0 p-3 flex items-center justify-between z-10 h-header-height font-semibold bg-background border-b border-zinc-800">
       {/* Centered empty div for future content or alignment */}
       <div className="absolute start-1/2 ltr:-translate-x-1/2 rtl:translate-x-1/2"></div>
 
