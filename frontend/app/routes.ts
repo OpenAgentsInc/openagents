@@ -13,6 +13,14 @@ export default [
       { file: "routes/cota.tsx", path: "cota" },
       { file: "routes/repomap.tsx", path: "repomap" },
       { file: "routes/login.tsx", path: "login" },
+      // Exclude auth routes from client-side routing
+      {
+        path: "auth/*",
+        loader: ({ request }) => {
+          window.location.href = new URL(request.url).pathname;
+          return null;
+        },
+      },
     ],
   },
 ] satisfies RouteConfig;
