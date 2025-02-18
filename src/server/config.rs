@@ -8,10 +8,18 @@ use super::services::{
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
 use crate::{routes, server};
-use axum::{routing::get, Router};
+use axum::{
+    body::Body,
+    http::Request,
+    middleware::{self, Next},
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
 use sqlx::PgPool;
 use std::{env, sync::Arc};
 use tower_http::services::ServeDir;
+use tracing::info;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -46,7 +54,7 @@ impl Default for AppConfig {
             scramble_client_secret: env::var("SCRAMBLE_CLIENT_SECRET")
                 .expect("SCRAMBLE_CLIENT_SECRET must be set"),
             scramble_redirect_uri: env::var("SCRAMBLE_REDIRECT_URI")
-                .unwrap_or_else(|_| "http://localhost:8000/auth/callback".to_string()),
+                .unwrap_or_else(|_| "http://localhost:8000/auth/scramble/callback".to_string()),
             database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
             github_client_id: env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID must be set"),
             github_client_secret: env::var("GITHUB_CLIENT_SECRET")
@@ -152,6 +160,10 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .route("/coming-soon", get(routes::coming_soon))
         .route("/health", get(routes::health_check))
         .route("/cota", get(routes::cota))
+        // Auth routes
+        .route("/login", get(routes::login))
+        .route("/signup", get(routes::signup))
+        .route("/api/user", get(routes::get_user_info))
         // Merge auth router
         .merge(app_router(app_state.clone()))
         // Static files
@@ -173,11 +185,26 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .with_state(app_state)
 }
 
+async fn log_request(req: Request<Body>, next: Next) -> impl IntoResponse {
+    info!(
+        "Incoming request: {} {} query_params: {:?}",
+        req.method(),
+        req.uri(),
+        req.uri().query()
+    );
+    next.run(req).await
+}
+
 pub fn app_router(state: AppState) -> Router<AppState> {
     Router::new()
         .route(
             "/auth/logout",
             get(server::handlers::oauth::session::clear_session_and_redirect),
+        )
+        // Add root callback route for Scramble
+        .route(
+            "/auth/callback",
+            get(server::handlers::oauth::scramble::scramble_callback),
         )
         .nest(
             "/auth/github",
@@ -194,11 +221,13 @@ pub fn app_router(state: AppState) -> Router<AppState> {
             Router::new()
                 .route(
                     "/login",
-                    get(server::handlers::oauth::scramble::scramble_login),
+                    get(server::handlers::oauth::scramble::scramble_login)
+                        .post(server::handlers::oauth::scramble::scramble_login),
                 )
                 .route(
                     "/signup",
-                    get(server::handlers::oauth::scramble::scramble_signup),
+                    get(server::handlers::oauth::scramble::scramble_signup)
+                        .post(server::handlers::oauth::scramble::scramble_signup),
                 )
                 .route(
                     "/callback",
@@ -206,5 +235,6 @@ pub fn app_router(state: AppState) -> Router<AppState> {
                 )
                 .with_state(state.clone()),
         )
+        .layer(middleware::from_fn(log_request))
         .with_state(state)
 }

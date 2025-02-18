@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT\n                    id,\n                    scramble_id,\n                    github_id,\n                    github_token,\n                    metadata as \"metadata: sqlx::types::JsonValue\",\n                    pseudonym\n                FROM users\n                WHERE id = $1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "scramble_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "github_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "github_token",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "metadata: sqlx::types::JsonValue",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "pseudonym",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": ["Int4"]
+    },
+    "nullable": [false, true, true, true, true, true]
+  },
+  "hash": "aae579cd2cad4acaffdf6eabc364549499e939195f80f678f7e04fe867af9e64"
+}
