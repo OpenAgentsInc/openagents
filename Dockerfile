@@ -24,7 +24,11 @@ WORKDIR /app/frontend
 COPY frontend/ ./
 RUN npm install -g pnpm
 RUN pnpm install
+RUN echo "Building frontend..."
 RUN pnpm run build
+RUN echo "Verifying frontend build..."
+RUN ls -la build/client
+RUN test -f build/client/index.html || (echo "index.html not found" && exit 1)
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
@@ -37,7 +41,6 @@ RUN apt-get update -y \
 COPY --from=builder /app/backend/target/release/openagents openagents
 COPY --from=builder /app/backend/assets assets
 COPY --from=frontend-builder /app/frontend/build/client ./client
-COPY --from=frontend-builder /app/frontend/build/server ./server
 COPY backend/configuration configuration
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./openagents"]
