@@ -24,10 +24,7 @@ export function LoginForm({
             </a>
             <h1 className="text-xl font-bold">Welcome to OpenAgents</h1>
             <div className="text-center text-sm">
-              Don&apos;t have an account?{" "}
-              <a href="#" className="underline underline-offset-4">
-                Sign up
-              </a>
+              Sign up or log in here
             </div>
           </div>
           <div className="flex flex-col gap-6">

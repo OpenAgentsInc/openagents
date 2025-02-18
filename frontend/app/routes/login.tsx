@@ -17,7 +17,7 @@ export default function Login() {
   };
 
   return (
-    <div className="bg-background flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center p-4 md:p-6">
+    <div className="bg-background flex min-h-[75vh] flex-col items-center justify-center p-4 md:p-6">
       <div className="w-full max-w-sm">
         <LoginForm />
         <div className="mt-6">
