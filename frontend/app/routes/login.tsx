@@ -1,14 +1,9 @@
 import type { Route } from "../+types/root";
-import { Github } from "lucide-react";
-import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Github } from "lucide-react"
+import { LoginForm } from "../components/login-form"
+import { Button } from "../components/ui/button"
 
-export function meta({}: Route.MetaArgs) {
+export function meta({ }: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Login" },
     { name: "description", content: "Login to OpenAgents" },
@@ -22,25 +17,32 @@ export default function Login() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-[50vh]">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl text-white">
-            Log in to OpenAgents
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Button
-            className="w-full"
-            size="lg"
-            variant="nav"
-            onClick={handleGitHubLogin}
-          >
-            <Github className="w-5 h-5" />
-            Log in with GitHub
-          </Button>
-        </CardContent>
-      </Card>
+    <div className="bg-background flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center p-4 md:p-6">
+      <div className="w-full max-w-sm">
+        <LoginForm />
+        <div className="mt-6">
+          <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
+            <span className="bg-background text-muted-foreground relative z-10 px-2">
+              or
+            </span>
+          </div>
+          <div className="mt-6">
+            <Button
+              className="w-full"
+              size="lg"
+              variant="outline"
+              onClick={handleGitHubLogin}
+            >
+              <Github className="mr-2 h-5 w-5" />
+              Continue with GitHub
+            </Button>
+          </div>
+          <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance mt-6 *:[a]:underline *:[a]:underline-offset-4">
+            By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
+            and <a href="#">Privacy Policy</a>.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
