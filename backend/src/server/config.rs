@@ -27,6 +27,7 @@ pub struct AppState {
     pub github_oauth: Arc<GitHubOAuth>,
     pub scramble_oauth: Arc<ScrambleOAuth>,
     pub pool: PgPool,
+    pub frontend_url: String,
 }
 
 #[derive(Clone)]
@@ -169,6 +170,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         github_oauth,
         scramble_oauth,
         pool: pool.clone(),
+        frontend_url: config.frontend_url,
     };
 
     // Create the main router
