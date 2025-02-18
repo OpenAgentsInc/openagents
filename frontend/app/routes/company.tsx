@@ -1,6 +1,6 @@
 import type { Route } from "../+types/company";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Company" },
     { name: "description", content: "About OpenAgents" },
@@ -24,10 +24,10 @@ export default function Company() {
         <div>
           <h2 className="text-lg font-bold mb-4">Our Vision</h2>
           <p className="text-sm mb-4">
-            The future of artificial intelligence cannot belong solely to monolithic
-            mega-corporations using regulatory capture and incestuous relationships
-            with governments to gain power at the expense of the people. AI, like
-            bitcoin, can be a liberating technology.
+            The future of artificial intelligence cannot belong solely to
+            monolithic mega-corporations using regulatory capture and incestuous
+            relationships with governments to gain power at the expense of the
+            people. AI, like bitcoin, can be a liberating technology.
           </p>
         </div>
 
@@ -40,16 +40,16 @@ export default function Company() {
             <p className="text-sm mb-4">
               Christopher has been writing software since the mid-'90s. Bitcoin
               class of '11, Nostr class of '21 and a NIP author, he previously
-              founded a successful rideshare startup in Austin. From OpenAI's first
-              dev day in late 2023, he saw the potential for AI agents built on
-              truly open protocols with bitcoin micropayments.
+              founded a successful rideshare startup in Austin. From OpenAI's
+              first dev day in late 2023, he saw the potential for AI agents
+              built on truly open protocols with bitcoin micropayments.
             </p>
             <p className="text-sm mb-4">
               Since then, he's recorded 150+ videos building in public, shipped
               multiple MVPs, and developed the vision for a decentralized agents
-              marketplace running on bitcoin and Nostr. The goal: a clean mobile app
-              that doubles as both Nostr client and bitcoin wallet, enabling users
-              to easily interact with their own personal AI agent.
+              marketplace running on bitcoin and Nostr. The goal: a clean mobile
+              app that doubles as both Nostr client and bitcoin wallet, enabling
+              users to easily interact with their own personal AI agent.
             </p>
           </div>
         </div>

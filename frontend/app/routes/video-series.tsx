@@ -1,7 +1,7 @@
 import type { Route, VideoEntry } from "../+types/video-series";
-import { VIDEOS } from "../+types/video-series"
+import { VIDEOS } from "../+types/video-series";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Video Series" },
     { name: "description", content: "OpenAgents Video Series" },
