@@ -13,7 +13,7 @@ use axum::{
     http::Request,
     middleware::{self, Next},
     response::IntoResponse,
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use sqlx::PgPool;

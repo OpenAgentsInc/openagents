@@ -35,7 +35,7 @@ pub async fn scramble_login(
         form_data.email
     );
 
-    let (url, csrf_token, pkce_verifier) = state
+    let (url, csrf_token, _pkce_verifier) = state
         .scramble_oauth
         .authorization_url_for_login(&form_data.email);
 
@@ -94,7 +94,7 @@ pub async fn scramble_signup(
     );
 
     // Generate the authorization URL
-    let (url, csrf_token, pkce_verifier) = state
+    let (url, csrf_token, _pkce_verifier) = state
         .scramble_oauth
         .authorization_url_for_signup(&form_data.email);
 
