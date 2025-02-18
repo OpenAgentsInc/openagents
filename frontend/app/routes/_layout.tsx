@@ -18,14 +18,16 @@ export default function Layout() {
       <div className="w-[60rem] max-w-full my-6 px-4 py-6 border border-white">
         <div className="grid grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
           {navItems.map(({ to, text }) => (
-            <Button
-              key={to}
-              variant="nav"
-              size="sm"
-              showDot={location.pathname === to}
-            >
-              <Link to={to}>{text}</Link>
-            </Button>
+            <Link key={to} to={to} className="contents">
+              <Button
+                variant="nav"
+                size="sm"
+                showDot={location.pathname === to}
+                className="w-full"
+              >
+                {text}
+              </Button>
+            </Link>
           ))}
         </div>
         <Outlet />

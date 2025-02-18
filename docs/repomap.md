@@ -810,11 +810,149 @@ frontend/app/+types/onyx.ts:
 frontend/app/+types/video-series.ts:
 │const VIDEOS
 
+frontend/app/components/ui/alert.tsx:
+│const alertVariants
+
+frontend/app/components/ui/badge.tsx:
+│const badgeVariants
+│const Comp
+
+frontend/app/components/ui/breadcrumb.tsx:
+│const Comp
+
+frontend/app/components/ui/button.tsx:
+│const buttonVariants
+│const Comp
+
+frontend/app/components/ui/carousel.tsx:
+│const CarouselContext
+│const context
+│const
+│const
+│const
+│const onSelect
+│const scrollPrev
+│const scrollNext
+│const handleKeyDown
+│const
+│const
+│const
+│const
+
+frontend/app/components/ui/chart.tsx:
+│const THEMES
+│const ChartContext
+│const context
+│const ChartContainer
+│const uniqueId
+│const chartId
+│const ChartStyle
+│const colorConfig
+│const color
+│const ChartTooltip
+│const ChartTooltipContent
+│const
+│const tooltipLabel
+│const
+│const key
+│const itemConfig
+│const value
+│const nestLabel
+│const key
+│const itemConfig
+│const indicatorColor
+│const ChartLegend
+│const ChartLegendContent
+│const
+│const key
+│const itemConfig
+│const payloadPayload
+
+frontend/app/components/ui/form.tsx:
+│const Form
+│const FormFieldContext
+│const FormField
+│const useFormField
+│const fieldContext
+│const itemContext
+│const
+│const formState
+│const fieldState
+│const
+│const FormItemContext
+│const id
+│const
+│const
+│const
+│const
+│const body
+
+frontend/app/components/ui/input-otp.tsx:
+│const inputOTPContext
+│const
+
+frontend/app/components/ui/navigation-menu.tsx:
+│const navigationMenuTriggerStyle
+
+frontend/app/components/ui/sidebar.tsx:
+│const SIDEBAR_COOKIE_NAME
+│const SIDEBAR_COOKIE_MAX_AGE
+│const SIDEBAR_WIDTH
+│const SIDEBAR_WIDTH_MOBILE
+│const SIDEBAR_WIDTH_ICON
+│const SIDEBAR_KEYBOARD_SHORTCUT
+│const SidebarContext
+│const context
+│const SidebarProvider
+│const isMobile
+│const
+│const
+│const open
+│const setOpen
+│const openState
+│const toggleSidebar
+│const handleKeyDown
+│const state
+│const contextValue
+│const
+│const
+│const
+│const Comp
+│const Comp
+│const sidebarMenuButtonVariants
+│const Comp
+│const
+│const button
+│const Comp
+│const width
+│const Comp
+
+frontend/app/components/ui/slider.tsx:
+│const \_values
+
+frontend/app/components/ui/sonner.tsx:
+│const Toaster
+│const
+
+frontend/app/components/ui/toggle-group.tsx:
+│const ToggleGroupContext
+│const context
+
+frontend/app/components/ui/toggle.tsx:
+│const toggleVariants
+
+frontend/app/hooks/use-mobile.ts:
+│const MOBILE_BREAKPOINT
+│const
+│const mql
+│const onChange
+
 frontend/app/root.tsx:
 │const links
 
 frontend/app/routes/\_layout.tsx:
 │const navItems
+│const location
 
 frontend/app/routes/company.tsx:
 │class of

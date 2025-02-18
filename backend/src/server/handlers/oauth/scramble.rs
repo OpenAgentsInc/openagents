@@ -27,7 +27,10 @@ pub async fn scramble_login(
     let form_data = match (params, form) {
         (Some(query), _) => query.0,
         (_, Some(form)) => form.0,
-        _ => return axum::response::Redirect::temporary("/login").into_response(),
+        _ => {
+            return axum::response::Redirect::temporary(&format!("{}/login", state.frontend_url))
+                .into_response()
+        }
     };
 
     info!(
@@ -60,7 +63,8 @@ pub async fn scramble_signup(
         (_, Some(form)) => form.0,
         _ => {
             info!("No email provided in signup request, redirecting to /signup");
-            return axum::response::Redirect::temporary("/signup").into_response();
+            return axum::response::Redirect::temporary(&format!("{}/signup", state.frontend_url))
+                .into_response();
         }
     };
 
@@ -69,23 +73,30 @@ pub async fn scramble_signup(
     // Validate form data
     if let Some(password) = &form_data.password {
         if password.len() < 8 {
-            return axum::response::Redirect::temporary(
-                "/signup?error=Password+must+be+at+least+8+characters",
-            )
+            return axum::response::Redirect::temporary(&format!(
+                "{}/signup?error=Password+must+be+at+least+8+characters",
+                state.frontend_url
+            ))
             .into_response();
         }
 
         if let Some(confirm) = &form_data.password_confirm {
             if password != confirm {
-                return axum::response::Redirect::temporary("/signup?error=Passwords+do+not+match")
-                    .into_response();
+                return axum::response::Redirect::temporary(&format!(
+                    "{}/signup?error=Passwords+do+not+match",
+                    state.frontend_url
+                ))
+                .into_response();
             }
         }
     }
 
     if form_data.terms != Some(true) {
-        return axum::response::Redirect::temporary("/signup?error=You+must+accept+the+terms")
-            .into_response();
+        return axum::response::Redirect::temporary(&format!(
+            "{}/signup?error=You+must+accept+the+terms",
+            state.frontend_url
+        ))
+        .into_response();
     }
 
     info!(
@@ -123,8 +134,11 @@ pub async fn scramble_callback(
 
     if let Some(error) = params.error {
         info!("Scramble OAuth error: {}", error);
-        return axum::response::Redirect::temporary(&format!("/login?error={}", error))
-            .into_response();
+        return axum::response::Redirect::temporary(&format!(
+            "{}/login?error={}",
+            state.frontend_url, error
+        ))
+        .into_response();
     }
 
     let state_param = params.state.clone().unwrap_or_default();
@@ -143,12 +157,13 @@ pub async fn scramble_callback(
     {
         Ok(user) => {
             info!("Successfully authenticated Scramble user: {:?}", user);
-            create_session_and_redirect(&user, false).await
+            create_session_and_redirect(&state, &user, false).await
         }
         Err(error) => {
             error!("Authentication failed: {}", error);
             axum::response::Redirect::temporary(&format!(
-                "/{}?error={}",
+                "{}/{}?error={}",
+                state.frontend_url,
                 if is_signup { "signup" } else { "login" },
                 error
             ))
