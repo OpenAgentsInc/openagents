@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "format": "cargo fmt && prettier --write --ignore-unknown .",
+    "format": "cargo fmt && prettier --write --ignore-unknown ../",
     "build:css": "tailwindcss -i ./styles/input.css -o ./static/output.css --watch"
   },
   "keywords": [],

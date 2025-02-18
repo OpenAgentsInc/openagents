@@ -1,11 +1,14 @@
-import { useState } from "react"
+import { useState } from "react";
 
 import type { Route, RepoMapResponse } from "../+types/repomap";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Repository Map Generator" },
-    { name: "description", content: "Generate a detailed map of any GitHub repository's structure" },
+    {
+      name: "description",
+      content: "Generate a detailed map of any GitHub repository's structure",
+    },
   ];
 }
 
@@ -50,8 +53,8 @@ export default function RepoMap() {
           >
             Aider's
           </a>{" "}
-          repository mapping technology to create a concise overview that helps AI
-          agents and developers understand codebases more effectively.
+          repository mapping technology to create a concise overview that helps
+          AI agents and developers understand codebases more effectively.
         </p>
         <p className="text-sm mb-4">
           The map includes key classes, functions, and their relationships,
@@ -101,14 +104,18 @@ export default function RepoMap() {
         {loading && (
           <div className="flex items-center justify-center py-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-            <span className="ml-2 text-gray-300">Generating repository map...</span>
+            <span className="ml-2 text-gray-300">
+              Generating repository map...
+            </span>
           </div>
         )}
 
         {/* Results Area */}
         {repoMap && (
           <div className="text-xs max-w-none">
-            <pre><code>{repoMap}</code></pre>
+            <pre>
+              <code>{repoMap}</code>
+            </pre>
           </div>
         )}
       </div>

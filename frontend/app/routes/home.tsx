@@ -1,8 +1,8 @@
 import type { Route, BlogPost } from "../+types/home";
-import ReactMarkdown from "react-markdown"
-import { BLOG_POSTS } from "../+types/home"
+import ReactMarkdown from "react-markdown";
+import { BLOG_POSTS } from "../+types/home";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Home" },
     { name: "description", content: "Welcome to OpenAgents" },
@@ -36,15 +36,18 @@ export default function Home() {
               economy on open protocols.
             </p>
             <p className="text-sm">
-              Our flagship product is Onyx, a mobile app equipping every person with
-              their own personal AI agent.
+              Our flagship product is Onyx, a mobile app equipping every person
+              with their own personal AI agent.
             </p>
             <p className="text-sm">
               Onyx will be your gateway to an open marketplace of the best AI
               agents.
             </p>
             <p className="text-sm">
-              <a href="/onyx" className="text-white/80 hover:text-white underline">
+              <a
+                href="/onyx"
+                className="text-white/80 hover:text-white underline"
+              >
                 Download Onyx in beta for Android & iOS now.
               </a>
             </p>
@@ -100,7 +103,8 @@ export default function Home() {
               <span className="text-white/50">]</span>
             </li>
             <li>
-              Pay Contributors Rev-Share <span className="text-white/50">[</span>
+              Pay Contributors Rev-Share{" "}
+              <span className="text-white/50">[</span>
               <a
                 href="https://github.com/OpenAgentsInc/openagents/wiki/Flow-of-Funds"
                 target="_blank"

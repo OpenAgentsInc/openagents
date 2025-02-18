@@ -1,7 +1,7 @@
 import type { Route, ChangelogEntry } from "../+types/onyx";
-import { CHANGELOG } from "../+types/onyx"
+import { CHANGELOG } from "../+types/onyx";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Mobile App" },
     { name: "description", content: "OpenAgents Mobile App - Onyx" },
@@ -11,7 +11,9 @@ export function meta({ }: Route.MetaArgs) {
 function ChangelogEntry({ version, date, changes }: ChangelogEntry) {
   return (
     <div className="border-l-4 border-white pl-4">
-      <p className="text-base font-semibold">{version} ({date})</p>
+      <p className="text-base font-semibold">
+        {version} ({date})
+      </p>
       <ul className="list-disc ml-6 space-y-2 text-sm">
         {changes.map((change, index) => (
           <li key={index}>{change}</li>
@@ -24,7 +26,9 @@ function ChangelogEntry({ version, date, changes }: ChangelogEntry) {
 export default function MobileApp() {
   return (
     <div className="container mx-auto px-4 max-w-4xl">
-      <h1 className="text-lg font-bold mb-6">Meet Onyx - Your Personal AI Agent</h1>
+      <h1 className="text-lg font-bold mb-6">
+        Meet Onyx - Your Personal AI Agent
+      </h1>
 
       <div className="mb-8">
         <h2 className="text-lg font-bold mb-4">Download Beta v0.1.0</h2>
