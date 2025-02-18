@@ -12,8 +12,8 @@ export function meta({ }: Route.MetaArgs) {
 
 export default function Login() {
   return (
-    <div className="fixed inset-0 dark bg-black flex items-center justify-center">
-      <Card className="-mt-12 w-full max-w-sm mx-4">
+    <div className="flex justify-center items-center min-h-[50vh]">
+      <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-xl text-white">
             Log in to OpenAgents
