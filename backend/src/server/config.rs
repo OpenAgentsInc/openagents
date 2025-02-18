@@ -159,11 +159,11 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         // Static assets
         .nest_service(
             "/assets",
-            ServeDir::new("../frontend/build/client/assets").precompressed_gzip(),
+            ServeDir::new("./client/assets").precompressed_gzip(),
         )
         // Serve index.html for all other routes (SPA)
         .fallback_service(tower_http::services::fs::ServeFile::new(
-            "../frontend/build/client/index.html",
+            "./client/index.html",
         ))
         .with_state(app_state)
 }
