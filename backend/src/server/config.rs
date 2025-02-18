@@ -150,38 +150,22 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
 
     // Create the main router
     Router::new()
-        // Main routes
-        .route("/", get(routes::home))
-        .route("/ws", get(server::ws::ws_handler))
-        .route("/onyx", get(routes::mobile_app))
-        .route("/services", get(routes::business))
-        .route("/video-series", get(routes::video_series))
-        .route("/company", get(routes::company))
-        .route("/coming-soon", get(routes::coming_soon))
-        .route("/health", get(routes::health_check))
-        .route("/cota", get(routes::cota))
-        // Auth routes
-        .route("/login", get(routes::login))
-        .route("/signup", get(routes::signup))
+        // API routes first to prevent conflicts
         .route("/api/user", get(routes::get_user_info))
+        .route("/health", get(routes::health_check))
+        .route("/ws", get(server::ws::ws_handler))
         // Merge auth router
         .merge(app_router(app_state.clone()))
-        // Static files
-        .nest_service("/assets", ServeDir::new("./assets").precompressed_gzip())
+        // Static assets
         .nest_service(
-            "/templates",
-            ServeDir::new("./templates").precompressed_gzip(),
+            "/assets",
+            ServeDir::new("../frontend/build/client/assets").precompressed_gzip(),
         )
-        // Serve all Vite files from dist
+        // React app server
         .nest_service(
-            "/chat",
-            tower_http::services::fs::ServeFile::new("./chat/dist/index.html"),
+            "/",
+            tower_http::services::fs::ServeFile::new("../frontend/build/server/index.js"),
         )
-        .nest_service(
-            "/chat/assets",
-            ServeDir::new("./chat/dist/assets").precompressed_gzip(),
-        )
-        // State
         .with_state(app_state)
 }
 
