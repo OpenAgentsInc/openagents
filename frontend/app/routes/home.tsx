@@ -16,7 +16,7 @@ function BlogPost({ date, title, content }: BlogPost) {
         <h3 className="text-base font-semibold">{title}</h3>
         <p className="text-white/50 text-sm">{date}</p>
       </div>
-      <div className="text-sm prose prose-invert">
+      <div className="text-sm prose prose-invert prose-a:text-white prose-a:underline hover:prose-a:text-white/80">
         <ReactMarkdown>{content}</ReactMarkdown>
       </div>
     </div>

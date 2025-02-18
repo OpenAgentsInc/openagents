@@ -8,6 +8,8 @@ export default [{
     { file: "routes/video-series.tsx", path: "video-series" },
     { file: "routes/services.tsx", path: "services" },
     { file: "routes/company.tsx", path: "company" },
-    { file: "routes/coming-soon.tsx", path: "coming-soon" }
+    { file: "routes/coming-soon.tsx", path: "coming-soon" },
+    { file: "routes/cota.tsx", path: "cota" },
+    { file: "routes/repomap.tsx", path: "repomap" }
   ]
 }] satisfies RouteConfig;
