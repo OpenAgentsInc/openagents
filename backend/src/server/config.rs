@@ -46,15 +46,21 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
+        // Load .env file if it exists
+        dotenvy::dotenv().ok();
+        
         // Determine if we're in development mode
         let is_dev = env::var("APP_ENVIRONMENT").unwrap_or_default() != "production";
         
-        // Use different frontend URL based on environment
-        let frontend_url = if is_dev {
-            env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:5173".to_string())
-        } else {
-            env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:8000".to_string())
-        };
+        // Get frontend URL from .env, with different defaults for dev/prod
+        let frontend_url = env::var("FRONTEND_URL").unwrap_or_else(|_| {
+            if is_dev {
+                "http://localhost:5173".to_string()
+            } else {
+                // In production, default to same host
+                "".to_string() // Empty string means use same host
+            }
+        });
 
         Self {
             scramble_auth_url: env::var("SCRAMBLE_AUTH_URL")
