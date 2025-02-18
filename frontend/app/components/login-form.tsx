@@ -1,8 +1,8 @@
-import { GalleryVerticalEnd, Mail } from "lucide-react"
-import { Button } from "~/components/ui/button"
-import { Input } from "~/components/ui/input"
-import { Label } from "~/components/ui/label"
-import { cn } from "~/lib/utils"
+import { GalleryVerticalEnd, Mail } from "lucide-react";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import { cn } from "~/lib/utils";
 
 export function LoginForm({
   className,
@@ -37,5 +37,5 @@ export function LoginForm({
         </div>
       </form>
     </div>
-  )
+  );
 }
