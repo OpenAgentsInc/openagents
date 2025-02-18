@@ -5,6 +5,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  redirect,
 } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -22,6 +23,17 @@ export const links: Route.LinksFunction = () => [
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
   },
 ];
+
+export function loader({ request }: Route.LoaderArgs) {
+  // Exclude auth routes from client-side routing
+  const url = new URL(request.url);
+  if (url.pathname.startsWith('/auth/')) {
+    // Let the server handle auth routes
+    window.location.href = url.pathname;
+    return null;
+  }
+  return null;
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
