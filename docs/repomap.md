@@ -791,6 +791,8 @@ docs/configuration.md:
 
 docs/deep-research/oauth.md:
 
+docs/deep-research/rr.md:
+
 docs/hierarchy.md:
 
 docs/repomap.md:

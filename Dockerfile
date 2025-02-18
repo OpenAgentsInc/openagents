@@ -37,7 +37,6 @@ RUN apt-get update -y \
 COPY --from=builder /app/backend/target/release/openagents openagents
 COPY --from=builder /app/backend/assets assets
 COPY --from=frontend-builder /app/frontend/build/client ./client
-COPY --from=frontend-builder /app/frontend/build/server ./server
 COPY backend/configuration configuration
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./openagents"]
