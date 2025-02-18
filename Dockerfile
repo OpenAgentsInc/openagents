@@ -22,8 +22,9 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 # Copy frontend files and install dependencies
 COPY frontend/ ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-RUN npm run build
+RUN npm install -g pnpm
+RUN pnpm install
+RUN pnpm run build
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
