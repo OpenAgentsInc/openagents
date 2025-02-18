@@ -27,8 +27,7 @@ pub async fn create_session_and_redirect(state: &AppState, user: &User, is_mobil
         Redirect::temporary(&mobile_url).into_response()
     } else {
         info!("Redirecting to web chat interface");
-        let frontend_url = state.config.frontend_url.clone();
-        let chat_url = format!("{}/chat", frontend_url);
+        let chat_url = format!("{}/chat", state.frontend_url);
         Redirect::temporary(&chat_url).into_response()
     };
 
@@ -44,8 +43,7 @@ pub async fn clear_session_and_redirect(State(state): State<AppState>) -> Respon
     info!("Clearing session cookie and redirecting to login");
 
     let cookie = clear_session_cookie();
-    let frontend_url = state.config.frontend_url;
-    let login_url = format!("{}/login", frontend_url);
+    let login_url = format!("{}/login", state.frontend_url);
     let mut response = Redirect::temporary(&login_url).into_response();
     response.headers_mut().insert(
         SET_COOKIE,
