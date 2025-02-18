@@ -30,18 +30,6 @@ fn get_current_branch() -> Option<String> {
     }
 }
 
-fn run_git_command(args: &[&str]) -> Result<()> {
-    let status = Command::new("git")
-        .args(args)
-        .status()
-        .map_err(|e| anyhow::anyhow!("Failed to run git command: {}", e))?;
-
-    if !status.success() {
-        bail!("Git command failed: {:?}", args);
-    }
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -92,19 +80,42 @@ async fn main() -> Result<()> {
         bail!("Failed to checkout branch: {}", branch);
     }
 
-    // Generate and store the repository map
+    // Find the workspace root (where .git directory is)
+    let current_dir = std::env::current_dir()?;
+    let workspace_root = current_dir
+        .ancestors()
+        .find(|p| p.join(".git").is_dir())
+        .ok_or_else(|| anyhow::anyhow!("Could not find workspace root"))?;
+
+    // Generate the repository map
     let map = generate_repo_map(&ctx.temp_dir);
-    fs::write("docs/repomap.md", map)?;
-    println!("Repository map saved to docs/repomap.md");
+
+    // Ensure the docs directory exists
+    let docs_dir = workspace_root.join("docs");
+    fs::create_dir_all(&docs_dir)?;
+
+    // Write the map to docs/repomap.md in the workspace root
+    let repomap_path = docs_dir.join("repomap.md");
+    fs::write(&repomap_path, map)?;
+    println!("Repository map saved to {}", repomap_path.display());
 
     // Clean up at the end
     cleanup_temp_dir(&temp_dir);
 
     // Commit and push the changes
     println!("Committing and pushing changes...");
-    run_git_command(&["add", "docs/repomap.md"])?;
-    run_git_command(&["commit", "-m", "Update repomap"])?;
-    run_git_command(&["push"])?;
+    Command::new("git")
+        .current_dir(workspace_root)
+        .args(&["add", "docs/repomap.md"])
+        .status()?;
+    Command::new("git")
+        .current_dir(workspace_root)
+        .args(&["commit", "-m", "Update repomap"])
+        .status()?;
+    Command::new("git")
+        .current_dir(workspace_root)
+        .args(&["push"])
+        .status()?;
     println!("Changes pushed successfully");
 
     Ok(())
