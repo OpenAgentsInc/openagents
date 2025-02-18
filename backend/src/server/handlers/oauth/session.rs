@@ -1,5 +1,6 @@
 use crate::server::models::user::User;
 use axum::{
+    extract::State,
     http::{header::SET_COOKIE, HeaderValue},
     response::{IntoResponse, Redirect, Response},
 };
@@ -8,11 +9,13 @@ use time::Duration;
 use time::OffsetDateTime;
 use tracing::info;
 
+use crate::server::config::AppState;
+
 pub const SESSION_COOKIE_NAME: &str = "session";
 pub const SESSION_DURATION_DAYS: i64 = 30;
 pub const MOBILE_APP_SCHEME: &str = "openagents://";
 
-pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Response {
+pub async fn create_session_and_redirect(state: &AppState, user: &User, is_mobile: bool) -> Response {
     info!("Creating session for user ID: {}", user.id);
 
     let expiry = OffsetDateTime::now_utc() + Duration::days(SESSION_DURATION_DAYS);
@@ -24,7 +27,9 @@ pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Respon
         Redirect::temporary(&mobile_url).into_response()
     } else {
         info!("Redirecting to web chat interface");
-        Redirect::temporary("/chat").into_response()
+        let frontend_url = state.config.frontend_url.clone();
+        let chat_url = format!("{}/chat", frontend_url);
+        Redirect::temporary(&chat_url).into_response()
     };
 
     response.headers_mut().insert(
@@ -35,11 +40,13 @@ pub async fn create_session_and_redirect(user: &User, is_mobile: bool) -> Respon
     response
 }
 
-pub async fn clear_session_and_redirect() -> Response {
+pub async fn clear_session_and_redirect(State(state): State<AppState>) -> Response {
     info!("Clearing session cookie and redirecting to login");
 
     let cookie = clear_session_cookie();
-    let mut response = Redirect::temporary("/login").into_response();
+    let frontend_url = state.config.frontend_url;
+    let login_url = format!("{}/login", frontend_url);
+    let mut response = Redirect::temporary(&login_url).into_response();
     response.headers_mut().insert(
         SET_COOKIE,
         HeaderValue::from_str(&cookie.to_string()).unwrap(),
