@@ -27,7 +27,6 @@ localimages
 .env
 .env.dusk.local
 /target
-/backend/target
 .idea
 tags
 static/nostr/*.js
