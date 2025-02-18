@@ -8,7 +8,7 @@ chat/public/vite.svg:
 │#id: IconifyId1813088fe1fbc01fb466
 
 chat/src/components/HeaderBar.tsx:
-│const
+│const 
 │const navigateTo
 
 chat/src/components/ui/accordion.tsx:
@@ -74,21 +74,21 @@ chat/src/components/ui/carousel.tsx:
 │const CarouselContext
 │const context
 │const Carousel
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const onSelect
 │const scrollPrev
 │const scrollNext
 │const handleKeyDown
 │const CarouselContent
-│const
+│const 
 │const CarouselItem
-│const
+│const 
 │const CarouselPrevious
-│const
+│const 
 │const CarouselNext
-│const
+│const 
 
 chat/src/components/ui/chart.tsx:
 │const THEMES
@@ -102,9 +102,9 @@ chat/src/components/ui/chart.tsx:
 │const color
 │const ChartTooltip
 │const ChartTooltipContent
-│const
+│const 
 │const tooltipLabel
-│const
+│const 
 │const key
 │const itemConfig
 │const value
@@ -114,7 +114,7 @@ chat/src/components/ui/chart.tsx:
 │const indicatorColor
 │const ChartLegend
 │const ChartLegendContent
-│const
+│const 
 │const key
 │const itemConfig
 │const payloadPayload
@@ -135,10 +135,10 @@ chat/src/components/ui/chat.tsx:
 │const isEmpty
 │const isTyping
 │const messageOptions
-│const
+│const 
 │const ChatContainer
 │const ChatForm
-│const
+│const 
 │const onSubmit
 │const fileList
 │const dataTransfer
@@ -181,7 +181,7 @@ chat/src/components/ui/context-menu.tsx:
 │const ContextMenuShortcut
 
 chat/src/components/ui/copy-button.tsx:
-│const
+│const 
 
 chat/src/components/ui/dialog.tsx:
 │const Dialog
@@ -228,7 +228,7 @@ chat/src/components/ui/file-preview.tsx:
 │const FilePreview
 │const ImageFilePreview
 │const TextFilePreview
-│const
+│const 
 │const reader
 │const text
 │const GenericFilePreview
@@ -240,20 +240,20 @@ chat/src/components/ui/form.tsx:
 │const useFormField
 │const fieldContext
 │const itemContext
-│const
+│const 
 │const fieldState
-│const
+│const 
 │const FormItemContext
 │const FormItem
 │const id
 │const FormLabel
-│const
+│const 
 │const FormControl
-│const
+│const 
 │const FormDescription
-│const
+│const 
 │const FormMessage
-│const
+│const 
 │const body
 
 chat/src/components/ui/hover-card.tsx:
@@ -266,7 +266,7 @@ chat/src/components/ui/input-otp.tsx:
 │const InputOTPGroup
 │const InputOTPSlot
 │const inputOTPContext
-│const
+│const 
 │const InputOTPSeparator
 
 chat/src/components/ui/input.tsx:
@@ -278,8 +278,8 @@ chat/src/components/ui/label.tsx:
 
 chat/src/components/ui/markdown-renderer.tsx:
 │const HighlightedPre
-│const
-│const
+│const 
+│const 
 │const style
 │const CodeBlock
 │const code
@@ -307,8 +307,8 @@ chat/src/components/ui/menubar.tsx:
 │const MenubarShortcut
 
 chat/src/components/ui/message-input.tsx:
-│const
-│const
+│const 
+│const 
 │const addFiles
 │const onDragOver
 │const onDragLeave
@@ -412,8 +412,8 @@ chat/src/components/ui/sidebar.tsx:
 │const context
 │const SidebarProvider
 │const isMobile
-│const
-│const
+│const 
+│const 
 │const open
 │const setOpen
 │const openState
@@ -422,11 +422,11 @@ chat/src/components/ui/sidebar.tsx:
 │const state
 │const contextValue
 │const Sidebar
-│const
+│const 
 │const SidebarTrigger
-│const
+│const 
 │const SidebarRail
-│const
+│const 
 │const SidebarInset
 │const SidebarInput
 │const SidebarHeader
@@ -444,7 +444,7 @@ chat/src/components/ui/sidebar.tsx:
 │const sidebarMenuButtonVariants
 │const SidebarMenuButton
 │const Comp
-│const
+│const 
 │const button
 │const SidebarMenuAction
 │const Comp
@@ -461,7 +461,7 @@ chat/src/components/ui/slider.tsx:
 
 chat/src/components/ui/sonner.tsx:
 │const Toaster
-│const
+│const 
 
 chat/src/components/ui/switch.tsx:
 │const Switch
@@ -496,7 +496,7 @@ chat/src/components/ui/toast.tsx:
 │const ToastDescription
 
 chat/src/components/ui/toaster.tsx:
-│const
+│const 
 
 chat/src/components/ui/toggle-group.tsx:
 │const ToggleGroupContext
@@ -518,10 +518,10 @@ chat/src/hooks/use-auto-scroll.ts:
 │const ACTIVATION_THRESHOLD
 │const containerRef
 │const previousScrollTop
-│const
+│const 
 │const scrollToBottom
 │const handleScroll
-│const
+│const 
 │const isScrollingUp
 │const isScrolledToBottom
 │const handleTouchStart
@@ -535,13 +535,13 @@ chat/src/hooks/use-autosize-textarea.ts:
 │const clampedToMin
 
 chat/src/hooks/use-copy-to-clipboard.ts:
-│const
+│const 
 │const timeoutRef
 │const handleCopy
 
 chat/src/hooks/use-mobile.tsx:
 │const MOBILE_BREAKPOINT
-│const
+│const 
 │const mql
 │const onChange
 
@@ -553,16 +553,16 @@ chat/src/hooks/use-toast.ts:
 │const addToRemoveQueue
 │const timeout
 │const reducer
-│const
+│const 
 │const listeners
 │const id
 │const update
 │const dismiss
-│const
+│const 
 │const index
 
 chat/src/pages/ChatScreen.tsx:
-│const
+│const 
 
 docs/adding-tools.md:
 
@@ -683,11 +683,11 @@ src/repo/types.rs:
 src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -699,15 +699,15 @@ src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 src/routes.rs:
@@ -1063,7 +1063,7 @@ src/server/ws/types.rs:
 │fn fmt
 
 tailwind.config.cjs:
-│const
+│const 
 
 templates/admin/dashboard.html:
 │#id: bg
@@ -1208,7 +1208,7 @@ templates/layouts/content.html:
 │#id: content
 
 templates/macros/ui.html:
-│class
+│class 
 
 templates/pages/company.html:
 │class of
@@ -1383,3 +1383,4 @@ tests/user.rs:
 │fn test_user_debug
 │const MAX_RETRIES
 │const RETRY_DELAY
+
