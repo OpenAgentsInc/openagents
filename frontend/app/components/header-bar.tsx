@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react"
-import { Link } from "react-router"
-import { Button } from "./ui/button"
+import { useEffect, useState } from "react";
+import { Link } from "react-router";
+import { Button } from "./ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "./ui/dropdown-menu"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 interface UserMetadata {
   name: string;

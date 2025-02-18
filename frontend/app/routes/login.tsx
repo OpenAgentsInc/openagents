@@ -1,9 +1,14 @@
 import type { Route } from "../+types/root";
-import { Github } from "lucide-react"
-import { Button } from "../components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
+import { Github } from "lucide-react";
+import { Button } from "../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Login" },
     { name: "description", content: "Login to OpenAgents" },
@@ -13,7 +18,7 @@ export function meta({ }: Route.MetaArgs) {
 export default function Login() {
   const handleGitHubLogin = () => {
     // Use window.location for auth routes to bypass React Router
-    window.location.href = '/auth/github/login';
+    window.location.href = "/auth/github/login";
   };
 
   return (
@@ -25,9 +30,9 @@ export default function Login() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Button 
-            className="w-full" 
-            size="lg" 
+          <Button
+            className="w-full"
+            size="lg"
             variant="nav"
             onClick={handleGitHubLogin}
           >

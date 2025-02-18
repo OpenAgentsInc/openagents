@@ -15,7 +15,11 @@ pub const SESSION_COOKIE_NAME: &str = "session";
 pub const SESSION_DURATION_DAYS: i64 = 30;
 pub const MOBILE_APP_SCHEME: &str = "openagents://";
 
-pub async fn create_session_and_redirect(state: &AppState, user: &User, is_mobile: bool) -> Response {
+pub async fn create_session_and_redirect(
+    state: &AppState,
+    user: &User,
+    is_mobile: bool,
+) -> Response {
     info!("Creating session for user ID: {}", user.id);
 
     let expiry = OffsetDateTime::now_utc() + Duration::days(SESSION_DURATION_DAYS);
