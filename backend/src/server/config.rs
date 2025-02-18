@@ -57,8 +57,8 @@ impl Default for AppConfig {
             if is_dev {
                 "http://localhost:5173".to_string()
             } else {
-                // In production, default to same host
-                "".to_string() // Empty string means use same host
+                // In production, default to openagents.com
+                "https://openagents.com".to_string()
             }
         });
 
