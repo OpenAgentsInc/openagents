@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Button } from "~/components/ui/button"
 
 interface Message {
   id: number;
@@ -40,17 +41,16 @@ export default function Chat() {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"
-              }`}
+            className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
               className={`max-w-[70%] rounded-lg p-3 ${message.sender === "user"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-800 text-white"
+                ? "bg-zinc-900 text-white border border-zinc-800"
+                : "bg-black text-white border border-zinc-800"
                 }`}
             >
               <p>{message.content}</p>
-              <p className="mt-1 text-xs opacity-70">
+              <p className="mt-1 text-xs text-zinc-400">
                 {message.timestamp.toLocaleTimeString()}
               </p>
             </div>
@@ -59,21 +59,18 @@ export default function Chat() {
       </div>
 
       {/* Input area */}
-      <form onSubmit={handleSendMessage} className="border-t border-gray-800 p-4">
+      <form onSubmit={handleSendMessage} className="border-t border-zinc-800 p-4">
         <div className="flex gap-2">
           <input
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             placeholder="Type your message..."
-            className="flex-1 rounded-lg bg-gray-900 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 rounded-lg bg-zinc-900 px-4 py-2 text-white border border-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-700"
           />
-          <button
-            type="submit"
-            className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
+          <Button type="submit" variant="outline" className="bg-zinc-900 border-zinc-800 hover:bg-zinc-800">
             Send
-          </button>
+          </Button>
         </div>
       </form>
     </div>

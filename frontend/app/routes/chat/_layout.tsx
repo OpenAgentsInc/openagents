@@ -1,28 +1,35 @@
 import { Outlet } from "react-router"
 import { HeaderBar } from "~/components/header-bar"
+import { Button } from "~/components/ui/button"
 
 export default function ChatLayout() {
   return (
-    <div className="h-screen w-screen bg-black text-white">
+    <div className="dark flex flex-col h-screen w-screen bg-background text-foreground">
       <HeaderBar />
 
       {/* Main chat area */}
       <div className="flex flex-1 h-[calc(100vh-var(--header-height))] overflow-hidden">
         {/* Sidebar */}
-        <div className="w-64 border-r border-gray-800 bg-black p-4">
-          <h2 className="mb-4 text-sm font-semibold text-gray-400">Recent Chats</h2>
+        <div className="flex-shrink-0 w-64 border-r border-zinc-800 bg-black p-4">
+          <h2 className="mb-4 text-sm font-semibold text-zinc-400">Recent Chats</h2>
           <div className="space-y-2">
-            <button className="w-full rounded-lg bg-gray-900 p-3 text-left hover:bg-gray-800">
+            <Button
+              variant="outline"
+              className="w-full justify-start bg-zinc-900 hover:bg-zinc-800 border-zinc-800"
+            >
               Chat #1
-            </button>
-            <button className="w-full rounded-lg bg-gray-900 p-3 text-left hover:bg-gray-800">
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start bg-zinc-900 hover:bg-zinc-800 border-zinc-800"
+            >
               Chat #2
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Chat content area */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <Outlet />
         </div>
       </div>

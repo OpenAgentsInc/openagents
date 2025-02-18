@@ -125,7 +125,7 @@ export function HeaderBar() {
               alt="Avatar"
               className="w-8 h-8 rounded-full"
             />
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-foreground">
               {authState.user?.metadata.name}
             </span>
             <Button
