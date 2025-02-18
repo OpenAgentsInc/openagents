@@ -37,7 +37,8 @@ pub async fn github_callback(
 
     if let Some(error) = params.error {
         info!("GitHub OAuth error: {}", error);
-        return axum::response::Redirect::temporary(&format!("/login?error={}", error))
+        let frontend_url = &state.config.frontend_url;
+        return axum::response::Redirect::temporary(&format!("{}/login?error={}", frontend_url, error))
             .into_response();
     }
 
@@ -50,11 +51,13 @@ pub async fn github_callback(
     match state.github_oauth.authenticate(params.code, false).await {
         Ok(user) => {
             info!("Successfully authenticated GitHub user: {:?}", user);
-            create_session_and_redirect(&user, is_mobile).await
+            create_session_and_redirect(&state, &user, is_mobile).await
         }
         Err(error) => {
             info!("Authentication failed: {}", error);
-            axum::response::Redirect::temporary(&format!("/login?error={}", error)).into_response()
+            let frontend_url = &state.config.frontend_url;
+            axum::response::Redirect::temporary(&format!("{}/login?error={}", frontend_url, error))
+                .into_response()
         }
     }
 }
