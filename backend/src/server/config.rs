@@ -74,6 +74,17 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     // Load environment variables
     dotenvy::dotenv().ok();
 
+    // Determine static file paths based on environment
+    let (assets_path, index_path) =
+        if env::var("APP_ENVIRONMENT").unwrap_or_default() == "production" {
+            ("./client/assets", "./client/index.html")
+        } else {
+            (
+                "../frontend/build/client/assets",
+                "../frontend/build/client/index.html",
+            )
+        };
+
     // Initialize services with proper configuration
     let openrouter = OpenRouterService::new(
         env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set"),
@@ -157,14 +168,9 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         // Merge auth router
         .merge(app_router(app_state.clone()))
         // Static assets
-        .nest_service(
-            "/assets",
-            ServeDir::new("./client/assets").precompressed_gzip(),
-        )
+        .nest_service("/assets", ServeDir::new(assets_path).precompressed_gzip())
         // Serve index.html for all other routes (SPA)
-        .fallback_service(tower_http::services::fs::ServeFile::new(
-            "./client/index.html",
-        ))
+        .fallback_service(tower_http::services::fs::ServeFile::new(index_path))
         .with_state(app_state)
 }
 
