@@ -10,6 +10,7 @@ export default [{
     { file: "routes/company.tsx", path: "company" },
     { file: "routes/coming-soon.tsx", path: "coming-soon" },
     { file: "routes/cota.tsx", path: "cota" },
-    { file: "routes/repomap.tsx", path: "repomap" }
+    { file: "routes/repomap.tsx", path: "repomap" },
+    { file: "routes/login.tsx", path: "login" }
   ]
 }] satisfies RouteConfig;
