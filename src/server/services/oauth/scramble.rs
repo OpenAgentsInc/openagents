@@ -1,3 +1,4 @@
+use super::verifier_store::VerifierStore;
 use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::{timestamp::DateTimeWrapper, user::User};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -58,6 +59,7 @@ impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for Scra
 pub struct ScrambleOAuth {
     service: OAuthService,
     pool: PgPool,
+    verifier_store: VerifierStore,
 }
 
 impl ScrambleOAuth {
@@ -65,6 +67,7 @@ impl ScrambleOAuth {
         Ok(Self {
             service: OAuthService::new(config)?,
             pool,
+            verifier_store: VerifierStore::new(),
         })
     }
 
@@ -72,32 +75,68 @@ impl ScrambleOAuth {
         &self,
         email: &str,
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
-        let mut url = self.service.authorization_url();
-        url.0 = format!("{}&flow=login&email={}&scope=openid", url.0, email);
-        url
+        info!("Generating login authorization URL for email: {}", email);
+
+        let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
+        info!("Base authorization URL: {}", url);
+
+        self.verifier_store.store_verifier(
+            csrf_token.secret(),
+            oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
+        );
+        info!("Stored PKCE verifier for state: {}", csrf_token.secret());
+
+        let final_url = format!("{}&flow=login&email={}&scope=openid", url, email);
+        info!("Final authorization URL: {}", final_url);
+
+        (final_url, csrf_token, pkce_verifier)
     }
 
     pub fn authorization_url_for_signup(
         &self,
         email: &str,
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
-        let mut url = self.service.authorization_url();
-        url.0 = format!(
-            "{}&flow=signup&prompt=create&email={}&scope=openid",
-            url.0, email
+        info!("Generating signup authorization URL for email: {}", email);
+
+        let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
+        info!("Base authorization URL: {}", url);
+
+        // Add signup flag to state before storing
+        let state_with_signup = format!("{}_signup", csrf_token.secret());
+        info!("Created state with signup flag: {}", state_with_signup);
+
+        self.verifier_store.store_verifier(
+            &state_with_signup,
+            oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
         );
-        url
+        info!("Stored PKCE verifier for state: {}", state_with_signup);
+
+        let final_url = format!(
+            "{}&state={}&flow=signup&prompt=create&email={}&scope=openid",
+            url, state_with_signup, email
+        );
+        info!("Constructed final authorization URL: {}", final_url);
+
+        (final_url, csrf_token, pkce_verifier)
     }
 
     pub async fn authorization_url(
         &self,
         platform: Option<String>,
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
-        let (url, token, verifier) = self.service.authorization_url();
+        let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
+        self.verifier_store.store_verifier(
+            csrf_token.secret(),
+            oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
+        );
         if let Some(platform) = platform {
-            (format!("{}&platform={}", url, platform), token, verifier)
+            (
+                format!("{}&platform={}", url, platform),
+                csrf_token,
+                pkce_verifier,
+            )
         } else {
-            (url, token, verifier)
+            (url, csrf_token, pkce_verifier)
         }
     }
 
@@ -106,34 +145,81 @@ impl ScrambleOAuth {
         code: String,
         pkce_verifier: oauth2::PkceCodeVerifier,
     ) -> Result<BasicTokenResponse, OAuthError> {
-        self.service.exchange_code(code, pkce_verifier).await
-    }
-
-    pub async fn authenticate(&self, code: String, is_signup: bool) -> Result<User, OAuthError> {
+        info!("Starting code exchange with code length: {}", code.len());
         info!(
-            "Processing {} with code length: {}",
-            if is_signup { "signup" } else { "login" },
-            code.len()
+            "PKCE verifier secret length: {}",
+            pkce_verifier.secret().len()
         );
 
+        match self.service.exchange_code(code, pkce_verifier).await {
+            Ok(response) => {
+                info!("Code exchange successful");
+                Ok(response)
+            }
+            Err(e) => {
+                error!("Code exchange failed: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn authenticate(
+        &self,
+        code: String,
+        state: String,
+        is_signup: bool,
+    ) -> Result<User, OAuthError> {
+        info!(
+            "Starting {} authentication process with code length: {} and state: {}",
+            if is_signup { "signup" } else { "login" },
+            code.len(),
+            state
+        );
+
+        // Get stored verifier
+        let pkce_verifier = self.verifier_store.get_verifier(&state).ok_or_else(|| {
+            error!("No PKCE verifier found for state: {}", state);
+            OAuthError::TokenExchangeFailed("No PKCE verifier found".to_string())
+        })?;
+        info!("Retrieved PKCE verifier for state: {}", state);
+
         // Exchange code for tokens
-        let (_, _, pkce_verifier) = self.service.authorization_url();
-        let token_response = self.service.exchange_code(code, pkce_verifier).await?;
+        info!("Exchanging code for tokens...");
+        let token_response = match self
+            .service
+            .exchange_code(code.clone(), pkce_verifier)
+            .await
+        {
+            Ok(response) => {
+                info!("Successfully exchanged code for tokens");
+                response
+            }
+            Err(e) => {
+                error!("Failed to exchange code: {}", e);
+                return Err(e);
+            }
+        };
 
         // Convert to our token response type
         let token: ScrambleTokenResponse = token_response.into();
+        info!("Converted token response");
 
         // Extract claims from ID token
         let id_token = token.extra_fields.get("id_token").ok_or_else(|| {
+            error!("No id_token found in token response");
             OAuthError::TokenExchangeFailed("No id_token in response".to_string())
         })?;
+        info!("Extracted id_token from response");
 
         let pseudonym = self.extract_pseudonym(id_token)?;
+        info!("Extracted pseudonym: {}", pseudonym);
 
         // Handle user creation/update based on signup vs login
         if is_signup {
+            info!("Handling signup for pseudonym: {}", pseudonym);
             self.handle_signup(pseudonym).await
         } else {
+            info!("Handling login for pseudonym: {}", pseudonym);
             self.handle_login(pseudonym).await
         }
     }
