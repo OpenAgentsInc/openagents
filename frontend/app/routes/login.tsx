@@ -1,14 +1,10 @@
 import type { Route } from "../+types/root";
-import { Github } from "lucide-react";
-import { Button } from "../components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Github } from "lucide-react"
+import { Link } from "react-router"
+import { Button } from "../components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 
-export function meta({}: Route.MetaArgs) {
+export function meta({ }: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Login" },
     { name: "description", content: "Login to OpenAgents" },
@@ -25,10 +21,12 @@ export default function Login() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Button className="w-full" size="lg" variant="nav">
-            <Github className="w-5 h-5" />
-            Log in with GitHub
-          </Button>
+          <Link to="/auth/github/login" className="block w-full">
+            <Button className="w-full" size="lg" variant="nav">
+              <Github className="w-5 h-5" />
+              Log in with GitHub
+            </Button>
+          </Link>
         </CardContent>
       </Card>
     </div>
