@@ -16,13 +16,13 @@ ENV SQLX_OFFLINE true
 # Build our project
 RUN cargo build --release --bin openagents
 
-# Add Node.js build stage for chat app
-FROM node:18 AS chat-builder
-WORKDIR /app/chat
-COPY chat/package.json chat/yarn.lock ./
-RUN yarn install --frozen-lockfile
-COPY chat/ .
-RUN yarn build
+# Add Node.js build stage for frontend
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
@@ -34,7 +34,7 @@ RUN apt-get update -y \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/openagents openagents
 COPY --from=builder /app/assets assets
-COPY --from=chat-builder /app/chat/dist chat/dist
+COPY --from=frontend-builder /app/frontend/dist frontend/dist
 COPY configuration configuration
 ENV APP_ENVIRONMENT production
 ENTRYPOINT ["./openagents"]

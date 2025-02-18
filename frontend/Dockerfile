@@ -1,22 +1,17 @@
 FROM node:20-alpine AS development-dependencies-env
-COPY . /app
 WORKDIR /app
+COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:20-alpine AS production-dependencies-env
-COPY ./package.json package-lock.json /app/
-WORKDIR /app
-RUN npm ci --omit=dev
-
 FROM node:20-alpine AS build-env
-COPY . /app/
-COPY --from=development-dependencies-env /app/node_modules /app/node_modules
 WORKDIR /app
+COPY . .
+COPY --from=development-dependencies-env /app/node_modules ./node_modules
 RUN npm run build
 
-FROM node:20-alpine
-COPY ./package.json package-lock.json /app/
-COPY --from=production-dependencies-env /app/node_modules /app/node_modules
-COPY --from=build-env /app/build /app/build
+FROM node:20-alpine AS runtime
 WORKDIR /app
+COPY --from=build-env /app/dist ./dist
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 CMD ["npm", "run", "start"]
