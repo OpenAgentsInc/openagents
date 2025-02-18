@@ -20,7 +20,7 @@ export default function Login() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Button className="w-full" size="lg" variant="outline">
+          <Button className="w-full" size="lg" variant="nav">
             <Github className="w-5 h-5" />
             Log in with GitHub
           </Button>
