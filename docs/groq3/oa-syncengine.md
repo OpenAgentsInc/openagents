@@ -1,6 +1,6 @@
 # OpenAgents Sync Engine Design
 
-Let’s flesh out your plan for the OpenAgents sync engine, incorporating ideas from **Linear** and **Figma’s architectures** while tailoring them to your tech stack:
+Let's flesh out your plan for the OpenAgents sync engine, incorporating ideas from **Linear** and **Figma's architectures** while tailoring them to your tech stack:
 
 - **Backend:** Rust, Axum, Postgres
 - **Frontend:** React, TypeScript, Tailwind, Zustand
@@ -13,7 +13,7 @@ The goal is a **pragmatic, maintainable real-time sync solution** that supports 
 
 ### **Backend (Rust + Axum + Postgres)**
 
-- **HTTP Endpoints:** Handle initial bootstrap sync and client-initiated mutations (e.g., creating a message or updating an agent’s state).
+- **HTTP Endpoints:** Handle initial bootstrap sync and client-initiated mutations (e.g., creating a message or updating an agent's state).
 - **WebSocket Server:** Push real-time updates to connected clients using a persistent connection.
 - **Postgres:** Store authoritative data and a sync event log for ordering changes and enabling delta syncs.
 - **Sync Events:**
@@ -30,13 +30,13 @@ The goal is a **pragmatic, maintainable real-time sync solution** that supports 
   - Lightweight in-memory store (**Zustand**) for fast UI updates,
   - Optional **IndexedDB** persistence for offline support (later).
 - **Selective Updates:**
-  - Components re-render **only** for relevant data using **Zustand’s subscription capabilities**.
+  - Components re-render **only** for relevant data using **Zustand's subscription capabilities**.
 
 ---
 
 ## 🔄 Sync Protocol
 
-Inspired by **Linear’s incremental `SyncAction` stream** and **Figma’s centralized operation ordering**, but **simplified**:
+Inspired by **Linear's incremental `SyncAction` stream** and **Figma's centralized operation ordering**, but **simplified**:
 
 1. Clients **bootstrap** with an **HTTP call**.
 2. They **receive incremental updates** over **WebSocket**.
@@ -48,7 +48,7 @@ Inspired by **Linear’s incremental `SyncAction` stream** and **Figma’s centr
 
 ### **📂 Database Schema**
 
-#### **Core Tables:**
+#### **Core Tables**
 Reflect your domain (e.g., `agents`, `messages`, `payments`, `code_changes`).
 Each has a **primary key** (`id`) and an `updated_at` timestamp.
 
@@ -61,65 +61,67 @@ CREATE TABLE messages (
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
+```
 
-🔄 Sync Log Table: sync_events
+### **🔄 Sync Log Table: `sync_events`**
 
-Column	Type	Description
-id	bigserial	Auto-incrementing, unique event ID
-scope	text	e.g., "org:123" or "agent:uuid" for filtering updates
-model	text	e.g., "Message", "Payment"
-model_id	uuid	Affected row’s primary key
-action	text	"insert", "update", "delete"
-data	jsonb	New/changed fields for insert/update, null for delete
-created_at	timestamp	Event timestamp
+| Column | Type | Description |
+|--------|------|-------------|
+| id | bigserial | Auto-incrementing, unique event ID |
+| scope | text | e.g., "org:123" or "agent:uuid" for filtering updates |
+| model | text | e.g., "Message", "Payment" |
+| model_id | uuid | Affected row's primary key |
+| action | text | "insert", "update", "delete" |
+| data | jsonb | New/changed fields for insert/update, null for delete |
+| created_at | timestamp | Event timestamp |
 
-Indexes:
-	•	id (Primary key)
-	•	scope (For filtering)
-	•	created_at (For cleanup)
+**Indexes:**
+- `id` (Primary key)
+- `scope` (For filtering)
+- `created_at` (For cleanup)
 
-🖥 Server Structure
+### **🖥 Server Structure**
 
-🌐 HTTP API (Axum)
-	•	/sync/bootstrap → Returns initial state for a client.
-	•	Query param: scope (e.g., "org:123")
-	•	Response:
-
+#### **🌐 HTTP API (Axum)**
+- `/sync/bootstrap` → Returns initial state for a client.
+  - Query param: `scope` (e.g., "org:123")
+  - Response:
+```json
 {
   "models": { "Messages": [...], "Agents": [...] },
   "lastSyncId": 1000
 }
+```
 
-
-	•	/sync/delta → Fetches missed events for catch-up.
-	•	Query params: lastSyncId=1000, scope
-	•	Response:
-
+- `/sync/delta` → Fetches missed events for catch-up.
+  - Query params: `lastSyncId=1000`, `scope`
+  - Response:
+```json
 { "events": [SyncEvent], "latestSyncId": 1050 }
+```
 
+- Mutation endpoints (e.g., `/api/message`):
+  - POST request creates a message, updates DB, generates a SyncEvent, and returns the new record.
+  - Uses transactions to ensure consistency.
 
-	•	Mutation endpoints (e.g., /api/message):
-	•	POST request creates a message, updates DB, generates a SyncEvent, and returns the new record.
-	•	Uses transactions to ensure consistency.
-
-🔗 WebSocket Server (Axum + tokio-tungstenite)
-	•	Endpoint: wss://api.openagents.com/sync
-	•	Client connection flow:
-	1.	Client sends:
-
+#### **🔗 WebSocket Server (Axum + tokio-tungstenite)**
+- Endpoint: `wss://api.openagents.com/sync`
+- Client connection flow:
+  1. Client sends:
+```json
 { "type": "subscribe", "scope": "org:123", "lastSyncId": 1000 }
+```
+  2. Server responds with:
+     - Delta events (if `lastSyncId` provided)
+     - Bootstrap payload (if `lastSyncId: 0`)
 
+- Manages connected clients:
+  - Uses a `HashMap<Scope, Vec<WebSocket>>` in memory.
+  - Broadcasts new SyncEvents to relevant scopes after DB writes.
 
-	2.	Server responds with:
-	•	Delta events (if lastSyncId provided)
-	•	Bootstrap payload (if lastSyncId: 0)
+### **🚀 Rust Implementation Sketch**
 
-	•	Manages connected clients:
-	•	Uses a HashMap<Scope, Vec<WebSocket>> in memory.
-	•	Broadcasts new SyncEvents to relevant scopes after DB writes.
-
-🚀 Rust Implementation Sketch
-
+```rust
 use axum::{routing::get, Router};
 use tokio_tungstenite::WebSocketStream;
 use serde::{Serialize, Deserialize};
@@ -162,22 +164,24 @@ fn main() {
 
     axum::Server::bind("0.0.0.0:3000").serve(app).await;
 }
+```
 
-🎨 Frontend Design (React + TypeScript + Zustand)
+## 🎨 Frontend Design (React + TypeScript + Zustand)
 
-useAgentSync() Hook
+### **`useAgentSync()` Hook**
 
-Defined in frontend/sync/useAgentSync.ts.
-	•	Manages:
-	•	WebSocket connection
-	•	HTTP bootstrap/mutations
-	•	Zustand local state
-	•	Returns:
-	•	Reactive state
-	•	Mutation methods
+Defined in `frontend/sync/useAgentSync.ts`.
+- **Manages:**
+  - WebSocket connection
+  - HTTP bootstrap/mutations
+  - Zustand local state
+- **Returns:**
+  - Reactive state
+  - Mutation methods
 
-🗄 Zustand Store
+### **🗄 Zustand Store**
 
+```typescript
 import create from 'zustand';
 
 interface SyncState {
@@ -202,10 +206,12 @@ const useSyncStore = create<SyncState>((set) => ({
       return { models: newModels };
     }),
 }));
+```
 
-🔥 Performance & Scalability
-	•	Postgres: Transactions ensure consistency; indexed queries for fast lookups.
-	•	WebSocket Optimizations: Scope-based filtering reduces unnecessary broadcasts.
-	•	Frontend Rendering: Zustand’s selective updates prevent re-renders.
+## 🔥 Performance & Scalability
+
+- **Postgres:** Transactions ensure consistency; indexed queries for fast lookups.
+- **WebSocket Optimizations:** Scope-based filtering reduces unnecessary broadcasts.
+- **Frontend Rendering:** Zustand's selective updates prevent re-renders.
 
 This design gives you a robust, real-time sync engine tailored to OpenAgents, leveraging your stack and inspired by Linear & Figma. 🚀 Start with this MVP, then iterate (e.g., offline mode, npm package) as needed!
