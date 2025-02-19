@@ -63,10 +63,10 @@ export function RepoSelector({ selectedRepos, onReposChange }: RepoSelectorProps
               "text-primary hover:bg-accent hover:text-accent-foreground",
               "shadow-xs transition-[color,box-shadow]",
               "focus-visible:ring-4 focus-visible:outline-1",
-              "flex items-center gap-2"
+              "flex items-center gap-2 text-xs"
             )}
           >
-            <Github className="w-4 h-4" />
+            <Github className="w-3 h-3" />
             <span>{repo.owner}/{repo.name}</span>
             <span className="flex items-center text-xs opacity-80">
               <GitBranch className="w-3 h-3 mr-1" />
@@ -76,7 +76,7 @@ export function RepoSelector({ selectedRepos, onReposChange }: RepoSelectorProps
               onClick={() => handleRemoveRepo(repo)}
               className="ml-2 hover:text-destructive"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3 h-3" />
             </button>
           </div>
         ))}
