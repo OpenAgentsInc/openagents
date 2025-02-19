@@ -101,15 +101,16 @@ impl ScrambleOAuth {
         let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
         info!("Base authorization URL: {}", url);
 
-        // Add signup flag to state before storing
-        let state_with_signup = format!("{}_signup", csrf_token.secret());
-        info!("Created state with signup flag: {}", state_with_signup);
-
+        // Store verifier with original state
         self.verifier_store.store_verifier(
-            &state_with_signup,
+            csrf_token.secret(),
             oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
         );
-        info!("Stored PKCE verifier for state: {}", state_with_signup);
+        info!("Stored PKCE verifier for state: {}", csrf_token.secret());
+
+        // Add signup flag to state for URL only
+        let state_with_signup = format!("{}_signup", csrf_token.secret());
+        info!("Created state with signup flag: {}", state_with_signup);
 
         let final_url = format!(
             "{}&state={}&flow=signup&prompt=create&email={}&scope=openid+email",
@@ -176,12 +177,26 @@ impl ScrambleOAuth {
             state
         );
 
-        // Get stored verifier
-        let pkce_verifier = self.verifier_store.get_verifier(&state).ok_or_else(|| {
-            error!("No PKCE verifier found for state: {}", state);
-            OAuthError::TokenExchangeFailed("No PKCE verifier found".to_string())
-        })?;
-        info!("Retrieved PKCE verifier for state: {}", state);
+        // Remove _signup suffix if present to get original state
+        let original_state = if state.ends_with("_signup") {
+            state[..state.len() - 7].to_string()
+        } else {
+            state
+        };
+        info!(
+            "Using original state for verifier lookup: {}",
+            original_state
+        );
+
+        // Get stored verifier using original state
+        let pkce_verifier = self
+            .verifier_store
+            .get_verifier(&original_state)
+            .ok_or_else(|| {
+                error!("No PKCE verifier found for state: {}", original_state);
+                OAuthError::TokenExchangeFailed("No PKCE verifier found".to_string())
+            })?;
+        info!("Retrieved PKCE verifier for state: {}", original_state);
 
         // Exchange code for tokens
         info!("Exchanging code for tokens...");
