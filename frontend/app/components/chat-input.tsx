@@ -16,7 +16,7 @@ interface Repo {
 
 interface ChatInputProps
   extends Omit<React.ComponentProps<"form">, "onSubmit"> {
-  onSubmit?: (message: string, repos?: string[]) => void;
+  onSubmit?: (message: string, repos?: string[]) => Promise<void>;
 }
 
 export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
@@ -24,25 +24,25 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
   const [selectedRepos, setSelectedRepos] = useState<Repo[]>([]);
   const [isAddingRepo, setIsAddingRepo] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim()) {
       const repos = selectedRepos.map(repo => 
         `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ''}`
       );
-      onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
+      await onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
       setMessage("");
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (message.trim()) {
         const repos = selectedRepos.map(repo => 
           `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ''}`
         );
-        onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
+        await onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
         setMessage("");
       }
     }
