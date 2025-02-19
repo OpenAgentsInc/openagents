@@ -41,8 +41,10 @@ export default function ChatIndex() {
         {authState.authenticated
           ? `Welcome, ${authState.user?.metadata.name}`
           : "Welcome to OpenAgents Chat"}
+        <span className="text-muted-foreground">
+          What should we work on today?
+        </span>
       </h1>
-      <h2 className="text-xl text-zinc-400 mb-8">What should we work on today?</h2>
 
       <div className="w-full max-w-2xl space-y-6">
         <div className="flex items-center gap-4">
