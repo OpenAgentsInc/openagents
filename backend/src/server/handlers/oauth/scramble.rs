@@ -14,8 +14,6 @@ pub struct LoginParams {
     password: Option<String>,
     #[serde(rename = "password-confirm")]
     password_confirm: Option<String>,
-    #[serde(rename = "terms")]
-    terms: Option<bool>,
 }
 
 pub async fn scramble_login(
@@ -89,14 +87,6 @@ pub async fn scramble_signup(
                 .into_response();
             }
         }
-    }
-
-    if form_data.terms != Some(true) {
-        return axum::response::Redirect::temporary(&format!(
-            "{}/signup?error=You+must+accept+the+terms",
-            state.frontend_url
-        ))
-        .into_response();
     }
 
     info!(
