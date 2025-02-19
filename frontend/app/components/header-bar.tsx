@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
@@ -51,7 +52,7 @@ export function HeaderBar() {
       <div className="flex items-center gap-0 overflow-hidden">
         <div className="flex items-center h-10">
           <span className="flex items-center h-full" data-state="closed">
-            <Link to="/new" className="h-full">
+            {/* <Link to="/new" className="h-full">
               <button
                 aria-label="New chat"
                 className="h-full rounded-lg px-2 text-token-text-secondary focus-visible:bg-token-surface-hover focus-visible:outline-0 enabled:hover:bg-token-surface-hover disabled:text-token-text-quaternary flex items-center"
@@ -70,7 +71,7 @@ export function HeaderBar() {
                   />
                 </svg>
               </button>
-            </Link>
+            </Link> */}
           </span>
         </div>
 
@@ -83,7 +84,7 @@ export function HeaderBar() {
               style={{ viewTransitionName: "var(--vt-thread-model-switcher)" }}
             >
               <div className="text-token-text-secondary select-none">
-                OpenAgents
+                ⏻ OpenAgents
               </div>
               <svg
                 width="24"
@@ -122,22 +123,40 @@ export function HeaderBar() {
       {/* Right Section */}
       <div className="gap-2 flex items-center pr-1 leading-[0]">
         {authState.authenticated ? (
-          <div className="flex items-center gap-2">
-            <img
-              src={authState.user?.metadata.avatar_url}
-              alt="Avatar"
-              className="w-8 h-8 rounded-full"
-            />
-            <span className="text-sm text-foreground">
-              {authState.user?.metadata.name}
-            </span>
-            <Button
-              variant="secondary"
-              onClick={() => navigateTo("/auth/logout")}
-            >
-              Log out
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <div className="flex items-center gap-2 cursor-pointer hover:bg-token-surface-hover rounded-lg px-2 py-1">
+                <img
+                  src={authState.user?.metadata.avatar_url}
+                  alt="Avatar"
+                  className="w-8 h-8 rounded-full select-none"
+                />
+                <span className="text-sm text-foreground select-none">
+                  {authState.user?.metadata.name}
+                </span>
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="icon-md text-token-text-tertiary"
+                >
+                  <path
+                    fillRule="evenodd"
+                    clipRule="evenodd"
+                    d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => navigateTo("/auth/logout")}>
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <div className="flex items-center justify-center gap-2">
             <Button
