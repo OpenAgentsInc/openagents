@@ -13,7 +13,7 @@ use axum::{
     http::Request,
     middleware::{self, Next},
     response::IntoResponse,
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use sqlx::PgPool;
@@ -187,6 +187,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
             "/api/users/check-email",
             get(server::handlers::user::check_email),
         )
+        .route("/api/start-repo-chat", post(server::handlers::start_repo_chat))
         .route("/health", get(routes::health_check))
         .route("/ws", get(server::ws::ws_handler))
         // Merge auth router
