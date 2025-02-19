@@ -2,10 +2,12 @@ import { GitBranch, Github, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "~/components/ui/button"
 import {
+  Popover, PopoverContent, PopoverTrigger
+} from "~/components/ui/popover"
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "~/components/ui/select"
 import { cn } from "~/lib/utils"
-import * as Popover from "@radix-ui/react-popover"
 
 interface Repo {
   owner: string
@@ -79,8 +81,8 @@ export function RepoSelector({ selectedRepos, onReposChange }: RepoSelectorProps
           </div>
         ))}
       </div>
-      <Popover.Root open={open} onOpenChange={setOpen}>
-        <Popover.Trigger asChild>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
           <Button
             type="button"
             className={cn(
@@ -94,51 +96,67 @@ export function RepoSelector({ selectedRepos, onReposChange }: RepoSelectorProps
           >
             <Plus className="w-4 h-4" />
           </Button>
-        </Popover.Trigger>
-        <Popover.Portal>
-          <Popover.Content
-            className="bg-background border border-input rounded-lg shadow-lg p-4 z-[9999] focus:outline-none"
-            style={{ width: '300px' }}
-          >
-            <form onSubmit={handleRepoSubmit} className="space-y-2">
-              <input
-                type="text"
-                name="owner"
-                value={repoInput.owner}
-                onChange={handleRepoInputChange}
-                placeholder="Owner"
-                className="w-full p-2 bg-background text-foreground border border-input rounded focus:outline-none focus:border-ring text-sm"
-                autoComplete="off"
-              />
-              <input
-                type="text"
-                name="name"
-                value={repoInput.name}
-                onChange={handleRepoInputChange}
-                placeholder="Repo name"
-                className="w-full p-2 bg-background text-foreground border border-input rounded focus:outline-none focus:border-ring text-sm"
-                autoComplete="off"
-              />
-              <input
-                type="text"
-                name="branch"
-                value={repoInput.branch}
-                onChange={handleRepoInputChange}
-                placeholder="Branch"
-                className="w-full p-2 bg-background text-foreground border border-input rounded focus:outline-none focus:border-ring text-sm"
-                autoComplete="off"
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={!repoInput.owner || !repoInput.name}
-              >
-                {editingRepo ? 'Update Repository' : 'Add Repository'}
-              </Button>
-            </form>
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+        </PopoverTrigger>
+        <PopoverContent>
+          <form onSubmit={handleRepoSubmit} className="space-y-2">
+            <input
+              type="text"
+              name="owner"
+              value={repoInput.owner}
+              onChange={handleRepoInputChange}
+              placeholder="Owner"
+              className={cn(
+                "w-full p-2 border rounded text-sm",
+                "bg-background dark:bg-background",
+                "text-foreground dark:text-foreground",
+                "border-input dark:border-input",
+                "focus:outline-none focus:border-ring dark:focus:border-ring",
+                "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
+              )}
+              autoComplete="off"
+            />
+            <input
+              type="text"
+              name="name"
+              value={repoInput.name}
+              onChange={handleRepoInputChange}
+              placeholder="Repo name"
+              className={cn(
+                "w-full p-2 border rounded text-sm",
+                "bg-background dark:bg-background",
+                "text-foreground dark:text-foreground",
+                "border-input dark:border-input",
+                "focus:outline-none focus:border-ring dark:focus:border-ring",
+                "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
+              )}
+              autoComplete="off"
+            />
+            <input
+              type="text"
+              name="branch"
+              value={repoInput.branch}
+              onChange={handleRepoInputChange}
+              placeholder="Branch"
+              className={cn(
+                "w-full p-2 border rounded text-sm",
+                "bg-background dark:bg-background",
+                "text-foreground dark:text-foreground",
+                "border-input dark:border-input",
+                "focus:outline-none focus:border-ring dark:focus:border-ring",
+                "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
+              )}
+              autoComplete="off"
+            />
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={!repoInput.owner || !repoInput.name}
+            >
+              {editingRepo ? 'Update Repository' : 'Add Repository'}
+            </Button>
+          </form>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }
