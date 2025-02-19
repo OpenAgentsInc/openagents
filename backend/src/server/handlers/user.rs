@@ -8,6 +8,7 @@ use serde_json::json;
 use sqlx::{types::JsonValue, PgPool};
 use tracing::{debug, error};
 
+use crate::server::config::AppState;
 use crate::server::models::{
     timestamp::DateTimeWrapper,
     user::{CreateUser, User},
@@ -25,7 +26,7 @@ pub struct CheckEmailResponse {
 
 pub async fn check_email(
     Query(params): Query<CheckEmailParams>,
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<CheckEmailResponse>, (StatusCode, Json<serde_json::Value>)> {
     let result = sqlx::query!(
         r#"
@@ -33,7 +34,7 @@ pub async fn check_email(
         "#,
         params.email
     )
-    .fetch_one(&pool)
+    .fetch_one(&state.pool)
     .await;
 
     match result {
