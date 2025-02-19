@@ -183,7 +183,10 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
     Router::new()
         // API routes first to prevent conflicts
         .route("/api/user", get(routes::get_user_info))
-        .route("/api/users/check-email", get(server::handlers::user::check_email))
+        .route(
+            "/api/users/check-email",
+            get(server::handlers::user::check_email),
+        )
         .route("/health", get(routes::health_check))
         .route("/ws", get(server::ws::ws_handler))
         // Merge auth router
@@ -202,6 +205,7 @@ async fn log_request(req: Request<Body>, next: Next) -> impl IntoResponse {
         req.uri(),
         req.uri().query()
     );
+    // Run the next middleware and immediately return its response
     next.run(req).await
 }
 

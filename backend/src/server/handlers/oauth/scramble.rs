@@ -71,6 +71,7 @@ pub async fn scramble_signup(
 
     // Require password for signup
     if form_data.password.is_none() {
+        info!("Password required but not provided");
         return axum::response::Json(json!({
             "error": "Password is required"
         }))
@@ -80,6 +81,7 @@ pub async fn scramble_signup(
     // Validate password
     if let Some(password) = &form_data.password {
         if password.len() < 8 {
+            info!("Password too short");
             return axum::response::Json(json!({
                 "error": "Password must be at least 8 characters"
             }))
@@ -88,6 +90,7 @@ pub async fn scramble_signup(
 
         if let Some(confirm) = &form_data.password_confirm {
             if password != confirm {
+                info!("Passwords do not match");
                 return axum::response::Json(json!({
                     "error": "Passwords do not match"
                 }))
@@ -112,10 +115,13 @@ pub async fn scramble_signup(
     );
 
     // Return JSON response with URL instead of redirecting
-    axum::response::Json(json!({
+    let response = axum::response::Json(json!({
         "url": url
     }))
-    .into_response()
+    .into_response();
+
+    info!("Sending response with URL: {}", url);
+    response
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,6 +129,7 @@ pub struct CallbackParams {
     code: String,
     state: Option<String>,
     error: Option<String>,
+    is_signup: Option<bool>,
 }
 
 pub async fn scramble_callback(
@@ -141,7 +148,7 @@ pub async fn scramble_callback(
     }
 
     let state_param = params.state.clone().unwrap_or_default();
-    let is_signup = state_param.ends_with("_signup");
+    let is_signup = params.is_signup.unwrap_or(false);
 
     info!(
         "Callback is for {} with state: {}",

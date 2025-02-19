@@ -46,6 +46,20 @@ impl VerifierStore {
         };
 
         let current_count = store.len();
+
+        let now = Instant::now();
+        store.retain(|state, stored| {
+            let age = now.duration_since(stored.created_at);
+            let keep = age < Duration::from_secs(300); // 5 minutes
+            if !keep {
+                info!(
+                    "Removing expired verifier for state: {}. Age: {:?}",
+                    state, age
+                );
+            }
+            keep
+        });
+
         store.insert(
             state.to_string(),
             StoredVerifier {
@@ -53,13 +67,12 @@ impl VerifierStore {
                 created_at: Instant::now(),
             },
         );
+
         info!(
-            "Stored verifier. Store size before: {}, after: {}",
+            "Stored verifier. Store size before: {}, after: {}, cleanup complete",
             current_count,
             store.len()
         );
-
-        self.cleanup_old_verifiers();
     }
 
     pub fn get_verifier(&self, state: &str) -> Option<PkceCodeVerifier> {
@@ -90,36 +103,6 @@ impl VerifierStore {
         }
 
         result
-    }
-
-    fn cleanup_old_verifiers(&self) {
-        let mut store = match self.store.write() {
-            Ok(store) => store,
-            Err(e) => {
-                error!("Failed to acquire write lock for cleanup: {}", e);
-                return;
-            }
-        };
-
-        let before_count = store.len();
-        let now = Instant::now();
-        store.retain(|state, stored| {
-            let age = now.duration_since(stored.created_at);
-            let keep = age < Duration::from_secs(300); // 5 minutes
-            if !keep {
-                info!(
-                    "Removing expired verifier for state: {}. Age: {:?}",
-                    state, age
-                );
-            }
-            keep
-        });
-
-        info!(
-            "Cleaned up verifiers. Before: {}, After: {}",
-            before_count,
-            store.len()
-        );
     }
 }
 

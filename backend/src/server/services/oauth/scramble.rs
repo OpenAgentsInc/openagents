@@ -18,6 +18,7 @@ pub struct ScrambleTokenResponse {
     token_type: BasicTokenType,
     expires_in: Option<std::time::Duration>,
     refresh_token: Option<RefreshToken>,
+    id_token: Option<String>,
     extra_fields: HashMap<String, String>,
 }
 
@@ -45,12 +46,31 @@ impl TokenResponse<BasicTokenType> for ScrambleTokenResponse {
 
 impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for ScrambleTokenResponse {
     fn from(token: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>) -> Self {
+        let mut extra_fields = HashMap::new();
+
+        // Log the complete token response
+        let raw_response = serde_json::to_value(&token).unwrap_or_default();
+        info!("Complete token response: {:?}", raw_response);
+
+        // Extract id_token from the raw response
+        let id_token = raw_response
+            .get("id_token")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
+
+        info!("Extracted id_token present: {}", id_token.is_some());
+        if let Some(ref token_str) = id_token {
+            info!("ID token length: {}", token_str.len());
+            extra_fields.insert("id_token".to_string(), token_str.clone());
+        }
+
         Self {
             access_token: token.access_token().clone(),
             token_type: token.token_type().clone(),
             expires_in: token.expires_in(),
             refresh_token: token.refresh_token().cloned(),
-            extra_fields: HashMap::new(),
+            id_token,
+            extra_fields,
         }
     }
 }
@@ -108,13 +128,10 @@ impl ScrambleOAuth {
         );
         info!("Stored PKCE verifier for state: {}", csrf_token.secret());
 
-        // Add signup flag to state for URL only
-        let state_with_signup = format!("{}_signup", csrf_token.secret());
-        info!("Created state with signup flag: {}", state_with_signup);
-
+        // Add signup parameters without duplicating scopes
         let final_url = format!(
-            "{}&state={}&flow=signup&prompt=create&email={}&scope=openid+email",
-            url, state_with_signup, email
+            "{}&flow=signup&is_signup=true&prompt=create&email={}",
+            url, email
         );
         info!("Constructed final authorization URL: {}", final_url);
 
