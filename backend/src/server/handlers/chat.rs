@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::server::{
     config::AppState,
-    models::chat::{Conversation, CreateConversationRequest, CreateMessageRequest, Message},
+    models::chat::{CreateConversationRequest, CreateMessageRequest},
     services::chat_database::ChatDatabaseService,
 };
 
