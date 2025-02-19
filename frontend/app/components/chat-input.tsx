@@ -1,17 +1,19 @@
-import { Github } from "lucide-react"
-import { useState } from "react"
-import TextareaAutosize from "react-textarea-autosize"
-import { RepoSelector } from "~/components/repo-selector"
-import { Button } from "~/components/ui/button"
+import { Github } from "lucide-react";
+import { useState } from "react";
+import TextareaAutosize from "react-textarea-autosize";
+import { RepoSelector } from "~/components/repo-selector";
+import { Button } from "~/components/ui/button";
 import {
-  Popover, PopoverContent, PopoverTrigger
-} from "~/components/ui/popover"
-import { cn } from "~/lib/utils"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
+import { cn } from "~/lib/utils";
 
 interface Repo {
-  owner: string
-  name: string
-  branch: string
+  owner: string;
+  name: string;
+  branch: string;
 }
 
 interface ChatInputProps
@@ -37,26 +39,28 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
       onSubmit={handleSubmit}
       className={cn(
         "flex flex-col gap-2 items-center justify-center relative z-10",
-        className
+        className,
       )}
       {...props}
     >
       <div className="w-full max-w-[50rem] relative">
-        <div className={cn(
-          "border-input ring-ring/10 dark:ring-ring/20 dark:outline-ring/40 outline-ring/50",
-          "relative w-full border bg-transparent overflow-hidden",
-          "shadow-xs transition-[color,box-shadow]",
-          "focus-within:ring-4 focus-within:outline-1",
-          "hover:bg-accent/15 hover:text-accent-foreground",
-          "pb-[4.5rem] px-3"
-        )}>
+        <div
+          className={cn(
+            "border-input ring-ring/10 dark:ring-ring/20 dark:outline-ring/40 outline-ring/50",
+            "relative w-full border bg-transparent overflow-hidden",
+            "shadow-xs transition-[color,box-shadow]",
+            "focus-within:ring-4 focus-within:outline-1",
+            "hover:bg-accent/15 hover:text-accent-foreground",
+            "pb-[4.5rem] px-3",
+          )}
+        >
           <div className="relative z-10">
             <TextareaAutosize
               autoFocus={true}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   if (message.trim()) {
                     onSubmit?.(message.trim(), selectedRepos);
@@ -71,7 +75,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                 "border-input placeholder:text-muted-foreground",
                 "w-full px-3 bg-transparent focus:outline-none text-primary",
                 "align-bottom min-h-14 py-5 my-0 mb-5 resize-none",
-                "disabled:cursor-not-allowed disabled:opacity-50"
+                "disabled:cursor-not-allowed disabled:opacity-50",
               )}
             />
           </div>
@@ -87,23 +91,35 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                       "text-primary hover:bg-accent hover:text-accent-foreground",
                       "shadow-xs transition-[color,box-shadow]",
                       "focus-visible:ring-4 focus-visible:outline-1",
-                      "!rounded-none shrink-0"
+                      "!rounded-none shrink-0",
                     )}
                   >
                     <Github className="w-4 h-4" />
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent sideOffset={4}>
-                  <form onSubmit={(e: React.FormEvent) => {
-                    e.preventDefault();
-                    const form = e.target as HTMLFormElement;
-                    const owner = (form.elements.namedItem('owner') as HTMLInputElement).value;
-                    const name = (form.elements.namedItem('name') as HTMLInputElement).value;
-                    const branch = (form.elements.namedItem('branch') as HTMLInputElement).value || 'main';
-                    setSelectedRepos([...selectedRepos, { owner, name, branch }]);
-                    setIsAddingRepo(false);
-                    form.reset();
-                  }} className="space-y-2">
+                  <form
+                    onSubmit={(e: React.FormEvent) => {
+                      e.preventDefault();
+                      const form = e.target as HTMLFormElement;
+                      const owner = (
+                        form.elements.namedItem("owner") as HTMLInputElement
+                      ).value;
+                      const name = (
+                        form.elements.namedItem("name") as HTMLInputElement
+                      ).value;
+                      const branch =
+                        (form.elements.namedItem("branch") as HTMLInputElement)
+                          .value || "main";
+                      setSelectedRepos([
+                        ...selectedRepos,
+                        { owner, name, branch },
+                      ]);
+                      setIsAddingRepo(false);
+                      form.reset();
+                    }}
+                    className="space-y-2"
+                  >
                     <input
                       type="text"
                       name="owner"
@@ -114,7 +130,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",
                         "focus:outline-none focus:border-ring dark:focus:border-ring",
-                        "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
+                        "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground",
                       )}
                       autoComplete="off"
                     />
@@ -128,7 +144,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",
                         "focus:outline-none focus:border-ring dark:focus:border-ring",
-                        "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
+                        "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground",
                       )}
                       autoComplete="off"
                     />
@@ -142,14 +158,11 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",
                         "focus:outline-none focus:border-ring dark:focus:border-ring",
-                        "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground"
+                        "placeholder:text-muted-foreground dark:placeholder:text-muted-foreground",
                       )}
                       autoComplete="off"
                     />
-                    <Button
-                      type="submit"
-                      className="w-full"
-                    >
+                    <Button type="submit" className="w-full">
                       Add Repository
                     </Button>
                   </form>
@@ -176,7 +189,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                   "focus-visible:ring-4 focus-visible:outline-1",
                   "disabled:cursor-not-allowed disabled:opacity-50",
                   "shrink-0",
-                  "border !rounded-none"
+                  "border !rounded-none",
                 )}
               >
                 <svg

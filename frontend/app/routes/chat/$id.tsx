@@ -1,6 +1,6 @@
-import { useState } from "react"
-import { useParams } from "react-router"
-import { Button } from "~/components/ui/button"
+import { useState } from "react";
+import { useParams } from "react-router";
+import { Button } from "~/components/ui/button";
 
 interface Message {
   id: number;
@@ -46,10 +46,11 @@ export default function ChatSession() {
             className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[70%] rounded-lg p-3 ${message.sender === "user"
+              className={`max-w-[70%] rounded-lg p-3 ${
+                message.sender === "user"
                   ? "bg-zinc-900 text-white border border-zinc-800"
                   : "bg-black text-white border border-zinc-800"
-                }`}
+              }`}
             >
               <p>{message.content}</p>
               <p className="mt-1 text-xs text-zinc-400">

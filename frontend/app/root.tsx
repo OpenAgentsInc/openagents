@@ -1,7 +1,12 @@
-import "./app.css"
+import "./app.css";
 import {
-  isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration
-} from "react-router"
+  isRouteErrorResponse,
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+} from "react-router";
 
 import type { Route } from "./+types/root";
 export const links: Route.LinksFunction = () => [

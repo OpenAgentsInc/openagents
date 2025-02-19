@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react"
-import { ChatInput } from "~/components/chat-input"
+import { useEffect, useState } from "react";
+import { ChatInput } from "~/components/chat-input";
 
 interface UserMetadata {
   name: string;

@@ -1,10 +1,10 @@
 import type { Route } from "../+types/root";
-import { Github } from "lucide-react"
-import { Link } from "react-router"
-import { LoginForm } from "../components/login-form"
-import { Button } from "../components/ui/button"
+import { Github } from "lucide-react";
+import { Link } from "react-router";
+import { LoginForm } from "../components/login-form";
+import { Button } from "../components/ui/button";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Login" },
     { name: "description", content: "Login to OpenAgents" },
