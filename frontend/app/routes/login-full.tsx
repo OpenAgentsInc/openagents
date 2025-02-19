@@ -1,10 +1,10 @@
 import type { Route } from "../+types/root";
-import { Github } from "lucide-react"
-import { Link } from "react-router"
-import { LoginForm } from "../components/login-form"
-import { Button } from "../components/ui/button"
+import { Github } from "lucide-react";
+import { Link } from "react-router";
+import { LoginForm } from "../components/login-form";
+import { Button } from "../components/ui/button";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Login" },
     { name: "description", content: "Login to OpenAgents" },
@@ -19,15 +19,14 @@ export default function Login() {
 
   return (
     <div className="bg-background flex min-h-[75vh] flex-col items-center justify-center p-4 md:p-6">
-      <div className="flex flex-col items-center gap-2">
-        <span className="text-5xl select-none">⏻</span>
-        <h1 className="text-xl font-bold">Welcome to OpenAgents</h1>
-        {/* <div className="text-center text-sm">
-          Sign up or log in to continue
-        </div> */}
-      </div>
       <div className="w-full max-w-sm">
+        <LoginForm />
         <div className="mt-6">
+          <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
+            <span className="bg-background text-muted-foreground relative z-10 px-2">
+              or
+            </span>
+          </div>
           <div className="mt-6">
             <Button
               className="w-full"
