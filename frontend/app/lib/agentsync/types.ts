@@ -10,12 +10,12 @@ export interface SyncOptions {
   subscribe?: string[];
 }
 
-export interface AgentSyncHook {
-  state: SyncState;
-  sendMessage: (content: string, repos?: string[]) => Promise<void>;
-}
-
 export interface StartChatResponse {
   id: string;
   initialMessage: string;
+}
+
+export interface AgentSyncHook {
+  state: SyncState;
+  sendMessage: (content: string, repos?: string[]) => Promise<StartChatResponse>;
 }
