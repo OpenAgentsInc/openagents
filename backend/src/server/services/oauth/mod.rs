@@ -112,9 +112,8 @@ impl OAuthService {
             .request_async(oauth2::reqwest::async_http_client)
             .await
             .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
-            .map(|response| {
+            .inspect(|_| {
                 info!("Token exchange successful");
-                response
             })
     }
 }
