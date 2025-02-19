@@ -23,28 +23,34 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [selectedRepos, setSelectedRepos] = useState<Repo[]>([]);
   const [isAddingRepo, setIsAddingRepo] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (message.trim()) {
-      const repos = selectedRepos.map(repo => 
-        `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ''}`
-      );
-      await onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
-      setMessage("");
-    }
-  };
-
-  const handleKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (message.trim()) {
+  const handleSubmitMessage = async () => {
+    if (message.trim() && !isSubmitting) {
+      setIsSubmitting(true);
+      try {
         const repos = selectedRepos.map(repo => 
           `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ''}`
         );
         await onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
         setMessage("");
+      } catch (error) {
+        console.error("Error submitting message:", error);
+      } finally {
+        setIsSubmitting(false);
       }
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await handleSubmitMessage();
+  };
+
+  const handleKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault(); // Prevent newline
+      await handleSubmitMessage();
     }
   };
 
@@ -74,6 +80,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={isSubmitting}
               minRows={1}
               maxRows={12}
               placeholder="Give OpenAgents a task"
@@ -91,6 +98,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
+                    disabled={isSubmitting}
                     className={cn(
                       "border-input ring-ring/10 dark:ring-ring/20",
                       "h-9 px-3.5 py-2 border bg-transparent",
@@ -184,7 +192,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               </div>
               <Button
                 type="submit"
-                disabled={!message.trim() && !selectedRepos.length}
+                disabled={isSubmitting || (!message.trim() && !selectedRepos.length)}
                 className={cn(
                   "border-input ring-ring/10 dark:ring-ring/20",
                   "h-9 relative aspect-square",
