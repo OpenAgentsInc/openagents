@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE users\n            SET last_login_at = NOW()\n            WHERE scramble_id = $1\n            RETURNING id, scramble_id, github_id, github_token, metadata,\n                      created_at, last_login_at, pseudonym\n            ",
+  "query": "\n            INSERT INTO users (scramble_id, metadata, github_id, github_token, pseudonym, email)\n            VALUES ($1, $2, NULL, NULL, $1, $3)\n            RETURNING id, scramble_id, github_id, github_token, metadata,\n                      created_at, last_login_at, pseudonym, email\n            ",
   "describe": {
     "columns": [
       {
@@ -42,12 +42,17 @@
         "ordinal": 7,
         "name": "pseudonym",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "email",
+        "type_info": "Text"
       }
     ],
     "parameters": {
-      "Left": ["Text"]
+      "Left": ["Text", "Jsonb", "Text"]
     },
-    "nullable": [false, true, true, true, true, true, true, true]
+    "nullable": [false, true, true, true, true, true, true, true, true]
   },
-  "hash": "94e61726f9710c33d37b83e2c80f285455f9b5accf3d6e2972a6fbdb89cd0a5c"
+  "hash": "6529d38f537f5964cce7ae64afc4b535dbb1b2e79d9978fd7c458a65e16a5b5f"
 }
