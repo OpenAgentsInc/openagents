@@ -1,4 +1,6 @@
+import { useAgentSync } from "agentsync";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { ChatInput } from "~/components/chat-input";
 
 interface UserMetadata {
@@ -19,9 +21,14 @@ interface AuthState {
 }
 
 export default function ChatIndex() {
+  const navigate = useNavigate();
   const [authState, setAuthState] = useState<AuthState>({
     authenticated: false,
     user: null,
+  });
+
+  const { sendMessage, state } = useAgentSync({
+    scope: "chat",
   });
 
   useEffect(() => {
@@ -31,9 +38,15 @@ export default function ChatIndex() {
       .catch((error) => console.error("Error fetching user info:", error));
   }, []);
 
-  const handleSubmit = (message: string, repo: string | undefined) => {
-    // Handle the chat submission here
-    console.log("Message:", message, "Repo:", repo);
+  const handleSubmit = async (message: string, repos?: string[]) => {
+    try {
+      // Navigate immediately to show loading state
+      const response = await sendMessage(message, repos);
+      navigate(`/chat/${response.id}`);
+    } catch (error) {
+      console.error("Error starting chat:", error);
+      // Could add error handling UI here
+    }
   };
 
   return (
@@ -49,6 +62,16 @@ export default function ChatIndex() {
 
       <div className="w-full max-w-2xl mt-12">
         <ChatInput onSubmit={handleSubmit} />
+        {!state.isOnline && (
+          <div className="mt-2 text-sm text-red-500">
+            You are currently offline. Messages will be queued.
+          </div>
+        )}
+        {state.pendingChanges > 0 && (
+          <div className="mt-2 text-sm text-yellow-500">
+            {state.pendingChanges} pending changes to sync
+          </div>
+        )}
       </div>
     </div>
   );
