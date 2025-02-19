@@ -1,10 +1,10 @@
-import { Mail } from "lucide-react"
-import { useEffect, useState } from "react"
-import { Alert, AlertDescription } from "~/components/ui/alert"
-import { Button } from "~/components/ui/button"
-import { Input } from "~/components/ui/input"
-import { Label } from "~/components/ui/label"
-import { cn } from "~/lib/utils"
+import { Mail } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Alert, AlertDescription } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import { cn } from "~/lib/utils";
 
 export function LoginForm({
   className,
@@ -24,7 +24,7 @@ export function LoginForm({
       isExistingUser,
       showPassword,
       isLoading,
-      error
+      error,
     });
   }, [email, isExistingUser, showPassword, isLoading, error]);
 
@@ -42,7 +42,7 @@ export function LoginForm({
       console.log("[LoginForm] Email check response:", data);
 
       setIsExistingUser(data.exists);
-      setShowPassword(true);  // Show password field regardless of user existence
+      setShowPassword(true); // Show password field regardless of user existence
     } catch (error) {
       console.error("[LoginForm] Error checking email:", error);
     } finally {
@@ -78,19 +78,23 @@ export function LoginForm({
     setIsLoading(true);
     console.log("[LoginForm] Starting authentication process");
 
-    const endpoint = isExistingUser ? '/auth/scramble/login' : '/auth/scramble/signup';
-    console.log(`[LoginForm] Using endpoint: ${endpoint} for ${isExistingUser ? 'login' : 'signup'}`);
+    const endpoint = isExistingUser
+      ? "/auth/scramble/login"
+      : "/auth/scramble/signup";
+    console.log(
+      `[LoginForm] Using endpoint: ${endpoint} for ${isExistingUser ? "login" : "signup"}`,
+    );
 
     try {
       console.log("[LoginForm] Sending auth request");
       const response = await fetch(endpoint, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          "Content-Type": "application/x-www-form-urlencoded",
         },
         body: new URLSearchParams({
           email,
-          password: password || '',
+          password: password || "",
         }),
       });
 
@@ -108,15 +112,15 @@ export function LoginForm({
         }
       } else {
         const errorText = await response.text();
-        console.error('[LoginForm] Auth error response:', {
+        console.error("[LoginForm] Auth error response:", {
           status: response.status,
           statusText: response.statusText,
-          body: errorText
+          body: errorText,
         });
         setError("Authentication failed. Please try again.");
       }
     } catch (error) {
-      console.error('[LoginForm] Submit error:', error);
+      console.error("[LoginForm] Submit error:", error);
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
@@ -168,7 +172,13 @@ export function LoginForm({
             )}
             <Button type="submit" className="w-full" disabled={isLoading}>
               <Mail className="mr-2 h-5 w-5" />
-              {isLoading ? "Checking..." : isExistingUser === null ? "Continue with email" : isExistingUser ? "Log in" : "Sign up"}
+              {isLoading
+                ? "Checking..."
+                : isExistingUser === null
+                  ? "Continue with email"
+                  : isExistingUser
+                    ? "Log in"
+                    : "Sign up"}
             </Button>
           </div>
         </div>

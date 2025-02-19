@@ -49,10 +49,12 @@ Inspired by **Linear's incremental `SyncAction` stream** and **Figma's centraliz
 ### **📂 Database Schema**
 
 #### **Core Tables**
+
 Reflect your domain (e.g., `agents`, `messages`, `payments`, `code_changes`).
 Each has a **primary key** (`id`) and an `updated_at` timestamp.
 
 ##### Example: `messages` Table
+
 ```sql
 CREATE TABLE messages (
     id UUID PRIMARY KEY,
@@ -65,17 +67,18 @@ CREATE TABLE messages (
 
 ### **🔄 Sync Log Table: `sync_events`**
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | bigserial | Auto-incrementing, unique event ID |
-| scope | text | e.g., "org:123" or "agent:uuid" for filtering updates |
-| model | text | e.g., "Message", "Payment" |
-| model_id | uuid | Affected row's primary key |
-| action | text | "insert", "update", "delete" |
-| data | jsonb | New/changed fields for insert/update, null for delete |
-| created_at | timestamp | Event timestamp |
+| Column     | Type      | Description                                           |
+| ---------- | --------- | ----------------------------------------------------- |
+| id         | bigserial | Auto-incrementing, unique event ID                    |
+| scope      | text      | e.g., "org:123" or "agent:uuid" for filtering updates |
+| model      | text      | e.g., "Message", "Payment"                            |
+| model_id   | uuid      | Affected row's primary key                            |
+| action     | text      | "insert", "update", "delete"                          |
+| data       | jsonb     | New/changed fields for insert/update, null for delete |
+| created_at | timestamp | Event timestamp                                       |
 
 **Indexes:**
+
 - `id` (Primary key)
 - `scope` (For filtering)
 - `created_at` (For cleanup)
@@ -83,9 +86,11 @@ CREATE TABLE messages (
 ### **🖥 Server Structure**
 
 #### **🌐 HTTP API (Axum)**
+
 - `/sync/bootstrap` → Returns initial state for a client.
   - Query param: `scope` (e.g., "org:123")
   - Response:
+
 ```json
 {
   "models": { "Messages": [...], "Agents": [...] },
@@ -96,6 +101,7 @@ CREATE TABLE messages (
 - `/sync/delta` → Fetches missed events for catch-up.
   - Query params: `lastSyncId=1000`, `scope`
   - Response:
+
 ```json
 { "events": [SyncEvent], "latestSyncId": 1050 }
 ```
@@ -105,15 +111,18 @@ CREATE TABLE messages (
   - Uses transactions to ensure consistency.
 
 #### **🔗 WebSocket Server (Axum + tokio-tungstenite)**
+
 - Endpoint: `wss://api.openagents.com/sync`
 - Client connection flow:
   1. Client sends:
+
 ```json
 { "type": "subscribe", "scope": "org:123", "lastSyncId": 1000 }
 ```
-  2. Server responds with:
-     - Delta events (if `lastSyncId` provided)
-     - Bootstrap payload (if `lastSyncId: 0`)
+
+2. Server responds with:
+   - Delta events (if `lastSyncId` provided)
+   - Bootstrap payload (if `lastSyncId: 0`)
 
 - Manages connected clients:
   - Uses a `HashMap<Scope, Vec<WebSocket>>` in memory.
@@ -171,6 +180,7 @@ fn main() {
 ### **`useAgentSync()` Hook**
 
 Defined in `frontend/sync/useAgentSync.ts`.
+
 - **Manages:**
   - WebSocket connection
   - HTTP bootstrap/mutations
@@ -182,7 +192,7 @@ Defined in `frontend/sync/useAgentSync.ts`.
 ### **🗄 Zustand Store**
 
 ```typescript
-import create from 'zustand';
+import create from "zustand";
 
 interface SyncState {
   models: { [model: string]: { [id: string]: any } };
@@ -196,7 +206,10 @@ const useSyncStore = create<SyncState>((set) => ({
   lastSyncId: 0,
   setModelData: (model, id, data) =>
     set((state) => ({
-      models: { ...state.models, [model]: { ...state.models[model], [id]: data } },
+      models: {
+        ...state.models,
+        [model]: { ...state.models[model], [id]: data },
+      },
       lastSyncId: Math.max(state.lastSyncId, data.syncId || 0),
     })),
   deleteModelData: (model, id) =>

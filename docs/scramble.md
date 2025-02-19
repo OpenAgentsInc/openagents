@@ -7,12 +7,14 @@ OpenAgents uses Scramble OIDC as its primary authentication provider for email/p
 ## Why Scramble?
 
 ### Privacy-First Design
+
 - Uses pseudonymization so OpenAgents never sees real user data
 - Each application gets a unique, stable identifier for users
 - OpenAgents only receives pseudonymous IDs, not actual user data
 - Reduces our liability and data protection requirements
 
 ### Technical Benefits
+
 - Standard OAuth2/OIDC integration
 - Built-in security features (rate limiting, brute force protection)
 - No need to handle password storage/reset flows
@@ -36,31 +38,35 @@ OpenAgents uses Scramble OIDC as its primary authentication provider for email/p
 ### Key Components
 
 #### Frontend (React)
+
 ```typescript
 // login-form.tsx
 export function LoginForm() {
-  const [email, setEmail] = useState('')
-  const [isExistingUser, setIsExistingUser] = useState<boolean | null>(null)
+  const [email, setEmail] = useState("");
+  const [isExistingUser, setIsExistingUser] = useState<boolean | null>(null);
 
   // Check if email exists in our database
   const checkEmail = async (email: string) => {
-    const response = await fetch(`/api/users/check-email?email=${encodeURIComponent(email)}`)
-    const data = await response.json()
-    setIsExistingUser(data.exists)
-  }
+    const response = await fetch(
+      `/api/users/check-email?email=${encodeURIComponent(email)}`,
+    );
+    const data = await response.json();
+    setIsExistingUser(data.exists);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!isExistingUser) {
-      window.location.href = `/auth/scramble/signup?email=${encodeURIComponent(email)}`
+      window.location.href = `/auth/scramble/signup?email=${encodeURIComponent(email)}`;
     } else {
-      window.location.href = `/auth/scramble/login?email=${encodeURIComponent(email)}`
+      window.location.href = `/auth/scramble/login?email=${encodeURIComponent(email)}`;
     }
-  }
+  };
 }
 ```
 
 #### Backend (Rust)
+
 ```rust
 // OAuth configuration
 pub struct ScrambleOAuth {
@@ -130,16 +136,19 @@ pub async fn scramble_callback(
 ### Security Features
 
 1. **PKCE (Proof Key for Code Exchange)**
+
    - Prevents authorization code interception attacks
    - Verifier stored securely on backend
    - Automatic cleanup of old verifiers
 
 2. **State Parameter**
+
    - Prevents CSRF attacks
    - Includes signup/login flag in state
    - Verified on callback
 
 3. **Session Management**
+
    - HTTP-only cookies
    - Secure session storage
    - Proper session expiration
@@ -177,6 +186,7 @@ CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 ## Configuration
 
 Required environment variables:
+
 ```env
 SCRAMBLE_CLIENT_ID=client_...
 SCRAMBLE_CLIENT_SECRET=secret_...
@@ -188,12 +198,14 @@ SCRAMBLE_CALLBACK_URL=http://localhost:5173/auth/callback
 ## Testing
 
 1. **Unit Tests**
+
    - PKCE verifier generation and storage
    - State parameter handling
    - Token exchange and validation
    - Session creation and validation
 
 2. **Integration Tests**
+
    - Complete auth flow with mock Scramble server
    - Database operations
    - Session management
@@ -208,16 +220,19 @@ SCRAMBLE_CALLBACK_URL=http://localhost:5173/auth/callback
 ## Future Improvements
 
 1. **Remember Me Functionality**
+
    - Implement longer-lasting sessions
    - Add refresh token support
    - Store device information
 
 2. **Multi-Factor Authentication**
+
    - Support Scramble's MFA features
    - Add backup codes
    - Implement device confirmation
 
 3. **Session Management UI**
+
    - View active sessions
    - Revoke individual sessions
    - See login history
