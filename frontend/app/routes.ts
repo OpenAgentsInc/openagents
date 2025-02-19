@@ -20,7 +20,7 @@ export default [
     path: "chat",
     children: [
       { file: "routes/chat/index.tsx", index: true },
-      { file: "routes/chat/$id.tsx", path: ":id" }
+      { file: "routes/chat/$id.tsx", path: ":id" },
     ],
   },
 ] satisfies RouteConfig;

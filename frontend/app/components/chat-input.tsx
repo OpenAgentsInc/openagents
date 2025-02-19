@@ -1,12 +1,14 @@
-import { Github } from "lucide-react"
-import { useState } from "react"
-import TextareaAutosize from "react-textarea-autosize"
-import { RepoSelector } from "~/components/repo-selector"
-import { Button } from "~/components/ui/button"
+import { Github } from "lucide-react";
+import { useState } from "react";
+import TextareaAutosize from "react-textarea-autosize";
+import { RepoSelector } from "~/components/repo-selector";
+import { Button } from "~/components/ui/button";
 import {
-  Popover, PopoverContent, PopoverTrigger
-} from "~/components/ui/popover"
-import { cn } from "~/lib/utils"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
+import { cn } from "~/lib/utils";
 
 interface Repo {
   owner: string;
@@ -29,8 +31,9 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
     if (message.trim() && !isSubmitting) {
       setIsSubmitting(true);
       try {
-        const repos = selectedRepos.map(repo => 
-          `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ''}`
+        const repos = selectedRepos.map(
+          (repo) =>
+            `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ""}`,
         );
         await onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
         setMessage("");
@@ -192,7 +195,9 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               </div>
               <Button
                 type="submit"
-                disabled={isSubmitting || (!message.trim() && !selectedRepos.length)}
+                disabled={
+                  isSubmitting || (!message.trim() && !selectedRepos.length)
+                }
                 className={cn(
                   "border-input ring-ring/10 dark:ring-ring/20",
                   "h-9 relative aspect-square",

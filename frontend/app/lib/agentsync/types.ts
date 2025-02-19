@@ -17,5 +17,8 @@ export interface StartChatResponse {
 
 export interface AgentSyncHook {
   state: SyncState;
-  sendMessage: (content: string, repos?: string[]) => Promise<StartChatResponse>;
+  sendMessage: (
+    content: string,
+    repos?: string[],
+  ) => Promise<StartChatResponse>;
 }

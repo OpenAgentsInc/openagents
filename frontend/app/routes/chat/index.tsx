@@ -1,7 +1,7 @@
-import { useAgentSync } from "agentsync"
-import { useEffect, useState } from "react"
-import { useNavigate } from "react-router"
-import { ChatInput } from "~/components/chat-input"
+import { useAgentSync } from "agentsync";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
+import { ChatInput } from "~/components/chat-input";
 
 interface UserMetadata {
   name: string;
