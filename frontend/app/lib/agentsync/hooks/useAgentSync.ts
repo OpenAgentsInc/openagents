@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type { AgentSyncHook, SyncState, SyncOptions, StartChatResponse } from '../types';
 
 const INITIAL_STATE: SyncState = {
@@ -29,6 +30,8 @@ export function useAgentSync(options: SyncOptions): AgentSyncHook {
       throw new Error('Message content cannot be empty');
     }
 
+    const chatId = uuidv4();
+
     try {
       const response = await fetch('/api/start-repo-chat', {
         method: 'POST',
@@ -36,6 +39,7 @@ export function useAgentSync(options: SyncOptions): AgentSyncHook {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          id: chatId,
           message: content,
           repos: repos || [],
           scope: options.scope,
@@ -47,7 +51,10 @@ export function useAgentSync(options: SyncOptions): AgentSyncHook {
       }
 
       const data = await response.json();
-      return data as StartChatResponse;
+      return {
+        id: chatId,
+        initialMessage: data.initialMessage || content,
+      };
     } catch (error) {
       console.error('Error sending message:', error);
       throw error;
