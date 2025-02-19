@@ -44,7 +44,8 @@ pub async fn setup_test_db() -> PgPool {
             last_login_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-            pseudonym TEXT
+            pseudonym TEXT,
+            email TEXT UNIQUE
         )
         "#,
     )

@@ -1,12 +1,58 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    Json,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{types::JsonValue, PgPool};
 use tracing::{debug, error};
 
+use crate::server::config::AppState;
 use crate::server::models::{
     timestamp::DateTimeWrapper,
     user::{CreateUser, User},
 };
+
+#[derive(Debug, Deserialize)]
+pub struct CheckEmailParams {
+    email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckEmailResponse {
+    exists: bool,
+}
+
+pub async fn check_email(
+    Query(params): Query<CheckEmailParams>,
+    State(state): State<AppState>,
+) -> Result<Json<CheckEmailResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let result = sqlx::query!(
+        r#"
+        SELECT EXISTS(SELECT 1 FROM users WHERE email = $1) as exists
+        "#,
+        params.email
+    )
+    .fetch_one(&state.pool)
+    .await;
+
+    match result {
+        Ok(row) => Ok(Json(CheckEmailResponse {
+            exists: row.exists.unwrap_or(false),
+        })),
+        Err(e) => {
+            error!("Error checking email existence: {:?}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": "Failed to check email",
+                    "code": "INTERNAL_ERROR"
+                })),
+            ))
+        }
+    }
+}
 
 pub async fn create_user(
     State(pool): State<PgPool>,

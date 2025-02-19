@@ -80,6 +80,8 @@ impl OAuthService {
         let (auth_url, csrf_token) = self
             .client
             .authorize_url(oauth2::CsrfToken::new_random)
+            .add_scope(oauth2::Scope::new("openid".to_string()))
+            .add_scope(oauth2::Scope::new("email".to_string()))
             .set_pkce_challenge(pkce_challenge)
             .url();
 
@@ -104,18 +106,14 @@ impl OAuthService {
             pkce_verifier.secret().len()
         );
 
-        let result = self
-            .client
+        self.client
             .exchange_code(oauth2::AuthorizationCode::new(code))
             .set_pkce_verifier(pkce_verifier)
             .request_async(oauth2::reqwest::async_http_client)
-            .await;
-
-        match &result {
-            Ok(_) => info!("Token exchange successful"),
-            Err(e) => error!("Token exchange failed: {}", e),
-        }
-
-        result.map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
+            .await
+            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
+            .inspect(|_| {
+                info!("Token exchange successful");
+            })
     }
 }

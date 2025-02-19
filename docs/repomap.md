@@ -152,6 +152,7 @@ backend/src/server/handlers/oauth/session.rs:
 │const MOBILE_APP_SCHEME
 
 backend/src/server/handlers/user.rs:
+│fn check_email
 │fn create_user
 │fn get_user
 
@@ -181,6 +182,7 @@ backend/src/server/models/user.rs:
 │fn created_at
 │fn last_login_at
 │fn pseudonym
+│fn email
 │fn build
 │fn builder
 
@@ -325,6 +327,7 @@ backend/src/server/services/oauth/scramble.rs:
 │fn handle_signup
 │fn handle_login
 │fn extract_pseudonym
+│fn extract_email
 │fn get_user_by_scramble_id
 │fn update_user_token
 │fn get_or_create_user
@@ -793,6 +796,10 @@ docs/deep-research/oauth.md:
 
 docs/deep-research/rr.md:
 
+docs/deep-research/syncengine.md:
+
+docs/groq3/oa-syncengine.md:
+
 docs/hierarchy.md:
 
 docs/repomap.md:
@@ -809,6 +816,31 @@ frontend/app/+types/onyx.ts:
 
 frontend/app/+types/video-series.ts:
 │const VIDEOS
+
+frontend/app/components/header-bar.tsx:
+│#id: login-button
+│#id: signup-button
+│const
+│const navigateTo
+
+frontend/app/components/login-form.tsx:
+│#id: email
+│#id: password
+│const
+│const
+│const
+│const
+│const
+│const
+│const checkEmail
+│const url
+│const response
+│const data
+│const handleSubmit
+│const endpoint
+│const response
+│const data
+│const errorText
 
 frontend/app/components/ui/alert.tsx:
 │const alertVariants
@@ -954,8 +986,17 @@ frontend/app/routes/\_layout.tsx:
 │const navItems
 │const location
 
+frontend/app/routes/chat/index.tsx:
+│const
+│const
+│const handleSendMessage
+│const newMessage
+
 frontend/app/routes/company.tsx:
 │class of
+
+frontend/app/routes/login.tsx:
+│const handleGitHubLogin
 
 frontend/app/routes/repomap.tsx:
 │#id: repo_url

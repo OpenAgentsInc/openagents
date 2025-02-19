@@ -3,6 +3,7 @@ CREATE TABLE users (
     scramble_id TEXT,
     github_id BIGINT UNIQUE,
     github_token TEXT,
+    email TEXT UNIQUE,
     metadata JSONB DEFAULT '{}'::jsonb,
     last_login_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -12,6 +13,7 @@ CREATE TABLE users (
 -- Add indexes for faster lookups
 CREATE INDEX idx_users_scramble_id ON users(scramble_id);
 CREATE INDEX idx_users_github_id ON users(github_id);
+CREATE INDEX idx_users_email ON users(email);
 
 -- Add updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at_column()

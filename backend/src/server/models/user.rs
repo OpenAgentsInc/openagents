@@ -12,6 +12,7 @@ pub struct User {
     pub created_at: Timestamp,
     pub last_login_at: Option<Timestamp>,
     pub pseudonym: Option<String>,
+    pub email: Option<String>,
 }
 
 #[derive(Default)]
@@ -24,6 +25,7 @@ pub struct UserBuilder {
     created_at: Option<DateTimeWrapper>,
     last_login_at: Option<DateTimeWrapper>,
     pseudonym: Option<String>,
+    email: Option<String>,
 }
 
 impl UserBuilder {
@@ -69,6 +71,11 @@ impl UserBuilder {
         self
     }
 
+    pub fn email(mut self, email: Option<String>) -> Self {
+        self.email = email;
+        self
+    }
+
     pub fn build(self) -> User {
         User {
             id: self.id,
@@ -82,6 +89,7 @@ impl UserBuilder {
                 .into(),
             last_login_at: self.last_login_at.to_timestamp(),
             pseudonym: self.pseudonym,
+            email: self.email,
         }
     }
 }

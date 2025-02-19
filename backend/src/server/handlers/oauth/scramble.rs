@@ -1,10 +1,10 @@
 use crate::server::{config::AppState, handlers::oauth::session::create_session_and_redirect};
-use axum::response::Redirect;
 use axum::{
     extract::{Form, Query, State},
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
+use serde_json::json;
 use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
@@ -14,24 +14,25 @@ pub struct LoginParams {
     password: Option<String>,
     #[serde(rename = "password-confirm")]
     password_confirm: Option<String>,
-    #[serde(rename = "terms")]
-    terms: Option<bool>,
 }
 
 pub async fn scramble_login(
     State(state): State<AppState>,
     params: Option<Query<LoginParams>>,
-    form: Option<Form<LoginParams>>,
+    Form(form_data): Form<LoginParams>,
 ) -> Response {
-    // Try to get email from either query params or form data
-    let form_data = match (params, form) {
-        (Some(query), _) => query.0,
-        (_, Some(form)) => form.0,
-        _ => {
-            return axum::response::Redirect::temporary(&format!("{}/login", state.frontend_url))
-                .into_response()
-        }
+    let form_data = match params {
+        Some(query) => query.0,
+        None => form_data,
     };
+
+    // Require password for login
+    if form_data.password.is_none() {
+        return axum::response::Json(json!({
+            "error": "Password is required"
+        }))
+        .into_response();
+    }
 
     info!(
         "Handling Scramble login request for email: {}",
@@ -44,59 +45,58 @@ pub async fn scramble_login(
 
     info!("Generated login URL with state: {}", csrf_token.secret());
 
-    axum::response::Redirect::temporary(&url).into_response()
+    // Return JSON response with URL instead of redirecting
+    axum::response::Json(json!({
+        "url": url
+    }))
+    .into_response()
 }
 
 pub async fn scramble_signup(
     State(state): State<AppState>,
     params: Option<Query<LoginParams>>,
-    form: Option<Form<LoginParams>>,
+    Form(form_data): Form<LoginParams>,
 ) -> Response {
     info!(
         "Received signup request with params: {:?}, form: {:?}",
-        params, form
+        params, form_data
     );
 
-    // Try to get email from either query params or form data
-    let form_data = match (params, form) {
-        (Some(query), _) => query.0,
-        (_, Some(form)) => form.0,
-        _ => {
-            info!("No email provided in signup request, redirecting to /signup");
-            return axum::response::Redirect::temporary(&format!("{}/signup", state.frontend_url))
-                .into_response();
-        }
+    let form_data = match params {
+        Some(query) => query.0,
+        None => form_data,
     };
 
     info!("Form data: {:?}", form_data);
 
-    // Validate form data
+    // Require password for signup
+    if form_data.password.is_none() {
+        info!("Password required but not provided");
+        return axum::response::Json(json!({
+            "error": "Password is required"
+        }))
+        .into_response();
+    }
+
+    // Validate password
     if let Some(password) = &form_data.password {
         if password.len() < 8 {
-            return axum::response::Redirect::temporary(&format!(
-                "{}/signup?error=Password+must+be+at+least+8+characters",
-                state.frontend_url
-            ))
+            info!("Password too short");
+            return axum::response::Json(json!({
+                "error": "Password must be at least 8 characters"
+            }))
             .into_response();
         }
 
         if let Some(confirm) = &form_data.password_confirm {
             if password != confirm {
-                return axum::response::Redirect::temporary(&format!(
-                    "{}/signup?error=Passwords+do+not+match",
-                    state.frontend_url
-                ))
+                info!("Passwords do not match");
+                return axum::response::Json(json!({
+                    "error": "Passwords do not match"
+                }))
                 .into_response();
             }
         }
-    }
-
-    if form_data.terms != Some(true) {
-        return axum::response::Redirect::temporary(&format!(
-            "{}/signup?error=You+must+accept+the+terms",
-            state.frontend_url
-        ))
-        .into_response();
     }
 
     info!(
@@ -104,7 +104,6 @@ pub async fn scramble_signup(
         form_data.email
     );
 
-    // Generate the authorization URL
     let (url, csrf_token, _pkce_verifier) = state
         .scramble_oauth
         .authorization_url_for_signup(&form_data.email);
@@ -115,8 +114,14 @@ pub async fn scramble_signup(
         csrf_token.secret()
     );
 
-    // Try using a different redirect approach
-    Redirect::to(&url).into_response()
+    // Return JSON response with URL instead of redirecting
+    let response = axum::response::Json(json!({
+        "url": url
+    }))
+    .into_response();
+
+    info!("Sending response with URL: {}", url);
+    response
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,6 +147,7 @@ pub async fn scramble_callback(
     }
 
     let state_param = params.state.clone().unwrap_or_default();
+    // Check if this is a signup flow by looking at the state suffix
     let is_signup = state_param.ends_with("_signup");
 
     info!(
