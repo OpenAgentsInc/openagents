@@ -86,7 +86,7 @@ impl ScrambleOAuth {
         );
         info!("Stored PKCE verifier for state: {}", csrf_token.secret());
 
-        let final_url = format!("{}&flow=login&email={}&scope=openid", url, email);
+        let final_url = format!("{}&flow=login&email={}&scope=openid+email", url, email);
         info!("Final authorization URL: {}", final_url);
 
         (final_url, csrf_token, pkce_verifier)
@@ -112,7 +112,7 @@ impl ScrambleOAuth {
         info!("Stored PKCE verifier for state: {}", state_with_signup);
 
         let final_url = format!(
-            "{}&state={}&flow=signup&prompt=create&email={}&scope=openid",
+            "{}&state={}&flow=signup&prompt=create&email={}&scope=openid+email",
             url, state_with_signup, email
         );
         info!("Constructed final authorization URL: {}", final_url);
@@ -214,63 +214,81 @@ impl ScrambleOAuth {
         let pseudonym = self.extract_pseudonym(id_token)?;
         info!("Extracted pseudonym: {}", pseudonym);
 
+        let email = self.extract_email(id_token)?;
+        info!("Extracted email: {}", email);
+
         // Handle user creation/update based on signup vs login
         if is_signup {
-            info!("Handling signup for pseudonym: {}", pseudonym);
-            self.handle_signup(pseudonym).await
+            info!(
+                "Handling signup for pseudonym: {} with email: {}",
+                pseudonym, email
+            );
+            self.handle_signup(pseudonym, email).await
         } else {
-            info!("Handling login for pseudonym: {}", pseudonym);
-            self.handle_login(pseudonym).await
+            info!(
+                "Handling login for pseudonym: {} with email: {}",
+                pseudonym, email
+            );
+            self.handle_login(pseudonym, email).await
         }
     }
 
-    async fn handle_signup(&self, pseudonym: String) -> Result<User, OAuthError> {
-        info!("Checking if user exists with pseudonym: {}", pseudonym);
+    async fn handle_signup(&self, pseudonym: String, email: String) -> Result<User, OAuthError> {
+        info!(
+            "Checking if user exists with pseudonym: {} or email: {}",
+            pseudonym, email
+        );
         let row = sqlx::query!(
             r#"
-            SELECT id, scramble_id, github_id, github_token, metadata,
-                   created_at, last_login_at, pseudonym
-            FROM users
-            WHERE scramble_id = $1
+            SELECT id FROM users
+            WHERE scramble_id = $1 OR email = $2
             "#,
-            pseudonym
+            pseudonym,
+            email
         )
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
         if row.is_some() {
-            info!("User already exists with pseudonym: {}", pseudonym);
+            info!(
+                "User already exists with pseudonym: {} or email: {}",
+                pseudonym, email
+            );
             // Update last_login_at and return as AuthenticationFailed error
             sqlx::query!(
                 r#"
                 UPDATE users
                 SET last_login_at = NOW()
-                WHERE scramble_id = $1
+                WHERE scramble_id = $1 OR email = $2
                 "#,
-                pseudonym
+                pseudonym,
+                email
             )
             .execute(&self.pool)
             .await
             .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
 
-            return Err(OAuthError::AuthenticationFailed(format!(
-                "User already exists with pseudonym: {}",
-                pseudonym
-            )));
+            return Err(OAuthError::AuthenticationFailed(
+                "User already exists".to_string(),
+            ));
         }
 
         // Create new user
-        info!("Creating new user with pseudonym: {}", pseudonym);
+        info!(
+            "Creating new user with pseudonym: {} and email: {}",
+            pseudonym, email
+        );
         let user = sqlx::query!(
             r#"
-            INSERT INTO users (scramble_id, metadata, github_id, github_token, pseudonym)
-            VALUES ($1, $2, NULL, NULL, $1)
+            INSERT INTO users (scramble_id, metadata, github_id, github_token, pseudonym, email)
+            VALUES ($1, $2, NULL, NULL, $1, $3)
             RETURNING id, scramble_id, github_id, github_token, metadata,
-                      created_at, last_login_at, pseudonym
+                      created_at, last_login_at, pseudonym, email
             "#,
             pseudonym,
-            serde_json::json!({}) as JsonValue
+            serde_json::json!({}) as JsonValue,
+            email
         )
         .fetch_one(&self.pool)
         .await
@@ -286,20 +304,23 @@ impl ScrambleOAuth {
             ))
             .last_login_at(user.last_login_at.map(DateTimeWrapper))
             .pseudonym(user.pseudonym)
+            .email(Some(user.email.expect("email should never be null")))
             .build())
     }
 
-    async fn handle_login(&self, pseudonym: String) -> Result<User, OAuthError> {
+    async fn handle_login(&self, pseudonym: String, email: String) -> Result<User, OAuthError> {
         // Get and update existing user
         let row = sqlx::query!(
             r#"
             UPDATE users
-            SET last_login_at = NOW()
+            SET last_login_at = NOW(),
+                email = COALESCE(email, $2)  -- Only update email if it's null
             WHERE scramble_id = $1
             RETURNING id, scramble_id, github_id, github_token, metadata,
-                      created_at, last_login_at, pseudonym
+                      created_at, last_login_at, pseudonym, email
             "#,
-            pseudonym
+            pseudonym,
+            email
         )
         .fetch_optional(&self.pool)
         .await
@@ -316,6 +337,7 @@ impl ScrambleOAuth {
                 ))
                 .last_login_at(row.last_login_at.map(DateTimeWrapper))
                 .pseudonym(row.pseudonym)
+                .email(Some(row.email.expect("email should never be null")))
                 .build()),
             None => Err(OAuthError::AuthenticationFailed(
                 "User not found".to_string(),
@@ -353,6 +375,40 @@ impl ScrambleOAuth {
             .ok_or_else(|| {
                 error!("No 'sub' claim found in token");
                 OAuthError::TokenExchangeFailed("No 'sub' claim found in token".to_string())
+            })
+            .map(String::from)
+    }
+
+    fn extract_email(&self, id_token: &str) -> Result<String, OAuthError> {
+        info!("Extracting email from token");
+        let parts: Vec<&str> = id_token.split('.').collect();
+        if parts.len() != 3 {
+            error!(
+                "Invalid token format - expected 3 parts, got {}",
+                parts.len()
+            );
+            return Err(OAuthError::TokenExchangeFailed(
+                "Invalid token format".to_string(),
+            ));
+        }
+
+        let claims = URL_SAFE_NO_PAD.decode(parts[1]).map_err(|e| {
+            error!("Failed to decode claims: {}", e);
+            OAuthError::TokenExchangeFailed("Failed to decode claims".to_string())
+        })?;
+
+        let claims: serde_json::Value = serde_json::from_slice(&claims).map_err(|e| {
+            error!("Failed to parse claims: {}", e);
+            OAuthError::TokenExchangeFailed("Failed to parse claims".to_string())
+        })?;
+
+        info!("Parsed claims: {:?}", claims);
+
+        claims["email"]
+            .as_str()
+            .ok_or_else(|| {
+                error!("No 'email' claim found in token");
+                OAuthError::TokenExchangeFailed("No 'email' claim found in token".to_string())
             })
             .map(String::from)
     }
