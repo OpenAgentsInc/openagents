@@ -1,18 +1,10 @@
-use oauth2::{
-    basic::BasicClient, AuthUrl, ClientId, ClientSecret,
-    EmptyExtraTokenFields as OAuth2EmptyExtraTokenFields, RedirectUrl, TokenUrl,
-};
-use std::cell::RefCell;
+use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl};
 use thiserror::Error;
 use tracing::{error, info};
 
 pub mod github;
 pub mod scramble;
 pub mod verifier_store;
-
-thread_local! {
-    static CURRENT_ID_TOKEN: RefCell<Option<String>> = RefCell::new(None);
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct EmptyExtraTokenFields {
@@ -114,32 +106,15 @@ impl OAuthService {
             pkce_verifier.secret().len()
         );
 
-        // Create the token request
-        let token_request = self
-            .client
+        self.client
             .exchange_code(oauth2::AuthorizationCode::new(code))
-            .set_pkce_verifier(pkce_verifier);
-
-        // Get the response using the standard request method
-        let mut token_response = token_request
+            .set_pkce_verifier(pkce_verifier)
             .request_async(oauth2::reqwest::async_http_client)
             .await
-            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
-
-        // Get the raw response as JSON to extract id_token
-        let response_json = serde_json::to_value(&token_response)
-            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))?;
-
-        info!("Raw token response: {:?}", response_json);
-
-        // If there's an id_token in the response, store it in thread local storage
-        if let Some(id_token) = response_json.get("id_token").and_then(|v| v.as_str()) {
-            CURRENT_ID_TOKEN.with(|token| {
-                *token.borrow_mut() = Some(id_token.to_string());
-            });
-        }
-
-        info!("Token exchange successful");
-        Ok(token_response)
+            .map_err(|e| OAuthError::TokenExchangeFailed(e.to_string()))
+            .map(|response| {
+                info!("Token exchange successful");
+                response
+            })
     }
 }

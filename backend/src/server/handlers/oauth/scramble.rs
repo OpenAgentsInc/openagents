@@ -129,7 +129,6 @@ pub struct CallbackParams {
     code: String,
     state: Option<String>,
     error: Option<String>,
-    is_signup: Option<bool>,
 }
 
 pub async fn scramble_callback(
@@ -148,7 +147,8 @@ pub async fn scramble_callback(
     }
 
     let state_param = params.state.clone().unwrap_or_default();
-    let is_signup = params.is_signup.unwrap_or(false);
+    // Check if this is a signup flow by looking at the state suffix
+    let is_signup = state_param.ends_with("_signup");
 
     info!(
         "Callback is for {} with state: {}",

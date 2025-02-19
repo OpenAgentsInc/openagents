@@ -1,5 +1,5 @@
 use super::verifier_store::VerifierStore;
-use super::{OAuthConfig, OAuthError, OAuthService, CURRENT_ID_TOKEN};
+use super::{OAuthConfig, OAuthError, OAuthService};
 use crate::server::models::{timestamp::DateTimeWrapper, user::User};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -48,23 +48,21 @@ impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for Scra
     fn from(token: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>) -> Self {
         let mut extra_fields = HashMap::new();
 
-        // Get the ID token from thread-local storage
-        let id_token = CURRENT_ID_TOKEN.with(|token| token.borrow_mut().take());
+        // Use the access token as the ID token since it contains the claims
+        let access_token_str = token.access_token().secret();
+        extra_fields.insert("id_token".to_string(), access_token_str.to_string());
 
-        // Add id_token to extra fields if present
-        if let Some(ref token_str) = id_token {
-            info!("Found id_token in response, length: {}", token_str.len());
-            extra_fields.insert("id_token".to_string(), token_str.clone());
-        } else {
-            error!("No id_token found in token response");
-        }
+        info!(
+            "Using access token as ID token, length: {}",
+            access_token_str.len()
+        );
 
         Self {
             access_token: token.access_token().clone(),
             token_type: token.token_type().clone(),
             expires_in: token.expires_in(),
             refresh_token: token.refresh_token().cloned(),
-            id_token,
+            id_token: Some(access_token_str.to_string()),
             extra_fields,
         }
     }
@@ -113,10 +111,19 @@ impl ScrambleOAuth {
     ) -> (String, oauth2::CsrfToken, oauth2::PkceCodeVerifier) {
         info!("Generating signup authorization URL for email: {}", email);
 
-        let (url, csrf_token, pkce_verifier) = self.service.authorization_url();
+        let (mut url, csrf_token, pkce_verifier) = self.service.authorization_url();
         info!("Base authorization URL: {}", url);
 
-        // Store verifier with original state
+        // Create signup state
+        let signup_state = format!("{}_signup", csrf_token.secret());
+
+        // Replace the original state with our signup state
+        url = url.replace(
+            &format!("state={}", csrf_token.secret()),
+            &format!("state={}", signup_state),
+        );
+
+        // Store verifier with original state (without _signup suffix)
         self.verifier_store.store_verifier(
             csrf_token.secret(),
             oauth2::PkceCodeVerifier::new(pkce_verifier.secret().to_string()),
