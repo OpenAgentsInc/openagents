@@ -822,10 +822,11 @@ frontend/app/components/chat-input.tsx:
 │const 
 │const 
 │const 
+│const 
+│const handleSubmitMessage
+│const repos
 │const handleSubmit
-│const repo
 │const handleKeyDown
-│const repo
 │const form
 │const owner
 │const name
@@ -1004,6 +1005,16 @@ frontend/app/hooks/use-mobile.ts:
 │const mql
 │const onChange
 
+frontend/app/lib/agentsync/hooks/useAgentSync.ts:
+│const INITIAL_STATE
+│const 
+│const handleOnline
+│const handleOffline
+│const sendMessage
+│const chatId
+│const response
+│const data
+
 frontend/app/root.tsx:
 │const links
 
@@ -1023,8 +1034,11 @@ frontend/app/routes/chat/_layout.tsx:
 │const isSessionView
 
 frontend/app/routes/chat/index.tsx:
+│const navigate
+│const 
 │const 
 │const handleSubmit
+│const response
 
 frontend/app/routes/company.tsx:
 │class of
