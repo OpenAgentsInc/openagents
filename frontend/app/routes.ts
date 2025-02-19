@@ -18,6 +18,9 @@ export default [
   {
     file: "routes/chat/_layout.tsx",
     path: "chat",
-    children: [{ file: "routes/chat/index.tsx", index: true }],
+    children: [
+      { file: "routes/chat/index.tsx", index: true },
+      { file: "routes/chat/$id.tsx", path: ":id" },
+    ],
   },
 ] satisfies RouteConfig;

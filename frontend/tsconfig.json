@@ -15,7 +15,8 @@
     "rootDirs": [".", "./.react-router/types"],
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"]
+      "~/*": ["./app/*"],
+      "agentsync": ["./app/lib/agentsync"]
     },
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,
