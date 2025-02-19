@@ -1,9 +1,10 @@
-import { Mail } from "lucide-react";
-import { useState } from "react";
-import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
-import { cn } from "~/lib/utils";
+import { Mail } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Alert, AlertDescription } from "~/components/ui/alert"
+import { Button } from "~/components/ui/button"
+import { Input } from "~/components/ui/input"
+import { Label } from "~/components/ui/label"
+import { cn } from "~/lib/utils"
 
 export function LoginForm({
   className,
@@ -14,18 +15,36 @@ export function LoginForm({
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Log state changes
+  useEffect(() => {
+    console.log("[LoginForm] State updated:", {
+      email,
+      isExistingUser,
+      showPassword,
+      isLoading,
+      error
+    });
+  }, [email, isExistingUser, showPassword, isLoading, error]);
 
   const checkEmail = async (email: string) => {
     if (!email) return;
-    
+
+    console.log("[LoginForm] Checking email:", email);
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/users/check-email?email=${encodeURIComponent(email)}`);
+      const url = `/api/users/check-email?email=${encodeURIComponent(email)}`;
+      console.log("[LoginForm] Making API request to:", url);
+
+      const response = await fetch(url);
       const data = await response.json();
+      console.log("[LoginForm] Email check response:", data);
+
       setIsExistingUser(data.exists);
-      setShowPassword(data.exists);
+      setShowPassword(true);  // Show password field regardless of user existence
     } catch (error) {
-      console.error("Error checking email:", error);
+      console.error("[LoginForm] Error checking email:", error);
     } finally {
       setIsLoading(false);
     }
@@ -33,20 +52,74 @@ export function LoginForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    console.log("[LoginForm] Form submitted");
+    setError(null); // Clear any previous errors
 
+    if (!email) {
+      console.log("[LoginForm] No email provided, stopping submission");
+      setError("Email is required");
+      return;
+    }
+
+    // First check if user exists if we don't know yet
     if (isExistingUser === null) {
+      console.log("[LoginForm] User existence unknown, checking email first");
       await checkEmail(email);
       return;
     }
 
-    // Use window.location for auth routes to bypass React Router
-    if (!isExistingUser) {
-      // New user - go to signup
-      window.location.href = `/auth/scramble/signup?email=${encodeURIComponent(email)}`;
-    } else {
-      // Existing user - go to login
-      window.location.href = `/auth/scramble/login?email=${encodeURIComponent(email)}`;
+    // Require password before proceeding
+    if (!password) {
+      console.log("[LoginForm] Password required but not provided");
+      setError("Password is required");
+      return;
+    }
+
+    setIsLoading(true);
+    console.log("[LoginForm] Starting authentication process");
+
+    const endpoint = isExistingUser ? '/auth/scramble/login' : '/auth/scramble/signup';
+    console.log(`[LoginForm] Using endpoint: ${endpoint} for ${isExistingUser ? 'login' : 'signup'}`);
+
+    try {
+      console.log("[LoginForm] Sending auth request");
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          email,
+          password: password || '',
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("[LoginForm] Auth response successful:", data);
+        if (data.error) {
+          setError(data.error);
+          return;
+        }
+        // Handle successful response - should get OAuth URL
+        if (data.url) {
+          console.log("[LoginForm] Redirecting to:", data.url);
+          window.location.href = data.url;
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('[LoginForm] Auth error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        setError("Authentication failed. Please try again.");
+      }
+    } catch (error) {
+      console.error('[LoginForm] Submit error:', error);
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -61,6 +134,11 @@ export function LoginForm({
               Sign up or log in to continue
             </div>
           </div>
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
           <div className="flex flex-col gap-6">
             <div className="grid gap-3">
               <Label htmlFor="email">Email</Label>
