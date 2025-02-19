@@ -1,23 +1,28 @@
 import { useState } from "react"
+import TextareaAutosize from "react-textarea-autosize"
+import { RepoSelector } from "~/components/repo-selector"
 import { Button } from "~/components/ui/button"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from "~/components/ui/select"
 import { cn } from "~/lib/utils"
+
+interface Repo {
+  owner: string
+  name: string
+  branch: string
+}
 
 interface ChatInputProps
   extends Omit<React.ComponentProps<"form">, "onSubmit"> {
-  onSubmit?: (message: string, repo: string | undefined) => void;
+  onSubmit?: (message: string, repos: Repo[]) => void;
 }
 
 export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
   const [message, setMessage] = useState("");
-  const [repo, setRepo] = useState<string>();
+  const [selectedRepos, setSelectedRepos] = useState<Repo[]>([]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim()) {
-      onSubmit?.(message.trim(), repo);
+      onSubmit?.(message.trim(), selectedRepos);
       setMessage("");
     }
   };
@@ -41,7 +46,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
           "pb-12 px-3"
         )}>
           <div className="relative z-10">
-            <textarea
+            <TextareaAutosize
               autoFocus={true}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -49,11 +54,13 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   if (message.trim()) {
-                    onSubmit?.(message.trim(), repo);
+                    onSubmit?.(message.trim(), selectedRepos);
                     setMessage("");
                   }
                 }
               }}
+              minRows={1}
+              maxRows={12}
               placeholder="Give OpenAgents a task"
               className={cn(
                 "border-input placeholder:text-muted-foreground",
@@ -61,28 +68,13 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                 "align-bottom min-h-14 py-5 my-0 mb-5 resize-none",
                 "disabled:cursor-not-allowed disabled:opacity-50"
               )}
-              style={{ height: "44px" }}
             />
           </div>
           <div className="flex gap-1.5 absolute inset-x-0 bottom-0 p-3">
-            <div className="grow flex gap-1.5">
-              <Select value={repo} onValueChange={setRepo}>
-                <SelectTrigger className={cn(
-                  "border-input ring-ring/10 dark:ring-ring/20",
-                  "h-9 px-3.5 py-2 border bg-transparent",
-                  "text-primary hover:bg-accent hover:text-accent-foreground",
-                  "shadow-xs transition-[color,box-shadow]",
-                  "focus-visible:ring-4 focus-visible:outline-1",
-                  "!rounded-none"
-                )}>
-                  <SelectValue placeholder="Select a repository..." />
-                </SelectTrigger>
-                <SelectContent className="!rounded-none">
-                  <SelectItem value="openagents">openagents</SelectItem>
-                  <SelectItem value="other">other repository</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <RepoSelector
+              selectedRepos={selectedRepos}
+              onReposChange={setSelectedRepos}
+            />
             <Button
               type="submit"
               disabled={!message.trim()}
