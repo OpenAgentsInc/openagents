@@ -798,6 +798,8 @@ docs/deep-research/rr.md:
 
 docs/deep-research/syncengine.md:
 
+docs/groq3/oa-syncengine.md:
+
 docs/hierarchy.md:
 
 docs/repomap.md:
