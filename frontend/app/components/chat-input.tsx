@@ -1,14 +1,12 @@
-import { Github } from "lucide-react";
-import { useState } from "react";
-import TextareaAutosize from "react-textarea-autosize";
-import { RepoSelector } from "~/components/repo-selector";
-import { Button } from "~/components/ui/button";
+import { Github } from "lucide-react"
+import { useState } from "react"
+import TextareaAutosize from "react-textarea-autosize"
+import { RepoSelector } from "~/components/repo-selector"
+import { Button } from "~/components/ui/button"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "~/components/ui/popover";
-import { cn } from "~/lib/utils";
+  Popover, PopoverContent, PopoverTrigger
+} from "~/components/ui/popover"
+import { cn } from "~/lib/utils"
 
 interface Repo {
   owner: string;
@@ -18,7 +16,7 @@ interface Repo {
 
 interface ChatInputProps
   extends Omit<React.ComponentProps<"form">, "onSubmit"> {
-  onSubmit?: (message: string, repos: Repo[]) => void;
+  onSubmit?: (message: string, repo?: string) => void;
 }
 
 export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
@@ -29,8 +27,24 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim()) {
-      onSubmit?.(message.trim(), selectedRepos);
+      const repo = selectedRepos.length > 0
+        ? `${selectedRepos[0].owner}/${selectedRepos[0].name}${selectedRepos[0].branch ? `#${selectedRepos[0].branch}` : ''}`
+        : undefined;
+      onSubmit?.(message.trim(), repo);
       setMessage("");
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (message.trim()) {
+        const repo = selectedRepos.length > 0
+          ? `${selectedRepos[0].owner}/${selectedRepos[0].name}${selectedRepos[0].branch ? `#${selectedRepos[0].branch}` : ''}`
+          : undefined;
+        onSubmit?.(message.trim(), repo);
+        setMessage("");
+      }
     }
   };
 
@@ -59,15 +73,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               autoFocus={true}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (message.trim()) {
-                    onSubmit?.(message.trim(), selectedRepos);
-                    setMessage("");
-                  }
-                }
-              }}
+              onKeyDown={handleKeyDown}
               minRows={1}
               maxRows={12}
               placeholder="Give OpenAgents a task"
