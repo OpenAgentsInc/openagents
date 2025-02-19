@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE users\n            SET metadata = $1\n            WHERE id = $2\n            RETURNING id, scramble_id, github_id, github_token, metadata,\n                      created_at, last_login_at, pseudonym\n            ",
+  "query": "\n            UPDATE users\n            SET last_login_at = NOW(),\n                email = COALESCE(email, $2)  -- Only update email if it's null\n            WHERE scramble_id = $1\n            RETURNING id, scramble_id, github_id, github_token, metadata,\n                      created_at, last_login_at, pseudonym, email\n            ",
   "describe": {
     "columns": [
       {
@@ -42,12 +42,17 @@
         "ordinal": 7,
         "name": "pseudonym",
         "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "email",
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Left": [
-        "Jsonb",
-        "Int4"
+        "Text",
+        "Text"
       ]
     },
     "nullable": [
@@ -58,8 +63,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "130108b310f9fc56cde8f8b073956b568cc3959f5da65f85fb9d7593e918280a"
+  "hash": "53e5d3388b29566bd59509390e68ff7d724ba61895d8eaf23cde371ceaa6fc1b"
 }
