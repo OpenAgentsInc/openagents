@@ -39,7 +39,7 @@ export default function ChatIndex() {
     <div className="flex flex-col items-center justify-center h-full p-8">
       <h1 className="w-full text-2xl flex-col tracking-tight @sm:text-3xl text-primary flex items-center justify-center text-center">
         {authState.authenticated
-          ? `Welcome, ${authState.user?.metadata.name}`
+          ? `Welcome ${authState.user?.metadata.name}!`
           : "Welcome to OpenAgents Chat"}
         <span className="text-muted-foreground">
           What should we work on today?
