@@ -1,5 +1,5 @@
 use super::verifier_store::VerifierStore;
-use super::{OAuthConfig, OAuthError, OAuthService};
+use super::{OAuthConfig, OAuthError, OAuthService, CURRENT_ID_TOKEN};
 use crate::server::models::{timestamp::DateTimeWrapper, user::User};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -48,20 +48,15 @@ impl From<StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>> for Scra
     fn from(token: StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>) -> Self {
         let mut extra_fields = HashMap::new();
 
-        // Log the complete token response
-        let raw_response = serde_json::to_value(&token).unwrap_or_default();
-        info!("Complete token response: {:?}", raw_response);
+        // Get the ID token from thread-local storage
+        let id_token = CURRENT_ID_TOKEN.with(|token| token.borrow_mut().take());
 
-        // Extract id_token from the raw response
-        let id_token = raw_response
-            .get("id_token")
-            .and_then(|v| v.as_str())
-            .map(ToString::to_string);
-
-        info!("Extracted id_token present: {}", id_token.is_some());
+        // Add id_token to extra fields if present
         if let Some(ref token_str) = id_token {
-            info!("ID token length: {}", token_str.len());
+            info!("Found id_token in response, length: {}", token_str.len());
             extra_fields.insert("id_token".to_string(), token_str.clone());
+        } else {
+            error!("No id_token found in token response");
         }
 
         Self {
