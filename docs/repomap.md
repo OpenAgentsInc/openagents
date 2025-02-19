@@ -823,6 +823,9 @@ frontend/app/components/chat-input.tsx:
 │const 
 │const 
 │const handleSubmit
+│const repo
+│const handleKeyDown
+│const repo
 │const form
 │const owner
 │const name
