@@ -796,6 +796,8 @@ docs/deep-research/oauth.md:
 
 docs/deep-research/rr.md:
 
+docs/deep-research/syncengine.md:
+
 docs/hierarchy.md:
 
 docs/repomap.md:
@@ -827,10 +829,16 @@ frontend/app/components/login-form.tsx:
 │const 
 │const 
 │const 
+│const 
 │const checkEmail
+│const url
 │const response
 │const data
 │const handleSubmit
+│const endpoint
+│const response
+│const data
+│const errorText
 
 frontend/app/components/ui/alert.tsx:
 │const alertVariants
