@@ -16,7 +16,7 @@ interface Repo {
 
 interface ChatInputProps
   extends Omit<React.ComponentProps<"form">, "onSubmit"> {
-  onSubmit?: (message: string, repo?: string) => void;
+  onSubmit?: (message: string, repos?: string[]) => void;
 }
 
 export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
@@ -27,10 +27,10 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (message.trim()) {
-      const repo = selectedRepos.length > 0
-        ? `${selectedRepos[0].owner}/${selectedRepos[0].name}${selectedRepos[0].branch ? `#${selectedRepos[0].branch}` : ''}`
-        : undefined;
-      onSubmit?.(message.trim(), repo);
+      const repos = selectedRepos.map(repo => 
+        `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ''}`
+      );
+      onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
       setMessage("");
     }
   };
@@ -39,10 +39,10 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (message.trim()) {
-        const repo = selectedRepos.length > 0
-          ? `${selectedRepos[0].owner}/${selectedRepos[0].name}${selectedRepos[0].branch ? `#${selectedRepos[0].branch}` : ''}`
-          : undefined;
-        onSubmit?.(message.trim(), repo);
+        const repos = selectedRepos.map(repo => 
+          `${repo.owner}/${repo.name}${repo.branch ? `#${repo.branch}` : ''}`
+        );
+        onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
         setMessage("");
       }
     }
