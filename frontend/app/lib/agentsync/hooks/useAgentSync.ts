@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { AgentSyncHook, SyncState, SyncOptions } from '../types';
+import type { AgentSyncHook, SyncState, SyncOptions, StartChatResponse } from '../types';
 
 const INITIAL_STATE: SyncState = {
   isOnline: true,
@@ -24,8 +24,10 @@ export function useAgentSync(options: SyncOptions): AgentSyncHook {
     };
   }, []);
 
-  const sendMessage = async (content: string, repos?: string[]) => {
-    if (!content.trim()) return;
+  const sendMessage = async (content: string, repos?: string[]): Promise<StartChatResponse> => {
+    if (!content.trim()) {
+      throw new Error('Message content cannot be empty');
+    }
 
     try {
       const response = await fetch('/api/start-repo-chat', {
@@ -45,7 +47,7 @@ export function useAgentSync(options: SyncOptions): AgentSyncHook {
       }
 
       const data = await response.json();
-      return data;
+      return data as StartChatResponse;
     } catch (error) {
       console.error('Error sending message:', error);
       throw error;
