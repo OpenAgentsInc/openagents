@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { ChatInput } from "~/components/chat-input";
 import { useAgentSync } from "agentsync";
+import type { StartChatResponse } from "agentsync";
 
 interface UserMetadata {
   name: string;
@@ -40,7 +41,7 @@ export default function ChatIndex() {
 
   const handleSubmit = async (message: string, repos?: string[]) => {
     try {
-      const response = await sendMessage(message, repos);
+      const response: StartChatResponse = await sendMessage(message, repos);
       // Navigate to the new chat session
       navigate(`/chat/${response.id}`);
     } catch (error) {
