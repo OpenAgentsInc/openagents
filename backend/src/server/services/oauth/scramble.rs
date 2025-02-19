@@ -286,26 +286,11 @@ impl ScrambleOAuth {
 
         if row.is_some() {
             info!(
-                "User already exists with pseudonym: {} or email: {}",
+                "User already exists, handling as login for: {} with email: {}",
                 pseudonym, email
             );
-            // Update last_login_at and return as AuthenticationFailed error
-            sqlx::query!(
-                r#"
-                UPDATE users
-                SET last_login_at = NOW()
-                WHERE scramble_id = $1 OR email = $2
-                "#,
-                pseudonym,
-                email
-            )
-            .execute(&self.pool)
-            .await
-            .map_err(|e| OAuthError::DatabaseError(e.to_string()))?;
-
-            return Err(OAuthError::AuthenticationFailed(
-                "User already exists".to_string(),
-            ));
+            // Instead of returning an error, just log them in
+            return self.handle_login(pseudonym, email).await;
         }
 
         // Create new user
