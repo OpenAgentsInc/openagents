@@ -32,25 +32,52 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
       {...props}
     >
       <div className="w-full max-w-[50rem] relative">
-        <div className="duration-150 relative w-full ring-1 ring-input-border ring-inset overflow-hidden bg-input hover:ring-card-border-focus hover:bg-input-hover focus-within:ring-1 focus-within:ring-input-border-focus hover:focus-within:ring-input-border-focus pb-12 px-3 rounded-3xl">
+        <div className={cn(
+          "border-input ring-ring/10 dark:ring-ring/20 dark:outline-ring/40 outline-ring/50",
+          "relative w-full border bg-transparent overflow-hidden",
+          "shadow-xs transition-[color,box-shadow]",
+          "focus-within:ring-4 focus-within:outline-1",
+          "hover:bg-accent/15 hover:text-accent-foreground",
+          "pb-12 px-3"
+        )}>
           <div className="relative z-10">
-            <span className="tracking-[-0.02em] absolute px-3 py-5 text-secondary pointer-events-none">
-              What should we work on today?
-            </span>
             <textarea
+              autoFocus={true}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              className="w-full px-3 bg-transparent focus:outline-none text-primary align-bottom min-h-14 pt-5 my-0 mb-5 resize-none"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (message.trim()) {
+                    onSubmit?.(message.trim(), repo);
+                    setMessage("");
+                  }
+                }
+              }}
+              placeholder="Give OpenAgents a task"
+              className={cn(
+                "border-input placeholder:text-muted-foreground",
+                "w-full px-3 bg-transparent focus:outline-none text-primary",
+                "align-bottom min-h-14 py-5 my-0 mb-5 resize-none",
+                "disabled:cursor-not-allowed disabled:opacity-50"
+              )}
               style={{ height: "44px" }}
             />
           </div>
-          <div className="flex gap-1.5 absolute inset-x-0 bottom-0 border-2 border-transparent p-3">
+          <div className="flex gap-1.5 absolute inset-x-0 bottom-0 p-3">
             <div className="grow flex gap-1.5">
               <Select value={repo} onValueChange={setRepo}>
-                <SelectTrigger className="h-9 px-3.5 py-2 border border-toggle-border bg-transparent hover:bg-toggle-hover text-primary">
+                <SelectTrigger className={cn(
+                  "border-input ring-ring/10 dark:ring-ring/20",
+                  "h-9 px-3.5 py-2 border bg-transparent",
+                  "text-primary hover:bg-accent hover:text-accent-foreground",
+                  "shadow-xs transition-[color,box-shadow]",
+                  "focus-visible:ring-4 focus-visible:outline-1",
+                  "!rounded-none"
+                )}>
                   <SelectValue placeholder="Select a repository..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="!rounded-none">
                   <SelectItem value="openagents">openagents</SelectItem>
                   <SelectItem value="other">other repository</SelectItem>
                 </SelectContent>
@@ -59,7 +86,16 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
             <Button
               type="submit"
               disabled={!message.trim()}
-              className="h-9 relative aspect-square flex items-center justify-center rounded-full ring-inset before:absolute before:inset-0 before:rounded-full before:bg-primary before:ring-0 before:transition-all duration-500 bg-button-secondary text-secondary before:[clip-path:circle(0%_at_50%_50%)] ring-0"
+              className={cn(
+                "border-input ring-ring/10 dark:ring-ring/20",
+                "h-9 relative aspect-square",
+                "flex items-center justify-center",
+                "bg-transparent text-primary",
+                "shadow-xs transition-[color,box-shadow]",
+                "hover:bg-accent hover:text-accent-foreground",
+                "focus-visible:ring-4 focus-visible:outline-1",
+                "disabled:cursor-not-allowed disabled:opacity-50"
+              )}
             >
               <svg
                 width="20"

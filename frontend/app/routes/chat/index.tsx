@@ -38,7 +38,7 @@ export default function ChatIndex() {
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-8">
-      <h1 className="w-full text-2xl flex-col tracking-tight sm:text-3xl text-primary flex items-center justify-center text-center">
+      <h1 className="w-full text-2xl flex-col tracking-tight leading-[2.8rem] sm:text-3xl text-primary flex items-center justify-center text-center">
         {authState.authenticated
           ? `Welcome ${authState.user?.metadata.name}!`
           : "Welcome to OpenAgents Chat"}
@@ -47,7 +47,7 @@ export default function ChatIndex() {
         </span>
       </h1>
 
-      <div className="w-full max-w-2xl mt-6">
+      <div className="w-full max-w-2xl mt-12">
         <ChatInput onSubmit={handleSubmit} />
       </div>
     </div>
