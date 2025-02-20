@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, State},
+    extract::{Json, Path, State},
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::server::{
     config::AppState,
-    models::chat::{CreateConversationRequest, CreateMessageRequest},
+    models::chat::{CreateConversationRequest, CreateMessageRequest, Message},
     services::chat_database::ChatDatabaseService,
 };
 
@@ -172,4 +172,30 @@ pub async fn send_message(
         id: message.id.to_string(),
         message: message.content,
     }))
+}
+
+pub async fn get_conversation_messages(
+    State(state): State<AppState>,
+    Path(conversation_id): Path<Uuid>,
+) -> Result<Json<Vec<Message>>, (StatusCode, String)> {
+    info!("Fetching messages for conversation: {}", conversation_id);
+
+    // Create chat database service
+    let chat_db = ChatDatabaseService::new(state.pool);
+
+    // Get messages
+    let messages = chat_db
+        .get_conversation_messages(conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch conversation messages: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to fetch conversation messages: {}", e),
+            )
+        })?;
+
+    info!("Found {} messages", messages.len());
+
+    Ok(Json(messages))
 }
