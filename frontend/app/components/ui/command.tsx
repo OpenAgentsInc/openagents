@@ -1,14 +1,10 @@
-import { Command as CommandPrimitive } from "cmdk";
-import { SearchIcon } from "lucide-react";
-import * as React from "react";
+import { Command as CommandPrimitive } from "cmdk"
+import { SearchIcon } from "lucide-react"
+import * as React from "react"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "~/components/ui/dialog";
-import { cn } from "~/lib/utils";
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle
+} from "~/components/ui/dialog"
+import { cn } from "~/lib/utils"
 
 function Command({
   className,
@@ -18,7 +14,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md",
+        "bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden ",
         className,
       )}
       {...props}
@@ -63,7 +59,7 @@ function CommandInput({
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          "placeholder:text-muted-foreground flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+          "placeholder:text-muted-foreground flex h-10 w-full  bg-transparent py-3 text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
         {...props}
