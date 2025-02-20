@@ -1,8 +1,8 @@
-import { useAgentSync } from "agentsync"
-import { useCallback, useEffect, useRef } from "react"
-import { useParams } from "react-router"
-import { ChatInput } from "~/components/chat/chat-input"
-import { useMessagesStore } from "~/stores/messages"
+import { useAgentSync } from "agentsync";
+import { useCallback, useEffect, useRef } from "react";
+import { useParams } from "react-router";
+import { ChatInput } from "~/components/chat/chat-input";
+import { useMessagesStore } from "~/stores/messages";
 
 import type { Message } from "~/stores/messages";
 
@@ -26,7 +26,7 @@ export default function ChatSession() {
     if (messageContainerRef.current) {
       messageContainerRef.current.scrollTo({
         top: messageContainerRef.current.scrollHeight,
-        behavior: 'smooth'
+        behavior: "smooth",
       });
     }
   }, [messages]);
