@@ -1,28 +1,35 @@
+import { useParams } from "@remix-run/react";
 import { ChatInput } from "~/components/chat/chat-input";
-import { Thinking } from "~/components/chat/thinking";
+import { useMessagesStore } from "~/stores/messages";
 
 export default function ChatSession() {
+  const { id } = useParams();
+  const messages = useMessagesStore((state) => state.messages[id || ""] || []);
+
   return (
     <div className="flex h-full flex-col">
-      {/* Main content area */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl w-full">
-          {/* Thinking component */}
-          <div className="p-4">
-            <Thinking
-              state="thinking"
-              duration={3}
-              content={[
-                "Analyzing your request...",
-                "Processing information...",
-                "Preparing response...",
-              ]}
-            />
-          </div>
+          {messages.map((message) => (
+            <div key={message.id} className="p-4">
+              <div className="flex gap-4">
+                <div className="flex-shrink-0">
+                  {message.role === "user" ? "👤" : "🤖"}
+                </div>
+                <div className="flex-1">
+                  {message.content}
+                  {message.metadata?.repos && (
+                    <div className="text-sm text-muted-foreground mt-2">
+                      Repos: {message.metadata.repos.join(", ")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Chat input at bottom */}
       <div className="p-4">
         <ChatInput />
       </div>
