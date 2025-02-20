@@ -2,6 +2,7 @@ use axum::{
     extract::{Json, Path, State},
     http::StatusCode,
 };
+use axum_extra::extract::cookie::CookieJar;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{error, info};
@@ -9,6 +10,7 @@ use uuid::Uuid;
 
 use crate::server::{
     config::AppState,
+    handlers::oauth::session::SESSION_COOKIE_NAME,
     models::chat::{CreateConversationRequest, CreateMessageRequest, Message},
     services::chat_database::ChatDatabaseService,
 };
@@ -41,6 +43,7 @@ pub struct SendMessageResponse {
 }
 
 pub async fn start_repo_chat(
+    cookies: CookieJar,
     State(state): State<AppState>,
     Json(request): Json<StartRepoChatRequest>,
 ) -> Result<Json<StartChatResponse>, (StatusCode, String)> {
@@ -50,13 +53,20 @@ pub async fn start_repo_chat(
     let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
-    let user_id = "anonymous"; // TODO: Get from session
+    let user_id = if let Some(session_cookie) = cookies.get(SESSION_COOKIE_NAME) {
+        session_cookie.value().to_string()
+    } else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "No session found. Please log in.".to_string(),
+        ));
+    };
     info!("Using user_id: {}", user_id);
 
     // Create conversation
     let conversation = chat_db
         .create_conversation(&CreateConversationRequest {
-            user_id: user_id.to_string(),
+            user_id: user_id.clone(),
             title: Some(format!("Repo chat: {}", request.message)),
         })
         .await
@@ -74,7 +84,7 @@ pub async fn start_repo_chat(
     let message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: conversation.id,
-            user_id: user_id.to_string(),
+            user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
             metadata: Some(json!({
@@ -100,6 +110,7 @@ pub async fn start_repo_chat(
 }
 
 pub async fn send_message(
+    cookies: CookieJar,
     State(state): State<AppState>,
     Json(request): Json<SendMessageRequest>,
 ) -> Result<Json<SendMessageResponse>, (StatusCode, String)> {
@@ -109,7 +120,14 @@ pub async fn send_message(
     let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
-    let user_id = "anonymous"; // TODO: Get from session
+    let user_id = if let Some(session_cookie) = cookies.get(SESSION_COOKIE_NAME) {
+        session_cookie.value().to_string()
+    } else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "No session found. Please log in.".to_string(),
+        ));
+    };
     info!("Using user_id: {}", user_id);
 
     // If no repos provided in the request, try to get them from the conversation's first message
@@ -151,7 +169,7 @@ pub async fn send_message(
     let message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
-            user_id: user_id.to_string(),
+            user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
             metadata,
@@ -175,10 +193,22 @@ pub async fn send_message(
 }
 
 pub async fn get_conversation_messages(
+    cookies: CookieJar,
     State(state): State<AppState>,
     Path(conversation_id): Path<Uuid>,
 ) -> Result<Json<Vec<Message>>, (StatusCode, String)> {
     info!("Fetching messages for conversation: {}", conversation_id);
+
+    // Get user info from session
+    let user_id = if let Some(session_cookie) = cookies.get(SESSION_COOKIE_NAME) {
+        session_cookie.value().to_string()
+    } else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            "No session found. Please log in.".to_string(),
+        ));
+    };
+    info!("Using user_id: {}", user_id);
 
     // Create chat database service
     let chat_db = ChatDatabaseService::new(state.pool);

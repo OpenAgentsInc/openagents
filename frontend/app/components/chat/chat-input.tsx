@@ -1,5 +1,5 @@
 import { Github } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { Button } from "~/components/ui/button";
 import {
@@ -26,6 +26,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
   const [selectedRepos, setSelectedRepos] = useState<Repo[]>([]);
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmitMessage = useCallback(async () => {
     if (message.trim() && !isSubmitting) {
@@ -37,6 +38,9 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
         );
         await onSubmit?.(message.trim(), repos.length > 0 ? repos : undefined);
         setMessage("");
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 0);
       } catch (error) {
         console.error("Error submitting message:", error);
       } finally {
@@ -44,6 +48,12 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
       }
     }
   }, [message, selectedRepos, isSubmitting, onSubmit]);
+
+  useEffect(() => {
+    if (!isSubmitting) {
+      textareaRef.current?.focus();
+    }
+  }, [isSubmitting]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -97,6 +107,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
         >
           <div className="relative z-10">
             <TextareaAutosize
+              ref={textareaRef}
               autoFocus={true}
               value={message}
               onChange={(e) => setMessage(e.target.value)}

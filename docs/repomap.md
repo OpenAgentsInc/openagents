@@ -136,6 +136,7 @@ backend/src/server/config.rs:
 backend/src/server/handlers/chat.rs:
 │fn start_repo_chat
 │fn send_message
+│fn get_conversation_messages
 
 backend/src/server/handlers/oauth/github.rs:
 │fn github_login
@@ -831,6 +832,7 @@ frontend/app/components/chat/chat-input.tsx:
 │const repos
 │const handleSubmit
 │const handleKeyDown
+│const handleAddRepo
 │const form
 │const owner
 │const name
@@ -1054,9 +1056,15 @@ frontend/app/routes/\_layout.tsx:
 │const location
 
 frontend/app/routes/chat/$id.tsx:
+│const EMPTY_MESSAGES
 │const
+│const
+│const messagesSelector
 │const messages
 │const
+│const loadMessages
+│const response
+│const data
 │const handleSubmit
 
 frontend/app/routes/chat/index.tsx:
