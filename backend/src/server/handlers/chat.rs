@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::server::{
@@ -49,13 +50,15 @@ pub async fn start_repo_chat(
             )
         })?;
 
-    // Create initial message
+    // Create initial message with repos metadata
     let message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: conversation.id,
             role: "user".to_string(),
             content: request.message.clone(),
-            metadata: None,
+            metadata: Some(json!({
+                "repos": request.repos
+            })),
             tool_calls: None,
         })
         .await
