@@ -6,7 +6,7 @@ import {
 
 export default function ComponentsPage() {
   return (
-    <div className="container p-8">
+    <div className="container px-6 py-4">
       <div className="mx-auto">
         <Breadcrumb className="mb-6">
           <BreadcrumbList>
