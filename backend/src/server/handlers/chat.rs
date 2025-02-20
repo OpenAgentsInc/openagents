@@ -4,6 +4,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::server::{
@@ -43,11 +44,14 @@ pub async fn start_repo_chat(
     State(state): State<AppState>,
     Json(request): Json<StartRepoChatRequest>,
 ) -> Result<Json<StartChatResponse>, (StatusCode, String)> {
+    info!("Starting repo chat with request: {:?}", request);
+
     // Create chat database service
     let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
     let user_id = "anonymous"; // TODO: Get from session
+    info!("Using user_id: {}", user_id);
 
     // Create conversation
     let conversation = chat_db
@@ -57,11 +61,14 @@ pub async fn start_repo_chat(
         })
         .await
         .map_err(|e| {
+            error!("Failed to create conversation: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to create conversation: {}", e),
             )
         })?;
+
+    info!("Created conversation with id: {}", conversation.id);
 
     // Create initial message with repos metadata
     let message = chat_db
@@ -76,11 +83,14 @@ pub async fn start_repo_chat(
         })
         .await
         .map_err(|e| {
+            error!("Failed to create message: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to create message: {}", e),
             )
         })?;
+
+    info!("Created message with id: {}", message.id);
 
     Ok(Json(StartChatResponse {
         id: conversation.id.to_string(),
@@ -92,11 +102,14 @@ pub async fn send_message(
     State(state): State<AppState>,
     Json(request): Json<SendMessageRequest>,
 ) -> Result<Json<SendMessageResponse>, (StatusCode, String)> {
+    info!("Sending message with request: {:?}", request);
+
     // Create chat database service
     let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
     let user_id = "anonymous"; // TODO: Get from session
+    info!("Using user_id: {}", user_id);
 
     // Create message
     let message = chat_db
@@ -109,11 +122,14 @@ pub async fn send_message(
         })
         .await
         .map_err(|e| {
+            error!("Failed to create message: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to create message: {}", e),
             )
         })?;
+
+    info!("Created message with id: {}", message.id);
 
     Ok(Json(SendMessageResponse {
         id: message.id.to_string(),
