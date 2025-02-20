@@ -45,25 +45,9 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Uuid",
-        "Text",
-        "Text",
-        "Text",
-        "Jsonb",
-        "Jsonb"
-      ]
+      "Left": ["Uuid", "Text", "Text", "Text", "Jsonb", "Jsonb"]
     },
-    "nullable": [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      true,
-      true
-    ]
+    "nullable": [false, false, false, false, false, false, true, true]
   },
   "hash": "ed3f99f7b163c624304df49ec85363b49efc447cdff6a8f168268cce407d2792"
 }
