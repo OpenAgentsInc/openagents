@@ -1,8 +1,8 @@
-import { useAgentSync } from "agentsync";
-import { useCallback, useEffect } from "react";
-import { useParams } from "react-router";
-import { ChatInput } from "~/components/chat/chat-input";
-import { useMessagesStore } from "~/stores/messages";
+import { useAgentSync } from "agentsync"
+import { useCallback, useEffect, useRef } from "react"
+import { useParams } from "react-router"
+import { ChatInput } from "~/components/chat/chat-input"
+import { useMessagesStore } from "~/stores/messages"
 
 import type { Message } from "~/stores/messages";
 
@@ -12,6 +12,7 @@ const EMPTY_MESSAGES: Message[] = [];
 export default function ChatSession() {
   const { id } = useParams();
   const { setMessages } = useMessagesStore();
+  const messageContainerRef = useRef<HTMLDivElement>(null);
 
   // Use the cached empty array to avoid returning a new array on every call.
   const messagesSelector = useCallback(
@@ -19,6 +20,16 @@ export default function ChatSession() {
     [id],
   );
   const messages = useMessagesStore(messagesSelector);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messageContainerRef.current) {
+      messageContainerRef.current.scrollTo({
+        top: messageContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, [messages]);
 
   const { sendMessage, state } = useAgentSync({
     scope: "chat",
@@ -55,7 +66,7 @@ export default function ChatSession() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto">
+      <div ref={messageContainerRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl w-full">
           {messages.map((message) => (
             <div key={message.id} className="p-4">
