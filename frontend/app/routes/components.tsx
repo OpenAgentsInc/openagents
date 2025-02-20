@@ -1,6 +1,13 @@
-import React from "react";
-import { ShadComponents } from "../components/shad/components";
-import { ScrollArea } from "../components/ui/scroll-area";
+import { ShadComponents } from "../components/shad/components"
+import { ScrollArea } from "../components/ui/scroll-area"
+
+import type { Route } from "../+types/company";
+export function meta({ }: Route.MetaArgs) {
+  return [
+    { title: "OpenAgents - Component Library" },
+    { name: "description", content: "Component library" },
+  ];
+}
 
 export default function ComponentLibrary() {
   return (
