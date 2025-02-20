@@ -6,13 +6,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "~/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
 import { cn } from "~/lib/utils";
 
 interface Repo {
@@ -47,7 +40,7 @@ const RepoForm = memo(function RepoForm({
         onChange={onChange}
         placeholder="Owner"
         className={cn(
-          "w-full p-2 border rounded text-sm",
+          "w-full p-2 border  text-sm",
           "bg-background dark:bg-background",
           "text-foreground dark:text-foreground",
           "border-input dark:border-input",
@@ -63,7 +56,7 @@ const RepoForm = memo(function RepoForm({
         onChange={onChange}
         placeholder="Repo name"
         className={cn(
-          "w-full p-2 border rounded text-sm",
+          "w-full p-2 border  text-sm",
           "bg-background dark:bg-background",
           "text-foreground dark:text-foreground",
           "border-input dark:border-input",
@@ -79,7 +72,7 @@ const RepoForm = memo(function RepoForm({
         onChange={onChange}
         placeholder="Branch"
         className={cn(
-          "w-full p-2 border rounded text-sm",
+          "w-full p-2 border  text-sm",
           "bg-background dark:bg-background",
           "text-foreground dark:text-foreground",
           "border-input dark:border-input",
@@ -225,7 +218,7 @@ export function RepoSelector({
                 "text-primary hover:bg-accent hover:text-accent-foreground",
                 "shadow-xs transition-[color,box-shadow]",
                 "focus-visible:ring-4 focus-visible:outline-1",
-                "!rounded-none shrink-0",
+                "!-none shrink-0",
               )}
             >
               <Github className="w-4 h-4" />
