@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useParams } from "react-router";
 import { ChatInput } from "~/components/chat/chat-input";
 import { useMessagesStore } from "~/stores/messages";
@@ -7,7 +7,9 @@ import { useAgentSync } from "agentsync";
 export default function ChatSession() {
   const { id } = useParams();
   const { setMessages } = useMessagesStore();
-  const messages = useMessagesStore((state) => state.messages[id || ""] || []);
+  const messages = useMessagesStore(
+    useCallback((state) => state.messages[id || ""] || [], [id])
+  );
 
   const { sendMessage, state } = useAgentSync({
     scope: "chat",
