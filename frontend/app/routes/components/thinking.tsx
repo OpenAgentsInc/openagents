@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router"
 import { Thinking } from "~/components/chat/thinking"
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage,
@@ -76,8 +77,8 @@ export default function ThinkingPage() {
   };
 
   return (
-    <div className="p-4 bg-background">
-      <div className="w-full max-w-3xl mx-auto">
+    <div className="container p-8">
+      <div className="mx-auto">
         <Breadcrumb className="mb-6">
           <BreadcrumbList>
             <BreadcrumbItem>

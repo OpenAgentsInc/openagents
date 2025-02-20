@@ -13,8 +13,9 @@ export default [
       { file: "routes/cota.tsx", path: "cota" },
       { file: "routes/repomap.tsx", path: "repomap" },
       { file: "routes/login.tsx", path: "login" },
-      { file: "routes/components.tsx", path: "components" },
-      { file: "routes/thinking.tsx", path: "thinking" },
+      { file: "routes/components/index.tsx", path: "components" },
+      { file: "routes/components/thinking.tsx", path: "components/thinking" },
+      { file: "routes/components/shadcn.tsx", path: "components/shadcn" },
     ],
   },
   {

@@ -1,5 +1,5 @@
 import { Lightbulb, Loader2, XCircle } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router"
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger
@@ -27,6 +27,13 @@ export function Thinking({
 }: ThinkingProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [accordionValue, setAccordionValue] = useState<string | undefined>(defaultOpen ? "thinking" : undefined);
+
+  useEffect(() => {
+    if (state === "thinking") {
+      setAccordionValue("thinking");
+    }
+  }, [state]);
 
   useEffect(() => {
     if (scrollRef.current && contentRef.current) {
@@ -87,8 +94,8 @@ export function Thinking({
         type="single"
         collapsible
         className="w-full"
-        defaultValue={defaultOpen ? "thinking" : undefined}
-        value={hasContent ? "thinking" : undefined}
+        value={accordionValue}
+        onValueChange={setAccordionValue}
       >
         <AccordionItem value="thinking" className="border-none">
           <AccordionTrigger className="group pr-6 sticky top-0 bg-background z-10">
@@ -110,27 +117,24 @@ export function Thinking({
               <div className="w-full overflow-hidden relative flex flex-col items-start h-full">
                 <div
                   ref={scrollRef}
-                  className="w-full flex flex-col items-center justify-center relative px-4 h-full fade-mask overflow-y-auto"
+                  className="w-full flex flex-col justify-end relative px-4 h-full overflow-y-auto"
                 >
-                  <div ref={contentRef} className="w-full">
-                    <div className="space-y-1">
+                  <div ref={contentRef} className="w-full flex flex-col justify-end">
+                    <div className="space-y-1 flex flex-col justify-end">
                       {animatedContent ? (
-                        animatedContent.map((line, i) => (
+                        [...animatedContent].reverse().map((line, i) => (
                           <p
                             key={i}
-                            className="w-full text-white text-[12px] my-0 flex items-center transition-all duration-300 ease-in-out"
+                            className="w-full text-white text-[12px] my-0 flex items-center transition-opacity duration-300 ease-in-out"
                             style={{
-                              opacity: line.opacity,
-                              transform: `translate3d(0, ${line.opacity < 1 ? 20 : 0}px, 0)`,
-                              transformOrigin: 'bottom',
-                              filter: `blur(${line.opacity < 1 ? 2 : 0}px)`
+                              opacity: line.opacity
                             }}
                           >
                             {line.text}
                           </p>
                         ))
                       ) : (
-                        content.map((line, i) => (
+                        [...content].reverse().map((line, i) => (
                           <p key={i} className="w-full text-white text-[12px] my-0 flex items-center">{line}</p>
                         ))
                       )}
