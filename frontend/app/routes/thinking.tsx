@@ -15,7 +15,7 @@ export default function ThinkingPage() {
   // Pre-split into visual lines (roughly 60-70 chars per line)
   const allLines = DEMO_TEXT.split(' ').reduce((acc: string[], word) => {
     const currentLine = acc[acc.length - 1] || '';
-    if (!currentLine || (currentLine + ' ' + word).length > 65) {
+    if (!currentLine || (currentLine + ' ' + word).length > 105) {
       acc.push(word);
     } else {
       acc[acc.length - 1] = currentLine + ' ' + word;

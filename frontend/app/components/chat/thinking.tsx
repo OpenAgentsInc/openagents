@@ -118,11 +118,11 @@ export function Thinking({
                         animatedContent.map((line, i) => (
                           <p
                             key={i}
-                            className="w-full text-secondary text-[12px] opacity-90 my-0 flex items-center"
+                            className="w-full text-white text-[12px] my-0 flex items-center transition-all duration-300 ease-in-out"
                             style={{
                               opacity: line.opacity,
                               transform: `translate3d(0, ${line.opacity < 1 ? 20 : 0}px, 0)`,
-                              transformOrigin: '50% 50% 0',
+                              transformOrigin: 'bottom',
                               filter: `blur(${line.opacity < 1 ? 2 : 0}px)`
                             }}
                           >
@@ -131,7 +131,7 @@ export function Thinking({
                         ))
                       ) : (
                         content.map((line, i) => (
-                          <p key={i} className="w-full text-secondary text-[12px] opacity-90 my-0 flex items-center">{line}</p>
+                          <p key={i} className="w-full text-white text-[12px] my-0 flex items-center">{line}</p>
                         ))
                       )}
                     </div>
