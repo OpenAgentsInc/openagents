@@ -1,10 +1,13 @@
-import { Lightbulb, Loader2, XCircle } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
-import { Link } from "react-router"
+import { Lightbulb, Loader2, XCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 import {
-  Accordion, AccordionContent, AccordionItem, AccordionTrigger
-} from "~/components/ui/accordion"
-import { cn } from "~/lib/utils"
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "~/components/ui/accordion";
+import { cn } from "~/lib/utils";
 
 export type ThinkingState = "thinking" | "finished" | "error";
 
@@ -23,11 +26,13 @@ export function Thinking({
   content = [],
   animatedContent,
   defaultOpen = false,
-  simplified = false
+  simplified = false,
 }: ThinkingProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [accordionValue, setAccordionValue] = useState<string | undefined>(defaultOpen ? "thinking" : undefined);
+  const [accordionValue, setAccordionValue] = useState<string | undefined>(
+    defaultOpen ? "thinking" : undefined,
+  );
 
   useEffect(() => {
     if (state === "thinking") {
@@ -37,7 +42,8 @@ export function Thinking({
 
   useEffect(() => {
     if (scrollRef.current && contentRef.current) {
-      const shouldScroll = scrollRef.current.scrollHeight > scrollRef.current.clientHeight;
+      const shouldScroll =
+        scrollRef.current.scrollHeight > scrollRef.current.clientHeight;
       if (shouldScroll) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
@@ -47,11 +53,15 @@ export function Thinking({
   const getIcon = () => {
     switch (state) {
       case "thinking":
-        return <Loader2 className="text-nowrap shrink-0 h-4 w-4 animate-spin mr-1" />;
+        return (
+          <Loader2 className="text-nowrap shrink-0 h-4 w-4 animate-spin mr-1" />
+        );
       case "finished":
         return <Lightbulb className="text-nowrap shrink-0 h-4 w-4 mr-1" />;
       case "error":
-        return <XCircle className="text-nowrap shrink-0 h-4 w-4 text-destructive mr-1" />;
+        return (
+          <XCircle className="text-nowrap shrink-0 h-4 w-4 text-destructive mr-1" />
+        );
     }
   };
 
@@ -66,7 +76,9 @@ export function Thinking({
     }
   };
 
-  const hasContent = animatedContent ? animatedContent.length > 0 : content.length > 0;
+  const hasContent = animatedContent
+    ? animatedContent.length > 0
+    : content.length > 0;
 
   if (simplified) {
     return (
@@ -79,17 +91,21 @@ export function Thinking({
             <div className="w-4 h-4 rounded-full bg-primary animate-pulse" />
             <span>Thinking...</span>
           </div>
-          <span className="text-sm text-muted-foreground">Click to view details</span>
+          <span className="text-sm text-muted-foreground">
+            Click to view details
+          </span>
         </Link>
       </div>
     );
   }
 
   return (
-    <div className={cn(
-      "md:-mx-4 mb-4 relative",
-      "border-2 border-toggle-border overflow-clip"
-    )}>
+    <div
+      className={cn(
+        "md:-mx-4 mb-4 relative",
+        "border-2 border-toggle-border overflow-clip",
+      )}
+    >
       <Accordion
         type="single"
         collapsible
@@ -105,7 +121,9 @@ export function Thinking({
                   <div className="flex items-center gap-1 overflow-hidden">
                     {getIcon()}
                     <div className="flex items-baseline gap-1 overflow-hidden">
-                      <span className="text-sm text-nowrap whitespace-nowrap">{getLabel()}</span>
+                      <span className="text-sm text-nowrap whitespace-nowrap">
+                        {getLabel()}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -119,25 +137,31 @@ export function Thinking({
                 ref={scrollRef}
                 className="h-full w-full overflow-y-auto px-4"
               >
-                <div ref={contentRef} className="flex flex-col justify-end min-h-full">
+                <div
+                  ref={contentRef}
+                  className="flex flex-col justify-end min-h-full"
+                >
                   <div className="space-y-1">
-                    {animatedContent ? (
-                      [...animatedContent].reverse().map((line, i) => (
-                        <p
-                          key={i}
-                          className="w-full text-white text-[12px] my-0 flex items-center transition-opacity duration-300 ease-in-out"
-                          style={{
-                            opacity: line.opacity
-                          }}
-                        >
-                          {line.text}
-                        </p>
-                      ))
-                    ) : (
-                      [...content].reverse().map((line, i) => (
-                        <p key={i} className="w-full text-white text-[12px] my-0 flex items-center">{line}</p>
-                      ))
-                    )}
+                    {animatedContent
+                      ? [...animatedContent].reverse().map((line, i) => (
+                          <p
+                            key={i}
+                            className="w-full text-white text-[12px] my-0 flex items-center transition-opacity duration-300 ease-in-out"
+                            style={{
+                              opacity: line.opacity,
+                            }}
+                          >
+                            {line.text}
+                          </p>
+                        ))
+                      : [...content].reverse().map((line, i) => (
+                          <p
+                            key={i}
+                            className="w-full text-white text-[12px] my-0 flex items-center"
+                          >
+                            {line}
+                          </p>
+                        ))}
                   </div>
                 </div>
               </div>

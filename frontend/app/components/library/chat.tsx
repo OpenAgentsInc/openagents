@@ -1,9 +1,13 @@
-import { Link } from "react-router"
-import { ChatInput } from "../chat/chat-input"
-import { Thinking } from "../chat/thinking"
+import { Link } from "react-router";
+import { ChatInput } from "../chat/chat-input";
+import { Thinking } from "../chat/thinking";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle
-} from "../ui/card"
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
 
 const EXAMPLE_CONTENT = [
   "1. Analyzing the request and breaking it down into steps",
@@ -20,7 +24,9 @@ export function ChatComponents() {
       <Card>
         <CardHeader>
           <CardTitle>Chat Input</CardTitle>
-          <CardDescription>Message input with GitHub repository selector</CardDescription>
+          <CardDescription>
+            Message input with GitHub repository selector
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <ChatInput />
@@ -31,7 +37,10 @@ export function ChatComponents() {
       <Card>
         <CardHeader>
           <CardTitle>Thinking Indicator</CardTitle>
-          <CardDescription>Expandable component showing AI's chain of thought process with duration tracking</CardDescription>
+          <CardDescription>
+            Expandable component showing AI's chain of thought process with
+            duration tracking
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-8 px-8">
@@ -59,7 +68,9 @@ export function ChatComponents() {
               <h3 className="text-lg font-medium">Static Examples</h3>
               <div className="grid gap-4">
                 <div>
-                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">Thinking State</h4>
+                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">
+                    Thinking State
+                  </h4>
                   <Thinking
                     state="thinking"
                     duration={3}
@@ -67,7 +78,9 @@ export function ChatComponents() {
                   />
                 </div>
                 <div>
-                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">Finished State</h4>
+                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">
+                    Finished State
+                  </h4>
                   <Thinking
                     state="finished"
                     duration={5}
@@ -75,11 +88,16 @@ export function ChatComponents() {
                   />
                 </div>
                 <div>
-                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">Error State</h4>
+                  <h4 className="text-sm font-medium mb-2 text-muted-foreground">
+                    Error State
+                  </h4>
                   <Thinking
                     state="error"
                     duration={2}
-                    content={["An error occurred while processing the request.", "Please try again or contact support if the issue persists."]}
+                    content={[
+                      "An error occurred while processing the request.",
+                      "Please try again or contact support if the issue persists.",
+                    ]}
                   />
                 </div>
               </div>

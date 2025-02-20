@@ -1,9 +1,13 @@
-import { Link } from "react-router"
-import { ShadComponents } from "~/components/library/shad"
+import { Link } from "react-router";
+import { ShadComponents } from "~/components/library/shad";
 import {
-  Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage,
-  BreadcrumbSeparator
-} from "~/components/ui/breadcrumb"
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "~/components/ui/breadcrumb";
 
 export default function ShadcnPage() {
   return (
@@ -25,7 +29,8 @@ export default function ShadcnPage() {
           <div>
             <h1 className="text-2xl font-bold mb-4">Shadcn UI Components</h1>
             <p className="text-muted-foreground">
-              A comprehensive collection of beautifully designed, accessible, and customizable UI components.
+              A comprehensive collection of beautifully designed, accessible,
+              and customizable UI components.
             </p>
           </div>
 

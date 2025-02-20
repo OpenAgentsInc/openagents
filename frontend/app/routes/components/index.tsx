@@ -1,8 +1,11 @@
-import { Link } from "react-router"
+import { Link } from "react-router";
 import {
-  Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage,
-  BreadcrumbSeparator
-} from "~/components/ui/breadcrumb"
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "~/components/ui/breadcrumb";
 
 export default function ComponentsPage() {
   return (
@@ -33,7 +36,8 @@ export default function ComponentsPage() {
                 Chain of Thought
               </h2>
               <p className="text-muted-foreground">
-                Visualize AI thinking process with animated text streaming and progress tracking.
+                Visualize AI thinking process with animated text streaming and
+                progress tracking.
               </p>
             </Link>
 
@@ -45,7 +49,8 @@ export default function ComponentsPage() {
                 Shadcn UI Components
               </h2>
               <p className="text-muted-foreground">
-                Collection of beautifully designed, accessible, and customizable UI components.
+                Collection of beautifully designed, accessible, and customizable
+                UI components.
               </p>
             </Link>
           </div>

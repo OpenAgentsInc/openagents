@@ -1,50 +1,87 @@
-import React from "react"
+import React from "react";
 import {
-  Accordion, AccordionContent, AccordionItem, AccordionTrigger
-} from "../ui/accordion"
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar"
-import { Badge } from "../ui/badge"
-import { Button } from "../ui/button"
-import { Calendar } from "../ui/calendar"
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Calendar } from "../ui/calendar";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle
-} from "../ui/card"
-import { Checkbox } from "../ui/checkbox"
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Checkbox } from "../ui/checkbox";
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-  DialogTrigger
-} from "../ui/dialog"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger
-} from "../ui/dropdown-menu"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "../ui/hover-card"
-import { Input } from "../ui/input"
-import { Label } from "../ui/label"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import {
-  NavigationMenu, NavigationMenuContent, NavigationMenuItem,
-  NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger
-} from "../ui/navigation-menu"
-import { Progress } from "../ui/progress"
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group"
-import { ScrollArea } from "../ui/scroll-area"
-import { Separator } from "../ui/separator"
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "../ui/hover-card";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import {
-  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger
-} from "../ui/sheet"
-import { Skeleton } from "../ui/skeleton"
-import { Slider } from "../ui/slider"
-import { Switch } from "../ui/switch"
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "../ui/navigation-menu";
+import { Progress } from "../ui/progress";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
+import { ScrollArea } from "../ui/scroll-area";
+import { Separator } from "../ui/separator";
 import {
-  Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow
-} from "../ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
-import { Textarea } from "../ui/textarea"
-import { Toggle } from "../ui/toggle"
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "../ui/sheet";
+import { Skeleton } from "../ui/skeleton";
+import { Slider } from "../ui/slider";
+import { Switch } from "../ui/switch";
 import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
-} from "../ui/tooltip"
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { Textarea } from "../ui/textarea";
+import { Toggle } from "../ui/toggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 
 export function ShadComponents() {
   const [date, setDate] = React.useState<Date | undefined>(new Date());

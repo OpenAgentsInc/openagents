@@ -1,5 +1,5 @@
-import { Link, Outlet, useLocation } from "react-router"
-import { Button } from "~/components/ui/button"
+import { Link, Outlet, useLocation } from "react-router";
+import { Button } from "~/components/ui/button";
 
 const navItems = [
   { to: "/", text: "Home" },

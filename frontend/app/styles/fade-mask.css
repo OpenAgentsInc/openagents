@@ -1,5 +1,6 @@
 .fade-mask {
-  mask-image: linear-gradient(to bottom,
+  mask-image: linear-gradient(
+    to bottom,
     transparent 0%,
     rgba(0, 0, 0, 0.3) 5%,
     rgba(0, 0, 0, 1) 15%,
@@ -8,7 +9,8 @@
     rgba(0, 0, 0, 0.3) 95%,
     transparent 100%
   );
-  -webkit-mask-image: linear-gradient(to bottom,
+  -webkit-mask-image: linear-gradient(
+    to bottom,
     transparent 0%,
     rgba(0, 0, 0, 0.3) 5%,
     rgba(0, 0, 0, 1) 15%,

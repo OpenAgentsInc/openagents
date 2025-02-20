@@ -1,12 +1,14 @@
-import { Github } from "lucide-react"
-import { useState } from "react"
-import TextareaAutosize from "react-textarea-autosize"
-import { Button } from "~/components/ui/button"
+import { Github } from "lucide-react";
+import { useState } from "react";
+import TextareaAutosize from "react-textarea-autosize";
+import { Button } from "~/components/ui/button";
 import {
-  Popover, PopoverContent, PopoverTrigger
-} from "~/components/ui/popover"
-import { cn } from "~/lib/utils"
-import { RepoSelector } from "./repo-selector"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
+import { cn } from "~/lib/utils";
+import { RepoSelector } from "./repo-selector";
 
 interface Repo {
   owner: string;
