@@ -110,6 +110,7 @@ export function Thinking({
                   </div>
                 </div>
               </div>
+              <div className="absolute left-0 right-0 bottom-[-12px] h-6 bg-gradient-to-b from-background to-transparent"></div>
             </div>
           </AccordionTrigger>
           <AccordionContent className="text-sm text-muted-foreground">
