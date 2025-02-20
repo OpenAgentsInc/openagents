@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { devtools } from "zustand/middleware";
 
 export interface Message {
   id: string;
@@ -15,20 +16,35 @@ interface MessagesState {
   setMessages: (chatId: string, messages: Message[]) => void;
 }
 
-export const useMessagesStore = create<MessagesState>((set) => ({
-  messages: {},
-  addMessage: (chatId, message) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [chatId]: [...(state.messages[chatId] || []), message],
-      },
-    })),
-  setMessages: (chatId, messages) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [chatId]: messages,
-      },
-    })),
-}));
+export const useMessagesStore = create<MessagesState>()(
+  devtools(
+    (set) => ({
+      messages: {},
+      addMessage: (chatId, message) =>
+        set(
+          (state) => ({
+            messages: {
+              ...state.messages,
+              [chatId]: [...(state.messages[chatId] || []), message],
+            },
+          }),
+          false,
+          "addMessage"
+        ),
+      setMessages: (chatId, messages) =>
+        set(
+          (state) => ({
+            messages: {
+              ...state.messages,
+              [chatId]: messages,
+            },
+          }),
+          false,
+          "setMessages"
+        ),
+    }),
+    {
+      name: "MessagesStore",
+    }
+  )
+);
