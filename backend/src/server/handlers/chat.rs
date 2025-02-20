@@ -108,8 +108,7 @@ pub async fn send_message(
     let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
-    let user_id = "anonymous"; // TODO: Get from session
-    info!("Using user_id: {}", user_id);
+    let _user_id = "anonymous"; // TODO: Get from session
 
     // Create message
     let message = chat_db
