@@ -159,7 +159,7 @@ export function ShadComponents() {
             mode="single"
             selected={date}
             onSelect={setDate}
-            className="rounded-md border"
+            className="border"
           />
         </CardContent>
       </Card>

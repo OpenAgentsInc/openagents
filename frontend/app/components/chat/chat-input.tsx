@@ -140,7 +140,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                       name="owner"
                       placeholder="Owner"
                       className={cn(
-                        "w-full p-2 border rounded text-sm",
+                        "w-full p-2 border text-sm",
                         "bg-background dark:bg-background",
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",
@@ -154,7 +154,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                       name="name"
                       placeholder="Repo name"
                       className={cn(
-                        "w-full p-2 border rounded text-sm",
+                        "w-full p-2 border text-sm",
                         "bg-background dark:bg-background",
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",
@@ -168,7 +168,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                       name="branch"
                       placeholder="Branch (defaults to main)"
                       className={cn(
-                        "w-full p-2 border rounded text-sm",
+                        "w-full p-2 border text-sm",
                         "bg-background dark:bg-background",
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",

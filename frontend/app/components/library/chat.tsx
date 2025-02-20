@@ -1,4 +1,5 @@
 import { ChatInput } from "../chat/chat-input"
+import { Thinking } from "../chat/thinking"
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle
 } from "../ui/card"
@@ -14,6 +15,17 @@ export function ChatComponents() {
         </CardHeader>
         <CardContent>
           <ChatInput />
+        </CardContent>
+      </Card>
+
+      {/* Thinking */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Thinking Indicator</CardTitle>
+          <CardDescription>Expandable component showing AI's chain of thought process during response generation</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Thinking />
         </CardContent>
       </Card>
     </div>
