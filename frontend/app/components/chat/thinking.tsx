@@ -16,22 +16,18 @@ export function Thinking({ duration = 0 }: ThinkingProps) {
     )}>
       <Accordion type="single" collapsible className="w-full">
         <AccordionItem value="thinking" className="border-none">
-          <AccordionTrigger className="group">
-            <div className="min-h-[3.5rem] overflow-y-clip flex flex-col justify-start text-primary relative w-full overflow-clip">
-              <div className="flex h-full gap-1 w-full items-center justify-start px-5 pt-4">
+          <AccordionTrigger className="group pr-6">
+            <div className="min-h-[2.5rem] overflow-y-clip flex flex-col justify-center text-primary relative w-full overflow-clip">
+              <div className="flex h-full gap-1 w-full items-center justify-start px-5">
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 overflow-hidden">
                     <Lightbulb className="text-nowrap shrink-0 h-4 w-4" />
                     <div className="flex items-baseline gap-1 overflow-hidden">
-                      <span className="text-sm text-nowrap whitespace-nowrap">Thought for</span>
-                      <span className="font-mono text-secondary-foreground font-medium text-sm">{duration}s</span>
+                      <span className="text-sm text-nowrap whitespace-nowrap">Thought for {duration}s</span>
                     </div>
                   </div>
                 </div>
               </div>
-              <span className="text-muted-foreground text-sm my-0 px-5 pb-4 flex flex-row items-center">
-                Expand for details
-              </span>
             </div>
           </AccordionTrigger>
           <AccordionContent className="text-sm text-muted-foreground px-5 pb-4">
