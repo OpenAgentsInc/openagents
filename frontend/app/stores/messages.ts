@@ -29,7 +29,7 @@ export const useMessagesStore = create<MessagesState>()(
             },
           }),
           false,
-          "addMessage"
+          "addMessage",
         ),
       setMessages: (chatId, messages) =>
         set(
@@ -40,11 +40,11 @@ export const useMessagesStore = create<MessagesState>()(
             },
           }),
           false,
-          "setMessages"
+          "setMessages",
         ),
     }),
     {
       name: "MessagesStore",
-    }
-  )
+    },
+  ),
 );

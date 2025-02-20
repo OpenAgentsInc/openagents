@@ -45,24 +45,31 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
     }
   }, [message, selectedRepos, isSubmitting, onSubmit]);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    await handleSubmitMessage();
-  }, [handleSubmitMessage]);
-
-  const handleKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault(); // Prevent newline
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
       await handleSubmitMessage();
-    }
-  }, [handleSubmitMessage]);
+    },
+    [handleSubmitMessage],
+  );
+
+  const handleKeyDown = useCallback(
+    async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault(); // Prevent newline
+        await handleSubmitMessage();
+      }
+    },
+    [handleSubmitMessage],
+  );
 
   const handleAddRepo = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const owner = (form.elements.namedItem("owner") as HTMLInputElement).value;
     const name = (form.elements.namedItem("name") as HTMLInputElement).value;
-    const branch = (form.elements.namedItem("branch") as HTMLInputElement).value || "main";
+    const branch =
+      (form.elements.namedItem("branch") as HTMLInputElement).value || "main";
     setSelectedRepos((prev) => [...prev, { owner, name, branch }]);
     setIsAddingRepo(false);
     form.reset();

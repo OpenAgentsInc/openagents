@@ -1,8 +1,8 @@
-import { useAgentSync } from "agentsync"
-import { useCallback, useEffect } from "react"
-import { useParams } from "react-router"
-import { ChatInput } from "~/components/chat/chat-input"
-import { useMessagesStore } from "~/stores/messages"
+import { useAgentSync } from "agentsync";
+import { useCallback, useEffect } from "react";
+import { useParams } from "react-router";
+import { ChatInput } from "~/components/chat/chat-input";
+import { useMessagesStore } from "~/stores/messages";
 
 import type { Message } from "~/stores/messages";
 
@@ -16,7 +16,7 @@ export default function ChatSession() {
   // Use the cached empty array to avoid returning a new array on every call.
   const messagesSelector = useCallback(
     (state) => state.messages[id || ""] || EMPTY_MESSAGES,
-    [id]
+    [id],
   );
   const messages = useMessagesStore(messagesSelector);
 
