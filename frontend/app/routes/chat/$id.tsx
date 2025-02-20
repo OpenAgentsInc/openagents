@@ -4,12 +4,21 @@ import { useParams } from "react-router"
 import { ChatInput } from "~/components/chat/chat-input"
 import { useMessagesStore } from "~/stores/messages"
 
+import type { Message } from "~/stores/messages";
+
+// Cache an empty array so the selector returns the same reference when there are no messages.
+const EMPTY_MESSAGES: Message[] = [];
+
 export default function ChatSession() {
   const { id } = useParams();
   const { setMessages } = useMessagesStore();
-  const messages = useMessagesStore(
-    useCallback((state) => state.messages[id || ""] || [], [id])
+
+  // Use the cached empty array to avoid returning a new array on every call.
+  const messagesSelector = useCallback(
+    (state) => state.messages[id || ""] || EMPTY_MESSAGES,
+    [id]
   );
+  const messages = useMessagesStore(messagesSelector);
 
   const { sendMessage, state } = useAgentSync({
     scope: "chat",
@@ -52,15 +61,15 @@ export default function ChatSession() {
             <div key={message.id} className="p-4">
               <div className="flex gap-4">
                 <div className="flex-shrink-0">
-                  {message.role === "user" ? "👤" : "🤖"}
+                  {message.role === "user" ? ">" : "⏻"}
                 </div>
                 <div className="flex-1">
                   {message.content}
-                  {message.metadata?.repos && (
+                  {/* {message.metadata?.repos && (
                     <div className="text-sm text-muted-foreground mt-2">
                       Repos: {message.metadata.repos.join(", ")}
                     </div>
-                  )}
+                  )} */}
                 </div>
               </div>
             </div>
