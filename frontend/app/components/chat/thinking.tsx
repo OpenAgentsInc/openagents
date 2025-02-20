@@ -17,11 +17,11 @@ export function Thinking({ state = "thinking", duration = 0, content = [] }: Thi
   const getIcon = () => {
     switch (state) {
       case "thinking":
-        return <Loader2 className="text-nowrap shrink-0 h-4 w-4 animate-spin" />;
+        return <Loader2 className="text-nowrap shrink-0 h-4 w-4 animate-spin mr-1" />;
       case "finished":
-        return <Lightbulb className="text-nowrap shrink-0 h-4 w-4" />;
+        return <Lightbulb className="text-nowrap shrink-0 h-4 w-4 mr-1" />;
       case "error":
-        return <XCircle className="text-nowrap shrink-0 h-4 w-4 text-destructive" />;
+        return <XCircle className="text-nowrap shrink-0 h-4 w-4 text-destructive mr-1" />;
     }
   };
 
@@ -45,7 +45,7 @@ export function Thinking({ state = "thinking", duration = 0, content = [] }: Thi
         <AccordionItem value="thinking" className="border-none">
           <AccordionTrigger className="group pr-6 sticky top-0 bg-background z-10">
             <div className="min-h-[2.5rem] overflow-y-clip flex flex-col justify-center text-primary relative w-full overflow-clip">
-              <div className="flex h-full gap-1 w-full items-center justify-start px-5">
+              <div className="flex h-full gap-1 w-full items-center justify-start px-4">
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 overflow-hidden">
                     {getIcon()}
