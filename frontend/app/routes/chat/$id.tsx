@@ -1,17 +1,14 @@
-import { useEffect } from "react";
-import { useParams } from "react-router";
-import { ChatInput } from "~/components/chat/chat-input";
-import { useMessagesStore } from "~/stores/messages";
-import { useAgentSync } from "agentsync";
-import { shallow } from "zustand/shallow";
+import { useAgentSync } from "agentsync"
+import { useCallback, useEffect } from "react"
+import { useParams } from "react-router"
+import { ChatInput } from "~/components/chat/chat-input"
+import { useMessagesStore } from "~/stores/messages"
 
 export default function ChatSession() {
   const { id } = useParams();
   const { setMessages } = useMessagesStore();
-  // Use shallow comparison to prevent unnecessary rerenders
   const messages = useMessagesStore(
-    (state) => state.messages[id || ""] || [],
-    shallow
+    useCallback((state) => state.messages[id || ""] || [], [id])
   );
 
   const { sendMessage, state } = useAgentSync({
