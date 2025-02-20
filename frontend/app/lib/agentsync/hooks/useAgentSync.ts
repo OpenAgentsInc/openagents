@@ -1,26 +1,25 @@
-import { useState, useEffect } from "react";
-import { v4 as uuidv4 } from "uuid";
-import type {
-  AgentSyncHook,
-  SyncState,
-  SyncOptions,
-  StartChatResponse,
-} from "../types";
+import { useEffect } from "react";
+import { v4 as uuid } from "uuid";
+import { useMessagesStore } from "~/stores/messages";
 
-const INITIAL_STATE: SyncState = {
+const INITIAL_STATE = {
   isOnline: true,
   lastSyncId: 0,
   pendingChanges: 0,
 };
 
-export function useAgentSync(options: SyncOptions): AgentSyncHook {
-  const [state, setState] = useState<SyncState>(INITIAL_STATE);
+export function useAgentSync({ scope }: { scope: string }) {
+  const { addMessage } = useMessagesStore();
 
-  // Monitor online status
+  const handleOnline = () => {
+    // TODO: Implement online handler
+  };
+
+  const handleOffline = () => {
+    // TODO: Implement offline handler
+  };
+
   useEffect(() => {
-    const handleOnline = () => setState((s) => ({ ...s, isOnline: true }));
-    const handleOffline = () => setState((s) => ({ ...s, isOnline: false }));
-
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
@@ -30,47 +29,40 @@ export function useAgentSync(options: SyncOptions): AgentSyncHook {
     };
   }, []);
 
-  const sendMessage = async (
-    content: string,
-    repos?: string[],
-  ): Promise<StartChatResponse> => {
-    if (!content.trim()) {
-      throw new Error("Message content cannot be empty");
-    }
-
-    const chatId = uuidv4();
-
-    try {
-      const response = await fetch("/api/start-repo-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: chatId,
-          message: content,
-          repos: repos || [],
-          scope: options.scope,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to send message");
-      }
-
-      const data = await response.json();
-      return {
+  const sendMessage = async (message: string, repos?: string[]) => {
+    const chatId = uuid();
+    const response = await fetch("/api/start-repo-chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
         id: chatId,
-        initialMessage: data.initialMessage || content,
-      };
-    } catch (error) {
-      console.error("Error sending message:", error);
-      throw error;
+        message,
+        repos: repos || [],
+        scope,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to send message");
     }
+
+    const data = await response.json();
+
+    // Store first message
+    addMessage(data.id, {
+      id: chatId,
+      role: "user",
+      content: data.initial_message,
+      metadata: { repos },
+    });
+
+    return data;
   };
 
   return {
-    state,
+    state: INITIAL_STATE,
     sendMessage,
   };
 }
