@@ -1,5 +1,5 @@
 import { Github } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { Button } from "~/components/ui/button";
 import {
@@ -27,7 +27,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
   const [isAddingRepo, setIsAddingRepo] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmitMessage = async () => {
+  const handleSubmitMessage = useCallback(async () => {
     if (message.trim() && !isSubmitting) {
       setIsSubmitting(true);
       try {
@@ -43,19 +43,30 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
         setIsSubmitting(false);
       }
     }
-  };
+  }, [message, selectedRepos, isSubmitting, onSubmit]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     await handleSubmitMessage();
-  };
+  }, [handleSubmitMessage]);
 
-  const handleKeyDown = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault(); // Prevent newline
       await handleSubmitMessage();
     }
-  };
+  }, [handleSubmitMessage]);
+
+  const handleAddRepo = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const owner = (form.elements.namedItem("owner") as HTMLInputElement).value;
+    const name = (form.elements.namedItem("name") as HTMLInputElement).value;
+    const branch = (form.elements.namedItem("branch") as HTMLInputElement).value || "main";
+    setSelectedRepos((prev) => [...prev, { owner, name, branch }]);
+    setIsAddingRepo(false);
+    form.reset();
+  }, []);
 
   return (
     <form
@@ -114,29 +125,8 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                     <Github className="w-4 h-4" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent sideOffset={4}>
-                  <form
-                    onSubmit={(e: React.FormEvent) => {
-                      e.preventDefault();
-                      const form = e.target as HTMLFormElement;
-                      const owner = (
-                        form.elements.namedItem("owner") as HTMLInputElement
-                      ).value;
-                      const name = (
-                        form.elements.namedItem("name") as HTMLInputElement
-                      ).value;
-                      const branch =
-                        (form.elements.namedItem("branch") as HTMLInputElement)
-                          .value || "main";
-                      setSelectedRepos([
-                        ...selectedRepos,
-                        { owner, name, branch },
-                      ]);
-                      setIsAddingRepo(false);
-                      form.reset();
-                    }}
-                    className="space-y-2"
-                  >
+                <PopoverContent sideOffset={4} className="w-[300px]">
+                  <form onSubmit={handleAddRepo} className="space-y-2">
                     <input
                       type="text"
                       name="owner"
