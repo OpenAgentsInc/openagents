@@ -1,5 +1,5 @@
-import { ChatInput } from "~/components/chat/chat-input"
-import { Thinking } from "~/components/chat/thinking"
+import { ChatInput } from "~/components/chat/chat-input";
+import { Thinking } from "~/components/chat/thinking";
 
 export default function ChatSession() {
   return (
@@ -15,7 +15,7 @@ export default function ChatSession() {
               content={[
                 "Analyzing your request...",
                 "Processing information...",
-                "Preparing response..."
+                "Preparing response...",
               ]}
             />
           </div>

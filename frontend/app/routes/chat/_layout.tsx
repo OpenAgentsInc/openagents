@@ -1,9 +1,9 @@
-import { Outlet } from "react-router"
-import { HeaderBar } from "~/components/header-bar"
+import { Outlet } from "react-router";
+import { HeaderBar } from "~/components/header-bar";
 
 import type { Route } from "../../+types/root";
 
-export function meta({ }: Route.MetaArgs) {
+export function meta({}: Route.MetaArgs) {
   return [
     { title: "OpenAgents - Chat" },
     { name: "description", content: "Chat with OpenAgents" },
