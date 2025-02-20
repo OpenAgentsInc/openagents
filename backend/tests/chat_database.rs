@@ -69,6 +69,7 @@ async fn test_chat_persistence() {
     let messages = vec![
         CreateMessageRequest {
             conversation_id: conversation.id,
+            user_id: conversation.user_id.clone(),
             role: "user".to_string(),
             content: "Hello!".to_string(),
             metadata: None,
@@ -76,6 +77,7 @@ async fn test_chat_persistence() {
         },
         CreateMessageRequest {
             conversation_id: conversation.id,
+            user_id: conversation.user_id.clone(),
             role: "assistant".to_string(),
             content: "Hi there!".to_string(),
             metadata: Some(json!({ "response_type": "greeting" })),

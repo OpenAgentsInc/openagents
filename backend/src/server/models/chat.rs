@@ -16,6 +16,7 @@ pub struct Conversation {
 pub struct Message {
     pub id: Uuid,
     pub conversation_id: Uuid,
+    pub user_id: String,
     pub role: String,
     pub content: String,
     pub created_at: Option<Timestamp>,
@@ -32,6 +33,7 @@ pub struct CreateConversationRequest {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CreateMessageRequest {
     pub conversation_id: Uuid,
+    pub user_id: String,
     pub role: String,
     pub content: String,
     pub metadata: Option<Value>,
@@ -53,6 +55,7 @@ impl Conversation {
 impl Message {
     pub fn new(
         conversation_id: Uuid,
+        user_id: String,
         role: String,
         content: String,
         metadata: Option<Value>,
@@ -61,6 +64,7 @@ impl Message {
         Self {
             id: Uuid::new_v4(),
             conversation_id,
+            user_id,
             role,
             content,
             created_at: Some(Timestamp::now()),
