@@ -1,53 +1,90 @@
-import React from "react"
+import React from "react";
 import {
-  Accordion, AccordionContent, AccordionItem, AccordionTrigger
-} from "../ui/accordion"
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar"
-import { Badge } from "../ui/badge"
-import { Button } from "../ui/button"
-import { Calendar } from "../ui/calendar"
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "../ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Calendar } from "../ui/calendar";
 import {
-  Card, CardContent, CardDescription, CardHeader, CardTitle
-} from "../ui/card"
-import { Checkbox } from "../ui/checkbox"
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Checkbox } from "../ui/checkbox";
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-  DialogTrigger
-} from "../ui/dialog"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuSeparator, DropdownMenuTrigger
-} from "../ui/dropdown-menu"
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "../ui/hover-card"
-import { Input } from "../ui/input"
-import { Label } from "../ui/label"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import {
-  NavigationMenu, NavigationMenuContent, NavigationMenuItem,
-  NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger
-} from "../ui/navigation-menu"
-import { Progress } from "../ui/progress"
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group"
-import { ScrollArea } from "../ui/scroll-area"
-import { Separator } from "../ui/separator"
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "../ui/hover-card";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import {
-  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger
-} from "../ui/sheet"
-import { Skeleton } from "../ui/skeleton"
-import { Slider } from "../ui/slider"
-import { Switch } from "../ui/switch"
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "../ui/navigation-menu";
+import { Progress } from "../ui/progress";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
+import { ScrollArea } from "../ui/scroll-area";
+import { Separator } from "../ui/separator";
 import {
-  Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow
-} from "../ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
-import { Textarea } from "../ui/textarea"
-import { Toggle } from "../ui/toggle"
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "../ui/sheet";
+import { Skeleton } from "../ui/skeleton";
+import { Slider } from "../ui/slider";
+import { Switch } from "../ui/switch";
 import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
-} from "../ui/tooltip"
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { Textarea } from "../ui/textarea";
+import { Toggle } from "../ui/toggle";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 
 export function ShadComponents() {
-  const [date, setDate] = React.useState<Date | undefined>(new Date())
+  const [date, setDate] = React.useState<Date | undefined>(new Date());
 
   return (
     <div className="grid gap-8">
@@ -179,8 +216,8 @@ export function ShadComponents() {
               <DialogHeader>
                 <DialogTitle>Are you sure?</DialogTitle>
                 <DialogDescription>
-                  This action cannot be undone. This will permanently delete your account
-                  and remove your data from our servers.
+                  This action cannot be undone. This will permanently delete
+                  your account and remove your data from our servers.
                 </DialogDescription>
               </DialogHeader>
               <div className="flex justify-end gap-3 mt-4">
@@ -252,9 +289,7 @@ export function ShadComponents() {
                 </Avatar>
                 <div>
                   <h4 className="text-sm font-semibold">@shadcn</h4>
-                  <p className="text-sm">
-                    Developer and creator of shadcn/ui.
-                  </p>
+                  <p className="text-sm">Developer and creator of shadcn/ui.</p>
                 </div>
               </div>
             </HoverCardContent>
@@ -300,7 +335,9 @@ export function ShadComponents() {
       <Card>
         <CardHeader>
           <CardTitle>Progress and Loading</CardTitle>
-          <CardDescription>Loading states and progress indicators</CardDescription>
+          <CardDescription>
+            Loading states and progress indicators
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6">
           <Progress value={60} className="w-full" />
@@ -351,7 +388,8 @@ export function ShadComponents() {
               <SheetHeader>
                 <SheetTitle>Edit profile</SheetTitle>
                 <SheetDescription>
-                  Make changes to your profile here. Click save when you're done.
+                  Make changes to your profile here. Click save when you're
+                  done.
                 </SheetDescription>
               </SheetHeader>
               <div className="grid gap-4 py-4">
@@ -379,12 +417,7 @@ export function ShadComponents() {
           <CardDescription>Range and slider inputs</CardDescription>
         </CardHeader>
         <CardContent className="py-6">
-          <Slider
-            defaultValue={[33]}
-            max={100}
-            step={1}
-            className="w-full"
-          />
+          <Slider defaultValue={[33]} max={100} step={1} className="w-full" />
         </CardContent>
       </Card>
 
@@ -392,7 +425,9 @@ export function ShadComponents() {
       <Card>
         <CardHeader>
           <CardTitle>Table</CardTitle>
-          <CardDescription>Data tables with sorting and selection</CardDescription>
+          <CardDescription>
+            Data tables with sorting and selection
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -500,5 +535,5 @@ export function ShadComponents() {
         All core shadcn/ui components have been showcased
       </p>
     </div>
-  )
+  );
 }

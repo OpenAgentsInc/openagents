@@ -1,6 +1,6 @@
-import React from "react"
-import { ShadComponents } from "../components/shad/components"
-import { ScrollArea } from "../components/ui/scroll-area"
+import React from "react";
+import { ShadComponents } from "../components/shad/components";
+import { ScrollArea } from "../components/ui/scroll-area";
 
 export default function ComponentLibrary() {
   return (
@@ -10,5 +10,5 @@ export default function ComponentLibrary() {
         <ShadComponents />
       </div>
     </ScrollArea>
-  )
+  );
 }
