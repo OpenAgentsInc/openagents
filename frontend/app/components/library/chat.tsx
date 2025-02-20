@@ -22,10 +22,12 @@ export function ChatComponents() {
       <Card>
         <CardHeader>
           <CardTitle>Thinking Indicator</CardTitle>
-          <CardDescription>Expandable component showing AI's chain of thought process during response generation</CardDescription>
+          <CardDescription>Expandable component showing AI's chain of thought process with duration tracking</CardDescription>
         </CardHeader>
         <CardContent>
-          <Thinking />
+          <div className="px-8">
+            <Thinking duration={16} />
+          </div>
         </CardContent>
       </Card>
     </div>
