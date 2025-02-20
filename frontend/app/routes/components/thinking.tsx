@@ -7,15 +7,15 @@ import {
 } from "~/components/ui/breadcrumb"
 import { Button } from "~/components/ui/button"
 
-// Single long paragraph of text
+// Proper Lorem Ipsum text with longer lines
 const DEMO_TEXT = Array(10).fill([
-  "quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam",
-  "fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro",
-  "beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut",
-  "doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto",
-  "mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium",
-  "fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt",
-  "ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu"
+  "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore magna",
+  "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat",
+  "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla in tempus",
+  "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id laborum",
+  "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem",
+  "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia magni consequuntur",
+  "At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti"
 ]).flat();
 
 export default function ThinkingPage() {
@@ -96,11 +96,13 @@ export default function ThinkingPage() {
             Start Demo Thinking
           </Button>
         </div>
-        <Thinking
-          state={thinkingState}
-          duration={duration}
-          animatedContent={animatedContent}
-        />
+        <div className="mx-12 mt-12">
+          <Thinking
+            state={thinkingState}
+            duration={duration}
+            animatedContent={animatedContent}
+          />
+        </div>
       </div>
     </div>
   );
