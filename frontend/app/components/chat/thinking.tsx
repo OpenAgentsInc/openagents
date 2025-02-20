@@ -113,32 +113,30 @@ export function Thinking({
             </div>
           </AccordionTrigger>
           <AccordionContent className="text-sm text-muted-foreground">
-            <div className="relative h-[180px]">
-              <div className="w-full overflow-hidden relative flex flex-col items-start h-full">
-                <div
-                  ref={scrollRef}
-                  className="w-full flex flex-col justify-end relative px-4 h-full overflow-y-auto"
-                >
-                  <div ref={contentRef} className="w-full flex flex-col justify-end">
-                    <div className="space-y-1 flex flex-col justify-end">
-                      {animatedContent ? (
-                        [...animatedContent].reverse().map((line, i) => (
-                          <p
-                            key={i}
-                            className="w-full text-white text-[12px] my-0 flex items-center transition-opacity duration-300 ease-in-out"
-                            style={{
-                              opacity: line.opacity
-                            }}
-                          >
-                            {line.text}
-                          </p>
-                        ))
-                      ) : (
-                        [...content].reverse().map((line, i) => (
-                          <p key={i} className="w-full text-white text-[12px] my-0 flex items-center">{line}</p>
-                        ))
-                      )}
-                    </div>
+            <div className="h-[180px] overflow-hidden">
+              <div
+                ref={scrollRef}
+                className="h-full w-full overflow-y-auto px-4"
+              >
+                <div ref={contentRef} className="flex flex-col justify-end min-h-full">
+                  <div className="space-y-1">
+                    {animatedContent ? (
+                      [...animatedContent].reverse().map((line, i) => (
+                        <p
+                          key={i}
+                          className="w-full text-white text-[12px] my-0 flex items-center transition-opacity duration-300 ease-in-out"
+                          style={{
+                            opacity: line.opacity
+                          }}
+                        >
+                          {line.text}
+                        </p>
+                      ))
+                    ) : (
+                      [...content].reverse().map((line, i) => (
+                        <p key={i} className="w-full text-white text-[12px] my-0 flex items-center">{line}</p>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
