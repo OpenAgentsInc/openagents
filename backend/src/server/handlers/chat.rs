@@ -112,6 +112,41 @@ pub async fn send_message(
     let user_id = "anonymous"; // TODO: Get from session
     info!("Using user_id: {}", user_id);
 
+    // If no repos provided in the request, try to get them from the conversation's first message
+    let metadata = if let Some(repos) = request.repos {
+        info!("Using repos from request: {:?}", repos);
+        Some(json!({ "repos": repos }))
+    } else {
+        // Get the first message of the conversation to find the repos
+        let messages = chat_db
+            .get_conversation_messages(request.conversation_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to fetch conversation messages: {:?}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to fetch conversation messages: {}", e),
+                )
+            })?;
+
+        // Find the first message with repos metadata
+        let first_message_repos = messages.iter().find_map(|msg| {
+            msg.metadata.as_ref().and_then(|meta| {
+                meta.get("repos")
+                    .and_then(|repos| repos.as_array())
+                    .map(|repos| repos.to_owned())
+            })
+        });
+
+        if let Some(repos) = first_message_repos {
+            info!("Using repos from first message: {:?}", repos);
+            Some(json!({ "repos": repos }))
+        } else {
+            info!("No repos found in request or first message");
+            None
+        }
+    };
+
     // Create message
     let message = chat_db
         .create_message(&CreateMessageRequest {
@@ -119,7 +154,7 @@ pub async fn send_message(
             user_id: user_id.to_string(),
             role: "user".to_string(),
             content: request.message.clone(),
-            metadata: request.repos.map(|repos| json!({ "repos": repos })),
+            metadata,
             tool_calls: None,
         })
         .await
