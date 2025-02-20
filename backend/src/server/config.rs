@@ -189,7 +189,15 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         )
         .route(
             "/api/start-repo-chat",
-            post(server::handlers::start_repo_chat),
+            post(server::handlers::chat::start_repo_chat),
+        )
+        .route(
+            "/api/send-message",
+            post(server::handlers::chat::send_message),
+        )
+        .route(
+            "/api/conversations/:id/messages",
+            get(server::handlers::chat::get_conversation_messages),
         )
         .route("/health", get(routes::health_check))
         .route("/ws", get(server::ws::ws_handler))

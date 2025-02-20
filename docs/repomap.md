@@ -133,6 +133,10 @@ backend/src/server/config.rs:
 │fn log_request
 │fn app_router
 
+backend/src/server/handlers/chat.rs:
+│fn start_repo_chat
+│fn send_message
+
 backend/src/server/handlers/oauth/github.rs:
 │fn github_login
 │fn github_callback
@@ -818,7 +822,7 @@ frontend/app/+types/onyx.ts:
 frontend/app/+types/video-series.ts:
 │const VIDEOS
 
-frontend/app/components/chat-input.tsx:
+frontend/app/components/chat/chat-input.tsx:
 │const
 │const
 │const
@@ -832,11 +836,45 @@ frontend/app/components/chat-input.tsx:
 │const name
 │const branch
 
+frontend/app/components/chat/repo-selector.tsx:
+│const RepoForm
+│const
+│const
+│const
+│const handleRepoInputChange
+│const handleRepoSubmit
+│const handleRemoveRepo
+│const handleEditClick
+│const key
+
+frontend/app/components/chat/thinking.tsx:
+│const scrollRef
+│const contentRef
+│const
+│const shouldScroll
+│const getIcon
+│const getLabel
+│const hasContent
+
 frontend/app/components/header-bar.tsx:
 │#id: login-button
 │#id: signup-button
 │const
 │const navigateTo
+
+frontend/app/components/library/chat.tsx:
+│const EXAMPLE_CONTENT
+
+frontend/app/components/library/shad.tsx:
+│#id: email
+│#id: airplane-mode
+│#id: terms
+│#id: option-one
+│#id: option-two
+│#id: name
+│#id: bio
+│#id: message
+│const
 
 frontend/app/components/login-form.tsx:
 │#id: email
@@ -856,17 +894,6 @@ frontend/app/components/login-form.tsx:
 │const response
 │const data
 │const errorText
-
-frontend/app/components/repo-selector.tsx:
-│const RepoForm
-│const
-│const
-│const
-│const handleRepoInputChange
-│const handleRepoSubmit
-│const handleRemoveRepo
-│const handleEditClick
-│const key
 
 frontend/app/components/ui/alert.tsx:
 │const alertVariants
@@ -1011,8 +1038,12 @@ frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 │const handleOnline
 │const handleOffline
 │const sendMessage
+│const response
+│const errorText
+│const data
 │const chatId
 │const response
+│const errorText
 │const data
 
 frontend/app/root.tsx:
@@ -1024,14 +1055,9 @@ frontend/app/routes/\_layout.tsx:
 
 frontend/app/routes/chat/$id.tsx:
 │const
+│const messages
 │const
-│const
-│const handleSendMessage
-│const newMessage
-
-frontend/app/routes/chat/\_layout.tsx:
-│const location
-│const isSessionView
+│const handleSubmit
 
 frontend/app/routes/chat/index.tsx:
 │const navigate
@@ -1042,6 +1068,18 @@ frontend/app/routes/chat/index.tsx:
 
 frontend/app/routes/company.tsx:
 │class of
+
+frontend/app/routes/components/thinking.tsx:
+│const DEMO_TEXT
+│const
+│const
+│const
+│const
+│const
+│const allLines
+│const timer
+│const elapsed
+│const startThinking
 
 frontend/app/routes/login-full.tsx:
 │const handleGitHubLogin
@@ -1058,6 +1096,21 @@ frontend/app/routes/repomap.tsx:
 │const repoUrl
 │const response
 │const data
+
+frontend/app/routes/thinking.tsx:
+│const DEMO_TEXT
+│const
+│const
+│const
+│const
+│const
+│const allLines
+│const timer
+│const elapsed
+│const startThinking
+
+frontend/app/stores/messages.ts:
+│const useMessagesStore
 
 frontend/app/welcome/logo-dark.svg:
 │#id: clip0_202_2131
