@@ -1048,6 +1048,10 @@ frontend/app/routes/_layout.tsx:
 │const navItems
 │const location
 
+frontend/app/routes/chat/$id.tsx:
+│const 
+│const messages
+
 frontend/app/routes/chat/index.tsx:
 │const navigate
 │const 
@@ -1097,6 +1101,9 @@ frontend/app/routes/thinking.tsx:
 │const timer
 │const elapsed
 │const startThinking
+
+frontend/app/stores/messages.ts:
+│const useMessagesStore
 
 frontend/app/welcome/logo-dark.svg:
 │#id: clip0_202_2131
