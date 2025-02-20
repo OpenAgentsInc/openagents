@@ -88,7 +88,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               className={cn(
                 "border-input placeholder:text-muted-foreground",
                 "w-full px-3 bg-transparent focus:outline-none text-primary",
-                "align-bottom min-h-14 py-5 my-0 mb-5 resize-none",
+                "align-bottom min-h-14 py-5 my-0 resize-none",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}
             />
