@@ -1,6 +1,6 @@
-import { useParams } from "@remix-run/react";
-import { ChatInput } from "~/components/chat/chat-input";
-import { useMessagesStore } from "~/stores/messages";
+import { useParams } from "react-router"
+import { ChatInput } from "~/components/chat/chat-input"
+import { useMessagesStore } from "~/stores/messages"
 
 export default function ChatSession() {
   const { id } = useParams();
