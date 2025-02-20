@@ -1,7 +1,6 @@
 import { Github } from "lucide-react";
 import { useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
-import { RepoSelector } from "~/components/repo-selector";
 import { Button } from "~/components/ui/button";
 import {
   Popover,
@@ -9,6 +8,7 @@ import {
   PopoverTrigger,
 } from "~/components/ui/popover";
 import { cn } from "~/lib/utils";
+import { RepoSelector } from "./repo-selector";
 
 interface Repo {
   owner: string;
@@ -90,7 +90,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               className={cn(
                 "border-input placeholder:text-muted-foreground",
                 "w-full px-3 bg-transparent focus:outline-none text-primary",
-                "align-bottom min-h-14 py-5 my-0 mb-5 resize-none",
+                "align-bottom min-h-14 py-5 my-0 resize-none",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}
             />
@@ -142,7 +142,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                       name="owner"
                       placeholder="Owner"
                       className={cn(
-                        "w-full p-2 border rounded text-sm",
+                        "w-full p-2 border text-sm",
                         "bg-background dark:bg-background",
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",
@@ -156,7 +156,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                       name="name"
                       placeholder="Repo name"
                       className={cn(
-                        "w-full p-2 border rounded text-sm",
+                        "w-full p-2 border text-sm",
                         "bg-background dark:bg-background",
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",
@@ -170,7 +170,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                       name="branch"
                       placeholder="Branch (defaults to main)"
                       className={cn(
-                        "w-full p-2 border rounded text-sm",
+                        "w-full p-2 border text-sm",
                         "bg-background dark:bg-background",
                         "text-foreground dark:text-foreground",
                         "border-input dark:border-input",

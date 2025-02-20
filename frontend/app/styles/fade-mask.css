@@ -1,0 +1,22 @@
+.fade-mask {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.3) 5%,
+    rgba(0, 0, 0, 1) 15%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 1) 85%,
+    rgba(0, 0, 0, 0.3) 95%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 0, 0, 0.3) 5%,
+    rgba(0, 0, 0, 1) 15%,
+    rgba(0, 0, 0, 1) 50%,
+    rgba(0, 0, 0, 1) 85%,
+    rgba(0, 0, 0, 0.3) 95%,
+    transparent 100%
+  );
+}

@@ -196,7 +196,7 @@ export function ShadComponents() {
             mode="single"
             selected={date}
             onSelect={setDate}
-            className="rounded-md border"
+            className="border"
           />
         </CardContent>
       </Card>
@@ -528,12 +528,6 @@ export function ShadComponents() {
           </TooltipProvider>
         </CardContent>
       </Card>
-
-      <div className="h-8" />
-      <Separator className="my-4" />
-      <p className="text-sm text-muted-foreground text-center pb-8">
-        All core shadcn/ui components have been showcased
-      </p>
     </div>
   );
 }
