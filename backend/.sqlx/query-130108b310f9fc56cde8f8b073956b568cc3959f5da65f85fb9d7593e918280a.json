@@ -45,9 +45,21 @@
       }
     ],
     "parameters": {
-      "Left": ["Jsonb", "Int4"]
+      "Left": [
+        "Jsonb",
+        "Int4"
+      ]
     },
-    "nullable": [false, true, true, true, true, true, true, true]
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
   },
   "hash": "130108b310f9fc56cde8f8b073956b568cc3959f5da65f85fb9d7593e918280a"
 }

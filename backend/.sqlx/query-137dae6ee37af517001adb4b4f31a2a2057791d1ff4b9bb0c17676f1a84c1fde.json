@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO messages (conversation_id, role, content, metadata, tool_calls, created_at)\n            VALUES ($1, $2, $3, $4, $5, NOW())\n            RETURNING id, conversation_id, role, content, created_at as \"created_at: _\", metadata, tool_calls\n            ",
+  "query": "\n            SELECT id, conversation_id, user_id, role, content, created_at as \"created_at: _\", metadata, tool_calls\n            FROM messages\n            WHERE conversation_id = $1\n            ORDER BY created_at ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -15,34 +15,50 @@
       },
       {
         "ordinal": 2,
-        "name": "role",
+        "name": "user_id",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
-        "name": "content",
+        "name": "role",
         "type_info": "Text"
       },
       {
         "ordinal": 4,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
         "name": "created_at: _",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "metadata",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "tool_calls",
         "type_info": "Jsonb"
       }
     ],
     "parameters": {
-      "Left": ["Uuid", "Text", "Text", "Jsonb", "Jsonb"]
+      "Left": [
+        "Uuid"
+      ]
     },
-    "nullable": [false, false, false, false, false, true, true]
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
   },
-  "hash": "c4af66aa8ec543db87d1e35c52e31796ecb2b88205f4d11fdc97540cd9c7b362"
+  "hash": "137dae6ee37af517001adb4b4f31a2a2057791d1ff4b9bb0c17676f1a84c1fde"
 }
