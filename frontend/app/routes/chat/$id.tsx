@@ -1,7 +1,7 @@
-import { useParams } from "react-router";
-import { ChatInput } from "~/components/chat/chat-input";
-import { useMessagesStore } from "~/stores/messages";
-import { useAgentSync } from "agentsync";
+import { useAgentSync } from "agentsync"
+import { useParams } from "react-router"
+import { ChatInput } from "~/components/chat/chat-input"
+import { useMessagesStore } from "~/stores/messages"
 
 export default function ChatSession() {
   const { id } = useParams();
@@ -28,7 +28,7 @@ export default function ChatSession() {
             <div key={message.id} className="p-4">
               <div className="flex gap-4">
                 <div className="flex-shrink-0">
-                  {message.role === "user" ? "👤" : "🤖"}
+                  {message.role === "user" ? "" : "⏻"}
                 </div>
                 <div className="flex-1">
                   {message.content}
