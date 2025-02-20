@@ -14,6 +14,7 @@ export default [
       { file: "routes/repomap.tsx", path: "repomap" },
       { file: "routes/login.tsx", path: "login" },
       { file: "routes/components.tsx", path: "components" },
+      { file: "routes/thinking.tsx", path: "thinking" },
     ],
   },
   {
