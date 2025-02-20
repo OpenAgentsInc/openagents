@@ -37,65 +37,102 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
   const sendMessage = async (message: string, repos?: string[]) => {
     // If we have a conversation ID, this is a follow-up message
     if (conversationId) {
-      const response = await fetch("/api/send-message", {
+      console.log("Sending follow-up message:", {
+        conversation_id: conversationId,
+        message,
+        repos,
+      });
+
+      try {
+        const response = await fetch("/api/send-message", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            message,
+            repos,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Error response:", {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText,
+          });
+          throw new Error(`Failed to send message: ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log("Follow-up message response:", data);
+
+        // Store the message
+        addMessage(conversationId, {
+          id: data.id,
+          role: "user",
+          content: data.message,
+          metadata: repos ? { repos } : undefined,
+        });
+
+        return data;
+      } catch (error) {
+        console.error("Error sending follow-up message:", error);
+        throw error;
+      }
+    }
+
+    // Otherwise, this is a new conversation
+    const chatId = uuid();
+    console.log("Starting new chat:", {
+      id: chatId,
+      message,
+      repos: repos || [],
+      scope,
+    });
+
+    try {
+      const response = await fetch("/api/start-repo-chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          conversation_id: conversationId,
+          id: chatId,
           message,
-          repos,
+          repos: repos || [],
+          scope,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to send message");
+        const errorText = await response.text();
+        console.error("Error response:", {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+        });
+        throw new Error(`Failed to start chat: ${errorText}`);
       }
 
       const data = await response.json();
+      console.log("New chat response:", data);
 
-      // Store the message
-      addMessage(conversationId, {
-        id: data.id,
+      // Store first message
+      addMessage(data.id, {
+        id: chatId,
         role: "user",
-        content: data.message,
+        content: data.initial_message,
         metadata: repos ? { repos } : undefined,
       });
 
       return data;
+    } catch (error) {
+      console.error("Error starting new chat:", error);
+      throw error;
     }
-
-    // Otherwise, this is a new conversation
-    const chatId = uuid();
-    const response = await fetch("/api/start-repo-chat", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        id: chatId,
-        message,
-        repos: repos || [],
-        scope,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to send message");
-    }
-
-    const data = await response.json();
-
-    // Store first message
-    addMessage(data.id, {
-      id: chatId,
-      role: "user",
-      content: data.initial_message,
-      metadata: repos ? { repos } : undefined,
-    });
-
-    return data;
   };
 
   return {
