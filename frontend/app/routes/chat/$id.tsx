@@ -1,16 +1,38 @@
-import { useAgentSync } from "agentsync";
+import { useEffect } from "react";
 import { useParams } from "react-router";
 import { ChatInput } from "~/components/chat/chat-input";
 import { useMessagesStore } from "~/stores/messages";
+import { useAgentSync } from "agentsync";
 
 export default function ChatSession() {
   const { id } = useParams();
+  const { setMessages } = useMessagesStore();
   const messages = useMessagesStore((state) => state.messages[id || ""] || []);
 
   const { sendMessage, state } = useAgentSync({
     scope: "chat",
     conversationId: id,
   });
+
+  // Load messages when component mounts
+  useEffect(() => {
+    if (!id) return;
+
+    const loadMessages = async () => {
+      try {
+        const response = await fetch(`/api/conversations/${id}/messages`);
+        if (!response.ok) {
+          throw new Error("Failed to load messages");
+        }
+        const data = await response.json();
+        setMessages(id, data);
+      } catch (error) {
+        console.error("Error loading messages:", error);
+      }
+    };
+
+    loadMessages();
+  }, [id, setMessages]);
 
   const handleSubmit = async (message: string, repos?: string[]) => {
     try {
@@ -28,7 +50,7 @@ export default function ChatSession() {
             <div key={message.id} className="p-4">
               <div className="flex gap-4">
                 <div className="flex-shrink-0">
-                  {message.role === "user" ? "" : "⏻"}
+                  {message.role === "user" ? "👤" : "🤖"}
                 </div>
                 <div className="flex-1">
                   {message.content}
