@@ -10,7 +10,6 @@ use crate::server::{
     config::AppState,
     models::chat::{CreateConversationRequest, CreateMessageRequest},
     services::chat_database::ChatDatabaseService,
-    handlers::oauth::session::get_user_id_from_session,
 };
 
 #[derive(Debug, Deserialize)]
@@ -48,12 +47,12 @@ pub async fn start_repo_chat(
     let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
-    let user_id = get_user_id_from_session().unwrap_or("anonymous".to_string());
+    let user_id = "anonymous"; // TODO: Get from session
 
     // Create conversation
     let conversation = chat_db
         .create_conversation(&CreateConversationRequest {
-            user_id: user_id.clone(),
+            user_id: user_id.to_string(),
             title: Some(format!("Repo chat: {}", request.message)),
         })
         .await
@@ -68,7 +67,6 @@ pub async fn start_repo_chat(
     let message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: conversation.id,
-            user_id,
             role: "user".to_string(),
             content: request.message.clone(),
             metadata: Some(json!({
@@ -98,13 +96,12 @@ pub async fn send_message(
     let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
-    let user_id = get_user_id_from_session().unwrap_or("anonymous".to_string());
+    let user_id = "anonymous"; // TODO: Get from session
 
     // Create message
     let message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
-            user_id,
             role: "user".to_string(),
             content: request.message.clone(),
             metadata: request.repos.map(|repos| json!({ "repos": repos })),
