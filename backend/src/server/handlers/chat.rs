@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Json, Path, State, Cookie},
+    extract::{Json, Path, State},
     http::StatusCode,
 };
 use axum_extra::extract::cookie::CookieJar;
