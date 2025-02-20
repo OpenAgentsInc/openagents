@@ -1,10 +1,24 @@
-import { useParams } from "react-router"
-import { ChatInput } from "~/components/chat/chat-input"
-import { useMessagesStore } from "~/stores/messages"
+import { useParams } from "react-router";
+import { ChatInput } from "~/components/chat/chat-input";
+import { useMessagesStore } from "~/stores/messages";
+import { useAgentSync } from "agentsync";
 
 export default function ChatSession() {
   const { id } = useParams();
   const messages = useMessagesStore((state) => state.messages[id || ""] || []);
+
+  const { sendMessage, state } = useAgentSync({
+    scope: "chat",
+    conversationId: id,
+  });
+
+  const handleSubmit = async (message: string, repos?: string[]) => {
+    try {
+      await sendMessage(message, repos);
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -31,7 +45,17 @@ export default function ChatSession() {
       </div>
 
       <div className="p-4">
-        <ChatInput />
+        <ChatInput onSubmit={handleSubmit} />
+        {!state.isOnline && (
+          <div className="mt-2 text-sm text-red-500">
+            You are currently offline. Messages will be queued.
+          </div>
+        )}
+        {state.pendingChanges > 0 && (
+          <div className="mt-2 text-sm text-yellow-500">
+            {state.pendingChanges} pending changes to sync
+          </div>
+        )}
       </div>
     </div>
   );
