@@ -1,7 +1,7 @@
-import { useAgentSync } from "agentsync"
-import { useParams } from "react-router"
-import { ChatInput } from "~/components/chat/chat-input"
-import { useMessagesStore } from "~/stores/messages"
+import { useAgentSync } from "agentsync";
+import { useParams } from "react-router";
+import { ChatInput } from "~/components/chat/chat-input";
+import { useMessagesStore } from "~/stores/messages";
 
 export default function ChatSession() {
   const { id } = useParams();
