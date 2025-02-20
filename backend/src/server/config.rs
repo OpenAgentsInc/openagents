@@ -1,258 +1,115 @@
-use super::services::{
-    deepseek::DeepSeekService,
-    github_issue::GitHubService,
-    oauth::{github::GitHubOAuth, scramble::ScrambleOAuth, OAuthConfig},
-    openrouter::OpenRouterService,
-    solver::SolverService,
-};
-use super::tools::create_tools;
-use super::ws::transport::WebSocketState;
-use crate::{routes, server};
 use axum::{
-    body::Body,
-    http::Request,
+    extract::State,
+    http::{Request, StatusCode},
     middleware::{self, Next},
-    response::IntoResponse,
+    response::Response,
     routing::{get, post},
     Router,
 };
 use sqlx::PgPool;
-use std::{env, sync::Arc};
-use tower_http::services::ServeDir;
+use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 use tracing::info;
+
+use crate::server::{
+    handlers::{
+        chat::{send_message, start_repo_chat},
+        oauth::{
+            github::{github_callback, github_login},
+            scramble::{scramble_callback, scramble_login, scramble_signup},
+        },
+        user::{check_email, create_user, get_user},
+    },
+    services::{
+        auth::AuthService,
+        chat_database::ChatDatabaseService,
+        github_auth::GitHubAuthService,
+        github_issue::GitHubIssueService,
+        github_repos::GitHubReposService,
+        model_router::ModelRouterService,
+        oauth::{github::GitHubOAuthService, scramble::ScrambleOAuthService},
+        repomap::RepomapService,
+        solver::SolverService,
+    },
+    ws::transport::WebSocketTransport,
+};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub ws_state: Arc<WebSocketState>,
-    pub github_oauth: Arc<GitHubOAuth>,
-    pub scramble_oauth: Arc<ScrambleOAuth>,
     pub pool: PgPool,
-    pub frontend_url: String,
+    pub auth: Arc<AuthService>,
+    pub github_auth: Arc<GitHubAuthService>,
+    pub github_oauth: Arc<GitHubOAuthService>,
+    pub scramble_oauth: Arc<ScrambleOAuthService>,
+    pub github_issue: Arc<GitHubIssueService>,
+    pub github_repos: Arc<GitHubReposService>,
+    pub chat_db: Arc<ChatDatabaseService>,
+    pub model_router: Arc<ModelRouterService>,
+    pub repomap: Arc<RepomapService>,
+    pub solver: Arc<SolverService>,
+    pub ws_transport: Arc<WebSocketTransport>,
 }
 
-#[derive(Clone)]
-pub struct AppConfig {
-    pub scramble_auth_url: String,
-    pub scramble_token_url: String,
-    pub scramble_client_id: String,
-    pub scramble_client_secret: String,
-    pub scramble_redirect_uri: String,
-    pub github_client_id: String,
-    pub github_client_secret: String,
-    pub github_redirect_uri: String,
-    pub database_url: String,
-    pub frontend_url: String,
-}
-
-impl Default for AppConfig {
+impl Default for AppState {
     fn default() -> Self {
-        // Load .env file if it exists
-        dotenvy::dotenv().ok();
-
-        // Determine if we're in development mode
-        let is_dev = env::var("APP_ENVIRONMENT").unwrap_or_default() != "production";
-
-        // Get frontend URL from .env, with different defaults for dev/prod
-        let frontend_url = env::var("FRONTEND_URL").unwrap_or_else(|_| {
-            if is_dev {
-                "http://localhost:5173".to_string()
-            } else {
-                // In production, default to openagents.com
-                "https://openagents.com".to_string()
-            }
-        });
-
-        Self {
-            scramble_auth_url: env::var("SCRAMBLE_AUTH_URL")
-                .expect("SCRAMBLE_AUTH_URL must be set"),
-            scramble_token_url: env::var("SCRAMBLE_TOKEN_URL")
-                .expect("SCRAMBLE_TOKEN_URL must be set"),
-            scramble_client_id: env::var("SCRAMBLE_CLIENT_ID")
-                .expect("SCRAMBLE_CLIENT_ID must be set"),
-            scramble_client_secret: env::var("SCRAMBLE_CLIENT_SECRET")
-                .expect("SCRAMBLE_CLIENT_SECRET must be set"),
-            scramble_redirect_uri: env::var("SCRAMBLE_REDIRECT_URI")
-                .unwrap_or_else(|_| format!("{}/auth/scramble/callback", frontend_url)),
-            database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
-            github_client_id: env::var("GITHUB_CLIENT_ID").expect("GITHUB_CLIENT_ID must be set"),
-            github_client_secret: env::var("GITHUB_CLIENT_SECRET")
-                .expect("GITHUB_CLIENT_SECRET must be set"),
-            github_redirect_uri: env::var("GITHUB_REDIRECT_URI")
-                .unwrap_or_else(|_| format!("{}/auth/github/callback", frontend_url)),
-            frontend_url,
-        }
+        unimplemented!("AppState requires initialization with services")
     }
 }
 
-pub fn configure_app(pool: PgPool) -> Router {
-    // Use default config
-    configure_app_with_config(pool, None)
+pub async fn configure_app(pool: PgPool) -> Router {
+    configure_app_with_config(pool).await
 }
 
-pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Router {
-    // Load environment variables
-    dotenvy::dotenv().ok();
+pub async fn configure_app_with_config(pool: PgPool) -> Router {
+    // Initialize services
+    let auth = Arc::new(AuthService::new(pool.clone()));
+    let github_auth = Arc::new(GitHubAuthService::new());
+    let github_oauth = Arc::new(GitHubOAuthService::new());
+    let scramble_oauth = Arc::new(ScrambleOAuthService::new());
+    let github_issue = Arc::new(GitHubIssueService::new());
+    let github_repos = Arc::new(GitHubReposService::new());
+    let chat_db = Arc::new(ChatDatabaseService::new(pool.clone()));
+    let model_router = Arc::new(ModelRouterService::new());
+    let repomap = Arc::new(RepomapService::new());
+    let solver = Arc::new(SolverService::new());
+    let ws_transport = Arc::new(WebSocketTransport::new());
 
-    // Determine static file paths based on environment
-    let (assets_path, index_path) =
-        if env::var("APP_ENVIRONMENT").unwrap_or_default() == "production" {
-            ("./client/assets", "./client/index.html")
-        } else {
-            (
-                "../frontend/build/client/assets",
-                "../frontend/build/client/index.html",
-            )
-        };
-
-    // Initialize services with proper configuration
-    let openrouter = OpenRouterService::new(
-        env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set"),
-    );
-
-    let github_service = Arc::new(
-        GitHubService::new(Some(
-            env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN must be set"),
-        ))
-        .expect("Failed to create GitHub service"),
-    );
-
-    let solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
-
-    let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
-    let base_url =
-        env::var("DEEPSEEK_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
-
-    let tool_model = Arc::new(DeepSeekService::with_base_url(
-        api_key.clone(),
-        base_url.clone(),
-    ));
-
-    let chat_model = Arc::new(DeepSeekService::with_base_url(api_key, base_url));
-
-    let tools = create_tools();
-
-    let ws_state = Arc::new(WebSocketState::new(
-        tool_model,
-        chat_model,
-        github_service.clone(),
-        solver_service.clone(),
-        tools,
-    ));
-
-    // Use provided config or default
-    let config = config.unwrap_or_default();
-
-    // Create OAuth configs
-    let github_config = OAuthConfig {
-        client_id: config.github_client_id,
-        client_secret: config.github_client_secret,
-        redirect_url: config.github_redirect_uri,
-        auth_url: "https://github.com/login/oauth/authorize".to_string(),
-        token_url: "https://github.com/login/oauth/access_token".to_string(),
-    };
-
-    let scramble_config = OAuthConfig {
-        client_id: config.scramble_client_id,
-        client_secret: config.scramble_client_secret,
-        redirect_url: config.scramble_redirect_uri,
-        auth_url: config.scramble_auth_url,
-        token_url: config.scramble_token_url,
-    };
-
-    // Initialize OAuth services
-    let github_oauth = Arc::new(
-        GitHubOAuth::new(pool.clone(), github_config)
-            .expect("Failed to create GitHub OAuth service"),
-    );
-
-    let scramble_oauth = Arc::new(
-        ScrambleOAuth::new(pool.clone(), scramble_config)
-            .expect("Failed to create Scramble OAuth service"),
-    );
-
-    // Create shared app state
-    let app_state = AppState {
-        ws_state,
+    let state = AppState {
+        pool,
+        auth,
+        github_auth,
         github_oauth,
         scramble_oauth,
-        pool: pool.clone(),
-        frontend_url: config.frontend_url,
+        github_issue,
+        github_repos,
+        chat_db,
+        model_router,
+        repomap,
+        solver,
+        ws_transport,
     };
 
-    // Create the main router
-    Router::new()
-        // API routes first to prevent conflicts
-        .route("/api/user", get(routes::get_user_info))
-        .route(
-            "/api/users/check-email",
-            get(server::handlers::user::check_email),
-        )
-        .route(
-            "/api/start-repo-chat",
-            post(server::handlers::start_repo_chat),
-        )
-        .route("/health", get(routes::health_check))
-        .route("/ws", get(server::ws::ws_handler))
-        // Merge auth router
-        .merge(app_router(app_state.clone()))
-        // Static assets
-        .nest_service("/assets", ServeDir::new(assets_path).precompressed_gzip())
-        // Serve index.html for all other routes (SPA)
-        .fallback_service(tower_http::services::fs::ServeFile::new(index_path))
-        .with_state(app_state)
+    app_router(state)
 }
 
-async fn log_request(req: Request<Body>, next: Next) -> impl IntoResponse {
-    info!(
-        "Incoming request: {} {} query_params: {:?}",
-        req.method(),
-        req.uri(),
-        req.uri().query()
-    );
-    // Run the next middleware and immediately return its response
-    next.run(req).await
+async fn log_request<B>(request: Request<B>, next: Next<B>) -> Result<Response, StatusCode> {
+    info!("{} {}", request.method(), request.uri().path());
+    Ok(next.run(request).await)
 }
 
-pub fn app_router(state: AppState) -> Router<AppState> {
+fn app_router(state: AppState) -> Router {
     Router::new()
-        .route(
-            "/auth/logout",
-            get(server::handlers::oauth::session::clear_session_and_redirect),
-        )
-        // Add root callback route for Scramble
-        .route(
-            "/auth/callback",
-            get(server::handlers::oauth::scramble::scramble_callback),
-        )
-        .nest(
-            "/auth/github",
-            Router::new()
-                .route("/login", get(server::handlers::oauth::github::github_login))
-                .route(
-                    "/callback",
-                    get(server::handlers::oauth::github::github_callback),
-                )
-                .with_state(state.clone()),
-        )
-        .nest(
-            "/auth/scramble",
-            Router::new()
-                .route(
-                    "/login",
-                    get(server::handlers::oauth::scramble::scramble_login)
-                        .post(server::handlers::oauth::scramble::scramble_login),
-                )
-                .route(
-                    "/signup",
-                    get(server::handlers::oauth::scramble::scramble_signup)
-                        .post(server::handlers::oauth::scramble::scramble_signup),
-                )
-                .route(
-                    "/callback",
-                    get(server::handlers::oauth::scramble::scramble_callback),
-                )
-                .with_state(state.clone()),
-        )
+        .route("/api/user", get(get_user))
+        .route("/api/check-email", post(check_email))
+        .route("/api/create-user", post(create_user))
+        .route("/api/github/login", get(github_login))
+        .route("/api/github/callback", get(github_callback))
+        .route("/api/scramble/login", get(scramble_login))
+        .route("/api/scramble/signup", get(scramble_signup))
+        .route("/api/scramble/callback", get(scramble_callback))
+        .route("/api/start-repo-chat", post(start_repo_chat))
+        .route("/api/send-message", post(send_message))
         .layer(middleware::from_fn(log_request))
+        .layer(CorsLayer::permissive())
         .with_state(state)
 }
