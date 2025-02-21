@@ -5,6 +5,7 @@ export interface Message {
   id: string;
   role: string;
   content: string;
+  reasoning?: string; // Add reasoning field
   metadata?: {
     repos?: string[];
   };
@@ -14,6 +15,7 @@ interface MessagesState {
   messages: Record<string, Message[]>;
   addMessage: (chatId: string, message: Message) => void;
   setMessages: (chatId: string, messages: Message[]) => void;
+  removeMessages: (chatId: string) => void;
 }
 
 export const useMessagesStore = create<MessagesState>()(
@@ -41,6 +43,15 @@ export const useMessagesStore = create<MessagesState>()(
           }),
           false,
           "setMessages",
+        ),
+      removeMessages: (chatId) =>
+        set(
+          (state) => {
+            const { [chatId]: _, ...rest } = state.messages;
+            return { messages: rest };
+          },
+          false,
+          "removeMessages",
         ),
     }),
     {

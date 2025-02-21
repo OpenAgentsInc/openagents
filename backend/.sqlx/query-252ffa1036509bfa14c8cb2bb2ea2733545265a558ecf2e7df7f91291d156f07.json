@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            INSERT INTO conversations (user_id, title, created_at, updated_at)\n            VALUES ($1, $2, NOW(), NOW())\n            RETURNING id, user_id, title, created_at as \"created_at: _\", updated_at as \"updated_at: _\"\n            ",
+  "query": "\n            INSERT INTO conversations (id, user_id, title, created_at, updated_at)\n            VALUES ($1, $2, $3, NOW(), NOW())\n            RETURNING id, user_id, title, created_at as \"created_at: _\", updated_at as \"updated_at: _\"\n            ",
   "describe": {
     "columns": [
       {
@@ -30,9 +30,9 @@
       }
     ],
     "parameters": {
-      "Left": ["Text", "Text"]
+      "Left": ["Uuid", "Text", "Text"]
     },
     "nullable": [false, false, true, false, false]
   },
-  "hash": "b6feba76f08506d1b626dd9b30aedf3ba60fbc03b7532906164bf0e7764291a3"
+  "hash": "252ffa1036509bfa14c8cb2bb2ea2733545265a558ecf2e7df7f91291d156f07"
 }

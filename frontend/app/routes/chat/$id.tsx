@@ -2,6 +2,7 @@ import { useAgentSync } from "agentsync";
 import { useCallback, useEffect, useRef } from "react";
 import { useParams } from "react-router";
 import { ChatInput } from "~/components/chat/chat-input";
+import { Thinking } from "~/components/chat/thinking";
 import { useMessagesStore } from "~/stores/messages";
 
 import type { Message } from "~/stores/messages";
@@ -34,13 +35,15 @@ export default function ChatSession() {
   const { sendMessage, state } = useAgentSync({
     scope: "chat",
     conversationId: id,
+    useReasoning: true, // Enable reasoning by default
   });
 
   // Load messages when component mounts
   useEffect(() => {
     if (!id) return;
 
-    const loadMessages = async () => {
+    // Add a small delay to allow the conversation to be created
+    const timeout = setTimeout(async () => {
       try {
         const response = await fetch(`/api/conversations/${id}/messages`);
         if (!response.ok) {
@@ -51,9 +54,9 @@ export default function ChatSession() {
       } catch (error) {
         console.error("Error loading messages:", error);
       }
-    };
+    }, 500); // 500ms delay
 
-    loadMessages();
+    return () => clearTimeout(timeout);
   }, [id, setMessages]);
 
   const handleSubmit = async (message: string, repos?: string[]) => {
@@ -76,10 +79,32 @@ export default function ChatSession() {
                 </div>
                 <div className="flex-1">
                   <div className="whitespace-pre-wrap">{message.content}</div>
+                  {message.reasoning && (
+                    <Thinking
+                      state="finished"
+                      content={message.reasoning.split("\n")}
+                      defaultOpen={false}
+                    />
+                  )}
                 </div>
               </div>
             </div>
           ))}
+          {state.isStreaming && (
+            <div className="p-4">
+              <div className="flex gap-4">
+                <div className="flex-shrink-0">🤖</div>
+                <div className="flex-1">
+                  <Thinking
+                    state="thinking"
+                    content={[]}
+                    defaultOpen={true}
+                    simplified={false}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

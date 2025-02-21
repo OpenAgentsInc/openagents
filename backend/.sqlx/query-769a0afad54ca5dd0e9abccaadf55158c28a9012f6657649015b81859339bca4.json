@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, conversation_id, user_id, role, content, created_at as \"created_at: _\", metadata, tool_calls\n            FROM messages\n            WHERE conversation_id = $1\n            ORDER BY created_at ASC\n            ",
+  "query": "\n            SELECT id, conversation_id, user_id, role, content, reasoning, created_at as \"created_at: _\", metadata, tool_calls\n            FROM messages\n            WHERE conversation_id = $1\n            ORDER BY created_at ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -30,16 +30,21 @@
       },
       {
         "ordinal": 5,
+        "name": "reasoning",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
         "name": "created_at: _",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "metadata",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "tool_calls",
         "type_info": "Jsonb"
       }
@@ -47,7 +52,7 @@
     "parameters": {
       "Left": ["Uuid"]
     },
-    "nullable": [false, false, false, false, false, false, true, true]
+    "nullable": [false, false, false, false, false, true, false, true, true]
   },
-  "hash": "137dae6ee37af517001adb4b4f31a2a2057791d1ff4b9bb0c17676f1a84c1fde"
+  "hash": "769a0afad54ca5dd0e9abccaadf55158c28a9012f6657649015b81859339bca4"
 }
