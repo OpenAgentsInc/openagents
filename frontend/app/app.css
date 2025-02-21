@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/fade-mask.css";
+@import "./styles/fonts.css";
 
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
