@@ -1,8 +1,8 @@
-import { useAgentSync } from "agentsync";
-import { useCallback, useEffect, useRef } from "react";
-import { useParams } from "react-router";
-import { ChatInput } from "~/components/chat/chat-input";
-import { useMessagesStore } from "~/stores/messages";
+import { useAgentSync } from "agentsync"
+import { useCallback, useEffect, useRef } from "react"
+import { useParams } from "react-router"
+import { ChatInput } from "~/components/chat/chat-input"
+import { useMessagesStore } from "~/stores/messages"
 
 import type { Message } from "~/stores/messages";
 
@@ -76,11 +76,6 @@ export default function ChatSession() {
                 </div>
                 <div className="flex-1">
                   <div className="whitespace-pre-wrap">{message.content}</div>
-                  {message.metadata?.repos && (
-                    <div className="text-sm text-muted-foreground mt-2">
-                      Repos: {message.metadata.repos.join(", ")}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
