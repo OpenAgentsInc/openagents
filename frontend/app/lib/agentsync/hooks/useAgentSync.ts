@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { v4 as uuid } from "uuid";
-import { useMessagesStore } from "~/stores/messages";
+import { useEffect, useRef, useState } from "react"
+import { v4 as uuid } from "uuid"
+import { useMessagesStore } from "~/stores/messages"
 
 const INITIAL_STATE = {
   isOnline: true,
@@ -31,37 +31,58 @@ class WebSocketClient {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private messageQueue: any[] = [];
+  private isConnecting = false;
 
-  constructor(private url: string) {}
+  constructor(private url: string) { }
 
-  connect() {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+  connect(): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
+    if (this.isConnecting) return Promise.resolve();
 
-    this.ws = new WebSocket(this.url);
-    this.ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        this.messageHandlers.forEach((handler) => handler(msg));
-      } catch (e) {
-        console.error("Failed to parse WebSocket message:", e);
-      }
-    };
+    return new Promise((resolve, reject) => {
+      this.isConnecting = true;
+      this.ws = new WebSocket(this.url);
 
-    this.ws.onclose = () => {
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectTimeout = setTimeout(
-          () => {
-            this.reconnectAttempts++;
-            this.connect();
-          },
-          Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000),
-        );
-      }
-    };
+      this.ws.onopen = () => {
+        this.isConnecting = false;
+        this.reconnectAttempts = 0;
+        // Process any queued messages
+        while (this.messageQueue.length > 0) {
+          const msg = this.messageQueue.shift();
+          this.send(msg);
+        }
+        resolve();
+      };
 
-    this.ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
+      this.ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          this.messageHandlers.forEach((handler) => handler(msg));
+        } catch (e) {
+          console.error("Failed to parse WebSocket message:", e);
+        }
+      };
+
+      this.ws.onclose = () => {
+        this.isConnecting = false;
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.reconnectTimeout = setTimeout(
+            () => {
+              this.reconnectAttempts++;
+              this.connect();
+            },
+            Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000),
+          );
+        }
+      };
+
+      this.ws.onerror = (error) => {
+        this.isConnecting = false;
+        console.error("WebSocket error:", error);
+        reject(error);
+      };
+    });
   }
 
   disconnect() {
@@ -79,7 +100,12 @@ class WebSocketClient {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     } else {
-      throw new Error("WebSocket is not connected");
+      // Queue the message if not connected
+      this.messageQueue.push(msg);
+      // Try to connect if not already connecting
+      if (!this.isConnecting) {
+        this.connect();
+      }
     }
   }
 
@@ -109,17 +135,20 @@ export function useAgentSync({
     const wsUrl =
       process.env.NODE_ENV === "production"
         ? "wss://api.openagents.com/ws"
-        : "ws://localhost:3000/ws";
+        : "ws://localhost:8000/ws";
 
     wsRef.current = new WebSocketClient(wsUrl);
-    wsRef.current.connect();
 
-    // Subscribe to chat scope
-    wsRef.current.send({
-      type: "Subscribe",
-      scope,
-      conversation_id: conversationId,
-      last_sync_id: state.lastSyncId,
+    // Connect and then subscribe
+    wsRef.current.connect().then(() => {
+      wsRef.current?.send({
+        type: "Subscribe",
+        scope,
+        conversation_id: conversationId,
+        last_sync_id: state.lastSyncId,
+      });
+    }).catch(error => {
+      console.error("Failed to connect to WebSocket:", error);
     });
 
     // Handle incoming messages
