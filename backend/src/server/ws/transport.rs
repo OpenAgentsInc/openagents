@@ -8,7 +8,7 @@ use tracing::{error, info};
 use crate::server::{
     config::AppState,
     services::{github_issue::GitHubService, model_router::ModelRouter},
-    ws::handlers::chat::{ChatHandler, ChatMessage},
+    ws::handlers::chat::{ChatHandler, ChatMessage, ChatResponse},
 };
 
 pub type WebSocketSender = mpsc::Sender<String>;
@@ -102,15 +102,10 @@ impl WebSocketTransport {
 
         // Add connection to state
         self.state
-            .add_connection(receive_conn_id.clone(), tx)
+            .add_connection(receive_conn_id.clone(), tx.clone())
             .await?;
 
-        // Create handlers
-        let mut chat_handler = ChatHandler::new(
-            WebSocket::from_split(sender, receiver),
-            self.app_state.clone(),
-            user_id,
-        );
+        let processor = MessageProcessor::new(self.app_state.clone(), user_id, self.state.clone());
 
         // Handle incoming messages
         let receive_handle = tokio::spawn(async move {
@@ -118,10 +113,8 @@ impl WebSocketTransport {
                 match msg {
                     Message::Text(ref text) => {
                         info!("Received message: {}", text);
-                        if let Ok(_chat_msg) = serde_json::from_str::<ChatMessage>(&text) {
-                            if let Err(e) = chat_handler.process_message(msg).await {
-                                error!("Error handling chat message: {:?}", e);
-                            }
+                        if let Err(e) = processor.process_message(text, &tx).await {
+                            error!("Error processing message: {:?}", e);
                         }
                     }
                     Message::Close(_) => {
@@ -152,6 +145,56 @@ impl WebSocketTransport {
         // Clean up
         self.state.remove_connection(&send_conn_id).await?;
 
+        Ok(())
+    }
+}
+
+pub struct MessageProcessor {
+    app_state: AppState,
+    user_id: String,
+}
+
+impl MessageProcessor {
+    pub fn new(app_state: AppState, user_id: String, _ws_state: Arc<WebSocketState>) -> Self {
+        Self { app_state, user_id }
+    }
+
+    pub async fn process_message(
+        &self,
+        text: &str,
+        tx: &mpsc::Sender<String>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Ok(chat_msg) = serde_json::from_str::<ChatMessage>(text) {
+            match chat_msg {
+                ChatMessage::Subscribe { scope, .. } => {
+                    let response = ChatResponse::Subscribed {
+                        scope,
+                        last_sync_id: 0,
+                    };
+                    let msg = serde_json::to_string(&response)?;
+                    tx.send(msg).await?;
+                }
+                ChatMessage::Message {
+                    id,
+                    conversation_id,
+                    content,
+                    repos,
+                    use_reasoning,
+                } => {
+                    let mut chat_handler =
+                        ChatHandler::new(tx.clone(), self.app_state.clone(), self.user_id.clone());
+                    chat_handler
+                        .handle_message(ChatMessage::Message {
+                            id,
+                            conversation_id,
+                            content,
+                            repos,
+                            use_reasoning,
+                        })
+                        .await?;
+                }
+            }
+        }
         Ok(())
     }
 }

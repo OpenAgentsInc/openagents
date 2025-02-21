@@ -1,7 +1,8 @@
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::Message;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::sync::mpsc;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -55,14 +56,14 @@ pub struct ChatDelta {
 }
 
 pub struct ChatHandler {
-    ws: WebSocket,
+    tx: mpsc::Sender<String>,
     state: AppState,
     user_id: String,
 }
 
 impl ChatHandler {
-    pub fn new(ws: WebSocket, state: AppState, user_id: String) -> Self {
-        Self { ws, state, user_id }
+    pub fn new(tx: mpsc::Sender<String>, state: AppState, user_id: String) -> Self {
+        Self { tx, state, user_id }
     }
 
     pub async fn process_message(
@@ -90,7 +91,7 @@ impl ChatHandler {
             ChatMessage::Subscribe { scope, .. } => {
                 self.broadcast(ChatResponse::Subscribed {
                     scope,
-                    last_sync_id: 0, // TODO: Implement sync ID tracking
+                    last_sync_id: 0,
                 })
                 .await?;
             }
@@ -242,7 +243,7 @@ impl ChatHandler {
         response: ChatResponse,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let msg = serde_json::to_string(&response)?;
-        self.ws.send(Message::Text(msg)).await?;
+        self.tx.send(msg).await?;
         Ok(())
     }
 }

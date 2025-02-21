@@ -1,5 +1,6 @@
 use openagents::server::services::gateway::Gateway;
 use openagents::server::services::groq::GroqService;
+use serde_json;
 use tokio_stream::StreamExt;
 
 #[tokio::test]
@@ -56,13 +57,20 @@ async fn test_groq_chat_stream() {
         .await
         .unwrap();
 
-    let mut response = String::new();
+    let mut content = String::new();
+    let mut reasoning = String::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.unwrap();
-        response.push_str(&chunk);
+        let delta: serde_json::Value = serde_json::from_str(&chunk).unwrap();
+        if let Some(c) = delta["content"].as_str() {
+            content.push_str(c);
+        }
+        if let Some(r) = delta["reasoning"].as_str() {
+            reasoning.push_str(r);
+        }
     }
-    assert!(!response.is_empty());
-    assert!(!response.contains("Reasoning:"));
+    assert!(!content.is_empty());
+    assert!(reasoning.is_empty());
 
     // Test streaming with reasoning
     let mut stream = service
@@ -70,17 +78,20 @@ async fn test_groq_chat_stream() {
         .await
         .unwrap();
 
-    let mut response = String::new();
-    let mut has_reasoning = false;
+    let mut content = String::new();
+    let mut reasoning = String::new();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.unwrap();
-        response.push_str(&chunk);
-        if chunk.contains("Reasoning:") {
-            has_reasoning = true;
+        let delta: serde_json::Value = serde_json::from_str(&chunk).unwrap();
+        if let Some(c) = delta["content"].as_str() {
+            content.push_str(c);
+        }
+        if let Some(r) = delta["reasoning"].as_str() {
+            reasoning.push_str(r);
         }
     }
-    assert!(!response.is_empty());
-    assert!(has_reasoning);
+    assert!(!content.is_empty());
+    assert!(!reasoning.is_empty());
 }
 
 #[tokio::test]

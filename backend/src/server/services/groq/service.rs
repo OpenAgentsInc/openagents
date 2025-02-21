@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use futures::stream::Stream;
 use reqwest::{Client, ClientBuilder};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::pin::Pin;
 use std::time::Duration;
 use tokio_stream::StreamExt;
@@ -153,10 +153,16 @@ impl GroqService {
 
                     if let Some(choice) = stream_response.choices.first() {
                         if let Some(content) = &choice.delta.content {
-                            return Ok(content.clone());
+                            return Ok(serde_json::to_string(&json!({
+                                "content": content,
+                                "reasoning": null
+                            }))?);
                         }
                         if let Some(reasoning) = &choice.delta.reasoning {
-                            return Ok(format!("\nReasoning: {}", reasoning));
+                            return Ok(serde_json::to_string(&json!({
+                                "content": null,
+                                "reasoning": reasoning
+                            }))?);
                         }
                     }
                 }

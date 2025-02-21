@@ -119,7 +119,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         .expect("Failed to create GitHub service"),
     );
 
-    let solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
+    let _solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
 
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
     let base_url =
