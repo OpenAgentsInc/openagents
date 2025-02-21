@@ -3,7 +3,7 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, info, debug};
 use uuid::Uuid;
 
 use crate::server::{
@@ -63,6 +63,7 @@ pub struct ChatHandler {
 
 impl ChatHandler {
     pub fn new(tx: mpsc::Sender<String>, state: AppState, user_id: String) -> Self {
+        info!("Creating new ChatHandler for user: {}", user_id);
         Self { tx, state, user_id }
     }
 
@@ -72,13 +73,16 @@ impl ChatHandler {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match msg {
             Message::Text(text) => {
+                debug!("Processing text message: {}", text);
                 let chat_msg: ChatMessage = serde_json::from_str(&text)?;
                 self.handle_message(chat_msg).await?;
             }
             Message::Close(_) => {
                 info!("WebSocket connection closed");
             }
-            _ => {}
+            _ => {
+                debug!("Ignoring non-text message");
+            }
         }
         Ok(())
     }
@@ -87,8 +91,10 @@ impl ChatHandler {
         &mut self,
         msg: ChatMessage,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        info!("Handling chat message: {:?}", msg);
         match msg {
             ChatMessage::Subscribe { scope, .. } => {
+                info!("Processing subscribe message for scope: {}", scope);
                 self.broadcast(ChatResponse::Subscribed {
                     scope,
                     last_sync_id: 0,
@@ -103,19 +109,23 @@ impl ChatHandler {
                 repos,
                 use_reasoning,
             } => {
+                info!("Processing chat message: id={}, conv={:?}", id, conversation_id);
                 let chat_db = ChatDatabaseService::new(self.state.pool.clone());
 
                 // Handle conversation creation or lookup
                 let conversation = match conversation_id {
                     Some(id) => {
+                        info!("Looking up existing conversation: {}", id);
                         let conv = chat_db.get_conversation(id).await?;
                         // Verify user has access
                         if conv.user_id != self.user_id {
+                            error!("Unauthorized access attempt to conversation {} by user {}", id, self.user_id);
                             return Err("Unauthorized access to conversation".into());
                         }
                         conv
                     }
                     None => {
+                        info!("Creating new conversation for message: {}", id);
                         chat_db
                             .create_conversation(&CreateConversationRequest {
                                 id: Some(id),
@@ -126,8 +136,10 @@ impl ChatHandler {
                     }
                 };
 
+                info!("Using conversation: {}", conversation.id);
+
                 // Create user message
-                let _user_message = chat_db
+                let user_message = chat_db
                     .create_message(&CreateMessageRequest {
                         conversation_id: conversation.id,
                         user_id: self.user_id.clone(),
@@ -139,8 +151,11 @@ impl ChatHandler {
                     })
                     .await?;
 
+                info!("Created user message: {}", user_message.id);
+
                 // Get conversation history if this is a follow-up
                 let mut messages = if conversation_id.is_some() {
+                    info!("Loading conversation history for {}", conversation.id);
                     chat_db
                         .get_conversation_messages(conversation.id)
                         .await?
@@ -167,6 +182,8 @@ impl ChatHandler {
                     }));
                 }
 
+                info!("Starting Groq stream with {} messages", messages.len());
+
                 // Start Groq stream
                 let mut stream = self
                     .state
@@ -178,15 +195,19 @@ impl ChatHandler {
                 let mut content = String::new();
                 let mut reasoning = String::new();
 
+                info!("Processing stream updates");
                 while let Some(update) = stream.next().await {
                     match update {
                         Ok(delta) => {
+                            debug!("Received delta: {}", delta);
                             let delta: ChatDelta = serde_json::from_str(&delta)?;
-                            if let Some(c) = delta.content {
-                                content.push_str(&c);
+                            if let Some(c) = delta.content.as_ref() {
+                                content.push_str(c);
+                                debug!("Updated content length: {}", content.len());
                             }
-                            if let Some(r) = delta.reasoning {
-                                reasoning.push_str(&r);
+                            if let Some(r) = delta.reasoning.as_ref() {
+                                reasoning.push_str(r);
+                                debug!("Updated reasoning length: {}", reasoning.len());
                             }
 
                             self.broadcast(ChatResponse::Update {
@@ -209,8 +230,10 @@ impl ChatHandler {
                     }
                 }
 
+                info!("Stream completed, saving final message");
+
                 // Save final message
-                let _ai_message = chat_db
+                let ai_message = chat_db
                     .create_message(&CreateMessageRequest {
                         conversation_id: conversation.id,
                         user_id: self.user_id.clone(),
@@ -226,12 +249,16 @@ impl ChatHandler {
                     })
                     .await?;
 
+                info!("Created AI message: {}", ai_message.id);
+
                 // Send completion
                 self.broadcast(ChatResponse::Complete {
                     message_id: id,
                     conversation_id: conversation.id,
                 })
                 .await?;
+
+                info!("Message handling completed for {}", id);
             }
         }
 
@@ -243,6 +270,7 @@ impl ChatHandler {
         response: ChatResponse,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let msg = serde_json::to_string(&response)?;
+        debug!("Broadcasting response: {}", msg);
         self.tx.send(msg).await?;
         Ok(())
     }
