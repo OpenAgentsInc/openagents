@@ -7,6 +7,7 @@ const INITIAL_STATE = {
   lastSyncId: 0,
   pendingChanges: 0,
   isStreaming: false,
+  error: null as string | null,
 };
 
 interface AgentSyncOptions {
@@ -44,9 +45,20 @@ class WebSocketClient {
       this.isConnecting = true;
       this.ws = new WebSocket(this.url);
 
+      const connectionTimeout = setTimeout(() => {
+        if (this.ws?.readyState !== WebSocket.OPEN) {
+          this.ws?.close();
+          this.isConnecting = false;
+          reject(new Error("WebSocket connection timeout"));
+        }
+      }, 5000);
+
       this.ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         this.isConnecting = false;
         this.reconnectAttempts = 0;
+        console.debug("WebSocket connected");
+        
         // Process any queued messages
         while (this.messageQueue.length > 0) {
           const msg = this.messageQueue.shift();
@@ -58,22 +70,33 @@ class WebSocketClient {
       this.ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
+          console.debug("WebSocket received:", msg);
           this.messageHandlers.forEach((handler) => handler(msg));
         } catch (e) {
           console.error("Failed to parse WebSocket message:", e);
         }
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
+        clearTimeout(connectionTimeout);
         this.isConnecting = false;
+        console.debug("WebSocket closed:", event);
+        
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+          console.debug(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
+          
           this.reconnectTimeout = setTimeout(
             () => {
               this.reconnectAttempts++;
-              this.connect();
+              this.connect().catch(e => {
+                console.error("Reconnection failed:", e);
+              });
             },
-            Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000),
+            delay
           );
+        } else {
+          console.error("Max reconnection attempts reached");
         }
       };
 
@@ -94,17 +117,25 @@ class WebSocketClient {
       this.ws = null;
     }
     this.messageHandlers = [];
+    this.messageQueue = [];
+    this.isConnecting = false;
+    this.reconnectAttempts = 0;
   }
 
   send(msg: any) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg));
+      const msgStr = JSON.stringify(msg);
+      console.debug("WebSocket sending:", msg);
+      this.ws.send(msgStr);
     } else {
       // Queue the message if not connected
+      console.debug("WebSocket queuing message:", msg);
       this.messageQueue.push(msg);
       // Try to connect if not already connecting
       if (!this.isConnecting) {
-        this.connect();
+        this.connect().catch(e => {
+          console.error("Connection attempt failed:", e);
+        });
       }
     }
   }
@@ -137,10 +168,12 @@ export function useAgentSync({
         ? "wss://api.openagents.com/ws"
         : "ws://localhost:8000/ws";
 
+    console.debug("Initializing WebSocket:", wsUrl);
     wsRef.current = new WebSocketClient(wsUrl);
 
     // Connect and then subscribe
     wsRef.current.connect().then(() => {
+      console.debug("Sending subscription:", { scope, conversationId });
       wsRef.current?.send({
         type: "Subscribe",
         scope,
@@ -149,13 +182,15 @@ export function useAgentSync({
       });
     }).catch(error => {
       console.error("Failed to connect to WebSocket:", error);
+      setState(s => ({ ...s, error: error.message }));
     });
 
     // Handle incoming messages
     const unsubscribe = wsRef.current.onMessage((msg) => {
+      console.debug("Received message:", msg);
       switch (msg.type) {
         case "Subscribed":
-          setState((s) => ({ ...s, lastSyncId: msg.last_sync_id }));
+          setState((s) => ({ ...s, lastSyncId: msg.last_sync_id, error: null }));
           break;
 
         case "Update":
@@ -176,18 +211,23 @@ export function useAgentSync({
           break;
 
         case "Complete":
-          setState((s) => ({ ...s, isStreaming: false }));
+          setState((s) => ({ ...s, isStreaming: false, error: null }));
           break;
 
         case "Error":
           console.error("WebSocket error:", msg.message);
-          setState((s) => ({ ...s, isStreaming: false }));
+          setState((s) => ({ 
+            ...s, 
+            isStreaming: false, 
+            error: msg.message 
+          }));
           break;
       }
     });
 
     // Cleanup
     return () => {
+      console.debug("Cleaning up WebSocket connection");
       unsubscribe();
       if (wsRef.current) {
         wsRef.current.disconnect();
@@ -198,13 +238,17 @@ export function useAgentSync({
   // Handle online/offline status
   useEffect(() => {
     const handleOnline = () => {
+      console.debug("Browser online");
       setState((s) => ({ ...s, isOnline: true }));
       if (wsRef.current) {
-        wsRef.current.connect();
+        wsRef.current.connect().catch(e => {
+          console.error("Reconnection failed:", e);
+        });
       }
     };
 
     const handleOffline = () => {
+      console.debug("Browser offline");
       setState((s) => ({ ...s, isOnline: false }));
     };
 
@@ -223,10 +267,12 @@ export function useAgentSync({
     }
 
     const messageId = uuid();
-    setState((s) => ({ ...s, isStreaming: true }));
+    setState((s) => ({ ...s, isStreaming: true, error: null }));
     streamingStateRef.current = { content: "", reasoning: "" };
 
     try {
+      console.debug("Sending message:", { messageId, message, repos });
+      
       // Add user message
       addMessage(conversationId || messageId, {
         id: messageId,
@@ -250,7 +296,12 @@ export function useAgentSync({
         message,
       };
     } catch (error) {
-      setState((s) => ({ ...s, isStreaming: false }));
+      console.error("Error sending message:", error);
+      setState((s) => ({ 
+        ...s, 
+        isStreaming: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      }));
       throw error;
     }
   };
