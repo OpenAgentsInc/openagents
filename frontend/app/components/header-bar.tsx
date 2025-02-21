@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router";
-import { Button } from "./ui/button";
+import { useEffect, useState } from "react"
+import { Link } from "react-router"
+import { Button } from "./ui/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "./ui/dropdown-menu"
 
 interface UserMetadata {
   name: string;
@@ -51,11 +48,11 @@ export function HeaderBar() {
       {/* Left/Middle Section */}
       <div className="flex items-center gap-0 overflow-hidden">
         <div className="flex items-center h-10">
-          <span className="flex items-center h-full" data-state="closed">
-            {/* <Link to="/new" className="h-full">
+          <span className="mt-1 flex items-center h-full" data-state="closed">
+            <Link to="/chat" className="h-full">
               <button
                 aria-label="New chat"
-                className="h-full rounded-lg px-2 text-token-text-secondary focus-visible:bg-token-surface-hover focus-visible:outline-0 enabled:hover:bg-token-surface-hover disabled:text-token-text-quaternary flex items-center"
+                className="cursor-pointer h-full rounded-lg px-2 text-token-text-secondary focus-visible:bg-token-surface-hover focus-visible:outline-0 enabled:hover:bg-token-surface-hover disabled:text-token-text-quaternary flex items-center"
               >
                 <svg
                   width="24"
@@ -71,7 +68,7 @@ export function HeaderBar() {
                   />
                 </svg>
               </button>
-            </Link> */}
+            </Link>
           </span>
         </div>
 
