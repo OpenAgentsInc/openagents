@@ -1,33 +1,29 @@
 use std::{collections::HashMap, sync::Arc};
 
 use axum::extract::ws::{Message, WebSocket};
-use futures::{stream::SplitSink, SinkExt};
-use serde_json::json;
+use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{error, info};
 
 use crate::server::{
     config::AppState,
-    services::github_issue::GitHubService,
-    ws::{
-        handlers::{chat::ChatHandler, solver::SolverHandler, solver_json::SolverJsonHandler},
-        types::ChatMessage,
-    },
+    services::{github_issue::GitHubService, model_router::ModelRouter},
+    ws::handlers::chat::ChatHandler,
 };
 
-pub type WebSocketSender = SplitSink<WebSocket, Message>;
+pub type WebSocketSender = mpsc::Sender<String>;
 
 #[derive(Clone)]
 pub struct WebSocketState {
-    pub connections: Arc<RwLock<HashMap<String, mpsc::Sender<String>>>>,
+    pub connections: Arc<RwLock<HashMap<String, WebSocketSender>>>,
     pub github_service: Arc<GitHubService>,
-    pub model_router: Arc<crate::server::services::model_router::ModelRouter>,
+    pub model_router: Arc<ModelRouter>,
 }
 
 impl WebSocketState {
     pub fn new(
         github_service: Arc<GitHubService>,
-        model_router: Arc<crate::server::services::model_router::ModelRouter>,
+        model_router: Arc<ModelRouter>,
     ) -> Self {
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
@@ -36,14 +32,14 @@ impl WebSocketState {
         }
     }
 
-    pub async fn send_to(&self, conn_id: &str, msg: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn send_to(&self, conn_id: &str, msg: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(tx) = self.connections.read().await.get(conn_id) {
             tx.send(msg.to_string()).await?;
         }
         Ok(())
     }
 
-    pub async fn broadcast(&self, msg: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn broadcast(&self, msg: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for tx in self.connections.read().await.values() {
             tx.send(msg.to_string()).await?;
         }
@@ -53,13 +49,13 @@ impl WebSocketState {
     pub async fn add_connection(
         &self,
         conn_id: String,
-        tx: mpsc::Sender<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        tx: WebSocketSender,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.connections.write().await.insert(conn_id, tx);
         Ok(())
     }
 
-    pub async fn remove_connection(&self, conn_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn remove_connection(&self, conn_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.connections.write().await.remove(conn_id);
         Ok(())
     }
@@ -79,8 +75,8 @@ impl WebSocketTransport {
         &self,
         socket: WebSocket,
         user_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let (sender, mut receiver) = socket.split();
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let (mut sender, mut receiver) = socket.split();
         let (tx, mut rx) = mpsc::channel::<String>(32);
 
         let receive_conn_id = uuid::Uuid::new_v4().to_string();
@@ -100,8 +96,8 @@ impl WebSocketTransport {
                 match msg {
                     Message::Text(text) => {
                         info!("Received message: {}", text);
-                        if let Ok(chat_msg) = serde_json::from_str::<ChatMessage>(&text) {
-                            if let Err(e) = chat_handler.handle_message(chat_msg).await {
+                        if let Ok(chat_msg) = serde_json::from_str(&text) {
+                            if let Err(e) = chat_handler.process_message(msg).await {
                                 error!("Error handling chat message: {:?}", e);
                             }
                         }
