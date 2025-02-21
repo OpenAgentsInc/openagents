@@ -15,6 +15,7 @@ pub struct GroqService {
     client: Client,
     api_key: String,
     base_url: String,
+    model: String,
 }
 
 impl GroqService {
@@ -31,6 +32,7 @@ impl GroqService {
             client,
             api_key,
             base_url,
+            model: "llama-3.1-8b-instant".to_string(),
         }
     }
 
@@ -44,7 +46,12 @@ impl GroqService {
             client,
             api_key,
             base_url,
+            model: "llama-3.1-8b-instant".to_string(),
         }
+    }
+
+    pub fn set_model(&mut self, model: String) {
+        self.model = model;
     }
 
     pub async fn chat_with_history(
@@ -52,17 +59,23 @@ impl GroqService {
         messages: Vec<Value>,
         use_reasoner: bool,
     ) -> Result<(String, Option<String>)> {
+        let mut request = serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "temperature": if use_reasoner { 0.0 } else { 0.7 },
+            "stream": false,
+        });
+
+        // Only add reasoning_format if using a model that supports it
+        if self.model.starts_with("deepseek-r1") {
+            request["reasoning_format"] = serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
+        }
+
         let response = self
             .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&serde_json::json!({
-                "model": self.metadata().default_model,
-                "messages": messages,
-                "temperature": if use_reasoner { 0.0 } else { 0.7 },
-                "stream": false,
-                "reasoning_format": if use_reasoner { "parsed" } else { "hidden" }
-            }))
+            .json(&request)
             .send()
             .await
             .context("Failed to send request to Groq API")?;
@@ -91,17 +104,23 @@ impl GroqService {
         messages: Vec<Value>,
         use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
+        let mut request = serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "temperature": if use_reasoner { 0.0 } else { 0.7 },
+            "stream": true,
+        });
+
+        // Only add reasoning_format if using a model that supports it
+        if self.model.starts_with("deepseek-r1") {
+            request["reasoning_format"] = serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
+        }
+
         let response = self
             .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&serde_json::json!({
-                "model": self.metadata().default_model,
-                "messages": messages,
-                "temperature": if use_reasoner { 0.0 } else { 0.7 },
-                "stream": true,
-                "reasoning_format": if use_reasoner { "parsed" } else { "hidden" }
-            }))
+            .json(&request)
             .send()
             .await
             .context("Failed to send request to Groq API")?;
@@ -162,10 +181,11 @@ impl Gateway for GroqService {
                 "streaming".to_string(),
                 "reasoning".to_string(),
             ],
-            default_model: "llama-3.1-8b-instant".to_string(),
+            default_model: self.model.clone(),
             available_models: vec![
                 "llama-3.1-8b-instant".to_string(),
                 "llama-3.3-70b-versatile".to_string(),
+                "deepseek-r1-distill-qwen-32b".to_string(),
                 "deepseek-r1-distill-llama-70b".to_string(),
             ],
         }
