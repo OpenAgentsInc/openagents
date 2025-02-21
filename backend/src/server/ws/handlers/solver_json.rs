@@ -1,226 +1,226 @@
-use super::MessageHandler;
-use crate::server::services::solver::SolverService;
-use crate::server::ws::{
-    transport::WebSocketState,
-    types::{CodeJsonChange, SolverJsonMessage, SolverJsonStatus},
-};
-use async_trait::async_trait;
-use axum::extract::ws::Message;
-use chrono::Utc;
-use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::mpsc::{Sender, UnboundedSender};
-use tokio::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use tokio::sync::mpsc;
 use tracing::{error, info};
 use uuid::Uuid;
 
+use crate::server::{
+    config::AppState,
+    services::solver::types::{FileAnalysis, SolverChange},
+    ws::transport::WebSocketState,
+};
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+pub enum SolverMessage {
+    Subscribe {
+        scope: String,
+        solver_id: Option<Uuid>,
+    },
+    ApproveChange {
+        solver_id: Uuid,
+        change_id: Uuid,
+    },
+    RejectChange {
+        solver_id: Uuid,
+        change_id: Uuid,
+    },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+pub enum SolverResponse {
+    Subscribed {
+        scope: String,
+    },
+    StateUpdate {
+        solver_id: Uuid,
+        state: String,
+    },
+    FileAnalysis {
+        solver_id: Uuid,
+        analysis: FileAnalysis,
+    },
+    ChangeGenerated {
+        solver_id: Uuid,
+        change: SolverChange,
+    },
+    ChangeApplied {
+        solver_id: Uuid,
+        change_id: Uuid,
+    },
+    Error {
+        message: String,
+    },
+}
+
 pub struct SolverJsonHandler {
+    tx: mpsc::Sender<String>,
+    state: AppState,
+    user_id: String,
     ws_state: Arc<WebSocketState>,
-    solver_service: Arc<Mutex<SolverService>>,
 }
 
 impl SolverJsonHandler {
-    pub fn new(ws_state: Arc<WebSocketState>, solver_service: Arc<Mutex<SolverService>>) -> Self {
+    pub fn new(tx: mpsc::Sender<String>, state: AppState, user_id: String, ws_state: Arc<WebSocketState>) -> Self {
         Self {
+            tx,
+            state,
+            user_id,
             ws_state,
-            solver_service,
         }
     }
 
     pub async fn handle_message(
-        &self,
-        message: SolverJsonMessage,
-        ws_state: Arc<WebSocketState>,
-        conn_id: String,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        match message {
-            SolverJsonMessage::SolveDemoRepo { .. } => {
-                info!("Starting demo repo solver process");
-                let tx = ws_state.get_tx(&conn_id).await?;
-                let unbounded_tx = create_unbounded_sender(tx).await;
-                let mut solver = self.solver_service.lock().await;
-                if let Err(e) = solver.solve_demo_repo(unbounded_tx).await {
-                    error!("Error in demo repo solver process: {}", e);
-                    ws_state
-                        .send_to(
-                            &conn_id,
-                            &serde_json::to_string(&SolverJsonMessage::Error {
-                                message: format!("Error in demo repo solver process: {}", e),
-                                timestamp: Utc::now().to_rfc3339(),
-                            })?,
-                        )
-                        .await?;
-                }
+        &mut self,
+        msg: SolverMessage,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        match msg {
+            SolverMessage::Subscribe { scope, .. } => {
+                info!("Processing solver subscribe message for scope: {}", scope);
+                let response = SolverResponse::Subscribed { scope };
+                let msg = serde_json::to_string(&response)?;
+                self.tx.send(msg).await?;
             }
-            SolverJsonMessage::SolveRepo {
-                repository,
-                issue_number,
-                ..
+            SolverMessage::ApproveChange {
+                solver_id,
+                change_id,
             } => {
                 info!(
-                    "Starting repo solver process for {}, issue #{}",
-                    repository, issue_number
+                    "Processing approve change: solver={}, change={}",
+                    solver_id, change_id
                 );
-                let tx = ws_state.get_tx(&conn_id).await?;
-                let unbounded_tx = create_unbounded_sender(tx).await;
-                let mut solver = self.solver_service.lock().await;
-                if let Err(e) = solver
-                    .solve_repo(unbounded_tx, repository, issue_number)
-                    .await
-                {
-                    error!("Error in repo solver process: {}", e);
-                    ws_state
-                        .send_to(
-                            &conn_id,
-                            &serde_json::to_string(&SolverJsonMessage::Error {
-                                message: format!("Error in repo solver process: {}", e),
-                                timestamp: Utc::now().to_rfc3339(),
-                            })?,
-                        )
-                        .await?;
+
+                // Get solver service
+                let solver_service = self.state.solver_service.clone();
+
+                // Approve change
+                solver_service.approve_change(solver_id, change_id).await?;
+
+                // Send response
+                let response = SolverResponse::ChangeApplied {
+                    solver_id,
+                    change_id,
+                };
+                let msg = serde_json::to_string(&response)?;
+                self.tx.send(msg).await?;
+
+                // Check if all changes are reviewed
+                if solver_service.check_all_changes_reviewed(solver_id).await? {
+                    // Send state update
+                    let response = SolverResponse::StateUpdate {
+                        solver_id,
+                        state: "completed".to_string(),
+                    };
+                    let msg = serde_json::to_string(&response)?;
+                    self.tx.send(msg).await?;
                 }
             }
-            _ => {
-                error!("Unknown solver message type: {:?}", message);
+            SolverMessage::RejectChange {
+                solver_id,
+                change_id,
+            } => {
+                info!(
+                    "Processing reject change: solver={}, change={}",
+                    solver_id, change_id
+                );
+
+                // Get solver service
+                let solver_service = self.state.solver_service.clone();
+
+                // Reject change
+                solver_service.reject_change(solver_id, change_id).await?;
+
+                // Send response
+                let response = SolverResponse::StateUpdate {
+                    solver_id,
+                    state: "changes_needed".to_string(),
+                };
+                let msg = serde_json::to_string(&response)?;
+                self.tx.send(msg).await?;
             }
         }
+
         Ok(())
     }
 
     pub async fn emit_state_update(
         &self,
         conn_id: &str,
-        status: SolverJsonStatus,
-        current_file: Option<String>,
-        progress: Option<f32>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.handle_message(
-            SolverJsonMessage::StateUpdate {
-                status,
-                current_file,
-                progress,
-                timestamp: Utc::now().to_rfc3339(),
-            },
-            self.ws_state.clone(),
-            conn_id.to_string(),
-        )
-        .await
+        solver_id: Uuid,
+        state: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let response = SolverResponse::StateUpdate {
+            solver_id,
+            state: state.to_string(),
+        };
+        let msg = serde_json::to_string(&response)?;
+        self.ws_state.send_to(conn_id, &msg).await?;
+        Ok(())
     }
 
     pub async fn emit_file_analysis(
         &self,
         conn_id: &str,
-        file_path: String,
-        analysis: String,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.handle_message(
-            SolverJsonMessage::FileAnalysis {
-                file_path,
-                analysis,
-                timestamp: Utc::now().to_rfc3339(),
-            },
-            self.ws_state.clone(),
-            conn_id.to_string(),
-        )
-        .await
+        solver_id: Uuid,
+        analysis: FileAnalysis,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let response = SolverResponse::FileAnalysis {
+            solver_id,
+            analysis,
+        };
+        let msg = serde_json::to_string(&response)?;
+        self.ws_state.send_to(conn_id, &msg).await?;
+        Ok(())
     }
 
     pub async fn emit_change_generated(
         &self,
         conn_id: &str,
-        file_path: String,
-        search: String,
-        replace: String,
-        description: String,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let change = CodeJsonChange {
-            id: Uuid::new_v4().to_string(),
-            search,
-            replace,
-            description,
+        solver_id: Uuid,
+        change: SolverChange,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let response = SolverResponse::ChangeGenerated {
+            solver_id,
+            change,
         };
-
-        self.handle_message(
-            SolverJsonMessage::ChangeGenerated {
-                file_path,
-                changes: vec![change],
-                timestamp: Utc::now().to_rfc3339(),
-            },
-            self.ws_state.clone(),
-            conn_id.to_string(),
-        )
-        .await
+        let msg = serde_json::to_string(&response)?;
+        self.ws_state.send_to(conn_id, &msg).await?;
+        Ok(())
     }
 
     pub async fn emit_change_applied(
         &self,
         conn_id: &str,
-        file_path: String,
-        success: bool,
-        error: Option<String>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.handle_message(
-            SolverJsonMessage::ChangeApplied {
-                file_path,
-                success,
-                error,
-                timestamp: Utc::now().to_rfc3339(),
-            },
-            self.ws_state.clone(),
-            conn_id.to_string(),
-        )
-        .await
+        solver_id: Uuid,
+        change_id: Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let response = SolverResponse::ChangeApplied {
+            solver_id,
+            change_id,
+        };
+        let msg = serde_json::to_string(&response)?;
+        self.ws_state.send_to(conn_id, &msg).await?;
+        Ok(())
     }
 
     pub async fn emit_error(
         &self,
         conn_id: &str,
-        message: String,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        self.handle_message(
-            SolverJsonMessage::Error {
-                message,
-                timestamp: Utc::now().to_rfc3339(),
-            },
-            self.ws_state.clone(),
-            conn_id.to_string(),
-        )
-        .await
+        error: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let response = SolverResponse::Error {
+            message: error.to_string(),
+        };
+        let msg = serde_json::to_string(&response)?;
+        self.ws_state.send_to(conn_id, &msg).await?;
+        Ok(())
     }
 }
 
-#[async_trait]
-impl MessageHandler for SolverJsonHandler {
-    type Message = SolverJsonMessage;
-
-    async fn handle_message(
-        &self,
-        msg: Self::Message,
-        conn_id: String,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Handling solver JSON message: {:?}", msg);
-        self.handle_message(msg, self.ws_state.clone(), conn_id)
-            .await
-    }
-
-    async fn broadcast(&self, msg: Self::Message) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let json = serde_json::to_string(&msg)?;
-        self.ws_state.broadcast(&json).await
-    }
-}
-
-async fn create_unbounded_sender(tx: Sender<String>) -> UnboundedSender<Message> {
-    let (unbounded_tx, mut unbounded_rx) = tokio::sync::mpsc::unbounded_channel();
-
-    tokio::spawn(async move {
-        while let Some(msg) = unbounded_rx.recv().await {
-            if let Message::Text(text) = msg {
-                if tx.send(text).await.is_err() {
-                    break;
-                }
-            }
-        }
-    });
-
-    unbounded_tx
+pub async fn create_unbounded_sender() -> mpsc::UnboundedSender<String> {
+    let (tx, _rx) = mpsc::unbounded_channel();
+    tx
 }
