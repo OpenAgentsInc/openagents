@@ -11,6 +11,7 @@ const INITIAL_STATE = {
 interface AgentSyncOptions {
   scope: string;
   conversationId?: string;
+  useReasoning?: boolean;
 }
 
 interface StreamingState {
@@ -18,7 +19,7 @@ interface StreamingState {
   reasoning: string;
 }
 
-export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
+export function useAgentSync({ scope, conversationId, useReasoning = false }: AgentSyncOptions) {
   const { addMessage, setMessages, removeMessages } = useMessagesStore();
   const [isStreaming, setIsStreaming] = useState(false);
   const streamingStateRef = useRef<StreamingState>({ content: "", reasoning: "" });
@@ -56,6 +57,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
         conversation_id: conversationId,
         message,
         repos,
+        use_reasoning: useReasoning,
       });
 
       try {
@@ -82,6 +84,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
             conversation_id: conversationId,
             message,
             repos,
+            use_reasoning: useReasoning,
             stream: true,
           }),
         });
@@ -167,6 +170,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
       message,
       repos: repos || [],
       scope,
+      use_reasoning: useReasoning,
     });
 
     try {
@@ -184,6 +188,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
           message,
           repos: repos || [],
           scope,
+          use_reasoning: useReasoning,
           stream: true,
         }),
       });
