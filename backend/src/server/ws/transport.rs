@@ -82,18 +82,6 @@ impl WebSocketState {
         info!("Total active connections: {}", count);
         Ok(())
     }
-
-    pub async fn get_tx(
-        &self,
-        conn_id: &str,
-    ) -> Result<WebSocketSender, Box<dyn std::error::Error + Send + Sync>> {
-        debug!("Getting sender for connection: {}", conn_id);
-        if let Some(tx) = self.connections.read().await.get(conn_id) {
-            Ok(tx.clone())
-        } else {
-            Err("Connection not found".into())
-        }
-    }
 }
 
 pub struct WebSocketTransport {
@@ -125,7 +113,7 @@ impl WebSocketTransport {
             .add_connection(conn_id.clone(), tx.clone())
             .await?;
 
-        let processor = MessageProcessor::new(self.app_state.clone(), user_id.clone(), self.state.clone());
+        let processor = MessageProcessor::new(self.app_state.clone(), user_id.clone());
         info!("Created message processor for user: {}", user_id);
 
         // Clone connection ID for each task
@@ -187,12 +175,11 @@ impl WebSocketTransport {
 pub struct MessageProcessor {
     app_state: AppState,
     user_id: String,
-    ws_state: Arc<WebSocketState>,
 }
 
 impl MessageProcessor {
-    pub fn new(app_state: AppState, user_id: String, ws_state: Arc<WebSocketState>) -> Self {
-        Self { app_state, user_id, ws_state }
+    pub fn new(app_state: AppState, user_id: String) -> Self {
+        Self { app_state, user_id }
     }
 
     pub async fn process_message(
