@@ -1,12 +1,12 @@
+use anyhow::{Context, Result};
 use reqwest::{Client, ClientBuilder};
-use std::time::Duration;
-use anyhow::{Result, Context};
 use std::pin::Pin;
+use std::time::Duration;
 use tokio_stream::Stream;
 
-use crate::server::services::gateway::{Gateway, types::GatewayMetadata};
-use super::types::ChatCompletion;
 use super::error::GroqError;
+use super::types::ChatCompletion;
+use crate::server::services::gateway::{types::GatewayMetadata, Gateway};
 
 #[derive(Debug, Clone)]
 pub struct GroqService {
@@ -52,10 +52,7 @@ impl Gateway for GroqService {
         GatewayMetadata {
             name: "Groq".to_string(),
             openai_compatible: true,
-            supported_features: vec![
-                "chat".to_string(),
-                "streaming".to_string(),
-            ],
+            supported_features: vec!["chat".to_string(), "streaming".to_string()],
             default_model: "mixtral-8x7b-32768".to_string(),
             available_models: vec![
                 "llama-3.1-8b-instant".to_string(),
@@ -66,7 +63,8 @@ impl Gateway for GroqService {
     }
 
     async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
@@ -87,12 +85,18 @@ impl Gateway for GroqService {
             return Err(GroqError::RequestFailed(error).into());
         }
 
-        let completion: ChatCompletion = response.json().await
+        let completion: ChatCompletion = response
+            .json()
+            .await
             .context("Failed to parse Groq API response")?;
 
-        let content = completion.choices.first()
+        let content = completion
+            .choices
+            .first()
             .ok_or_else(|| GroqError::ParseError("No choices in response".to_string()))?
-            .message.content.clone();
+            .message
+            .content
+            .clone();
 
         Ok((content, None))
     }

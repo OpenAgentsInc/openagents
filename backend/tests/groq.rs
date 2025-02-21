@@ -1,5 +1,5 @@
-use openagents::server::services::groq::GroqService;
 use openagents::server::services::gateway::Gateway;
+use openagents::server::services::groq::GroqService;
 
 #[tokio::test]
 async fn test_groq_metadata() {
@@ -8,7 +8,9 @@ async fn test_groq_metadata() {
     assert_eq!(metadata.name, "Groq");
     assert!(metadata.openai_compatible);
     assert!(metadata.supported_features.contains(&"chat".to_string()));
-    assert!(metadata.supported_features.contains(&"streaming".to_string()));
+    assert!(metadata
+        .supported_features
+        .contains(&"streaming".to_string()));
 }
 
 #[tokio::test]
@@ -16,12 +18,9 @@ async fn test_groq_chat() {
     dotenvy::dotenv().ok();
     let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY must be set");
     let service = GroqService::new(api_key);
-    
-    let (response, _) = service
-        .chat("Say hello".to_string(), false)
-        .await
-        .unwrap();
-    
+
+    let (response, _) = service.chat("Say hello".to_string(), false).await.unwrap();
+
     assert!(!response.is_empty());
 }
 
