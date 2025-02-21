@@ -17,7 +17,10 @@ async fn test_groq_metadata() {
 async fn test_groq_chat() {
     dotenvy::dotenv().ok();
     let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY must be set");
-    let service = GroqService::new(api_key);
+    let mut service = GroqService::new(api_key);
+
+    // Override default model for tests
+    service.set_model("deepseek-r1-distill-qwen-32b".to_string());
 
     // Test without reasoning
     let (response, reasoning) = service.chat("Say hello".to_string(), false).await.unwrap();
@@ -35,7 +38,10 @@ async fn test_groq_chat() {
 async fn test_groq_chat_stream() {
     dotenvy::dotenv().ok();
     let api_key = std::env::var("GROQ_API_KEY").expect("GROQ_API_KEY must be set");
-    let service = GroqService::new(api_key);
+    let mut service = GroqService::new(api_key);
+
+    // Override default model for tests
+    service.set_model("deepseek-r1-distill-qwen-32b".to_string());
 
     // Test streaming without reasoning
     let mut stream = service
