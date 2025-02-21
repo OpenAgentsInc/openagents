@@ -35,6 +35,7 @@ export default function ChatSession() {
   const { sendMessage, state } = useAgentSync({
     scope: "chat",
     conversationId: id,
+    useReasoning: true, // Enable reasoning by default
   });
 
   // Load messages when component mounts
