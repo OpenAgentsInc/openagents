@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react"
-import { v4 as uuid } from "uuid"
-import { useMessagesStore } from "~/stores/messages"
+import { useEffect, useRef, useState } from "react";
+import { v4 as uuid } from "uuid";
+import { useMessagesStore } from "~/stores/messages";
 
 const INITIAL_STATE = {
   isOnline: true,
@@ -19,10 +19,17 @@ interface StreamingState {
   reasoning: string;
 }
 
-export function useAgentSync({ scope, conversationId, useReasoning = false }: AgentSyncOptions) {
+export function useAgentSync({
+  scope,
+  conversationId,
+  useReasoning = false,
+}: AgentSyncOptions) {
   const { addMessage, setMessages, removeMessages } = useMessagesStore();
   const [isStreaming, setIsStreaming] = useState(false);
-  const streamingStateRef = useRef<StreamingState>({ content: "", reasoning: "" });
+  const streamingStateRef = useRef<StreamingState>({
+    content: "",
+    reasoning: "",
+  });
 
   const handleOnline = () => {
     // TODO: Implement online handler
@@ -251,7 +258,8 @@ export function useAgentSync({ scope, conversationId, useReasoning = false }: Ag
                 removeMessages(chatId);
 
                 // Add messages under real ID
-                if (conversationId) {  // Add type guard
+                if (conversationId) {
+                  // Add type guard
                   addMessage(conversationId, {
                     id: userMessageId,
                     role: "user",
@@ -276,7 +284,7 @@ export function useAgentSync({ scope, conversationId, useReasoning = false }: Ag
               if (reasoning) processStreamChunk(`Reasoning: ${reasoning}`);
 
               // Update message with current state under the correct ID
-              const targetId = conversationId || chatId;  // chatId is always defined as fallback
+              const targetId = conversationId || chatId; // chatId is always defined as fallback
               addMessage(targetId, {
                 id: chatId,
                 role: "assistant",

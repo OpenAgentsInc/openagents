@@ -68,7 +68,7 @@ impl GroqService {
 
         // Add reasoning_format if using a model that supports it
         if self.model.starts_with("deepseek-r1") {
-            request["reasoning_format"] = 
+            request["reasoning_format"] =
                 serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
         }
 
@@ -117,7 +117,7 @@ impl GroqService {
 
         // Add reasoning_format if using a model that supports it
         if self.model.starts_with("deepseek-r1") {
-            request["reasoning_format"] = 
+            request["reasoning_format"] =
                 serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
         }
 

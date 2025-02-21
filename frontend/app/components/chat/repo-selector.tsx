@@ -1,10 +1,12 @@
-import { GitBranch, Github, Plus, Trash2 } from "lucide-react"
-import { memo, useState } from "react"
-import { Button } from "~/components/ui/button"
+import { GitBranch, Github, Plus, Trash2 } from "lucide-react";
+import { memo, useState } from "react";
+import { Button } from "~/components/ui/button";
 import {
-  Popover, PopoverContent, PopoverTrigger
-} from "~/components/ui/popover"
-import { cn } from "~/lib/utils"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "~/components/ui/popover";
+import { cn } from "~/lib/utils";
 
 interface Repo {
   owner: string;

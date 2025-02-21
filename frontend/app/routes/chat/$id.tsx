@@ -1,9 +1,9 @@
-import { useAgentSync } from "agentsync"
-import { useCallback, useEffect, useRef } from "react"
-import { useParams } from "react-router"
-import { ChatInput } from "~/components/chat/chat-input"
-import { Thinking } from "~/components/chat/thinking"
-import { useMessagesStore } from "~/stores/messages"
+import { useAgentSync } from "agentsync";
+import { useCallback, useEffect, useRef } from "react";
+import { useParams } from "react-router";
+import { ChatInput } from "~/components/chat/chat-input";
+import { Thinking } from "~/components/chat/thinking";
+import { useMessagesStore } from "~/stores/messages";
 
 import type { Message } from "~/stores/messages";
 
@@ -82,7 +82,7 @@ export default function ChatSession() {
                   {message.reasoning && (
                     <Thinking
                       state="finished"
-                      content={message.reasoning.split('\n')}
+                      content={message.reasoning.split("\n")}
                       defaultOpen={false}
                     />
                   )}

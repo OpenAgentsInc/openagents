@@ -9,8 +9,12 @@ async fn test_groq_metadata() {
     assert_eq!(metadata.name, "Groq");
     assert!(metadata.openai_compatible);
     assert!(metadata.supported_features.contains(&"chat".to_string()));
-    assert!(metadata.supported_features.contains(&"streaming".to_string()));
-    assert!(metadata.supported_features.contains(&"reasoning".to_string()));
+    assert!(metadata
+        .supported_features
+        .contains(&"streaming".to_string()));
+    assert!(metadata
+        .supported_features
+        .contains(&"reasoning".to_string()));
 }
 
 #[tokio::test]
@@ -28,7 +32,10 @@ async fn test_groq_chat() {
     assert!(reasoning.is_none());
 
     // Test with reasoning
-    let (response, reasoning) = service.chat("What is 2+2 and why?".to_string(), true).await.unwrap();
+    let (response, reasoning) = service
+        .chat("What is 2+2 and why?".to_string(), true)
+        .await
+        .unwrap();
     assert!(!response.is_empty());
     assert!(reasoning.is_some());
     assert!(!reasoning.unwrap().is_empty());
