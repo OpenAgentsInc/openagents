@@ -1,11 +1,12 @@
 use reqwest::{Client, ClientBuilder};
 use std::time::Duration;
-use anyhow::Result;
+use anyhow::{Result, Context};
 use std::pin::Pin;
 use tokio_stream::Stream;
 
 use crate::server::services::gateway::{Gateway, types::GatewayMetadata};
 use super::types::ChatCompletion;
+use super::error::GroqError;
 
 #[derive(Debug, Clone)]
 pub struct GroqService {
@@ -78,11 +79,20 @@ impl Gateway for GroqService {
                 "stream": false
             }))
             .send()
-            .await?;
+            .await
+            .context("Failed to send request to Groq API")?;
 
-        // Handle response and extract content
-        let completion: ChatCompletion = response.json().await?;
-        let content = completion.choices[0].message.content.clone();
+        if !response.status().is_success() {
+            let error = response.text().await?;
+            return Err(GroqError::RequestFailed(error).into());
+        }
+
+        let completion: ChatCompletion = response.json().await
+            .context("Failed to parse Groq API response")?;
+
+        let content = completion.choices.first()
+            .ok_or_else(|| GroqError::ParseError("No choices in response".to_string()))?
+            .message.content.clone();
 
         Ok((content, None))
     }
