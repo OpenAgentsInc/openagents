@@ -762,6 +762,8 @@ frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 │const INITIAL_STATE
 │const msg
 │const msg
+│const delay
+│const msgStr
 │const 
 │const 
 │const wsRef
