@@ -46,7 +46,7 @@ impl GroqService {
         }
     }
 
-    pub async fn chat_with_history(
+    async fn chat_with_history(
         &self,
         messages: Vec<Value>,
         use_reasoner: bool,
@@ -104,7 +104,7 @@ impl Gateway for GroqService {
     }
 
     async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
-        // Convert single message to messages array format
+        // Convert single prompt into messages format
         let messages = vec![serde_json::json!({
             "role": "user",
             "content": prompt
