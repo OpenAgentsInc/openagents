@@ -5,7 +5,6 @@ use super::services::{
     model_router::ModelRouter,
     oauth::{github::GitHubOAuth, scramble::ScrambleOAuth, OAuthConfig},
     openrouter::OpenRouterService,
-    solver::SolverService,
 };
 use super::tools::create_tools;
 use super::ws::transport::WebSocketState;
@@ -108,7 +107,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         };
 
     // Initialize services with proper configuration
-    let openrouter = OpenRouterService::new(
+    let _openrouter = OpenRouterService::new(
         env::var("OPENROUTER_API_KEY").expect("OPENROUTER_API_KEY must be set"),
     );
 
@@ -118,8 +117,6 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         ))
         .expect("Failed to create GitHub service"),
     );
-
-    let _solver_service = Arc::new(SolverService::new(pool.clone(), openrouter.clone()));
 
     let api_key = env::var("DEEPSEEK_API_KEY").expect("DEEPSEEK_API_KEY must be set");
     let base_url =
