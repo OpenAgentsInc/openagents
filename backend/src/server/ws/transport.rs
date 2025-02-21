@@ -108,10 +108,16 @@ impl WebSocketTransport {
         let conn_id = uuid::Uuid::new_v4().to_string();
         info!("Created connection ID: {}", conn_id);
 
-        // Add connection to state
-        self.state
-            .add_connection(conn_id.clone(), tx.clone())
-            .await?;
+        // Add connection to state with error handling
+        if let Err(e) = self.state.add_connection(conn_id.clone(), tx.clone()).await {
+            error!("Failed to add connection: {:?}", e);
+            // Send error to client before returning
+            let error_msg = serde_json::to_string(&ChatResponse::Error {
+                message: "Failed to initialize connection".to_string(),
+            })?;
+            tx.send(error_msg).await?;
+            return Err(e);
+        }
 
         let processor = MessageProcessor::new(self.app_state.clone(), user_id.clone());
         info!("Created message processor for user: {}", user_id);
@@ -120,6 +126,14 @@ impl WebSocketTransport {
         let receive_conn_id = conn_id.clone();
         let send_conn_id = conn_id.clone();
         let cleanup_conn_id = conn_id;
+        let cleanup_state = self.state.clone();
+
+        // Set up cleanup on error
+        let cleanup = move || async move {
+            if let Err(e) = cleanup_state.remove_connection(&cleanup_conn_id).await {
+                error!("Failed to clean up connection: {:?}", e);
+            }
+        };
 
         // Handle incoming messages
         let receive_handle = tokio::spawn(async move {
@@ -130,6 +144,14 @@ impl WebSocketTransport {
                         info!("Received message on {}: {}", receive_conn_id, text);
                         if let Err(e) = processor.process_message(text, &tx).await {
                             error!("Error processing message on {}: {:?}", receive_conn_id, e);
+                            // Send error to client
+                            let error_msg = serde_json::to_string(&ChatResponse::Error {
+                                message: format!("Message processing error: {}", e),
+                            }).unwrap_or_else(|e| format!("{{\"type\":\"Error\",\"message\":\"{}\"}}", e));
+                            if let Err(e) = tx.send(error_msg).await {
+                                error!("Failed to send error message: {:?}", e);
+                            }
+                            break;
                         }
                     }
                     Message::Close(_) => {
@@ -165,8 +187,7 @@ impl WebSocketTransport {
         }
 
         // Clean up
-        info!("Cleaning up connection: {}", cleanup_conn_id);
-        self.state.remove_connection(&cleanup_conn_id).await?;
+        cleanup().await;
 
         Ok(())
     }
@@ -231,6 +252,7 @@ impl MessageProcessor {
                     message: format!("Invalid message format: {}", e),
                 })?;
                 tx.send(error_msg).await?;
+                return Err(e.into());
             }
         }
         Ok(())
