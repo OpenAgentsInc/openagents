@@ -204,11 +204,11 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
       }
 
       const decoder = new TextDecoder();
-      const data = await response.json();
+      let conversationId: string | undefined;
 
-      // Add user message
+      // Add user message (we'll update the conversation ID once we get it)
       const userMessageId = uuid();
-      addMessage(data.id, {
+      addMessage(chatId, {
         id: userMessageId,
         role: "user",
         content: message,
@@ -216,7 +216,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
       });
 
       // Add initial empty AI message
-      addMessage(data.id, {
+      addMessage(chatId, {
         id: chatId,
         role: "assistant",
         content: "",
@@ -237,14 +237,34 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
 
             try {
               const parsed = JSON.parse(data);
-              const content = parsed.choices[0]?.delta?.content;
-              const reasoning = parsed.choices[0]?.delta?.reasoning;
+
+              // Check if this is the initial response with conversation ID
+              if (!conversationId && parsed.id) {
+                conversationId = parsed.id;
+                // Update message IDs with correct conversation ID
+                addMessage(conversationId, {
+                  id: userMessageId,
+                  role: "user",
+                  content: message,
+                  metadata: repos ? { repos } : undefined,
+                });
+                addMessage(conversationId, {
+                  id: chatId,
+                  role: "assistant",
+                  content: "",
+                  metadata: repos ? { repos } : undefined,
+                });
+                continue;
+              }
+
+              const content = parsed.choices?.[0]?.delta?.content;
+              const reasoning = parsed.choices?.[0]?.delta?.reasoning;
 
               if (content) processStreamChunk(content);
               if (reasoning) processStreamChunk(`Reasoning: ${reasoning}`);
 
               // Update message with current state
-              addMessage(chatId, {
+              addMessage(conversationId || chatId, {
                 id: chatId,
                 role: "assistant",
                 content: streamingStateRef.current.content,
