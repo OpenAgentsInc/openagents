@@ -1,5 +1,5 @@
 use axum::extract::ws::{Message, WebSocket};
-use futures::{SinkExt, StreamExt};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{error, info};
@@ -79,7 +79,7 @@ impl ChatHandler {
         Ok(())
     }
 
-    async fn handle_message(&mut self, msg: ChatMessage) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn handle_message(&mut self, msg: ChatMessage) -> Result<(), Box<dyn std::error::Error>> {
         match msg {
             ChatMessage::Subscribe { scope, .. } => {
                 self.broadcast(ChatResponse::Subscribed {
@@ -120,7 +120,7 @@ impl ChatHandler {
                 };
 
                 // Create user message
-                let user_message = chat_db
+                let _user_message = chat_db
                     .create_message(&CreateMessageRequest {
                         conversation_id: conversation.id,
                         user_id: self.user_id.clone(),
@@ -174,18 +174,18 @@ impl ChatHandler {
                 while let Some(update) = stream.next().await {
                     match update {
                         Ok(delta) => {
-                            if let Some(c) = &delta.content {
-                                content.push_str(c);
+                            if let Some(c) = delta.content {
+                                content.push_str(&c);
                             }
-                            if let Some(r) = &delta.reasoning {
-                                reasoning.push_str(r);
+                            if let Some(r) = delta.reasoning {
+                                reasoning.push_str(&r);
                             }
 
                             self.broadcast(ChatResponse::Update {
                                 message_id: id,
                                 delta: ChatDelta {
-                                    content: delta.content,
-                                    reasoning: delta.reasoning,
+                                    content: Some(content.clone()),
+                                    reasoning: Some(reasoning.clone()),
                                 },
                             })
                             .await?;
@@ -202,7 +202,7 @@ impl ChatHandler {
                 }
 
                 // Save final message
-                let ai_message = chat_db
+                let _ai_message = chat_db
                     .create_message(&CreateMessageRequest {
                         conversation_id: conversation.id,
                         user_id: self.user_id.clone(),
