@@ -198,6 +198,12 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
         throw new Error(`Failed to start chat: ${errorText}`);
       }
 
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Failed to get response reader");
+      }
+
+      const decoder = new TextDecoder();
       const data = await response.json();
 
       // Add user message
@@ -209,16 +215,55 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
         metadata: repos ? { repos } : undefined,
       });
 
-      // Add AI response
+      // Add initial empty AI message
       addMessage(data.id, {
         id: chatId,
         role: "assistant",
-        content: data.initial_message,
+        content: "",
         metadata: repos ? { repos } : undefined,
       });
 
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices[0]?.delta?.content;
+              const reasoning = parsed.choices[0]?.delta?.reasoning;
+
+              if (content) processStreamChunk(content);
+              if (reasoning) processStreamChunk(`Reasoning: ${reasoning}`);
+
+              // Update message with current state
+              addMessage(chatId, {
+                id: chatId,
+                role: "assistant",
+                content: streamingStateRef.current.content,
+                reasoning: streamingStateRef.current.reasoning || undefined,
+                metadata: repos ? { repos } : undefined,
+              });
+            } catch (e) {
+              console.error("Failed to parse chunk:", e);
+            }
+          }
+        }
+      }
+
       setIsStreaming(false);
-      return data;
+      return {
+        id: chatId,
+        message: streamingStateRef.current.content,
+        reasoning: streamingStateRef.current.reasoning,
+      };
     } catch (error) {
       console.error("Error starting new chat:", error);
       setIsStreaming(false);
