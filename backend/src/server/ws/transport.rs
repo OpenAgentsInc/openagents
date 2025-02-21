@@ -21,10 +21,7 @@ pub struct WebSocketState {
 }
 
 impl WebSocketState {
-    pub fn new(
-        github_service: Arc<GitHubService>,
-        model_router: Arc<ModelRouter>,
-    ) -> Self {
+    pub fn new(github_service: Arc<GitHubService>, model_router: Arc<ModelRouter>) -> Self {
         Self {
             connections: Arc::new(RwLock::new(HashMap::new())),
             github_service,
@@ -32,14 +29,21 @@ impl WebSocketState {
         }
     }
 
-    pub async fn send_to(&self, conn_id: &str, msg: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn send_to(
+        &self,
+        conn_id: &str,
+        msg: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if let Some(tx) = self.connections.read().await.get(conn_id) {
             tx.send(msg.to_string()).await?;
         }
         Ok(())
     }
 
-    pub async fn broadcast(&self, msg: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn broadcast(
+        &self,
+        msg: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for tx in self.connections.read().await.values() {
             tx.send(msg.to_string()).await?;
         }
@@ -55,9 +59,23 @@ impl WebSocketState {
         Ok(())
     }
 
-    pub async fn remove_connection(&self, conn_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn remove_connection(
+        &self,
+        conn_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.connections.write().await.remove(conn_id);
         Ok(())
+    }
+
+    pub async fn get_tx(
+        &self,
+        conn_id: &str,
+    ) -> Result<WebSocketSender, Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(tx) = self.connections.read().await.get(conn_id) {
+            Ok(tx.clone())
+        } else {
+            Err("Connection not found".into())
+        }
     }
 }
 

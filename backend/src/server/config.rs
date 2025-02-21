@@ -2,6 +2,7 @@ use super::services::{
     deepseek::DeepSeekService,
     github_issue::GitHubService,
     groq::GroqService,
+    model_router::ModelRouter,
     oauth::{github::GitHubOAuth, scramble::ScrambleOAuth, OAuthConfig},
     openrouter::OpenRouterService,
     solver::SolverService,
@@ -138,13 +139,9 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
 
     let tools = create_tools();
 
-    let ws_state = Arc::new(WebSocketState::new(
-        tool_model,
-        chat_model,
-        github_service.clone(),
-        solver_service.clone(),
-        tools,
-    ));
+    let model_router = Arc::new(ModelRouter::new(tool_model, chat_model, tools));
+
+    let ws_state = Arc::new(WebSocketState::new(github_service.clone(), model_router));
 
     // Use provided config or default
     let config = config.unwrap_or_default();

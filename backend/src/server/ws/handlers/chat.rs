@@ -65,7 +65,10 @@ impl ChatHandler {
         Self { ws, state, user_id }
     }
 
-    pub async fn process_message(&mut self, msg: Message) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn process_message(
+        &mut self,
+        msg: Message,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match msg {
             Message::Text(text) => {
                 let chat_msg: ChatMessage = serde_json::from_str(&text)?;
@@ -79,7 +82,10 @@ impl ChatHandler {
         Ok(())
     }
 
-    pub async fn handle_message(&mut self, msg: ChatMessage) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn handle_message(
+        &mut self,
+        msg: ChatMessage,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match msg {
             ChatMessage::Subscribe { scope, .. } => {
                 self.broadcast(ChatResponse::Subscribed {
@@ -174,6 +180,7 @@ impl ChatHandler {
                 while let Some(update) = stream.next().await {
                     match update {
                         Ok(delta) => {
+                            let delta: ChatDelta = serde_json::from_str(&delta)?;
                             if let Some(c) = delta.content {
                                 content.push_str(&c);
                             }
@@ -230,7 +237,10 @@ impl ChatHandler {
         Ok(())
     }
 
-    async fn broadcast(&mut self, response: ChatResponse) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn broadcast(
+        &mut self,
+        response: ChatResponse,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let msg = serde_json::to_string(&response)?;
         self.ws.send(Message::Text(msg)).await?;
         Ok(())
