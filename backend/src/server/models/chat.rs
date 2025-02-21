@@ -19,6 +19,7 @@ pub struct Message {
     pub user_id: String,
     pub role: String,
     pub content: String,
+    pub reasoning: Option<String>,
     pub created_at: Option<Timestamp>,
     pub metadata: Option<Value>,
     pub tool_calls: Option<Value>,
@@ -37,6 +38,7 @@ pub struct CreateMessageRequest {
     pub user_id: String,
     pub role: String,
     pub content: String,
+    pub reasoning: Option<String>,
     pub metadata: Option<Value>,
     pub tool_calls: Option<Value>,
 }
@@ -59,6 +61,7 @@ impl Message {
         user_id: String,
         role: String,
         content: String,
+        reasoning: Option<String>,
         metadata: Option<Value>,
         tool_calls: Option<Value>,
     ) -> Self {
@@ -68,6 +71,7 @@ impl Message {
             user_id,
             role,
             content,
+            reasoning,
             created_at: Some(Timestamp::now()),
             metadata,
             tool_calls,
