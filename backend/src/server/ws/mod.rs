@@ -3,7 +3,7 @@ use axum::{
     response::Response,
 };
 use std::sync::Arc;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::server::config::AppState;
 
@@ -14,17 +14,13 @@ pub mod types;
 use transport::WebSocketTransport;
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
+    info!("WebSocket upgrade request received");
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
-    let transport = WebSocketTransport::new(
-        Arc::new(transport::WebSocketState::new(
-            Arc::new((*state.ws_state.github_service).clone()),
-            Arc::new((*state.ws_state.model_router).clone()),
-        )),
-        state,
-    );
+    // Create transport with existing ws_state
+    let transport = WebSocketTransport::new(state.ws_state.clone(), state);
 
     if let Err(e) = transport
         .handle_socket(socket, "anonymous".to_string())
