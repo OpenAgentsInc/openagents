@@ -40,6 +40,7 @@ async fn test_chat_persistence() {
     // Test conversation creation
     info!("Testing conversation creation...");
     let create_conv_req = CreateConversationRequest {
+        id: None,
         user_id: "test_user_1".to_string(),
         title: Some("Test Conversation".to_string()),
     };
@@ -72,6 +73,7 @@ async fn test_chat_persistence() {
             user_id: conversation.user_id.clone(),
             role: "user".to_string(),
             content: "Hello!".to_string(),
+            reasoning: None,
             metadata: None,
             tool_calls: None,
         },
@@ -80,6 +82,7 @@ async fn test_chat_persistence() {
             user_id: conversation.user_id.clone(),
             role: "assistant".to_string(),
             content: "Hi there!".to_string(),
+            reasoning: None,
             metadata: Some(json!({ "response_type": "greeting" })),
             tool_calls: Some(json!([{
                 "name": "test_tool",
