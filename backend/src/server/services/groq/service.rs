@@ -1,11 +1,12 @@
-use anyhow::Result;
 use reqwest::{Client, ClientBuilder};
-use std::pin::Pin;
 use std::time::Duration;
+use anyhow::Result;
+use std::pin::Pin;
 use tokio_stream::Stream;
 
 use crate::server::services::gateway::{Gateway, GatewayMetadata};
-use super::{GroqConfig, GroqError};
+use super::config::GroqConfig;
+use super::types::{ChatCompletion, Message};
 
 #[derive(Debug, Clone)]
 pub struct GroqService {
@@ -31,18 +32,15 @@ impl GroqService {
         }
     }
 
-    pub fn with_config(config: GroqConfig) -> Self {
+    pub fn with_base_url(api_key: String, base_url: String) -> Self {
         let client = ClientBuilder::new()
-            .timeout(Duration::from_secs(config.timeout_secs.unwrap_or(180)))
+            .timeout(Duration::from_secs(180)) // 3 minutes timeout
             .build()
             .expect("Failed to create HTTP client");
 
-        let base_url = config.base_url
-            .unwrap_or_else(|| "https://api.groq.com/v1".to_string());
-
         Self {
             client,
-            api_key: config.api_key,
+            api_key,
             base_url,
         }
     }
@@ -83,16 +81,9 @@ impl Gateway for GroqService {
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            let error = response.text().await?;
-            return Err(GroqError::RequestFailed(error).into());
-        }
-
-        let json: serde_json::Value = response.json().await?;
-        let content = json["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| GroqError::ParseError("Failed to parse response content".to_string()))?
-            .to_string();
+        // Handle response and extract content
+        let completion: ChatCompletion = response.json().await?;
+        let content = completion.choices[0].message.content.clone();
 
         Ok((content, None))
     }
@@ -103,6 +94,6 @@ impl Gateway for GroqService {
         use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
         // TODO: Implement streaming using SSE
-        todo!("Implement streaming support")
+        todo!("Implement streaming")
     }
 }
