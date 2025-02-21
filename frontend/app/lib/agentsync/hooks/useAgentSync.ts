@@ -83,6 +83,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
           id: data.id,
           role: "assistant",
           content: data.message,
+          reasoning: data.reasoning, // Add reasoning
           metadata: repos ? { repos } : undefined,
         });
 
@@ -143,6 +144,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
         id: chatId,
         role: "assistant",
         content: data.initial_message,
+        reasoning: data.reasoning, // Add reasoning
         metadata: repos ? { repos } : undefined,
       });
 
