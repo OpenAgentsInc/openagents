@@ -109,7 +109,7 @@ export default function ChatSession() {
       </div>
 
       <div className="p-4">
-        <ChatInput onSubmit={handleSubmit} disabled={state.isStreaming} />
+        <ChatInput onSubmit={handleSubmit} />
         {!state.isOnline && (
           <div className="mt-2 text-sm text-red-500">
             You are currently offline. Messages will be queued.
