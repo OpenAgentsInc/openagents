@@ -69,10 +69,19 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
         const data = await response.json();
         console.log("Follow-up message response:", data);
 
-        // Store the message
+        // Store the user message
+        const userMessageId = uuid();
+        addMessage(conversationId, {
+          id: userMessageId,
+          role: "user",
+          content: message, // Use the original message
+          metadata: repos ? { repos } : undefined,
+        });
+
+        // Store the AI response
         addMessage(conversationId, {
           id: data.id,
-          role: "user",
+          role: "assistant",
           content: data.message,
           metadata: repos ? { repos } : undefined,
         });
@@ -121,9 +130,18 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
       console.log("New chat response:", data);
 
       // Store first message
+      const userMessageId = uuid();
+      addMessage(data.id, {
+        id: userMessageId,
+        role: "user",
+        content: message, // Use the original message
+        metadata: repos ? { repos } : undefined,
+      });
+
+      // Store AI response
       addMessage(data.id, {
         id: chatId,
-        role: "user",
+        role: "assistant",
         content: data.initial_message,
         metadata: repos ? { repos } : undefined,
       });

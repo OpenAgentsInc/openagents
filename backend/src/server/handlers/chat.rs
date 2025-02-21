@@ -81,7 +81,7 @@ pub async fn start_repo_chat(
     info!("Created conversation with id: {}", conversation.id);
 
     // Create initial message with repos metadata
-    let message = chat_db
+    let _message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: conversation.id,
             user_id: user_id.clone(),
@@ -101,11 +101,53 @@ pub async fn start_repo_chat(
             )
         })?;
 
-    info!("Created message with id: {}", message.id);
+    info!("Created message with id: {}", _message.id);
+
+    // Convert message to Groq format
+    let messages = vec![json!({
+        "role": "user",
+        "content": request.message
+    })];
+
+    // Get Groq response
+    let (ai_response, _) = state
+        .groq
+        .chat_with_history(messages, false)
+        .await
+        .map_err(|e| {
+            error!("Failed to get Groq response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get AI response: {}", e),
+            )
+        })?;
+
+    // Save AI response
+    let ai_message = chat_db
+        .create_message(&CreateMessageRequest {
+            conversation_id: conversation.id,
+            user_id: user_id.clone(),
+            role: "assistant".to_string(),
+            content: ai_response,
+            metadata: Some(json!({
+                "repos": request.repos
+            })),
+            tool_calls: None,
+        })
+        .await
+        .map_err(|e| {
+            error!("Failed to save AI response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to save AI response: {}", e),
+            )
+        })?;
+
+    info!("Created AI message with id: {}", ai_message.id);
 
     Ok(Json(StartChatResponse {
         id: conversation.id.to_string(),
-        initial_message: message.content,
+        initial_message: _message.content,
     }))
 }
 
@@ -128,51 +170,27 @@ pub async fn send_message(
             "No session found. Please log in.".to_string(),
         ));
     };
-    info!("Using user_id: {}", user_id);
 
-    // If no repos provided in the request, try to get them from the conversation's first message
-    let metadata = if let Some(repos) = request.repos {
-        info!("Using repos from request: {:?}", repos);
-        Some(json!({ "repos": repos }))
-    } else {
-        // Get the first message of the conversation to find the repos
-        let messages = chat_db
-            .get_conversation_messages(request.conversation_id)
-            .await
-            .map_err(|e| {
-                error!("Failed to fetch conversation messages: {:?}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to fetch conversation messages: {}", e),
-                )
-            })?;
+    // Get conversation history
+    let messages = chat_db
+        .get_conversation_messages(request.conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get conversation history: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get conversation history: {}", e),
+            )
+        })?;
 
-        // Find the first message with repos metadata
-        let first_message_repos = messages.iter().find_map(|msg| {
-            msg.metadata.as_ref().and_then(|meta| {
-                meta.get("repos")
-                    .and_then(|repos| repos.as_array())
-                    .map(|repos| repos.to_owned())
-            })
-        });
-
-        if let Some(repos) = first_message_repos {
-            info!("Using repos from first message: {:?}", repos);
-            Some(json!({ "repos": repos }))
-        } else {
-            info!("No repos found in request or first message");
-            None
-        }
-    };
-
-    // Create message
-    let message = chat_db
+    // Create user message
+    let _message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
             user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
-            metadata,
+            metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
             tool_calls: None,
         })
         .await
@@ -184,11 +202,58 @@ pub async fn send_message(
             )
         })?;
 
-    info!("Created message with id: {}", message.id);
+    // Convert messages to Groq format
+    let mut chat_messages: Vec<serde_json::Value> = messages
+        .iter()
+        .map(|msg| {
+            json!({
+                "role": msg.role,
+                "content": msg.content
+            })
+        })
+        .collect();
+
+    // Add current message
+    chat_messages.push(json!({
+        "role": "user",
+        "content": request.message
+    }));
+
+    // Get AI response with full history
+    let (ai_response, _) = state
+        .groq
+        .chat_with_history(chat_messages, false)
+        .await
+        .map_err(|e| {
+            error!("Failed to get Groq response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get AI response: {}", e),
+            )
+        })?;
+
+    // Save AI response
+    let ai_message = chat_db
+        .create_message(&CreateMessageRequest {
+            conversation_id: request.conversation_id,
+            user_id,
+            role: "assistant".to_string(),
+            content: ai_response.clone(),
+            metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
+            tool_calls: None,
+        })
+        .await
+        .map_err(|e| {
+            error!("Failed to save AI response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to save AI response: {}", e),
+            )
+        })?;
 
     Ok(Json(SendMessageResponse {
-        id: message.id.to_string(),
-        message: message.content,
+        id: ai_message.id.to_string(),
+        message: ai_response,
     }))
 }
 
@@ -197,7 +262,8 @@ pub async fn get_conversation_messages(
     State(state): State<AppState>,
     Path(conversation_id): Path<Uuid>,
 ) -> Result<Json<Vec<Message>>, (StatusCode, String)> {
-    info!("Fetching messages for conversation: {}", conversation_id);
+    // Create chat database service
+    let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get user info from session
     let user_id = if let Some(session_cookie) = cookies.get(SESSION_COOKIE_NAME) {
@@ -208,24 +274,28 @@ pub async fn get_conversation_messages(
             "No session found. Please log in.".to_string(),
         ));
     };
-    info!("Using user_id: {}", user_id);
-
-    // Create chat database service
-    let chat_db = ChatDatabaseService::new(state.pool);
 
     // Get messages
     let messages = chat_db
         .get_conversation_messages(conversation_id)
         .await
         .map_err(|e| {
-            error!("Failed to fetch conversation messages: {:?}", e);
+            error!("Failed to get messages: {:?}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch conversation messages: {}", e),
+                format!("Failed to get messages: {}", e),
             )
         })?;
 
-    info!("Found {} messages", messages.len());
+    // Verify user has access to this conversation
+    if let Some(first_message) = messages.first() {
+        if first_message.user_id != user_id {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "You do not have access to this conversation".to_string(),
+            ));
+        }
+    }
 
     Ok(Json(messages))
 }
