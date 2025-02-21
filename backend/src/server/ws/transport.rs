@@ -125,13 +125,17 @@ impl WebSocketTransport {
         // Clone connection ID for each task
         let receive_conn_id = conn_id.clone();
         let send_conn_id = conn_id.clone();
-        let cleanup_conn_id = conn_id;
         let cleanup_state = self.state.clone();
+        let cleanup_conn_id = conn_id.clone();
 
-        // Set up cleanup on error
-        let cleanup = move || async move {
-            if let Err(e) = cleanup_state.remove_connection(&cleanup_conn_id).await {
-                error!("Failed to clean up connection: {:?}", e);
+        // Set up cleanup function
+        let cleanup = {
+            let cleanup_conn_id = conn_id;
+            let cleanup_state = cleanup_state;
+            move || async move {
+                if let Err(e) = cleanup_state.remove_connection(&cleanup_conn_id).await {
+                    error!("Failed to clean up connection: {:?}", e);
+                }
             }
         };
 
