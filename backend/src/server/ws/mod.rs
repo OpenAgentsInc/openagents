@@ -1,13 +1,12 @@
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
+        ws::WebSocket,
         State, WebSocketUpgrade,
     },
     response::Response,
 };
-use futures::StreamExt;
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::error;
 
 use crate::server::config::AppState;
 
@@ -26,8 +25,8 @@ pub async fn ws_handler(
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
     let transport = WebSocketTransport::new(Arc::new(transport::WebSocketState::new(
-        Arc::new(state.github_service.clone()),
-        Arc::new(state.model_router.clone()),
+        Arc::new(state.ws_state.github_service.clone()),
+        Arc::new(state.ws_state.model_router.clone()),
     )), state);
 
     if let Err(e) = transport.handle_socket(socket, "anonymous".to_string()).await {
