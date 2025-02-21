@@ -59,7 +59,8 @@ impl GroqService {
                 "model": self.metadata().default_model,
                 "messages": messages,
                 "temperature": if use_reasoner { 0.0 } else { 0.7 },
-                "stream": false
+                "stream": false,
+                "reasoning_format": if use_reasoner { "parsed" } else { "hidden" }
             }))
             .send()
             .await
@@ -78,12 +79,10 @@ impl GroqService {
         let content = completion
             .choices
             .first()
-            .ok_or_else(|| GroqError::ParseError("No choices in response".to_string()))?
-            .message
-            .content
-            .clone();
+            .ok_or_else(|| GroqError::ParseError("No choices in response".to_string()))?;
 
-        Ok((content, None))
+        // Return both content and reasoning
+        Ok((content.message.content.clone(), content.message.reasoning.clone()))
     }
 }
 
@@ -93,11 +92,16 @@ impl Gateway for GroqService {
         GatewayMetadata {
             name: "Groq".to_string(),
             openai_compatible: true,
-            supported_features: vec!["chat".to_string(), "streaming".to_string()],
+            supported_features: vec![
+                "chat".to_string(), 
+                "streaming".to_string(),
+                "reasoning".to_string(),
+            ],
             default_model: "llama-3.1-8b-instant".to_string(),
             available_models: vec![
                 "llama-3.1-8b-instant".to_string(),
                 "llama-3.3-70b-versatile".to_string(),
+                "deepseek-r1-distill-llama-70b".to_string(),
             ],
         }
     }
