@@ -12,7 +12,7 @@ use crate::server::{
     config::AppState,
     handlers::oauth::session::SESSION_COOKIE_NAME,
     models::chat::{CreateConversationRequest, CreateMessageRequest, Message},
-    services::chat_database::ChatDatabaseService,
+    services::{chat_database::ChatDatabaseService, gateway::Gateway},
 };
 
 #[derive(Debug, Deserialize)]
