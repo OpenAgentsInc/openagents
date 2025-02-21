@@ -32,7 +32,7 @@ impl GroqService {
             client,
             api_key,
             base_url,
-            model: "llama-3.1-8b-instant".to_string(),
+            model: "deepseek-r1-distill-qwen-32b".to_string(), // Default to reasoning-capable model
         }
     }
 
@@ -46,7 +46,7 @@ impl GroqService {
             client,
             api_key,
             base_url,
-            model: "llama-3.1-8b-instant".to_string(),
+            model: "deepseek-r1-distill-qwen-32b".to_string(),
         }
     }
 
@@ -66,9 +66,9 @@ impl GroqService {
             "stream": false,
         });
 
-        // Only add reasoning_format if using a model that supports it
+        // Add reasoning_format if using a model that supports it
         if self.model.starts_with("deepseek-r1") {
-            request["reasoning_format"] =
+            request["reasoning_format"] = 
                 serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
         }
 
@@ -115,9 +115,9 @@ impl GroqService {
             "stream": true,
         });
 
-        // Only add reasoning_format if using a model that supports it
+        // Add reasoning_format if using a model that supports it
         if self.model.starts_with("deepseek-r1") {
-            request["reasoning_format"] =
+            request["reasoning_format"] = 
                 serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
         }
 
