@@ -826,6 +826,8 @@ docs/groq3/oa-syncengine.md:
 
 docs/hierarchy.md:
 
+docs/reasoning.md:
+
 docs/repomap.md:
 
 docs/repomap_generation.md:
@@ -1097,6 +1099,7 @@ frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 │const parsed
 │const content
 │const reasoning
+│const targetId
 
 frontend/app/root.tsx:
 │const links
@@ -1170,6 +1173,7 @@ frontend/app/routes/thinking.tsx:
 
 frontend/app/stores/messages.ts:
 │const useMessagesStore
+│const 
 
 frontend/app/welcome/logo-dark.svg:
 │#id: clip0_202_2131
