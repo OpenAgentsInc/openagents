@@ -18,13 +18,16 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> 
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
-    // Create transport with existing ws_state
     let transport = WebSocketTransport::new(state.ws_state.clone(), state);
-
-    if let Err(e) = transport
-        .handle_socket(socket, "anonymous".to_string())
-        .await
-    {
-        error!("Error handling WebSocket connection: {:?}", e);
+    
+    match transport.handle_socket(socket, "anonymous".to_string()).await {
+        Ok(_) => {
+            info!("WebSocket connection closed normally");
+        }
+        Err(e) => {
+            error!("WebSocket error: {:?}", e);
+            // Error is already handled in transport layer
+            // Including sending error message to client and cleaning up state
+        }
     }
 }
