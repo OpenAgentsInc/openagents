@@ -104,13 +104,13 @@ pub async fn start_repo_chat(
     info!("Created message with id: {}", message.id);
 
     // Convert message to Groq format
-    let _messages = vec![json!({
+    let messages = vec![json!({
         "role": "user",
         "content": request.message
     })];
 
     // Get Groq response
-    let (ai_response, _) = state.groq.chat(request.message, false).await.map_err(|e| {
+    let (ai_response, _) = state.groq.chat_with_history(messages, false).await.map_err(|e| {
         error!("Failed to get Groq response: {:?}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -167,8 +167,20 @@ pub async fn send_message(
         ));
     };
 
+    // Get conversation history
+    let messages = chat_db
+        .get_conversation_messages(request.conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get conversation history: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get conversation history: {}", e),
+            )
+        })?;
+
     // Create user message
-    let _message = chat_db
+    let message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
             user_id: user_id.clone(),
@@ -186,8 +198,23 @@ pub async fn send_message(
             )
         })?;
 
-    // Get AI response
-    let (ai_response, _) = state.groq.chat(request.message, false).await.map_err(|e| {
+    // Convert messages to Groq format
+    let mut chat_messages: Vec<serde_json::Value> = messages
+        .iter()
+        .map(|msg| json!({
+            "role": msg.role,
+            "content": msg.content
+        }))
+        .collect();
+
+    // Add current message
+    chat_messages.push(json!({
+        "role": "user",
+        "content": request.message
+    }));
+
+    // Get AI response with full history
+    let (ai_response, _) = state.groq.chat_with_history(chat_messages, false).await.map_err(|e| {
         error!("Failed to get Groq response: {:?}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
