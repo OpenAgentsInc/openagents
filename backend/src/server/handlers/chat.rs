@@ -171,6 +171,26 @@ pub async fn send_message(
         ));
     };
 
+    // Verify conversation exists and belongs to user
+    let conversation = chat_db
+        .get_conversation(request.conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get conversation: {:?}", e);
+            (
+                StatusCode::NOT_FOUND,
+                format!("Conversation not found: {}", e),
+            )
+        })?;
+
+    // Verify user has access to this conversation
+    if conversation.user_id != user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You do not have access to this conversation".to_string(),
+        ));
+    }
+
     // Get conversation history
     let messages = chat_db
         .get_conversation_messages(request.conversation_id)
@@ -275,6 +295,26 @@ pub async fn get_conversation_messages(
         ));
     };
 
+    // Verify conversation exists and belongs to user
+    let conversation = chat_db
+        .get_conversation(conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get conversation: {:?}", e);
+            (
+                StatusCode::NOT_FOUND,
+                format!("Conversation not found: {}", e),
+            )
+        })?;
+
+    // Verify user has access to this conversation
+    if conversation.user_id != user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You do not have access to this conversation".to_string(),
+        ));
+    }
+
     // Get messages
     let messages = chat_db
         .get_conversation_messages(conversation_id)
@@ -286,16 +326,6 @@ pub async fn get_conversation_messages(
                 format!("Failed to get messages: {}", e),
             )
         })?;
-
-    // Verify user has access to this conversation
-    if let Some(first_message) = messages.first() {
-        if first_message.user_id != user_id {
-            return Err((
-                StatusCode::FORBIDDEN,
-                "You do not have access to this conversation".to_string(),
-            ));
-        }
-    }
 
     Ok(Json(messages))
 }
