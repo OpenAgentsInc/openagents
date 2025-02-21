@@ -42,7 +42,7 @@ export default function ChatIndex() {
     try {
       // Generate a new chat ID
       const response = await sendMessage(message, repos);
-      
+
       // Navigate immediately to show loading state
       navigate(`/chat/${response.id}`);
     } catch (error) {
