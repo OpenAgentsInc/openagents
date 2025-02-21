@@ -21,6 +21,7 @@ pub struct StartRepoChatRequest {
     pub message: String,
     pub repos: Vec<String>,
     pub scope: String,
+    pub use_reasoning: Option<bool>, // Add reasoning flag
 }
 
 #[derive(Debug, Deserialize)]
@@ -28,6 +29,7 @@ pub struct SendMessageRequest {
     pub conversation_id: Uuid,
     pub message: String,
     pub repos: Option<Vec<String>>,
+    pub use_reasoning: Option<bool>, // Add reasoning flag
 }
 
 #[derive(Debug, Serialize)]
@@ -63,9 +65,10 @@ pub async fn start_repo_chat(
     };
     info!("Using user_id: {}", user_id);
 
-    // Create conversation
+    // Create conversation with client's UUID
     let conversation = chat_db
         .create_conversation(&CreateConversationRequest {
+            id: Some(request.id), // Use the client's UUID
             user_id: user_id.clone(),
             title: Some(format!("Repo chat: {}", request.message)),
         })
@@ -87,6 +90,7 @@ pub async fn start_repo_chat(
             user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
+            reasoning: None,
             metadata: Some(json!({
                 "repos": request.repos
             })),
@@ -109,10 +113,10 @@ pub async fn start_repo_chat(
         "content": request.message
     })];
 
-    // Get Groq response
-    let (ai_response, _) = state
+    // Get Groq response with reasoning if requested
+    let (ai_response, reasoning) = state
         .groq
-        .chat_with_history(messages, false)
+        .chat_with_history(messages, request.use_reasoning.unwrap_or(false))
         .await
         .map_err(|e| {
             error!("Failed to get Groq response: {:?}", e);
@@ -122,13 +126,14 @@ pub async fn start_repo_chat(
             )
         })?;
 
-    // Save AI response
+    // Save AI response with reasoning
     let ai_message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: conversation.id,
             user_id: user_id.clone(),
             role: "assistant".to_string(),
             content: ai_response,
+            reasoning: reasoning.map(|r| json!(r)),
             metadata: Some(json!({
                 "repos": request.repos
             })),
@@ -171,6 +176,33 @@ pub async fn send_message(
         ));
     };
 
+    // Get conversation and verify it exists
+    let conversation = chat_db
+        .get_conversation(request.conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get conversation: {:?}", e);
+            if e.to_string().contains("Conversation not found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    format!("Conversation {} not found", request.conversation_id),
+                )
+            } else {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get conversation: {}", e),
+                )
+            }
+        })?;
+
+    // Verify user has access to this conversation
+    if conversation.user_id != user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You do not have access to this conversation".to_string(),
+        ));
+    }
+
     // Get conversation history
     let messages = chat_db
         .get_conversation_messages(request.conversation_id)
@@ -190,6 +222,7 @@ pub async fn send_message(
             user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
+            reasoning: None,
             metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
             tool_calls: None,
         })
@@ -219,10 +252,10 @@ pub async fn send_message(
         "content": request.message
     }));
 
-    // Get AI response with full history
-    let (ai_response, _) = state
+    // Get AI response with full history and reasoning if requested
+    let (ai_response, reasoning) = state
         .groq
-        .chat_with_history(chat_messages, false)
+        .chat_with_history(chat_messages, request.use_reasoning.unwrap_or(false))
         .await
         .map_err(|e| {
             error!("Failed to get Groq response: {:?}", e);
@@ -232,13 +265,14 @@ pub async fn send_message(
             )
         })?;
 
-    // Save AI response
+    // Save AI response with reasoning
     let ai_message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
             user_id,
             role: "assistant".to_string(),
             content: ai_response.clone(),
+            reasoning: reasoning.map(|r| json!(r)),
             metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
             tool_calls: None,
         })
@@ -275,6 +309,33 @@ pub async fn get_conversation_messages(
         ));
     };
 
+    // Get conversation and verify it exists
+    let conversation = chat_db
+        .get_conversation(conversation_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get conversation: {:?}", e);
+            if e.to_string().contains("Conversation not found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    format!("Conversation {} not found", conversation_id),
+                )
+            } else {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get conversation: {}", e),
+                )
+            }
+        })?;
+
+    // Verify user has access to this conversation
+    if conversation.user_id != user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You do not have access to this conversation".to_string(),
+        ));
+    }
+
     // Get messages
     let messages = chat_db
         .get_conversation_messages(conversation_id)
@@ -286,16 +347,6 @@ pub async fn get_conversation_messages(
                 format!("Failed to get messages: {}", e),
             )
         })?;
-
-    // Verify user has access to this conversation
-    if let Some(first_message) = messages.first() {
-        if first_message.user_id != user_id {
-            return Err((
-                StatusCode::FORBIDDEN,
-                "You do not have access to this conversation".to_string(),
-            ));
-        }
-    }
 
     Ok(Json(messages))
 }

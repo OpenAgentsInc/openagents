@@ -14,6 +14,7 @@ CREATE TABLE messages (
     user_id TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
     content TEXT NOT NULL,
+    reasoning JSONB, -- For storing reasoning steps/analysis
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     metadata JSONB,
     tool_calls JSONB -- For storing tool usage data

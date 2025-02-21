@@ -298,7 +298,9 @@ backend/src/server/services/groq/config.rs:
 backend/src/server/services/groq/service.rs:
 │fn new
 │fn with_base_url
+│fn set_model
 │fn chat_with_history
+│fn chat_with_history_stream
 │fn metadata
 │fn chat
 │fn chat_stream
@@ -741,6 +743,8 @@ backend/tests/groq.rs:
 │fn test_groq_metadata
 │fn test_groq_chat
 │fn test_groq_chat_stream
+│fn test_groq_error_handling
+│fn test_groq_with_base_url
 
 backend/tests/model_router.rs:
 │fn test_routing_decision
@@ -822,6 +826,8 @@ docs/groq3/oa-syncengine.md:
 
 docs/hierarchy.md:
 
+docs/reasoning.md:
+
 docs/repomap.md:
 
 docs/repomap_generation.md:
@@ -883,6 +889,11 @@ frontend/app/components/header-bar.tsx:
 
 frontend/app/components/library/chat.tsx:
 │const EXAMPLE_CONTENT
+│const
+│const
+│const messagesEndRef
+│const scrollToBottom
+│const handleSubmit
 
 frontend/app/components/library/shad.tsx:
 │#id: email
@@ -1054,16 +1065,41 @@ frontend/app/hooks/use-mobile.ts:
 frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 │const INITIAL_STATE
 │const
+│const
+│const streamingStateRef
 │const handleOnline
 │const handleOffline
+│const processStreamChunk
 │const sendMessage
+│const userMessageId
 │const response
 │const errorText
+│const reader
+│const decoder
+│const assistantMessageId
+│const
+│const chunk
+│const lines
+│const line
 │const data
+│const parsed
+│const content
+│const reasoning
 │const chatId
 │const response
 │const errorText
+│const reader
+│const decoder
+│const userMessageId
+│const
+│const chunk
+│const lines
+│const line
 │const data
+│const parsed
+│const content
+│const reasoning
+│const targetId
 
 frontend/app/root.tsx:
 │const links
@@ -1080,7 +1116,7 @@ frontend/app/routes/chat/$id.tsx:
 │const messagesSelector
 │const messages
 │const
-│const loadMessages
+│const timeout
 │const response
 │const data
 │const handleSubmit
@@ -1137,6 +1173,7 @@ frontend/app/routes/thinking.tsx:
 
 frontend/app/stores/messages.ts:
 │const useMessagesStore
+│const
 
 frontend/app/welcome/logo-dark.svg:
 │#id: clip0_202_2131
