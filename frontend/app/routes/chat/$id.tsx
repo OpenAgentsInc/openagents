@@ -1,9 +1,9 @@
-import { useAgentSync } from "agentsync";
-import { useCallback, useEffect, useRef } from "react";
-import { useParams } from "react-router";
-import { ChatInput } from "~/components/chat/chat-input";
-import { Thinking } from "~/components/chat/thinking";
-import { useMessagesStore } from "~/stores/messages";
+import { useAgentSync } from "agentsync"
+import { useCallback, useEffect, useRef } from "react"
+import { useParams } from "react-router"
+import { ChatInput } from "~/components/chat/chat-input"
+import { Thinking } from "~/components/chat/thinking"
+import { useMessagesStore } from "~/stores/messages"
 
 import type { Message } from "~/stores/messages";
 
@@ -85,11 +85,6 @@ export default function ChatSession() {
                       content={message.reasoning.split('\n')}
                       defaultOpen={false}
                     />
-                  )}
-                  {message.metadata?.repos && (
-                    <div className="text-sm text-muted-foreground mt-2">
-                      Repos: {message.metadata.repos.join(", ")}
-                    </div>
                   )}
                 </div>
               </div>
