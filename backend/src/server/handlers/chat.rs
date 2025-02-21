@@ -21,6 +21,7 @@ pub struct StartRepoChatRequest {
     pub message: String,
     pub repos: Vec<String>,
     pub scope: String,
+    pub use_reasoning: Option<bool>, // Add reasoning flag
 }
 
 #[derive(Debug, Deserialize)]
@@ -28,6 +29,7 @@ pub struct SendMessageRequest {
     pub conversation_id: Uuid,
     pub message: String,
     pub repos: Option<Vec<String>>,
+    pub use_reasoning: Option<bool>, // Add reasoning flag
 }
 
 #[derive(Debug, Serialize)]
@@ -110,10 +112,10 @@ pub async fn start_repo_chat(
         "content": request.message
     })];
 
-    // Get Groq response
-    let (ai_response, _) = state
+    // Get Groq response with reasoning if requested
+    let (ai_response, reasoning) = state
         .groq
-        .chat_with_history(messages, false)
+        .chat_with_history(messages, request.use_reasoning.unwrap_or(false))
         .await
         .map_err(|e| {
             error!("Failed to get Groq response: {:?}", e);
@@ -123,13 +125,14 @@ pub async fn start_repo_chat(
             )
         })?;
 
-    // Save AI response
+    // Save AI response with reasoning
     let ai_message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: conversation.id,
             user_id: user_id.clone(),
             role: "assistant".to_string(),
             content: ai_response,
+            reasoning,
             metadata: Some(json!({
                 "repos": request.repos
             })),
@@ -247,10 +250,10 @@ pub async fn send_message(
         "content": request.message
     }));
 
-    // Get AI response with full history
-    let (ai_response, _) = state
+    // Get AI response with full history and reasoning if requested
+    let (ai_response, reasoning) = state
         .groq
-        .chat_with_history(chat_messages, false)
+        .chat_with_history(chat_messages, request.use_reasoning.unwrap_or(false))
         .await
         .map_err(|e| {
             error!("Failed to get Groq response: {:?}", e);
@@ -260,13 +263,14 @@ pub async fn send_message(
             )
         })?;
 
-    // Save AI response
+    // Save AI response with reasoning
     let ai_message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
             user_id,
             role: "assistant".to_string(),
             content: ai_response.clone(),
+            reasoning,
             metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
             tool_calls: None,
         })
