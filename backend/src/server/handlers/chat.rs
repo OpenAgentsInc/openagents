@@ -12,7 +12,7 @@ use crate::server::{
     config::AppState,
     handlers::oauth::session::SESSION_COOKIE_NAME,
     models::chat::{CreateConversationRequest, CreateMessageRequest, Message},
-    services::{chat_database::ChatDatabaseService, gateway::Gateway},
+    services::chat_database::ChatDatabaseService,
 };
 
 #[derive(Debug, Deserialize)]
@@ -81,7 +81,7 @@ pub async fn start_repo_chat(
     info!("Created conversation with id: {}", conversation.id);
 
     // Create initial message with repos metadata
-    let message = chat_db
+    let _message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: conversation.id,
             user_id: user_id.clone(),
@@ -101,7 +101,7 @@ pub async fn start_repo_chat(
             )
         })?;
 
-    info!("Created message with id: {}", message.id);
+    info!("Created message with id: {}", _message.id);
 
     // Convert message to Groq format
     let messages = vec![json!({
@@ -110,13 +110,17 @@ pub async fn start_repo_chat(
     })];
 
     // Get Groq response
-    let (ai_response, _) = state.groq.chat_with_history(messages, false).await.map_err(|e| {
-        error!("Failed to get Groq response: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get AI response: {}", e),
-        )
-    })?;
+    let (ai_response, _) = state
+        .groq
+        .chat_with_history(messages, false)
+        .await
+        .map_err(|e| {
+            error!("Failed to get Groq response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get AI response: {}", e),
+            )
+        })?;
 
     // Save AI response
     let ai_message = chat_db
@@ -143,7 +147,7 @@ pub async fn start_repo_chat(
 
     Ok(Json(StartChatResponse {
         id: conversation.id.to_string(),
-        initial_message: message.content,
+        initial_message: _message.content,
     }))
 }
 
@@ -180,7 +184,7 @@ pub async fn send_message(
         })?;
 
     // Create user message
-    let message = chat_db
+    let _message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
             user_id: user_id.clone(),
@@ -201,10 +205,12 @@ pub async fn send_message(
     // Convert messages to Groq format
     let mut chat_messages: Vec<serde_json::Value> = messages
         .iter()
-        .map(|msg| json!({
-            "role": msg.role,
-            "content": msg.content
-        }))
+        .map(|msg| {
+            json!({
+                "role": msg.role,
+                "content": msg.content
+            })
+        })
         .collect();
 
     // Add current message
@@ -214,19 +220,23 @@ pub async fn send_message(
     }));
 
     // Get AI response with full history
-    let (ai_response, _) = state.groq.chat_with_history(chat_messages, false).await.map_err(|e| {
-        error!("Failed to get Groq response: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to get AI response: {}", e),
-        )
-    })?;
+    let (ai_response, _) = state
+        .groq
+        .chat_with_history(chat_messages, false)
+        .await
+        .map_err(|e| {
+            error!("Failed to get Groq response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get AI response: {}", e),
+            )
+        })?;
 
     // Save AI response
     let ai_message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
-            user_id: user_id,
+            user_id,
             role: "assistant".to_string(),
             content: ai_response.clone(),
             metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
