@@ -19,26 +19,6 @@ backend/src/bin/generate-repomap.rs:
 backend/src/bin/repo.rs:
 │fn main
 
-backend/src/bin/solver_impl/changes.rs:
-│fn generate_changes
-│fn apply_file_changes
-
-backend/src/bin/solver_impl/changes_analysis.rs:
-│fn analyze_changes_with_deepseek
-
-backend/src/bin/solver_impl/context.rs:
-│fn extract_paths_from_repomap
-│fn collect_context
-
-backend/src/bin/solver_impl/files.rs:
-│fn identify_files
-
-backend/src/bin/solver_impl/issue.rs:
-│fn handle_issue
-
-backend/src/bin/solver_impl/pre_analysis.rs:
-│fn analyze_with_deepseek
-
 backend/src/bin/transcribe.rs:
 │fn main
 
