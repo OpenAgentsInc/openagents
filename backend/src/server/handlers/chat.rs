@@ -103,6 +103,42 @@ pub async fn start_repo_chat(
 
     info!("Created message with id: {}", message.id);
 
+    // Get Groq response
+    let (ai_response, _) = state
+        .groq
+        .chat(request.message.clone(), false)
+        .await
+        .map_err(|e| {
+            error!("Failed to get Groq response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get AI response: {}", e),
+            )
+        })?;
+
+    // Save AI response
+    let ai_message = chat_db
+        .create_message(&CreateMessageRequest {
+            conversation_id: conversation.id,
+            user_id: user_id.clone(),
+            role: "assistant".to_string(),
+            content: ai_response,
+            metadata: Some(json!({
+                "repos": request.repos
+            })),
+            tool_calls: None,
+        })
+        .await
+        .map_err(|e| {
+            error!("Failed to save AI response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to save AI response: {}", e),
+            )
+        })?;
+
+    info!("Created AI message with id: {}", ai_message.id);
+
     Ok(Json(StartChatResponse {
         id: conversation.id.to_string(),
         initial_message: message.content,
@@ -165,7 +201,7 @@ pub async fn send_message(
         }
     };
 
-    // Create message
+    // Create user message
     let message = chat_db
         .create_message(&CreateMessageRequest {
             conversation_id: request.conversation_id,
@@ -184,11 +220,45 @@ pub async fn send_message(
             )
         })?;
 
-    info!("Created message with id: {}", message.id);
+    info!("Created user message with id: {}", message.id);
+
+    // Get Groq response
+    let (ai_response, _) = state
+        .groq
+        .chat(request.message.clone(), false)
+        .await
+        .map_err(|e| {
+            error!("Failed to get Groq response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get AI response: {}", e),
+            )
+        })?;
+
+    // Save AI response
+    let ai_message = chat_db
+        .create_message(&CreateMessageRequest {
+            conversation_id: request.conversation_id,
+            user_id: user_id.clone(),
+            role: "assistant".to_string(),
+            content: ai_response,
+            metadata,
+            tool_calls: None,
+        })
+        .await
+        .map_err(|e| {
+            error!("Failed to save AI response: {:?}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to save AI response: {}", e),
+            )
+        })?;
+
+    info!("Created AI message with id: {}", ai_message.id);
 
     Ok(Json(SendMessageResponse {
-        id: message.id.to_string(),
-        message: message.content,
+        id: ai_message.id.to_string(),
+        message: ai_message.content,
     }))
 }
 
