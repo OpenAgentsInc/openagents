@@ -30,3 +30,27 @@ pub struct Usage {
     pub completion_tokens: i32,
     pub total_tokens: i32,
 }
+
+// Streaming response types
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StreamResponse {
+    pub id: String,
+    pub object: String,
+    pub created: i64,
+    pub model: String,
+    pub choices: Vec<StreamChoice>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StreamChoice {
+    pub index: i32,
+    pub delta: DeltaContent,
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeltaContent {
+    pub role: Option<String>,
+    pub content: Option<String>,
+    pub reasoning: Option<String>,
+}
