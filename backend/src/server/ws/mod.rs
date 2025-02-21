@@ -2,7 +2,6 @@ use axum::{
     extract::{ws::WebSocket, State, WebSocketUpgrade},
     response::Response,
 };
-use std::sync::Arc;
 use tracing::{error, info};
 
 use crate::server::config::AppState;
