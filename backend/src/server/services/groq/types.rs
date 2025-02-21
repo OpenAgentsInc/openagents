@@ -2,17 +2,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatCompletion {
-    pub id: String,
-    pub object: String,
-    pub created: i64,
-    pub model: String,
+    pub id: Option<String>,
+    pub object: Option<String>,
+    pub created: Option<i64>,
+    pub model: Option<String>,
     pub choices: Vec<Choice>,
-    pub usage: Usage,
+    pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Choice {
-    pub index: i32,
+    pub index: Option<i32>,
     pub message: Message,
     pub finish_reason: Option<String>,
 }
