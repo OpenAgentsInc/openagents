@@ -1,6 +1,3 @@
-backend/assets/main.css:
-│class directly
-
 backend/build.rs:
 │fn main
 
@@ -392,19 +389,6 @@ backend/src/server/services/repomap/mod.rs:
 │fn generate_repository_map
 │fn cleanup
 
-backend/src/server/services/solver/mod.rs:
-│fn new
-│fn create_solver
-│fn get_solver
-│fn update_solver
-│fn start_generating_changes
-│fn approve_change
-│fn reject_change
-│fn check_all_changes_reviewed
-│fn analyze_issue
-│fn solve_demo_repo
-│fn solve_repo
-
 backend/src/server/services/solver/types.rs:
 │fn new
 │fn add_file
@@ -424,24 +408,6 @@ backend/src/server/ws/handlers/mod.rs:
 │fn handle_message
 │fn broadcast
 
-backend/src/server/ws/handlers/solver.rs:
-│fn new
-│fn handle_solver_event
-│fn handle_message
-│fn broadcast
-
-backend/src/server/ws/handlers/solver_json.rs:
-│fn new
-│fn handle_message
-│fn emit_state_update
-│fn emit_file_analysis
-│fn emit_change_generated
-│fn emit_change_applied
-│fn emit_error
-│fn handle_message
-│fn broadcast
-│fn create_unbounded_sender
-
 backend/src/server/ws/mod.rs:
 │fn ws_handler
 │fn handle_socket
@@ -452,7 +418,6 @@ backend/src/server/ws/transport.rs:
 │fn broadcast
 │fn add_connection
 │fn remove_connection
-│fn get_tx
 │fn new
 │fn handle_socket
 │fn new
@@ -552,12 +517,6 @@ backend/tests/ollama.rs:
 │fn test_ollama_with_config
 │fn test_ollama_error_handling
 
-backend/tests/solver.rs:
-│fn test_branch_creation
-│fn test_pr_creation
-│fn test_issue_comments
-│fn test_comment_context_generation
-
 backend/tests/tool_selection.rs:
 │fn test_tool_selection
 
@@ -589,6 +548,8 @@ docs/repomap_generation.md:
 docs/scramble.md:
 
 docs/timestamp.md:
+
+docs/websocket-architecture.md:
 
 frontend/app/+types/home.ts:
 │const BLOG_POSTS
