@@ -46,7 +46,7 @@ impl GroqService {
         }
     }
 
-    async fn chat_with_history(
+    pub async fn chat_with_history(
         &self,
         messages: Vec<Value>,
         use_reasoner: bool,
