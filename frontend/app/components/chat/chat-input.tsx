@@ -1,14 +1,12 @@
-import { Github } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import TextareaAutosize from "react-textarea-autosize";
-import { Button } from "~/components/ui/button";
+import { Github } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import TextareaAutosize from "react-textarea-autosize"
+import { Button } from "~/components/ui/button"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "~/components/ui/popover";
-import { cn } from "~/lib/utils";
-import { RepoSelector } from "./repo-selector";
+  Popover, PopoverContent, PopoverTrigger
+} from "~/components/ui/popover"
+import { cn } from "~/lib/utils"
+import { RepoSelector } from "./repo-selector"
 
 interface Repo {
   owner: string;
@@ -19,9 +17,10 @@ interface Repo {
 interface ChatInputProps
   extends Omit<React.ComponentProps<"form">, "onSubmit"> {
   onSubmit?: (message: string, repos?: string[]) => Promise<void>;
+  disabled?: boolean;
 }
 
-export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
+export function ChatInput({ className, onSubmit, disabled, ...props }: ChatInputProps) {
   const [message, setMessage] = useState("");
   const [selectedRepos, setSelectedRepos] = useState<Repo[]>([]);
   const [isAddingRepo, setIsAddingRepo] = useState(false);
@@ -112,7 +111,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              disabled={isSubmitting}
+              disabled={isSubmitting || disabled}
               minRows={1}
               maxRows={12}
               placeholder="Give OpenAgents a task"
@@ -130,7 +129,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || disabled}
                     className={cn(
                       "border-input ring-ring/10 dark:ring-ring/20",
                       "h-9 px-3.5 py-2 border bg-transparent",
@@ -204,7 +203,7 @@ export function ChatInput({ className, onSubmit, ...props }: ChatInputProps) {
               <Button
                 type="submit"
                 disabled={
-                  isSubmitting || (!message.trim() && !selectedRepos.length)
+                  isSubmitting || disabled || (!message.trim() && !selectedRepos.length)
                 }
                 className={cn(
                   "border-input ring-ring/10 dark:ring-ring/20",
