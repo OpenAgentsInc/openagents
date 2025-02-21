@@ -208,7 +208,7 @@ pub async fn send_message(
             user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
-            metadata,
+            metadata: metadata.clone(), // Clone here
             tool_calls: None,
         })
         .await
@@ -242,7 +242,7 @@ pub async fn send_message(
             user_id: user_id.clone(),
             role: "assistant".to_string(),
             content: ai_response,
-            metadata,
+            metadata, // Original value used here
             tool_calls: None,
         })
         .await
