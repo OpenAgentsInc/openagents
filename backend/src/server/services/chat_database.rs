@@ -40,14 +40,15 @@ impl ChatDatabaseService {
         let message = sqlx::query_as!(
             Message,
             r#"
-            INSERT INTO messages (conversation_id, user_id, role, content, metadata, tool_calls, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
-            RETURNING id, conversation_id, user_id, role, content, created_at as "created_at: _", metadata, tool_calls
+            INSERT INTO messages (conversation_id, user_id, role, content, reasoning, metadata, tool_calls, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            RETURNING id, conversation_id, user_id, role, content, reasoning, created_at as "created_at: _", metadata, tool_calls
             "#,
             request.conversation_id,
             request.user_id,
             request.role,
             request.content,
+            request.reasoning,
             request.metadata,
             request.tool_calls
         )
@@ -79,7 +80,7 @@ impl ChatDatabaseService {
         let messages = sqlx::query_as!(
             Message,
             r#"
-            SELECT id, conversation_id, user_id, role, content, created_at as "created_at: _", metadata, tool_calls
+            SELECT id, conversation_id, user_id, role, content, reasoning, created_at as "created_at: _", metadata, tool_calls
             FROM messages
             WHERE conversation_id = $1
             ORDER BY created_at ASC
