@@ -41,7 +41,8 @@ export default function ChatSession() {
   useEffect(() => {
     if (!id) return;
 
-    const loadMessages = async () => {
+    // Add a small delay to allow the conversation to be created
+    const timeout = setTimeout(async () => {
       try {
         const response = await fetch(`/api/conversations/${id}/messages`);
         if (!response.ok) {
@@ -52,9 +53,9 @@ export default function ChatSession() {
       } catch (error) {
         console.error("Error loading messages:", error);
       }
-    };
+    }, 500); // 500ms delay
 
-    loadMessages();
+    return () => clearTimeout(timeout);
   }, [id, setMessages]);
 
   const handleSubmit = async (message: string, repos?: string[]) => {
