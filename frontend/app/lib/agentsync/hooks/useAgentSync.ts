@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { v4 as uuid } from "uuid";
-import { useMessagesStore } from "~/stores/messages";
+import { useEffect, useRef, useState } from "react"
+import { v4 as uuid } from "uuid"
+import { useMessagesStore } from "~/stores/messages"
 
 const INITIAL_STATE = {
   isOnline: true,
@@ -32,7 +32,7 @@ class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
 
-  constructor(private url: string) {}
+  constructor(private url: string) { }
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) return;
@@ -106,7 +106,7 @@ export function useAgentSync({
     const wsUrl = process.env.NODE_ENV === "production"
       ? "wss://api.openagents.com/ws"
       : "ws://localhost:3000/ws";
-    
+
     wsRef.current = new WebSocketClient(wsUrl);
     wsRef.current.connect();
 
