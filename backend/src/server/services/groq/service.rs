@@ -4,9 +4,8 @@ use anyhow::Result;
 use std::pin::Pin;
 use tokio_stream::Stream;
 
-use crate::server::services::gateway::{Gateway, GatewayMetadata};
-use super::config::GroqConfig;
-use super::types::{ChatCompletion, Message};
+use crate::server::services::gateway::{Gateway, types::GatewayMetadata};
+use super::types::ChatCompletion;
 
 #[derive(Debug, Clone)]
 pub struct GroqService {
@@ -90,8 +89,8 @@ impl Gateway for GroqService {
 
     async fn chat_stream(
         &self,
-        prompt: String,
-        use_reasoner: bool,
+        _prompt: String,
+        _use_reasoner: bool,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
         // TODO: Implement streaming using SSE
         todo!("Implement streaming")
