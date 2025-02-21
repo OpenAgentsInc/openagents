@@ -19,67 +19,6 @@ pub enum ChatMessage {
     ErrorMessage { content: String },
 }
 
-// New JSON-specific solver types
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum SolverJsonMessage {
-    StateUpdate {
-        status: SolverJsonStatus,
-        current_file: Option<String>,
-        progress: Option<f32>,
-        timestamp: String,
-    },
-    FileAnalysis {
-        file_path: String,
-        analysis: String,
-        timestamp: String,
-    },
-    ChangeGenerated {
-        file_path: String,
-        changes: Vec<CodeJsonChange>,
-        timestamp: String,
-    },
-    ChangeApplied {
-        file_path: String,
-        success: bool,
-        error: Option<String>,
-        timestamp: String,
-    },
-    Error {
-        message: String,
-        timestamp: String,
-    },
-    #[serde(rename = "solve_demo_repo")]
-    SolveDemoRepo {
-        timestamp: String,
-    },
-    #[serde(rename = "solve_repo")]
-    SolveRepo {
-        repository: String,
-        issue_number: i32,
-        timestamp: String,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SolverJsonStatus {
-    Initializing,
-    AnalyzingFiles,
-    GeneratingChanges,
-    ApplyingChanges,
-    Complete,
-    Error,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CodeJsonChange {
-    pub id: String,
-    pub search: String,
-    pub replace: String,
-    pub description: String,
-}
-
 #[derive(Debug)]
 pub enum WebSocketError {
     AuthenticationError(String),

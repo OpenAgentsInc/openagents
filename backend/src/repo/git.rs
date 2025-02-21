@@ -61,7 +61,7 @@ pub fn commit_changes(repo: &Repository, files: &[String], message: &str) -> Res
     let parent_commit =
         repo.find_commit(head.target().ok_or_else(|| anyhow!("No HEAD target"))?)?;
 
-    let signature = Signature::now("OpenAgents Solver", "solver@openagents.com")?;
+    let signature = Signature::now("OpenAgents", "bot@openagents.com")?;
 
     repo.commit(
         Some("HEAD"),

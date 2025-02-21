@@ -11,7 +11,6 @@ pub mod oauth;
 pub mod ollama;
 pub mod openrouter;
 pub mod repomap;
-pub mod solver;
 
 pub use chat_database::ChatDatabaseService;
 pub use deepseek::DeepSeekService;

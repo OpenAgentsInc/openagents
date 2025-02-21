@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use std::error::Error;
 
 pub mod chat;
-pub mod solver_json;
 
 #[async_trait]
 pub trait MessageHandler {
