@@ -48,7 +48,7 @@ pub enum ChatResponse {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatDelta {
     pub content: Option<String>,
     pub reasoning: Option<String>,

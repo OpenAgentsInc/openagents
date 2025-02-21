@@ -8,7 +8,7 @@ use tracing::{error, info};
 use crate::server::{
     config::AppState,
     services::{github_issue::GitHubService, model_router::ModelRouter},
-    ws::handlers::chat::ChatHandler,
+    ws::handlers::chat::{ChatHandler, ChatMessage},
 };
 
 pub type WebSocketSender = mpsc::Sender<String>;
@@ -94,7 +94,7 @@ impl WebSocketTransport {
         socket: WebSocket,
         user_id: String,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let (mut sender, mut receiver) = socket.split();
+        let (sender, mut receiver) = socket.split();
         let (tx, mut rx) = mpsc::channel::<String>(32);
 
         let receive_conn_id = uuid::Uuid::new_v4().to_string();
@@ -106,15 +106,19 @@ impl WebSocketTransport {
             .await?;
 
         // Create handlers
-        let mut chat_handler = ChatHandler::new(socket, self.app_state.clone(), user_id);
+        let mut chat_handler = ChatHandler::new(
+            WebSocket::from_split(sender, receiver),
+            self.app_state.clone(),
+            user_id,
+        );
 
         // Handle incoming messages
         let receive_handle = tokio::spawn(async move {
             while let Some(Ok(msg)) = receiver.next().await {
                 match msg {
-                    Message::Text(text) => {
+                    Message::Text(ref text) => {
                         info!("Received message: {}", text);
-                        if let Ok(chat_msg) = serde_json::from_str(&text) {
+                        if let Ok(_chat_msg) = serde_json::from_str::<ChatMessage>(&text) {
                             if let Err(e) = chat_handler.process_message(msg).await {
                                 error!("Error handling chat message: {:?}", e);
                             }

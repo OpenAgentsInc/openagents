@@ -15,6 +15,7 @@ pub struct RoutingDecision {
     pub suggested_tool: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct ModelRouter {
     tool_model: Arc<DeepSeekService>,
     chat_model: Arc<DeepSeekService>,
@@ -143,7 +144,7 @@ Remember: Only respond with a JSON object, do not use any tools, and do not add 
         let system_message = ChatMessage {
             role: "system".to_string(),
             content: format!(
-                r#"You are a helpful assistant with access to the {tool_name} tool. 
+                r#"You are a helpful assistant with access to the {tool_name} tool.
 Description: {tool_desc}
 
 IMPORTANT:

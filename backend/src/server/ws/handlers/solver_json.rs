@@ -5,9 +5,11 @@ use crate::server::ws::{
     types::{CodeJsonChange, SolverJsonMessage, SolverJsonStatus},
 };
 use async_trait::async_trait;
+use axum::extract::ws::Message;
 use chrono::Utc;
 use std::error::Error;
 use std::sync::Arc;
+use tokio::sync::mpsc::{Sender, UnboundedSender};
 use tokio::sync::Mutex;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -35,8 +37,9 @@ impl SolverJsonHandler {
             SolverJsonMessage::SolveDemoRepo { .. } => {
                 info!("Starting demo repo solver process");
                 let tx = ws_state.get_tx(&conn_id).await?;
+                let unbounded_tx = create_unbounded_sender(tx).await;
                 let mut solver = self.solver_service.lock().await;
-                if let Err(e) = solver.solve_demo_repo(tx).await {
+                if let Err(e) = solver.solve_demo_repo(unbounded_tx).await {
                     error!("Error in demo repo solver process: {}", e);
                     ws_state
                         .send_to(
@@ -59,8 +62,12 @@ impl SolverJsonHandler {
                     repository, issue_number
                 );
                 let tx = ws_state.get_tx(&conn_id).await?;
+                let unbounded_tx = create_unbounded_sender(tx).await;
                 let mut solver = self.solver_service.lock().await;
-                if let Err(e) = solver.solve_repo(tx, repository, issue_number).await {
+                if let Err(e) = solver
+                    .solve_repo(unbounded_tx, repository, issue_number)
+                    .await
+                {
                     error!("Error in repo solver process: {}", e);
                     ws_state
                         .send_to(
@@ -200,4 +207,20 @@ impl MessageHandler for SolverJsonHandler {
         let json = serde_json::to_string(&msg)?;
         self.ws_state.broadcast(&json).await
     }
+}
+
+async fn create_unbounded_sender(tx: Sender<String>) -> UnboundedSender<Message> {
+    let (unbounded_tx, mut unbounded_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    tokio::spawn(async move {
+        while let Some(msg) = unbounded_rx.recv().await {
+            if let Message::Text(text) = msg {
+                if tx.send(text).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    unbounded_tx
 }
