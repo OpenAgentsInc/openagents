@@ -86,11 +86,11 @@ backend/src/repo/types.rs:
 backend/src/repomap.rs:
 │#id: test
 │fn generate_repo_map
-│fn
+│fn 
 │fn extract_id
 │fn extract_function_name
-│fn
-│fn
+│fn 
+│fn 
 │fn extract_class_name
 │fn extract_const_name
 │fn init_logging
@@ -102,15 +102,15 @@ backend/src/repomap.rs:
 │fn test_extractors
 │fn test_func
 │class in
-│class
-│class
-│class
-│class
+│class 
+│class 
+│class 
+│class 
 │class TestClass
 │const DEFAULT_BLACKLIST
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const TEST_CONST
 
 backend/src/routes.rs:
@@ -298,6 +298,7 @@ backend/src/server/services/groq/config.rs:
 backend/src/server/services/groq/service.rs:
 │fn new
 │fn with_base_url
+│fn chat_with_history
 │fn metadata
 │fn chat
 │fn chat_stream
@@ -483,7 +484,7 @@ backend/src/server/ws/types.rs:
 │fn fmt
 
 backend/tailwind.config.cjs:
-│const
+│const 
 
 backend/templates/admin/dashboard.html:
 │#id: bg
@@ -628,7 +629,7 @@ backend/templates/layouts/content.html:
 │#id: content
 
 backend/templates/macros/ui.html:
-│class
+│class 
 
 backend/templates/pages/company.html:
 │class of
@@ -839,10 +840,10 @@ frontend/app/+types/video-series.ts:
 │const VIDEOS
 
 frontend/app/components/chat/chat-input.tsx:
-│const
-│const
-│const
-│const
+│const 
+│const 
+│const 
+│const 
 │const textareaRef
 │const handleSubmitMessage
 │const repos
@@ -856,9 +857,9 @@ frontend/app/components/chat/chat-input.tsx:
 
 frontend/app/components/chat/repo-selector.tsx:
 │const RepoForm
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const handleRepoInputChange
 │const handleRepoSubmit
 │const handleRemoveRepo
@@ -868,7 +869,7 @@ frontend/app/components/chat/repo-selector.tsx:
 frontend/app/components/chat/thinking.tsx:
 │const scrollRef
 │const contentRef
-│const
+│const 
 │const shouldScroll
 │const getIcon
 │const getLabel
@@ -877,7 +878,7 @@ frontend/app/components/chat/thinking.tsx:
 frontend/app/components/header-bar.tsx:
 │#id: login-button
 │#id: signup-button
-│const
+│const 
 │const navigateTo
 
 frontend/app/components/library/chat.tsx:
@@ -892,17 +893,17 @@ frontend/app/components/library/shad.tsx:
 │#id: name
 │#id: bio
 │#id: message
-│const
+│const 
 
 frontend/app/components/login-form.tsx:
 │#id: email
 │#id: password
-│const
-│const
-│const
-│const
-│const
-│const
+│const 
+│const 
+│const 
+│const 
+│const 
+│const 
 │const checkEmail
 │const url
 │const response
@@ -930,17 +931,17 @@ frontend/app/components/ui/button.tsx:
 frontend/app/components/ui/carousel.tsx:
 │const CarouselContext
 │const context
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const onSelect
 │const scrollPrev
 │const scrollNext
 │const handleKeyDown
-│const
-│const
-│const
-│const
+│const 
+│const 
+│const 
+│const 
 
 frontend/app/components/ui/chart.tsx:
 │const THEMES
@@ -954,9 +955,9 @@ frontend/app/components/ui/chart.tsx:
 │const color
 │const ChartTooltip
 │const ChartTooltipContent
-│const
+│const 
 │const tooltipLabel
-│const
+│const 
 │const key
 │const itemConfig
 │const value
@@ -966,7 +967,7 @@ frontend/app/components/ui/chart.tsx:
 │const indicatorColor
 │const ChartLegend
 │const ChartLegendContent
-│const
+│const 
 │const key
 │const itemConfig
 │const payloadPayload
@@ -978,21 +979,21 @@ frontend/app/components/ui/form.tsx:
 │const useFormField
 │const fieldContext
 │const itemContext
-│const
+│const 
 │const formState
 │const fieldState
-│const
+│const 
 │const FormItemContext
 │const id
-│const
-│const
-│const
-│const
+│const 
+│const 
+│const 
+│const 
 │const body
 
 frontend/app/components/ui/input-otp.tsx:
 │const inputOTPContext
-│const
+│const 
 
 frontend/app/components/ui/navigation-menu.tsx:
 │const navigationMenuTriggerStyle
@@ -1008,8 +1009,8 @@ frontend/app/components/ui/sidebar.tsx:
 │const context
 │const SidebarProvider
 │const isMobile
-│const
-│const
+│const 
+│const 
 │const open
 │const setOpen
 │const openState
@@ -1017,25 +1018,25 @@ frontend/app/components/ui/sidebar.tsx:
 │const handleKeyDown
 │const state
 │const contextValue
-│const
-│const
-│const
+│const 
+│const 
+│const 
 │const Comp
 │const Comp
 │const sidebarMenuButtonVariants
 │const Comp
-│const
+│const 
 │const button
 │const Comp
 │const width
 │const Comp
 
 frontend/app/components/ui/slider.tsx:
-│const \_values
+│const _values
 
 frontend/app/components/ui/sonner.tsx:
 │const Toaster
-│const
+│const 
 
 frontend/app/components/ui/toggle-group.tsx:
 │const ToggleGroupContext
@@ -1046,13 +1047,13 @@ frontend/app/components/ui/toggle.tsx:
 
 frontend/app/hooks/use-mobile.ts:
 │const MOBILE_BREAKPOINT
-│const
+│const 
 │const mql
 │const onChange
 
 frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 │const INITIAL_STATE
-│const
+│const 
 │const handleOnline
 │const handleOffline
 │const sendMessage
@@ -1067,18 +1068,18 @@ frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 frontend/app/root.tsx:
 │const links
 
-frontend/app/routes/\_layout.tsx:
+frontend/app/routes/_layout.tsx:
 │const navItems
 │const location
 
 frontend/app/routes/chat/$id.tsx:
 │const EMPTY_MESSAGES
-│const
-│const
+│const 
+│const 
 │const messageContainerRef
 │const messagesSelector
 │const messages
-│const
+│const 
 │const loadMessages
 │const response
 │const data
@@ -1086,8 +1087,8 @@ frontend/app/routes/chat/$id.tsx:
 
 frontend/app/routes/chat/index.tsx:
 │const navigate
-│const
-│const
+│const 
+│const 
 │const handleSubmit
 │const response
 
@@ -1096,11 +1097,11 @@ frontend/app/routes/company.tsx:
 
 frontend/app/routes/components/thinking.tsx:
 │const DEMO_TEXT
-│const
-│const
-│const
-│const
-│const
+│const 
+│const 
+│const 
+│const 
+│const 
 │const allLines
 │const timer
 │const elapsed
@@ -1114,8 +1115,8 @@ frontend/app/routes/login.tsx:
 
 frontend/app/routes/repomap.tsx:
 │#id: repo_url
-│const
-│const
+│const 
+│const 
 │const handleSubmit
 │const formData
 │const repoUrl
@@ -1124,11 +1125,11 @@ frontend/app/routes/repomap.tsx:
 
 frontend/app/routes/thinking.tsx:
 │const DEMO_TEXT
-│const
-│const
-│const
-│const
-│const
+│const 
+│const 
+│const 
+│const 
+│const 
 │const allLines
 │const timer
 │const elapsed
@@ -1145,3 +1146,4 @@ frontend/app/welcome/logo-light.svg:
 
 frontend/app/welcome/welcome.tsx:
 │const resources
+
