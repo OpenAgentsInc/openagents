@@ -5,6 +5,7 @@ export interface Message {
   id: string;
   role: string;
   content: string;
+  reasoning?: string; // Add reasoning field
   metadata?: {
     repos?: string[];
   };
