@@ -72,15 +72,15 @@ export default function ChatSession() {
             <div key={message.id} className="p-4">
               <div className="flex gap-4">
                 <div className="flex-shrink-0">
-                  {message.role === "user" ? ">" : "⏻"}
+                  {message.role === "user" ? "👤" : "🤖"}
                 </div>
                 <div className="flex-1">
-                  {message.content}
-                  {/* {message.metadata?.repos && (
+                  <div className="whitespace-pre-wrap">{message.content}</div>
+                  {message.metadata?.repos && (
                     <div className="text-sm text-muted-foreground mt-2">
                       Repos: {message.metadata.repos.join(", ")}
                     </div>
-                  )} */}
+                  )}
                 </div>
               </div>
             </div>
