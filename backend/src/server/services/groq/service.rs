@@ -68,7 +68,8 @@ impl GroqService {
 
         // Only add reasoning_format if using a model that supports it
         if self.model.starts_with("deepseek-r1") {
-            request["reasoning_format"] = serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
+            request["reasoning_format"] =
+                serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
         }
 
         let response = self
@@ -96,7 +97,10 @@ impl GroqService {
             .ok_or_else(|| GroqError::ParseError("No choices in response".to_string()))?;
 
         // Return both content and reasoning
-        Ok((content.message.content.clone(), content.message.reasoning.clone()))
+        Ok((
+            content.message.content.clone(),
+            content.message.reasoning.clone(),
+        ))
     }
 
     pub async fn chat_with_history_stream(
@@ -113,7 +117,8 @@ impl GroqService {
 
         // Only add reasoning_format if using a model that supports it
         if self.model.starts_with("deepseek-r1") {
-            request["reasoning_format"] = serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
+            request["reasoning_format"] =
+                serde_json::json!(if use_reasoner { "parsed" } else { "hidden" });
         }
 
         let response = self
@@ -141,8 +146,7 @@ impl GroqService {
                     .lines()
                     .filter(|line| line.starts_with("data: "))
                     .map(|line| line.trim_start_matches("data: "))
-                    .filter(|line| *line != "[DONE]")
-                    .next()
+                    .find(|line| *line != "[DONE]")
                 {
                     let stream_response: StreamResponse =
                         serde_json::from_str(data).context("Failed to parse stream response")?;
@@ -177,7 +181,7 @@ impl Gateway for GroqService {
             name: "Groq".to_string(),
             openai_compatible: true,
             supported_features: vec![
-                "chat".to_string(), 
+                "chat".to_string(),
                 "streaming".to_string(),
                 "reasoning".to_string(),
             ],
