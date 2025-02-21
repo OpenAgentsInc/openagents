@@ -23,7 +23,7 @@ impl GroqService {
             .expect("Failed to create HTTP client");
 
         let base_url = std::env::var("GROQ_API_URL")
-            .unwrap_or_else(|_| "https://api.groq.com/v1".to_string());
+            .unwrap_or_else(|_| "https://api.groq.com/openai/v1".to_string());
 
         Self {
             client,
