@@ -94,11 +94,10 @@ impl Gateway for GroqService {
             name: "Groq".to_string(),
             openai_compatible: true,
             supported_features: vec!["chat".to_string(), "streaming".to_string()],
-            default_model: "mixtral-8x7b-32768".to_string(),
+            default_model: "llama-3.1-8b-instant".to_string(),
             available_models: vec![
                 "llama-3.1-8b-instant".to_string(),
                 "llama-3.3-70b-versatile".to_string(),
-                "mixtral-8x7b-32768".to_string(),
             ],
         }
     }
