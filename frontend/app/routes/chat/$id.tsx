@@ -65,7 +65,7 @@ export default function ChatSession() {
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col text-sm">
       <div ref={messageContainerRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl w-full">
           {messages.map((message) => (
