@@ -117,18 +117,21 @@ impl WebSocketTransport {
         let (sender, mut receiver) = socket.split();
         let (tx, mut rx) = mpsc::channel::<String>(32);
 
-        let receive_conn_id = uuid::Uuid::new_v4().to_string();
-        let send_conn_id = receive_conn_id.clone();
-
-        info!("Created connection ID: {}", receive_conn_id);
+        let conn_id = uuid::Uuid::new_v4().to_string();
+        info!("Created connection ID: {}", conn_id);
 
         // Add connection to state
         self.state
-            .add_connection(receive_conn_id.clone(), tx.clone())
+            .add_connection(conn_id.clone(), tx.clone())
             .await?;
 
         let processor = MessageProcessor::new(self.app_state.clone(), user_id.clone(), self.state.clone());
         info!("Created message processor for user: {}", user_id);
+
+        // Clone connection ID for each task
+        let receive_conn_id = conn_id.clone();
+        let send_conn_id = conn_id.clone();
+        let cleanup_conn_id = conn_id;
 
         // Handle incoming messages
         let receive_handle = tokio::spawn(async move {
@@ -169,13 +172,13 @@ impl WebSocketTransport {
 
         // Wait for either task to finish
         tokio::select! {
-            _ = receive_handle => info!("Receive task completed for {}", send_conn_id),
-            _ = send_handle => info!("Send task completed for {}", send_conn_id),
+            _ = receive_handle => info!("Receive task completed for {}", cleanup_conn_id),
+            _ = send_handle => info!("Send task completed for {}", cleanup_conn_id),
         }
 
         // Clean up
-        info!("Cleaning up connection: {}", send_conn_id);
-        self.state.remove_connection(&send_conn_id).await?;
+        info!("Cleaning up connection: {}", cleanup_conn_id);
+        self.state.remove_connection(&cleanup_conn_id).await?;
 
         Ok(())
     }
