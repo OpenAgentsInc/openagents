@@ -90,6 +90,7 @@ pub async fn start_repo_chat(
             user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
+            reasoning: None,
             metadata: Some(json!({
                 "repos": request.repos
             })),
@@ -132,7 +133,7 @@ pub async fn start_repo_chat(
             user_id: user_id.clone(),
             role: "assistant".to_string(),
             content: ai_response,
-            reasoning,
+            reasoning: reasoning.map(|r| json!(r)),
             metadata: Some(json!({
                 "repos": request.repos
             })),
@@ -221,6 +222,7 @@ pub async fn send_message(
             user_id: user_id.clone(),
             role: "user".to_string(),
             content: request.message.clone(),
+            reasoning: None,
             metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
             tool_calls: None,
         })
@@ -270,7 +272,7 @@ pub async fn send_message(
             user_id,
             role: "assistant".to_string(),
             content: ai_response.clone(),
-            reasoning,
+            reasoning: reasoning.map(|r| json!(r)),
             metadata: request.repos.clone().map(|repos| json!({ "repos": repos })),
             tool_calls: None,
         })
