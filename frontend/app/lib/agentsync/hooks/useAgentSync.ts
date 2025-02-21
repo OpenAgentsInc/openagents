@@ -6,6 +6,7 @@ const INITIAL_STATE = {
   isOnline: true,
   lastSyncId: 0,
   pendingChanges: 0,
+  isStreaming: false,
 };
 
 interface AgentSyncOptions {
@@ -19,27 +20,161 @@ interface StreamingState {
   reasoning: string;
 }
 
+interface WebSocketMessage {
+  type: string;
+  [key: string]: any;
+}
+
+class WebSocketClient {
+  private ws: WebSocket | null = null;
+  private messageHandlers: ((msg: WebSocketMessage) => void)[] = [];
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+
+  constructor(private url: string) {}
+
+  connect() {
+    if (this.ws?.readyState === WebSocket.OPEN) return;
+
+    this.ws = new WebSocket(this.url);
+    this.ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        this.messageHandlers.forEach((handler) => handler(msg));
+      } catch (e) {
+        console.error("Failed to parse WebSocket message:", e);
+      }
+    };
+
+    this.ws.onclose = () => {
+      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectTimeout = setTimeout(() => {
+          this.reconnectAttempts++;
+          this.connect();
+        }, Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000));
+      }
+    };
+
+    this.ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+  }
+
+  disconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.messageHandlers = [];
+  }
+
+  send(msg: any) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    } else {
+      throw new Error("WebSocket is not connected");
+    }
+  }
+
+  onMessage(handler: (msg: WebSocketMessage) => void) {
+    this.messageHandlers.push(handler);
+    return () => {
+      this.messageHandlers = this.messageHandlers.filter((h) => h !== handler);
+    };
+  }
+}
+
 export function useAgentSync({
   scope,
   conversationId,
   useReasoning = false,
 }: AgentSyncOptions) {
   const { addMessage, setMessages, removeMessages } = useMessagesStore();
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [state, setState] = useState(INITIAL_STATE);
+  const wsRef = useRef<WebSocketClient | null>(null);
   const streamingStateRef = useRef<StreamingState>({
     content: "",
     reasoning: "",
   });
 
-  const handleOnline = () => {
-    // TODO: Implement online handler
-  };
-
-  const handleOffline = () => {
-    // TODO: Implement offline handler
-  };
-
   useEffect(() => {
+    // Initialize WebSocket
+    const wsUrl = process.env.NODE_ENV === "production"
+      ? "wss://api.openagents.com/ws"
+      : "ws://localhost:3000/ws";
+    
+    wsRef.current = new WebSocketClient(wsUrl);
+    wsRef.current.connect();
+
+    // Subscribe to chat scope
+    wsRef.current.send({
+      type: "Subscribe",
+      scope,
+      conversation_id: conversationId,
+      last_sync_id: state.lastSyncId,
+    });
+
+    // Handle incoming messages
+    const unsubscribe = wsRef.current.onMessage((msg) => {
+      switch (msg.type) {
+        case "Subscribed":
+          setState((s) => ({ ...s, lastSyncId: msg.last_sync_id }));
+          break;
+
+        case "Update":
+          if (msg.delta.content) {
+            streamingStateRef.current.content += msg.delta.content;
+          }
+          if (msg.delta.reasoning) {
+            streamingStateRef.current.reasoning += msg.delta.reasoning;
+          }
+
+          // Update message in store
+          addMessage(conversationId || msg.message_id, {
+            id: msg.message_id,
+            role: "assistant",
+            content: streamingStateRef.current.content,
+            reasoning: streamingStateRef.current.reasoning || undefined,
+          });
+          break;
+
+        case "Complete":
+          setState((s) => ({ ...s, isStreaming: false }));
+          break;
+
+        case "Error":
+          console.error("WebSocket error:", msg.message);
+          setState((s) => ({ ...s, isStreaming: false }));
+          break;
+      }
+    });
+
+    // Cleanup
+    return () => {
+      unsubscribe();
+      if (wsRef.current) {
+        wsRef.current.disconnect();
+      }
+    };
+  }, [scope, conversationId]);
+
+  // Handle online/offline status
+  useEffect(() => {
+    const handleOnline = () => {
+      setState((s) => ({ ...s, isOnline: true }));
+      if (wsRef.current) {
+        wsRef.current.connect();
+      }
+    };
+
+    const handleOffline = () => {
+      setState((s) => ({ ...s, isOnline: false }));
+    };
+
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
@@ -49,274 +184,46 @@ export function useAgentSync({
     };
   }, []);
 
-  const processStreamChunk = (chunk: string) => {
-    if (chunk.startsWith("Reasoning: ")) {
-      streamingStateRef.current.reasoning += chunk.substring(11);
-    } else {
-      streamingStateRef.current.content += chunk;
-    }
-  };
-
   const sendMessage = async (message: string, repos?: string[]) => {
-    // If we have a conversation ID, this is a follow-up message
-    if (conversationId) {
-      console.log("Sending follow-up message:", {
-        conversation_id: conversationId,
-        message,
-        repos,
-        use_reasoning: useReasoning,
-      });
-
-      try {
-        // Store the user message first
-        const userMessageId = uuid();
-        addMessage(conversationId, {
-          id: userMessageId,
-          role: "user",
-          content: message,
-          metadata: repos ? { repos } : undefined,
-        });
-
-        // Reset streaming state
-        setIsStreaming(true);
-        streamingStateRef.current = { content: "", reasoning: "" };
-
-        // Start streaming response
-        const response = await fetch("/api/send-message", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            conversation_id: conversationId,
-            message,
-            repos,
-            use_reasoning: useReasoning,
-            stream: true,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("Error response:", {
-            status: response.status,
-            statusText: response.statusText,
-            body: errorText,
-          });
-          throw new Error(`Failed to send message: ${errorText}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("Failed to get response reader");
-        }
-
-        const decoder = new TextDecoder();
-        const assistantMessageId = uuid();
-
-        // Add initial empty message
-        addMessage(conversationId, {
-          id: assistantMessageId,
-          role: "assistant",
-          content: "",
-          metadata: repos ? { repos } : undefined,
-        });
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split("\n");
-
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6);
-              if (data === "[DONE]") continue;
-
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices[0]?.delta?.content;
-                const reasoning = parsed.choices[0]?.delta?.reasoning;
-
-                if (content) processStreamChunk(content);
-                if (reasoning) processStreamChunk(`Reasoning: ${reasoning}`);
-
-                // Update message with current state
-                addMessage(conversationId, {
-                  id: assistantMessageId,
-                  role: "assistant",
-                  content: streamingStateRef.current.content,
-                  reasoning: streamingStateRef.current.reasoning || undefined,
-                  metadata: repos ? { repos } : undefined,
-                });
-              } catch (e) {
-                console.error("Failed to parse chunk:", e);
-              }
-            }
-          }
-        }
-
-        setIsStreaming(false);
-        return {
-          id: assistantMessageId,
-          message: streamingStateRef.current.content,
-          reasoning: streamingStateRef.current.reasoning,
-        };
-      } catch (error) {
-        console.error("Error sending follow-up message:", error);
-        setIsStreaming(false);
-        throw error;
-      }
+    if (!wsRef.current) {
+      throw new Error("WebSocket not initialized");
     }
 
-    // For new conversations
-    const chatId = uuid();
-    console.log("Starting new chat:", {
-      id: chatId,
-      message,
-      repos: repos || [],
-      scope,
-      use_reasoning: useReasoning,
-    });
+    const messageId = uuid();
+    setState((s) => ({ ...s, isStreaming: true }));
+    streamingStateRef.current = { content: "", reasoning: "" };
 
     try {
-      // Reset streaming state
-      setIsStreaming(true);
-      streamingStateRef.current = { content: "", reasoning: "" };
-
-      const response = await fetch("/api/start-repo-chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: chatId,
-          message,
-          repos: repos || [],
-          scope,
-          use_reasoning: useReasoning,
-          stream: true,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Error response:", {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorText,
-        });
-        throw new Error(`Failed to start chat: ${errorText}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Failed to get response reader");
-      }
-
-      const decoder = new TextDecoder();
-      let conversationId: string | undefined;
-
-      // Add user message under temporary ID
-      const userMessageId = uuid();
-      addMessage(chatId, {
-        id: userMessageId,
+      // Add user message
+      addMessage(conversationId || messageId, {
+        id: messageId,
         role: "user",
         content: message,
         metadata: repos ? { repos } : undefined,
       });
 
-      // Add initial empty AI message under temporary ID
-      addMessage(chatId, {
-        id: chatId,
-        role: "assistant",
-        content: "",
-        metadata: repos ? { repos } : undefined,
+      // Send message via WebSocket
+      wsRef.current.send({
+        type: "Message",
+        id: messageId,
+        conversation_id: conversationId,
+        content: message,
+        repos,
+        use_reasoning: useReasoning,
       });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-
-            try {
-              const parsed = JSON.parse(data);
-
-              // Check if this is the initial response with conversation ID
-              if (!conversationId && parsed.id) {
-                conversationId = parsed.id;
-
-                // Remove messages stored under temporary ID
-                removeMessages(chatId);
-
-                // Add messages under real ID
-                if (conversationId) {
-                  // Add type guard
-                  addMessage(conversationId, {
-                    id: userMessageId,
-                    role: "user",
-                    content: message,
-                    metadata: repos ? { repos } : undefined,
-                  });
-                  addMessage(conversationId, {
-                    id: chatId,
-                    role: "assistant",
-                    content: streamingStateRef.current.content,
-                    reasoning: streamingStateRef.current.reasoning || undefined,
-                    metadata: repos ? { repos } : undefined,
-                  });
-                }
-                continue;
-              }
-
-              const content = parsed.choices[0]?.delta?.content;
-              const reasoning = parsed.choices[0]?.delta?.reasoning;
-
-              if (content) processStreamChunk(content);
-              if (reasoning) processStreamChunk(`Reasoning: ${reasoning}`);
-
-              // Update message with current state under the correct ID
-              const targetId = conversationId || chatId; // chatId is always defined as fallback
-              addMessage(targetId, {
-                id: chatId,
-                role: "assistant",
-                content: streamingStateRef.current.content,
-                reasoning: streamingStateRef.current.reasoning || undefined,
-                metadata: repos ? { repos } : undefined,
-              });
-            } catch (e) {
-              console.error("Failed to parse chunk:", e);
-            }
-          }
-        }
-      }
-
-      setIsStreaming(false);
       return {
-        id: chatId,
-        message: streamingStateRef.current.content,
-        reasoning: streamingStateRef.current.reasoning,
+        id: messageId,
+        message,
       };
     } catch (error) {
-      console.error("Error starting new chat:", error);
-      setIsStreaming(false);
+      setState((s) => ({ ...s, isStreaming: false }));
       throw error;
     }
   };
 
   return {
-    state: {
-      ...INITIAL_STATE,
-      isStreaming,
-    },
+    state,
     sendMessage,
   };
 }

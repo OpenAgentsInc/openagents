@@ -1,241 +1,238 @@
-use super::MessageHandler;
-use crate::server::services::github_issue::GitHubService;
-use crate::server::ws::{transport::WebSocketState, types::ChatMessage};
-use async_trait::async_trait;
+use axum::extract::ws::{Message, WebSocket};
+use futures::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::error::Error;
-use std::sync::Arc;
 use tracing::{error, info};
+use uuid::Uuid;
+
+use crate::server::{
+    config::AppState,
+    models::chat::{CreateConversationRequest, CreateMessageRequest},
+    services::chat_database::ChatDatabaseService,
+};
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+pub enum ChatMessage {
+    Subscribe {
+        scope: String,
+        conversation_id: Option<Uuid>,
+        last_sync_id: Option<i64>,
+    },
+    Message {
+        id: Uuid,
+        conversation_id: Option<Uuid>,
+        content: String,
+        repos: Option<Vec<String>>,
+        use_reasoning: Option<bool>,
+    },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+pub enum ChatResponse {
+    Subscribed {
+        scope: String,
+        last_sync_id: i64,
+    },
+    Update {
+        message_id: Uuid,
+        delta: ChatDelta,
+    },
+    Complete {
+        message_id: Uuid,
+        conversation_id: Uuid,
+    },
+    Error {
+        message: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChatDelta {
+    pub content: Option<String>,
+    pub reasoning: Option<String>,
+}
 
 pub struct ChatHandler {
-    ws_state: Arc<WebSocketState>,
-    github_service: Arc<GitHubService>,
+    ws: WebSocket,
+    state: AppState,
+    user_id: String,
 }
 
 impl ChatHandler {
-    pub fn new(ws_state: Arc<WebSocketState>, github_service: Arc<GitHubService>) -> Self {
-        Self {
-            ws_state,
-            github_service,
-        }
+    pub fn new(ws: WebSocket, state: AppState, user_id: String) -> Self {
+        Self { ws, state, user_id }
     }
 
-    async fn process_message(
-        &self,
-        content: String,
-        conn_id: &str,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Processing message: {}", content);
-
-        // Send "typing" indicator
-        let typing_json = json!({
-            "type": "chat",
-            "content": "...",
-            "sender": "ai",
-            "status": "typing"
-        });
-        self.ws_state
-            .send_to(conn_id, &typing_json.to_string())
-            .await?;
-
-        // Get routing decision
-        let (decision, tool_calls) = self
-            .ws_state
-            .model_router
-            .route_message(content.clone())
-            .await?;
-
-        // Send routing status
-        let routing_json = json!({
-            "type": "chat",
-            "content": decision.reasoning,
-            "sender": "ai",
-            "status": "thinking"
-        });
-        self.ws_state
-            .send_to(conn_id, &routing_json.to_string())
-            .await?;
-
-        if decision.needs_tool {
-            // Handle tool execution
-            if let Some(tool_calls) = tool_calls {
-                for tool_call in tool_calls {
-                    if tool_call.function.name == "read_github_issue" {
-                        // Parse tool call arguments
-                        let args: serde_json::Value =
-                            serde_json::from_str(&tool_call.function.arguments)?;
-                        let owner = args["owner"].as_str().unwrap_or("OpenAgentsInc");
-                        let repo = args["repo"].as_str().unwrap_or("openagents");
-                        let issue_number = args["issue_number"].as_i64().unwrap_or(0) as i32;
-
-                        // Send tool call status
-                        let tool_call_json = json!({
-                            "type": "chat",
-                            "content": format!("Fetching GitHub issue #{} from {}/{}", issue_number, owner, repo),
-                            "sender": "ai",
-                            "status": "tool_calls"
-                        });
-                        self.ws_state
-                            .send_to(conn_id, &tool_call_json.to_string())
-                            .await?;
-
-                        // Fetch the issue
-                        let issue = self
-                            .github_service
-                            .get_issue(owner, repo, issue_number)
-                            .await?;
-
-                        // Create messages for tool response
-                        let user_message = crate::server::services::deepseek::ChatMessage {
-                            role: "user".to_string(),
-                            content: content.clone(),
-                            tool_call_id: None,
-                            tool_calls: None,
-                        };
-
-                        let assistant_message =
-                            crate::server::services::deepseek::AssistantMessage {
-                                role: "assistant".to_string(),
-                                content: format!(
-                                    "Let me fetch GitHub issue #{} for you.",
-                                    issue_number
-                                ),
-                                tool_call_id: None,
-                                tool_calls: Some(vec![tool_call.clone()]),
-                            };
-
-                        let issue_message = crate::server::services::deepseek::ChatMessage {
-                            role: "tool".to_string(),
-                            content: serde_json::to_string(&issue)?,
-                            tool_call_id: Some(tool_call.id),
-                            tool_calls: None,
-                        };
-
-                        // Get final response with tool results
-                        let messages = vec![
-                            user_message,
-                            crate::server::services::deepseek::ChatMessage::from(assistant_message),
-                        ];
-
-                        let (final_content, _, _) = self
-                            .ws_state
-                            .model_router
-                            .handle_tool_response(messages, issue_message)
-                            .await?;
-
-                        // Send final response
-                        let final_json = json!({
-                            "type": "chat",
-                            "content": final_content,
-                            "sender": "ai",
-                            "status": "complete"
-                        });
-                        self.ws_state
-                            .send_to(conn_id, &final_json.to_string())
-                            .await?;
-                    }
-                }
-            } else {
-                // If no tool calls but tool was needed, send error
-                let error_json = json!({
-                    "type": "chat",
-                    "content": "I determined a tool was needed but couldn't execute it properly.",
-                    "sender": "system",
-                    "status": "error"
-                });
-                self.ws_state
-                    .send_to(conn_id, &error_json.to_string())
-                    .await?;
+    pub async fn process_message(&mut self, msg: Message) -> Result<(), Box<dyn std::error::Error>> {
+        match msg {
+            Message::Text(text) => {
+                let chat_msg: ChatMessage = serde_json::from_str(&text)?;
+                self.handle_message(chat_msg).await?;
             }
-        } else {
-            // Use regular chat stream for non-tool messages
-            let mut stream = self.ws_state.model_router.chat_stream(content).await;
-            let mut full_response = String::new();
+            Message::Close(_) => {
+                info!("WebSocket connection closed");
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 
-            while let Some(update) = stream.recv().await {
-                match update {
-                    crate::server::services::deepseek::StreamUpdate::Content(content) => {
-                        full_response.push_str(&content);
-                        let response_json = json!({
-                            "type": "chat",
-                            "content": &content,
-                            "sender": "ai",
-                            "status": "streaming"
-                        });
-                        self.ws_state
-                            .send_to(conn_id, &response_json.to_string())
-                            .await?;
+    async fn handle_message(&mut self, msg: ChatMessage) -> Result<(), Box<dyn std::error::Error>> {
+        match msg {
+            ChatMessage::Subscribe { scope, .. } => {
+                self.broadcast(ChatResponse::Subscribed {
+                    scope,
+                    last_sync_id: 0, // TODO: Implement sync ID tracking
+                })
+                .await?;
+            }
+
+            ChatMessage::Message {
+                id,
+                conversation_id,
+                content,
+                repos,
+                use_reasoning,
+            } => {
+                let chat_db = ChatDatabaseService::new(self.state.pool.clone());
+
+                // Handle conversation creation or lookup
+                let conversation = match conversation_id {
+                    Some(id) => {
+                        let conv = chat_db.get_conversation(id).await?;
+                        // Verify user has access
+                        if conv.user_id != self.user_id {
+                            return Err("Unauthorized access to conversation".into());
+                        }
+                        conv
                     }
-                    crate::server::services::deepseek::StreamUpdate::Reasoning(reasoning) => {
-                        let reasoning_json = json!({
-                            "type": "chat",
-                            "content": &reasoning,
-                            "sender": "ai",
-                            "status": "thinking"
-                        });
-                        self.ws_state
-                            .send_to(conn_id, &reasoning_json.to_string())
-                            .await?;
+                    None => {
+                        chat_db
+                            .create_conversation(&CreateConversationRequest {
+                                id: Some(id),
+                                user_id: self.user_id.clone(),
+                                title: Some(format!("Chat: {}", content)),
+                            })
+                            .await?
                     }
-                    crate::server::services::deepseek::StreamUpdate::Done => {
-                        let response_json = json!({
-                            "type": "chat",
-                            "content": full_response,
-                            "sender": "ai",
-                            "status": "complete"
-                        });
-                        self.ws_state
-                            .send_to(conn_id, &response_json.to_string())
-                            .await?;
-                        break;
-                    }
-                    _ => {}
+                };
+
+                // Create user message
+                let user_message = chat_db
+                    .create_message(&CreateMessageRequest {
+                        conversation_id: conversation.id,
+                        user_id: self.user_id.clone(),
+                        role: "user".to_string(),
+                        content: content.clone(),
+                        reasoning: None,
+                        metadata: repos.clone().map(|r| json!({ "repos": r })),
+                        tool_calls: None,
+                    })
+                    .await?;
+
+                // Get conversation history if this is a follow-up
+                let mut messages = if conversation_id.is_some() {
+                    chat_db
+                        .get_conversation_messages(conversation.id)
+                        .await?
+                        .iter()
+                        .map(|msg| {
+                            json!({
+                                "role": msg.role,
+                                "content": msg.content
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![json!({
+                        "role": "user",
+                        "content": content
+                    })]
+                };
+
+                // Add current message if this is a follow-up
+                if conversation_id.is_some() {
+                    messages.push(json!({
+                        "role": "user",
+                        "content": content
+                    }));
                 }
+
+                // Start Groq stream
+                let mut stream = self
+                    .state
+                    .groq
+                    .chat_with_history_stream(messages, use_reasoning.unwrap_or(false))
+                    .await?;
+
+                // Stream updates
+                let mut content = String::new();
+                let mut reasoning = String::new();
+
+                while let Some(update) = stream.next().await {
+                    match update {
+                        Ok(delta) => {
+                            if let Some(c) = &delta.content {
+                                content.push_str(c);
+                            }
+                            if let Some(r) = &delta.reasoning {
+                                reasoning.push_str(r);
+                            }
+
+                            self.broadcast(ChatResponse::Update {
+                                message_id: id,
+                                delta: ChatDelta {
+                                    content: delta.content,
+                                    reasoning: delta.reasoning,
+                                },
+                            })
+                            .await?;
+                        }
+                        Err(e) => {
+                            error!("Stream error: {:?}", e);
+                            self.broadcast(ChatResponse::Error {
+                                message: e.to_string(),
+                            })
+                            .await?;
+                            return Err(e.into());
+                        }
+                    }
+                }
+
+                // Save final message
+                let ai_message = chat_db
+                    .create_message(&CreateMessageRequest {
+                        conversation_id: conversation.id,
+                        user_id: self.user_id.clone(),
+                        role: "assistant".to_string(),
+                        content,
+                        reasoning: if reasoning.is_empty() {
+                            None
+                        } else {
+                            Some(json!(reasoning))
+                        },
+                        metadata: repos.map(|r| json!({ "repos": r })),
+                        tool_calls: None,
+                    })
+                    .await?;
+
+                // Send completion
+                self.broadcast(ChatResponse::Complete {
+                    message_id: id,
+                    conversation_id: conversation.id,
+                })
+                .await?;
             }
         }
 
         Ok(())
     }
-}
 
-#[async_trait]
-impl MessageHandler for ChatHandler {
-    type Message = ChatMessage;
-
-    async fn handle_message(
-        &self,
-        msg: Self::Message,
-        conn_id: String,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        info!("Handling chat message: {:?}", msg);
-        match msg {
-            ChatMessage::UserMessage { content } => {
-                match self.process_message(content, &conn_id).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => {
-                        error!("Error processing message: {}", e);
-                        let error_json = json!({
-                            "type": "chat",
-                            "content": format!("Error: {}", e),
-                            "sender": "system",
-                            "status": "error"
-                        });
-                        self.ws_state
-                            .send_to(&conn_id, &error_json.to_string())
-                            .await?;
-                        Ok(())
-                    }
-                }
-            }
-            _ => {
-                error!("Unhandled message type: {:?}", msg);
-                Ok(())
-            }
-        }
-    }
-
-    async fn broadcast(&self, _msg: Self::Message) -> Result<(), Box<dyn Error + Send + Sync>> {
-        // Implement if needed
+    async fn broadcast(&mut self, response: ChatResponse) -> Result<(), Box<dyn std::error::Error>> {
+        let msg = serde_json::to_string(&response)?;
+        self.ws.send(Message::Text(msg)).await?;
         Ok(())
     }
 }

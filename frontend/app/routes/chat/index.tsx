@@ -40,8 +40,10 @@ export default function ChatIndex() {
 
   const handleSubmit = async (message: string, repos?: string[]) => {
     try {
-      // Navigate immediately to show loading state
+      // Generate a new chat ID
       const response = await sendMessage(message, repos);
+      
+      // Navigate immediately to show loading state
       navigate(`/chat/${response.id}`);
     } catch (error) {
       console.error("Error starting chat:", error);
