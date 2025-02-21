@@ -21,10 +21,11 @@ impl ChatDatabaseService {
         let conversation = sqlx::query_as!(
             Conversation,
             r#"
-            INSERT INTO conversations (user_id, title, created_at, updated_at)
-            VALUES ($1, $2, NOW(), NOW())
+            INSERT INTO conversations (id, user_id, title, created_at, updated_at)
+            VALUES ($1, $2, $3, NOW(), NOW())
             RETURNING id, user_id, title, created_at as "created_at: _", updated_at as "updated_at: _"
             "#,
+            request.id.unwrap_or_else(Uuid::new_v4),
             request.user_id,
             request.title
         )

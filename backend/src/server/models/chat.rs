@@ -28,6 +28,7 @@ pub struct Message {
 pub struct CreateConversationRequest {
     pub user_id: String,
     pub title: Option<String>,
+    pub id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -41,9 +42,9 @@ pub struct CreateMessageRequest {
 }
 
 impl Conversation {
-    pub fn new(user_id: String, title: Option<String>) -> Self {
+    pub fn new(user_id: String, title: Option<String>, id: Option<Uuid>) -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: id.unwrap_or_else(Uuid::new_v4),
             user_id,
             title,
             created_at: Some(Timestamp::now()),

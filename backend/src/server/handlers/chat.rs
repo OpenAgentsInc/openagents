@@ -63,9 +63,10 @@ pub async fn start_repo_chat(
     };
     info!("Using user_id: {}", user_id);
 
-    // Create conversation
+    // Create conversation with client's UUID
     let conversation = chat_db
         .create_conversation(&CreateConversationRequest {
+            id: Some(request.id), // Use the client's UUID
             user_id: user_id.clone(),
             title: Some(format!("Repo chat: {}", request.message)),
         })
@@ -171,16 +172,23 @@ pub async fn send_message(
         ));
     };
 
-    // Verify conversation exists and belongs to user
+    // Get conversation and verify it exists
     let conversation = chat_db
         .get_conversation(request.conversation_id)
         .await
         .map_err(|e| {
             error!("Failed to get conversation: {:?}", e);
-            (
-                StatusCode::NOT_FOUND,
-                format!("Conversation not found: {}", e),
-            )
+            if e.to_string().contains("Conversation not found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    format!("Conversation {} not found", request.conversation_id),
+                )
+            } else {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get conversation: {}", e),
+                )
+            }
         })?;
 
     // Verify user has access to this conversation
@@ -295,16 +303,23 @@ pub async fn get_conversation_messages(
         ));
     };
 
-    // Verify conversation exists and belongs to user
+    // Get conversation and verify it exists
     let conversation = chat_db
         .get_conversation(conversation_id)
         .await
         .map_err(|e| {
             error!("Failed to get conversation: {:?}", e);
-            (
-                StatusCode::NOT_FOUND,
-                format!("Conversation not found: {}", e),
-            )
+            if e.to_string().contains("Conversation not found") {
+                (
+                    StatusCode::NOT_FOUND,
+                    format!("Conversation {} not found", conversation_id),
+                )
+            } else {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to get conversation: {}", e),
+                )
+            }
         })?;
 
     // Verify user has access to this conversation

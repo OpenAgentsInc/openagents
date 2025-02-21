@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { v4 as uuid } from "uuid";
-import { useMessagesStore } from "~/stores/messages";
+import { useEffect, useRef, useState } from "react"
+import { v4 as uuid } from "uuid"
+import { useMessagesStore } from "~/stores/messages"
 
 const INITIAL_STATE = {
   isOnline: true,
@@ -19,7 +19,7 @@ interface StreamingState {
 }
 
 export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
-  const { addMessage } = useMessagesStore();
+  const { addMessage, setMessages, removeMessages } = useMessagesStore();
   const [isStreaming, setIsStreaming] = useState(false);
   const streamingStateRef = useRef<StreamingState>({ content: "", reasoning: "" });
 
@@ -160,7 +160,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
       }
     }
 
-    // Otherwise, this is a new conversation
+    // For new conversations
     const chatId = uuid();
     console.log("Starting new chat:", {
       id: chatId,
@@ -206,7 +206,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
       const decoder = new TextDecoder();
       let conversationId: string | undefined;
 
-      // Add user message (we'll update the conversation ID once we get it)
+      // Add user message under temporary ID
       const userMessageId = uuid();
       addMessage(chatId, {
         id: userMessageId,
@@ -215,7 +215,7 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
         metadata: repos ? { repos } : undefined,
       });
 
-      // Add initial empty AI message
+      // Add initial empty AI message under temporary ID
       addMessage(chatId, {
         id: chatId,
         role: "assistant",
@@ -241,30 +241,38 @@ export function useAgentSync({ scope, conversationId }: AgentSyncOptions) {
               // Check if this is the initial response with conversation ID
               if (!conversationId && parsed.id) {
                 conversationId = parsed.id;
-                // Update message IDs with correct conversation ID
-                addMessage(conversationId, {
-                  id: userMessageId,
-                  role: "user",
-                  content: message,
-                  metadata: repos ? { repos } : undefined,
-                });
-                addMessage(conversationId, {
-                  id: chatId,
-                  role: "assistant",
-                  content: "",
-                  metadata: repos ? { repos } : undefined,
-                });
+
+                // Remove messages stored under temporary ID
+                removeMessages(chatId);
+
+                // Add messages under real ID
+                if (conversationId) {  // Add type guard
+                  addMessage(conversationId, {
+                    id: userMessageId,
+                    role: "user",
+                    content: message,
+                    metadata: repos ? { repos } : undefined,
+                  });
+                  addMessage(conversationId, {
+                    id: chatId,
+                    role: "assistant",
+                    content: streamingStateRef.current.content,
+                    reasoning: streamingStateRef.current.reasoning || undefined,
+                    metadata: repos ? { repos } : undefined,
+                  });
+                }
                 continue;
               }
 
-              const content = parsed.choices?.[0]?.delta?.content;
-              const reasoning = parsed.choices?.[0]?.delta?.reasoning;
+              const content = parsed.choices[0]?.delta?.content;
+              const reasoning = parsed.choices[0]?.delta?.reasoning;
 
               if (content) processStreamChunk(content);
               if (reasoning) processStreamChunk(`Reasoning: ${reasoning}`);
 
-              // Update message with current state
-              addMessage(conversationId || chatId, {
+              // Update message with current state under the correct ID
+              const targetId = conversationId || chatId;  // chatId is always defined as fallback
+              addMessage(targetId, {
                 id: chatId,
                 role: "assistant",
                 content: streamingStateRef.current.content,
