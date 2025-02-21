@@ -1,6 +1,7 @@
 use super::services::{
     deepseek::DeepSeekService,
     github_issue::GitHubService,
+    groq::GroqService,
     oauth::{github::GitHubOAuth, scramble::ScrambleOAuth, OAuthConfig},
     openrouter::OpenRouterService,
     solver::SolverService,
@@ -28,6 +29,7 @@ pub struct AppState {
     pub scramble_oauth: Arc<ScrambleOAuth>,
     pub pool: PgPool,
     pub frontend_url: String,
+    pub groq: Arc<GroqService>,
 }
 
 #[derive(Clone)]
@@ -129,6 +131,11 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
 
     let chat_model = Arc::new(DeepSeekService::with_base_url(api_key, base_url));
 
+    // Initialize Groq service
+    let groq = Arc::new(GroqService::new(
+        env::var("GROQ_API_KEY").expect("GROQ_API_KEY must be set"),
+    ));
+
     let tools = create_tools();
 
     let ws_state = Arc::new(WebSocketState::new(
@@ -177,6 +184,7 @@ pub fn configure_app_with_config(pool: PgPool, config: Option<AppConfig>) -> Rou
         scramble_oauth,
         pool: pool.clone(),
         frontend_url: config.frontend_url,
+        groq,
     };
 
     // Create the main router

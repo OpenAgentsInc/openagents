@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use reqwest::{Client, ClientBuilder};
+use serde_json::Value;
 use std::pin::Pin;
 use std::time::Duration;
 use tokio_stream::Stream;
@@ -44,35 +45,19 @@ impl GroqService {
             base_url,
         }
     }
-}
 
-#[async_trait::async_trait]
-impl Gateway for GroqService {
-    fn metadata(&self) -> GatewayMetadata {
-        GatewayMetadata {
-            name: "Groq".to_string(),
-            openai_compatible: true,
-            supported_features: vec!["chat".to_string(), "streaming".to_string()],
-            default_model: "mixtral-8x7b-32768".to_string(),
-            available_models: vec![
-                "llama-3.1-8b-instant".to_string(),
-                "llama-3.3-70b-versatile".to_string(),
-                "mixtral-8x7b-32768".to_string(),
-            ],
-        }
-    }
-
-    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+    pub async fn chat_with_history(
+        &self,
+        messages: Vec<Value>,
+        use_reasoner: bool,
+    ) -> Result<(String, Option<String>)> {
         let response = self
             .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
                 "model": self.metadata().default_model,
-                "messages": [{
-                    "role": "user",
-                    "content": prompt
-                }],
+                "messages": messages,
                 "temperature": if use_reasoner { 0.0 } else { 0.7 },
                 "stream": false
             }))
@@ -99,6 +84,32 @@ impl Gateway for GroqService {
             .clone();
 
         Ok((content, None))
+    }
+}
+
+#[async_trait::async_trait]
+impl Gateway for GroqService {
+    fn metadata(&self) -> GatewayMetadata {
+        GatewayMetadata {
+            name: "Groq".to_string(),
+            openai_compatible: true,
+            supported_features: vec!["chat".to_string(), "streaming".to_string()],
+            default_model: "llama-3.1-8b-instant".to_string(),
+            available_models: vec![
+                "llama-3.1-8b-instant".to_string(),
+                "llama-3.3-70b-versatile".to_string(),
+            ],
+        }
+    }
+
+    async fn chat(&self, prompt: String, use_reasoner: bool) -> Result<(String, Option<String>)> {
+        // Convert single prompt into messages format
+        let messages = vec![serde_json::json!({
+            "role": "user",
+            "content": prompt
+        })];
+
+        self.chat_with_history(messages, use_reasoner).await
     }
 
     async fn chat_stream(
