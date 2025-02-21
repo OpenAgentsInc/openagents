@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::pin::Pin;
 use tokio_stream::Stream;
 
-use self::types::GatewayMetadata;
+pub use self::types::GatewayMetadata;
 
 #[async_trait::async_trait]
 pub trait Gateway {
