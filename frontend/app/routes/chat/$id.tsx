@@ -15,6 +15,10 @@ export default function ChatSession() {
   const { setMessages } = useMessagesStore();
   const messageContainerRef = useRef<HTMLDivElement>(null);
 
+  // Create stable refs for callbacks
+  const setMessagesRef = useRef(setMessages);
+  setMessagesRef.current = setMessages;
+
   // Use the cached empty array to avoid returning a new array on every call.
   const messagesSelector = useCallback(
     (state) => state.messages[id || ""] || EMPTY_MESSAGES,
@@ -42,11 +46,13 @@ export default function ChatSession() {
   useEffect(() => {
     if (!id) return;
 
-    // Add a small delay to allow the conversation to be created
-    const timeout = setTimeout(async () => {
+    const controller = new AbortController();
+
+    const loadMessages = async () => {
       try {
         const response = await fetch(`/api/conversations/${id}/messages`, {
-          credentials: "include", // Include cookies in the request
+          credentials: "include",
+          signal: controller.signal,
           headers: {
             "Accept": "application/json",
           },
@@ -59,14 +65,17 @@ export default function ChatSession() {
           throw new Error("Failed to load messages");
         }
         const data = await response.json();
-        setMessages(id, data);
+        setMessagesRef.current(id, data);
       } catch (error) {
-        console.error("Error loading messages:", error);
+        if (!controller.signal.aborted) {
+          console.error("Error loading messages:", error);
+        }
       }
-    }, 500); // 500ms delay
+    };
 
-    return () => clearTimeout(timeout);
-  }, [id, setMessages]);
+    loadMessages();
+    return () => controller.abort();
+  }, [id]);
 
   const handleSubmit = async (message: string, repos?: string[]) => {
     try {
@@ -127,6 +136,11 @@ export default function ChatSession() {
         {state.pendingChanges > 0 && (
           <div className="mt-2 text-sm text-yellow-500">
             {state.pendingChanges} pending changes to sync
+          </div>
+        )}
+        {state.error && (
+          <div className="mt-2 text-sm text-red-500">
+            Error: {state.error}
           </div>
         )}
       </div>
