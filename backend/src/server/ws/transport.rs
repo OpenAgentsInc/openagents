@@ -8,7 +8,7 @@ use tracing::{debug, error, info};
 use crate::server::{
     config::AppState,
     services::{github_issue::GitHubService, model_router::ModelRouter},
-    ws::handlers::chat::{ChatHandler, ChatMessage, ChatResponse},
+    ws::handlers::chat::{ChatDelta, ChatHandler, ChatMessage, ChatResponse},
 };
 
 pub type WebSocketSender = mpsc::Sender<String>;
@@ -80,6 +80,91 @@ impl WebSocketState {
         self.connections.write().await.remove(conn_id);
         let count = self.connections.read().await.len();
         info!("Total active connections: {}", count);
+        Ok(())
+    }
+}
+
+pub struct MessageProcessor {
+    app_state: AppState,
+    user_id: String,
+    conn_id: String,
+}
+
+impl MessageProcessor {
+    pub fn new(app_state: AppState, user_id: String, conn_id: String) -> Self {
+        Self {
+            app_state,
+            user_id,
+            conn_id,
+        }
+    }
+
+    pub async fn process_message(
+        &self,
+        text: &str,
+        tx: &Arc<mpsc::Sender<String>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let chat_msg: ChatMessage = serde_json::from_str(text)?;
+
+        match chat_msg {
+            ChatMessage::Subscribe { scope, .. } => {
+                info!("Processing subscribe message for scope: {}", scope);
+                let response = serde_json::to_string(&ChatResponse::Subscribed {
+                    scope,
+                    connection_id: Some(self.conn_id.clone()),
+                    last_sync_id: 0,
+                })?;
+                tx.send(response).await?;
+            }
+            ChatMessage::Message {
+                id,
+                conversation_id,
+                content,
+                repos,
+                use_reasoning,
+                ..
+            } => {
+                info!(
+                    "Processing chat message: id={}, conv={:?}",
+                    id, conversation_id
+                );
+
+                // Send the message to the model router
+                let response = if let Some(use_reasoning) = use_reasoning {
+                    self.app_state
+                        .ws_state
+                        .model_router
+                        .chat(content, use_reasoning)
+                        .await?
+                } else {
+                    self.app_state
+                        .ws_state
+                        .model_router
+                        .chat(content, false)
+                        .await?
+                };
+
+                // Send the response
+                let (content, reasoning) = response;
+                let response = serde_json::to_string(&ChatResponse::Update {
+                    message_id: id,
+                    connection_id: Some(self.conn_id.clone()),
+                    delta: ChatDelta {
+                        content: Some(content),
+                        reasoning,
+                    },
+                })?;
+                tx.send(response).await?;
+
+                // Send completion message
+                let complete_response = serde_json::to_string(&ChatResponse::Complete {
+                    message_id: id,
+                    connection_id: Some(self.conn_id.clone()),
+                    conversation_id: conversation_id.unwrap_or_else(uuid::Uuid::new_v4),
+                })?;
+                tx.send(complete_response).await?;
+            }
+        }
         Ok(())
     }
 }
