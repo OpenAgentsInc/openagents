@@ -41,117 +41,120 @@ export function useAgentSync({
 
   // Track initialization and active subscriptions
   const initializedRef = useRef(false);
-  const subscriptionsRef = useRef(new Set<string>());
+  const handlerRef = useRef<(() => void) | null>(null);
   const connectionIdRef = useRef<string | null>(null);
 
   // Initialize WebSocket once
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-    connectionIdRef.current = uuid();
+    let isCurrentEffect = true;
 
-    // Only create WebSocket if we don't have one
-    if (!wsRef.current) {
-      const wsUrl = process.env.NODE_ENV === 'development' 
-        ? 'ws://localhost:8000/ws'
-        : `wss://${window.location.host}/ws`;
-
-      console.debug("Initializing WebSocket:", wsUrl);
-      wsRef.current = new WebSocketClient(wsUrl);
-    }
-
-    // Connect and subscribe
-    wsRef.current.connect().then(() => {
-      console.debug("Sending subscription:", { scope, conversationId });
-      wsRef.current?.send({
-        type: "Subscribe",
-        connection_id: connectionIdRef.current,
-        scope,
-        conversation_id: conversationId,
-        last_sync_id: state.lastSyncId,
-      });
-    }).catch(error => {
-      console.error("Failed to connect to WebSocket:", error);
-      setState(s => ({ ...s, error: error.message }));
-    });
-
-    // Handle incoming messages
-    const unsubscribe = wsRef.current.onMessage((msg) => {
-      // Ignore messages from other connections
-      if (msg.connection_id && msg.connection_id !== connectionIdRef.current) {
+    const initializeWebSocket = async () => {
+      // Skip if already initialized
+      if (initializedRef.current && wsRef.current?.isConnected()) {
+        console.debug("WebSocket already initialized and connected");
         return;
       }
 
-      console.debug("Received message:", msg);
-      switch (msg.type) {
-        case "Subscribed":
-          setState((s) => ({ ...s, lastSyncId: msg.last_sync_id, error: null }));
-          break;
+      // Only create WebSocket if we don't have one
+      if (!wsRef.current) {
+        const wsUrl = process.env.NODE_ENV === 'development'
+          ? 'ws://localhost:8000/ws'
+          : `wss://${window.location.host}/ws`;
 
-        case "Update":
-          // Skip if we've already processed this message
-          if (subscriptionsRef.current.has(msg.message_id)) {
-            return;
-          }
-          subscriptionsRef.current.add(msg.message_id);
-
-          if (msg.delta.content) {
-            streamingStateRef.current.content += msg.delta.content;
-          }
-          if (msg.delta.reasoning) {
-            streamingStateRef.current.reasoning += msg.delta.reasoning;
-          }
-
-          // Update message in store using ref to ensure latest callback
-          // Use conversation ID as the store key, message ID as the message ID
-          if (conversationId) {
-            addMessageRef.current(conversationId, {
-              id: msg.message_id,
-              role: "assistant",
-              content: streamingStateRef.current.content,
-              reasoning: streamingStateRef.current.reasoning || undefined,
-            });
-          }
-          break;
-
-        case "Complete":
-          setState((s) => ({ ...s, isStreaming: false, error: null }));
-          break;
-
-        case "Error":
-          console.error("WebSocket error:", msg.message);
-          setState((s) => ({ 
-            ...s, 
-            isStreaming: false, 
-            error: msg.message 
-          }));
-          break;
+        console.debug("Initializing WebSocket:", wsUrl);
+        wsRef.current = new WebSocketClient(wsUrl);
+        connectionIdRef.current = uuid();
       }
-    });
 
-    // Cleanup only removes message handlers, doesn't disconnect
+      try {
+        await wsRef.current.connect();
+
+        // Check if this effect is still current
+        if (!isCurrentEffect) {
+          console.debug("Skipping handler setup for stale effect");
+          return;
+        }
+
+        // Set up message handler if we don't have one
+        if (!handlerRef.current) {
+          console.debug("Setting up message handler");
+          handlerRef.current = wsRef.current.onMessage((msg) => {
+            // Ignore messages from other connections
+            if (msg.connection_id && msg.connection_id !== connectionIdRef.current) {
+              console.debug("Ignoring message from different connection:", msg.connection_id);
+              return;
+            }
+
+            console.debug("Received message:", msg);
+            switch (msg.type) {
+              case "Subscribed":
+                setState((s) => ({ ...s, lastSyncId: msg.last_sync_id, error: null }));
+                break;
+
+              case "Update":
+                if (msg.delta.content) {
+                  streamingStateRef.current.content += msg.delta.content;
+                }
+                if (msg.delta.reasoning) {
+                  streamingStateRef.current.reasoning += msg.delta.reasoning;
+                }
+
+                // Update message in store using ref to ensure latest callback
+                if (conversationId) {
+                  addMessageRef.current(conversationId, {
+                    id: msg.message_id,
+                    role: "assistant",
+                    content: streamingStateRef.current.content,
+                    reasoning: streamingStateRef.current.reasoning || undefined,
+                  });
+                }
+                break;
+
+              case "Complete":
+                setState((s) => ({ ...s, isStreaming: false, error: null }));
+                break;
+
+              case "Error":
+                console.error("WebSocket error:", msg.message);
+                setState((s) => ({
+                  ...s,
+                  isStreaming: false,
+                  error: msg.message
+                }));
+                break;
+            }
+          });
+        }
+
+        // Send subscription
+        console.debug("Sending subscription:", { scope, conversationId });
+        wsRef.current.send({
+          type: "Subscribe",
+          connection_id: connectionIdRef.current,
+          scope,
+          conversation_id: conversationId,
+          last_sync_id: state.lastSyncId,
+        });
+
+        initializedRef.current = true;
+
+      } catch (error) {
+        console.error("Failed to connect to WebSocket:", error);
+        setState(s => ({ ...s, error: error instanceof Error ? error.message : 'Unknown error' }));
+      }
+    };
+
+    initializeWebSocket();
+
     return () => {
-      console.debug("Cleaning up message handlers");
-      unsubscribe();
-      if (wsRef.current) {
-        wsRef.current.clearHandlers();
+      isCurrentEffect = false;
+      if (handlerRef.current) {
+        console.debug("Cleaning up message handler on unmount");
+        handlerRef.current();
+        handlerRef.current = null;
       }
     };
   }, [scope, conversationId]);
-
-  // Separate effect for actual WebSocket cleanup
-  useEffect(() => {
-    return () => {
-      console.debug("Cleaning up WebSocket connection");
-      if (wsRef.current) {
-        wsRef.current.disconnect();
-        wsRef.current = null;
-      }
-      subscriptionsRef.current.clear();
-      initializedRef.current = false;
-      connectionIdRef.current = null;
-    };
-  }, []);
 
   // Handle online/offline status
   useEffect(() => {
@@ -190,7 +193,7 @@ export function useAgentSync({
 
     try {
       console.debug("Sending message:", { messageId, message, repos });
-      
+
       // Add user message using conversation ID as store key
       if (conversationId) {
         addMessageRef.current(conversationId, {
@@ -218,8 +221,8 @@ export function useAgentSync({
       };
     } catch (error) {
       console.error("Error sending message:", error);
-      setState((s) => ({ 
-        ...s, 
+      setState((s) => ({
+        ...s,
         isStreaming: false,
         error: error instanceof Error ? error.message : "Unknown error"
       }));

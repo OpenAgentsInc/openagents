@@ -10,11 +10,16 @@ export class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private connectionTimeout: NodeJS.Timeout | null = null;
-  private messageQueue: any[] = [];
+  private messageQueue: string[] = [];
   private isConnecting = false;
   private isClosed = false;
+  private sentMessages: Set<string> = new Set();
 
   constructor(private url: string) { }
+
+  isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
 
   connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
@@ -23,7 +28,7 @@ export class WebSocketClient {
 
     return new Promise((resolve, reject) => {
       this.isConnecting = true;
-      
+
       // Clear any existing timeouts
       if (this.connectionTimeout) {
         clearTimeout(this.connectionTimeout);
@@ -43,10 +48,8 @@ export class WebSocketClient {
       }, 5000);
 
       try {
-        // Include credentials in WebSocket connection
-        this.ws = new WebSocket(this.url, [], {
-          credentials: 'include'
-        });
+        // Create WebSocket connection
+        this.ws = new WebSocket(this.url);
 
         this.ws.onopen = () => {
           if (this.connectionTimeout) {
@@ -55,12 +58,9 @@ export class WebSocketClient {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           console.debug("WebSocket connected");
-          
-          // Process any queued messages
-          while (this.messageQueue.length > 0) {
-            const msg = this.messageQueue.shift();
-            this.send(msg);
-          }
+
+          // Process queued messages
+          this.processQueue();
           resolve();
         };
 
@@ -80,11 +80,11 @@ export class WebSocketClient {
           }
           this.isConnecting = false;
           console.debug("WebSocket closed:", event);
-          
+
           if (!this.isClosed && this.reconnectAttempts < this.maxReconnectAttempts) {
             const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
             console.debug(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
-            
+
             this.reconnectTimeout = setTimeout(
               () => {
                 this.reconnectAttempts++;
@@ -112,14 +112,14 @@ export class WebSocketClient {
 
   disconnect() {
     this.isClosed = true;
-    
+
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout);
     }
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
-    
+
     if (this.ws) {
       // Only close if not already closing/closed
       if (this.ws.readyState === WebSocket.OPEN) {
@@ -127,11 +127,12 @@ export class WebSocketClient {
       }
       this.ws = null;
     }
-    
+
     this.messageHandlers.clear();
     this.messageQueue = [];
     this.isConnecting = false;
     this.reconnectAttempts = 0;
+    this.sentMessages.clear();
     console.debug("WebSocket client disconnected");
   }
 
@@ -146,19 +147,51 @@ export class WebSocketClient {
       return;
     }
 
+    const msgStr = JSON.stringify(msg);
+
+    // For subscription messages, check if we've already sent this subscription
+    if (msg.type === "Subscribe") {
+      const subscriptionKey = `subscription:${msg.scope}:${msg.conversation_id || 'default'}:${msg.connection_id}`;
+      if (this.sentMessages.has(subscriptionKey)) {
+        console.debug("Skipping duplicate subscription:", subscriptionKey);
+        return;
+      }
+      this.sentMessages.add(subscriptionKey);
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN) {
-      const msgStr = JSON.stringify(msg);
       console.debug("WebSocket sending:", msg);
       this.ws.send(msgStr);
     } else {
       // Queue the message if not connected
       console.debug("WebSocket queuing message:", msg);
-      this.messageQueue.push(msg);
+      this.messageQueue.push(msgStr);
       // Try to connect if not already connecting
       if (!this.isConnecting && !this.isClosed) {
         this.connect().catch(e => {
           console.error("Connection attempt failed:", e);
         });
+      }
+    }
+  }
+
+  private processQueue() {
+    // Process any queued messages
+    while (this.messageQueue.length > 0) {
+      const msgStr = this.messageQueue.shift();
+      if (msgStr && this.ws?.readyState === WebSocket.OPEN) {
+        const msg = JSON.parse(msgStr);
+        // Check for duplicate subscriptions in the queue
+        if (msg.type === "Subscribe") {
+          const subscriptionKey = `subscription:${msg.scope}:${msg.conversation_id || 'default'}:${msg.connection_id}`;
+          if (this.sentMessages.has(subscriptionKey)) {
+            console.debug("Skipping queued duplicate subscription:", subscriptionKey);
+            continue;
+          }
+          this.sentMessages.add(subscriptionKey);
+        }
+        console.debug("WebSocket sending queued message:", msg);
+        this.ws.send(msgStr);
       }
     }
   }

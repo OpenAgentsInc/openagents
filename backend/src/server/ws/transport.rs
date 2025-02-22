@@ -8,7 +8,7 @@ use tracing::{debug, error, info};
 use crate::server::{
     config::AppState,
     services::{github_issue::GitHubService, model_router::ModelRouter},
-    ws::handlers::chat::{ChatDelta, ChatHandler, ChatMessage, ChatResponse},
+    ws::handlers::chat::{ChatDelta, ChatMessage, ChatResponse},
 };
 
 pub type WebSocketSender = mpsc::Sender<String>;
@@ -100,15 +100,43 @@ impl MessageProcessor {
     }
 
     pub async fn process_message(
-        &self,
+        &mut self,
         text: &str,
         tx: &Arc<mpsc::Sender<String>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let chat_msg: ChatMessage = serde_json::from_str(text)?;
+        let chat_msg: ChatMessage = match serde_json::from_str(text) {
+            Ok(msg) => msg,
+            Err(e) => {
+                error!("Failed to parse message: {:?}", e);
+                let error_msg = serde_json::to_string(&ChatResponse::Error {
+                    message: format!("Invalid message format: {}", e),
+                    connection_id: Some(self.conn_id.clone()),
+                })?;
+                tx.send(error_msg).await?;
+                return Ok(());
+            }
+        };
 
         match chat_msg {
-            ChatMessage::Subscribe { scope, .. } => {
-                info!("Processing subscribe message for scope: {}", scope);
+            ChatMessage::Subscribe {
+                scope,
+                connection_id,
+                conversation_id,
+                ..
+            } => {
+                // Update our connection ID to match the client's if provided
+                if let Some(client_conn_id) = connection_id {
+                    debug!(
+                        "Updating connection ID from {} to {}",
+                        self.conn_id, client_conn_id
+                    );
+                    self.conn_id = client_conn_id;
+                }
+
+                info!(
+                    "Processing subscribe message for scope: {} (conversation: {:?})",
+                    scope, conversation_id
+                );
                 let response = serde_json::to_string(&ChatResponse::Subscribed {
                     scope,
                     connection_id: Some(self.conn_id.clone()),
@@ -125,23 +153,31 @@ impl MessageProcessor {
                 ..
             } => {
                 info!(
-                    "Processing chat message: id={}, conv={:?}",
-                    id, conversation_id
+                    "Processing chat message: id={}, conv={:?}, content={}",
+                    id, conversation_id, content
                 );
 
+                // Create conversation ID if not provided
+                let conversation_id = conversation_id.unwrap_or_else(uuid::Uuid::new_v4);
+
                 // Send the message to the model router
-                let response = if let Some(use_reasoning) = use_reasoning {
-                    self.app_state
-                        .ws_state
-                        .model_router
-                        .chat(content, use_reasoning)
-                        .await?
-                } else {
-                    self.app_state
-                        .ws_state
-                        .model_router
-                        .chat(content, false)
-                        .await?
+                let response = match self
+                    .app_state
+                    .ws_state
+                    .model_router
+                    .chat(content, use_reasoning.unwrap_or(false))
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(e) => {
+                        error!("Failed to process message: {:?}", e);
+                        let error_msg = serde_json::to_string(&ChatResponse::Error {
+                            message: format!("Failed to process message: {}", e),
+                            connection_id: Some(self.conn_id.clone()),
+                        })?;
+                        tx.send(error_msg).await?;
+                        return Ok(());
+                    }
                 };
 
                 // Send the response
@@ -154,15 +190,21 @@ impl MessageProcessor {
                         reasoning,
                     },
                 })?;
-                tx.send(response).await?;
 
-                // Send completion message
-                let complete_response = serde_json::to_string(&ChatResponse::Complete {
-                    message_id: id,
-                    connection_id: Some(self.conn_id.clone()),
-                    conversation_id: conversation_id.unwrap_or_else(uuid::Uuid::new_v4),
-                })?;
-                tx.send(complete_response).await?;
+                match tx.send(response).await {
+                    Ok(_) => {
+                        let complete_response = serde_json::to_string(&ChatResponse::Complete {
+                            message_id: id,
+                            connection_id: Some(self.conn_id.clone()),
+                            conversation_id,
+                        })?;
+                        tx.send(complete_response).await?;
+                    }
+                    Err(e) => {
+                        error!("Failed to send response: {:?}", e);
+                        return Ok(());
+                    }
+                }
             }
         }
         Ok(())
@@ -203,10 +245,8 @@ impl WebSocketTransport {
             return Err(e);
         }
 
-        let processor =
-            MessageProcessor::new(self.app_state.clone(), user_id.clone(), conn_id.clone());
-        info!("Created message processor for user: {}", user_id);
-
+        // Clone AppState before moving into async task
+        let app_state = self.app_state.clone();
         let receive_conn_id = conn_id.clone();
         let send_conn_id = conn_id.clone();
         let cleanup_state = self.state.clone();
@@ -233,6 +273,8 @@ impl WebSocketTransport {
 
         let receive_handle = tokio::spawn(async move {
             info!("Starting receive task for connection: {}", receive_conn_id);
+            let mut processor =
+                MessageProcessor::new(app_state, user_id.clone(), receive_conn_id.clone());
             while let Some(Ok(msg)) = receiver.next().await {
                 match msg {
                     Message::Text(ref text) => {

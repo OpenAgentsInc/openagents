@@ -137,6 +137,144 @@ Responsibilities:
    - Resources freed
    - Connections closed
 
+## React Strict Mode Handling
+
+In development, React 18's Strict Mode intentionally double-mounts components to help detect side effects. This presents unique challenges for WebSocket connections:
+
+### Challenge
+```typescript
+// Without proper handling, this happens twice in development:
+useEffect(() => {
+  const ws = new WebSocket(url);
+  // Connection logic...
+  return () => ws.close();
+}, []);
+```
+
+### Solution
+We implement a robust instance tracking system:
+
+```typescript
+useEffect(() => {
+  // Track unique effect instance
+  const effectInstanceId = uuid();
+  const currentEffectId = effectInstanceId;
+
+  const initializeWebSocket = async () => {
+    // Prevent stale effect instances from proceeding
+    if (currentEffectId !== effectInstanceId) return;
+
+    // WebSocket initialization
+    if (!wsRef.current) {
+      wsRef.current = new WebSocketClient(url);
+      connectionIdRef.current = uuid();
+    }
+
+    await wsRef.current.connect();
+
+    // Double-check instance validity after async operation
+    if (currentEffectId !== effectInstanceId) return;
+
+    // Setup handlers and subscriptions...
+  };
+
+  // Cleanup tied to specific instance
+  let cleanup: (() => void) | null = null;
+
+  initializeWebSocket();
+
+  return () => cleanup?.();
+}, [dependencies]);
+```
+
+Key features:
+- Unique instance IDs for each effect run
+- Instance validation before state mutations
+- Proper cleanup handling per instance
+- Prevention of duplicate subscriptions
+- Connection ID tracking across remounts
+
+Benefits:
+- Prevents duplicate connections in development
+- Maintains connection stability
+- Proper resource cleanup
+- Prevents message handler duplication
+- Preserves WebSocket state consistency
+
+## Client Message Handling
+
+The client implements a robust message queuing and connection management system to ensure reliable message delivery:
+
+### Message Queue System
+```typescript
+class WebSocketClient {
+  private messageQueue: string[] = [];
+
+  send(msg: any) {
+    const msgStr = JSON.stringify(msg);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      // Send immediately if connected
+      this.ws.send(msgStr);
+    } else {
+      // Queue message and initiate connection
+      this.messageQueue.push(msgStr);
+      this.connect();
+    }
+  }
+
+  private processQueue() {
+    while (this.messageQueue.length > 0) {
+      const msgStr = this.messageQueue.shift();
+      if (msgStr && this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(msgStr);
+      }
+    }
+  }
+}
+```
+
+### Connection Lifecycle
+A typical successful connection sequence:
+```
+1. Initialize WebSocket
+   Client: Initializing WebSocket: ws://localhost:8000/ws
+
+2. Queue Initial Message
+   Client: Sending subscription: {scope: 'chat', ...}
+   Client: WebSocket queuing message: {type: 'Subscribe', ...}
+
+3. Establish Connection
+   Client: WebSocket connected
+
+4. Process Queue
+   Client: WebSocket sending queued message: {type: 'Subscribe', ...}
+```
+
+Key features:
+- Message queuing before connection is established
+- Automatic connection initiation when messages are queued
+- Queue processing after connection is established
+- Prevention of duplicate messages and connections
+- Connection ID tracking for message routing
+
+### Error Handling and Reconnection
+```typescript
+onclose = (event) => {
+  if (!this.isClosed && this.reconnectAttempts < this.maxReconnectAttempts) {
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    // Exponential backoff for reconnection attempts
+    setTimeout(() => this.connect(), delay);
+  }
+}
+```
+
+Benefits:
+- No message loss during connection establishment
+- Graceful handling of connection failures
+- Proper message ordering
+- Clean connection cleanup
+- Automatic reconnection with exponential backoff
+
 ## Error Handling
 
 The system implements multiple layers of error handling:

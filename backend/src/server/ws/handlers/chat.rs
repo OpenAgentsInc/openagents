@@ -3,7 +3,7 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::mpsc;
-use tracing::{error, info, debug};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::server::{
@@ -71,7 +71,12 @@ pub struct ChatHandler {
 impl ChatHandler {
     pub fn new(tx: mpsc::Sender<String>, state: AppState, user_id: String) -> Self {
         info!("Creating new ChatHandler for user: {}", user_id);
-        Self { tx, state, user_id, connection_id: None }
+        Self {
+            tx,
+            state,
+            user_id,
+            connection_id: None,
+        }
     }
 
     pub async fn process_message(
@@ -105,21 +110,48 @@ impl ChatHandler {
             ChatMessage::Subscribe { connection_id, .. } => connection_id.clone(),
             ChatMessage::Message { connection_id, .. } => connection_id.clone(),
         };
-        
+
         // Store connection_id if this is the first message
         if self.connection_id.is_none() {
             self.connection_id = connection_id.clone();
         }
 
         match msg {
-            ChatMessage::Subscribe { scope, .. } => {
-                info!("Processing subscribe message for scope: {}", scope);
-                self.broadcast(ChatResponse::Subscribed {
+            ChatMessage::Subscribe {
+                scope,
+                connection_id,
+                conversation_id,
+                ..
+            } => {
+                // Update connection ID if provided
+                if let Some(conn_id) = connection_id {
+                    // If we already have a different connection ID, ignore this subscription
+                    if let Some(current_conn_id) = &self.connection_id {
+                        if conn_id != *current_conn_id {
+                            debug!(
+                                "Ignoring subscription from different connection: {} != {}",
+                                conn_id, current_conn_id
+                            );
+                            return Ok(());
+                        }
+                    } else {
+                        // Set connection ID if we don't have one
+                        self.connection_id = Some(conn_id);
+                    }
+                }
+
+                info!(
+                    "Processing subscribe message for scope: {} (conversation: {:?}) from connection: {:?}",
+                    scope, conversation_id, self.connection_id
+                );
+
+                // Send subscription confirmation
+                let response = serde_json::to_string(&ChatResponse::Subscribed {
                     scope,
-                    connection_id,
+                    connection_id: self.connection_id.clone(),
                     last_sync_id: 0,
-                })
-                .await?;
+                })?;
+                self.tx.send(response).await?;
             }
 
             ChatMessage::Message {
@@ -130,7 +162,10 @@ impl ChatHandler {
                 use_reasoning,
                 ..
             } => {
-                info!("Processing chat message: id={}, conv={:?}", id, conversation_id);
+                info!(
+                    "Processing chat message: id={}, conv={:?}",
+                    id, conversation_id
+                );
                 let chat_db = ChatDatabaseService::new(self.state.pool.clone());
 
                 // Handle conversation creation or lookup
@@ -147,7 +182,10 @@ impl ChatHandler {
                         })?;
                         // Verify user has access
                         if conv.user_id != self.user_id {
-                            error!("Unauthorized access attempt to conversation {} by user {}", id, self.user_id);
+                            error!(
+                                "Unauthorized access attempt to conversation {} by user {}",
+                                id, self.user_id
+                            );
                             return Err("Unauthorized access to conversation".into());
                         }
                         conv
