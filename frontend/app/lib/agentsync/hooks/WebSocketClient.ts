@@ -43,7 +43,10 @@ export class WebSocketClient {
       }, 5000);
 
       try {
-        this.ws = new WebSocket(this.url);
+        // Include credentials in WebSocket connection
+        this.ws = new WebSocket(this.url, [], {
+          credentials: 'include'
+        });
 
         this.ws.onopen = () => {
           if (this.connectionTimeout) {
