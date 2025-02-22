@@ -184,13 +184,18 @@ impl WebSocketTransport {
             info!("Send task ending for {}", send_conn_id);
         });
 
-        // Wait for either task to finish
-        tokio::select! {
-            _ = receive_handle => info!("Receive task completed for {}", cleanup_conn_id),
-            _ = send_handle => info!("Send task completed for {}", cleanup_conn_id),
+        // Wait for BOTH tasks to finish
+        let (receive_result, send_result) = tokio::join!(receive_handle, send_handle);
+        
+        // Check results
+        if let Err(e) = receive_result {
+            error!("Receive task error: {:?}", e);
+        }
+        if let Err(e) = send_result {
+            error!("Send task error: {:?}", e);
         }
 
-        // Clean up
+        // Clean up only after both tasks are done
         cleanup().await;
 
         Ok(())
