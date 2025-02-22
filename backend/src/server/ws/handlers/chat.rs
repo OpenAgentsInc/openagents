@@ -17,11 +17,13 @@ use crate::server::{
 pub enum ChatMessage {
     Subscribe {
         scope: String,
+        connection_id: Option<String>,
         conversation_id: Option<Uuid>,
         last_sync_id: Option<i64>,
     },
     Message {
         id: Uuid,
+        connection_id: Option<String>,
         conversation_id: Option<Uuid>,
         content: String,
         repos: Option<Vec<String>>,
@@ -34,18 +36,22 @@ pub enum ChatMessage {
 pub enum ChatResponse {
     Subscribed {
         scope: String,
+        connection_id: Option<String>,
         last_sync_id: i64,
     },
     Update {
         message_id: Uuid,
+        connection_id: Option<String>,
         delta: ChatDelta,
     },
     Complete {
         message_id: Uuid,
+        connection_id: Option<String>,
         conversation_id: Uuid,
     },
     Error {
         message: String,
+        connection_id: Option<String>,
     },
 }
 
@@ -59,12 +65,13 @@ pub struct ChatHandler {
     tx: mpsc::Sender<String>,
     state: AppState,
     user_id: String,
+    connection_id: Option<String>,
 }
 
 impl ChatHandler {
     pub fn new(tx: mpsc::Sender<String>, state: AppState, user_id: String) -> Self {
         info!("Creating new ChatHandler for user: {}", user_id);
-        Self { tx, state, user_id }
+        Self { tx, state, user_id, connection_id: None }
     }
 
     pub async fn process_message(
@@ -92,11 +99,24 @@ impl ChatHandler {
         msg: ChatMessage,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Handling chat message: {:?}", msg);
+
+        // Extract connection_id from message
+        let connection_id = match &msg {
+            ChatMessage::Subscribe { connection_id, .. } => connection_id.clone(),
+            ChatMessage::Message { connection_id, .. } => connection_id.clone(),
+        };
+        
+        // Store connection_id if this is the first message
+        if self.connection_id.is_none() {
+            self.connection_id = connection_id.clone();
+        }
+
         match msg {
             ChatMessage::Subscribe { scope, .. } => {
                 info!("Processing subscribe message for scope: {}", scope);
                 self.broadcast(ChatResponse::Subscribed {
                     scope,
+                    connection_id,
                     last_sync_id: 0,
                 })
                 .await?;
@@ -108,6 +128,7 @@ impl ChatHandler {
                 content,
                 repos,
                 use_reasoning,
+                ..
             } => {
                 info!("Processing chat message: id={}, conv={:?}", id, conversation_id);
                 let chat_db = ChatDatabaseService::new(self.state.pool.clone());
@@ -231,6 +252,7 @@ impl ChatHandler {
                             // Send incremental update
                             self.broadcast(ChatResponse::Update {
                                 message_id: id,
+                                connection_id: self.connection_id.clone(),
                                 delta: delta.clone(),
                             })
                             .await?;
@@ -249,6 +271,7 @@ impl ChatHandler {
                             error!("Stream error: {:?}", e);
                             self.broadcast(ChatResponse::Error {
                                 message: e.to_string(),
+                                connection_id: self.connection_id.clone(),
                             })
                             .await?;
                             return Err(e.into());
@@ -284,6 +307,7 @@ impl ChatHandler {
                 // Send completion
                 self.broadcast(ChatResponse::Complete {
                     message_id: id,
+                    connection_id: self.connection_id.clone(),
                     conversation_id: conversation.id,
                 })
                 .await?;
