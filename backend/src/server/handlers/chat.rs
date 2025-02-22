@@ -14,7 +14,7 @@ use crate::server::{
     handlers::oauth::session::SESSION_COOKIE_NAME,
     models::chat::{CreateConversationRequest, CreateMessageRequest, Message},
     services::chat_database::ChatDatabaseService,
-    ws::handlers::chat::ChatResponse,
+    ws::handlers::chat::{ChatDelta, ChatResponse},
 };
 
 #[derive(Debug, Deserialize)]
@@ -135,8 +135,8 @@ pub async fn start_repo_chat(
     // Broadcast updates through WebSocket
     while let Some(update) = stream.next().await {
         match update {
-            Ok(delta) => {
-                let delta: ChatResponse = serde_json::from_str(&delta).map_err(|e| {
+            Ok(delta_str) => {
+                let delta: ChatDelta = serde_json::from_str(&delta_str).map_err(|e| {
                     error!("Failed to parse delta: {:?}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -145,13 +145,25 @@ pub async fn start_repo_chat(
                 })?;
 
                 // Send update through WebSocket
-                if let Some(ws_state) = state.ws_state.as_ref() {
-                    ws_state.broadcast(json!({
-                        "type": "Update",
-                        "message_id": _message.id,
-                        "delta": delta
-                    })).await;
-                }
+                let update_response = ChatResponse::Update {
+                    message_id: _message.id,
+                    connection_id: None,
+                    delta: delta.clone(),
+                };
+                let msg = serde_json::to_string(&update_response).map_err(|e| {
+                    error!("Failed to serialize update: {:?}", e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to serialize update: {}", e),
+                    )
+                })?;
+                state.ws_state.broadcast(&msg).await.map_err(|e| {
+                    error!("Failed to broadcast update: {:?}", e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to broadcast update: {}", e),
+                    )
+                })?;
 
                 // Accumulate content
                 if let Some(c) = delta.content {
@@ -200,13 +212,25 @@ pub async fn start_repo_chat(
     info!("Created AI message with id: {}", ai_message.id);
 
     // Send completion through WebSocket
-    if let Some(ws_state) = state.ws_state.as_ref() {
-        ws_state.broadcast(json!({
-            "type": "Complete",
-            "message_id": _message.id,
-            "conversation_id": conversation.id,
-        })).await;
-    }
+    let complete_response = ChatResponse::Complete {
+        message_id: _message.id,
+        connection_id: None,
+        conversation_id: conversation.id,
+    };
+    let msg = serde_json::to_string(&complete_response).map_err(|e| {
+        error!("Failed to serialize completion: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to serialize completion: {}", e),
+        )
+    })?;
+    state.ws_state.broadcast(&msg).await.map_err(|e| {
+        error!("Failed to broadcast completion: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to broadcast completion: {}", e),
+        )
+    })?;
 
     Ok(Json(StartChatResponse {
         id: conversation.id.to_string(),
@@ -330,8 +354,8 @@ pub async fn send_message(
     // Broadcast updates through WebSocket
     while let Some(update) = stream.next().await {
         match update {
-            Ok(delta) => {
-                let delta: ChatResponse = serde_json::from_str(&delta).map_err(|e| {
+            Ok(delta_str) => {
+                let delta: ChatDelta = serde_json::from_str(&delta_str).map_err(|e| {
                     error!("Failed to parse delta: {:?}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -340,13 +364,25 @@ pub async fn send_message(
                 })?;
 
                 // Send update through WebSocket
-                if let Some(ws_state) = state.ws_state.as_ref() {
-                    ws_state.broadcast(json!({
-                        "type": "Update",
-                        "message_id": _message.id,
-                        "delta": delta
-                    })).await;
-                }
+                let update_response = ChatResponse::Update {
+                    message_id: _message.id,
+                    connection_id: None,
+                    delta: delta.clone(),
+                };
+                let msg = serde_json::to_string(&update_response).map_err(|e| {
+                    error!("Failed to serialize update: {:?}", e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to serialize update: {}", e),
+                    )
+                })?;
+                state.ws_state.broadcast(&msg).await.map_err(|e| {
+                    error!("Failed to broadcast update: {:?}", e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to broadcast update: {}", e),
+                    )
+                })?;
 
                 // Accumulate content
                 if let Some(c) = delta.content {
@@ -391,13 +427,25 @@ pub async fn send_message(
         })?;
 
     // Send completion through WebSocket
-    if let Some(ws_state) = state.ws_state.as_ref() {
-        ws_state.broadcast(json!({
-            "type": "Complete",
-            "message_id": _message.id,
-            "conversation_id": request.conversation_id,
-        })).await;
-    }
+    let complete_response = ChatResponse::Complete {
+        message_id: ai_message.id,
+        connection_id: None,
+        conversation_id: request.conversation_id,
+    };
+    let msg = serde_json::to_string(&complete_response).map_err(|e| {
+        error!("Failed to serialize completion: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to serialize completion: {}", e),
+        )
+    })?;
+    state.ws_state.broadcast(&msg).await.map_err(|e| {
+        error!("Failed to broadcast completion: {:?}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to broadcast completion: {}", e),
+        )
+    })?;
 
     Ok(Json(SendMessageResponse {
         id: ai_message.id.to_string(),

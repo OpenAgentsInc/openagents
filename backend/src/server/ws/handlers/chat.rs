@@ -31,7 +31,7 @@ pub enum ChatMessage {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ChatResponse {
     Subscribed {
@@ -59,6 +59,12 @@ pub enum ChatResponse {
 pub struct ChatDelta {
     pub content: Option<String>,
     pub reasoning: Option<String>,
+}
+
+impl ChatDelta {
+    pub fn new(content: Option<String>, reasoning: Option<String>) -> Self {
+        Self { content, reasoning }
+    }
 }
 
 pub struct ChatHandler {
