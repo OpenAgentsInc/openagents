@@ -82,12 +82,15 @@ export function useAgentSync({
           }
 
           // Update message in store using ref to ensure latest callback
-          addMessageRef.current(conversationId || msg.message_id, {
-            id: msg.message_id,
-            role: "assistant",
-            content: streamingStateRef.current.content,
-            reasoning: streamingStateRef.current.reasoning || undefined,
-          });
+          // Use conversation ID as the store key, message ID as the message ID
+          if (conversationId) {
+            addMessageRef.current(conversationId, {
+              id: msg.message_id,
+              role: "assistant",
+              content: streamingStateRef.current.content,
+              reasoning: streamingStateRef.current.reasoning || undefined,
+            });
+          }
           break;
 
         case "Complete":
@@ -164,13 +167,15 @@ export function useAgentSync({
     try {
       console.debug("Sending message:", { messageId, message, repos });
       
-      // Add user message
-      addMessageRef.current(conversationId || messageId, {
-        id: messageId,
-        role: "user",
-        content: message,
-        metadata: repos ? { repos } : undefined,
-      });
+      // Add user message using conversation ID as store key
+      if (conversationId) {
+        addMessageRef.current(conversationId, {
+          id: messageId,
+          role: "user",
+          content: message,
+          metadata: repos ? { repos } : undefined,
+        });
+      }
 
       // Send message via WebSocket
       wsRef.current.send({
