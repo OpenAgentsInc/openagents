@@ -35,16 +35,23 @@ export function useAgentSync({
     reasoning: "",
   });
 
+  // Create stable refs for callbacks
+  const addMessageRef = useRef(addMessage);
+  addMessageRef.current = addMessage;
+
+  // Initialize WebSocket once
   useEffect(() => {
-    // Initialize WebSocket with proper URL
-    const wsUrl = process.env.NODE_ENV === 'development' 
-      ? 'ws://localhost:8000/ws'
-      : `wss://${window.location.host}/ws`;
+    // Only create WebSocket if we don't have one
+    if (!wsRef.current) {
+      const wsUrl = process.env.NODE_ENV === 'development' 
+        ? 'ws://localhost:8000/ws'
+        : `wss://${window.location.host}/ws`;
 
-    console.debug("Initializing WebSocket:", wsUrl);
-    wsRef.current = new WebSocketClient(wsUrl);
+      console.debug("Initializing WebSocket:", wsUrl);
+      wsRef.current = new WebSocketClient(wsUrl);
+    }
 
-    // Connect and then subscribe
+    // Connect and subscribe
     wsRef.current.connect().then(() => {
       console.debug("Sending subscription:", { scope, conversationId });
       wsRef.current?.send({
@@ -74,8 +81,8 @@ export function useAgentSync({
             streamingStateRef.current.reasoning += msg.delta.reasoning;
           }
 
-          // Update message in store
-          addMessage(conversationId || msg.message_id, {
+          // Update message in store using ref to ensure latest callback
+          addMessageRef.current(conversationId || msg.message_id, {
             id: msg.message_id,
             role: "assistant",
             content: streamingStateRef.current.content,
@@ -98,16 +105,26 @@ export function useAgentSync({
       }
     });
 
-    // Cleanup
+    // Cleanup only removes message handlers, doesn't disconnect
+    return () => {
+      console.debug("Cleaning up message handlers");
+      unsubscribe();
+      if (wsRef.current) {
+        wsRef.current.clearHandlers();
+      }
+    };
+  }, [scope, conversationId]);
+
+  // Separate effect for actual WebSocket cleanup
+  useEffect(() => {
     return () => {
       console.debug("Cleaning up WebSocket connection");
-      unsubscribe();
       if (wsRef.current) {
         wsRef.current.disconnect();
         wsRef.current = null;
       }
     };
-  }, [scope, conversationId]);
+  }, []);
 
   // Handle online/offline status
   useEffect(() => {
@@ -148,7 +165,7 @@ export function useAgentSync({
       console.debug("Sending message:", { messageId, message, repos });
       
       // Add user message
-      addMessage(conversationId || messageId, {
+      addMessageRef.current(conversationId || messageId, {
         id: messageId,
         role: "user",
         content: message,
