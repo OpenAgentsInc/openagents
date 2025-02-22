@@ -757,13 +757,15 @@ frontend/app/hooks/use-mobile.ts:
 │const mql
 │const onChange
 
-frontend/app/lib/agentsync/hooks/useAgentSync.ts:
+frontend/app/lib/agentsync/hooks/WebSocketClient.ts:
 │class WebSocketClient
-│const INITIAL_STATE
 │const msg
 │const msg
 │const delay
 │const msgStr
+
+frontend/app/lib/agentsync/hooks/useAgentSync.ts:
+│const INITIAL_STATE
 │const 
 │const 
 │const wsRef
