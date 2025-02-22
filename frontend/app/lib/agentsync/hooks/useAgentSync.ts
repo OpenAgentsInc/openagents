@@ -39,8 +39,17 @@ export function useAgentSync({
   const addMessageRef = useRef(addMessage);
   addMessageRef.current = addMessage;
 
+  // Track initialization and active subscriptions
+  const initializedRef = useRef(false);
+  const subscriptionsRef = useRef(new Set<string>());
+  const connectionIdRef = useRef<string | null>(null);
+
   // Initialize WebSocket once
   useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    connectionIdRef.current = uuid();
+
     // Only create WebSocket if we don't have one
     if (!wsRef.current) {
       const wsUrl = process.env.NODE_ENV === 'development' 
@@ -56,6 +65,7 @@ export function useAgentSync({
       console.debug("Sending subscription:", { scope, conversationId });
       wsRef.current?.send({
         type: "Subscribe",
+        connection_id: connectionIdRef.current,
         scope,
         conversation_id: conversationId,
         last_sync_id: state.lastSyncId,
@@ -67,6 +77,11 @@ export function useAgentSync({
 
     // Handle incoming messages
     const unsubscribe = wsRef.current.onMessage((msg) => {
+      // Ignore messages from other connections
+      if (msg.connection_id && msg.connection_id !== connectionIdRef.current) {
+        return;
+      }
+
       console.debug("Received message:", msg);
       switch (msg.type) {
         case "Subscribed":
@@ -74,6 +89,12 @@ export function useAgentSync({
           break;
 
         case "Update":
+          // Skip if we've already processed this message
+          if (subscriptionsRef.current.has(msg.message_id)) {
+            return;
+          }
+          subscriptionsRef.current.add(msg.message_id);
+
           if (msg.delta.content) {
             streamingStateRef.current.content += msg.delta.content;
           }
@@ -126,6 +147,9 @@ export function useAgentSync({
         wsRef.current.disconnect();
         wsRef.current = null;
       }
+      subscriptionsRef.current.clear();
+      initializedRef.current = false;
+      connectionIdRef.current = null;
     };
   }, []);
 
@@ -180,6 +204,7 @@ export function useAgentSync({
       // Send message via WebSocket
       wsRef.current.send({
         type: "Message",
+        connection_id: connectionIdRef.current,
         id: messageId,
         conversation_id: conversationId,
         content: message,
