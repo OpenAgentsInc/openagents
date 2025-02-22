@@ -36,11 +36,10 @@ export function useAgentSync({
   });
 
   useEffect(() => {
-    // Initialize WebSocket
-    const wsUrl =
-      process.env.NODE_ENV === "production"
-        ? "wss://api.openagents.com/ws"
-        : "ws://localhost:8000/ws";
+    // Initialize WebSocket with proper URL
+    const wsUrl = process.env.NODE_ENV === 'development' 
+      ? 'ws://localhost:8000/ws'
+      : `wss://${window.location.host}/ws`;
 
     console.debug("Initializing WebSocket:", wsUrl);
     wsRef.current = new WebSocketClient(wsUrl);
