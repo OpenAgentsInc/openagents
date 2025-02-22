@@ -114,12 +114,13 @@ impl WebSocketTransport {
             // Send error to client before returning
             let error_msg = serde_json::to_string(&ChatResponse::Error {
                 message: "Failed to initialize connection".to_string(),
+                connection_id: Some(conn_id.clone()),
             })?;
             tx.send(error_msg).await?;
             return Err(e);
         }
 
-        let processor = MessageProcessor::new(self.app_state.clone(), user_id.clone());
+        let processor = MessageProcessor::new(self.app_state.clone(), user_id.clone(), conn_id.clone());
         info!("Created message processor for user: {}", user_id);
 
         // Clone connection ID for each task
@@ -163,7 +164,8 @@ impl WebSocketTransport {
                             // Send error to client
                             let error_msg = serde_json::to_string(&ChatResponse::Error {
                                 message: format!("Message processing error: {}", e),
-                            }).unwrap_or_else(|e| format!("{{\"type\":\"Error\",\"message\":\"{}\"}}", e));
+                                connection_id: Some(receive_conn_id.clone()),
+                            }).unwrap_or_else(|e| format!("{{\"type\":\"Error\",\"message\":\"{}\",\"connection_id\":\"{}\"}}", e, receive_conn_id));
                             if let Err(e) = pending_tx_receive.send(error_msg).await {
                                 error!("Failed to send error message: {:?}", e);
                             }
@@ -242,11 +244,12 @@ impl WebSocketTransport {
 pub struct MessageProcessor {
     app_state: AppState,
     user_id: String,
+    connection_id: String,
 }
 
 impl MessageProcessor {
-    pub fn new(app_state: AppState, user_id: String) -> Self {
-        Self { app_state, user_id }
+    pub fn new(app_state: AppState, user_id: String, connection_id: String) -> Self {
+        Self { app_state, user_id, connection_id }
     }
 
     pub async fn process_message(
@@ -264,6 +267,7 @@ impl MessageProcessor {
                         info!("Processing subscribe message for scope: {}", scope);
                         let response = ChatResponse::Subscribed {
                             scope,
+                            connection_id: Some(self.connection_id.clone()),
                             last_sync_id: 0,
                         };
                         let msg = serde_json::to_string(&response)?;
@@ -276,6 +280,7 @@ impl MessageProcessor {
                         content,
                         repos,
                         use_reasoning,
+                        ..
                     } => {
                         info!("Processing chat message: id={}, conv={:?}", id, conversation_id);
                         let mut chat_handler =
@@ -283,6 +288,7 @@ impl MessageProcessor {
                         chat_handler
                             .handle_message(ChatMessage::Message {
                                 id,
+                                connection_id: Some(self.connection_id.clone()),
                                 conversation_id,
                                 content,
                                 repos,
@@ -296,6 +302,7 @@ impl MessageProcessor {
                 error!("Failed to parse message '{}': {:?}", text, e);
                 let error_msg = serde_json::to_string(&ChatResponse::Error {
                     message: format!("Invalid message format: {}", e),
+                    connection_id: Some(self.connection_id.clone()),
                 })?;
                 tx.send(error_msg).await?;
                 return Err(e.into());
