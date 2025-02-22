@@ -45,8 +45,17 @@ export default function ChatSession() {
     // Add a small delay to allow the conversation to be created
     const timeout = setTimeout(async () => {
       try {
-        const response = await fetch(`/api/conversations/${id}/messages`);
+        const response = await fetch(`/api/conversations/${id}/messages`, {
+          credentials: "include", // Include cookies in the request
+          headers: {
+            "Accept": "application/json",
+          },
+        });
         if (!response.ok) {
+          if (response.status === 403) {
+            console.error("Unauthorized access to conversation");
+            return;
+          }
           throw new Error("Failed to load messages");
         }
         const data = await response.json();
