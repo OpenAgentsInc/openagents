@@ -5,7 +5,7 @@ interface WebSocketMessage {
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
-  private messageHandlers: ((msg: WebSocketMessage) => void)[] = [];
+  private messageHandlers: Set<(msg: WebSocketMessage) => void> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
@@ -128,11 +128,16 @@ export class WebSocketClient {
       this.ws = null;
     }
     
-    this.messageHandlers = [];
+    this.messageHandlers.clear();
     this.messageQueue = [];
     this.isConnecting = false;
     this.reconnectAttempts = 0;
     console.debug("WebSocket client disconnected");
+  }
+
+  clearHandlers() {
+    console.debug("Clearing message handlers");
+    this.messageHandlers.clear();
   }
 
   send(msg: any) {
@@ -159,9 +164,9 @@ export class WebSocketClient {
   }
 
   onMessage(handler: (msg: WebSocketMessage) => void) {
-    this.messageHandlers.push(handler);
+    this.messageHandlers.add(handler);
     return () => {
-      this.messageHandlers = this.messageHandlers.filter((h) => h !== handler);
+      this.messageHandlers.delete(handler);
     };
   }
 }
