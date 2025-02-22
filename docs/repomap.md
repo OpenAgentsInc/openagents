@@ -390,7 +390,6 @@ backend/src/server/ws/handlers/mod.rs:
 
 backend/src/server/ws/mod.rs:
 │fn ws_handler
-│fn handle_socket
 
 backend/src/server/ws/transport.rs:
 │fn new
@@ -399,9 +398,9 @@ backend/src/server/ws/transport.rs:
 │fn add_connection
 │fn remove_connection
 │fn new
-│fn handle_socket
-│fn new
 │fn process_message
+│fn new
+│fn handle_socket
 
 backend/src/server/ws/types.rs:
 │fn fmt
@@ -760,9 +759,12 @@ frontend/app/hooks/use-mobile.ts:
 frontend/app/lib/agentsync/hooks/WebSocketClient.ts:
 │class WebSocketClient
 │const msg
-│const msg
 │const delay
 │const msgStr
+│const subscriptionKey
+│const msgStr
+│const msg
+│const subscriptionKey
 
 frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 │const INITIAL_STATE
@@ -770,8 +772,12 @@ frontend/app/lib/agentsync/hooks/useAgentSync.ts:
 │const 
 │const wsRef
 │const streamingStateRef
+│const addMessageRef
+│const initializedRef
+│const handlerRef
+│const connectionIdRef
+│const initializeWebSocket
 │const wsUrl
-│const unsubscribe
 │const handleOnline
 │const handleOffline
 │const sendMessage
@@ -789,13 +795,17 @@ frontend/app/routes/chat/$id.tsx:
 │const 
 │const 
 │const messageContainerRef
+│const 
+│const setMessagesRef
 │const messagesSelector
 │const messages
 │const 
-│const timeout
+│const controller
+│const loadMessages
 │const response
 │const data
 │const handleSubmit
+│const result
 
 frontend/app/routes/chat/index.tsx:
 │const navigate
