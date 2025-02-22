@@ -116,7 +116,14 @@ impl ChatHandler {
                 let conversation = match conversation_id {
                     Some(id) => {
                         info!("Looking up existing conversation: {}", id);
-                        let conv = chat_db.get_conversation(id).await?;
+                        let conv = chat_db.get_conversation(id).await.map_err(|e| {
+                            error!("Failed to get conversation: {:?}", e);
+                            if e.to_string().contains("Conversation not found") {
+                                format!("Conversation {} not found", id)
+                            } else {
+                                format!("Failed to get conversation: {}", e)
+                            }
+                        })?;
                         // Verify user has access
                         if conv.user_id != self.user_id {
                             error!("Unauthorized access attempt to conversation {} by user {}", id, self.user_id);
@@ -132,7 +139,11 @@ impl ChatHandler {
                                 user_id: self.user_id.clone(),
                                 title: Some(format!("Chat: {}", content)),
                             })
-                            .await?
+                            .await
+                            .map_err(|e| {
+                                error!("Failed to create conversation: {:?}", e);
+                                format!("Failed to create conversation: {}", e)
+                            })?
                     }
                 };
 
@@ -149,7 +160,11 @@ impl ChatHandler {
                         metadata: repos.clone().map(|r| json!({ "repos": r })),
                         tool_calls: None,
                     })
-                    .await?;
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to create user message: {:?}", e);
+                        format!("Failed to create user message: {}", e)
+                    })?;
 
                 info!("Created user message: {}", user_message.id);
 
@@ -158,7 +173,11 @@ impl ChatHandler {
                     info!("Loading conversation history for {}", conversation.id);
                     chat_db
                         .get_conversation_messages(conversation.id)
-                        .await?
+                        .await
+                        .map_err(|e| {
+                            error!("Failed to get conversation history: {:?}", e);
+                            format!("Failed to get conversation history: {}", e)
+                        })?
                         .iter()
                         .map(|msg| {
                             json!({
@@ -189,7 +208,11 @@ impl ChatHandler {
                     .state
                     .groq
                     .chat_with_history_stream(messages, use_reasoning.unwrap_or(false))
-                    .await?;
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to start Groq stream: {:?}", e);
+                        format!("Failed to start AI response: {}", e)
+                    })?;
 
                 // Stream updates
                 let mut content = String::new();
@@ -200,24 +223,27 @@ impl ChatHandler {
                     match update {
                         Ok(delta) => {
                             debug!("Received delta: {}", delta);
-                            let delta: ChatDelta = serde_json::from_str(&delta)?;
-                            if let Some(c) = delta.content.as_ref() {
-                                content.push_str(c);
-                                debug!("Updated content length: {}", content.len());
-                            }
-                            if let Some(r) = delta.reasoning.as_ref() {
-                                reasoning.push_str(r);
-                                debug!("Updated reasoning length: {}", reasoning.len());
-                            }
+                            let delta: ChatDelta = serde_json::from_str(&delta).map_err(|e| {
+                                error!("Failed to parse delta: {:?}", e);
+                                format!("Failed to parse AI response: {}", e)
+                            })?;
 
+                            // Send incremental update
                             self.broadcast(ChatResponse::Update {
                                 message_id: id,
-                                delta: ChatDelta {
-                                    content: Some(content.clone()),
-                                    reasoning: Some(reasoning.clone()),
-                                },
+                                delta: delta.clone(),
                             })
                             .await?;
+
+                            // Accumulate content
+                            if let Some(c) = delta.content {
+                                content.push_str(&c);
+                                debug!("Updated content length: {}", content.len());
+                            }
+                            if let Some(r) = delta.reasoning {
+                                reasoning.push_str(&r);
+                                debug!("Updated reasoning length: {}", reasoning.len());
+                            }
                         }
                         Err(e) => {
                             error!("Stream error: {:?}", e);
@@ -247,7 +273,11 @@ impl ChatHandler {
                         metadata: repos.map(|r| json!({ "repos": r })),
                         tool_calls: None,
                     })
-                    .await?;
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to save AI message: {:?}", e);
+                        format!("Failed to save AI response: {}", e)
+                    })?;
 
                 info!("Created AI message: {}", ai_message.id);
 
@@ -271,7 +301,10 @@ impl ChatHandler {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let msg = serde_json::to_string(&response)?;
         debug!("Broadcasting response: {}", msg);
-        self.tx.send(msg).await?;
+        self.tx.send(msg).await.map_err(|e| {
+            error!("Failed to send message: {:?}", e);
+            format!("Failed to send message: {}", e)
+        })?;
         Ok(())
     }
 }
