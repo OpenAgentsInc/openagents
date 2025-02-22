@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, RwLock, Mutex};
 use tracing::{error, info, debug};
 
 use crate::server::{
@@ -128,6 +128,16 @@ impl WebSocketTransport {
         let cleanup_state = self.state.clone();
         let cleanup_conn_id = conn_id.clone();
 
+        // Create a mutex to synchronize closing
+        let is_closing = Arc::new(Mutex::new(false));
+        let is_closing_send = is_closing.clone();
+        let is_closing_receive = is_closing.clone();
+
+        // Create a channel for pending messages
+        let (pending_tx, mut pending_rx) = mpsc::channel::<String>(32);
+        let pending_tx = Arc::new(pending_tx);
+        let pending_tx_receive = pending_tx.clone();
+
         // Set up cleanup function
         let cleanup = {
             let cleanup_conn_id = conn_id;
@@ -141,10 +151,6 @@ impl WebSocketTransport {
             }
         };
 
-        // Create a channel to signal when the send task is done
-        let (send_done_tx, mut send_done_rx) = mpsc::channel::<()>(1);
-        let send_done_tx_clone = send_done_tx.clone();
-
         // Handle incoming messages
         let receive_handle = tokio::spawn(async move {
             info!("Starting receive task for connection: {}", receive_conn_id);
@@ -152,13 +158,13 @@ impl WebSocketTransport {
                 match msg {
                     Message::Text(ref text) => {
                         info!("Received message on {}: {}", receive_conn_id, text);
-                        if let Err(e) = processor.process_message(text, &tx).await {
+                        if let Err(e) = processor.process_message(text, &pending_tx_receive).await {
                             error!("Error processing message on {}: {:?}", receive_conn_id, e);
                             // Send error to client
                             let error_msg = serde_json::to_string(&ChatResponse::Error {
                                 message: format!("Message processing error: {}", e),
                             }).unwrap_or_else(|e| format!("{{\"type\":\"Error\",\"message\":\"{}\"}}", e));
-                            if let Err(e) = tx.send(error_msg).await {
+                            if let Err(e) = pending_tx_receive.send(error_msg).await {
                                 error!("Failed to send error message: {:?}", e);
                             }
                             break;
@@ -166,10 +172,9 @@ impl WebSocketTransport {
                     }
                     Message::Close(_) => {
                         info!("Client requested close on {}", receive_conn_id);
-                        // Signal send task to complete
-                        if let Err(e) = send_done_tx.send(()).await {
-                            error!("Failed to signal send task completion: {:?}", e);
-                        }
+                        // Set closing flag
+                        let mut is_closing = is_closing_receive.lock().await;
+                        *is_closing = true;
                         break;
                     }
                     _ => {
@@ -189,23 +194,31 @@ impl WebSocketTransport {
                 tokio::select! {
                     Some(msg) = rx.recv() => {
                         debug!("Sending message on {}: {}", send_conn_id, msg);
+                        // Queue message in pending
+                        if let Err(e) = pending_tx.send(msg).await {
+                            error!("Failed to queue message: {:?}", e);
+                            break;
+                        }
+                    }
+                    Some(msg) = pending_rx.recv() => {
+                        debug!("Processing pending message on {}: {}", send_conn_id, msg);
                         if let Err(e) = sender.send(Message::Text(msg)).await {
                             error!("Error sending message on {}: {:?}", send_conn_id, e);
                             break;
                         }
                     }
-                    _ = send_done_rx.recv() => {
-                        info!("Received completion signal for {}", send_conn_id);
-                        break;
+                    else => {
+                        // Check if we're closing and all messages are sent
+                        let is_closing = is_closing_send.lock().await;
+                        if *is_closing && rx.is_empty() && pending_rx.is_empty() {
+                            info!("All messages sent, closing connection {}", send_conn_id);
+                            break;
+                        }
                     }
                 }
             }
 
             info!("Send task ending for {}", send_conn_id);
-            // Signal that we're done sending
-            if let Err(e) = send_done_tx_clone.send(()).await {
-                error!("Failed to signal send task completion: {:?}", e);
-            }
         });
 
         // Wait for BOTH tasks to finish
