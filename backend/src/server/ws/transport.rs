@@ -133,11 +133,17 @@ impl WebSocketTransport {
             let cleanup_conn_id = conn_id;
             let cleanup_state = cleanup_state;
             move || async move {
+                info!("Running cleanup for connection: {}", cleanup_conn_id);
                 if let Err(e) = cleanup_state.remove_connection(&cleanup_conn_id).await {
                     error!("Failed to clean up connection: {:?}", e);
                 }
+                info!("Cleanup completed for connection: {}", cleanup_conn_id);
             }
         };
+
+        // Create a channel to signal when the send task is done
+        let (send_done_tx, mut send_done_rx) = mpsc::channel::<()>(1);
+        let send_done_tx_clone = send_done_tx.clone();
 
         // Handle incoming messages
         let receive_handle = tokio::spawn(async move {
@@ -159,7 +165,11 @@ impl WebSocketTransport {
                         }
                     }
                     Message::Close(_) => {
-                        info!("Client disconnected: {}", receive_conn_id);
+                        info!("Client requested close on {}", receive_conn_id);
+                        // Signal send task to complete
+                        if let Err(e) = send_done_tx.send(()).await {
+                            error!("Failed to signal send task completion: {:?}", e);
+                        }
                         break;
                     }
                     _ => {
@@ -174,14 +184,28 @@ impl WebSocketTransport {
         let send_handle = tokio::spawn(async move {
             info!("Starting send task for connection: {}", send_conn_id);
             let mut sender = sender;
-            while let Some(msg) = rx.recv().await {
-                debug!("Sending message on {}: {}", send_conn_id, msg);
-                if let Err(e) = sender.send(Message::Text(msg)).await {
-                    error!("Error sending message on {}: {:?}", send_conn_id, e);
-                    break;
+            
+            loop {
+                tokio::select! {
+                    Some(msg) = rx.recv() => {
+                        debug!("Sending message on {}: {}", send_conn_id, msg);
+                        if let Err(e) = sender.send(Message::Text(msg)).await {
+                            error!("Error sending message on {}: {:?}", send_conn_id, e);
+                            break;
+                        }
+                    }
+                    _ = send_done_rx.recv() => {
+                        info!("Received completion signal for {}", send_conn_id);
+                        break;
+                    }
                 }
             }
+
             info!("Send task ending for {}", send_conn_id);
+            // Signal that we're done sending
+            if let Err(e) = send_done_tx_clone.send(()).await {
+                error!("Failed to signal send task completion: {:?}", e);
+            }
         });
 
         // Wait for BOTH tasks to finish
