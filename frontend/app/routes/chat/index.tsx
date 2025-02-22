@@ -1,7 +1,7 @@
-import { useAgentSync } from "agentsync";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { ChatInput } from "~/components/chat/chat-input";
+import { v4 as uuid } from "uuid";
 
 interface UserMetadata {
   name: string;
@@ -27,10 +27,6 @@ export default function ChatIndex() {
     user: null,
   });
 
-  const { sendMessage, state } = useAgentSync({
-    scope: "chat",
-  });
-
   useEffect(() => {
     fetch("/api/user")
       .then((res) => res.json())
@@ -41,10 +37,30 @@ export default function ChatIndex() {
   const handleSubmit = async (message: string, repos?: string[]) => {
     try {
       // Generate a new chat ID
-      const response = await sendMessage(message, repos);
+      const chatId = uuid();
 
       // Navigate immediately to show loading state
-      navigate(`/chat/${response.id}`);
+      navigate(`/chat/${chatId}`);
+
+      // Send initial message via HTTP API
+      const response = await fetch('/api/start-repo-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: chatId,
+          message,
+          repos: repos || [],
+          scope: "chat",
+          use_reasoning: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
     } catch (error) {
       console.error("Error starting chat:", error);
       // Could add error handling UI here
@@ -64,16 +80,6 @@ export default function ChatIndex() {
 
       <div className="w-full max-w-2xl mt-12">
         <ChatInput onSubmit={handleSubmit} />
-        {!state.isOnline && (
-          <div className="mt-2 text-sm text-red-500">
-            You are currently offline. Messages will be queued.
-          </div>
-        )}
-        {state.pendingChanges > 0 && (
-          <div className="mt-2 text-sm text-yellow-500">
-            {state.pendingChanges} pending changes to sync
-          </div>
-        )}
       </div>
     </div>
   );
