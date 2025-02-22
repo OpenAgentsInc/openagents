@@ -183,10 +183,6 @@ export function useAgentSync({
   }, []);
 
   const sendMessage = async (message: string, repos?: string[]) => {
-    if (!wsRef.current) {
-      throw new Error("WebSocket not initialized");
-    }
-
     const messageId = uuid();
     setState((s) => ({ ...s, isStreaming: true, error: null }));
     streamingStateRef.current = { content: "", reasoning: "" };
@@ -204,16 +200,31 @@ export function useAgentSync({
         });
       }
 
-      // Send message via WebSocket
-      wsRef.current.send({
-        type: "Message",
-        connection_id: connectionIdRef.current,
-        id: messageId,
-        conversation_id: conversationId,
-        content: message,
-        repos,
-        use_reasoning: useReasoning,
+      // Send message via HTTP API
+      const endpoint = conversationId ? '/api/send-message' : '/api/start-repo-chat';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(conversationId ? {
+          conversation_id: conversationId,
+          message,
+          repos,
+          use_reasoning: useReasoning,
+        } : {
+          id: messageId,
+          message,
+          repos: repos || [],
+          scope,
+          use_reasoning: useReasoning,
+        }),
       });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
 
       return {
         id: messageId,
