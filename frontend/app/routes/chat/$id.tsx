@@ -15,6 +15,7 @@ export default function ChatSession() {
   const { setMessages } = useMessagesStore();
   const messageContainerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // Create stable refs for callbacks
   const setMessagesRef = useRef(setMessages);
@@ -67,6 +68,7 @@ export default function ChatSession() {
           // The conversation will be created when the first message is sent
           setMessagesRef.current(id, []);
           setIsLoading(false);
+          setIsInitializing(false);
           return;
         }
 
@@ -74,6 +76,7 @@ export default function ChatSession() {
           if (response.status === 403) {
             console.error("Unauthorized access to conversation");
             setIsLoading(false);
+            setIsInitializing(false);
             return;
           }
           throw new Error("Failed to load messages");
@@ -82,10 +85,12 @@ export default function ChatSession() {
         const data = await response.json();
         setMessagesRef.current(id, data);
         setIsLoading(false);
+        setIsInitializing(false);
       } catch (error) {
         if (!controller.signal.aborted) {
           console.error("Error loading messages:", error);
           setIsLoading(false);
+          setIsInitializing(false);
         }
       }
     };
@@ -131,7 +136,14 @@ export default function ChatSession() {
         <div className="mx-auto max-w-3xl w-full">
           {messages.length === 0 ? (
             <div className="p-4 text-center text-gray-500">
-              Start a new conversation by sending a message below.
+              {isInitializing ? (
+                <div className="flex flex-col items-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+                  <p className="mt-2">Starting new conversation...</p>
+                </div>
+              ) : (
+                "Start a new conversation by sending a message below."
+              )}
             </div>
           ) : (
             messages.map((message) => (
