@@ -6,7 +6,7 @@ Our current flagship product (v4) is an agentic chat web app live at [openagents
 
 This repo holds the our new cross-platform version (v5),  a work in progress.
 
-## v5 Tech  Stack
+## v5 Tech Stack
 
 - Frontend: React, TypeScript
 - Backend: Cloudflare stack
