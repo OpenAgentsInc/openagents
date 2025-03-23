@@ -43,6 +43,4 @@ Check out [episode one](https://twitter.com/OpenAgentsInc/status/172194243512571
 
 ## Screenshots
 
-Onyx bitcoin wallet
-
 ![Onyx bitcoin wallet screenshot](docs/img/onyx1.png)
