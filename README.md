@@ -2,9 +2,20 @@
 
 OpenAgents is a platform for AI agents using open protocols.
 
-Our current flagship product (v4) is an agentic chat webapp live at [openagents.com](https://openagents.com).
+Our current flagship product (v4) is an agentic chat app live at [openagents.com](https://openagents.com).
 
 This repo holds the our new cross-platform version (v5),  a work in progress.
+
+## v5 Tech Stack
+
+- Frontend: React, React Native, TypeScript
+- Backend: Cloudflare stack
+- Auth: better-auth
+- Vercel AI SDK
+- Multiple clients (web, mobile, desktop) with maximal reuse
+    - Web: General agentic chat
+    - Mobile: Personal assistant & bitcoin wallet
+    - Desktop: Coder
 
 ## Resources
 
