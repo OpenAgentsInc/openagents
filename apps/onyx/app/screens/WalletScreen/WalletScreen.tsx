@@ -59,6 +59,23 @@ export const WalletScreen: FC = observer(function WalletScreen() {
             )}
           />
         </View>
+        <View style={$buttonRow}>
+          <Button
+            text="Agent Earnings"
+            onPress={() => {
+              navigation.navigate("AgentEarnings")
+            }}
+            style={$earningsButton}
+            LeftAccessory={(props) => (
+              <Icon
+                icon="analytics"
+                color="white"
+                size={20}
+                containerStyle={[$iconContainer, props.style]}
+              />
+            )}
+          />
+        </View>
       </View>
 
       <TransactionsList />
@@ -84,11 +101,17 @@ const $buttonRow: ViewStyle = {
   justifyContent: "center",
   gap: 20,
   paddingHorizontal: 20,
+  marginBottom: 12,
 }
 
 const $actionButton: ViewStyle = {
   flex: 1,
   minWidth: 130,
+}
+
+const $earningsButton: ViewStyle = {
+  flex: 1,
+  minWidth: 280,
 }
 
 const $iconContainer: ViewStyle = {
