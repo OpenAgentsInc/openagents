@@ -1,8 +1,9 @@
 import { memo, ReactElement, useEffect, useMemo } from "react"
-import { ActivityIndicator, StyleSheet, View } from "react-native"
+import { ActivityIndicator, StyleSheet, View, TextStyle } from "react-native"
 import { Text } from "@/components"
 import { useStores } from "@/models"
 import Money from "./Money"
+import { typography } from "@/theme"
 
 /**
  * Displays the total available balance for the current wallet & network.
@@ -51,6 +52,13 @@ const BalanceHeader = (): ReactElement => {
     )
   }
 
+  const $balanceText: TextStyle = {
+    fontSize: 32,
+    color: "#fff",
+    fontFamily: typography.primary.normal,
+    marginBottom: 8,
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.balance}>
@@ -95,7 +103,7 @@ const styles = StyleSheet.create({
   pendingText: {
     color: "#888",
     fontSize: 14,
-    fontFamily: "JetBrainsMono-Regular",
+    fontFamily: typography.primary.normal,
     marginVertical: 2,
   },
 })

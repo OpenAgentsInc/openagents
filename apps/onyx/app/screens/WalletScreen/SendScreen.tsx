@@ -11,9 +11,10 @@ import {
 import { Screen, Text } from "@/components"
 import { useHeader } from "@/hooks/useHeader"
 import { useStores } from "@/models"
-import { goBack } from "@/navigators"
+import { goBack } from "@/navigators/navigationUtilities"
 import { WalletStackParamList } from "@/navigators/WalletNavigator"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
+import { typography } from "@/theme"
 
 interface SendScreenProps extends NativeStackScreenProps<WalletStackParamList, "Send"> { }
 
@@ -144,7 +145,7 @@ const $input: TextStyle = {
   borderRadius: 8,
   width: "100%",
   marginBottom: 16,
-  fontFamily: "JetBrainsMono-Regular",
+  fontFamily: typography.primary.normal,
   textAlignVertical: "top",
 }
 
@@ -165,10 +166,10 @@ const $buttonDisabled: ViewStyle = {
   opacity: 0.5,
 }
 
-const $buttonText = {
+const $buttonText: TextStyle = {
   color: "#fff",
   fontSize: 16,
-  fontFamily: "JetBrainsMono-Regular",
+  fontFamily: typography.primary.normal,
 }
 
 const $errorText: TextStyle = {

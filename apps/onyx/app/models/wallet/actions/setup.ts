@@ -9,11 +9,11 @@ export async function setup(store: IWalletStore) {
   try {
     // Get mnemonic from secure storage
     let mnemonic = await SecureStorageService.getMnemonic()
-    
+
     // Generate new mnemonic if none exists
     if (!mnemonic) {
       mnemonic = await SecureStorageService.generateMnemonic()
-      
+
       // Note: generateMnemonic already saves the mnemonic internally
       // No need to call setMnemonic again
     }
@@ -22,7 +22,7 @@ export async function setup(store: IWalletStore) {
     store.setMnemonic(mnemonic)
 
     // Initialize breez with the mnemonic
-    const breezApiKey = Constants.expoConfig?.extra?.BREEZ_API_KEY
+    const breezApiKey = process.env.EXPO_PUBLIC_BREEZ_API_KEY
     if (!breezApiKey) {
       throw new Error("BREEZ_API_KEY not set")
     }
@@ -48,7 +48,7 @@ export async function setup(store: IWalletStore) {
     // Mark initialization as complete
     store.setInitialized(true)
     store.setError(null)
-    
+
     return true
   } catch (error) {
     console.error("[WalletStore] Setup error:", error)
