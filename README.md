@@ -40,3 +40,7 @@ This is a monorepo:
 
 We've documented a year of development in 160+ videos on X.
 Check out [episode one](https://twitter.com/OpenAgentsInc/status/1721942435125715086) or see the [full episode list](https://github.com/OpenAgentsInc/openagents/wiki/Video-Series).
+
+## Screenshots
+
+![Onyx bitcoin wallet screenshot](docs/img/onyx1.png)
