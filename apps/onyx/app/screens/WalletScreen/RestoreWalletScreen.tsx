@@ -11,7 +11,7 @@ import {
 import { Screen, Text } from "@/components"
 import { useHeader } from "@/hooks/useHeader"
 import { useStores } from "@/models"
-import { goBack } from "@/navigators"
+import { goBack } from "@/navigators/navigationUtilities"
 import { WalletStackParamList } from "@/navigators/WalletNavigator"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
 
