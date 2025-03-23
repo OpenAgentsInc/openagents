@@ -13,6 +13,7 @@ This is a monorepo:
 ```
   openagents/
   ├── apps/                      # Client applications
+  │   ├── coder/                 # Coding agent desktop app
   │   └── onyx/                  # Onyx mobile app & bitcoin wallet
   ├── packages/                  # Shared libraries/components
   │   └── ui/                    # UI components
