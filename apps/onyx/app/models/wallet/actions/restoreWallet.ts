@@ -29,7 +29,7 @@ export async function restoreWallet(store: IWalletStore, mnemonic: string) {
     store.setMnemonic(mnemonic)
 
     // Initialize with new mnemonic
-    const breezApiKey = Constants.expoConfig?.extra?.BREEZ_API_KEY
+    const breezApiKey = process.env.EXPO_PUBLIC_BREEZ_API_KEY
     if (!breezApiKey) {
       throw new Error("BREEZ_API_KEY not set")
     }

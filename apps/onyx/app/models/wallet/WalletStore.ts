@@ -52,6 +52,7 @@ const WalletStoreModel = types
   }))
   .actions(self => ({
     async setup() {
+      console.log("Here in setup")
       return await actions.setup(self as unknown as IWalletStore)
     },
     async fetchBalanceInfo() {
