@@ -1,6 +1,6 @@
 # OpenAgents
 
-OpenAgents is a platform for AI agents built on open protocols.
+OpenAgents is a platform for AI agents using open protocols.
 
 Our current flagship product (v4) is an agentic chat webapp live at [openagents.com](https://openagents.com).
 
