@@ -8,7 +8,7 @@ This repo holds the our new cross-platform version (v5),  a work in progress.
 
 ## v5 Tech Stack
 
-- Frontend: React, TypeScript
+- Frontend: React, React Native, TypeScript
 - Backend: Cloudflare stack
 - Auth: Better-auth
 - Vercel AI SDK
