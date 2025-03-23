@@ -79,10 +79,9 @@ const Money = (props: MoneyProps): ReactElement => {
 
   const symbol = useMemo(() => {
     const style = {
-      marginTop: -4,
-      marginRight: 5, // iconMargin,
-      fontSize: 30,
-      lineHeight: 40,
+      marginRight: 6, // iconMargin,
+      fontSize: 34,
+      lineHeight: 42,
       color: colors.palette.accent100,
       fontFamily: typography.secondary.bold,
     }
@@ -159,6 +158,7 @@ const styles = StyleSheet.create({
   root: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: -10
   },
   sign: {
     marginRight: 3,
