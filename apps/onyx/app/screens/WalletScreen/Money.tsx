@@ -158,6 +158,7 @@ const styles = StyleSheet.create({
   root: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: -10
   },
   sign: {
     marginRight: 3,
