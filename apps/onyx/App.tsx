@@ -1,20 +1,47 @@
+import { AppNavigator } from '@/navigators/AppNavigator';
+import { images } from '@/theme/images';
+import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { Image, Text, View, StyleSheet } from 'react-native';
+
+SplashScreen.preventAutoHideAsync();
 
 export default function App() {
+  const [loaded, error] = useFonts({
+    'Berkeley Mono': require('./assets/fonts/BerkeleyMonoVariable-Regular.ttf'),
+  });
+
+  useEffect(() => {
+    if (loaded || error) {
+      SplashScreen.hideAsync();
+    }
+  }, [loaded, error]);
+
+  if (!loaded && !error) {
+    return null;
+  }
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
-  );
+    <AppNavigator />
+  )
+
+
+  // return (
+  //   <View style={styles.container}>
+  //     <StatusBar style='light' />
+  //     <Text style={{ color: 'white', fontFamily: 'Berkeley Mono', fontSize: 30, marginBottom: 20 }}>Onyx</Text>
+  //     <Image source={images.thinking} style={{ width: 40, height: 40 }} />
+  //   </View>
+  // );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'black'
   },
 });
