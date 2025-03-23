@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@breeztech/react-native-breez-sdk-liquid": "^0.7.7",
+    "@react-native-clipboard/clipboard": "^1.16.2",
     "@react-navigation/native": "^7.0.18",
+    "@react-navigation/native-stack": "^7.3.2",
     "@scure/base": "^1.2.4",
     "@scure/bip32": "^1.6.2",
     "bip39": "^3.1.0",
@@ -32,6 +34,7 @@
     "react-native-keyboard-controller": "^1.16.8",
     "react-native-mmkv": "^3.2.0",
     "react-native-safe-area-context": "^5.3.0",
+    "react-native-screens": "~4.4.0",
     "reactotron-core-client": "^2.9.4",
     "reactotron-mst": "^3.1.7",
     "reactotron-react-js": "^3.3.11",
