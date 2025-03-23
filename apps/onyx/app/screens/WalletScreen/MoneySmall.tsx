@@ -42,7 +42,7 @@ const MoneySmall = observer((props: MoneyProps): ReactElement => {
   const { walletStore } = useStores()
   const { balanceSat, pendingSendSat, pendingReceiveSat, isInitialized, error, fetchBalanceInfo } =
     walletStore
-  console.log(props)
+  // console.log(props)
 
   // Fetch balance on mount and every 15 seconds
   useEffect(() => {
@@ -57,7 +57,7 @@ const MoneySmall = observer((props: MoneyProps): ReactElement => {
 
       return () => clearInterval(interval)
     }
-    return () => {}
+    return () => { }
   }, [isInitialized, error, fetchBalanceInfo])
 
   const primaryUnit = EUnit.BTC
