@@ -7,6 +7,7 @@ import { goBack } from "@/navigators/navigationUtilities"
 import { typography } from "@/theme"
 import { colors } from "@/theme/colorsDark"
 import Money from "./Money"
+import MoneySmall from "./MoneySmall"
 
 interface EarningsCategory {
   id: string
@@ -66,7 +67,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
       <View style={$container}>
         <View style={$totalSection}>
           <Text text="Total Earnings" style={$totalLabel} />
-          <Money sats={totalEarnings} symbol={true} />
+          <Money sats={totalEarnings} symbol={true} size="display" style={$totalMoneyStyle} />
           <View style={$periodSelector}>
             <Button
               text="Week"
@@ -91,7 +92,13 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
                     <Text text={category.description} style={$categoryDescription} />
                   </View>
                 </View>
-                <Text text={`${category.amount} sats`} style={$categoryAmount} />
+                <View style={$categoryAmountContainer}>
+                  <MoneySmall
+                    sats={category.amount}
+                    symbol={true}
+                    style={$moneyStyle}
+                  />
+                </View>
               </View>
               <View style={$progressContainer}>
                 <View style={[$progressBar, { width: `${category.percentage}%` }]} />
@@ -155,8 +162,8 @@ const $periodButton: ViewStyle = {
 }
 
 const $periodButtonActive: ViewStyle = {
-  backgroundColor: colors.palette.accent200,
-  borderColor: "white",
+  backgroundColor: colors.palette.neutral200,
+  borderColor: colors.palette.neutral400,
 }
 
 const $periodButtonText: TextStyle = {
@@ -215,10 +222,13 @@ const $categoryDescription: TextStyle = {
   fontFamily: typography.primary.normal,
 }
 
-const $categoryAmount: TextStyle = {
-  color: "white",
-  fontSize: 16,
-  fontFamily: typography.primary.medium,
+const $categoryAmountContainer: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+}
+
+const $moneyStyle: ViewStyle = {
+  marginTop: 0,
 }
 
 const $progressContainer: ViewStyle = {
@@ -242,4 +252,8 @@ const $actionsContainer: ViewStyle = {
 
 const $actionButton: ViewStyle = {
   flex: 1,
+}
+
+const $totalMoneyStyle: ViewStyle = {
+  marginTop: 0,
 }
