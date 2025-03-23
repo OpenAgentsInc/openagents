@@ -1,8 +1,9 @@
+import { images } from '@/theme/images';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { Image, Text, View, StyleSheet } from 'react-native';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -24,7 +25,8 @@ export default function App() {
   return (
     <View style={styles.container}>
       <StatusBar style='light' />
-      <Text style={{ color: 'white', fontFamily: 'Berkeley Mono', fontSize: 30 }}>Onyx</Text>
+      <Text style={{ color: 'white', fontFamily: 'Berkeley Mono', fontSize: 30, marginBottom: 20 }}>Onyx</Text>
+      <Image source={images.thinking} style={{ width: 40, height: 40 }} />
     </View>
   );
 }
