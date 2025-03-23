@@ -8,6 +8,7 @@ import { Text } from "@/components"
 import { useStores } from "@/models"
 import { typography } from "@/theme"
 import { colors } from "@/theme/colorsDark"
+import { Transaction } from "@/services/breez/types"
 
 export const TransactionsList: FC = observer(function TransactionsList() {
   const { walletStore } = useStores()
@@ -22,7 +23,7 @@ export const TransactionsList: FC = observer(function TransactionsList() {
         {recentTransactions.length === 0 ? (
           <Text text="No transactions yet" style={$emptyText} />
         ) : (
-          recentTransactions.map((tx) => (
+          recentTransactions.map((tx: Transaction) => (
             <TouchableOpacity key={tx.id} style={$transactionItem} activeOpacity={1}>
               <View style={$transactionLeft}>
                 <Text

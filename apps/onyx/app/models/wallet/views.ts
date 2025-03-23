@@ -1,4 +1,5 @@
 import { WalletStore } from "./types"
+import { Transaction } from "@/services/breez/types"
 
 export const createViews = (self: WalletStore) => ({
   get totalBalance() {
@@ -8,9 +9,9 @@ export const createViews = (self: WalletStore) => ({
     return self.pendingSendSat > 0 || self.pendingReceiveSat > 0
   },
   get recentTransactions() {
-    return self.transactions.slice().sort((a, b) => b.timestamp - a.timestamp)
+    return self.transactions.slice().sort((a: Transaction, b: Transaction) => b.timestamp - a.timestamp)
   },
   get pendingTransactions() {
-    return self.transactions.filter(tx => tx.status === "pending")
+    return self.transactions.filter((tx: Transaction) => tx.status === "pending")
   },
 })

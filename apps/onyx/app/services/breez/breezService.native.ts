@@ -5,7 +5,8 @@ import {
   LiquidNetwork, listPayments, lnurlPay, LnUrlPayResultVariant, parse,
   PaymentDetailsVariant, PaymentMethod, prepareLnurlPay,
   prepareReceivePayment, receivePayment, sendPayment, prepareSendPayment,
-  SendDestinationVariant
+  SendDestinationVariant, GetInfoResponse, PrepareLnUrlPayRequest, PrepareReceiveRequest,
+  ReceiveAmount, ReceiveAmountVariant, fetchLightningLimits, WalletInfo, PayAmountVariant
 } from "@breeztech/react-native-breez-sdk-liquid"
 import { BalanceInfo, BreezConfig, BreezService, Transaction } from "./types"
 
@@ -120,9 +121,9 @@ class BreezServiceImpl implements BreezService {
     try {
       const info = await getInfo()
       return {
-        balanceSat: info.balanceSat,
-        pendingSendSat: info.pendingSendSat,
-        pendingReceiveSat: info.pendingReceiveSat,
+        balanceSat: Number(info.walletInfo.balanceSat || 0),
+        pendingSendSat: Number(info.walletInfo.pendingSendSat || 0),
+        pendingReceiveSat: Number(info.walletInfo.pendingReceiveSat || 0),
       }
     } catch (err) {
       console.error('Error fetching balance:', err)
@@ -144,12 +145,15 @@ class BreezServiceImpl implements BreezService {
       if (parsedInput.type === InputTypeVariant.LN_URL_PAY) {
         // Handle Lightning Address payment
         const amountMsat = amount * 1000 // Convert sats to msats
-        const prepareResponse = await prepareLnurlPay({
+        const prepareRequest: PrepareLnUrlPayRequest = {
           data: parsedInput.data,
-          amountMsat,
-          comment: undefined,
-          validateSuccessActionUrl: true
-        })
+          amount: {
+            type: PayAmountVariant.BITCOIN,
+            receiverAmountSat: amount
+          }
+        }
+
+        const prepareResponse = await prepareLnurlPay(prepareRequest)
 
         // Execute the LNURL payment
         const result = await lnurlPay({
@@ -223,25 +227,25 @@ class BreezServiceImpl implements BreezService {
   async receivePayment(amount: number, description?: string): Promise<string> {
     this.ensureInitialized()
 
-    if (amount < 1000) {
-      throw new Error("Minimum receive amount is 1000 sats")
-    }
-
     try {
-      // First prepare the receive payment
+      const receiveAmount: ReceiveAmount = {
+        type: ReceiveAmountVariant.BITCOIN,
+        payerAmountSat: amount
+      }
+
       const prepareResponse = await prepareReceivePayment({
         paymentMethod: PaymentMethod.LIGHTNING,
-        payerAmountSat: amount
+        amount: receiveAmount
       })
 
-      // Then create the actual invoice
       const result = await receivePayment({
-        prepareResponse
+        prepareResponse,
+        description: description || "Payment request"
       })
 
       return result.destination
     } catch (err) {
-      console.error('Error creating invoice:', err)
+      console.error('Error preparing receive payment:', err)
       throw err
     }
   }
