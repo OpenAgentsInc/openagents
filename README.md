@@ -9,7 +9,6 @@ This repo holds the our new cross-platform version (v5),  a work in progress.
 ## Resources
 
 - [Follow us on X](https://x.com/OpenAgentsInc)
-- [Wiki](https://github.com/OpenAgentsInc/openagents/wiki)
 - [Stacker News Community](https://stacker.news/~openagents)
 
 ## Video Series
