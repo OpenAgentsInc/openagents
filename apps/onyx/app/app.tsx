@@ -3,27 +3,28 @@ if (__DEV__) {
 }
 
 import React from 'react'
+import "@/utils/polyfills"
 import { AppNavigator } from '@/navigators/AppNavigator';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { useInitialRootStore } from './models';
 
 SplashScreen.preventAutoHideAsync();
 
 export function App() {
+  console.log("[App] Starting...")
   const [loaded, error] = useFonts({
     'Berkeley Mono': require('../assets/fonts/BerkeleyMonoVariable-Regular.ttf'),
   });
 
-  useEffect(() => {
-    if (loaded || error) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded, error]);
+  const { rehydrated } = useInitialRootStore(() => {
+    console.log("[App] Root store initialized")
+    setTimeout(SplashScreen.hideAsync, 500)
+  })
 
-  if (!loaded && !error) {
+  if (!rehydrated || !loaded && !error) {
     return null;
   }
 

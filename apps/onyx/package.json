@@ -18,8 +18,10 @@
     "@scure/base": "^1.2.4",
     "@scure/bip32": "^1.6.2",
     "bip39": "^3.1.0",
+    "buffer": "^6.0.3",
     "date-fns": "^4.1.0",
     "expo": "~52.0.40",
+    "expo-crypto": "~14.0.2",
     "expo-font": "~13.0.4",
     "expo-secure-store": "~14.0.1",
     "expo-splash-screen": "~0.29.22",
@@ -41,7 +43,8 @@
     "reactotron-mst": "^3.1.7",
     "reactotron-react-js": "^3.3.11",
     "reactotron-react-native": "^5.0.5",
-    "reactotron-react-native-mmkv": "^0.2.6"
+    "reactotron-react-native-mmkv": "^0.2.6",
+    "text-encoding-polyfill": "^0.6.7"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
