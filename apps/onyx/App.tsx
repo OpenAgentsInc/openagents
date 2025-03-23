@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Image, Text, View, StyleSheet } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -24,7 +25,9 @@ export default function App() {
   }
 
   return (
-    <AppNavigator />
+    <KeyboardProvider>
+      <AppNavigator />
+    </KeyboardProvider>
   )
 
 
