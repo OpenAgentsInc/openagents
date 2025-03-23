@@ -1,3 +1,0 @@
-- `cargo watch -x check -x test -x run`
-- `cargo watch -x check -x "test -- --test-threads=1" -x run`
-- `sqlx migrate add create_subscriptions_table`
