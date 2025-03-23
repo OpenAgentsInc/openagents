@@ -1,26 +1,12 @@
-import {
-  JetBrainsMono_300Light as jetBrainsMonoLight,
-  JetBrainsMono_400Regular as jetBrainsMonoRegular,
-  JetBrainsMono_500Medium as jetBrainsMonoMedium,
-  JetBrainsMono_600SemiBold as jetBrainsMonoSemiBold,
-  JetBrainsMono_700Bold as jetBrainsMonoBold
-} from "@expo-google-fonts/jetbrains-mono"
+import { useFonts } from "expo-font"
 
 export const customFontsToLoad = {
-  jetBrainsMonoLight,
-  jetBrainsMonoRegular,
-  jetBrainsMonoMedium,
-  jetBrainsMonoSemiBold,
-  jetBrainsMonoBold,
+  "Berkeley Mono": require("../../assets/fonts/BerkeleyMonoVariable-Regular.ttf"),
 }
 
 const fonts = {
-  jetBrainsMono: {
-    light: "jetBrainsMonoLight",
-    normal: "jetBrainsMonoRegular",
-    medium: "jetBrainsMonoMedium",
-    semiBold: "jetBrainsMonoSemiBold",
-    bold: "jetBrainsMonoBold",
+  berkeleyMono: {
+    normal: "Berkeley Mono",
   }
 }
 
@@ -32,6 +18,6 @@ export const typography = {
   /**
    * The primary font. Used in most places.
    */
-  primary: fonts.jetBrainsMono,
-  secondary: fonts.jetBrainsMono,
+  primary: fonts.berkeleyMono,
+  secondary: fonts.berkeleyMono,
 }
