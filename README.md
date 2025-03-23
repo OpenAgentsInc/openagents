@@ -10,7 +10,7 @@ This repo holds the our new cross-platform version (v5),  a work in progress.
 
 - Frontend: React, React Native, TypeScript
 - Backend: Cloudflare stack
-- Auth: Better-auth
+- Auth: better-auth
 - Vercel AI SDK
 - Multiple clients (web, mobile, desktop) with maximal reuse
     - Web: General agentic chat
