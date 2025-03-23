@@ -6,6 +6,17 @@ Our current flagship product (v4) is an agentic chat webapp live at [openagents.
 
 This repo holds the our new cross-platform version (v5),  a work in progress.
 
+## v5 Tech  Stack
+
+- Frontend: React, TypeScript
+- Backend: Cloudflare stack
+- Auth: Better-auth
+- Vercel AI SDK
+- Multiple clients (web, mobile, desktop) with maximal reuse
+    - Web: General agentic chat
+    - Mobile: Personal assistant & bitcoin wallet
+    - Desktop: Coder
+
 ## Resources
 
 - [Website](https://openagents.com)
