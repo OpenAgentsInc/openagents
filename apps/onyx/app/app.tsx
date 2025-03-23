@@ -3,6 +3,7 @@ if (__DEV__) {
 }
 
 import React from 'react'
+import "@/utils/ignore-warnings"
 import "@/utils/polyfills"
 import { AppNavigator } from '@/navigators/AppNavigator';
 import { useFonts } from 'expo-font';
@@ -10,14 +11,13 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useInitialRootStore } from './models';
+import { customFontsToLoad } from './theme';
 
 SplashScreen.preventAutoHideAsync();
 
 export function App() {
   console.log("[App] Starting...")
-  const [loaded, error] = useFonts({
-    'Berkeley Mono': require('../assets/fonts/BerkeleyMonoVariable-Regular.ttf'),
-  });
+  const [loaded, error] = useFonts(customFontsToLoad);
 
   const { rehydrated } = useInitialRootStore(() => {
     console.log("[App] Root store initialized")

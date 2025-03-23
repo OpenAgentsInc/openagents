@@ -16,6 +16,7 @@ import { goBack } from "@/navigators/navigationUtilities"
 import { WalletStackParamList } from "@/navigators/WalletNavigator"
 import Clipboard from "@react-native-clipboard/clipboard"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
+import { typography } from "@/theme"
 
 interface ReceiveScreenProps extends NativeStackScreenProps<WalletStackParamList, "Receive"> { }
 
@@ -191,7 +192,7 @@ const $input: TextStyle = {
   borderRadius: 8,
   width: "100%",
   marginBottom: 16,
-  fontFamily: "JetBrainsMono-Regular",
+  fontFamily: typography.primary.normal,
   textAlignVertical: "top",
 }
 
@@ -215,7 +216,7 @@ const $buttonDisabled: ViewStyle = {
 const $buttonText: TextStyle = {
   color: "#fff",
   fontSize: 16,
-  fontFamily: "JetBrainsMono-Regular",
+  fontFamily: typography.primary.normal,
 }
 
 const $errorText: TextStyle = {
@@ -238,7 +239,7 @@ const $invoiceBox: ViewStyle = {
 
 const $invoiceText: TextStyle = {
   color: "#fff",
-  fontFamily: "JetBrainsMono-Regular",
+  fontFamily: typography.primary.normal,
   fontSize: 12,
 }
 

@@ -14,6 +14,7 @@ import { useStores } from "@/models"
 import { goBack } from "@/navigators/navigationUtilities"
 import { WalletStackParamList } from "@/navigators/WalletNavigator"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
+import { typography } from "@/theme"
 
 interface RestoreWalletScreenProps
   extends NativeStackScreenProps<WalletStackParamList, "RestoreWallet"> { }
@@ -101,8 +102,8 @@ const $input: TextStyle = {
   padding: 12,
   borderRadius: 8,
   width: "100%",
-  marginBottom: 12,
-  fontFamily: "JetBrainsMono-Regular",
+  marginBottom: 16,
+  fontFamily: typography.primary.normal,
   height: 80,
   textAlignVertical: "top",
 }
@@ -122,7 +123,7 @@ const $buttonDisabled: ViewStyle = {
 const $buttonText: TextStyle = {
   color: "#fff",
   fontSize: 16,
-  fontFamily: "JetBrainsMono-Regular",
+  fontFamily: typography.primary.normal,
 }
 
 const $errorText: TextStyle = {

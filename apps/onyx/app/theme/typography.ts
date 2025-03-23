@@ -1,5 +1,3 @@
-import { useFonts } from "expo-font"
-
 export const customFontsToLoad = {
   "Berkeley Mono": require("../../assets/fonts/BerkeleyMonoVariable-Regular.ttf"),
 }
