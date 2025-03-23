@@ -1,5 +1,7 @@
 # Onyx Wallet Integration
 
+_Disclaimer: this doc was written by LLMs and is largely for brainstorming_
+
 ## Overview
 
 The Onyx mobile app includes a built-in Bitcoin wallet powered by the Breez SDK (Liquid Implementation) to enable seamless payments within the OpenAgents ecosystem. This wallet serves as the foundation for our monetization layer, allowing users to pay for agent usage and contributors to receive payments for their contributions.
