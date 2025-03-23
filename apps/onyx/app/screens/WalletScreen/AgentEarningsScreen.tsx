@@ -23,7 +23,7 @@ const mockEarnings: EarningsCategory[] = [
     name: "MCP Server Usage",
     amount: 2000,
     percentage: 40,
-    icon: "server",
+    icon: "computer",
     description: "Earnings from providing compute resources",
   },
   {
@@ -147,13 +147,16 @@ const $periodSelector: ViewStyle = {
 const $periodButton: ViewStyle = {
   paddingHorizontal: 16,
   paddingVertical: 8,
-  backgroundColor: colors.palette.neutral700,
+  backgroundColor: colors.palette.neutral100,
   borderRadius: 20,
   minWidth: 70,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral300,
 }
 
 const $periodButtonActive: ViewStyle = {
   backgroundColor: colors.palette.accent200,
+  borderColor: "white",
 }
 
 const $periodButtonText: TextStyle = {
@@ -173,10 +176,12 @@ const $categoriesList: ViewStyle = {
 }
 
 const $categoryItem: ViewStyle = {
-  backgroundColor: colors.palette.neutral800,
+  backgroundColor: colors.palette.neutral100,
   borderRadius: 12,
   padding: 16,
   marginBottom: 12,
+  borderWidth: 1,
+  borderColor: "white",
 }
 
 const $categoryHeader: ViewStyle = {
@@ -205,7 +210,7 @@ const $categoryName: TextStyle = {
 }
 
 const $categoryDescription: TextStyle = {
-  color: colors.palette.neutral400,
+  color: colors.palette.neutral600,
   fontSize: 12,
   fontFamily: typography.primary.normal,
 }
@@ -218,7 +223,7 @@ const $categoryAmount: TextStyle = {
 
 const $progressContainer: ViewStyle = {
   height: 4,
-  backgroundColor: colors.palette.neutral700,
+  backgroundColor: colors.palette.neutral200,
   borderRadius: 2,
   overflow: "hidden",
 }
