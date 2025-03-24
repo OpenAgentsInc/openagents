@@ -15,7 +15,9 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean --treeshake",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist",
+    "build:js": "tsup src/index.ts --format esm,cjs --clean",
+    "build": "yarn build:types && yarn build:js",
     "dev": "tsup src/index.ts --format esm,cjs --watch --dts",
     "lint": "eslint src/**/*.ts*",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
