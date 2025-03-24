@@ -1,9 +1,9 @@
 import { StyleSheet } from 'react-native';
 
 export const COLORS = {
-  primary: '#007AFF',
-  secondary: '#5AC8FA',
-  tertiary: '#EFEFF4',
+  primary: '#222222',
+  secondary: '#444444',
+  tertiary: '#999999',
   white: '#FFFFFF',
   black: '#000000',
   disabled: '#CDCDCD',
@@ -11,7 +11,9 @@ export const COLORS = {
 
 export const getButtonStyles = (variant: 'primary' | 'secondary' | 'tertiary', disabled: boolean) => {
   const baseStyle = {
-    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'white',
+    borderRadius: 0,
     paddingHorizontal: 16,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
@@ -61,6 +63,7 @@ export const getButtonHeight = (size: 'small' | 'medium' | 'large') => {
 export const getTextStyle = (variant: 'primary' | 'secondary' | 'tertiary', disabled: boolean) => {
   const baseStyle = {
     fontWeight: '600' as const,
+    fontFamily: "Berkeley Mono",
     textAlign: 'center' as const,
   };
 

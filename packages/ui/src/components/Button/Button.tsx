@@ -26,6 +26,7 @@ export const Button = ({
       ]}
       disabled={disabled || loading}
       onPress={onPress}
+      activeOpacity={0.8}
       {...rest}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
