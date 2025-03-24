@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "jsx": "react",
+    "target": "ESNext",
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "skipLibCheck": true,
+    "types": ["node", "electron"],
+    "experimentalDecorators": true,
+    "composite": true,
+    "declaration": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolvePackageJsonImports": true,
+    "allowJs": false,
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@openagents/ui": ["../../packages/ui/src"],
+      "@openagents/ui/*": ["../../packages/ui/src/*"]
+    },
+    "outDir": "dist",
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"]
+}

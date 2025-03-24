@@ -1,5 +1,5 @@
 {
-  "name": "onyx",
+  "name": "@openagents/onyx",
   "version": "1.0.0",
   "main": "index.ts",
   "license": "AGPL-3.0-or-later",
@@ -14,6 +14,7 @@
   "dependencies": {
     "@openagents/ui": "*",
     "@breeztech/react-native-breez-sdk-liquid": "^0.7.7",
+    "@expo/vector-icons": "^14.0.0",
     "@react-native-clipboard/clipboard": "^1.16.2",
     "@react-navigation/native": "^7.0.18",
     "@react-navigation/native-stack": "^7.3.2",
