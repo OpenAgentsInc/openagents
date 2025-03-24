@@ -24,7 +24,9 @@
       "@openagents/ui/*": ["../../packages/ui/src/*"]
     },
     "outDir": "dist",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "rootDir": "."
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "references": [{ "path": "../../packages/ui" }]
 }
