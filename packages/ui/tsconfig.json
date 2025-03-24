@@ -10,10 +10,14 @@
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
+    "skipLibCheck": true, 
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react-native": ["./node_modules/@types/react-native"]
+    }
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
