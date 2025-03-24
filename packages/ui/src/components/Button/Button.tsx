@@ -1,4 +1,3 @@
-import React from 'react';
 import { Text, TouchableOpacity, ActivityIndicator, View } from 'react-native';
 import { ButtonProps } from './Button.types';
 import { getButtonStyles, getButtonHeight, getTextStyle, getTextSize, styles, COLORS } from './Button.styles';
@@ -31,10 +30,10 @@ export const Button = ({
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         {loading && (
-          <ActivityIndicator 
-            size="small" 
-            color={variant === 'tertiary' ? COLORS.black : COLORS.white} 
-            style={styles.activityIndicator} 
+          <ActivityIndicator
+            size="small"
+            color={variant === 'tertiary' ? COLORS.black : COLORS.white}
+            style={styles.activityIndicator}
           />
         )}
         <Text style={[textStyles, { fontSize }]}>{label}</Text>

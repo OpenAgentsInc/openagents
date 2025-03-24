@@ -4,13 +4,14 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "react-native": "src/index.ts",
-  "types": "dist/index.d.ts",
+  "types": "src/index.ts",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --watch --dts",
     "lint": "eslint src/**/*.ts*",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
-    "t": "npx tsc --noEmit"
+    "t": "tsc --noEmit"
   },
   "peerDependencies": {
     "react": ">=18.0.0",
