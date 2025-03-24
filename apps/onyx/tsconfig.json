@@ -9,6 +9,12 @@
       ],
       "~/*": [
         "./app/*"
+      ],
+      "@openagents/ui": [
+        "../../packages/ui/src"
+      ],
+      "@openagents/ui/*": [
+        "../../packages/ui/src/*"
       ]
     },
   }

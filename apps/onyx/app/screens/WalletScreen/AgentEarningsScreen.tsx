@@ -2,6 +2,8 @@ import { observer } from "mobx-react-lite"
 import { FC } from "react"
 import { ScrollView, StyleSheet, TextStyle, TouchableOpacity, View, ViewStyle } from "react-native"
 import { Button, Icon, Screen, Text } from "@/components"
+// Import our shared UI Button
+import { Button as SharedButton } from "@openagents/ui"
 import { useHeader } from "@/hooks/useHeader"
 import { goBack } from "@/navigators/navigationUtilities"
 import { typography } from "@/theme"
@@ -117,6 +119,44 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
             text="Withdraw"
             style={$actionButton}
             LeftAccessory={() => <Icon icon="download" color="white" size={20} />}
+          />
+        </View>
+        
+        {/* Example of shared UI components */}
+        <View style={$sharedUIContainer}>
+          <Text text="Shared UI Components" style={$sectionHeader} />
+          
+          <View style={$sharedButtonsRow}>
+            <SharedButton 
+              label="Primary"
+              variant="primary"
+              size="small"
+              onPress={() => {}}
+              style={$sharedButton}
+            />
+            
+            <SharedButton 
+              label="Secondary"
+              variant="secondary"
+              size="small"
+              onPress={() => {}}
+              style={$sharedButton}
+            />
+          </View>
+          
+          <SharedButton 
+            label="Tertiary Button (Large)"
+            variant="tertiary"
+            size="large"
+            onPress={() => {}}
+            style={$sharedFullButton}
+          />
+          
+          <SharedButton 
+            label="Loading State"
+            loading={true}
+            onPress={() => {}}
+            style={$sharedFullButton}
           />
         </View>
       </View>
@@ -256,4 +296,26 @@ const $actionButton: ViewStyle = {
 
 const $totalMoneyStyle: ViewStyle = {
   marginTop: 0,
+}
+
+// Shared UI component styles
+const $sharedUIContainer: ViewStyle = {
+  marginTop: 32,
+  paddingTop: 24,
+  borderTopWidth: 1,
+  borderTopColor: colors.palette.neutral200,
+}
+
+const $sharedButtonsRow: ViewStyle = {
+  flexDirection: 'row',
+  gap: 16,
+  marginBottom: 16,
+}
+
+const $sharedButton: ViewStyle = {
+  flex: 1,
+}
+
+const $sharedFullButton: ViewStyle = {
+  marginBottom: 16,
 }

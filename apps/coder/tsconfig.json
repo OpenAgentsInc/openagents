@@ -14,6 +14,13 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Path mapping for monorepo */
+    "baseUrl": ".",
+    "paths": {
+      "@openagents/ui": ["../../packages/ui/src"],
+      "@openagents/ui/*": ["../../packages/ui/src/*"]
+    },
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,

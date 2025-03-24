@@ -2,15 +2,17 @@
   "name": "onyx",
   "version": "1.0.0",
   "main": "index.ts",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "t": "npx tsc --noEmit",
+    "t": "tsc --noEmit",
     "prebuild:clean": "npx expo prebuild --clean --platform ios"
   },
   "dependencies": {
+    "@openagents/ui": "*",
     "@breeztech/react-native-breez-sdk-liquid": "^0.7.7",
     "@react-native-clipboard/clipboard": "^1.16.2",
     "@react-navigation/native": "^7.0.18",

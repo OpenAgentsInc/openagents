@@ -1,15 +1,22 @@
 import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
+import { Button } from "@openagents/ui";
 import "./App.css";
 
 function App() {
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function greet() {
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+    setLoading(true);
+    try {
+      setGreetMsg(await invoke("greet", { name }));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -41,7 +48,34 @@ function App() {
           onChange={(e) => setName(e.currentTarget.value)}
           placeholder="Enter a name..."
         />
-        <button type="submit">Greet</button>
+        
+        {/* Example of using our shared Button component */}
+        <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
+          <Button 
+            label="Primary Button" 
+            variant="primary" 
+            loading={loading} 
+            onPress={greet} 
+          />
+          
+          <Button 
+            label="Secondary" 
+            variant="secondary" 
+            onPress={() => alert('Secondary button clicked')} 
+          />
+          
+          <Button 
+            label="Tertiary" 
+            variant="tertiary" 
+            onPress={() => alert('Tertiary button clicked')} 
+          />
+          
+          <Button 
+            label="Disabled" 
+            disabled 
+            onPress={() => alert('This should not show')} 
+          />
+        </div>
       </form>
       <p>{greetMsg}</p>
     </main>
