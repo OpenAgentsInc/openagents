@@ -6,7 +6,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
@@ -16,16 +16,12 @@
     "outDir": "dist",
     "composite": true,
     "rootDir": "src",
+    "baseUrl": "src",
     "paths": {
       "react": ["../../node_modules/@types/react"],
       "react-native": ["../../node_modules/@types/react-native"]
     }
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.js",
-    "src/**/*.jsx"
-  ],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src", "src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }
