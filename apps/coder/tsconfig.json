@@ -20,8 +20,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@openagents/ui": ["../../packages/ui/src"],
-      "@openagents/ui/*": ["../../packages/ui/src/*"]
+      "@openagents/ui": ["../../packages/ui/dist"],
+      "@openagents/ui/*": ["../../packages/ui/dist/*"]
     },
     "outDir": "dist",
     "resolveJsonModule": true,
