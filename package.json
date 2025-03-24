@@ -12,7 +12,8 @@
     "t:onyx": "yarn workspace onyx t",
     "t:ui": "yarn workspace @openagents/ui t",
     "build": "yarn workspace @openagents/ui build",
-    "dev": "yarn workspace @openagents/ui dev"
+    "dev": "yarn workspace @openagents/ui dev",
+    "clean": "rm -rf **/yarn.lock **/node_modules && yarn install && yarn workspace @openagents/onyx prebuild:clean"
   },
   "devDependencies": {
     "typescript": "^5.3.3"
