@@ -6,17 +6,19 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true, 
+    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
     "outDir": "dist",
+    "composite": true,
+    "rootDir": "src",
     "paths": {
-      "react": ["./node_modules/@types/react"],
-      "react-native": ["./node_modules/@types/react-native"]
+      "react": ["../../node_modules/@types/react"],
+      "react-native": ["../../node_modules/@types/react-native"]
     }
   },
   "include": ["src"],
