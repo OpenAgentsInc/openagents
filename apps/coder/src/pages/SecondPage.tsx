@@ -1,5 +1,4 @@
 import React from "react";
-import Footer from "@/components/template/Footer";
 import { useTranslation } from "react-i18next";
 import { Button } from "@openagents/ui";
 
@@ -14,7 +13,6 @@ export default function SecondPage() {
           onPress={() => console.log("Button pressed")}
         />
       </div>
-      <Footer />
     </div>
   );
 }
