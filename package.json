@@ -1,0 +1,19 @@
+{
+  "name": "openagents",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "t": "yarn workspaces run t",
+    "t:coder": "yarn workspace coder tsc --noEmit",
+    "t:onyx": "yarn workspace onyx t",
+    "t:ui": "yarn workspace @openagents/ui t",
+    "build": "yarn workspace @openagents/ui build",
+    "dev": "yarn workspace @openagents/ui dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
