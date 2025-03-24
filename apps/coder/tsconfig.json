@@ -19,7 +19,9 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@openagents/ui": ["../../packages/ui/src"],
+      "@openagents/ui/*": ["../../packages/ui/src/*"]
     },
     "outDir": "dist",
     "resolveJsonModule": true

@@ -16,6 +16,10 @@ export default defineConfig({
     preserveSymlinks: true,
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "react-native": "react-native-web",
+      "react-native$": "react-native-web",
+      "@openagents/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      "@openagents/ui/*": path.resolve(__dirname, "../../packages/ui/src/*"),
     },
   },
 });
