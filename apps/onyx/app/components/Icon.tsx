@@ -11,6 +11,7 @@ import {
 } from "react-native"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { MaterialIcons } from "@expo/vector-icons"
+import type { Icon as VectorIcon } from "@expo/vector-icons/build/createIconSet"
 
 export type IconTypes = keyof typeof iconRegistry | keyof typeof MaterialIcons.glyphMap
 
@@ -72,13 +73,14 @@ export function Icon(props: IconProps) {
   const isVectorIcon = icon in MaterialIcons.glyphMap
 
   if (isVectorIcon) {
+    const IconComponent = MaterialIcons as any
     return (
       <Wrapper
         accessibilityRole={isPressable ? "button" : undefined}
         {...WrapperProps}
         style={$containerStyleOverride}
       >
-        <MaterialIcons
+        <IconComponent
           name={icon as keyof typeof MaterialIcons.glyphMap}
           size={size ?? 24}
           color={iconColor}
