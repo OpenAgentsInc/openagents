@@ -2,8 +2,11 @@
   "compilerOptions": {
     "jsx": "react",
     "target": "ESNext",
-    "module": "CommonJS",
-    "lib": ["dom", "ESNext"],
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "skipLibCheck": true,
+    "types": ["node", "electron"],
     "experimentalDecorators": true,
     "composite": true,
     "declaration": true,
@@ -19,7 +22,6 @@
       "@/*": ["./src/*"]
     },
     "outDir": "dist",
-    "moduleResolution": "node",
     "resolveJsonModule": true
   },
   "include": ["src/**/*"]
