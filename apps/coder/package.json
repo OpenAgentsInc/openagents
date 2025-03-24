@@ -41,8 +41,6 @@
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/eslint-config-prettier": "^6.11.3",
     "@types/node": "^22.13.10",
-    "@types/react": "~18.3.12",
-    "@types/react-dom": "~18.2.17",
     "electron": "35.0.1",
     "electron-devtools-installer": "^4.0.0",
     "electron-playwright-helpers": "^1.7.1",
