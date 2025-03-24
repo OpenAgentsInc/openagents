@@ -16,12 +16,12 @@
     "outDir": "dist",
     "composite": true,
     "rootDir": "src",
-    "baseUrl": "src",
+    "baseUrl": ".",
     "paths": {
       "react": ["../../node_modules/@types/react"],
       "react-native": ["../../node_modules/@types/react-native"]
     }
   },
-  "include": ["src", "src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist"]
 }
