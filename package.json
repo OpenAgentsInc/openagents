@@ -7,12 +7,12 @@
     "packages/*"
   ],
   "scripts": {
+    "onyx": "yarn workspace @openagents/onyx ios",
+    "coder": "yarn workspace @openagents/coder start",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace coder tsc --noEmit",
     "t:onyx": "yarn workspace onyx t",
     "t:ui": "yarn workspace @openagents/ui t",
-    "build": "yarn workspace @openagents/ui build",
-    "dev": "yarn workspace @openagents/ui dev",
     "clean": "rm -rf **/yarn.lock **/node_modules && yarn install && yarn workspace @openagents/onyx prebuild:clean"
   },
   "dependencies": {
