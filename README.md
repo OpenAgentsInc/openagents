@@ -61,6 +61,6 @@ Check out [episode one](https://twitter.com/OpenAgentsInc/status/172194243512571
 
 ## Screenshots
 
-![Onyx chat screenshot](docs/img/onyx2.png)
+![Onyx chat screenshot](docs/img/onyx2a.png)
 
 ![Onyx bitcoin wallet screenshot](docs/img/onyx1.png)
