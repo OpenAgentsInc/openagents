@@ -2,7 +2,13 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "chatserver",
   "main": "src/index.ts",
-  "compatibility_date": "2025-03-25"
+  "compatibility_date": "2025-03-25",
+  "routes": [
+    {
+      "pattern": "chat.openagents.com",
+      "custom_domain": true
+    }
+  ]
   // "compatibility_flags": [
   //   "nodejs_compat"
   // ],
