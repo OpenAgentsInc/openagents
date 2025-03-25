@@ -25,9 +25,6 @@ export const ChatScreen = () => {
     fetch: expoFetch as unknown as typeof globalThis.fetch,
     api: "https://chat.openagents.com",
     onError: error => console.error(error, 'ERROR'),
-    onResponse: (response) => {
-      console.log('chat response:', response)
-    },
   })
 
   const [message, setMessage] = React.useState("")
@@ -37,11 +34,8 @@ export const ChatScreen = () => {
       content: message,
       role: 'user'
     })
+    setMessage("")
   }, [message])
-
-  useEffect(() => {
-    console.log(messages)
-  }, [messages])
 
 
   const renderMessageContent = (text: string) => {
