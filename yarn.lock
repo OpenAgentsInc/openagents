@@ -45,7 +45,7 @@
   dependencies:
     json-schema "^0.4.0"
 
-"@ai-sdk/react@1.2.1":
+"@ai-sdk/react@1.2.1", "@ai-sdk/react@^1.2.1":
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/@ai-sdk/react/-/react-1.2.1.tgz#621b6020ab56eb194fc43d534debe83b469ccf8e"
   integrity sha512-ZC1GlQ/NRMMAl66nbcqiKmn2DrJb7faDQxvdE8W0aUZYNsGCwFLiNcbGkV7i6Y3VM0nFq9p8joOqAs1cv7zt9g==
@@ -5897,11 +5897,6 @@ expo-splash-screen@~0.29.22:
   integrity sha512-f+bPpF06bqiuW1Fbrd3nxeaSsmTVTBEKEYe3epYt4IE6y4Ulli3qEUamMLlRQiDGuIXPU6zQlscpy2mdBUI5cA==
   dependencies:
     "@expo/prebuild-config" "^8.0.27"
-
-expo-sqlite@~15.1.2:
-  version "15.1.2"
-  resolved "https://registry.yarnpkg.com/expo-sqlite/-/expo-sqlite-15.1.2.tgz#374596a046dfe1012cc8bf933f908de42e0fafa9"
-  integrity sha512-xe+v56ts6GWJoNXLpWBQJmIPd7K1Bk9tmWc2b0nV5yUjqXZX3lbTYm8QhXEqUJxYu87o2GSkNqAqNKeDbMUXGQ==
 
 expo-status-bar@~2.0.1:
   version "2.0.1"

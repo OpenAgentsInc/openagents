@@ -12,6 +12,7 @@
     "prebuild:clean": "npx expo prebuild --clean --platform ios"
   },
   "dependencies": {
+    "@ai-sdk/react": "^1.2.1",
     "@breeztech/react-native-breez-sdk-liquid": "^0.7.7",
     "@expo/vector-icons": "^14.0.0",
     "@openagents/ui": "*",
@@ -30,7 +31,6 @@
     "expo-font": "~13.0.4",
     "expo-secure-store": "~14.0.1",
     "expo-splash-screen": "~0.29.22",
-    "expo-sqlite": "~15.1.2",
     "expo-status-bar": "~2.0.1",
     "expo-system-ui": "~4.0.8",
     "mobx": "6.10.2",

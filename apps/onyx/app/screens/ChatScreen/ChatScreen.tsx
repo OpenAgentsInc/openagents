@@ -31,7 +31,6 @@ export const ChatScreen = () => {
       content: message,
       role: 'user'
     })
-
   }, [message])
 
   useEffect(() => {
