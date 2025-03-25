@@ -1,7 +1,6 @@
 import React from "react"
 import { View, Text, ScrollView, TextInput, Pressable } from "react-native"
 import { useAppTheme } from "@/utils/useAppTheme"
-import { typography, fontWeights } from "@/theme/typography"
 import { Ionicons } from "@expo/vector-icons"
 import CodeHighlighter from "react-native-code-highlighter"
 import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/hljs"
