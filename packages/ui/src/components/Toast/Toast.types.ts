@@ -15,6 +15,8 @@ export interface ToastProps {
   action?: React.ReactNode;
   /** Callback when toast is closed */
   onClose?: () => void;
+  /** Callback when toast is pressed */
+  onPress?: () => void;
   /** Custom styles */
   style?: ViewStyle;
 }
@@ -27,6 +29,8 @@ export interface ToastProviderProps {
 export interface ToastOptions extends Omit<ToastProps, 'message'> {
   /** Toast message */
   message: string;
+  /** Callback when toast is pressed */
+  onPress?: () => void;
 }
 
 export interface ToastContextType {

@@ -19,6 +19,7 @@ export const Toast = ({
   action,
   style,
   onClose,
+  onPress,
 }: ToastProps) => {
   const animation = useRef(new Animated.Value(0)).current;
 
@@ -34,7 +35,8 @@ export const Toast = ({
     };
   }, []);
 
-  const handleClose = () => {
+  const handleClose = (e: React.GestureResponderEvent) => {
+    e.stopPropagation(); // Prevent triggering onPress when closing
     Animated.timing(animation, {
       toValue: 0,
       duration: 300,
@@ -47,37 +49,43 @@ export const Toast = ({
   const variantStyles = getVariantStyles(variant);
 
   return (
-    <Animated.View
-      style={[
-        styles.toast,
-        variantStyles,
-        style,
-        {
-          opacity: animation,
-          transform: [
-            {
-              translateY: animation.interpolate({
-                inputRange: [0, 1],
-                outputRange: [-20, 0],
-              }),
-            },
-          ],
-        },
-      ]}
+    <TouchableOpacity 
+      activeOpacity={onPress ? 0.8 : 1}
+      onPress={onPress}
+      disabled={!onPress}
     >
-      {icon && <View>{icon}</View>}
-      
-      <View style={styles.contentContainer}>
-        {title && <Text style={styles.title}>{title}</Text>}
-        <Text style={styles.message}>{message}</Text>
-      </View>
-      
-      {action && <View style={styles.actionContainer}>{action}</View>}
-      
-      <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-        <Ionicons name="close" size={18} style={styles.closeIcon} />
-      </TouchableOpacity>
-    </Animated.View>
+      <Animated.View
+        style={[
+          styles.toast,
+          variantStyles,
+          style,
+          {
+            opacity: animation,
+            transform: [
+              {
+                translateY: animation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-20, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        {icon && <View>{icon}</View>}
+        
+        <View style={styles.contentContainer}>
+          {title && <Text style={styles.title}>{title}</Text>}
+          <Text style={styles.message}>{message}</Text>
+        </View>
+        
+        {action && <View style={styles.actionContainer}>{action}</View>}
+        
+        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+          <Ionicons name="close" size={18} style={styles.closeIcon} />
+        </TouchableOpacity>
+      </Animated.View>
+    </TouchableOpacity>
   );
 };
 
@@ -146,6 +154,7 @@ export const ToastProvider = ({ children }: ToastProviderProps) => {
             variant={toast.variant}
             icon={toast.icon}
             action={toast.action}
+            onPress={toast.onPress}
             onClose={() => removeToast(toast.id)}
           />
         ))}

@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite"
-import { FC } from "react"
+import { FC, useState } from "react"
 import { ScrollView, StyleSheet, TextStyle, View, ViewStyle, ImageStyle } from "react-native"
 import { Icon, Screen, Text } from "@/components"
 import { Button, Card } from "@openagents/ui"
@@ -10,8 +10,28 @@ import { colors } from "@/theme/colorsDark"
 import Money from "./Money"
 import MoneySmall from "./MoneySmall"
 import { Ionicons } from "@expo/vector-icons"
+import { useEarnings } from "@/models/earnings/EarningsContext"
+import { useNavigation } from "@react-navigation/native"
+import { CompositeNavigationProp } from "@react-navigation/native"
+import { BottomTabNavigationProp } from "@react-navigation/bottom-tabs"
+import { NativeStackNavigationProp } from "@react-navigation/native-stack"
+import { WalletStackParamList } from "@/navigators/WalletNavigator"
+import { TabParamList } from "@/navigators/TabNavigator"
+
+type NavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList>,
+  NativeStackNavigationProp<WalletStackParamList>
+>
 
 export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
+  const { earnings, getTotalForPeriod, getEarningsForPeriod } = useEarnings();
+  const [activePeriod, setActivePeriod] = useState<'week' | 'month' | 'year' | 'all'>('week');
+  const navigation = useNavigation<NavigationProp>();
+
+  // Get filtered earnings and total for the selected period
+  const filteredEarnings = getEarningsForPeriod(activePeriod);
+  const periodTotal = getTotalForPeriod(activePeriod);
+
   useHeader({
     title: "Agent Earnings",
     leftIcon: "back",
@@ -29,95 +49,114 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
     <Screen style={$root} preset="scroll">
       <View style={$container}>
         <Card padding="large" style={$totalCard}>
-          <Text text="Total Earnings" style={$totalLabel} />
+          <Text text={`${activePeriod.charAt(0).toUpperCase() + activePeriod.slice(1)} Earnings`} style={$totalLabel} />
           <View style={$totalMoneyContainer}>
-            <Money sats={5000} symbol={true} size="display" />
+            <Money sats={periodTotal} symbol={true} size="display" />
           </View>
           <View style={$periodSelector}>
             <Button
               label="Week"
               variant="primary"
               size="small"
-              style={[$periodButton, $periodButtonActive]}
+              style={[
+                $periodButton,
+                activePeriod === 'week' ? $periodButtonActive : null
+              ]}
+              onPress={() => setActivePeriod('week')}
             />
-            <Button label="Month" variant="primary" size="small" style={$periodButton} />
-            <Button label="Year" variant="primary" size="small" style={$periodButton} />
-            <Button label="All" variant="primary" size="small" style={$periodButton} />
+            <Button
+              label="Month"
+              variant="primary"
+              size="small"
+              style={[
+                $periodButton,
+                activePeriod === 'month' ? $periodButtonActive : null
+              ]}
+              onPress={() => setActivePeriod('month')}
+            />
+            <Button
+              label="Year"
+              variant="primary"
+              size="small"
+              style={[
+                $periodButton,
+                activePeriod === 'year' ? $periodButtonActive : null
+              ]}
+              onPress={() => setActivePeriod('year')}
+            />
+            <Button
+              label="All"
+              variant="primary"
+              size="small"
+              style={[
+                $periodButton,
+                activePeriod === 'all' ? $periodButtonActive : null
+              ]}
+              onPress={() => setActivePeriod('all')}
+            />
           </View>
         </Card>
 
         <Text text="Earnings Breakdown" style={$sectionHeader} />
         <ScrollView style={$categoriesList}>
-          <Card padding="medium" style={$categoryCard}>
-            <View style={$categoryHeader}>
-              <View style={$categoryLeft}>
-                <Icon icon="computer" color="white" size={24} style={$icon} />
-                <View style={$categoryInfo}>
-                  <Text text="MCP Server Usage" style={$categoryName} />
-                  <Text text="Earnings from providing compute resources" style={$categoryDescription} />
-                </View>
-              </View>
-              <MoneySmall sats={2000} symbol={true} size="bodyMSB" />
-            </View>
-          </Card>
+          {/* Group earnings by category and calculate totals for current period */}
+          {[
+            { category: 'compute', icon: "computer", name: "MCP Server Usage" },
+            { category: 'plugin', icon: "extension", name: "Agent Plugin" },
+            { category: 'referral', icon: "people", name: "Referral Rewards" },
+            { category: 'content', icon: "edit", name: "Content Creation" }
+          ].map((item) => {
+            // Calculate total for this category for the selected time period
+            const categoryTotal = filteredEarnings
+              .filter(earning => earning.category === item.category)
+              .reduce((sum, earning) => sum + earning.amount, 0);
 
-          <Card padding="medium" style={$categoryCard}>
-            <View style={$categoryHeader}>
-              <View style={$categoryLeft}>
-                <Icon icon="extension" color="white" size={24} style={$icon} />
-                <View style={$categoryInfo}>
-                  <Text text="Agent Plugin" style={$categoryName} />
-                  <Text text="Earnings from your agent plugins" style={$categoryDescription} />
-                </View>
-              </View>
-              <MoneySmall sats={1500} symbol={true} size="bodyMSB" />
-            </View>
-          </Card>
+            // Only show categories that have earnings in the selected period
+            if (categoryTotal === 0) return null;
 
-          <Card padding="medium" style={$categoryCard}>
-            <View style={$categoryHeader}>
-              <View style={$categoryLeft}>
-                <Icon icon="people" color="white" size={24} style={$icon} />
-                <View style={$categoryInfo}>
-                  <Text text="Referral Rewards" style={$categoryName} />
-                  <Text text="Earnings from referred users" style={$categoryDescription} />
+            return (
+              <Card key={item.category} padding="medium" style={$categoryCard}>
+                <View style={$categoryHeader}>
+                  <View style={$categoryLeft}>
+                    <Icon icon={item.icon as any} color="white" size={24} style={$icon} />
+                    <View style={$categoryInfo}>
+                      <Text text={item.name} style={$categoryName} />
+                    </View>
+                  </View>
+                  <View style={$moneyContainer}>
+                    <MoneySmall sats={categoryTotal} symbol={true} size="bodyMSB" />
+                  </View>
                 </View>
-              </View>
-              <MoneySmall sats={1000} symbol={true} size="bodyMSB" />
-            </View>
-          </Card>
+              </Card>
+            );
+          })
+            .filter(Boolean) /* Remove null items */
+          }
 
-          <Card padding="medium" style={$categoryCard}>
-            <View style={$categoryHeader}>
-              <View style={$categoryLeft}>
-                <Icon icon="edit" color="white" size={24} style={$icon} />
-                <View style={$categoryInfo}>
-                  <Text text="Content Creation" style={$categoryName} />
-                  <Text text="Earnings from content contributions" style={$categoryDescription} />
+          {/* Show message if no earnings in selected period */}
+          {filteredEarnings.length === 0 && (
+            <Card padding="medium" style={$categoryCard}>
+              <View style={$categoryHeader}>
+                <View style={$categoryLeft}>
+                  <Ionicons name="information-circle-outline" color="white" size={24} style={$icon} />
+                  <View style={$categoryInfo}>
+                    <Text text="No earnings found" style={$categoryName} />
+                  </View>
                 </View>
               </View>
-              <MoneySmall sats={500} symbol={true} size="bodyMSB" />
-            </View>
-          </Card>
+            </Card>
+          )}
         </ScrollView>
 
         <View style={$actionsContainer}>
           <Button
-            label="See All"
-            variant="primary"
-            size="medium"
-            style={$actionButton}
-            leftIcon="list"
-            renderIcon={renderIcon}
-          />
-          <Button
-            label="Withdraw"
+            label="Go to Wallet"
             variant="primary"
             size="medium"
             style={$actionButton}
             leftIcon="wallet-outline"
             renderIcon={renderIcon}
-            onPress={() => goBack()}
+            onPress={() => navigation.navigate("Wallet")}
           />
         </View>
       </View>
@@ -135,7 +174,7 @@ const $container: ViewStyle = {
 }
 
 const $totalCard: ViewStyle = {
-  marginBottom: 32,
+  marginBottom: 24,
 }
 
 const $totalLabel: TextStyle = {
@@ -214,11 +253,13 @@ const $categoryDescription: TextStyle = {
 }
 
 const $actionsContainer: ViewStyle = {
-  flexDirection: "row",
-  gap: 12,
-  marginTop: 24,
+  marginTop: 16,
 }
 
 const $actionButton: ViewStyle = {
-  flex: 1,
+  width: "100%",
+}
+
+const $moneyContainer: ViewStyle = {
+  marginTop: -4,
 }
