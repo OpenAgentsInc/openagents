@@ -1,11 +1,13 @@
-import React from "react"
-import { View, Text, StyleSheet, ScrollView, TextInput, Pressable } from "react-native"
+import React, { useCallback, useEffect } from "react"
+import { View, Text, ScrollView, TextInput, Pressable } from "react-native"
 import { useAppTheme } from "@/utils/useAppTheme"
-import { typography, fontWeights } from "@/theme/typography"
 import { Ionicons } from "@expo/vector-icons"
 import CodeHighlighter from "react-native-code-highlighter"
 import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/hljs"
 import { BlurView } from "expo-blur"
+import { styles } from "./ChatScreen.styles"
+import { fetch as expoFetch } from 'expo/fetch';
+import { useChat } from "@ai-sdk/react"
 
 const DEMO_MESSAGES = [
   { id: 1, text: "How can I help you today?", isAgent: true },
@@ -19,7 +21,22 @@ const DEMO_MESSAGES = [
 
 export const ChatScreen = () => {
   const { theme } = useAppTheme()
+  const { messages, append } = useChat({
+    fetch: expoFetch as unknown as typeof globalThis.fetch,
+    api: "https://chat.openagents.com",
+    onError: error => console.error(error, 'ERROR'),
+  })
+
   const [message, setMessage] = React.useState("")
+  const onSubmit = useCallback(() => {
+    console.log(message)
+    append({
+      content: message,
+      role: 'user'
+    })
+    setMessage("")
+  }, [message])
+
 
   const renderMessageContent = (text: string) => {
     if (!text.includes('```')) {
@@ -76,21 +93,21 @@ export const ChatScreen = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        {DEMO_MESSAGES.map((message) => (
+        {messages.map((message) => (
           <View
             key={message.id}
             style={[
               styles.messageRow,
-              message.isUser ? styles.userMessageRow : styles.agentMessageRow,
+              message.role === 'user' ? styles.userMessageRow : styles.agentMessageRow,
             ]}
           >
             <View
               style={[
                 styles.messageContainer,
-                message.isUser ? styles.userMessage : styles.agentMessage,
+                message.role === 'user' ? styles.userMessage : styles.agentMessage,
               ]}
             >
-              {renderMessageContent(message.text)}
+              {renderMessageContent(message.content)}
             </View>
           </View>
         ))}
@@ -104,102 +121,10 @@ export const ChatScreen = () => {
           onChangeText={setMessage}
           multiline
         />
-        <Pressable style={styles.sendButton}>
+        <Pressable style={styles.sendButton} onPress={onSubmit}>
           <Ionicons name="arrow-up" size={20} color={theme.colors.text} />
         </Pressable>
       </View>
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  statusBarOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 54,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 1,
-    overflow: 'hidden',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 6,
-  },
-  messageRow: {
-    flexDirection: "row",
-    marginBottom: 16,
-  },
-  userMessageRow: {
-    justifyContent: "flex-end",
-  },
-  agentMessageRow: {
-    justifyContent: "flex-start",
-    // paddingRight: 32,
-  },
-  messageContainer: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  userMessage: {
-    backgroundColor: "#000000",
-    borderWidth: 1,
-    borderColor: "#FFFFFF",
-    maxWidth: "80%",
-  },
-  agentMessage: {
-    borderRadius: 12,
-    flex: 1,
-    maxWidth: "100%",
-  },
-  messageText: {
-    fontFamily: typography.primary.normal,
-    fontWeight: fontWeights.normal,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  codeText: {
-    fontFamily: typography.primary.normal,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  userMessageText: {
-    color: "#FFFFFF",
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  input: {
-    flex: 1,
-    fontFamily: typography.primary.normal,
-    fontSize: 13,
-    paddingVertical: 8,
-    paddingRight: 40,
-  },
-  sendButton: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-    padding: 4,
-  },
-  codeBlock: {
-    backgroundColor: '#000',
-    width: '100%',
-    borderWidth: 1,
-    borderColor: 'white',
-    marginTop: -20
-  },
-})
