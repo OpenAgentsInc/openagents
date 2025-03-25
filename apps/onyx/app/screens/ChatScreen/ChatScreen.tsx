@@ -99,21 +99,21 @@ export const ChatScreen = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        {DEMO_MESSAGES.map((message) => (
+        {messages.map((message) => (
           <View
             key={message.id}
             style={[
               styles.messageRow,
-              message.isUser ? styles.userMessageRow : styles.agentMessageRow,
+              message.role === 'user' ? styles.userMessageRow : styles.agentMessageRow,
             ]}
           >
             <View
               style={[
                 styles.messageContainer,
-                message.isUser ? styles.userMessage : styles.agentMessage,
+                message.role === 'user' ? styles.userMessage : styles.agentMessage,
               ]}
             >
-              {renderMessageContent(message.text)}
+              {renderMessageContent(message.content)}
             </View>
           </View>
         ))}
