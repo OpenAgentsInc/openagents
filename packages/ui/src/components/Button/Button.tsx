@@ -1,3 +1,4 @@
+import React from 'react';
 import { Text, TouchableOpacity, ActivityIndicator, View } from 'react-native';
 import { ButtonProps } from './Button.types';
 import { getButtonStyles, getButtonHeight, getTextStyle, getTextSize, styles, COLORS } from './Button.styles';
