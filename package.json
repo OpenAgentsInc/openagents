@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "onyx": "yarn workspace @openagents/onyx ios",
+    "onyx:start": "yarn workspace @openagents/onyx start",
     "coder": "yarn workspace @openagents/coder start",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
