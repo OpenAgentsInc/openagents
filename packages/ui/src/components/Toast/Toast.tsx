@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, Animated, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, Animated, TouchableOpacity, SafeAreaView, GestureResponderEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToastProps, ToastProviderProps, ToastOptions, ToastContextType } from './Toast.types';
 import { styles, getVariantStyles } from './Toast.styles';
@@ -35,7 +35,7 @@ export const Toast = ({
     };
   }, []);
 
-  const handleClose = (e: React.GestureResponderEvent) => {
+  const handleClose = (e: GestureResponderEvent) => {
     e.stopPropagation(); // Prevent triggering onPress when closing
     Animated.timing(animation, {
       toValue: 0,
@@ -49,7 +49,7 @@ export const Toast = ({
   const variantStyles = getVariantStyles(variant);
 
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       activeOpacity={onPress ? 0.8 : 1}
       onPress={onPress}
       disabled={!onPress}
@@ -73,14 +73,14 @@ export const Toast = ({
         ]}
       >
         {icon && <View>{icon}</View>}
-        
+
         <View style={styles.contentContainer}>
           {title && <Text style={styles.title}>{title}</Text>}
           <Text style={styles.message}>{message}</Text>
         </View>
-        
+
         {action && <View style={styles.actionContainer}>{action}</View>}
-        
+
         <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
           <Ionicons name="close" size={18} style={styles.closeIcon} />
         </TouchableOpacity>
@@ -120,7 +120,7 @@ export const ToastProvider = ({ children }: ToastProviderProps) => {
   const update = useCallback((id: string, options: ToastOptions) => {
     setToasts(prev => {
       if (!prev.has(id)) return prev;
-      
+
       const newMap = new Map(prev);
       newMap.set(id, { ...prev.get(id), ...options, id });
       return newMap;
@@ -184,12 +184,12 @@ export const useInterval = (callback: () => void, delay: number | null) => {
     function tick() {
       if (savedCallback.current) savedCallback.current();
     }
-    
+
     if (delay !== null) {
       const id = setInterval(tick, delay);
       return () => clearInterval(id);
     }
-    
+
     return undefined;
   }, [delay]);
 };
