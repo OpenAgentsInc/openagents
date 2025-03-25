@@ -15,10 +15,10 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
-  }
-  // "compatibility_flags": [
-  //   "nodejs_compat"
-  // ],
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   // "vars": {
   //   "MY_VAR": "my-variable"
   // },

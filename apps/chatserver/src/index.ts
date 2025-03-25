@@ -1,16 +1,18 @@
-
-import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
-import type { LanguageModelV1StreamPart } from "ai";
-import { streamText, extractReasoningMiddleware, wrapLanguageModel } from "ai";
+import { streamText } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
-import { env } from "cloudflare:workers"
 
-const app = new Hono();
+interface Env {
+  AI: typeof AI;
+}
+
+const app = new Hono<{ Bindings: Env }>();
+
+app.get('/', c => c.text('200'));
 
 app.post('/', async c => {
-  const workersai = createWorkersAI({ binding: env.AI });
+  const workersai = createWorkersAI({ binding: c.env.AI });
   const result = streamText({
     model: workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
     prompt: 'Invent a new holiday and describe its traditions.',
@@ -23,4 +25,4 @@ app.post('/', async c => {
   return stream(c, stream => stream.pipe(result.toDataStream()));
 });
 
-serve({ fetch: app.fetch, port: 8080 });
+export default app;
