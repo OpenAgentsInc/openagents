@@ -5,9 +5,10 @@ import { typography, fontWeights } from "@/theme/typography"
 import { Ionicons } from "@expo/vector-icons"
 import CodeHighlighter from "react-native-code-highlighter"
 import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/hljs"
+import { BlurView } from "expo-blur"
 
 const DEMO_MESSAGES = [
-  { id: 1, text: "Hi! How can I help you with Bitcoin development today?", isAgent: true },
+  { id: 1, text: "How can I help you today?", isAgent: true },
   { id: 2, text: "I want to implement Lightning Network payments in my app", isUser: true },
   { id: 3, text: "Great choice! Lightning Network is perfect for fast, low-cost Bitcoin transactions. Are you looking to implement a Lightning node or connect to an existing one?", isAgent: true },
   { id: 4, text: "I want to use Breez SDK to handle the Lightning stuff", isUser: true },
@@ -70,7 +71,7 @@ export const ChatScreen = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={styles.statusBarOverlay} />
+      <BlurView intensity={20} tint="dark" style={styles.statusBarOverlay} />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -123,6 +124,7 @@ const styles = StyleSheet.create({
     height: 60,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     zIndex: 1,
+    overflow: 'hidden',
   },
   scrollView: {
     flex: 1,
