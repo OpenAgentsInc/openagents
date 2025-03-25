@@ -9,6 +9,7 @@ import { typography } from "@/theme"
 import { colors } from "@/theme/colorsDark"
 import Money from "./Money"
 import MoneySmall from "./MoneySmall"
+import { Ionicons } from "@expo/vector-icons"
 
 export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
   useHeader({
@@ -16,6 +17,13 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
     leftIcon: "back",
     onLeftPress: goBack,
   })
+
+  const renderIcon = (iconName: string) => {
+    if (iconName === "wallet-outline") {
+      return <Ionicons name="wallet-outline" size={20} color="white" />
+    }
+    return <Icon icon={iconName as any} color="white" size={20} />
+  }
 
   return (
     <Screen style={$root} preset="scroll">
@@ -95,18 +103,21 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
 
         <View style={$actionsContainer}>
           <Button
-            label="View Details"
+            label="See All"
             variant="primary"
             size="medium"
             style={$actionButton}
-            leftIcon="analytics"
+            leftIcon="list"
+            renderIcon={renderIcon}
           />
           <Button
             label="Withdraw"
             variant="primary"
             size="medium"
             style={$actionButton}
-            leftIcon="download"
+            leftIcon="wallet-outline"
+            renderIcon={renderIcon}
+            onPress={() => goBack()}
           />
         </View>
       </View>
