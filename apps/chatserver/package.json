@@ -1,11 +1,12 @@
 {
-  "name": "chatserver",
+  "name": "@openagents/chatserver",
   "version": "0.0.1",
   "private": "true",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify",
-    "types": "wrangler types"
+    "types": "wrangler types",
+    "t": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

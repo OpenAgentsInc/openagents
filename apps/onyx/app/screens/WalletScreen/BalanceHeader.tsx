@@ -30,7 +30,7 @@ const BalanceHeader = (): ReactElement => {
       const interval = setInterval(() => {
         console.log("[BalanceHeader] Periodic balance fetch")
         fetchBalanceInfo()
-      }, 5000) //
+      }, 30000) //
 
       return () => clearInterval(interval)
     }

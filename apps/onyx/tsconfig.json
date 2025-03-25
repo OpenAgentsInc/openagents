@@ -3,6 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "noImplicitAny": false,
+    "module": "esnext",
+    "moduleResolution": "node",
     "paths": {
       "@/*": [
         "./app/*"
