@@ -27,8 +27,12 @@ This is a monorepo:
 - Backend: Cloudflare stack
 - Auth: better-auth
 - Vercel AI SDK
-- Multiple clients (web, mobile, desktop) with maximal reuse
-    - Web: General agentic chat
+
+## v5 Architecture Considerations
+
+- A cross-platform monorepo lets us maximize code reuse.
+- Clients can share code while having different focuses, e.g.:
+    - Web: General agentic chat & project management
     - Mobile: Personal assistant & bitcoin wallet
     - Desktop: Coder
 
