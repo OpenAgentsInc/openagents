@@ -4,7 +4,6 @@ import { SendScreen } from "@/screens/WalletScreen/SendScreen"
 import { ReceiveScreen } from "@/screens/WalletScreen/ReceiveScreen"
 import { BackupWalletScreen } from "@/screens/WalletScreen/BackupWalletScreen"
 import { RestoreWalletScreen } from "@/screens/WalletScreen/RestoreWalletScreen"
-import { AgentEarningsScreen } from "@/screens/WalletScreen/AgentEarningsScreen"
 
 export type WalletStackParamList = {
   WalletMain: undefined
@@ -12,7 +11,6 @@ export type WalletStackParamList = {
   Receive: undefined
   BackupWallet: undefined
   RestoreWallet: undefined
-  AgentEarnings: undefined
 }
 
 const Stack = createNativeStackNavigator<WalletStackParamList>()
@@ -30,7 +28,6 @@ export const WalletNavigator = () => {
       <Stack.Screen name="Receive" component={ReceiveScreen} />
       <Stack.Screen name="BackupWallet" component={BackupWalletScreen} />
       <Stack.Screen name="RestoreWallet" component={RestoreWalletScreen} />
-      <Stack.Screen name="AgentEarnings" component={AgentEarningsScreen} />
     </Stack.Navigator>
   )
 }

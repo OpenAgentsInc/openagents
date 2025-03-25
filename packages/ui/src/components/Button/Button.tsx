@@ -11,6 +11,9 @@ export const Button = ({
   disabled = false,
   style,
   onPress,
+  leftIcon,
+  rightIcon,
+  renderIcon,
   ...rest
 }: ButtonProps) => {
   const buttonStyles = getButtonStyles(variant, disabled);
@@ -30,7 +33,7 @@ export const Button = ({
       activeOpacity={0.8}
       {...rest}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
         {loading && (
           <ActivityIndicator
             size="small"
@@ -38,7 +41,17 @@ export const Button = ({
             style={styles.activityIndicator}
           />
         )}
+        {!loading && leftIcon && renderIcon && (
+          <View style={{ marginRight: 8 }}>
+            {renderIcon(leftIcon)}
+          </View>
+        )}
         <Text style={[textStyles, { fontSize }]}>{label}</Text>
+        {!loading && rightIcon && renderIcon && (
+          <View style={{ marginLeft: 8 }}>
+            {renderIcon(rightIcon)}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
