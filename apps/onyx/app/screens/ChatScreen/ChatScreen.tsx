@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useCallback, useEffect } from "react"
 import { View, Text, ScrollView, TextInput, Pressable } from "react-native"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { Ionicons } from "@expo/vector-icons"
@@ -6,6 +6,7 @@ import CodeHighlighter from "react-native-code-highlighter"
 import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/hljs"
 import { BlurView } from "expo-blur"
 import { styles } from "./ChatScreen.styles"
+import { useChat } from "@ai-sdk/react"
 
 const DEMO_MESSAGES = [
   { id: 1, text: "How can I help you today?", isAgent: true },
@@ -19,7 +20,24 @@ const DEMO_MESSAGES = [
 
 export const ChatScreen = () => {
   const { theme } = useAppTheme()
+  const { messages, append } = useChat({
+    api: "https://chat.openagents.com",
+  })
+
   const [message, setMessage] = React.useState("")
+  const onSubmit = useCallback(() => {
+    console.log(message)
+    append({
+      content: message,
+      role: 'user'
+    })
+
+  }, [message])
+
+  useEffect(() => {
+    console.log(messages)
+  }, [messages])
+
 
   const renderMessageContent = (text: string) => {
     if (!text.includes('```')) {
@@ -104,7 +122,7 @@ export const ChatScreen = () => {
           onChangeText={setMessage}
           multiline
         />
-        <Pressable style={styles.sendButton}>
+        <Pressable style={styles.sendButton} onPress={onSubmit}>
           <Ionicons name="arrow-up" size={20} color={theme.colors.text} />
         </Pressable>
       </View>
