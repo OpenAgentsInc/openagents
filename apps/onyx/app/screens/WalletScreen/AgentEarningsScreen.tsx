@@ -8,6 +8,7 @@ import { goBack } from "@/navigators/navigationUtilities"
 import { typography } from "@/theme"
 import { colors } from "@/theme/colorsDark"
 import Money from "./Money"
+import MoneySmall from "./MoneySmall"
 
 export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
   useHeader({
@@ -48,7 +49,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
                   <Text text="Earnings from providing compute resources" style={$categoryDescription} />
                 </View>
               </View>
-              <Money sats={2000} symbol={true} size="bodyMSB" />
+              <MoneySmall sats={2000} symbol={true} size="bodyMSB" />
             </View>
           </Card>
 
@@ -61,7 +62,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
                   <Text text="Earnings from your agent plugins" style={$categoryDescription} />
                 </View>
               </View>
-              <Money sats={1500} symbol={true} size="bodyMSB" />
+              <MoneySmall sats={1500} symbol={true} size="bodyMSB" />
             </View>
           </Card>
 
@@ -74,7 +75,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
                   <Text text="Earnings from referred users" style={$categoryDescription} />
                 </View>
               </View>
-              <Money sats={1000} symbol={true} size="bodyMSB" />
+              <MoneySmall sats={1000} symbol={true} size="bodyMSB" />
             </View>
           </Card>
 
@@ -87,7 +88,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
                   <Text text="Earnings from content contributions" style={$categoryDescription} />
                 </View>
               </View>
-              <Money sats={500} symbol={true} size="bodyMSB" />
+              <MoneySmall sats={500} symbol={true} size="bodyMSB" />
             </View>
           </Card>
         </ScrollView>

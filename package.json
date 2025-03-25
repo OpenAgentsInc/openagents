@@ -7,9 +7,10 @@
     "packages/*"
   ],
   "scripts": {
+    "chat:deploy": "yarn workspace @openagents/chatserver deploy",
+    "coder": "yarn workspace @openagents/coder start",
     "onyx": "yarn workspace @openagents/onyx ios",
     "onyx:start": "yarn workspace @openagents/onyx start",
-    "coder": "yarn workspace @openagents/coder start",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
     "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",

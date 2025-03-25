@@ -25,6 +25,11 @@ export const ChatScreen = () => {
     fetch: expoFetch as unknown as typeof globalThis.fetch,
     api: "https://chat.openagents.com",
     onError: error => console.error(error, 'ERROR'),
+    initialMessages: DEMO_MESSAGES.map(message => ({
+      id: message.id.toString(),
+      content: message.text,
+      role: message.isAgent ? 'assistant' : 'user'
+    }))
   })
 
   const [message, setMessage] = React.useState("")
