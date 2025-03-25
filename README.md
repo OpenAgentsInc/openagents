@@ -8,8 +8,6 @@ This repo holds our new cross-platform version (v5), a work in progress.
 
 ## Repo Structure
 
-This is a monorepo:
-
 ```
   openagents/
   ├── apps/              # Client applications
@@ -27,10 +25,26 @@ This is a monorepo:
 - Backend: Cloudflare stack
 - Auth: better-auth
 - Vercel AI SDK
-- Multiple clients (web, mobile, desktop) with maximal reuse
-    - Web: General agentic chat
+
+## v5 Architecture Considerations
+
+- A cross-platform monorepo lets us maximize code reuse across clients for different platforms and use cases, e.g.:
+    - Web: General agentic chat & project management
     - Mobile: Personal assistant & bitcoin wallet
     - Desktop: Coder
+- Clients should benefit from open protocol interoperability from day one, e.g.:
+    - MCP clients
+    - Nostr clients (DVMs etc.)
+- Agents should run as long-running processes
+    - Cloudflare Agent SDK built on Durable Objects
+- Agents should be composable from reusable building blocks
+    - MCP tools
+    - Extism plugins
+- Contributors should be paid proportional to paid usage
+    - See draft [Flow of Funds](https://github.com/OpenAgentsInc/openagents/wiki/Flow-of-Funds)
+    - Via Bitcoin using any Lightning wallet, or soon our noob-friendly Onyx wallet using the Breez SDK
+- Agents should be able to have their own wallets
+    - Bitcoin/Lightning & stablecoins via [Spark wallet](https://www.spark.info/)?
 
 ## Resources
 
@@ -45,6 +59,6 @@ Check out [episode one](https://twitter.com/OpenAgentsInc/status/172194243512571
 
 ## Screenshots
 
-![Onyx chat screenshot](docs/img/onyx2.png)
+![Onyx chat screenshot](docs/img/onyx2a.png)
 
 ![Onyx bitcoin wallet screenshot](docs/img/onyx1.png)
