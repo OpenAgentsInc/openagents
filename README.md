@@ -30,11 +30,18 @@ This is a monorepo:
 
 ## v5 Architecture Considerations
 
-- A cross-platform monorepo lets us maximize code reuse.
-- Clients can share code while having different focuses, e.g.:
+- A cross-platform monorepo lets us maximize code reuse across clients for different platforms and use cases, e.g.:
     - Web: General agentic chat & project management
     - Mobile: Personal assistant & bitcoin wallet
     - Desktop: Coder
+- Clients should benefit from open protocol interoperability from day one, e.g.:
+    - MCP clients
+    - Nostr clients (DVMs etc.)
+- Agents should run as long-running processes
+    - Cloudflare Agent SDK built on Durable Objects
+- Agents should be composable from reusable building blocks
+    - MCP tools
+    - Extism plugins
 
 ## Resources
 
