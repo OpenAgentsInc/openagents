@@ -22,6 +22,7 @@
     "@react-navigation/native-stack": "^7.3.2",
     "@scure/base": "^1.2.4",
     "@scure/bip32": "^1.6.2",
+    "ai": "^4.2.2",
     "bip39": "^3.1.0",
     "buffer": "^6.0.3",
     "date-fns": "^4.1.0",
@@ -52,7 +53,8 @@
     "reactotron-react-js": "^3.3.11",
     "reactotron-react-native": "^5.0.5",
     "reactotron-react-native-mmkv": "^0.2.6",
-    "text-encoding-polyfill": "^0.6.7"
+    "text-encoding-polyfill": "^0.6.7",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

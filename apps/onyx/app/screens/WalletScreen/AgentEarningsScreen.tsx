@@ -129,7 +129,7 @@ const $totalCard: ViewStyle = {
 const $totalLabel: TextStyle = {
   color: "white",
   fontSize: 16,
-  marginBottom: 4,
+  marginBottom: 8,
   fontFamily: typography.primary.medium,
   textAlign: "center",
 }

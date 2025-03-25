@@ -6,6 +6,7 @@ import CodeHighlighter from "react-native-code-highlighter"
 import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/hljs"
 import { BlurView } from "expo-blur"
 import { styles } from "./ChatScreen.styles"
+import { fetch as expoFetch } from 'expo/fetch';
 import { useChat } from "@ai-sdk/react"
 
 const DEMO_MESSAGES = [
@@ -21,14 +22,12 @@ const DEMO_MESSAGES = [
 export const ChatScreen = () => {
   const { theme } = useAppTheme()
   const { messages, append } = useChat({
-    api: "http://localhost:8787",
-    // api: "https://chat.openagents.com",
+    fetch: expoFetch as unknown as typeof globalThis.fetch,
+    api: "https://chat.openagents.com",
+    onError: error => console.error(error, 'ERROR'),
     onResponse: (response) => {
       console.log('chat response:', response)
     },
-    onError: (error) => {
-      console.log('chat error:', error)
-    }
   })
 
   const [message, setMessage] = React.useState("")
