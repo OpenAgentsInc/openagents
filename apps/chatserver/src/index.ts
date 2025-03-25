@@ -7,15 +7,28 @@ interface Env {
   AI: typeof AI;
 }
 
+interface ChatMessage {
+  content: string;
+  role: 'user' | 'assistant';
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 app.get('/', c => c.text('200'));
 
 app.post('/', async c => {
+  const body = await c.req.json();
+  const messages = body.messages || [];
+  const lastMessage = messages[messages.length - 1] as ChatMessage;
+
+  if (!lastMessage || lastMessage.role !== 'user') {
+    return c.json({ error: 'No user message found' }, 400);
+  }
+
   const workersai = createWorkersAI({ binding: c.env.AI });
   const result = streamText({
     model: workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
-    prompt: 'Write one paragraph speculating about collaborative, multiplayer, asynchronous AI agents for coding and more',
+    prompt: lastMessage.content,
   });
 
   // Mark the response as a v1 data stream:

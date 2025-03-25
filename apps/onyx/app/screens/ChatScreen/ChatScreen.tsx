@@ -21,7 +21,14 @@ const DEMO_MESSAGES = [
 export const ChatScreen = () => {
   const { theme } = useAppTheme()
   const { messages, append } = useChat({
-    api: "https://chat.openagents.com",
+    api: "http://localhost:8787",
+    // api: "https://chat.openagents.com",
+    onResponse: (response) => {
+      console.log('chat response:', response)
+    },
+    onError: (error) => {
+      console.log('chat error:', error)
+    }
   })
 
   const [message, setMessage] = React.useState("")
