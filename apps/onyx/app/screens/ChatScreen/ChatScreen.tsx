@@ -1,7 +1,8 @@
 import React from "react"
-import { View, Text, StyleSheet, ScrollView } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TextInput, Pressable } from "react-native"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { typography, fontWeights } from "@/theme/typography"
+import { Ionicons } from "@expo/vector-icons"
 
 const DEMO_MESSAGES = [
   { id: 1, text: "Hi! How can I help you with Bitcoin development today?", isAgent: true },
@@ -13,6 +14,7 @@ const DEMO_MESSAGES = [
 
 export const ChatScreen = () => {
   const { theme } = useAppTheme()
+  const [message, setMessage] = React.useState("")
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -47,6 +49,19 @@ export const ChatScreen = () => {
           </View>
         ))}
       </ScrollView>
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={[styles.input, { color: theme.colors.text }]}
+          placeholder="Message OpenAgents"
+          placeholderTextColor={theme.colors.text + '80'}
+          value={message}
+          onChangeText={setMessage}
+          multiline
+        />
+        <Pressable style={styles.sendButton}>
+          <Ionicons name="arrow-up" size={20} color={theme.colors.text} />
+        </Pressable>
+      </View>
     </View>
   )
 }
@@ -96,5 +111,26 @@ const styles = StyleSheet.create({
   },
   userMessageText: {
     color: "#FFFFFF",
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  input: {
+    flex: 1,
+    fontFamily: typography.primary.normal,
+    fontSize: 13,
+    paddingVertical: 8,
+    paddingRight: 40,
+  },
+  sendButton: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    padding: 4,
   },
 })
