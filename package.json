@@ -7,8 +7,10 @@
     "packages/*"
   ],
   "scripts": {
-    "onyx": "yarn workspace @openagents/onyx ios",
+    "chat:deploy": "yarn workspace @openagents/chatserver deploy",
     "coder": "yarn workspace @openagents/coder start",
+    "onyx": "yarn workspace @openagents/onyx ios",
+    "onyx:start": "yarn workspace @openagents/onyx start",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
     "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
@@ -26,6 +28,5 @@
     "react-native": "0.76.7",
     "@types/react": "~18.2.45",
     "@types/react-dom": "~18.2.17"
-  },
-  "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af"
+  }
 }
