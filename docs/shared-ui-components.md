@@ -1,16 +1,18 @@
 # Shared UI Components for Coder and Onyx
 
-This document outlines the architecture and implementation approach for creating shared UI components between the Tauri-based Coder application and the React Native-based Onyx application.
+> **NOTE:** This document contains the original planning and proposals for the shared UI component approach. For the current implementation documentation, please see [Cross-Platform UI Components](./cross-platform-ui-components.md).
 
-## Overview
+This document outlines the initial architecture and implementation approach options considered for creating shared UI components between OpenAgents applications.
+
+## Original Proposal
 
 We need to create a shared UI component library (`@openagents/ui`) that works across:
-1. Coder - React + Tauri (Web/Desktop)
-2. Onyx - React Native (Mobile)
+1. Coder - React + Electron (Desktop)
+2. Onyx - React Native + Expo (Mobile)
 
 The key challenge is to create components that adapt to each platform's rendering capabilities while maintaining a consistent API.
 
-## Proposed Architecture
+## Implementation Options Considered
 
 ### Option 1: Platform-specific Implementations with Unified API
 
@@ -24,15 +26,11 @@ packages/ui/
 │   │   │   ├── Button.styles.ts       # Shared styles (if applicable)
 │   │   │   ├── Button.types.ts        # Shared types
 │   │   │   └── index.ts               # Re-export
-│   │   └── ... (other components)
-│   └── index.ts                       # Main export
-├── package.json
-└── tsconfig.json
 ```
 
 With this approach:
 - Each component has platform-specific implementations
-- The bundler (Metro for RN, Vite for Tauri) picks the correct file based on platform
+- The bundler picks the correct file based on platform
 - Components share a consistent API defined in `.types.ts` files
 
 ### Option 2: React Native Web Approach
@@ -45,78 +43,16 @@ packages/ui/
 │   │   │   ├── Button.tsx             # React Native implementation
 │   │   │   ├── Button.styles.ts       # RN styles
 │   │   │   └── index.ts               # Re-export
-│   │   └── ... (other components)
-│   └── index.ts                       # Main export
-├── package.json
-└── tsconfig.json
 ```
 
 With this approach:
 - Build components using React Native primitives
-- Use `react-native-web` to render them in Coder (web context)
+- Use `react-native-web` to render them in web context
 - Single implementation that adapts to platform capabilities
 
-## Implementation Plan
+## Current Implementation
 
-### Phase 1: Setup Package Structure
+We chose a modified version of Option 2, using React Native Web but with direct source imports rather than a build step. This approach provides the best development experience while maintaining cross-platform compatibility.
 
-1. Create the basic package structure and configuration
-2. Set up build tools for web and native targets
-3. Define shared type system
-
-### Phase 2: Create Base Components
-
-1. Implement Button component as proof-of-concept
-2. Add basic styling system that works cross-platform
-3. Create thorough tests for each platform
-
-### Phase 3: Integration with Apps
-
-1. Add the package as a dependency in both apps
-2. Use the Button component in each
-3. Adjust as needed based on real-world usage
-
-## Technical Requirements
-
-### Dependencies
-
-For Option 1 (Separate Implementations):
-- `react`: ^18.3.1
-- `react-dom`: ^18.3.1 (web/Tauri)
-- `react-native`: ^0.76.7 (mobile)
-- TypeScript for type sharing
-
-For Option 2 (React Native Web):
-- `react`: ^18.3.1
-- `react-native`: ^0.76.7
-- `react-native-web`: latest version
-- `@types/react-native-web`
-
-### Build Configuration
-
-- TypeScript configuration that supports both targets
-- Package.json with appropriate entry points:
-  ```json
-  {
-    "main": "dist/index.js",       // Default for Node.js
-    "module": "dist/index.mjs",    // ESM
-    "react-native": "src/index.ts" // React Native
-  }
-  ```
-
-## Recommended Approach
-
-Given the current state of both applications and the desire for consistency, **Option 2 with react-native-web** is recommended as the primary approach:
-
-1. It provides a more consistent component experience
-2. It simplifies maintenance (one implementation vs. two)
-3. react-native-web is mature and widely used in production applications
-
-However, we should be prepared to create platform-specific overrides where needed for optimal UX on each platform.
-
-## Next Steps
-
-1. Create the base package structure
-2. Implement a Button component as proof-of-concept
-3. Integrate with both apps
-4. Evaluate the real-world performance and developer experience
+For details on the current implementation, see:
+- [Cross-Platform UI Components](./cross-platform-ui-components.md)

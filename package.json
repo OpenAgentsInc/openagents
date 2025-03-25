@@ -10,8 +10,8 @@
     "onyx": "yarn workspace @openagents/onyx ios",
     "coder": "yarn workspace @openagents/coder start",
     "t": "yarn workspaces run t",
-    "t:coder": "yarn workspace coder tsc --noEmit",
-    "t:onyx": "yarn workspace onyx t",
+    "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
+    "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
     "t:ui": "yarn workspace @openagents/ui t",
     "clean": "rm -rf **/yarn.lock **/node_modules && yarn install && yarn workspace @openagents/onyx prebuild:clean"
   },
