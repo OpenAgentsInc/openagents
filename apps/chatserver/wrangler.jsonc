@@ -1,5 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "chatserver",
   "main": "src/index.ts",
   "compatibility_date": "2025-03-25"
