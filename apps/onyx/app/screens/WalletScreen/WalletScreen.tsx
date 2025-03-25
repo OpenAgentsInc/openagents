@@ -1,7 +1,8 @@
 import { observer } from "mobx-react-lite"
 import { FC } from "react"
 import { View, ViewStyle } from "react-native"
-import { Button, Icon, Screen } from "@/components"
+import { Icon, Screen } from "@/components"
+import { Button } from "@openagents/ui"
 import { useHeader } from "@/hooks/useHeader"
 import { goBack } from "@/navigators/navigationUtilities"
 import { WalletStackParamList } from "@/navigators/WalletNavigator"
@@ -23,40 +24,37 @@ export const WalletScreen: FC = observer(function WalletScreen() {
       navigation.navigate("BackupWallet")
     },
   })
+
+  const renderIcon = (iconName: string) => (
+    <Icon icon={iconName as any} color="white" size={20} />
+  )
+
   return (
     <Screen style={$root} contentContainerStyle={$contentContainer} preset="fixed">
       <View style={$topSection}>
         <BalanceHeader />
         <View style={$buttonRow}>
           <Button
-            text="Send"
+            label="Send"
             onPress={() => {
               navigation.navigate("Send")
             }}
             style={$actionButton}
-            LeftAccessory={(props) => (
-              <Icon
-                icon="arrow-upward"
-                color="white"
-                size={20}
-                containerStyle={[$iconContainer, props.style]}
-              />
-            )}
+            variant="primary"
+            size="medium"
+            leftIcon="arrow-upward"
+            renderIcon={renderIcon}
           />
           <Button
-            text="Receive"
+            label="Receive"
             onPress={() => {
               navigation.navigate("Receive")
             }}
             style={$actionButton}
-            LeftAccessory={(props) => (
-              <Icon
-                icon="arrow-downward"
-                color="white"
-                size={20}
-                containerStyle={[$iconContainer, props.style]}
-              />
-            )}
+            variant="primary"
+            size="medium"
+            leftIcon="arrow-downward"
+            renderIcon={renderIcon}
           />
         </View>
       </View>
