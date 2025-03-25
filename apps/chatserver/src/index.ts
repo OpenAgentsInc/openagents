@@ -1,14 +1,18 @@
-import { openai } from '@ai-sdk/openai';
+
 import { serve } from '@hono/node-server';
-import { streamText } from 'ai';
 import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
+import type { LanguageModelV1StreamPart } from "ai";
+import { streamText, extractReasoningMiddleware, wrapLanguageModel } from "ai";
+import { createWorkersAI } from "workers-ai-provider";
+import { env } from "cloudflare:workers"
 
 const app = new Hono();
 
 app.post('/', async c => {
+  const workersai = createWorkersAI({ binding: env.AI });
   const result = streamText({
-    model: openai('gpt-4o'),
+    model: workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
     prompt: 'Invent a new holiday and describe its traditions.',
   });
 

@@ -8,7 +8,14 @@
       "pattern": "chat.openagents.com",
       "custom_domain": true
     }
-  ]
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
   // "compatibility_flags": [
   //   "nodejs_compat"
   // ],
@@ -34,11 +41,4 @@
   //     "database_id": ""
   //   }
   // ],
-  // "ai": {
-  //   "binding": "AI"
-  // },
-  // "observability": {
-  //   "enabled": true,
-  //   "head_sampling_rate": 1
-  // }
 }
