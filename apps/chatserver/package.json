@@ -4,13 +4,16 @@
   "private": "true",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy --minify"
+    "deploy": "wrangler deploy --minify",
+    "types": "wrangler types"
   },
   "dependencies": {
-    "hono": "^4.7.5"
+    "@hono/node-server": "^1.14.0",
+    "ai": "^4.2.2",
+    "hono": "^4.7.5",
+    "workers-ai-provider": "^0.2.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250214.0",
     "wrangler": "^4.4.0"
   }
 }

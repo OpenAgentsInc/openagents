@@ -12,12 +12,13 @@ This is a monorepo:
 
 ```
   openagents/
-  ├── apps/                      # Client applications
-  │   ├── coder/                 # Coding agent desktop app
-  │   └── onyx/                  # Onyx mobile app & bitcoin wallet
-  ├── packages/                  # Shared libraries/components
-  │   └── ui/                    # UI components
-  └── docs/                      # Documentation
+  ├── apps/              # Client applications
+  │   ├── chatserver/    # AI SDK chat API
+  │   ├── coder/         # Coding agent desktop app
+  │   └── onyx/          # Onyx mobile app & bitcoin wallet
+  ├── packages/          # Shared libraries/components
+  │   └── ui/            # UI components
+  └── docs/              # Documentation
 ```
 
 ## v5 Tech Stack
