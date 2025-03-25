@@ -8,8 +8,6 @@ This repo holds our new cross-platform version (v5), a work in progress.
 
 ## Repo Structure
 
-This is a monorepo:
-
 ```
   openagents/
   ├── apps/              # Client applications
