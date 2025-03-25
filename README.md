@@ -42,6 +42,11 @@ This is a monorepo:
 - Agents should be composable from reusable building blocks
     - MCP tools
     - Extism plugins
+- Contributors should be paid proportional to paid usage
+    - See draft [Flow of Funds](https://github.com/OpenAgentsInc/openagents/wiki/Flow-of-Funds)
+    - Via Bitcoin using any Lightning wallet, or soon our noob-friendly Onyx wallet using the Breez SDK
+- Agents should be able to have their own wallets
+    - Bitcoin/Lightning & stablecoins via [Spark wallet](https://www.spark.info/)?
 
 ## Resources
 
