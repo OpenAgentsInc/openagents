@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TextInput, Pressable } from "react-
 import { useAppTheme } from "@/utils/useAppTheme"
 import { typography, fontWeights } from "@/theme/typography"
 import { Ionicons } from "@expo/vector-icons"
+import CodeHighlighter from "react-native-code-highlighter"
+import { atomOneDarkReasonable } from "react-syntax-highlighter/dist/esm/styles/hljs"
 
 const DEMO_MESSAGES = [
   { id: 1, text: "Hi! How can I help you with Bitcoin development today?", isAgent: true },
@@ -10,11 +12,61 @@ const DEMO_MESSAGES = [
   { id: 3, text: "Great choice! Lightning Network is perfect for fast, low-cost Bitcoin transactions. Are you looking to implement a Lightning node or connect to an existing one?", isAgent: true },
   { id: 4, text: "I want to use Breez SDK to handle the Lightning stuff", isUser: true },
   { id: 5, text: "Excellent! Breez SDK is a great choice for adding Lightning capabilities without running your own node. Let's start by setting up the SDK and configuring it with your credentials. Would you like to see some example code?", isAgent: true },
+  { id: 6, text: "Yes - for React Native", isUser: true },
+  { id: 7, text: "Here's a basic example of initializing Breez SDK in a React Native app:\n\n```typescript\nconst mnemonic = '<mnemonics words>'\n\n// Create the default config, providing your Breez API key\nconst config = await defaultConfig(\n  LiquidNetwork.MAINNET,\n  '<your-Breez-API-key>'\n)\n\n// By default in React Native the workingDir is set to:\n// `/<APPLICATION_SANDBOX_DIRECTORY>/breezSdkLiquid`\n// You can change this to another writable directory or a\n// subdirectory of the workingDir if managing multiple mnemonics.\nconsole.log(`Working directory: ${config.workingDir}`)\n// config.workingDir = \"path to writable directory\"\n\nawait connect({ mnemonic, config })\n```\n\nThis example shows the basic setup. Would you like me to explain each part or show how to handle specific payment scenarios?", isAgent: true },
 ]
 
 export const ChatScreen = () => {
   const { theme } = useAppTheme()
   const [message, setMessage] = React.useState("")
+
+  const renderMessageContent = (text: string) => {
+    if (!text.includes('```')) {
+      return (
+        <Text
+          style={[
+            styles.messageText,
+            { color: theme.colors.text },
+          ]}
+        >
+          {text}
+        </Text>
+      )
+    }
+
+    const parts = text.split('```')
+    const [beforeCode, codeBlock, afterCode] = parts
+    const [lang, ...codeLines] = codeBlock.split('\n')
+    const code = codeLines.join('\n').trim()
+
+    return (
+      <>
+        {beforeCode && (
+          <Text style={[styles.messageText, { color: theme.colors.text }]}>
+            {beforeCode}
+          </Text>
+        )}
+        <View style={styles.codeBlock}>
+          <CodeHighlighter
+            hljsStyle={atomOneDarkReasonable}
+            textStyle={styles.codeText}
+            language={lang.trim()}
+            scrollViewProps={{
+              contentContainerStyle: { padding: 12 },
+              style: { backgroundColor: '#000' }
+            }}
+          >
+            {code}
+          </CodeHighlighter>
+        </View>
+        {afterCode && (
+          <Text style={[styles.messageText, { color: theme.colors.text }]}>
+            {afterCode}
+          </Text>
+        )}
+      </>
+    )
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -36,15 +88,7 @@ export const ChatScreen = () => {
                 message.isUser ? styles.userMessage : styles.agentMessage,
               ]}
             >
-              <Text
-                style={[
-                  styles.messageText,
-                  { color: theme.colors.text },
-                  message.isUser && styles.userMessageText,
-                ]}
-              >
-                {message.text}
-              </Text>
+              {renderMessageContent(message.text)}
             </View>
           </View>
         ))}
@@ -76,7 +120,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: 60,
     paddingBottom: 20,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
   },
   messageRow: {
     flexDirection: "row",
@@ -87,7 +131,7 @@ const styles = StyleSheet.create({
   },
   agentMessageRow: {
     justifyContent: "flex-start",
-    paddingRight: 32,
+    // paddingRight: 32,
   },
   messageContainer: {
     paddingVertical: 8,
@@ -102,11 +146,17 @@ const styles = StyleSheet.create({
   agentMessage: {
     borderRadius: 12,
     flex: 1,
+    maxWidth: "100%",
   },
   messageText: {
     fontFamily: typography.primary.normal,
     fontWeight: fontWeights.normal,
     fontSize: 13,
+    lineHeight: 18,
+  },
+  codeText: {
+    fontFamily: typography.primary.normal,
+    fontSize: 12,
     lineHeight: 18,
   },
   userMessageText: {
@@ -132,5 +182,11 @@ const styles = StyleSheet.create({
     right: 12,
     bottom: 12,
     padding: 4,
+  },
+  codeBlock: {
+    backgroundColor: '#000',
+    borderRadius: 6,
+    marginVertical: 8,
+    width: '100%',
   },
 })
