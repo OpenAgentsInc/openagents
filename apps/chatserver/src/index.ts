@@ -15,7 +15,7 @@ app.post('/', async c => {
   const workersai = createWorkersAI({ binding: c.env.AI });
   const result = streamText({
     model: workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
-    prompt: 'Invent a new holiday and describe its traditions.',
+    prompt: 'Write one paragraph speculating about collaborative, multiplayer, asynchronous AI agents for coding and more',
   });
 
   // Mark the response as a v1 data stream:
