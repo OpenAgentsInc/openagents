@@ -4,7 +4,7 @@ import { useAppTheme } from "@/utils/useAppTheme"
 import { typography, fontWeights } from "@/theme/typography"
 import { Ionicons } from "@expo/vector-icons"
 import CodeHighlighter from "react-native-code-highlighter"
-import { atomOneDarkReasonable } from "react-syntax-highlighter/dist/esm/styles/hljs"
+import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/hljs"
 
 const DEMO_MESSAGES = [
   { id: 1, text: "Hi! How can I help you with Bitcoin development today?", isAgent: true },
@@ -48,7 +48,7 @@ export const ChatScreen = () => {
         )}
         <View style={styles.codeBlock}>
           <CodeHighlighter
-            hljsStyle={atomOneDarkReasonable}
+            hljsStyle={syntaxTheme}
             textStyle={styles.codeText}
             language={lang.trim()}
             scrollViewProps={{
@@ -185,8 +185,8 @@ const styles = StyleSheet.create({
   },
   codeBlock: {
     backgroundColor: '#000',
-    borderRadius: 6,
-    marginVertical: 8,
     width: '100%',
+    borderWidth: 1,
+    borderColor: 'white'
   },
 })
