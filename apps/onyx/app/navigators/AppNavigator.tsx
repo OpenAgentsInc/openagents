@@ -6,6 +6,7 @@ import { createNativeStackNavigator, NativeStackScreenProps } from "@react-navig
 import Config from "../config"
 import { navigationRef, useBackButtonHandler } from "./navigationUtilities"
 import { TabNavigator } from "./TabNavigator"
+import { EarningsProvider } from "@/models/earnings/EarningsContext"
 
 export type AppStackParamList = {
   Main: undefined
@@ -53,7 +54,9 @@ export const AppNavigator = observer(function AppNavigator(props: NavigationProp
     <ThemeProvider value={{ themeScheme, setThemeContextOverride }}>
       {/* @ts-ignore */}
       <NavigationContainer ref={navigationRef} theme={navigationTheme} {...props}>
-        <AppStack />
+        <EarningsProvider>
+          <AppStack />
+        </EarningsProvider>
       </NavigationContainer>
     </ThemeProvider>
   )
