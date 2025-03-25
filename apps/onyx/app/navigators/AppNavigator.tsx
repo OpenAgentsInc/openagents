@@ -5,13 +5,10 @@ import { NavigationContainer } from "@react-navigation/native"
 import { createNativeStackNavigator, NativeStackScreenProps } from "@react-navigation/native-stack"
 import Config from "../config"
 import { navigationRef, useBackButtonHandler } from "./navigationUtilities"
-import { WalletNavigator } from "./WalletNavigator"
+import { TabNavigator } from "./TabNavigator"
 
 export type AppStackParamList = {
-  Chat: undefined
-  Settings: undefined
-  Wallet: undefined
-  Profile: undefined
+  Main: undefined
 }
 
 const exitRoutes = Config.exitRoutes
@@ -37,9 +34,9 @@ const AppStack = observer(function AppStack() {
           backgroundColor: colors.background,
         },
       }}
-      initialRouteName={"Wallet"}
+      initialRouteName="Main"
     >
-      <Stack.Screen name="Wallet" component={WalletNavigator} />
+      <Stack.Screen name="Main" component={TabNavigator} />
     </Stack.Navigator>
   )
 })

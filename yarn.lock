@@ -2412,6 +2412,14 @@
     invariant "^2.2.4"
     nullthrows "^1.1.1"
 
+"@react-navigation/bottom-tabs@^7.3.2":
+  version "7.3.2"
+  resolved "https://registry.yarnpkg.com/@react-navigation/bottom-tabs/-/bottom-tabs-7.3.2.tgz#052fe9fcd859426f5f3fd072cd372035b4ed76d5"
+  integrity sha512-gxFQrBTkb8Gf6WGrW2C61JCb5vLFxBLaocNCvNLxPcEMQWuRv+PYIL4NOqWBmmh0+TSMRp/0BI1b+BU6EQfxQQ==
+  dependencies:
+    "@react-navigation/elements" "^2.3.0"
+    color "^4.2.3"
+
 "@react-navigation/core@^7.6.1":
   version "7.6.1"
   resolved "https://registry.yarnpkg.com/@react-navigation/core/-/core-7.6.1.tgz#d73f8884515c3f58b1179b34a728f2b78e7efa33"
@@ -2997,10 +3005,18 @@
     "@react-native/virtualized-lists" "^0.72.4"
     "@types/react" "*"
 
-"@types/react@*", "@types/react@~18.2.45", "@types/react@~18.3.12":
+"@types/react@*", "@types/react@~18.2.45":
   version "18.2.79"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-18.2.79.tgz#c40efb4f255711f554d47b449f796d1c7756d865"
   integrity sha512-RwGAGXPl9kSXwdNTafkOEuFrTBD5SA2B3iEB96xi8+xu5ddUa/cpvyVCSNn+asgLCTHkb5ZxN8gbuibYJi4s1w==
+  dependencies:
+    "@types/prop-types" "*"
+    csstype "^3.0.2"
+
+"@types/react@~18.3.12":
+  version "18.3.20"
+  resolved "https://registry.yarnpkg.com/@types/react/-/react-18.3.20.tgz#b0dccda9d2f1bc24d2a04b1d0cb5d0b9a3576ad3"
+  integrity sha512-IPaCZN7PShZK/3t6Q87pfTkRm6oLTd4vztyoj+cbHUF1g3FfVb2tFIL79uCRKEfv16AhqDMBywP2VW3KIZUvcg==
   dependencies:
     "@types/prop-types" "*"
     csstype "^3.0.2"
