@@ -85,7 +85,7 @@ export function useMCP() {
 }
 
 export async function connectToServer() {
-  const transport = new SSEClientTransport(new URL("http://localhost:8787/"))
+  const transport = new SSEClientTransport(new URL("http://localhost:8787/sse"))
   console.log("Created transport:", transport)
 
   const client = new Client(
