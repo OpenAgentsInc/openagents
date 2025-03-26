@@ -160,7 +160,8 @@ Updated the Vite configuration in the Electron app to:
 - Include React Native dependencies in optimizeDeps
 - Add support for handling font files
 
-**vite.renderer.config.mts**:
+#### Original Configuration:
+
 ```typescript
 export default defineConfig({
   // Configure asset handling
@@ -194,6 +195,68 @@ export default defineConfig({
     },
   },
 });
+```
+
+#### Updated Configuration for Hot Reloading:
+
+To enable proper hot reloading of the UI package, we modified the configuration:
+
+```typescript
+export default defineConfig({
+  // Configure asset handling
+  assetsInclude: ['**/*.ttf'],
+  plugins: [
+    tailwindcss(),
+    react(),
+  ],
+  resolve: {
+    preserveSymlinks: false,  // Changed to false to ensure symlinks work
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "react-native": "react-native-web",
+      "react-native$": "react-native-web",
+      // Remove UI package aliases - use npm linked version instead
+      // "@openagents/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      // "@openagents/ui/*": path.resolve(__dirname, "../../packages/ui/src/*"),
+      // Add aliases for Expo packages
+      "@expo/vector-icons": path.resolve(__dirname, "./src/shims/expo-vector-icons.ts"),
+    },
+  },
+  optimizeDeps: {
+    exclude: ['@openagents/ui'], // Exclude UI package from optimization
+    include: [
+      'react-native-web',
+      'react-native-vector-icons',
+      'react-native-vector-icons/Ionicons',
+    ],
+    esbuildOptions: {
+      loader: {
+        '.js': 'jsx',
+      },
+      resolveExtensions: ['.web.js', '.js', '.ts', '.jsx', '.tsx', '.json'],
+      mainFields: ['browser', 'module', 'main'],
+    },
+  },
+  server: {
+    watch: {
+      usePolling: true,
+      interval: 500,
+    },
+  },
+});
+```
+
+Key changes for hot reloading:
+1. Set `preserveSymlinks` to `false` to ensure symlinks work properly
+2. Remove the direct path resolving for the UI package
+3. Exclude the UI package from dependency optimization
+4. Add file watching with polling to detect changes
+
+#### Creating the symlink:
+
+```bash
+cd /path/to/apps/coder
+npm link ../../packages/ui
 ```
 
 Similar changes were made to `vite.main.config.ts` and `vite.preload.config.ts`.
@@ -259,6 +322,7 @@ export default function HomePage() {
 - **Vector Icon Support**: Proper icon rendering in both platforms with the same API
 - **Maintainability**: Future UI components can use similar patterns without additional work
 - **Graceful Fallbacks**: Custom SVG implementation for unsupported icons
+- **Hot Reloading Support**: Changes to UI components are immediately reflected in both platforms
 
 ## Future Considerations
 
@@ -278,3 +342,7 @@ export default function HomePage() {
 - `/apps/coder/vite.main.config.ts` - Main process build configuration
 - `/apps/coder/vite.preload.config.ts` - Preload script build configuration
 - `/apps/coder/tsconfig.json` - TypeScript configuration updates
+
+## Related Documents
+
+- [Hot Reloading Shared UI Components in Electron](/docs/fixes/hot-reloading-ui-package-electron.md) - Detailed explanation of the hot reloading setup
