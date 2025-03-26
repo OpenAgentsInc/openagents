@@ -61,8 +61,9 @@
     "vitest": "^3.0.8"
   },
   "dependencies": {
-    "@openagents/ui": "*",
     "@icons-pack/react-simple-icons": "^12.2.0",
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "@openagents/ui": "*",
     "@radix-ui/react-navigation-menu": "^1.2.5",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toggle": "^1.1.1",
