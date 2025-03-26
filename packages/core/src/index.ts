@@ -1,1 +1,5 @@
-export const hello = "Hello world"
+export function useMCP() {
+  return {
+    status: "connecting"
+  }
+}
