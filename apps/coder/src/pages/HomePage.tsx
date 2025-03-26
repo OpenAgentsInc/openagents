@@ -83,7 +83,7 @@ export default function HomePage() {
           variant="primary"
           leftIcon="list-outline"
           renderIcon={renderIcon}
-          onClick={handleListIssues}
+          onPress={handleListIssues}
           disabled={connectionStatus !== "connected"}
         />
 
@@ -92,7 +92,7 @@ export default function HomePage() {
           variant="secondary"
           leftIcon="git-pull-request-outline"
           renderIcon={renderIcon}
-          onClick={handleListPRs}
+          onPress={handleListPRs}
           disabled={connectionStatus !== "connected"}
         />
 
@@ -101,7 +101,7 @@ export default function HomePage() {
           variant="primary"
           leftIcon="document-text-outline"
           renderIcon={renderIcon}
-          onClick={handleViewFile}
+          onPress={handleViewFile}
           disabled={connectionStatus !== "connected"}
         />
       </div>
