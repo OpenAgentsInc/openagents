@@ -16,19 +16,19 @@ export default function HomePage() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4">
       <Button label="Normal Button" variant="primary" />
-      
-      <Button 
-        label="Icon Button" 
-        variant="secondary" 
-        leftIcon="heart" 
-        renderIcon={renderIcon} 
+
+      <Button
+        label="Icon Button"
+        variant="secondary"
+        leftIcon="heart"
+        renderIcon={renderIcon}
       />
-      
-      <Button 
-        label="Settings" 
-        variant="primary" 
-        leftIcon="settings-outline" 
-        renderIcon={renderIcon} 
+
+      <Button
+        label="Settisdsdngs"
+        variant="primary"
+        leftIcon="settings-outline"
+        renderIcon={renderIcon}
       />
     </div>
   );
