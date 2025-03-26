@@ -10,6 +10,7 @@
     "chat:deploy": "yarn workspace @openagents/chatserver deploy",
     "coder": "yarn workspace @openagents/coder start",
     "onyx": "yarn workspace @openagents/onyx ios",
+    "mcp": "yarn workspace @openagents/mcp-github-server dev",
     "onyx:start": "yarn workspace @openagents/onyx start",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
