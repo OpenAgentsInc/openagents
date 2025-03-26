@@ -1,9 +1,15 @@
 import { Button } from "@openagents/ui";
+import { hello } from "@openagents/core"
 import React, { useEffect } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import loadIconFonts from "../shims/load-icon-fonts";
 
 export default function HomePage() {
+
+  useEffect(() => {
+    console.log(hello)
+  }, [])
+
   // Load icon fonts on component mount
   useEffect(() => {
     loadIconFonts();
