@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { SSEClientTransport } from './mcp/sse'
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { type JSONRPCMessage } from './mcp/types';
@@ -26,27 +26,30 @@ export function useMCP() {
   const [state, setState] = useState<MCPState>({ status: 'connecting' });
 
   useEffect(() => {
-    const callAddTool = async () => {
-      try {
-        const result = await window.electron.mcpInvoke('mcp:add', 5, 3);
-        setState(prev => ({
-          ...prev,
-          status: 'connected',
-          result: result.content[0].text
-        }));
-      } catch (error) {
-        setState(prev => ({
-          ...prev,
-          status: 'error',
-          error: error as Error
-        }));
-      }
-    };
-
-    void callAddTool();
+    setState({ status: 'connected' });
   }, []);
 
-  return state;
+  const callTool = useCallback(async (a: number, b: number) => {
+    try {
+      const result = await window.electron.mcpInvoke('mcp:add', a, b);
+      setState(prev => ({
+        ...prev,
+        status: 'connected',
+        result: result.content[0].text
+      }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        status: 'error',
+        error: error as Error
+      }));
+    }
+  }, []);
+
+  return {
+    ...state,
+    callTool
+  };
 }
 
 export async function connectToServer() {
