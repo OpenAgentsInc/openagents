@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SSEClientTransport } from './mcp/sse'
-import { Client } from "@modelcontextprotocol/sdk/client/index"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+// import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
 interface MCPState {
   status: 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -92,4 +93,8 @@ export async function connectToServer() {
   )
 
   console.log("Created client:", client)
+
+
+  const connected = await client.connect(transport)
+  console.log("CONNECTED?", connected)
 }
