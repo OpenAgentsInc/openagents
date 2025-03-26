@@ -10,12 +10,14 @@
     "chat:deploy": "yarn workspace @openagents/chatserver deploy",
     "coder": "yarn workspace @openagents/coder start",
     "onyx": "yarn workspace @openagents/onyx ios",
+    "mcp": "yarn workspace @openagents/mcp-github-server dev",
     "onyx:start": "yarn workspace @openagents/onyx start",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
     "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
     "t:ui": "yarn workspace @openagents/ui t",
-    "clean": "rm -rf **/yarn.lock **/node_modules && yarn install && yarn workspace @openagents/onyx prebuild:clean"
+    "clean": "rm -rf **/yarn.lock **/node_modules && yarn install",
+    "clean:onyx": "yarn clean && yarn workspace @openagents/onyx prebuild:clean"
   },
   "devDependencies": {
     "@types/react": "~18.2.45",
