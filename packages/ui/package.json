@@ -26,6 +26,7 @@
     "react-native": ">=0.70.0"
   },
   "dependencies": {
+    "@expo/vector-icons": "^14.0.0",
     "react-native-web": "^0.19.10"
   },
   "devDependencies": {

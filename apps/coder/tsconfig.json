@@ -6,7 +6,7 @@
     "moduleResolution": "node",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "skipLibCheck": true,
-    "types": ["node", "electron"],
+    "types": ["node", "electron", "react-native", "@types/react-native"],
     "experimentalDecorators": true,
     "composite": true,
     "declaration": true,
