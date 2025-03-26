@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { LATEST_PROTOCOL_VERSION } from './mcp/schema';
+import { useState } from 'react';
+import { SSEClientTransport } from './mcp/sse'
 
 interface MCPState {
   status: 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -8,75 +8,81 @@ interface MCPState {
 
 export function useMCP() {
   const [state, setState] = useState<MCPState>({ status: 'connecting' });
-  const eventSourceRef = useRef<EventSource | null>(null);
 
-  useEffect(() => {
-    const connectToMCP = async () => {
-      try {
-        // Create EventSource for SSE connection
-        const eventSource = new EventSource('http://localhost:8787');
-        eventSourceRef.current = eventSource;
+  // const eventSourceRef = useRef<EventSource | null>(null);
 
-        // Handle connection open
-        eventSource.onopen = () => {
-          // Send initialize request
-          const initializeRequest = {
-            jsonrpc: "2.0",
-            id: 1,
-            method: "initialize",
-            params: {
-              protocolVersion: LATEST_PROTOCOL_VERSION,
-              clientInfo: {
-                name: "OpenAgents MCP Client",
-                version: "1.0.0"
-              },
-              capabilities: {
-                sampling: {},
-                roots: {
-                  listChanged: true
-                }
-              }
-            }
-          };
+  // useEffect(() => {
+  //   const connectToMCP = async () => {
+  //     try {
+  //       // Create EventSource for SSE connection
+  //       const eventSource = new EventSource('http://localhost:8787');
+  //       eventSourceRef.current = eventSource;
 
-          fetch('http://localhost:8787', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(initializeRequest)
-          });
+  //       // Handle connection open
+  //       eventSource.onopen = () => {
+  //         // Send initialize request
+  //         const initializeRequest = {
+  //           jsonrpc: "2.0",
+  //           id: 1,
+  //           method: "initialize",
+  //           params: {
+  //             protocolVersion: LATEST_PROTOCOL_VERSION,
+  //             clientInfo: {
+  //               name: "OpenAgents MCP Client",
+  //               version: "1.0.0"
+  //             },
+  //             capabilities: {
+  //               sampling: {},
+  //               roots: {
+  //                 listChanged: true
+  //               }
+  //             }
+  //           }
+  //         };
 
-          setState({ status: 'connected' });
-        };
+  //         fetch('http://localhost:8787', {
+  //           method: 'POST',
+  //           headers: {
+  //             'Content-Type': 'application/json',
+  //           },
+  //           body: JSON.stringify(initializeRequest)
+  //         });
 
-        // Handle messages
-        eventSource.onmessage = (event) => {
-          const message = JSON.parse(event.data);
-          // Handle different message types
-          console.log('Received message:', message);
-        };
+  //         setState({ status: 'connected' });
+  //       };
 
-        // Handle errors
-        eventSource.onerror = (error) => {
-          setState({ status: 'error', error: new Error('Connection failed') });
-          eventSource.close();
-        };
+  //       // Handle messages
+  //       eventSource.onmessage = (event) => {
+  //         const message = JSON.parse(event.data);
+  //         // Handle different message types
+  //         console.log('Received message:', message);
+  //       };
 
-      } catch (error) {
-        setState({ status: 'error', error: error as Error });
-      }
-    };
+  //       // Handle errors
+  //       eventSource.onerror = (error) => {
+  //         setState({ status: 'error', error: new Error('Connection failed') });
+  //         eventSource.close();
+  //       };
 
-    connectToMCP();
+  //     } catch (error) {
+  //       setState({ status: 'error', error: error as Error });
+  //     }
+  //   };
 
-    // Cleanup
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
-  }, []);
+  //   connectToMCP();
+
+  //   // Cleanup
+  //   return () => {
+  //     if (eventSourceRef.current) {
+  //       eventSourceRef.current.close();
+  //     }
+  //   };
+  // }, []);
 
   return state;
+}
+
+export async function connectToServer() {
+  const transport = new SSEClientTransport(new URL("http://localhost:8787"))
+  console.log("Created transport!:", transport)
 }
