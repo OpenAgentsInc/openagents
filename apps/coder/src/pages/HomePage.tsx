@@ -1,6 +1,6 @@
-import { Button } from "@openagents/ui";
-import { useMCP } from "@openagents/core"
 import React, { useState } from "react";
+import { useMCP } from "@openagents/core";
+import { Button } from "@openagents/ui";
 
 export default function HomePage() {
   const { status, result, error, serverUrl, callTool } = useMCP();
