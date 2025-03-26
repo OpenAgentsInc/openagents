@@ -4,9 +4,18 @@
     "target": "ESNext",
     "module": "CommonJS",
     "moduleResolution": "node",
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
     "skipLibCheck": true,
-    "types": ["node", "electron", "react-native", "@types/react-native"],
+    "types": [
+      "node",
+      "electron",
+      "react-native",
+      "@types/react-native"
+    ],
     "experimentalDecorators": true,
     "composite": true,
     "declaration": true,
@@ -18,13 +27,23 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@openagents/ui": ["../../packages/ui/src"],
-      "@openagents/ui/*": ["../../packages/ui/src/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@openagents/ui": [
+        "../../packages/ui/src"
+      ],
+      "@openagents/ui/*": [
+        "../../packages/ui/src/*"
+      ]
     },
     "outDir": "dist",
     "resolveJsonModule": true,
     "rootDir": "../.."
   },
-  "include": ["src/**/*", "../../packages/ui/src/**/*"]
+  "include": [
+    "src/**/*",
+    "../../packages/ui/src/**/*",
+    "../../packages/core/src/**/*",
+  ]
 }
