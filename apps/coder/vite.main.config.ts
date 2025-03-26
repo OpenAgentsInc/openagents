@@ -3,7 +3,18 @@ import { defineConfig } from "vite";
 // https://vitejs.dev/config
 export default defineConfig({
   resolve: {
-    // Some libs that can run in both Web and Node.js, such as `axios`
     mainFields: ["module", "jsnext:main", "jsnext"],
+  },
+  build: {
+    target: 'node18',
+    outDir: '.vite/build',
+    minify: false,
+    rollupOptions: {
+      external: [
+        'electron',
+        'electron-squirrel-startup',
+        '@react-native/assets-registry'
+      ],
+    },
   },
 });
