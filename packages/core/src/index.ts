@@ -85,15 +85,22 @@ export function useMCP() {
 }
 
 export async function connectToServer() {
-  const transport = new SSEClientTransport(new URL("http://localhost:8787"))
+  const transport = new SSEClientTransport(new URL("http://localhost:8787/"))
   console.log("Created transport:", transport)
 
   const client = new Client(
-    { name: 'client', version: '0.0.1' }
+    { name: 'client', version: '0.0.1' },
+    {
+      capabilities: {
+        sampling: {},
+        roots: {
+          listChanged: true
+        }
+      }
+    }
   )
 
   console.log("Created client:", client)
-
 
   const connected = await client.connect(transport)
   console.log("CONNECTED?", connected)
