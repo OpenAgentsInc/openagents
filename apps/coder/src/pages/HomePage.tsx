@@ -2,31 +2,24 @@ import { Button } from "@openagents/ui";
 import React, { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import loadIconFonts from "../shims/load-icon-fonts";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { createGithubMcpClient, listRepositoryIssues, listPullRequests, viewFileContents } from "../utils/mcp/github";
+
+declare global {
+  interface Window {
+    api: {
+      listIssues: (owner: string, repo: string) => Promise<any>;
+      listPullRequests: (owner: string, repo: string) => Promise<any>;
+      viewFileContents: (owner: string, repo: string, path: string) => Promise<any>;
+    };
+  }
+}
 
 export default function HomePage() {
-  const [mcpClient, setMcpClient] = useState<Client | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected" | "error">("disconnected");
   const [result, setResult] = useState<string>("");
 
   // Load icon fonts on component mount
   useEffect(() => {
     loadIconFonts();
-    connectToMcp();
   }, []);
-
-  const connectToMcp = async () => {
-    setConnectionStatus("connecting");
-    try {
-      const client = await createGithubMcpClient();
-      setMcpClient(client);
-      setConnectionStatus("connected");
-    } catch (error) {
-      console.error("Failed to connect to MCP server:", error);
-      setConnectionStatus("error");
-    }
-  };
 
   // Function to render Ionicons
   const renderIcon = (iconName: string) => {
@@ -34,9 +27,8 @@ export default function HomePage() {
   };
 
   const handleListIssues = async () => {
-    if (!mcpClient) return;
     try {
-      const issues = await listRepositoryIssues(mcpClient, "OpenAgentsInc", "openagents");
+      const issues = await window.api.listIssues("OpenAgentsInc", "openagents");
       setResult(JSON.stringify(issues, null, 2));
     } catch (error) {
       setResult(`Error listing issues: ${error}`);
@@ -44,9 +36,8 @@ export default function HomePage() {
   };
 
   const handleListPRs = async () => {
-    if (!mcpClient) return;
     try {
-      const prs = await listPullRequests(mcpClient, "OpenAgentsInc", "openagents");
+      const prs = await window.api.listPullRequests("OpenAgentsInc", "openagents");
       setResult(JSON.stringify(prs, null, 2));
     } catch (error) {
       setResult(`Error listing PRs: ${error}`);
@@ -54,9 +45,8 @@ export default function HomePage() {
   };
 
   const handleViewFile = async () => {
-    if (!mcpClient) return;
     try {
-      const content = await viewFileContents(mcpClient, "OpenAgentsInc", "openagents", "README.md");
+      const content = await window.api.viewFileContents("OpenAgentsInc", "openagents", "README.md");
       setResult(JSON.stringify(content, null, 2));
     } catch (error) {
       setResult(`Error viewing file: ${error}`);
@@ -67,14 +57,6 @@ export default function HomePage() {
     <div className="flex h-full flex-col items-center justify-start gap-4 p-4">
       <div className="flex flex-col items-center gap-2 mb-4">
         <h2 className="text-xl font-bold">GitHub MCP Demo</h2>
-        <div className={`text-sm ${
-          connectionStatus === "connected" ? "text-green-500" : 
-          connectionStatus === "connecting" ? "text-yellow-500" :
-          connectionStatus === "error" ? "text-red-500" :
-          "text-gray-500"
-        }`}>
-          Status: {connectionStatus}
-        </div>
       </div>
 
       <div className="flex flex-row gap-4">
@@ -84,7 +66,6 @@ export default function HomePage() {
           leftIcon="list"
           renderIcon={renderIcon}
           onPress={handleListIssues}
-          disabled={connectionStatus !== "connected"}
         />
 
         <Button
@@ -93,7 +74,6 @@ export default function HomePage() {
           leftIcon="git-branch"
           renderIcon={renderIcon}
           onPress={handleListPRs}
-          disabled={connectionStatus !== "connected"}
         />
 
         <Button
@@ -102,7 +82,6 @@ export default function HomePage() {
           leftIcon="document"
           renderIcon={renderIcon}
           onPress={handleViewFile}
-          disabled={connectionStatus !== "connected"}
         />
       </div>
 
