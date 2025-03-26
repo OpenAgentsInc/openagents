@@ -17,7 +17,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 text-white">
+    <div className="font-mono flex h-full flex-col items-center justify-center gap-4 text-white">
       <div className="mb-4">
         <p>MCP Status: {status}</p>
         {result && <p>Add Tool Result: {result}</p>}
