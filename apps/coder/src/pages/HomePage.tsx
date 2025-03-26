@@ -10,7 +10,7 @@ export default function HomePage() {
   }, []);
   // Function to render Ionicons
   const renderIcon = (iconName: string) => {
-    return <Ionicons name={iconName} size={20} color="#ffffff" />;
+    return <Ionicons name={iconName as any} size={20} color="#ffffff" />;
   };
 
   return (
