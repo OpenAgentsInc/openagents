@@ -25,7 +25,7 @@ export default function HomePage() {
       />
 
       <Button
-        label="Settisdsdngs"
+        label="Settings"
         variant="primary"
         leftIcon="settings-outline"
         renderIcon={renderIcon}
