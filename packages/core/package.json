@@ -1,5 +1,8 @@
 {
   "name": "@openagents/core",
   "version": "0.0.1",
-  "main": "src/index.ts"
+  "main": "src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.8.0"
+  }
 }

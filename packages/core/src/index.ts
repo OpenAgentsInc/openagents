@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SSEClientTransport } from './mcp/sse'
+import { Client } from "@modelcontextprotocol/sdk/client/index"
 
 interface MCPState {
   status: 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -84,5 +85,11 @@ export function useMCP() {
 
 export async function connectToServer() {
   const transport = new SSEClientTransport(new URL("http://localhost:8787"))
-  console.log("Created transport!:", transport)
+  console.log("Created transport:", transport)
+
+  const client = new Client(
+    { name: 'client', version: '0.0.1' }
+  )
+
+  console.log("Created client:", client)
 }
