@@ -1,19 +1,9 @@
 import { defineConfig } from "vite";
-import path from "path";
 
 // https://vitejs.dev/config
 export default defineConfig({
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      'react-native': 'react-native-web',
-    }
-  },
-  optimizeDeps: {
-    esbuildOptions: {
-      loader: {
-        '.js': 'jsx',
-      },
-    },
+    // Some libs that can run in both Web and Node.js, such as `axios`
+    mainFields: ["module", "jsnext:main", "jsnext"],
   },
 });
