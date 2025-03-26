@@ -1,93 +1,56 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SSEClientTransport } from './mcp/sse'
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { type JSONRPCMessage } from './mcp/types';
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
 interface MCPState {
   status: 'connecting' | 'connected' | 'disconnected' | 'error';
   error?: Error;
+  result?: string;
+}
+
+interface ToolResponse {
+  content: Array<{ type: string; text: string }>;
+}
+
+declare global {
+  interface Window {
+    electron: {
+      mcpInvoke: (channel: string, ...args: any[]) => Promise<any>;
+    };
+  }
 }
 
 export function useMCP() {
   const [state, setState] = useState<MCPState>({ status: 'connecting' });
 
-  // const eventSourceRef = useRef<EventSource | null>(null);
+  useEffect(() => {
+    const callAddTool = async () => {
+      try {
+        const result = await window.electron.mcpInvoke('mcp:add', 5, 3);
+        setState(prev => ({
+          ...prev,
+          status: 'connected',
+          result: result.content[0].text
+        }));
+      } catch (error) {
+        setState(prev => ({
+          ...prev,
+          status: 'error',
+          error: error as Error
+        }));
+      }
+    };
 
-  // useEffect(() => {
-  //   const connectToMCP = async () => {
-  //     try {
-  //       // Create EventSource for SSE connection
-  //       const eventSource = new EventSource('http://localhost:8787');
-  //       eventSourceRef.current = eventSource;
-
-  //       // Handle connection open
-  //       eventSource.onopen = () => {
-  //         // Send initialize request
-  //         const initializeRequest = {
-  //           jsonrpc: "2.0",
-  //           id: 1,
-  //           method: "initialize",
-  //           params: {
-  //             protocolVersion: LATEST_PROTOCOL_VERSION,
-  //             clientInfo: {
-  //               name: "OpenAgents MCP Client",
-  //               version: "1.0.0"
-  //             },
-  //             capabilities: {
-  //               sampling: {},
-  //               roots: {
-  //                 listChanged: true
-  //               }
-  //             }
-  //           }
-  //         };
-
-  //         fetch('http://localhost:8787', {
-  //           method: 'POST',
-  //           headers: {
-  //             'Content-Type': 'application/json',
-  //           },
-  //           body: JSON.stringify(initializeRequest)
-  //         });
-
-  //         setState({ status: 'connected' });
-  //       };
-
-  //       // Handle messages
-  //       eventSource.onmessage = (event) => {
-  //         const message = JSON.parse(event.data);
-  //         // Handle different message types
-  //         console.log('Received message:', message);
-  //       };
-
-  //       // Handle errors
-  //       eventSource.onerror = (error) => {
-  //         setState({ status: 'error', error: new Error('Connection failed') });
-  //         eventSource.close();
-  //       };
-
-  //     } catch (error) {
-  //       setState({ status: 'error', error: error as Error });
-  //     }
-  //   };
-
-  //   connectToMCP();
-
-  //   // Cleanup
-  //   return () => {
-  //     if (eventSourceRef.current) {
-  //       eventSourceRef.current.close();
-  //     }
-  //   };
-  // }, []);
+    void callAddTool();
+  }, []);
 
   return state;
 }
 
 export async function connectToServer() {
-  const transport = new SSEClientTransport(new URL("http://localhost:8787/sse"))
-  console.log("Created transport:", transport)
-
+  const transport = new SSEClientTransport(new URL("http://localhost:8787/sse"));
   const client = new Client(
     { name: 'client', version: '0.0.1' },
     {
@@ -98,10 +61,10 @@ export async function connectToServer() {
         }
       }
     }
-  )
+  );
 
-  console.log("Created client:", client)
+  await client.connect(transport);
+  console.log("Connected to MCP server.");
 
-  const connected = await client.connect(transport)
-  console.log("CONNECTED?", connected)
+  return client;
 }

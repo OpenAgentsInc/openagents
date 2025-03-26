@@ -5,11 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import loadIconFonts from "../shims/load-icon-fonts";
 
 export default function HomePage() {
-
-  const { status } = useMCP()
-  useEffect(() => {
-    console.log("MCP status:", status)
-  }, [status])
+  const { status, result, error } = useMCP();
 
   // Load icon fonts on component mount
   useEffect(() => {
@@ -21,7 +17,13 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4">
+    <div className="flex h-full flex-col items-center justify-center gap-4 text-white">
+      <div className="mb-4">
+        <p>MCP Status: {status}</p>
+        {result && <p>Add Tool Result: {result}</p>}
+        {error && <p className="text-red-500">Error: {error.message}</p>}
+      </div>
+
       <Button label="Normal Button" variant="primary" />
 
       <Button
