@@ -3,15 +3,16 @@ import { useMCP } from "@openagents/core"
 import React, { useState } from "react";
 
 export default function HomePage() {
-  const { status, result, error, callTool } = useMCP();
+  const { status, result, error, serverUrl, callTool } = useMCP();
   const [num1, setNum1] = useState<number>(0);
   const [num2, setNum2] = useState<number>(0);
 
   return (
     <div className="font-mono flex h-full flex-col items-center justify-center gap-4 text-white">
-      <div className="mb-4">
+      <div className="mb-4 text-center">
         <p>MCP Status: {status}</p>
-        {result && <p>Result: {result}</p>}
+        <p className="text-sm text-gray-400 mt-1">{serverUrl}</p>
+        {result && <p className="mt-2">Result: {result}</p>}
         {error && <p className="text-red-500">Error: {error.message}</p>}
       </div>
 

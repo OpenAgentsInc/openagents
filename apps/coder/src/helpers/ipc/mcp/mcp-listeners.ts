@@ -1,5 +1,6 @@
 import { ipcMain } from "electron";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { getCurrentUrl } from "@openagents/core";
 
 let mcpClient: Client | null = null;
 
@@ -23,5 +24,9 @@ export function addMcpEventListeners() {
       console.error('Error calling add tool:', error);
       throw error;
     }
+  });
+
+  ipcMain.handle('mcp:getUrl', () => {
+    return getCurrentUrl();
   });
 }
