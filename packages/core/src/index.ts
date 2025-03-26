@@ -53,7 +53,8 @@ export function useMCP() {
 }
 
 export async function connectToServer() {
-  const transport = new SSEClientTransport(new URL("http://localhost:8787/sse"));
+  const transport = new SSEClientTransport(new URL("https://mcp-github.openagents.workers.dev/sse"));
+  // const transport = new SSEClientTransport(new URL("http://localhost:8787/sse"));
   const client = new Client(
     { name: 'client', version: '0.0.1' },
     {
