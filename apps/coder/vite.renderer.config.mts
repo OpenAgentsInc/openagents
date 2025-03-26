@@ -4,6 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  // Configure asset handling
+  assetsInclude: ['**/*.ttf'],
   plugins: [
     tailwindcss(),
     react(),
@@ -24,6 +26,8 @@ export default defineConfig({
     include: [
       'react-native-web',
       '@openagents/ui',
+      'react-native-vector-icons',
+      'react-native-vector-icons/Ionicons',
     ],
     esbuildOptions: {
       loader: {
