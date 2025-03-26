@@ -81,7 +81,7 @@ export default function HomePage() {
         <Button
           label="List Issues"
           variant="primary"
-          leftIcon="list-outline"
+          leftIcon="list"
           renderIcon={renderIcon}
           onPress={handleListIssues}
           disabled={connectionStatus !== "connected"}
@@ -90,7 +90,7 @@ export default function HomePage() {
         <Button
           label="List PRs"
           variant="secondary"
-          leftIcon="git-pull-request-outline"
+          leftIcon="git-branch"
           renderIcon={renderIcon}
           onPress={handleListPRs}
           disabled={connectionStatus !== "connected"}
@@ -99,7 +99,7 @@ export default function HomePage() {
         <Button
           label="View README"
           variant="primary"
-          leftIcon="document-text-outline"
+          leftIcon="document"
           renderIcon={renderIcon}
           onPress={handleViewFile}
           disabled={connectionStatus !== "connected"}
