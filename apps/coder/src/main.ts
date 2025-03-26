@@ -1,53 +1,49 @@
 import { app, BrowserWindow } from "electron";
-import registerListeners from "./helpers/ipc/listeners-register";
-// "electron-squirrel-startup" seems broken when packaging with vite
-//import started from "electron-squirrel-startup";
-import path from "path";
-import {
-  installExtension,
-  REACT_DEVELOPER_TOOLS,
-} from "electron-devtools-installer";
+import path from "node:path";
+import { initGithubMcp } from "./main/mcp/github";
 
-const inDevelopment = process.env.NODE_ENV === "development";
+// The built directory structure
+//
+// ├─┬─┬ dist
+// │ │ └── index.html
+// │ │
+// │ ├─┬ dist-electron
+// │ │ ├── main.js
+// │ │ └── preload.js
+// │
+process.env.DIST = path.join(__dirname, "../dist");
+process.env.VITE_PUBLIC = app.isPackaged
+  ? process.env.DIST
+  : path.join(process.env.DIST, "../public");
+
+let win: BrowserWindow | null;
+// 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
+const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
 function createWindow() {
-  const preload = path.join(__dirname, "preload.js");
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+  win = new BrowserWindow({
+    icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     webPreferences: {
-      devTools: inDevelopment,
-      contextIsolation: true,
-      nodeIntegration: true,
-      nodeIntegrationInSubFrames: false,
-
-      preload: preload,
+      preload: path.join(__dirname, "preload.js"),
     },
-    titleBarStyle: "hidden",
   });
-  registerListeners(mainWindow);
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  // Test active push message to Renderer-process.
+  win.webContents.on("did-finish-load", () => {
+    win?.webContents.send("main-process-message", new Date().toLocaleString());
+  });
+
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    // win.loadFile('dist/index.html')
+    win.loadFile(path.join(process.env.DIST, "index.html"));
   }
 }
 
-async function installExtensions() {
-  try {
-    const result = await installExtension(REACT_DEVELOPER_TOOLS);
-    console.log(`Extensions installed successfully: ${result.name}`);
-  } catch {
-    console.error("Failed to install extensions");
-  }
-}
-
-app.whenReady().then(createWindow).then(installExtensions);
-
-//osX only
+// Quit when all windows are closed, except on macOS. There, it's common
+// for applications and their menu bar to stay active until the user quits
+// explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
@@ -55,8 +51,21 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
+  // On OS X it's common to re-create a window in the app when the
+  // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
-//osX only ends
+
+app.whenReady().then(async () => {
+  // Initialize MCP client
+  try {
+    await initGithubMcp();
+    console.log("GitHub MCP client initialized successfully");
+  } catch (error) {
+    console.error("Failed to initialize GitHub MCP client:", error);
+  }
+  
+  createWindow();
+});
