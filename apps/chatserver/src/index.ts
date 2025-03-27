@@ -78,12 +78,17 @@ app.post('/', async c => {
     
     // Create streaming response with tools enabled
     console.log("🎬 Starting streaming response");
+    console.log("💥 DEBUG ⚡ Testing direct streaming error:");
+    console.log("💥 DEBUG ⚡ Tool list:", JSON.stringify(tools));
+    
+    // Create streaming response 
     const result = streamText({
       model: workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
       messages,
       tools: tools as any, // Type casting to avoid ToolSet issues
       toolCallStreaming: true
     });
+    
 
   // Set up an interceptor for tool calls
   const interceptStream = async function*(stream: ReadableStream<any>) {
@@ -119,9 +124,12 @@ app.post('/', async c => {
             if (decodedText.startsWith('3:')) {
               // This is an error message, pass it through directly
               console.log(`⚠️ Error from model detected: ${decodedText}`);
-              // We need to handle this outside the stream reader
+              // Double-check that the error message is actually coming through to the client
+              console.log(`🚨 WARNING: Error message detected from model: ${decodedText}`);
+              
               // Return the error to be written in the outer loop
-              return { type: 'error', text: decodedText };
+              // Just send a raw error directly without any custom format
+              return { type: 'error', text: "3:\"An error occurred\"", source: 'model' };
               // Skip further processing of this chunk
               // continue;
             }
@@ -182,10 +190,19 @@ app.post('/', async c => {
   c.header('Content-Type', 'text/event-stream');
   c.header('Cache-Control', 'no-cache');
   c.header('Connection', 'keep-alive');
+  
+  // No pre-stream ping since we don't have write capability here
 
   return stream(c, async stream => {
     try {
       console.log("🔄 Starting stream processing");
+      
+      // Start with an initial ping to make sure connection is established
+      await stream.write(":\n\n");  // SSE comment line
+      
+      // Send a test message to see if client receives anything
+      await stream.write(`data: 0:${JSON.stringify("Starting chat...")}\n\n`);
+      
       const transformedStream = interceptStream(result.toDataStream());
       
       console.log("🌊 Beginning stream iteration");
@@ -217,7 +234,11 @@ app.post('/', async c => {
           } else if (chunk.type === 'error' && chunk.text) {
             // Pass through the error with its original format
             console.log(`✅ Sending error directly: ${chunk.text}`);
+            // Format exactly as SSE expects with two newlines after each data line
             await stream.write(`data: ${chunk.text}\n\n`);
+            
+            // Format it properly removing any whitespace or quotes that might be in the original text
+            await stream.write(`data: 3:${JSON.stringify("An error occurred in the AI model")}\n\n`);
           } else {
             // Try with a null check for response content
             console.log(`⚠️ Unknown chunk format: ${JSON.stringify(chunk)}`);
@@ -231,6 +252,10 @@ app.post('/', async c => {
           await stream.write(`data: 3:${JSON.stringify("Error formatting response")}\n\n`);
         }
       }
+      
+      // Send end message to close the stream properly
+      await stream.write(`data: 0:${JSON.stringify("[DONE]")}\n\n`);
+      
       console.log("✅ Stream processing complete");
     } catch (error) {
       console.error("💥 Critical error in stream handling:", error);
