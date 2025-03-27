@@ -1,3 +1,4 @@
+import React from 'react'
 import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native'
 import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'

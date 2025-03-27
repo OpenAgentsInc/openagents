@@ -1,3 +1,4 @@
+import React from 'react'
 import { ScrollView, View, Text, StyleSheet } from 'react-native'
 import { UIMessage } from './types'
 import { ToolCall } from './ToolCall'
