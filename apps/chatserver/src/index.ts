@@ -162,7 +162,7 @@ app.post('/', async c => {
     } catch (error) {
       console.error("💥 Critical error in stream handling:", error);
       // Return error to client
-      await stream.write({ error: "Stream processing failed" });
+      await stream.write(JSON.stringify({ error: "Stream processing failed" }));
     }
   });
   } catch (error) {
