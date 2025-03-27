@@ -5,11 +5,14 @@ import { useChat } from "@openagents/core"
 
 export const Chat = () => {
 
-  const { messages } = useChat()
+  const { append, messages } = useChat()
 
   const handleSubmit = (message: string) => {
     console.log('Message submitted:', message)
-    // TODO: Handle message submission
+    append({
+      content: message,
+      role: 'user'
+    })
   }
 
   return (
