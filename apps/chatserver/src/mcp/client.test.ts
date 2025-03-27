@@ -1,23 +1,20 @@
 import { McpClientManager } from './client';
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
-// This is a test file that would use Jest in a real environment.
-// Since we don't need to run the tests, we're just fixing type issues.
+// Use Jest's mocking capabilities
+jest.mock("@modelcontextprotocol/sdk/client/index.js");
+jest.mock("@modelcontextprotocol/sdk/client/sse.js");
 
-interface GenericTool {
-  name: string;
-  description?: string;
-}
-
-// Mock setup - these would be processed by Jest
-const mockClient = {
-  connect: jest.fn().mockResolvedValue(undefined),
-  close: jest.fn().mockResolvedValue(undefined),
-  listTools: jest.fn().mockResolvedValue([
+describe('McpClientManager', () => {
+  let manager: McpClientManager;
+  
+  // Mock implementation for MCP Client
+  const mockListTools = jest.fn().mockResolvedValue([
     { name: 'tool1', description: 'Tool 1 description' },
     { name: 'tool2', description: 'Tool 2 description' }
-  ] as GenericTool[]),
-  callTool: jest.fn().mockImplementation(({ name, arguments: args }: { name: string, arguments: Record<string, any> }) => {
+  ]);
+  
+  const mockCallTool = jest.fn().mockImplementation(({ name, arguments: args }) => {
     return Promise.resolve({
       content: [
         { 
@@ -26,51 +23,20 @@ const mockClient = {
         }
       ]
     });
-  })
-};
-
-// Mock declarations to satisfy TypeScript in non-Jest environment
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace jest {
-    function mock(path: string): any;
-    function fn(): any;
-    function clearAllMocks(): void;
-  }
-  
-  function describe(name: string, fn: () => void): void;
-  function beforeEach(fn: () => void): void;
-  function afterEach(fn: () => void): void;
-  function it(name: string, fn: () => Promise<void> | void): void;
-  function expect(actual: any): any;
-}
-
-// Placeholder functions since we don't actually run Jest but need to satisfy TypeScript
-const describe = (name: string, fn: () => void) => {};
-const beforeEach = (fn: () => void) => {};
-const afterEach = (fn: () => void) => {};
-const it = (name: string, fn: () => Promise<void> | void) => {};
-const expect = (actual: any) => ({
-  toHaveBeenCalled: () => {},
-  toHaveLength: (n: number) => {},
-  toBe: (expected: any) => {},
-  toEqual: (expected: any) => {},
-  toHaveBeenCalledWith: (expected: any) => {},
-  rejects: {
-    toThrow: (message: string) => {}
-  }
-});
-
-// Type-fixed test file - this would run in a proper Jest environment
-describe('McpClientManager', () => {
-  let manager: McpClientManager;
-
-  beforeEach(() => {
-    manager = new McpClientManager();
   });
 
-  afterEach(() => {
+  beforeEach(() => {
     jest.clearAllMocks();
+    
+    // Setup MCP client mock behavior
+    (Client as jest.Mock).mockImplementation(() => ({
+      connect: jest.fn().mockResolvedValue(undefined),
+      close: jest.fn().mockResolvedValue(undefined),
+      listTools: mockListTools,
+      callTool: mockCallTool
+    }));
+    
+    manager = new McpClientManager();
   });
 
   it('should connect to an MCP server', async () => {
@@ -117,7 +83,7 @@ describe('McpClientManager', () => {
   it('should include token when provided', async () => {
     const client = await manager.connectToServer('https://test-server.com/sse', 'test-server');
     
-    const result = await manager.callTool('tool1', { param1: 'value1' }, 'auth-token');
+    await manager.callTool('tool1', { param1: 'value1' }, 'auth-token');
     
     expect(client.callTool).toHaveBeenCalledWith({
       name: 'tool1',

@@ -6,7 +6,9 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify",
     "types": "wrangler types",
-    "t": "tsc --noEmit"
+    "t": "tsc --noEmit",
+    "test": "node --test src/mcp/tests",
+    "test:watch": "node --test --watch src/mcp/tests"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
@@ -20,7 +22,6 @@
   },
   "devDependencies": {
     "@types/eventsource": "^1.1.15",
-    "@types/jest": "^29.5.12",
     "@types/node": "^20.11.27",
     "wrangler": "^4.4.0"
   }
