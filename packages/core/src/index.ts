@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { SSEClientTransport } from './mcp/sse'
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { type JSONRPCMessage } from './mcp/types';
+
+export * from './chat/types'
+export * from './chat/useChat'
+
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
 interface MCPState {
@@ -39,9 +43,9 @@ export function useMCP() {
     void init();
   }, []);
 
-  const callTool = useCallback(async (a: number, b: number) => {
+  const callTool = useCallback(async (name: string, args: Record<string, any>) => {
     try {
-      const result = await window.electron.mcpInvoke('mcp:add', a, b);
+      const result = await window.electron.mcpInvoke('mcp:call', name, args);
       setState(prev => ({
         ...prev,
         status: 'connected',
@@ -65,7 +69,7 @@ export function useMCP() {
 let currentUrl: string;
 
 export async function connectToServer() {
-  currentUrl = "https://mcp-github.openagents.workers.dev/sse";
+  currentUrl = "https://mcp-github.openagents.com/sse";
   // currentUrl = "http://localhost:8787/sse";
   const transport = new SSEClientTransport(new URL(currentUrl));
   const client = new Client(

@@ -9,19 +9,19 @@ export function setMcpClient(client: any) {
 }
 
 export function addMcpEventListeners() {
-  ipcMain.handle('mcp:add', async (_, a: number, b: number) => {
+  ipcMain.handle('mcp:call', async (_, name: string, args: Record<string, any>) => {
     if (!mcpClient) {
       throw new Error('MCP client not connected');
     }
 
     try {
       const result = await mcpClient.callTool({
-        name: 'add',
-        arguments: { a, b }
+        name,
+        arguments: args
       });
       return result;
     } catch (error) {
-      console.error('Error calling add tool:', error);
+      console.error('Error calling tool:', error);
       throw error;
     }
   });

@@ -27,7 +27,6 @@ To develop a Electron app, you probably will need some UI, test, formatter, styl
 - [React 19](https://reactjs.org)
 - [Tailwind 4](https://tailwindcss.com)
 - [Shadcn UI](https://ui.shadcn.com)
-- [Geist](https://vercel.com/font) as default font
 - [i18next](https://www.i18next.com)
 - [TanStack Router](https://tanstack.com/router)
 - [Lucide](https://lucide.dev)
@@ -51,7 +50,6 @@ To develop a Electron app, you probably will need some UI, test, formatter, styl
 - Use Context isolation
 - [React Compiler](https://react.dev/learn/react-compiler) is enabled by default.
 - `titleBarStyle`: hidden (Using custom title bar)
-- Geist as default font
 - Some default styles was applied, check the [`styles`](https://github.com/LuanRoger/electron-shadcn/tree/main/src/styles) directory
 - React DevTools are installed by default
 
