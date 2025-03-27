@@ -1,5 +1,6 @@
-import { View, TextInput, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native'
+import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native'
 import { MessageList } from './MessageList'
+import { MessageInput } from './MessageInput'
 import { dummyMessages } from './dummyData'
 
 export const Chat = () => (
@@ -11,17 +12,7 @@ export const Chat = () => (
       <View style={styles.inner}>
         <View style={styles.topBorder} />
         <MessageList messages={dummyMessages} />
-        <View style={styles.inputWrapper}>
-          <View style={styles.inputBorder} />
-          <View style={styles.inputContainer}>
-            <TextInput
-              autoFocus
-              style={styles.input}
-              placeholder="Message Coder"
-              placeholderTextColor="#666"
-            />
-          </View>
-        </View>
+        <MessageInput maxRows={5} />
       </View>
     </KeyboardAvoidingView>
   </SafeAreaView>
@@ -43,31 +34,5 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#333',
     width: '100%',
-  },
-  inputWrapper: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#000',
-  },
-  inputBorder: {
-    height: 1,
-    backgroundColor: '#333',
-    width: '100%',
-  },
-  inputContainer: {
-    paddingVertical: 20,
-    paddingHorizontal: '5%',
-  },
-  input: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
-    color: '#fff',
-    fontSize: 14,
-    fontFamily: "Berkeley Mono"
   },
 })
