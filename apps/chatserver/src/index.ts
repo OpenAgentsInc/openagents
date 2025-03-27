@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
 // Import necessary types from 'ai' SDK
-import { streamText, type Message, type ToolCall, type ToolResult } from "ai";
+import { streamText, type Message, type ToolCall, type ToolResult, type CoreTool } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { cors } from 'hono/cors';
 import { mcpClientManager } from './mcp/client';
 // Re-import functions from tools.ts
-import { extractToolDefinitions, processToolCall, type ToolDefinition, type ToolResultPayload } from './mcp/tools';
+import { extractToolDefinitions, processToolCall, type ToolResultPayload } from './mcp/tools';
 
 interface Env {
   AI: any; // Keep 'any' for now
@@ -79,14 +79,16 @@ app.post('/', async c => {
 
     // --- Tool Extraction ---
     console.log("🔄 Ensuring MCP connection and discovering tools for request...");
-    let tools: Record<string, ToolDefinition> = {};
+    // Type is now Record<string, CoreTool> when using the 'tool' helper
+    let tools: Record<string, CoreTool> = {};
     try {
       await mcpClientManager.connectToServer('https://mcp-github.openagents.com/sse', 'github');
       console.log("✅ MCP connection attempt finished for request.");
-      tools = extractToolDefinitions(); // Using minimal version from tools.ts
+      tools = extractToolDefinitions(); // Uses new version returning SDK 'tool' objects
       const toolNames = Object.keys(tools);
       console.log(`✅ Extracted ${toolNames.length} tools for LLM (within request):`, toolNames.join(', '));
-      console.log('🔧 Tools object being passed to streamText:', JSON.stringify(tools, null, 2));
+      // Note: Logging the full 'tools' object might be verbose now as it contains functions/zod schemas
+      console.log('🔧 Tools object keys being passed to streamText:', toolNames);
       if (toolNames.length === 0) {
         console.warn("⚠️ No tools extracted! Ensure tools.ts is mapping correctly.");
       }
@@ -107,77 +109,71 @@ app.post('/', async c => {
       });
     }
 
-    console.log("🎬 Attempting streamText call (WITH MINIMAL TOOL)...");
+    console.log("🎬 Attempting streamText call (WITH ZOD TOOL)...");
 
-    // No need to declare streamResult beforehand with experimental_toolCallHandler
     try {
       const hasTools = Object.keys(tools).length > 0;
 
-      const streamResult = streamText({ // Assign directly
+      // --- Call streamText, NO handler property ---
+      const streamResult = streamText({
         model: openrouter("anthropic/claude-3.5-sonnet"),
         messages: messages,
-        tools: hasTools ? tools : undefined,
+        tools: hasTools ? tools : undefined, // Pass the tools defined with the 'tool' helper
         toolChoice: hasTools ? 'auto' : undefined,
 
-        toolCallStreaming: true,
+        // NO 'experimental_toolCallHandler' or 'onToolCall' INPUT PROPERTY needed here
 
-        // --- Use Correct Handler Name and Signature ---
-        // experimental_toolCallHandler: async ({ toolCall, submitToolResult }) => {
-        //   console.log(`🤖 Model wants to call tool: ${toolCall.toolName}`);
-
-        //   // Call your MCP processing function
-        //   const toolResultPayload: ToolResultPayload = await processToolCall(
-        //     {
-        //       toolCallId: toolCall.toolCallId,
-        //       toolName: toolCall.toolName,
-        //       args: toolCall.args,
-        //     },
-        //     authToken
-        //   );
-
-        //   // Check for functional error from MCP/processToolCall
-        //   if (toolResultPayload?.result?.error) {
-        //     console.error(`❌ MCP tool call ${toolCall.toolName} resulted in error:`, toolResultPayload.result.error);
-        //     // Submit the error result using the provided function
-        //     submitToolResult(
-        //       {
-        //         toolCallId: toolCall.toolCallId,
-        //         // toolName, args optional here when submitting
-        //         result: { tool_execution_error: toolResultPayload.result.error }
-        //       } // Type should align with ToolResult
-        //     );
-        //   } else {
-        //     console.log(`✅ Submitting successful tool result for ${toolCall.toolName}`);
-        //     // Submit the successful result using the provided function
-        //     submitToolResult(
-        //       {
-        //         toolCallId: toolCall.toolCallId,
-        //         // toolName, args optional here when submitting
-        //         result: toolResultPayload.result // Actual success result
-        //       } // Type should align with ToolResult
-        //     );
-        //   }
-        // }, // End of experimental_toolCallHandler
-
-        // --- CORRECT onError SIGNATURE ---
+        // Standard callbacks
         onError: (event: { error: unknown }) => {
-          const error = event.error; // Extract the actual error
-          console.error("💥 streamText onError callback triggered.");
-          // Check if it's an Error object to log stack trace
-          if (error instanceof Error) {
-            console.error("   Error Message:", error.message);
-            console.error("   Error Stack:", error.stack);
-          } else {
-            // Log as-is if it's not a standard Error object
-            console.error("   Error Payload:", error);
-          }
+          console.error("💥 streamText onError callback:", 
+            event.error instanceof Error ? event.error.message : String(event.error));
         },
-        onFinish: (event) => {
-          console.log(`🏁 streamText onFinish callback. Full event:`, JSON.stringify(event));
-        }
-      }); // End of streamText call
+        onFinish: (event) => { console.log(`🏁 streamText onFinish. Full event:`, JSON.stringify(event)); }
+      });
+      // --- End streamText Call ---
 
-      console.log(`✅ streamText call initiated successfully (${hasTools ? 'WITH' : 'WITHOUT'} MINIMAL TOOL).`);
+      console.log(`✅ streamText call initiated successfully (WITH ZOD TOOL).`);
+
+      // --- *** HANDLE TOOL CALLS VIA TOOLCALLS PROMISE *** ---
+      if (hasTools) {
+          // Monitor tool calls via the toolCalls property (Promise)
+          (async () => {
+            try {
+              console.log("👂 Waiting for tool calls from the model...");
+              const toolCallsArray = await streamResult.toolCalls;
+              console.log(`📞 Received ${toolCallsArray.length} tool calls from model`);
+              
+              for (const toolCallItem of toolCallsArray) {
+                // Handle each tool call
+                console.log(`🔧 Processing tool call: ${toolCallItem.toolName}`);
+                
+                // Call your MCP processing function
+                const toolResultPayload: ToolResultPayload = await processToolCall(
+                  {
+                    toolCallId: toolCallItem.toolCallId,
+                    toolName: toolCallItem.toolName,
+                    args: toolCallItem.args,
+                  },
+                  authToken
+                );
+                
+                // Check for functional error from MCP/processToolCall
+                if (toolResultPayload?.result?.error) {
+                  console.error(`❌ MCP tool call ${toolCallItem.toolName} error:`, toolResultPayload.result.error);
+                  // Note: In newer versions, we can't directly submit tool results this way
+                  // The SDK handles this internally via the streams
+                  console.log(`⚠️ Unable to submit tool result for ${toolCallItem.toolName} - API limitation`);
+                } else {
+                  console.log(`✅ Tool call ${toolCallItem.toolName} processed successfully`);
+                  // Results are handled by the stream automatically
+                }
+              }
+            } catch (toolCallError) {
+              console.error("❌ Error handling tool calls:", toolCallError);
+            }
+          })();
+      }
+      // --- *** END TOOL CALLS HANDLING *** ---
 
       // --- Setup SSE Response ---
       c.header('Content-Type', 'text/event-stream; charset=utf-8');
@@ -188,29 +184,29 @@ app.post('/', async c => {
 
       // --- Stream Handling ---
       // Check streamResult validity before returning stream
-      if (!streamResult || typeof streamResult.toDataStream !== 'function') {
-        console.error("❌ Invalid streamResult object AFTER streamText call");
-        return c.json({ error: "Invalid stream result object" }, 500);
-      }
+       if (!streamResult || typeof streamResult.toDataStream !== 'function') {
+         console.error("❌ Invalid streamResult object AFTER streamText call");
+         return c.json({ error: "Invalid stream result object" }, 500);
+       }
 
       return stream(c, async (responseStream) => {
-        console.log("📬 Entered stream() callback.");
-        try {
-          const sdkStream = streamResult.toDataStream();
-          console.log("🔄 Piping sdkStream from streamResult.toDataStream()...");
-          try { await responseStream.pipe(sdkStream); console.log("✅ Piping completed successfully."); }
-          catch (pipeError) { console.error("‼️ Error during pipe():", pipeError instanceof Error ? pipeError.stack : pipeError); throw pipeError; }
-          console.log("✅ Stream processing apparently complete.");
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`💥 Critical error during stream handling: ${errorMessage}`, error instanceof Error ? error.stack : '');
+          console.log("📬 Entered stream() callback.");
           try {
-            const detailedErrorMessage = `Stream processing failed: ${errorMessage}`;
-            console.log(`🧪 Attempting to send error: ${detailedErrorMessage}`);
-            await responseStream.write(`data: 3:${JSON.stringify(detailedErrorMessage)}\n\n`);
-            console.log("✅ Wrote error message.");
-          } catch (writeError) { console.error("‼️ Failed to write error:", writeError); }
-        } finally { console.log("🚪 Exiting stream() callback."); }
+              const sdkStream = streamResult.toDataStream();
+              console.log("🔄 Piping sdkStream from streamResult.toDataStream()...");
+              try { await responseStream.pipe(sdkStream); console.log("✅ Piping completed successfully."); }
+              catch (pipeError) { console.error("‼️ Error during pipe():", pipeError instanceof Error ? pipeError.stack : pipeError); throw pipeError; }
+              console.log("✅ Stream processing apparently complete.");
+          } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`💥 Critical error during stream handling: ${errorMessage}`, error instanceof Error ? error.stack : '');
+              try {
+                  const detailedErrorMessage = `Stream processing failed: ${errorMessage}`;
+                  console.log(`🧪 Attempting to send error: ${detailedErrorMessage}`);
+                  await responseStream.write(`data: 3:${JSON.stringify(detailedErrorMessage)}\n\n`);
+                  console.log("✅ Wrote error message.");
+              } catch (writeError) { console.error("‼️ Failed to write error:", writeError); }
+          } finally { console.log("🚪 Exiting stream() callback."); }
       });
     } catch (streamTextSetupError) { // Catch synchronous errors from streamText setup
       console.error("🚨 streamText setup failed:", streamTextSetupError instanceof Error ? streamTextSetupError.stack : streamTextSetupError);

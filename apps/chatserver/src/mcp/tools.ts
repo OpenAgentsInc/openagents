@@ -1,77 +1,71 @@
 import { mcpClientManager } from './client';
+import { tool } from 'ai'; // Import the 'tool' helper
+import { z } from 'zod'; // Import zod for parameters
 
-export interface ToolParameter {
-  type: string;
-  description?: string; // Allow optional description
+// Keep ToolCallPayload and ToolResultPayload as they are useful for processToolCall
+export interface ToolCallPayload { 
+  toolCallId: string; 
+  toolName: string; 
+  args: Record<string, any>; 
 }
 
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  parameters: {
-    type: 'object'; // Must be object for properties
-    properties: Record<string, ToolParameter>;
-    required?: string[]; // Allow optional required array
-  };
-}
-
-export interface ToolCallPayload {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, any>;
-}
-
-export interface ToolResultPayload {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, any>;
-  result: any;
+export interface ToolResultPayload { 
+  toolCallId: string; 
+  toolName: string; 
+  args: Record<string, any>; 
+  result: any; 
 }
 
 /**
- * Extracts tool definitions from all connected MCP servers
- * in a format compatible with LLM tool definitions (Vercel AI SDK).
- * FOR DEBUGGING: Returns only 'create_issue' with ABSOLUTE MINIMAL schema.
+ * Extracts tool definitions, mapping MCP tools to the AI SDK 'tool' format.
+ * FOR DEBUGGING: Returns only 'create_issue' with Zod schema.
  */
-export function extractToolDefinitions(): Record<string, ToolDefinition> {
+export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>> {
   const discoveredToolInfos = mcpClientManager.getAllTools();
   console.log(`[extractToolDefinitions] Received ${discoveredToolInfos.length} tool infos from MCP Manager.`);
 
-  const toolDefinitions: Record<string, ToolDefinition> = {};
+  const toolDefinitions: Record<string, ReturnType<typeof tool>> = {};
   const singleToolName = "create_issue"; // Focus on this tool
 
-  // Find the specific tool info
   const toolInfo = discoveredToolInfos.find(info => info.tool?.name === singleToolName);
 
   if (toolInfo && toolInfo.tool) {
     const mcpTool = toolInfo.tool;
     const toolName = mcpTool.name;
-    console.log(`[extractToolDefinitions] Mapping ABSOLUTE MINIMAL tool: ${toolName}`);
+    console.log(`[extractToolDefinitions] Mapping tool with Zod schema: ${toolName}`);
 
-    // --- ABSOLUTE MINIMAL SCHEMA ---
-    const minimalParameters: ToolDefinition['parameters'] = {
-        type: "object",
-        properties: {}, // NO PROPERTIES
-        // required: [] // OMITTING required array entirely for maximum simplicity
-    };
-    // --- END MINIMAL SCHEMA ---
+    // --- Define Parameters using Zod ---
+    // Use Zod to define the parameters schema based on your MCP tool's inputSchema
+    // This provides better type safety and validation than plain JSON schema objects.
+    // Adapt this Zod schema based on the *actual* required parameters for create_issue.
+    const parametersSchema = z.object({
+        owner: z.string().describe("Repository owner (e.g., 'OpenAgentsInc')"),
+        repo: z.string().describe("Repository name (e.g., 'openagents')"),
+        title: z.string().describe("The title of the new issue"),
+        body: z.string().optional().describe("The body/content of the issue (optional)"),
+    });
+    // --- End Zod Schema ---
 
-    const toolDescription = mcpTool.description || `Executes the ${toolName} tool.`; // Ensure description
+    const toolDescription = mcpTool.description || `Create a new issue in a GitHub repository.`;
 
-    toolDefinitions[toolName] = {
-      name: toolName,
+    // --- Use the 'tool' helper ---
+    // Pass the Zod schema to the 'parameters' property.
+    // CRUCIALLY: Omit the 'execute' property. The SDK will emit a tool call
+    //            that we handle separately via result.onToolCall.
+    toolDefinitions[toolName] = tool({
       description: toolDescription,
-      parameters: minimalParameters
-    };
+      parameters: parametersSchema,
+      // NO 'execute' function here
+    });
+    // --- End 'tool' helper ---
 
-    console.log(`[extractToolDefinitions] Added ABSOLUTE MINIMAL schema for ${toolName}:`,
-      JSON.stringify(toolDefinitions[toolName], null, 2));
+    console.log(`[extractToolDefinitions] Added Zod-based schema for ${toolName}`);
 
   } else {
-      console.warn(`[extractToolDefinitions] Tool '${singleToolName}' not found among discovered tools.`);
+      console.warn(`[extractToolDefinitions] Tool '${singleToolName}' not found.`);
   }
 
-  console.log(`[extractToolDefinitions] Finished mapping ${Object.keys(toolDefinitions).length} tools with ABSOLUTE MINIMAL schema.`);
+  console.log(`[extractToolDefinitions] Finished mapping ${Object.keys(toolDefinitions).length} tools.`);
   return toolDefinitions;
 }
 
