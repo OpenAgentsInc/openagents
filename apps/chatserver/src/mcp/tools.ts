@@ -30,98 +30,84 @@ export interface ToolResultPayload {
 
 /**
  * Extracts tool definitions from all connected MCP servers
- * in a format compatible with LLM tool definitions.
+ * in a format compatible with LLM tool definitions (Vercel AI SDK).
  */
-export function extractToolDefinitions(): ToolDefinition[] {
-  const tools = mcpClientManager.getAllTools();
+export function extractToolDefinitions(): Record<string, ToolDefinition> {
+  const discoveredTools = mcpClientManager.getAllTools();
+  console.log(`[extractToolDefinitions] Discovered ${discoveredTools.length} tools from MCP Manager.`);
+
+  if (discoveredTools.length === 0) {
+    console.warn("[extractToolDefinitions] No tools discovered. Returning empty object.");
+    return {};
+  }
+
+  // Create a record of tool definitions keyed by tool name
+  const toolDefinitions: Record<string, ToolDefinition> = {};
+
+  // For debugging, only use a single tool with minimal schema
+  const singleToolName = "create_issue"; // Pick a simple tool to focus on
   
-  // For now, return a predefined set of GitHub tools
-  // In the future, we'd dynamically convert from MCP tool schemas
-  return [
-    {
-      name: "create_issue",
-      description: "Create a new issue in a GitHub repository",
-      parameters: {
-        type: "object",
-        properties: {
-          owner: { type: "string", description: "Repository owner" },
-          repo: { type: "string", description: "Repository name" },
-          title: { type: "string", description: "Issue title" },
-          body: { type: "string", description: "Issue body" }
-        },
-        required: ["owner", "repo", "title"]
-      }
-    },
-    {
-      name: "get_file_contents",
-      description: "Get the contents of a file from a GitHub repository",
-      parameters: {
-        type: "object",
-        properties: {
-          owner: { type: "string", description: "Repository owner" },
-          repo: { type: "string", description: "Repository name" },
-          path: { type: "string", description: "File path in the repository" },
-          branch: { type: "string", description: "Branch name (optional)" }
-        },
-        required: ["owner", "repo", "path"]
-      }
-    },
-    {
-      name: "search_repositories",
-      description: "Search for GitHub repositories",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "Search query" },
-          sort: { type: "string", description: "Sort field (stars, forks, updated, etc.)" },
-          order: { type: "string", description: "Sort order (asc or desc)" },
-          per_page: { type: "number", description: "Results per page" }
-        },
-        required: ["query"]
-      }
-    },
-    {
-      name: "list_issues",
-      description: "List issues in a GitHub repository",
-      parameters: {
-        type: "object",
-        properties: {
-          owner: { type: "string", description: "Repository owner" },
-          repo: { type: "string", description: "Repository name" },
-          state: { type: "string", description: "Issue state (open, closed, all)" },
-          labels: { type: "string", description: "Comma-separated list of label names" },
-          sort: { type: "string", description: "Sort field (created, updated, comments)" },
-          direction: { type: "string", description: "Sort direction (asc or desc)" }
-        },
-        required: ["owner", "repo"]
-      }
-    },
-    {
-      name: "get_issue",
-      description: "Get details of a specific issue in a GitHub repository",
-      parameters: {
-        type: "object",
-        properties: {
-          owner: { type: "string", description: "Repository owner" },
-          repo: { type: "string", description: "Repository name" },
-          issue_number: { type: "number", description: "Issue number" }
-        },
-        required: ["owner", "repo", "issue_number"]
-      }
+  discoveredTools.forEach(mcpTool => {
+    console.log(`[extractToolDefinitions] Mapping tool: ${mcpTool.name}`);
+
+    // Skip all tools except our chosen test tool for debugging
+    if (mcpTool.name !== singleToolName) {
+      console.log(`[extractToolDefinitions] Skipping tool ${mcpTool.name} for debugging`);
+      return;
     }
-  ];
+
+    // --- MINIMAL SCHEMA FOR DEBUGGING ---
+    // Create the simplest possible valid JSON Schema for parameters:
+    // An object type with minimal defined properties
+    const minimalParameters: ToolDefinition['parameters'] = {
+        type: "object",
+        properties: {
+          // Just include one property for testing
+          repo: { type: "string", description: "Repository name" }
+        },
+        required: []  // No required fields for simplicity
+    };
+    // --- END MINIMAL SCHEMA ---
+
+    // Basic validation: Ensure tool name exists
+    if (!mcpTool.name) {
+        console.warn(`[extractToolDefinitions] Skipping tool with missing name`);
+        return; // Skip this tool
+    }
+
+    // Create and store the tool definition
+    toolDefinitions[mcpTool.name] = {
+      name: mcpTool.name,
+      description: mcpTool.description || `Execute the ${mcpTool.name} tool.`,
+      parameters: minimalParameters // Use the minimal schema
+    };
+    
+    console.log(`[extractToolDefinitions] Added minimal schema for ${mcpTool.name}:`, 
+      JSON.stringify(toolDefinitions[mcpTool.name], null, 2));
+  });
+  
+  // Log the final tools count
+  console.log(`[extractToolDefinitions] Mapped ${Object.keys(toolDefinitions).length} tools with MINIMAL schema`);
+  console.log('[extractToolDefinitions] Final minimal tools structure keys:', Object.keys(toolDefinitions).join(', '));
+  
+  return toolDefinitions;
 }
 
 /**
  * Process a tool call by routing it to the appropriate MCP server.
  * @param toolCall The tool call from the LLM
  * @param authToken Optional authentication token to pass to the MCP server
- * @returns The tool result
+ * @returns The tool result payload with result or error
  */
-export async function processToolCall(toolCall: ToolCallPayload, authToken?: string): Promise<ToolResultPayload | null> {
+export async function processToolCall(toolCall: ToolCallPayload, authToken?: string): Promise<ToolResultPayload> {
   if (!toolCall) {
     console.log("⚠️ Received null tool call");
-    return null;
+    return {
+      toolCallId: 'unknown',
+      toolName: 'unknown',
+      args: {},
+      result: { error: 'Received null tool call data' }
+    };
   }
   
   console.log(`🔧 Processing tool call: ${toolCall.toolName}`);
@@ -175,7 +161,7 @@ export async function processToolCall(toolCall: ToolCallPayload, authToken?: str
       toolCallId: toolCall.toolCallId,
       toolName: toolCall.toolName,
       args: toolCall.args,
-      result: { error: error instanceof Error ? (error as Error).message : 'Unknown error' }
+      result: { error: error instanceof Error ? (error as Error).message : 'Unknown error during tool execution' }
     };
   }
 }
