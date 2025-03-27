@@ -75,6 +75,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Berkeley Mono',
     fontSize: 12,
     textTransform: 'uppercase',
+    userSelect: 'none',
   },
   details: {
     marginTop: 8,

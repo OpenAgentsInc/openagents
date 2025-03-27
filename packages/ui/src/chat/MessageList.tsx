@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from 'react-native'
+import { ScrollView, View, Text, StyleSheet } from 'react-native'
 import { UIMessage } from './types'
 import { ToolCall } from './ToolCall'
 
@@ -10,7 +10,10 @@ export const MessageList = ({ messages }: MessageListProps) => {
   const visibleMessages = messages.filter(message => message.role !== 'system')
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+    >
       {visibleMessages.map((message) => (
         <View
           key={message.id}
@@ -46,15 +49,17 @@ export const MessageList = ({ messages }: MessageListProps) => {
           })}
         </View>
       ))}
-    </View>
+    </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  },
+  contentContainer: {
+    padding: 20,
+    paddingBottom: 80, // Height that matches input container + padding
   },
   messageContainer: {
     marginVertical: 8,
