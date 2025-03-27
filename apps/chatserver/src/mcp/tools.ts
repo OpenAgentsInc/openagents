@@ -2,16 +2,16 @@ import { mcpClientManager } from './client';
 
 export interface ToolParameter {
   type: string;
-  description: string;
+  description?: string; // Allow optional description
 }
 
 export interface ToolDefinition {
   name: string;
   description: string;
   parameters: {
-    type: string;
+    type: 'object'; // Must be object for properties
     properties: Record<string, ToolParameter>;
-    required: string[];
+    required?: string[]; // Allow optional required array
   };
 }
 
@@ -31,65 +31,47 @@ export interface ToolResultPayload {
 /**
  * Extracts tool definitions from all connected MCP servers
  * in a format compatible with LLM tool definitions (Vercel AI SDK).
+ * FOR DEBUGGING: Returns only 'create_issue' with ABSOLUTE MINIMAL schema.
  */
 export function extractToolDefinitions(): Record<string, ToolDefinition> {
-  const discoveredTools = mcpClientManager.getAllTools();
-  console.log(`[extractToolDefinitions] Discovered ${discoveredTools.length} tools from MCP Manager.`);
+  const discoveredToolInfos = mcpClientManager.getAllTools();
+  console.log(`[extractToolDefinitions] Received ${discoveredToolInfos.length} tool infos from MCP Manager.`);
 
-  if (discoveredTools.length === 0) {
-    console.warn("[extractToolDefinitions] No tools discovered. Returning empty object.");
-    return {};
-  }
-
-  // Create a record of tool definitions keyed by tool name
   const toolDefinitions: Record<string, ToolDefinition> = {};
+  const singleToolName = "create_issue"; // Focus on this tool
 
-  // For debugging, only use a single tool with minimal schema
-  const singleToolName = "create_issue"; // Pick a simple tool to focus on
-  
-  discoveredTools.forEach(mcpTool => {
-    console.log(`[extractToolDefinitions] Mapping tool: ${mcpTool.name}`);
+  // Find the specific tool info
+  const toolInfo = discoveredToolInfos.find(info => info.tool?.name === singleToolName);
 
-    // Skip all tools except our chosen test tool for debugging
-    if (mcpTool.name !== singleToolName) {
-      console.log(`[extractToolDefinitions] Skipping tool ${mcpTool.name} for debugging`);
-      return;
-    }
+  if (toolInfo && toolInfo.tool) {
+    const mcpTool = toolInfo.tool;
+    const toolName = mcpTool.name;
+    console.log(`[extractToolDefinitions] Mapping ABSOLUTE MINIMAL tool: ${toolName}`);
 
-    // --- MINIMAL SCHEMA FOR DEBUGGING ---
-    // Create the simplest possible valid JSON Schema for parameters:
-    // An object type with minimal defined properties
+    // --- ABSOLUTE MINIMAL SCHEMA ---
     const minimalParameters: ToolDefinition['parameters'] = {
         type: "object",
-        properties: {
-          // Just include one property for testing
-          repo: { type: "string", description: "Repository name" }
-        },
-        required: []  // No required fields for simplicity
+        properties: {}, // NO PROPERTIES
+        // required: [] // OMITTING required array entirely for maximum simplicity
     };
     // --- END MINIMAL SCHEMA ---
 
-    // Basic validation: Ensure tool name exists
-    if (!mcpTool.name) {
-        console.warn(`[extractToolDefinitions] Skipping tool with missing name`);
-        return; // Skip this tool
-    }
+    const toolDescription = mcpTool.description || `Executes the ${toolName} tool.`; // Ensure description
 
-    // Create and store the tool definition
-    toolDefinitions[mcpTool.name] = {
-      name: mcpTool.name,
-      description: mcpTool.description || `Execute the ${mcpTool.name} tool.`,
-      parameters: minimalParameters // Use the minimal schema
+    toolDefinitions[toolName] = {
+      name: toolName,
+      description: toolDescription,
+      parameters: minimalParameters
     };
-    
-    console.log(`[extractToolDefinitions] Added minimal schema for ${mcpTool.name}:`, 
-      JSON.stringify(toolDefinitions[mcpTool.name], null, 2));
-  });
-  
-  // Log the final tools count
-  console.log(`[extractToolDefinitions] Mapped ${Object.keys(toolDefinitions).length} tools with MINIMAL schema`);
-  console.log('[extractToolDefinitions] Final minimal tools structure keys:', Object.keys(toolDefinitions).join(', '));
-  
+
+    console.log(`[extractToolDefinitions] Added ABSOLUTE MINIMAL schema for ${toolName}:`,
+      JSON.stringify(toolDefinitions[toolName], null, 2));
+
+  } else {
+      console.warn(`[extractToolDefinitions] Tool '${singleToolName}' not found among discovered tools.`);
+  }
+
+  console.log(`[extractToolDefinitions] Finished mapping ${Object.keys(toolDefinitions).length} tools with ABSOLUTE MINIMAL schema.`);
   return toolDefinitions;
 }
 
@@ -109,19 +91,18 @@ export async function processToolCall(toolCall: ToolCallPayload, authToken?: str
       result: { error: 'Received null tool call data' }
     };
   }
-  
+
   console.log(`🔧 Processing tool call: ${toolCall.toolName}`);
   console.log(`📦 Tool args: ${JSON.stringify(toolCall.args).substring(0, 200)}`);
   console.log(`🔑 Auth token present: ${!!authToken}`);
-  
-  // Check if we know about this tool
+
   const toolServer = mcpClientManager.getToolServer(toolCall.toolName);
-  
+
   if (!toolServer) {
     console.error(`❌ Unknown tool: ${toolCall.toolName}`);
     const allTools = mcpClientManager.getAllTools();
     console.log(`🧰 Available tools: ${allTools.map(t => t.name).join(', ') || 'none'}`);
-    
+
     return {
       toolCallId: toolCall.toolCallId,
       toolName: toolCall.toolName,
@@ -129,25 +110,24 @@ export async function processToolCall(toolCall: ToolCallPayload, authToken?: str
       result: { error: `Tool "${toolCall.toolName}" not found in any connected MCP server` }
     };
   }
-  
+
   console.log(`🔄 Routing tool call to server: ${toolServer}`);
-  
+
   try {
-    // Set a timeout to avoid hanging indefinitely
     const toolPromise = mcpClientManager.callTool(
       toolCall.toolName,
       toolCall.args,
       authToken
     );
-    
+
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error(`Tool call ${toolCall.toolName} timed out after 15 seconds`)), 15000);
     });
-    
+
     const result = await Promise.race([toolPromise, timeoutPromise]);
-    
+
     console.log(`✅ Tool call successful: ${JSON.stringify(result).substring(0, 200)}`);
-    
+
     return {
       toolCallId: toolCall.toolCallId,
       toolName: toolCall.toolName,
@@ -156,12 +136,12 @@ export async function processToolCall(toolCall: ToolCallPayload, authToken?: str
     };
   } catch (error) {
     console.error(`❌ Error processing tool call ${toolCall.toolName}:`, error);
-    
+
     return {
       toolCallId: toolCall.toolCallId,
       toolName: toolCall.toolName,
       args: toolCall.args,
-      result: { error: error instanceof Error ? (error as Error).message : 'Unknown error during tool execution' }
+      result: { error: error instanceof Error ? error.message : 'Unknown error' }
     };
   }
 }
