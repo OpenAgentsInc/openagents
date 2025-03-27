@@ -2,8 +2,12 @@ import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from '
 import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'
 import { dummyMessages } from './dummyData'
+import { useChat } from "@openagents/core"
 
 export const Chat = () => {
+
+  const { messages } = useChat()
+
   const handleSubmit = (message: string) => {
     console.log('Message submitted:', message)
     // TODO: Handle message submission
