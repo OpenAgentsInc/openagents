@@ -101,13 +101,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: '#fff',
-    borderRadius: 8,
+    borderRadius: 0,
     padding: 12,
     paddingRight: 40, // Make room for the submit button
     color: '#fff',
     fontSize: 14,
     fontFamily: "Berkeley Mono",
     minHeight: 44, // Initial height for one line
+    ...Platform.select({
+      web: {
+        // @ts-ignore - web-only style
+        outlineStyle: 'none',
+        // @ts-ignore - web-only style
+        outlineWidth: 0,
+      }
+    })
   },
   submitButton: {
     position: 'absolute',
