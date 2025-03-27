@@ -1,10 +1,10 @@
 import { ipcMain } from "electron";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { getCurrentUrl } from "@openagents/core";
 
 let mcpClient: Client | null = null;
 
-export function setMcpClient(client: Client) {
+export function setMcpClient(client: any) {
   mcpClient = client;
 }
 

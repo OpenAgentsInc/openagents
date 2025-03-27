@@ -9,7 +9,8 @@
     "lint:fix": "biome lint --fix",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
-    "t": "tsc --noEmit"
+    "t": "tsc --noEmit",
+    "inspector": "npx @modelcontextprotocol/inspector"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250321.0",
@@ -23,6 +24,7 @@
     "@modelcontextprotocol/sdk": "^1.7.0",
     "agents": "^0.0.43",
     "hono": "^4.7.4",
+    "universal-user-agent": "^7.0.2",
     "zod": "^3.24.2"
   }
 }

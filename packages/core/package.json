@@ -2,6 +2,10 @@
   "name": "@openagents/core",
   "version": "0.0.1",
   "main": "src/index.ts",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "t": "tsc --noEmit"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.8.0"
   }

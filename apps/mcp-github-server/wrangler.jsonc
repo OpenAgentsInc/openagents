@@ -7,6 +7,12 @@
   "name": "mcp-github",
   "main": "src/index.ts",
   "compatibility_date": "2025-03-10",
+  "routes": [
+    {
+      "pattern": "mcp-github.openagents.com",
+      "custom_domain": true
+    }
+  ],
   "migrations": [
     {
       "new_sqlite_classes": [
