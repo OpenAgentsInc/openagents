@@ -82,9 +82,7 @@ export async function getFileContents(
     url += `?ref=${branch}`;
   }
 
-  const response = await githubRequest(url, {
-    env: token ? { GITHUB_PERSONAL_ACCESS_TOKEN: token } : undefined
-  });
+  const response = await githubRequest(url, { token });
   const data = GitHubContentSchema.parse(response);
 
   // If it's a file, decode the content
