@@ -39,9 +39,9 @@ export function useMCP() {
     void init();
   }, []);
 
-  const callTool = useCallback(async (a: number, b: number) => {
+  const callTool = useCallback(async (name: string, args: Record<string, any>) => {
     try {
-      const result = await window.electron.mcpInvoke('mcp:add', a, b);
+      const result = await window.electron.mcpInvoke('mcp:call', name, args);
       setState(prev => ({
         ...prev,
         status: 'connected',
