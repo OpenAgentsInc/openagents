@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { streamText } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
+import { cors } from 'hono/cors'
 
 interface Env {
   AI: typeof AI;
@@ -13,6 +14,15 @@ interface ChatMessage {
 }
 
 const app = new Hono<{ Bindings: Env }>();
+
+// Enable CORS for all routes
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['POST', 'GET', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Accept'],
+  exposeHeaders: ['X-Vercel-AI-Data-Stream'],
+  credentials: true,
+}));
 
 app.get('/', c => c.text('200'));
 

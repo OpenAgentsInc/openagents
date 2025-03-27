@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./fonts.css";
 
 @plugin 'tailwindcss-animate';
 
@@ -32,9 +33,8 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
-  --font-sans: Geist, sans-serif;
-  --font-mono: Geist Mono, monospace;
-  --font-tomorrow: Tomorrow, sans-serif;
+  --font-sans: Tomorrow, sans-serif;
+  --font-mono: "Berkeley Mono", monospace;
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -73,18 +73,6 @@
 }
 
 @layer base {
-  @font-face {
-    font-family: "Geist";
-
-    src: url("../assets/fonts/geist/geist.ttf") format("truetype");
-  }
-  @font-face {
-    font-family: "Geist Mono";
-    font-display: swap;
-
-    src: url("../assets/fonts/geist-mono/geist-mono.ttf") format("truetype");
-  }
-
   @font-face {
     font-family: "Tomorrow";
     font-weight: 400;
