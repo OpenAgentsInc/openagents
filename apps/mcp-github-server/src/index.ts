@@ -8,6 +8,30 @@ import * as search from "./operations/search.js";
 import * as commits from "./operations/commits.js";
 import * as branches from "./operations/branches.js";
 import { z } from "zod";
+import { githubRequest } from "./common/utils.js";
+
+type ToolContext = {
+  token?: string;
+};
+
+type RequestOptions = {
+  method?: string;
+  body?: unknown;
+  headers?: Record<string, string>;
+  token?: string;
+};
+
+// Wrap the githubRequest function to include the token from context
+const withToken = (token?: string) => {
+  return (url: string, options: RequestOptions = {}) => {
+    return githubRequest(url, { ...options, token });
+  };
+};
+
+// Declare the global githubRequest to allow overriding
+declare global {
+  var githubRequest: (url: string, options?: RequestOptions) => Promise<unknown>;
+}
 
 export class MyMCP extends McpAgent {
   server = new McpServer({
@@ -31,8 +55,8 @@ export class MyMCP extends McpAgent {
         description: "Get the contents of a file or directory from a GitHub repository",
         schema: files.GetFileContentsSchema,
         handler: async (params: z.infer<typeof files.GetFileContentsSchema>) => {
-          const { owner, repo, path, branch, token } = params;
-          return files.getFileContents(owner, repo, path, branch, token);
+          const { owner, repo, path, branch } = params;
+          return files.getFileContents(owner, repo, path, branch);
         },
       },
       {
@@ -238,13 +262,24 @@ export class MyMCP extends McpAgent {
     for (const tool of tools) {
       this.server.tool(tool.name, tool.schema.shape, async (params: Record<string, unknown>) => {
         const validatedParams = tool.schema.parse(params);
-        const result = await tool.handler(validatedParams as any);
-        return {
-          content: [{
-            type: "text" as const,
-            text: JSON.stringify(result)
-          }]
+        const context: ToolContext = {
+          token: (params as { token?: string }).token,
         };
+
+        // Temporarily replace githubRequest with token-aware version
+        const originalRequest = globalThis.githubRequest;
+        try {
+          globalThis.githubRequest = withToken(context.token);
+          const result = await tool.handler(validatedParams as any);
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify(result)
+            }]
+          };
+        } finally {
+          globalThis.githubRequest = originalRequest;
+        }
       });
     }
   }

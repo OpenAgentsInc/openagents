@@ -30,7 +30,6 @@ export const GetFileContentsSchema = z.object({
   repo: z.string().describe("Repository name"),
   path: z.string().describe("Path to the file or directory"),
   branch: z.string().optional().describe("Branch to get contents from"),
-  token: z.string().describe("GitHub Personal Access Token"),
 });
 
 export const PushFilesSchema = z.object({
