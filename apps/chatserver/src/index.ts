@@ -98,22 +98,38 @@ app.post('/', async c => {
           break;
         }
         
-        // Log chunk summary (without entire content)
-        console.log(`📦 Received chunk: ${JSON.stringify({
-          ...value,
-          content: value?.content ? "(content present)" : undefined,
-          toolCalls: value?.toolCalls?.length ? `(${value.toolCalls.length} calls)` : undefined,
-          isPartial: value?.isPartial
-        })}`);
+        // Log chunk summary with detailed content
+        console.log(`📦 Received chunk: ${JSON.stringify(value)}`);
+        
+        // Decode the array if it's a buffer-like object
+        let processedValue = value;
+        if (value && typeof value === 'object' && '0' in value) {
+          try {
+            const chars = Object.values(value).map(v => Number(v));
+            const decodedText = String.fromCharCode(...chars);
+            console.log(`🔍 Decoded chunk text: ${decodedText}`);
+            
+            // Try to parse the decoded text
+            try {
+              const parsed = JSON.parse(decodedText);
+              processedValue = parsed;
+              console.log(`🔄 Parsed chunk: ${JSON.stringify(parsed)}`);
+            } catch (parseError) {
+              console.log(`⚠️ Not valid JSON: ${decodedText}`);
+            }
+          } catch (decodeError) {
+            console.error(`❌ Failed to decode chunk: ${decodeError}`);
+          }
+        }
         
         // Check if chunk contains a complete tool call
-        if (value?.toolCalls?.length > 0 && !value.isPartial) {
-          console.log(`🔨 Tool call detected: ${value.toolCalls[0].toolName}`);
+        if (processedValue?.toolCalls?.length > 0 && !processedValue.isPartial) {
+          console.log(`🔨 Tool call detected: ${processedValue.toolCalls[0].toolName}`);
           
           toolCallBuffer = {
-            toolCallId: value.toolCalls[0].toolCallId,
-            toolName: value.toolCalls[0].toolName,
-            args: value.toolCalls[0].args
+            toolCallId: processedValue.toolCalls[0].toolCallId,
+            toolName: processedValue.toolCalls[0].toolName,
+            args: processedValue.toolCalls[0].args
           };
           
           console.log(`⚙️ Processing tool call: ${toolCallBuffer.toolName} with args: ${JSON.stringify(toolCallBuffer.args).substring(0, 100)}`);
@@ -124,7 +140,7 @@ app.post('/', async c => {
           
           // Create a modified chunk with tool result
           const resultChunk = {
-            ...value,
+            ...processedValue,
             toolResults: toolResult ? [toolResult] : []
           };
           
@@ -132,7 +148,7 @@ app.post('/', async c => {
           toolCallBuffer = null;
         } else {
           // Pass through the chunk unchanged
-          yield value as AIStreamChunk;
+          yield processedValue as AIStreamChunk;
         }
       }
     } catch (error) {
@@ -144,9 +160,11 @@ app.post('/', async c => {
     }
   };
 
-  // Mark the response as a v1 data stream
+  // Mark the response as a SSE stream
   c.header('X-Vercel-AI-Data-Stream', 'v1');
-  c.header('Content-Type', 'text/plain; charset=utf-8');
+  c.header('Content-Type', 'text/event-stream');
+  c.header('Cache-Control', 'no-cache');
+  c.header('Connection', 'keep-alive');
 
   return stream(c, async stream => {
     try {
@@ -156,13 +174,14 @@ app.post('/', async c => {
       console.log("🌊 Beginning stream iteration");
       for await (const chunk of transformedStream) {
         console.log("📤 Writing chunk to response");
-        await stream.write(chunk);
+        // Format properly for SSE (Server-Sent Events) for Vercel AI SDK
+        await stream.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
       console.log("✅ Stream processing complete");
     } catch (error) {
       console.error("💥 Critical error in stream handling:", error);
-      // Return error to client
-      await stream.write(JSON.stringify({ error: "Stream processing failed" }));
+      // Return error to client in a format that matches other responses
+      await stream.write(`data: ${JSON.stringify({ error: "Stream processing failed" })}\n\n`);
     }
   });
   } catch (error) {
