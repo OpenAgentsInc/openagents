@@ -1,7 +1,6 @@
 import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native'
 import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'
-import { dummyMessages } from './dummyData'
 import { useChat } from "@openagents/core"
 
 export const Chat = () => {
@@ -21,7 +20,7 @@ export const Chat = () => {
       >
         <View style={styles.inner}>
           <View style={styles.topBorder} />
-          <MessageList messages={dummyMessages} />
+          <MessageList messages={messages} />
           <MessageInput maxRows={8} onSubmit={handleSubmit} />
         </View>
       </KeyboardAvoidingView>

@@ -1,7 +1,8 @@
 import { UIMessage } from './types';
+import { dummyMessages } from './dummyData'
 
 export function useChat() {
   return {
-    messages: [] as UIMessage[]
+    messages: dummyMessages as UIMessage[]
   }
 }
