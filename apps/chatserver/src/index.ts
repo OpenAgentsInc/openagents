@@ -109,10 +109,16 @@ app.post('/', async c => {
       });
     }
 
-    console.log("🎬 Attempting streamText call (WITH ZOD TOOL)...");
+    console.log("🎬 Attempting streamText call (WITH GITHUB MCP TOOLS)...");
 
     try {
       const hasTools = Object.keys(tools).length > 0;
+      
+      if (hasTools) {
+        console.log(`🧰 Making ${Object.keys(tools).length} GitHub tools available to the model`);
+      } else {
+        console.warn("⚠️ No GitHub tools available for this request");
+      }
 
       // --- Call streamText, NO handler property ---
       const streamResult = streamText({
@@ -120,19 +126,22 @@ app.post('/', async c => {
         messages: messages,
         tools: hasTools ? tools : undefined, // Pass the tools defined with the 'tool' helper
         toolChoice: hasTools ? 'auto' : undefined,
+        temperature: 0.7, // Add a moderate temperature for some creativity while keeping tools useful
 
         // NO 'experimental_toolCallHandler' or 'onToolCall' INPUT PROPERTY needed here
 
         // Standard callbacks
         onError: (event: { error: unknown }) => {
           console.error("💥 streamText onError callback:", 
-            event.error instanceof Error ? event.error.message : String(event.error));
+            event.error instanceof Error 
+              ? `${event.error.message}\n${event.error.stack}` 
+              : String(event.error));
         },
         onFinish: (event) => { console.log(`🏁 streamText onFinish. Full event:`, JSON.stringify(event)); }
       });
       // --- End streamText Call ---
 
-      console.log(`✅ streamText call initiated successfully (WITH ZOD TOOL).`);
+      console.log(`✅ streamText call initiated successfully (${hasTools ? 'WITH' : 'WITHOUT'} GITHUB TOOLS).`);
 
       // --- *** HANDLE TOOL CALLS VIA TOOLCALLS PROMISE *** ---
       if (hasTools) {
@@ -144,28 +153,34 @@ app.post('/', async c => {
               console.log(`📞 Received ${toolCallsArray.length} tool calls from model`);
               
               for (const toolCallItem of toolCallsArray) {
-                // Handle each tool call
-                console.log(`🔧 Processing tool call: ${toolCallItem.toolName}`);
-                
-                // Call your MCP processing function
-                const toolResultPayload: ToolResultPayload = await processToolCall(
-                  {
-                    toolCallId: toolCallItem.toolCallId,
-                    toolName: toolCallItem.toolName,
-                    args: toolCallItem.args,
-                  },
-                  authToken
-                );
-                
-                // Check for functional error from MCP/processToolCall
-                if (toolResultPayload?.result?.error) {
-                  console.error(`❌ MCP tool call ${toolCallItem.toolName} error:`, toolResultPayload.result.error);
-                  // Note: In newer versions, we can't directly submit tool results this way
-                  // The SDK handles this internally via the streams
-                  console.log(`⚠️ Unable to submit tool result for ${toolCallItem.toolName} - API limitation`);
-                } else {
-                  console.log(`✅ Tool call ${toolCallItem.toolName} processed successfully`);
-                  // Results are handled by the stream automatically
+                try {
+                  // Handle each tool call
+                  console.log(`🔧 Processing tool call: ${toolCallItem.toolName}`);
+                  
+                  // Call your MCP processing function
+                  const toolResultPayload: ToolResultPayload = await processToolCall(
+                    {
+                      toolCallId: toolCallItem.toolCallId,
+                      toolName: toolCallItem.toolName,
+                      args: toolCallItem.args,
+                    },
+                    authToken
+                  );
+                  
+                  // Check for functional error from MCP/processToolCall
+                  if (toolResultPayload?.result?.error) {
+                    console.error(`❌ MCP tool call ${toolCallItem.toolName} error:`, toolResultPayload.result.error);
+                    // Note: In modern versions of the AI SDK, we no longer need to manually submit results
+                    // as they're handled within the stream processing
+                    console.log(`✅ Tool call ${toolCallItem.toolName} processed with error result`);
+                  } else {
+                    console.log(`✅ Tool call ${toolCallItem.toolName} processed successfully with result:`, 
+                      typeof toolResultPayload.result === 'object' 
+                        ? JSON.stringify(toolResultPayload.result).substring(0, 200) + '...' 
+                        : toolResultPayload.result);
+                  }
+                } catch (singleToolError) {
+                  console.error(`❌ Error processing individual tool call ${toolCallItem.toolName}:`, singleToolError);
                 }
               }
             } catch (toolCallError) {

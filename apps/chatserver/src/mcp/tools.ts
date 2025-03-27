@@ -18,54 +18,109 @@ export interface ToolResultPayload {
 
 /**
  * Extracts tool definitions, mapping MCP tools to the AI SDK 'tool' format.
- * FOR DEBUGGING: Returns only 'create_issue' with Zod schema.
+ * Maps all discovered GitHub tools to Zod schemas.
  */
 export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>> {
   const discoveredToolInfos = mcpClientManager.getAllTools();
   console.log(`[extractToolDefinitions] Received ${discoveredToolInfos.length} tool infos from MCP Manager.`);
 
   const toolDefinitions: Record<string, ReturnType<typeof tool>> = {};
-  const singleToolName = "create_issue"; // Focus on this tool
 
-  const toolInfo = discoveredToolInfos.find(info => info.tool?.name === singleToolName);
-
-  if (toolInfo && toolInfo.tool) {
-    const mcpTool = toolInfo.tool;
-    const toolName = mcpTool.name;
-    console.log(`[extractToolDefinitions] Mapping tool with Zod schema: ${toolName}`);
-
-    // --- Define Parameters using Zod ---
-    // Use Zod to define the parameters schema based on your MCP tool's inputSchema
-    // This provides better type safety and validation than plain JSON schema objects.
-    // Adapt this Zod schema based on the *actual* required parameters for create_issue.
-    const parametersSchema = z.object({
-        owner: z.string().describe("Repository owner (e.g., 'OpenAgentsInc')"),
-        repo: z.string().describe("Repository name (e.g., 'openagents')"),
-        title: z.string().describe("The title of the new issue"),
-        body: z.string().optional().describe("The body/content of the issue (optional)"),
-    });
-    // --- End Zod Schema ---
-
-    const toolDescription = mcpTool.description || `Create a new issue in a GitHub repository.`;
-
-    // --- Use the 'tool' helper ---
-    // Pass the Zod schema to the 'parameters' property.
-    // CRUCIALLY: Omit the 'execute' property. The SDK will emit a tool call
-    //            that we handle separately via result.onToolCall.
-    toolDefinitions[toolName] = tool({
-      description: toolDescription,
-      parameters: parametersSchema,
-      // NO 'execute' function here
-    });
-    // --- End 'tool' helper ---
-
-    console.log(`[extractToolDefinitions] Added Zod-based schema for ${toolName}`);
-
-  } else {
-      console.warn(`[extractToolDefinitions] Tool '${singleToolName}' not found.`);
+  if (discoveredToolInfos.length === 0) {
+    console.warn("[extractToolDefinitions] No tool infos returned from mcpClientManager.getAllTools().");
+    return {};
   }
 
-  console.log(`[extractToolDefinitions] Finished mapping ${Object.keys(toolDefinitions).length} tools.`);
+  // Process all discovered tools
+  discoveredToolInfos.forEach(toolInfo => {
+    if (!toolInfo.tool || typeof toolInfo.tool !== 'object' || typeof toolInfo.tool.name !== 'string') {
+      console.warn(`[extractToolDefinitions] Skipping invalid tool info:`, toolInfo);
+      return;
+    }
+
+    const mcpTool = toolInfo.tool;
+    const toolName = mcpTool.name;
+    console.log(`[extractToolDefinitions] Mapping tool: ${toolName}`);
+
+    try {
+      // Create dynamic Zod schema based on inputSchema
+      let parametersSchema: z.ZodObject<any> = z.object({});
+      
+      const inputSchema = (mcpTool as any).inputSchema;
+      
+      if (inputSchema && typeof inputSchema === 'object' && inputSchema.properties) {
+        const schemaObj: Record<string, any> = {};
+        
+        // Create Zod properties from inputSchema properties
+        for (const [paramName, paramDef] of Object.entries(inputSchema.properties)) {
+          if (typeof paramDef === 'object') {
+            const paramType = (paramDef as any).type;
+            const paramDesc = (paramDef as any).description || `Parameter ${paramName}`;
+            
+            if (paramType === 'string') {
+              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
+                                     inputSchema.required.includes(paramName)
+                ? z.string().describe(paramDesc)
+                : z.string().optional().describe(paramDesc);
+            } else if (paramType === 'number' || paramType === 'integer') {
+              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
+                                     inputSchema.required.includes(paramName)
+                ? z.number().describe(paramDesc)
+                : z.number().optional().describe(paramDesc);
+            } else if (paramType === 'boolean') {
+              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
+                                     inputSchema.required.includes(paramName)
+                ? z.boolean().describe(paramDesc)
+                : z.boolean().optional().describe(paramDesc);
+            } else if (paramType === 'array') {
+              // Default to array of strings if items type is not specified
+              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
+                                     inputSchema.required.includes(paramName)
+                ? z.array(z.string()).describe(paramDesc)
+                : z.array(z.string()).optional().describe(paramDesc);
+            } else if (paramType === 'object') {
+              // For nested objects, use a simpler approach
+              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
+                                     inputSchema.required.includes(paramName)
+                ? z.record(z.unknown()).describe(paramDesc)
+                : z.record(z.unknown()).optional().describe(paramDesc);
+            } else {
+              // Default to string for unknown types
+              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
+                                     inputSchema.required.includes(paramName)
+                ? z.string().describe(paramDesc)
+                : z.string().optional().describe(paramDesc);
+            }
+          }
+        }
+        
+        // Create the schema object if we have properties
+        if (Object.keys(schemaObj).length > 0) {
+          parametersSchema = z.object(schemaObj);
+        }
+      } else {
+        console.warn(`[extractToolDefinitions] Tool '${toolName}' has no valid inputSchema, using empty schema.`);
+      }
+
+      const toolDescription = mcpTool.description || `Executes the ${toolName} tool.`;
+
+      // Create tool definition using the 'tool' helper
+      toolDefinitions[toolName] = tool({
+        description: toolDescription,
+        parameters: parametersSchema,
+        // NO 'execute' function - we handle execution via streamResult.onToolCall
+      });
+
+      console.log(`[extractToolDefinitions] Added Zod-based schema for ${toolName}`);
+      
+    } catch (error) {
+      console.error(`[extractToolDefinitions] Error creating schema for tool '${toolName}':`, error);
+      // Skip this tool if there was an error
+    }
+  });
+
+  const toolCount = Object.keys(toolDefinitions).length;
+  console.log(`[extractToolDefinitions] Finished mapping ${toolCount} tools.`);
   return toolDefinitions;
 }
 
