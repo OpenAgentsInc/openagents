@@ -65,7 +65,7 @@ export function useMCP() {
 let currentUrl: string;
 
 export async function connectToServer() {
-  currentUrl = "https://mcp-github.openagents.workers.dev/sse";
+  currentUrl = "http://mcp-github.openagents.com/sse";
   // currentUrl = "http://localhost:8787/sse";
   const transport = new SSEClientTransport(new URL(currentUrl));
   const client = new Client(
