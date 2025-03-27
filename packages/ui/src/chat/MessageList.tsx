@@ -1,6 +1,7 @@
 import { ScrollView, View, Text, StyleSheet } from 'react-native'
 import { UIMessage } from './types'
 import { ToolCall } from './ToolCall'
+import Markdown from 'react-native-markdown-display'
 
 interface MessageListProps {
   messages: UIMessage[]
@@ -24,16 +25,23 @@ export const MessageList = ({ messages }: MessageListProps) => {
         >
           {message.parts.map((part, index) => {
             if (part.type === 'text') {
-              return (
+              return message.role === 'user' ? (
                 <Text
                   key={`${message.id}-${index}`}
                   style={[
                     styles.messageText,
-                    message.role === 'user' && styles.userMessageText,
+                    styles.userMessageText,
                   ]}
                 >
                   {part.text}
                 </Text>
+              ) : (
+                <Markdown
+                  key={`${message.id}-${index}`}
+                  style={markdownStyles}
+                >
+                  {part.text}
+                </Markdown>
               )
             }
             if (part.type === 'tool-invocation') {
@@ -81,3 +89,67 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 })
+
+const markdownStyles = {
+  body: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Berkeley Mono',
+  },
+  code_inline: {
+    backgroundColor: '#333',
+    color: '#fff',
+    fontFamily: 'Berkeley Mono',
+    padding: 4,
+    borderRadius: 4,
+  },
+  code_block: {
+    backgroundColor: '#333',
+    padding: 8,
+    borderRadius: 4,
+    fontFamily: 'Berkeley Mono',
+  },
+  fence: {
+    backgroundColor: '#333',
+    padding: 8,
+    borderRadius: 4,
+    fontFamily: 'Berkeley Mono',
+  },
+  link: {
+    color: '#58a6ff',
+    textDecorationLine: 'underline',
+  },
+  list_item: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  bullet_list: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  ordered_list: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  heading1: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+    color: '#fff',
+  },
+  heading2: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+    color: '#fff',
+  },
+  heading3: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
+    color: '#fff',
+  }
+}

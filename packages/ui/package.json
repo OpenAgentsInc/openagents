@@ -29,6 +29,7 @@
     "@expo/vector-icons": "^14.0.0",
     "lucide-react": "^0.484.0",
     "lucide-react-native": "^0.484.0",
+    "react-native-markdown-display": "^7.0.2",
     "react-native-svg": "^15.11.2",
     "react-native-web": "^0.19.10"
   },
