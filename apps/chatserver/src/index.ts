@@ -4,7 +4,7 @@ import { streamText } from "ai";
 import { createWorkersAI } from "workers-ai-provider";
 import { cors } from 'hono/cors';
 import { mcpClientManager } from './mcp/client';
-import { extractToolDefinitions, processToolCall } from './mcp/tools';
+import { extractToolDefinitions, processToolCall, type ToolCallPayload, type ToolDefinition } from './mcp/tools';
 
 interface Env {
   AI: typeof AI;
@@ -15,11 +15,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
 }
 
-interface ToolCallPayload {
-  toolCallId: string;
-  toolName: string;
-  args: Record<string, any>;
-}
+type AIStreamChunk = Record<string, any>;
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -66,12 +62,12 @@ app.post('/', async c => {
   const result = streamText({
     model: workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
     messages,
-    tools,
+    tools: tools as any, // Type casting to avoid ToolSet issues
     toolCallStreaming: true
   });
 
   // Set up an interceptor for tool calls
-  const interceptStream = async function*(stream: ReadableStream) {
+  const interceptStream = async function*(stream: ReadableStream<any>) {
     const reader = stream.getReader();
     let toolCallBuffer: ToolCallPayload | null = null;
     
@@ -94,14 +90,14 @@ app.post('/', async c => {
           // Create a modified chunk with tool result
           const resultChunk = {
             ...value,
-            toolResults: [toolResult]
+            toolResults: toolResult ? [toolResult] : []
           };
           
           yield resultChunk;
           toolCallBuffer = null;
         } else {
           // Pass through the chunk unchanged
-          yield value;
+          yield value as AIStreamChunk;
         }
       }
     } finally {

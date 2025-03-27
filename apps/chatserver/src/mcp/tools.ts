@@ -1,13 +1,41 @@
 import { mcpClientManager } from './client';
 
+export interface ToolParameter {
+  type: string;
+  description: string;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parameters: {
+    type: string;
+    properties: Record<string, ToolParameter>;
+    required: string[];
+  };
+}
+
+export interface ToolCallPayload {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, any>;
+}
+
+export interface ToolResultPayload {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, any>;
+  result: any;
+}
+
 /**
  * Extracts tool definitions from all connected MCP servers
  * in a format compatible with LLM tool definitions.
  */
-export function extractToolDefinitions() {
+export function extractToolDefinitions(): ToolDefinition[] {
   const tools = mcpClientManager.getAllTools();
   
-  // For now, return a limited set of GitHub tools
+  // For now, return a predefined set of GitHub tools
   // In the future, we'd dynamically convert from MCP tool schemas
   return [
     {
@@ -90,7 +118,7 @@ export function extractToolDefinitions() {
  * @param authToken Optional authentication token to pass to the MCP server
  * @returns The tool result
  */
-export async function processToolCall(toolCall: any, authToken?: string) {
+export async function processToolCall(toolCall: ToolCallPayload, authToken?: string): Promise<ToolResultPayload | null> {
   if (!toolCall) return null;
   
   try {
@@ -113,7 +141,7 @@ export async function processToolCall(toolCall: any, authToken?: string) {
       toolCallId: toolCall.toolCallId,
       toolName: toolCall.toolName,
       args: toolCall.args,
-      result: { error: error instanceof Error ? error.message : 'Unknown error' }
+      result: { error: error instanceof Error ? (error as Error).message : 'Unknown error' }
     };
   }
 }

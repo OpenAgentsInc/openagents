@@ -1,5 +1,15 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@openagents/core";
+// Import from package directly
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+
+/**
+ * Generic tool interface to avoid dependency issues
+ */
+interface GenericTool {
+  name: string;
+  description?: string;
+  [key: string]: any;
+}
 
 /**
  * Manages connections to multiple MCP servers and provides a unified interface for tool calls.
@@ -68,15 +78,17 @@ export class McpClientManager {
     try {
       const tools = await client.listTools();
       
-      tools.forEach((tool) => {
-        this.toolRegistry.set(tool.name, {
-          server: serverName,
-          description: tool.description || "",
+      if (Array.isArray(tools)) {
+        tools.forEach((tool: GenericTool) => {
+          this.toolRegistry.set(tool.name, {
+            server: serverName,
+            description: tool.description || "",
+          });
         });
-      });
-      
-      console.log(`Discovered ${tools.length} tools from ${serverName}:`, 
-        tools.map(t => t.name).join(", "));
+        
+        console.log(`Discovered ${tools.length} tools from ${serverName}:`, 
+          tools.map((t: GenericTool) => t.name).join(", "));
+      }
     } catch (error) {
       console.error(`Failed to discover tools from ${serverName}:`, error);
     }
@@ -130,12 +142,16 @@ export class McpClientManager {
     });
 
     // Parse JSON from text response if needed
-    if (result.content && result.content.length > 0 && result.content[0].type === "text") {
+    if (result.content && Array.isArray(result.content) && result.content.length > 0 && 
+        typeof result.content[0] === 'object' && result.content[0] !== null && 
+        'type' in result.content[0] && result.content[0].type === "text" &&
+        'text' in result.content[0]) {
       try {
-        return JSON.parse(result.content[0].text);
+        const textContent = result.content[0].text as string;
+        return JSON.parse(textContent);
       } catch (e) {
         // If not valid JSON, return the text as is
-        return result.content[0].text;
+        return (result.content[0] as { text: string }).text;
       }
     }
     
@@ -147,7 +163,8 @@ export class McpClientManager {
    */
   async disconnectAll(): Promise<void> {
     const disconnectPromises = Array.from(this.clients.values()).map(client => {
-      return client.disconnect().catch(error => {
+      // Use close() instead of disconnect() which doesn't exist
+      return client.close().catch((error: Error) => {
         console.error("Error disconnecting from MCP server:", error);
       });
     });
