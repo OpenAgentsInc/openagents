@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
 import { stream } from 'hono/streaming';
 import { streamText, type Message } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
+// import { createWorkersAI } from "workers-ai-provider";
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { cors } from 'hono/cors';
 import { mcpClientManager } from './mcp/client';
 // import { extractToolDefinitions, processToolCall } from './mcp/tools';
 
 interface Env {
   AI: any;
+  OPENROUTER_API_KEY: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -78,22 +80,27 @@ app.post('/', async c => {
     const authToken = bearerToken || githubTokenHeader;
     console.log(`🔑 Auth token present: ${!!authToken}`);
 
+    // Initialize OpenRouter
+    const openrouter = createOpenRouter({
+      apiKey: c.env.OPENROUTER_API_KEY,
+    });
+
     // Get AI model from Cloudflare Workers AI
-    let workersai;
-    try {
-      workersai = createWorkersAI({ binding: c.env.AI });
-      console.log("✅ createWorkersAI provider initialized.");
-    } catch (providerError) {
-      console.error("❌ Failed to initialize AI provider:", providerError);
-      return c.json({ error: "Failed to initialize AI provider" }, 500);
-    }
+    // let workersai;
+    // try {
+    //   workersai = createWorkersAI({ binding: c.env.AI });
+    //   console.log("✅ createWorkersAI provider initialized.");
+    // } catch (providerError) {
+    //   console.error("❌ Failed to initialize AI provider:", providerError);
+    //   return c.json({ error: "Failed to initialize AI provider" }, 500);
+    // }
 
     console.log("🎬 Attempting streamText call (FORCING NO TOOLS)...");
 
     let streamResult;
     try {
       streamResult = streamText({
-        model: workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast"),
+        model: openrouter("anthropic/claude-3.5-sonnet"),
         messages: messages,
         tools: undefined,
         toolChoice: undefined,

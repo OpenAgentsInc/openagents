@@ -6,11 +6,6 @@ export function useChat(options: Parameters<typeof vercelUseChat>[0] = {}) {
   return vercelUseChat({
     ...options,
     api: "https://chat.openagents.com",
-    // headers: {
-    //   'Content-Type': 'application/json',
-    //   'Accept': 'text/event-stream',
-    //   ...options.headers,
-    // },
     onError: (error) => {
       console.error('Chat error:', error);
       options.onError?.(error);
