@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   },
 })
 
-const markdownStyles = {
+const markdownStyles = StyleSheet.create({
   body: {
     color: '#fff',
     fontSize: 14,
@@ -117,7 +117,7 @@ const markdownStyles = {
   },
   link: {
     color: '#58a6ff',
-    textDecorationLine: 'underline',
+    textDecorationLine: 'underline' as const,
   },
   list_item: {
     marginTop: 4,
@@ -152,4 +152,4 @@ const markdownStyles = {
     marginBottom: 8,
     color: '#fff',
   }
-}
+})
