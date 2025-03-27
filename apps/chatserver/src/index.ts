@@ -98,6 +98,12 @@ app.post('/', async c => {
           break;
         }
         
+        // Check if the value is already our special error indicator
+        if (value && typeof value === 'object' && value.type === 'error') {
+          yield value;
+          continue;
+        }
+        
         // Log chunk summary with detailed content
         console.log(`📦 Received chunk: ${JSON.stringify(value)}`);
         
@@ -108,6 +114,17 @@ app.post('/', async c => {
             const chars = Object.values(value).map(v => Number(v));
             const decodedText = String.fromCharCode(...chars);
             console.log(`🔍 Decoded chunk text: ${decodedText}`);
+            
+            // Check if this is an error from the model
+            if (decodedText.startsWith('3:')) {
+              // This is an error message, pass it through directly
+              console.log(`⚠️ Error from model detected: ${decodedText}`);
+              // We need to handle this outside the stream reader
+              // Return the error to be written in the outer loop
+              return { type: 'error', text: decodedText };
+              // Skip further processing of this chunk
+              // continue;
+            }
             
             // Try to parse the decoded text
             try {
@@ -173,15 +190,52 @@ app.post('/', async c => {
       
       console.log("🌊 Beginning stream iteration");
       for await (const chunk of transformedStream) {
-        console.log("📤 Writing chunk to response");
-        // Format properly for SSE (Server-Sent Events) for Vercel AI SDK
-        await stream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+        console.log(`📤 Writing chunk to response: ${JSON.stringify(chunk)}`);
+        
+        try {
+          // Format in the Vercel AI SDK expected format with proper code prefix
+          if (typeof chunk === 'string') {
+            // Text content
+            console.log(`✅ Sending text: ${chunk}`);
+            await stream.write(`data: 0:${JSON.stringify(chunk)}\n\n`);
+          } else if (chunk.toolCalls && chunk.toolCalls.length > 0 && !chunk.isPartial) {
+            // Tool call
+            console.log(`✅ Sending tool calls: ${JSON.stringify(chunk.toolCalls)}`);
+            for (const toolCall of chunk.toolCalls) {
+              await stream.write(`data: 9:${JSON.stringify(toolCall)}\n\n`);
+            }
+          } else if (chunk.toolResults && chunk.toolResults.length > 0) {
+            // Tool result
+            console.log(`✅ Sending tool results: ${JSON.stringify(chunk.toolResults)}`);
+            for (const toolResult of chunk.toolResults) {
+              await stream.write(`data: a:${JSON.stringify(toolResult)}\n\n`);
+            }
+          } else if (chunk.content) {
+            // Regular text content
+            console.log(`✅ Sending content: ${chunk.content}`);
+            await stream.write(`data: 0:${JSON.stringify(chunk.content)}\n\n`);
+          } else if (chunk.type === 'error' && chunk.text) {
+            // Pass through the error with its original format
+            console.log(`✅ Sending error directly: ${chunk.text}`);
+            await stream.write(`data: ${chunk.text}\n\n`);
+          } else {
+            // Try with a null check for response content
+            console.log(`⚠️ Unknown chunk format: ${JSON.stringify(chunk)}`);
+            
+            // Simple compatibility mode - just send a text response
+            await stream.write(`data: 0:${JSON.stringify("I'm sorry, there was an issue processing your request.")}\n\n`);
+          }
+        } catch (error) {
+          console.error(`❌ Error formatting chunk: ${error}`);
+          // Send error in proper format
+          await stream.write(`data: 3:${JSON.stringify("Error formatting response")}\n\n`);
+        }
       }
       console.log("✅ Stream processing complete");
     } catch (error) {
       console.error("💥 Critical error in stream handling:", error);
       // Return error to client in a format that matches other responses
-      await stream.write(`data: ${JSON.stringify({ error: "Stream processing failed" })}\n\n`);
+      await stream.write(`data: 3:${JSON.stringify("Stream processing failed")}\n\n`);
     }
   });
   } catch (error) {
