@@ -111,9 +111,13 @@ export class McpClientManager {
         setTimeout(() => reject(new Error(`Tool discovery from ${serverName} timed out after 5 seconds`)), 5000);
       });
       
-      const tools = await Promise.race([toolsPromise, timeoutPromise]);
+      const toolsResponse = await Promise.race([toolsPromise, timeoutPromise]);
       
-      console.log(`📋 Raw tools response:`, JSON.stringify(tools).substring(0, 200));
+      console.log(`📋 Raw tools response:`, JSON.stringify(toolsResponse).substring(0, 200));
+      
+      // Check if the response has tools property that is an array
+      const tools = toolsResponse && typeof toolsResponse === 'object' && 'tools' in toolsResponse ? 
+        toolsResponse.tools : toolsResponse;
       
       if (Array.isArray(tools)) {
         console.log(`🧰 Found ${tools.length} tools in array format`);
