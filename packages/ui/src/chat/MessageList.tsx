@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native'
 import { UIMessage } from './types'
+import { ToolCall } from './ToolCall'
 
 interface MessageListProps {
   messages: UIMessage[]
@@ -30,6 +31,14 @@ export const MessageList = ({ messages }: MessageListProps) => {
                 >
                   {part.text}
                 </Text>
+              )
+            }
+            if (part.type === 'tool-invocation') {
+              return (
+                <ToolCall
+                  key={`${message.id}-${index}`}
+                  toolInvocation={part.toolInvocation}
+                />
               )
             }
             // Add handling for other part types as needed
