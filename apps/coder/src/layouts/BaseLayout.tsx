@@ -1,6 +1,5 @@
 import React from "react";
 import DragWindowRegion from "@/components/DragWindowRegion";
-import NavigationMenu from "@/components/template/NavigationMenu";
 
 export default function BaseLayout({
   children,
@@ -10,7 +9,7 @@ export default function BaseLayout({
   return (
     <>
       <DragWindowRegion />
-      <main className="h-screen">{children}</main>
+      <main className="h-screen pt-[40px]">{children}</main>
     </>
   );
 }
