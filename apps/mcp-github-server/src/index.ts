@@ -286,11 +286,23 @@ export class MyMCP extends McpAgent {
 }
 
 export default {
-  fetch: MyMCP.mount("/sse", {
-    corsOptions: {
-      origin: "*",
-      methods: "GET,POST",
-      headers: "*",
-    },
-  }).fetch,
+  fetch: async (request: Request, env: any, ctx: any) => {
+    const url = new URL(request.url);
+
+    // Handle the homepage route
+    if (url.pathname === "/") {
+      return new Response("It works! Test via the MCP inspector (explained at https://modelcontextprotocol.io/docs/tools/inspector) by connecting to http://mcp-github.openagents.com/sse", {
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    // Handle the SSE route
+    return MyMCP.mount("/sse", {
+      corsOptions: {
+        origin: "*",
+        methods: "GET,POST",
+        headers: "*",
+      },
+    }).fetch(request, env, ctx);
+  }
 };
