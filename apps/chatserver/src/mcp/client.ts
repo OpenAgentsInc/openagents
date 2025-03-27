@@ -48,27 +48,53 @@ export class McpClientManager {
   }
 
   private async initiateConnection(serverUrl: string, serverName: string): Promise<Client> {
-    console.log(`Connecting to MCP server: ${serverName} at ${serverUrl}`);
+    console.log(`🔌 Connecting to MCP server: ${serverName} at ${serverUrl}`);
     
-    const transport = new SSEClientTransport(new URL(serverUrl));
-    const client = new Client(
-      { name: "chatserver", version: "0.0.1" },
-      {
-        capabilities: {
-          sampling: {},
-          roots: { listChanged: true },
-        },
-      }
-    );
+    try {
+      const transport = new SSEClientTransport(new URL(serverUrl));
+      
+      // Add event handlers for debugging
+      transport.onerror = (error) => {
+        console.error(`🚨 MCP Transport error for ${serverName}:`, error);
+      };
+      
+      transport.onclose = () => {
+        console.log(`⚠️ MCP Transport closed for ${serverName}`);
+        // Remove from clients map to allow reconnect
+        this.clients.delete(serverName);
+      };
+      
+      console.log(`🏗️ Creating MCP client for ${serverName}`);
+      const client = new Client(
+        { name: "chatserver", version: "0.0.1" },
+        {
+          capabilities: {
+            sampling: {},
+            roots: { listChanged: true },
+          },
+        }
+      );
 
-    // Connect to server
-    await client.connect(transport);
-    console.log(`Connected to MCP server: ${serverName}`);
-    
-    // Discover available tools
-    await this.discoverTools(client, serverName);
-    
-    return client;
+      // Connect to server with timeout
+      console.log(`🔄 Awaiting MCP connection for ${serverName}...`);
+      const connectPromise = client.connect(transport);
+      
+      // Set a timeout to avoid hanging indefinitely
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Connection to ${serverName} timed out after 10 seconds`)), 10000);
+      });
+      
+      await Promise.race([connectPromise, timeoutPromise]);
+      console.log(`✅ Connected to MCP server: ${serverName}`);
+      
+      // Discover available tools
+      await this.discoverTools(client, serverName);
+      
+      return client;
+    } catch (error) {
+      console.error(`🚨 MCP connection failed for ${serverName}:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -76,21 +102,37 @@ export class McpClientManager {
    */
   async discoverTools(client: Client, serverName: string): Promise<void> {
     try {
-      const tools = await client.listTools();
+      console.log(`🔍 Discovering tools from ${serverName}...`);
+      
+      // Set a timeout to avoid hanging indefinitely
+      const toolsPromise = client.listTools();
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Tool discovery from ${serverName} timed out after 5 seconds`)), 5000);
+      });
+      
+      const tools = await Promise.race([toolsPromise, timeoutPromise]);
+      
+      console.log(`📋 Raw tools response:`, JSON.stringify(tools).substring(0, 200));
       
       if (Array.isArray(tools)) {
+        console.log(`🧰 Found ${tools.length} tools in array format`);
+        
         tools.forEach((tool: GenericTool) => {
+          console.log(`🔧 Registering tool: ${tool.name}`);
           this.toolRegistry.set(tool.name, {
             server: serverName,
             description: tool.description || "",
           });
         });
         
-        console.log(`Discovered ${tools.length} tools from ${serverName}:`, 
+        console.log(`✅ Discovered ${tools.length} tools from ${serverName}:`, 
           tools.map((t: GenericTool) => t.name).join(", "));
+      } else {
+        console.error(`❌ Tools from ${serverName} is not an array:`, typeof tools);
       }
     } catch (error) {
-      console.error(`Failed to discover tools from ${serverName}:`, error);
+      console.error(`🚨 Failed to discover tools from ${serverName}:`, error);
     }
   }
 

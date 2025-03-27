@@ -119,14 +119,48 @@ export function extractToolDefinitions(): ToolDefinition[] {
  * @returns The tool result
  */
 export async function processToolCall(toolCall: ToolCallPayload, authToken?: string): Promise<ToolResultPayload | null> {
-  if (!toolCall) return null;
+  if (!toolCall) {
+    console.log("⚠️ Received null tool call");
+    return null;
+  }
+  
+  console.log(`🔧 Processing tool call: ${toolCall.toolName}`);
+  console.log(`📦 Tool args: ${JSON.stringify(toolCall.args).substring(0, 200)}`);
+  console.log(`🔑 Auth token present: ${!!authToken}`);
+  
+  // Check if we know about this tool
+  const toolServer = mcpClientManager.getToolServer(toolCall.toolName);
+  
+  if (!toolServer) {
+    console.error(`❌ Unknown tool: ${toolCall.toolName}`);
+    const allTools = mcpClientManager.getAllTools();
+    console.log(`🧰 Available tools: ${allTools.map(t => t.name).join(', ') || 'none'}`);
+    
+    return {
+      toolCallId: toolCall.toolCallId,
+      toolName: toolCall.toolName,
+      args: toolCall.args,
+      result: { error: `Tool "${toolCall.toolName}" not found in any connected MCP server` }
+    };
+  }
+  
+  console.log(`🔄 Routing tool call to server: ${toolServer}`);
   
   try {
-    const result = await mcpClientManager.callTool(
+    // Set a timeout to avoid hanging indefinitely
+    const toolPromise = mcpClientManager.callTool(
       toolCall.toolName,
       toolCall.args,
       authToken
     );
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Tool call ${toolCall.toolName} timed out after 15 seconds`)), 15000);
+    });
+    
+    const result = await Promise.race([toolPromise, timeoutPromise]);
+    
+    console.log(`✅ Tool call successful: ${JSON.stringify(result).substring(0, 200)}`);
     
     return {
       toolCallId: toolCall.toolCallId,
@@ -135,7 +169,7 @@ export async function processToolCall(toolCall: ToolCallPayload, authToken?: str
       result
     };
   } catch (error) {
-    console.error(`Error processing tool call ${toolCall.toolName}:`, error);
+    console.error(`❌ Error processing tool call ${toolCall.toolName}:`, error);
     
     return {
       toolCallId: toolCall.toolCallId,
