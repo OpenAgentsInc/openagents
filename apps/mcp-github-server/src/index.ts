@@ -42,21 +42,8 @@ export class MyMCP extends McpAgent {
           throw new Error("Path points to a directory, not a file");
         }
 
-        // Break up large responses into chunks
-        const content = data.content ?? "";
-        console.log("Content length:", content.length);
-
-        const chunkSize = 1000;
-        const chunks = [];
-
-        for (let i = 0; i < content.length; i += chunkSize) {
-          chunks.push(content.slice(i, i + chunkSize));
-        }
-
-        console.log("Created chunks:", chunks.length);
-
         return {
-          content: chunks.map(chunk => ({ type: "text", text: chunk }))
+          content: [{ type: "text", text: data.content ?? "" }]
         };
       } catch (error: any) {
         console.error("Full error:", error);
