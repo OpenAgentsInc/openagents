@@ -1,12 +1,12 @@
 import { View, TextInput, StyleSheet } from 'react-native'
 
 export const Chat = () => (
-  <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
-    {/* text input */}
+  <View style={{ flex: 1 }}>
     <View style={styles.inputContainer}>
       <TextInput
+        autoFocus
         style={styles.input}
-        placeholder="Type a message..."
+        placeholder="Message Coder"
         placeholderTextColor="#666"
       />
     </View>
@@ -28,6 +28,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
+    fontFamily: "Berkeley Mono"
   },
 })
