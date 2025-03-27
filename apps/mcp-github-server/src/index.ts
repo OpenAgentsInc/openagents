@@ -4,8 +4,8 @@ import { z } from "zod";
 
 export class MyMCP extends McpAgent {
   server = new McpServer({
-    name: "Demo",
-    version: "1.0.0",
+    name: "OpenAgents GitHub MCP",
+    version: "0.0.1",
   });
 
   async init() {
