@@ -1,7 +1,10 @@
 import { View, TextInput, StyleSheet } from 'react-native'
+import { MessageList } from './MessageList'
+import { dummyMessages } from './dummyData'
 
 export const Chat = () => (
-  <View style={{ flex: 1 }}>
+  <View style={styles.container}>
+    <MessageList messages={dummyMessages} />
     <View style={styles.inputContainer}>
       <TextInput
         autoFocus
@@ -14,6 +17,10 @@ export const Chat = () => (
 )
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
   inputContainer: {
     position: 'absolute',
     bottom: 20,
