@@ -30,6 +30,7 @@ export const GetFileContentsSchema = z.object({
   repo: z.string().describe("Repository name"),
   path: z.string().describe("Path to the file or directory"),
   branch: z.string().optional().describe("Branch to get contents from"),
+  token: z.string().describe("GitHub Personal Access Token"),
 });
 
 export const PushFilesSchema = z.object({
@@ -73,19 +74,24 @@ export async function getFileContents(
   owner: string,
   repo: string,
   path: string,
-  branch?: string
+  branch?: string,
+  token?: string
 ) {
   let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
   if (branch) {
     url += `?ref=${branch}`;
   }
 
-  const response = await githubRequest(url);
+  const response = await githubRequest(url, {
+    env: token ? { GITHUB_PERSONAL_ACCESS_TOKEN: token } : undefined
+  });
   const data = GitHubContentSchema.parse(response);
 
   // If it's a file, decode the content
   if (!Array.isArray(data) && data.content) {
-    data.content = Buffer.from(data.content, "base64").toString("utf8");
+    // Replace newlines and spaces that GitHub adds to base64
+    const cleanContent = data.content.replace(/\n/g, '');
+    data.content = atob(cleanContent);
   }
 
   return data;
@@ -100,7 +106,7 @@ export async function createOrUpdateFile(
   branch: string,
   sha?: string
 ) {
-  const encodedContent = Buffer.from(content).toString("base64");
+  const encodedContent = btoa(content);
 
   let currentSha = sha;
   if (!currentSha) {

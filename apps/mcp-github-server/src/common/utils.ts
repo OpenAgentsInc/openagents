@@ -6,6 +6,7 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
   headers?: Record<string, string>;
+  env?: { GITHUB_PERSONAL_ACCESS_TOKEN?: string };
 }
 
 async function parseResponseBody(response: Response): Promise<unknown> {
@@ -39,8 +40,8 @@ export async function githubRequest(
     ...options.headers,
   };
 
-  if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
-    headers["Authorization"] = `Bearer ${process.env.GITHUB_PERSONAL_ACCESS_TOKEN}`;
+  if (options.env?.GITHUB_PERSONAL_ACCESS_TOKEN) {
+    headers["Authorization"] = `Bearer ${options.env.GITHUB_PERSONAL_ACCESS_TOKEN}`;
   }
 
   const response = await fetch(url, {
