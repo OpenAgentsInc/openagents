@@ -104,12 +104,36 @@ export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>
 
       const toolDescription = mcpTool.description || `Executes the ${toolName} tool.`;
 
-      // Create tool definition using the 'tool' helper
-      toolDefinitions[toolName] = tool({
+      // Create tool definition WITH execute function for automatic execution
+      const toolDef = tool({
         description: toolDescription,
         parameters: parametersSchema,
-        // NO 'execute' function - we handle execution via streamResult.onToolCall
-      });
+        // Using type assertion to allow execute function within the expected type
+        execute: (async (args: any, options: any) => {
+          // Include the toolCallId in the logs
+          console.log(`🧰 Executing tool ${toolName} [${options?.toolCallId}] with args:`, 
+            JSON.stringify(args).substring(0, 200));
+          
+          try {
+            // Get the auth token - need to get this from closure since we can't pass it directly
+            // through the options parameter in a production deployment
+            const authToken = options.headers?.Authorization?.replace('Bearer ', '') || 
+                             options.headers?.['X-GitHub-Token'] || null;
+            
+            // Call the MCP tool via client manager with the auth token
+            const result = await mcpClientManager.callTool(toolName, args, authToken);
+            console.log(`✅ Tool ${toolName} execution successful`);
+            return result;
+          } catch (error) {
+            console.error(`❌ Tool ${toolName} execution failed:`, error);
+            // Return error in a format that can be shown to the user
+            return { error: error instanceof Error ? error.message : String(error) };
+          }
+        }) as any
+      }) as any;
+      
+      // Add the tool to our definitions
+      toolDefinitions[toolName] = toolDef;
 
       console.log(`[extractToolDefinitions] Added Zod-based schema for ${toolName}`);
       

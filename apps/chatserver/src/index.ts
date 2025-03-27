@@ -120,7 +120,7 @@ app.post('/', async c => {
         console.warn("⚠️ No GitHub tools available for this request");
       }
 
-      // --- Call streamText, NO handler property ---
+      // --- Call streamText with tool configuration ---
       const streamResult = streamText({
         model: openrouter("anthropic/claude-3.5-sonnet"),
         messages: messages,
@@ -128,7 +128,14 @@ app.post('/', async c => {
         toolChoice: hasTools ? 'auto' : undefined,
         temperature: 0.7, // Add a moderate temperature for some creativity while keeping tools useful
 
-        // NO 'experimental_toolCallHandler' or 'onToolCall' INPUT PROPERTY needed here
+        // Use toolCallStreaming to properly stream tools
+        toolCallStreaming: true,
+        
+        // Pass auth token via headers for tool execution
+        headers: {
+          Authorization: bearerToken,
+          'X-GitHub-Token': githubTokenHeader
+        },
 
         // Standard callbacks
         onError: (event: { error: unknown }) => {
@@ -143,52 +150,29 @@ app.post('/', async c => {
 
       console.log(`✅ streamText call initiated successfully (${hasTools ? 'WITH' : 'WITHOUT'} GITHUB TOOLS).`);
 
-      // --- *** HANDLE TOOL CALLS VIA TOOLCALLS PROMISE *** ---
+      // --- *** TOOL MONITORING FOR LOGGING ONLY *** ---
       if (hasTools) {
-          // Monitor tool calls via the toolCalls property (Promise)
+          // Just monitor tool calls for logging purposes
+          // The actual execution happens automatically through the execute function in tool definitions
           (async () => {
-            try {
-              console.log("👂 Waiting for tool calls from the model...");
-              const toolCallsArray = await streamResult.toolCalls;
-              console.log(`📞 Received ${toolCallsArray.length} tool calls from model`);
-              
-              for (const toolCallItem of toolCallsArray) {
-                try {
-                  // Handle each tool call
-                  console.log(`🔧 Processing tool call: ${toolCallItem.toolName}`);
+              try {
+                  console.log("👂 Monitoring tool calls (execution happens automatically)");
+                  const toolCallsArray = await streamResult.toolCalls;
+                  console.log(`📞 ${toolCallsArray.length} tool call(s) were made during this stream`);
                   
-                  // Call your MCP processing function
-                  const toolResultPayload: ToolResultPayload = await processToolCall(
-                    {
-                      toolCallId: toolCallItem.toolCallId,
-                      toolName: toolCallItem.toolName,
-                      args: toolCallItem.args,
-                    },
-                    authToken
-                  );
-                  
-                  // Check for functional error from MCP/processToolCall
-                  if (toolResultPayload?.result?.error) {
-                    console.error(`❌ MCP tool call ${toolCallItem.toolName} error:`, toolResultPayload.result.error);
-                    // Note: In modern versions of the AI SDK, we no longer need to manually submit results
-                    // as they're handled within the stream processing
-                    console.log(`✅ Tool call ${toolCallItem.toolName} processed with error result`);
-                  } else {
-                    console.log(`✅ Tool call ${toolCallItem.toolName} processed successfully with result:`, 
-                      typeof toolResultPayload.result === 'object' 
-                        ? JSON.stringify(toolResultPayload.result).substring(0, 200) + '...' 
-                        : toolResultPayload.result);
+                  // Log details of each tool call (execution already happened via the execute function)
+                  for (const toolCall of toolCallsArray) {
+                      console.log(`ℹ️ Tool ${toolCall.toolName} was called with args:`, 
+                          JSON.stringify(toolCall.args).substring(0, 100));
                   }
-                } catch (singleToolError) {
-                  console.error(`❌ Error processing individual tool call ${toolCallItem.toolName}:`, singleToolError);
-                }
+              } catch (error) {
+                  console.error("❌ Error monitoring tool calls:", error);
               }
-            } catch (toolCallError) {
-              console.error("❌ Error handling tool calls:", toolCallError);
-            }
           })();
+          
+          console.log("👂 Set up tool call monitoring for logging");
       }
-      // --- *** END TOOL CALLS HANDLING *** ---
+      // --- *** END TOOL MONITORING *** ---
 
       // --- Setup SSE Response ---
       c.header('Content-Type', 'text/event-stream; charset=utf-8');
