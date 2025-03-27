@@ -1,4 +1,4 @@
-import { View, TextInput, StyleSheet, Pressable } from 'react-native'
+import { View, TextInput, StyleSheet, Pressable, Platform } from 'react-native'
 import { useState } from 'react'
 import { ArrowUp } from 'lucide-react'
 
@@ -18,6 +18,20 @@ export const MessageInput = ({ maxRows = 8, onSubmit }: MessageInputProps) => {
     if (!value.trim()) return
     onSubmit?.(value)
     setValue('')
+    setHeight(0)
+  }
+
+  const handleKeyPress = (e: any) => {
+    // Check if it's the Enter key
+    if (e.nativeEvent.key === 'Enter') {
+      // If shift is held, allow the newline
+      if (e.nativeEvent.shiftKey) {
+        return
+      }
+      // Prevent default newline behavior and submit
+      e.preventDefault()
+      handleSubmit()
+    }
   }
 
   return (
@@ -30,6 +44,7 @@ export const MessageInput = ({ maxRows = 8, onSubmit }: MessageInputProps) => {
             multiline
             value={value}
             onChangeText={setValue}
+            onKeyPress={handleKeyPress}
             style={[
               styles.input,
               {
