@@ -117,8 +117,15 @@ export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>
           try {
             // Get the auth token - need to get this from closure since we can't pass it directly
             // through the options parameter in a production deployment
-            const authToken = options.headers?.Authorization?.replace('Bearer ', '') || 
-                             options.headers?.['X-GitHub-Token'] || null;
+            const authHeader = options.headers?.Authorization;
+            const tokenHeader = options.headers?.['X-GitHub-Token'];
+            const authToken = authHeader?.replace('Bearer ', '') || tokenHeader || null;
+            
+            console.log(`🔐 Tool ${toolName} execute() auth token info:`);
+            console.log(`  - Authorization header present: ${!!authHeader}`);
+            console.log(`  - X-GitHub-Token header present: ${!!tokenHeader}`);
+            console.log(`  - Final token resolved: ${authToken ? 'Yes' : 'No'}`);
+            console.log(`  - Headers keys available: ${options.headers ? Object.keys(options.headers).join(', ') : 'none'}`);
             
             // Call the MCP tool via client manager with the auth token
             const result = await mcpClientManager.callTool(toolName, args, authToken);

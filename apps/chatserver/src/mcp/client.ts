@@ -164,6 +164,15 @@ export class McpClientManager {
    * Call a tool with the given arguments and optional authentication token.
    */
   async callTool(toolName: string, args: Record<string, any>, token?: string): Promise<any> {
+    console.log(`🔄 callTool called for ${toolName} with token present: ${!!token}`);
+    
+    // Debug token format/value if present to track auth issues
+    if (token) {
+      console.log(`🔑 Token format check: Length=${token.length}, Starts with "${token.substring(0, 4)}...", Contains "ghp_": ${token.includes('ghp_')}`);
+    } else {
+      console.log(`⚠️ No token provided for tool call: ${toolName}`);
+    }
+    
     const toolInfo = this.toolRegistry.get(toolName);
     if (!toolInfo) {
       throw new Error(`Tool "${toolName}" not found in registry`);
@@ -180,7 +189,19 @@ export class McpClientManager {
       ...(token ? { _meta: { token } } : {})
     };
 
-    return client.callTool(callArgs);
+    console.log(`📤 Sending tool call to MCP server with args structure:`, Object.keys(callArgs));
+    if (token) {
+      console.log(`🔐 Token is being passed via _meta.token property`);
+    }
+
+    try {
+      const result = await client.callTool(callArgs);
+      console.log(`✅ MCP tool call ${toolName} succeeded`);
+      return result;
+    } catch (error) {
+      console.error(`❌ MCP tool call ${toolName} error:`, error);
+      throw error;
+    }
   }
 
   /**
