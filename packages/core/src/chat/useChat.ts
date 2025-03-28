@@ -18,6 +18,11 @@ export interface UseChatWithCommandsOptions {
   onError?: (error: Error) => void;
   onFinish?: (message: any) => void;
   
+  /**
+   * Custom fetch implementation for platforms that need their own fetch
+   */
+  fetch?: typeof globalThis.fetch;
+  
   // Command execution specific options
   /**
    * Enable local command execution (only works in Electron environment)
@@ -108,7 +113,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     }
     
     // Execute each command and collect results
-    const commandResults = [];
+    const commandResults: Array<{ command: string; result: string | { error: string } }> = [];
     for (const command of commands) {
       try {
         // Notify about command execution

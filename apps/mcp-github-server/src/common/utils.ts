@@ -1,5 +1,5 @@
 import { getUserAgent } from "universal-user-agent";
-import { createGitHubError } from "./errors.js";
+import { createGitHubError, GitHubError } from "./errors.js";
 import { VERSION } from "./version.js";
 
 type RequestOptions = {
