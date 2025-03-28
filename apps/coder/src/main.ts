@@ -7,6 +7,7 @@ import {
   installExtension,
   REACT_DEVELOPER_TOOLS,
 } from "electron-devtools-installer";
+import { setupElectronCommandExecutor } from "@openagents/core";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -45,7 +46,14 @@ async function installExtensions() {
 }
 
 app.whenReady()
-  .then(createWindow)
+  .then(() => {
+    // Set up command execution
+    setupElectronCommandExecutor();
+    console.log('✨ Command execution setup complete');
+    
+    // Create window and install extensions
+    return createWindow();
+  })
   .then(installExtensions);
 
 //osX only

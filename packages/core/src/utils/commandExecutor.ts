@@ -80,6 +80,9 @@ declare global {
         invoke(channel: string, ...args: any[]): Promise<any>;
       };
     };
+    commandExecution?: {
+      executeCommand(command: string, options?: any): Promise<any>;
+    };
   }
 }
 
@@ -230,8 +233,20 @@ export async function safeExecuteCommand(
   options: CommandExecutionOptions = {}
 ): Promise<CommandExecutionResult | { error: string }> {
   try {
-    // First, check if we're in an Electron renderer process
-    // If so, try to execute via IPC
+    // First, check if commandExecution is available in the window object
+    if (typeof window !== 'undefined' && window.commandExecution) {
+      try {
+        console.log('🔌 COMMAND EXECUTOR: Executing via commandExecution API:', command);
+        return await window.commandExecution.executeCommand(command, options);
+      } catch (cmdError) {
+        console.error('❌ COMMAND EXECUTOR: commandExecution API failed:', cmdError);
+        return {
+          error: `Command execution failed: ${cmdError instanceof Error ? cmdError.message : String(cmdError)}`
+        };
+      }
+    }
+    
+    // Next, try window.electron if available
     if (isElectron() && typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       try {
         console.log('🔌 COMMAND EXECUTOR: Executing via Electron IPC:', command);

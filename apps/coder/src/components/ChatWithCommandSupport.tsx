@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Text } from 'react-native';
 import { MessageList, MessageInput } from '@openagents/ui';
 import { useCommand } from '../helpers/ipc/command/command-context';
@@ -17,7 +17,7 @@ export const ChatWithCommandSupport: React.FC = () => {
   });
 
   // Get the command execution context
-  const { executeCommand } = useCommand();
+  const { executeCommand, isAvailable } = useCommand();
 
   // Create a chat hook with command execution enabled
   const chat = useChat({
@@ -40,6 +40,35 @@ export const ChatWithCommandSupport: React.FC = () => {
       });
     }
   });
+  
+  // Test command execution on component mount
+  useEffect(() => {
+    const testCommandExecution = async () => {
+      console.log('🧪 CODER: Testing command execution...');
+      console.log('🧪 CODER: Command execution available via context:', isAvailable);
+      
+      try {
+        // Log window.commandExecution availability
+        if (typeof window !== 'undefined') {
+          console.log('🧪 CODER: window.commandExecution available:', !!window.commandExecution);
+        }
+        
+        // Test via our chat hook
+        const result = await chat.testCommandExecution();
+        console.log('🧪 CODER: Command test result:', result);
+        
+        // Also test via command context
+        if (isAvailable) {
+          const contextResult = await executeCommand('echo "Testing command context"');
+          console.log('🧪 CODER: Command context test result:', contextResult);
+        }
+      } catch (error) {
+        console.error('🧪 CODER: Command test error:', error);
+      }
+    };
+    
+    testCommandExecution();
+  }, [chat, executeCommand, isAvailable]);
 
   const handleSubmit = (message: string) => {
     console.log('📝 CODER: Message submitted:', message);

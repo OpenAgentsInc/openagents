@@ -36,7 +36,8 @@ export const CommandProvider: React.FC<CommandProviderProps> = ({ children }) =>
   }, [isElectron]);
   
   const contextValue = {
-    executeCommand
+    executeCommand,
+    isAvailable: isElectron
   };
   
   return (

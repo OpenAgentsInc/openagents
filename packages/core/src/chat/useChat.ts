@@ -222,6 +222,16 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   const testCommandExecution = useCallback(async () => {
     try {
       const { safeExecuteCommand } = await import('../utils/commandExecutor');
+      
+      // Log all the available APIs on window
+      if (typeof window !== 'undefined') {
+        console.log('🔍 USECHAT: Window APIs available:', {
+          commandExecution: !!window.commandExecution,
+          electron: !!window.electron,
+          electronIPC: !!(window.electron?.ipcRenderer)
+        });
+      }
+      
       const result = await safeExecuteCommand('echo "Command execution test"', commandOptions);
       
       console.log('🧪 USECHAT: Command execution test result:', result);

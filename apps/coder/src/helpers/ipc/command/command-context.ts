@@ -23,10 +23,38 @@ export interface CommandContextValue {
       env?: Record<string, string>;
     }
   ) => Promise<CommandResult>;
+  isAvailable: boolean;
 }
 
+// Create a default implementation that checks for the window.commandExecution object
+const createDefaultExecuteCommand = () => {
+  const isAvailable = typeof window !== 'undefined' && !!window.commandExecution;
+  
+  const executeCommand = async (command: string, options?: any) => {
+    if (typeof window !== 'undefined' && window.commandExecution) {
+      try {
+        return await window.commandExecution.executeCommand(command, options);
+      } catch (error) {
+        return { 
+          error: error instanceof Error ? error.message : String(error),
+          command
+        };
+      }
+    }
+    return { 
+      error: 'Command execution not available in this environment', 
+      command 
+    };
+  };
+  
+  return { executeCommand, isAvailable };
+};
+
+const defaultContext = createDefaultExecuteCommand();
+
 export const CommandContext = createContext<CommandContextValue>({
-  executeCommand: async () => ({ error: 'Command context not initialized', command: '' }),
+  executeCommand: defaultContext.executeCommand,
+  isAvailable: defaultContext.isAvailable
 });
 
 export const useCommand = () => useContext(CommandContext);

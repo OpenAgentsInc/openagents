@@ -28,19 +28,40 @@ export function setupElectronCommandExecutor() {
   try {
     const { ipcMain } = require('electron');
     
-    // Set up IPC handler for executing commands
-    ipcMain.handle('execute-command', async (_: any, command: string, options: CommandExecutionOptions = {}) => {
-      console.log(`🔌 ELECTRON: IPC execute-command received:`, command);
-      
-      try {
-        return await executeCommand(command, options);
-      } catch (error) {
-        console.error('🔌 ELECTRON: Error executing command via IPC:', error);
-        return { 
-          error: error instanceof Error ? error.message : String(error) 
-        };
-      }
-    });
+    // Set up IPC handler for standard 'execute-command' channel
+    if (!ipcMain.listeners('execute-command').length) {
+      ipcMain.handle('execute-command', async (_: any, command: string, options: CommandExecutionOptions = {}) => {
+        console.log(`🔌 ELECTRON: IPC execute-command received:`, command);
+        
+        try {
+          return await executeCommand(command, options);
+        } catch (error) {
+          console.error('🔌 ELECTRON: Error executing command via IPC:', error);
+          return { 
+            error: error instanceof Error ? error.message : String(error) 
+          };
+        }
+      });
+    }
+    
+    // Set up IPC handler for 'command:execute' channel used by existing codebase
+    const EXECUTE_COMMAND = 'command:execute';
+    if (!ipcMain.listeners(EXECUTE_COMMAND).length) {
+      ipcMain.handle(EXECUTE_COMMAND, async (_: any, args: any) => {
+        const { command, options } = args || {};
+        console.log(`🔌 ELECTRON: IPC ${EXECUTE_COMMAND} received:`, command);
+        
+        try {
+          return await executeCommand(command, options);
+        } catch (error) {
+          console.error('🔌 ELECTRON: Error executing command via IPC:', error);
+          return { 
+            error: error instanceof Error ? error.message : String(error),
+            command
+          };
+        }
+      });
+    }
     
     console.log('✅ ELECTRON: Command execution handlers registered');
   } catch (error) {
