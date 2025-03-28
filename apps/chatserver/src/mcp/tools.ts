@@ -3,17 +3,17 @@ import { tool } from 'ai'; // Import the 'tool' helper
 import { z } from 'zod'; // Import zod for parameters
 
 // Keep ToolCallPayload and ToolResultPayload as they are useful for processToolCall
-export interface ToolCallPayload { 
-  toolCallId: string; 
-  toolName: string; 
-  args: Record<string, any>; 
+export interface ToolCallPayload {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, any>;
 }
 
-export interface ToolResultPayload { 
-  toolCallId: string; 
-  toolName: string; 
-  args: Record<string, any>; 
-  result: any; 
+export interface ToolResultPayload {
+  toolCallId: string;
+  toolName: string;
+  args: Record<string, any>;
+  result: any;
 }
 
 /**
@@ -40,60 +40,60 @@ export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>
 
     const mcpTool = toolInfo.tool;
     const toolName = mcpTool.name;
-    console.log(`[extractToolDefinitions] Mapping tool: ${toolName}`);
+    // console.log(`[extractToolDefinitions] Mapping tool: ${toolName}`);
 
     try {
       // Create dynamic Zod schema based on inputSchema
       let parametersSchema: z.ZodObject<any> = z.object({});
-      
+
       const inputSchema = (mcpTool as any).inputSchema;
-      
+
       if (inputSchema && typeof inputSchema === 'object' && inputSchema.properties) {
         const schemaObj: Record<string, any> = {};
-        
+
         // Create Zod properties from inputSchema properties
         for (const [paramName, paramDef] of Object.entries(inputSchema.properties)) {
           if (typeof paramDef === 'object') {
             const paramType = (paramDef as any).type;
             const paramDesc = (paramDef as any).description || `Parameter ${paramName}`;
-            
+
             if (paramType === 'string') {
-              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
-                                     inputSchema.required.includes(paramName)
+              schemaObj[paramName] = Array.isArray(inputSchema.required) &&
+                inputSchema.required.includes(paramName)
                 ? z.string().describe(paramDesc)
                 : z.string().optional().describe(paramDesc);
             } else if (paramType === 'number' || paramType === 'integer') {
-              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
-                                     inputSchema.required.includes(paramName)
+              schemaObj[paramName] = Array.isArray(inputSchema.required) &&
+                inputSchema.required.includes(paramName)
                 ? z.number().describe(paramDesc)
                 : z.number().optional().describe(paramDesc);
             } else if (paramType === 'boolean') {
-              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
-                                     inputSchema.required.includes(paramName)
+              schemaObj[paramName] = Array.isArray(inputSchema.required) &&
+                inputSchema.required.includes(paramName)
                 ? z.boolean().describe(paramDesc)
                 : z.boolean().optional().describe(paramDesc);
             } else if (paramType === 'array') {
               // Default to array of strings if items type is not specified
-              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
-                                     inputSchema.required.includes(paramName)
+              schemaObj[paramName] = Array.isArray(inputSchema.required) &&
+                inputSchema.required.includes(paramName)
                 ? z.array(z.string()).describe(paramDesc)
                 : z.array(z.string()).optional().describe(paramDesc);
             } else if (paramType === 'object') {
               // For nested objects, use a simpler approach
-              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
-                                     inputSchema.required.includes(paramName)
+              schemaObj[paramName] = Array.isArray(inputSchema.required) &&
+                inputSchema.required.includes(paramName)
                 ? z.record(z.unknown()).describe(paramDesc)
                 : z.record(z.unknown()).optional().describe(paramDesc);
             } else {
               // Default to string for unknown types
-              schemaObj[paramName] = Array.isArray(inputSchema.required) && 
-                                     inputSchema.required.includes(paramName)
+              schemaObj[paramName] = Array.isArray(inputSchema.required) &&
+                inputSchema.required.includes(paramName)
                 ? z.string().describe(paramDesc)
                 : z.string().optional().describe(paramDesc);
             }
           }
         }
-        
+
         // Create the schema object if we have properties
         if (Object.keys(schemaObj).length > 0) {
           parametersSchema = z.object(schemaObj);
@@ -111,22 +111,22 @@ export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>
         // Using type assertion to allow execute function within the expected type
         execute: (async (args: any, options: any) => {
           // Include the toolCallId in the logs
-          console.log(`🧰 Executing tool ${toolName} [${options?.toolCallId}] with args:`, 
+          console.log(`🧰 Executing tool ${toolName} [${options?.toolCallId}] with args:`,
             JSON.stringify(args).substring(0, 200));
-          
+
           try {
             // Get the auth token - need to get this from closure since we can't pass it directly
             // through the options parameter in a production deployment
             const authHeader = options.headers?.Authorization;
             const tokenHeader = options.headers?.['X-GitHub-Token'];
             const authToken = authHeader?.replace('Bearer ', '') || tokenHeader || null;
-            
+
             console.log(`🔐 Tool ${toolName} execute() auth token info:`);
             console.log(`  - Authorization header present: ${!!authHeader}`);
             console.log(`  - X-GitHub-Token header present: ${!!tokenHeader}`);
             console.log(`  - Final token resolved: ${authToken ? 'Yes' : 'No'}`);
             console.log(`  - Headers keys available: ${options.headers ? Object.keys(options.headers).join(', ') : 'none'}`);
-            
+
             // Call the MCP tool via client manager with the auth token
             const result = await mcpClientManager.callTool(toolName, args, authToken);
             console.log(`✅ Tool ${toolName} execution successful`);
@@ -138,12 +138,12 @@ export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>
           }
         }) as any
       }) as any;
-      
+
       // Add the tool to our definitions
       toolDefinitions[toolName] = toolDef;
 
       console.log(`[extractToolDefinitions] Added Zod-based schema for ${toolName}`);
-      
+
     } catch (error) {
       console.error(`[extractToolDefinitions] Error creating schema for tool '${toolName}':`, error);
       // Skip this tool if there was an error

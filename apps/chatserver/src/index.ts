@@ -52,6 +52,20 @@ app.post('/', async c => {
     return c.json({ error: "OpenRouter API Key not configured" }, 500);
   }
   console.log("✅ OPENROUTER_API_KEY seems present.");
+  
+  // Enhanced error detection for API key issues
+  // Check if API key follows expected format (sk-or-...)
+  const apiKey = c.env.OPENROUTER_API_KEY;
+  if (!apiKey.startsWith('sk-or-')) {
+    console.warn(`⚠️ OPENROUTER_API_KEY format appears incorrect: ${apiKey.substring(0, 6)}... (expected 'sk-or-')`);
+  }
+  
+  // For temporary testing, check if a fallback key is available in case the env binding is invalid
+  const fallbackKey = "sk-or-replace-with-valid-key-for-testing"; // Replace with actual key for testing
+  if (fallbackKey.startsWith('sk-or-') && fallbackKey !== "sk-or-replace-with-valid-key-for-testing") {
+    console.log("🔄 Using fallback key for testing instead of environment variable");
+    c.env.OPENROUTER_API_KEY = fallbackKey;
+  }
 
   try {
     const body = await c.req.json();
@@ -74,7 +88,20 @@ app.post('/', async c => {
     console.log(`🔑 Auth token present: ${!!authToken}`);
 
     // --- Initialize OpenRouter ---
-    const openrouter = createOpenRouter({ apiKey: c.env.OPENROUTER_API_KEY });
+    // Verify API key format and add additional logging
+    const apiKey = c.env.OPENROUTER_API_KEY;
+    const apiKeyFormat = apiKey?.startsWith('sk-or-') ? 'correct format (sk-or-...)' : 
+                        apiKey?.startsWith('sk-') ? 'possibly incorrect format (sk-...)' :
+                        'unknown format';
+    console.log(`🔑 API key format: ${apiKeyFormat}`);
+    console.log(`🔑 API key length: ${apiKey?.length || 0}`);
+    
+    // Create the OpenRouter client with API key
+    const openrouter = createOpenRouter({ 
+      apiKey: apiKey,
+      // Add baseURL explicitly to ensure connection is properly established
+      baseURL: "https://openrouter.ai/api/v1"
+    });
     console.log("✅ OpenRouter provider initialized.");
 
     // --- Tool Extraction ---
@@ -120,21 +147,38 @@ app.post('/', async c => {
         console.warn("⚠️ No GitHub tools available for this request");
       }
 
+      // Log the API key existence and first few characters for troubleshooting
+      const apiKeyStatus = c.env.OPENROUTER_API_KEY ? 
+        `present (starts with: ${c.env.OPENROUTER_API_KEY.substring(0, 4)}...)` : 
+        'missing';
+      console.log(`🔑 OpenRouter API key status: ${apiKeyStatus}`);
+      
       // --- Call streamText with tool configuration ---
-      const streamResult = streamText({
-        model: openrouter("anthropic/claude-3.5-sonnet"),
-        messages: messages,
-        tools: hasTools ? tools : undefined, // Pass the tools defined with the 'tool' helper
-        toolChoice: hasTools ? 'auto' : undefined,
-        temperature: 0.7, // Add a moderate temperature for some creativity while keeping tools useful
+      console.log(`🔄 Creating streamText config with API key: ${c.env.OPENROUTER_API_KEY.substring(0, 8)}...`);
+      // Try using an older/simpler model first as a test
+      // instead of "anthropic/claude-3.5-sonnet" try "openai/gpt-3.5-turbo-0125"
+      const MODEL = "openai/gpt-3.5-turbo-0125"; // More reliable for testing
+      console.log(`📝 Using model: ${MODEL}`);
 
-        // Use toolCallStreaming to properly stream tools
-        toolCallStreaming: true,
+      const streamResult = streamText({
+        model: openrouter(MODEL),
+        messages: messages,
+        // Temporarily disable tools for testing the OpenRouter connection
+        // tools: hasTools ? tools : undefined,
+        // toolChoice: hasTools ? 'auto' : undefined,
+        tools: undefined,
+        toolChoice: undefined,
+        temperature: 0.7,
+        
+        toolCallStreaming: false, // Disable for basic testing
         
         // Pass auth token via headers for tool execution
+        // Force proper Authorization format for OpenRouter
         headers: {
-          Authorization: bearerToken,
-          'X-GitHub-Token': githubTokenHeader
+          'Authorization': `Bearer ${c.env.OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://openagents.com',
+          'X-Title': 'OpenAgents Chat',
+          'X-GitHub-Token': githubTokenHeader,
         },
 
         // Standard callbacks
