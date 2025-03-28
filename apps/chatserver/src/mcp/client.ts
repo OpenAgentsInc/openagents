@@ -27,13 +27,13 @@ export class McpClientManager {
     // Get request ID to track connections per request
     const requestId = crypto.randomUUID().substring(0, 8);
     console.log(`🔄 [${requestId}] MCP connection request for ${serverName}`);
-    
+
     // Check for existing connection in progress
     if (this.connecting.has(serverName)) {
       console.log(`⏳ [${requestId}] Another connection to ${serverName} is in progress, waiting for it`);
       return this.connecting.get(serverName)!;
     }
-    
+
     // For serverless environments, always create a new connection
     // Clear any existing client to force reconnection
     if (this.clients.has(serverName)) {
@@ -72,7 +72,7 @@ export class McpClientManager {
     try {
       // Create new transport with unique connection
       const transport = new SSEClientTransport(new URL(serverUrl));
-      
+
       // Add event handlers with request ID for better logging
       transport.onerror = (error) => {
         console.error(`🚨 [${requestId}] Transport error for ${serverName}:`, error);
@@ -115,16 +115,16 @@ export class McpClientManager {
     // Add tracking ID to logs
     const logPrefix = requestId ? `[${requestId}]` : '';
     let tools: GenericTool[] | null = null;
-    
+
     try {
       console.log(`🔍 ${logPrefix} Discovering tools from ${serverName}...`);
-      
+
       // Protect against timeout and errors during tool discovery
       const toolsPromise = client.listTools();
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`${logPrefix} Tool discovery from ${serverName} timed out`)), 5000)
       );
-      
+
       const toolsResponse = await Promise.race([toolsPromise, timeoutPromise]);
       console.log(`📋 ${logPrefix} Raw tools response from ${serverName}:`, JSON.stringify(toolsResponse).substring(0, 300));
 
@@ -144,7 +144,7 @@ export class McpClientManager {
     }
 
     console.log(`🔄 ${logPrefix} Processing ${tools?.length ?? 0} discovered tools for ${serverName}...`);
-    
+
     // Clear existing tool registry for this server to avoid stale tools
     let existingToolCount = 0;
     for (const [toolName, info] of this.toolRegistry.entries()) {
@@ -156,7 +156,7 @@ export class McpClientManager {
     if (existingToolCount > 0) {
       console.log(`♻️ ${logPrefix} Cleared ${existingToolCount} existing tools for ${serverName}`);
     }
-    
+
     // Register new tools
     if (tools && tools.length > 0) {
       let registeredCount = 0;
@@ -170,7 +170,7 @@ export class McpClientManager {
           const toolName = tool.name;
           const toolDescription = tool.description || "";
 
-          console.log(`🔧 ${logPrefix} Registering tool: ${toolName}`);
+          // console.log(`🔧 ${logPrefix} Registering tool: ${toolName}`);
           this.toolRegistry.set(toolName, {
             server: serverName,
             description: toolDescription,
@@ -216,14 +216,14 @@ export class McpClientManager {
     // Generate a unique ID for this tool call for tracking
     const callId = crypto.randomUUID().substring(0, 8);
     console.log(`🔄 [${callId}] callTool called for ${toolName} with token present: ${!!token}`);
-    
+
     // Debug token format/value if present to track auth issues
     if (token) {
       console.log(`🔑 [${callId}] Token format check: Length=${token.length}, Starts with "${token.substring(0, 4)}...", Contains "ghp_": ${token.includes('ghp_')}`);
     } else {
       console.log(`⚠️ [${callId}] No token provided for tool call: ${toolName}`);
     }
-    
+
     // Get tool info and verify it exists
     const toolInfo = this.toolRegistry.get(toolName);
     if (!toolInfo) {
@@ -233,7 +233,7 @@ export class McpClientManager {
 
     // Get the server name for this tool
     const serverName = toolInfo.server;
-    
+
     // Check if we have a client for this server, if not try to reconnect
     let client = this.clients.get(serverName);
     if (!client) {
@@ -273,13 +273,13 @@ export class McpClientManager {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`[${callId}] Tool call ${toolName} timed out after 15 seconds`)), 15000)
       );
-      
+
       const result = await Promise.race([toolPromise, timeoutPromise]);
       console.log(`✅ [${callId}] MCP tool call ${toolName} succeeded`);
       return result;
     } catch (error) {
       console.error(`❌ [${callId}] MCP tool call ${toolName} error:`, error);
-      
+
       // Check if it's a connection error and attempt to reconnect once
       if (String(error).includes('connection') || String(error).includes('network')) {
         console.log(`🔄 [${callId}] Attempting one reconnection after connection error...`);
@@ -287,7 +287,7 @@ export class McpClientManager {
           // Force close and reconnect
           await this.disconnectServer(serverName);
           client = await this.connectToServer(`https://mcp-github.openagents.com/sse`, serverName);
-          
+
           // Retry the call once
           console.log(`🔄 [${callId}] Retrying tool call after reconnection...`);
           const result = await client.callTool(callArgs);
@@ -298,11 +298,11 @@ export class McpClientManager {
           throw new Error(`Tool ${toolName} failed after reconnection attempt: ${error}`);
         }
       }
-      
+
       throw error;
     }
   }
-  
+
   /**
    * Disconnect from a specific MCP server.
    */
@@ -316,7 +316,7 @@ export class McpClientManager {
         console.error(`❌ Error disconnecting from ${serverName}:`, error);
       }
       this.clients.delete(serverName);
-      
+
       // Remove tools for this server
       for (const [toolName, info] of this.toolRegistry.entries()) {
         if (info.server === serverName) {

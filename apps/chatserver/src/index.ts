@@ -72,7 +72,52 @@ app.post('/', async c => {
     if (!messages.every(m => m && typeof m.role === 'string' && typeof m.content === 'string')) {
       return c.json({ error: "Invalid message format" }, 400);
     }
-    console.log(`📨 Using message array:`, messages);
+    
+    // --- Add System Message with GitHub Tool Instructions ---
+    // Prepend system message to inform the model about GitHub tools
+    const systemMessage: Message = {
+      role: 'system', 
+      content: `You are Claude, an AI assistant with GitHub integration capabilities. You have access to the following GitHub tools:
+
+1. Repository Operations:
+   - get_file_contents: Retrieve file content from GitHub repositories (works for public repos, no auth needed)
+   - search_repositories: Search for repositories on GitHub
+   - create_repository: Create a new repository (requires auth)
+
+2. Issue & PR Management:
+   - create_issue, list_issues, get_issue, update_issue
+   - create_pull_request, get_pull_request, list_pull_requests
+   - merge_pull_request, get_pull_request_files, get_pull_request_status
+
+3. Code Operations:
+   - search_code: Search code across repositories
+   - create_or_update_file: Create or modify files (requires auth)
+   - push_files: Push multiple files in a single commit (requires auth)
+   - create_branch: Create a new branch (requires auth)
+
+You MUST proactively use these tools whenever a user asks about GitHub repositories, files, issues, PRs, or code. For example:
+- When asked to "show a README", use get_file_contents to retrieve it
+- When asked about issues, use list_issues or get_issue
+- When asked to search code, use search_code
+
+IMPORTANT: For public repositories, you don't need authentication to fetch content, so you should always attempt to use the appropriate tools even without authentication. However, GitHub does impose rate limits on unauthenticated requests.
+
+If a tool operation fails, check if:
+1. The repository exists and is public
+2. You've correctly specified the repository owner and name
+3. The path to the file is correct (for get_file_contents)
+
+For write operations (create, update, delete), authentication is always required. For read operations on public repos, authentication is optional but recommended to avoid rate limits.
+
+Do NOT tell users you can't access GitHub content unless you've tried the appropriate tool and it failed.`
+    };
+
+    // Add system message at the beginning of conversation
+    if (!messages.some(m => m.role === 'system')) {
+      messages = [systemMessage, ...messages];
+    }
+    
+    console.log(`📨 Using message array with system prompt:`, messages);
 
     // --- Auth Token Extraction ---
     const bearerToken = c.req.header('Authorization')?.replace('Bearer ', '');
