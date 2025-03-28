@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Text, TextInput } from 'react-native';
-import { Chat } from '@openagents/ui';
+import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Text } from 'react-native';
+import { MessageList, MessageInput } from '@openagents/ui';
 import { useCommand } from '../helpers/ipc/command/command-context';
 import { useChat } from '@openagents/core';
 
@@ -15,10 +15,10 @@ export const ChatWithCommandSupport: React.FC = () => {
     isExecuting: false,
     currentCommand: null
   });
-  
+
   // Get the command execution context
   const { executeCommand } = useCommand();
-  
+
   // Create a chat hook with command execution enabled
   const chat = useChat({
     localCommandExecution: true,
@@ -26,31 +26,34 @@ export const ChatWithCommandSupport: React.FC = () => {
       timeout: 30000 // 30 second timeout
     },
     onCommandStart: (command) => {
-      console.log(`Executing command: ${command}`);
+      console.log(`🚀 CODER: Executing command: ${command}`);
       setCommandStatus({
         isExecuting: true,
         currentCommand: command
       });
     },
     onCommandComplete: (command, result) => {
-      console.log(`Command completed: ${command}`, result);
+      console.log(`✅ CODER: Command completed: ${command}`, result);
       setCommandStatus({
         isExecuting: false,
         currentCommand: null
       });
     }
   });
-  
+
   const handleSubmit = (message: string) => {
-    console.log('Message submitted:', message);
+    console.log('📝 CODER: Message submitted:', message);
     chat.append({
       content: message,
       role: 'user'
     });
   };
-  
+
+  console.log(`📊 CODER: Chat messages count: ${chat.messages.length}`);
+  console.log(`🔧 CODER: Command execution enabled: ${chat.localCommandExecution ? 'YES' : 'NO'}`);
+
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Command execution status indicator */}
       {commandStatus.isExecuting && commandStatus.currentCommand && (
         <View style={styles.commandStatus}>
@@ -59,12 +62,20 @@ export const ChatWithCommandSupport: React.FC = () => {
           </Text>
         </View>
       )}
-      
-      {/* Use the Chat component directly */}
-      <View style={styles.chatContainer}>
-        <Chat />
-      </View>
-    </View>
+
+      {/* Use MessageList and MessageInput directly with our configured chat instance */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardAvoidingView}
+      >
+        <View style={styles.inner}>
+          <View style={styles.topBorder} />
+          {/* Use our chat instance with command execution enabled */}
+          <MessageList messages={chat.messages} />
+          <MessageInput maxRows={8} onSubmit={handleSubmit} />
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
@@ -74,8 +85,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     position: 'relative',
   },
-  chatContainer: {
+  keyboardAvoidingView: {
     flex: 1,
+  },
+  inner: {
+    flex: 1,
+    position: 'relative',
+  },
+  topBorder: {
+    height: 1,
+    backgroundColor: '#333',
+    width: '100%',
   },
   commandStatus: {
     position: 'absolute',

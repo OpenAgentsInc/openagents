@@ -15,7 +15,16 @@ const ChatScreenContent = () => {
   const { theme } = useAppTheme()
   const { messages, append } = useChat({
     fetch: expoFetch as unknown as typeof globalThis.fetch,
-    onError: error => console.error(error, 'ERROR')
+    onError: error => console.error(error, 'ERROR'),
+    // Enable command execution with extensive logging
+    localCommandExecution: true,
+    onCommandStart: (command) => {
+      console.log(`🚀 ONYX: Starting command execution: ${command}`);
+    },
+    onCommandComplete: (command, result) => {
+      console.log(`✅ ONYX: Command completed: ${command}`);
+      console.log('📊 ONYX: Command result:', result);
+    }
   })
 
   const [message, setMessage] = React.useState("")

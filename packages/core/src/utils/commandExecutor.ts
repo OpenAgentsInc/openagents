@@ -1,4 +1,16 @@
-import { spawn } from 'child_process';
+// Conditionally import child_process only in Node.js environment
+// This prevents errors when this code is loaded in a browser context
+let childProcess: typeof import('child_process') | null = null;
+try {
+  // Check if we're in a Node.js environment
+  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+    // Dynamic import to avoid bundling Node.js modules in browser builds
+    childProcess = require('child_process');
+  }
+} catch (e) {
+  // Silently fail - we'll handle the lack of child_process later
+  console.debug('child_process not available - command execution will be disabled');
+}
 
 export interface CommandExecutionOptions {
   /**
@@ -79,13 +91,19 @@ export async function executeCommand(
       return;
     }
 
+    // Check if childProcess is available first
+    if (!childProcess) {
+      reject(new Error('Command execution is not available in this environment'));
+      return;
+    }
+    
     // Set default options
     const timeoutMs = options.timeout || 30000; // Default 30 second timeout
-    const cwd = options.cwd || process.cwd();
-    const env = { ...process.env, ...(options.env || {}) };
+    const cwd = options.cwd || (typeof process !== 'undefined' ? process.cwd() : '.');
+    const env = { ...(typeof process !== 'undefined' ? process.env : {}), ...(options.env || {})}
     
     // Spawn process with shell
-    const proc = spawn('bash', ['-c', command], {
+    const proc = childProcess.spawn('bash', ['-c', command], {
       cwd,
       env,
       shell: true
@@ -141,8 +159,8 @@ export async function safeExecuteCommand(
   options: CommandExecutionOptions = {}
 ): Promise<CommandExecutionResult | { error: string }> {
   try {
-    // Check if we are in a Node.js environment with child_process
-    if (typeof window !== 'undefined' && !window.require) {
+    // Check if we are in a browser environment
+    if (typeof window !== 'undefined' && !childProcess) {
       return { 
         error: 'Command execution is only available in the Electron app'
       };

@@ -3,14 +3,24 @@
  * Looking for the pattern <execute-command>command</execute-command>
  */
 export function parseCommandsFromMessage(message: string): string[] {
+  if (message.includes("<execute-command>")) {
+    console.log("🔍 COMMAND PARSER: Scanning message for command tags");
+  }
+  
   const commands: string[] = [];
   const commandRegex = /<execute-command>([\s\S]*?)<\/execute-command>/g;
   
   let match: RegExpExecArray | null;
   while ((match = commandRegex.exec(message)) !== null) {
     if (match[1] && match[1].trim()) {
-      commands.push(match[1].trim());
+      const command = match[1].trim();
+      commands.push(command);
+      console.log("✅ COMMAND PARSER: Extracted command:", command);
     }
+  }
+  
+  if (commands.length > 0) {
+    console.log(`🔢 COMMAND PARSER: Found ${commands.length} commands`);
   }
   
   return commands;
@@ -23,9 +33,11 @@ export function replaceCommandTagsWithResults(
   message: string,
   results: Array<{ command: string; result: string | { error: string } }>
 ): string {
+  console.log("🔄 COMMAND PARSER: Replacing command tags with results");
+  
   let updatedMessage = message;
   
-  for (const { command, result } of results) {
+  for (const { command, result } of results) {    
     const escapedCommand = command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const tagPattern = new RegExp(
       `<execute-command>${escapedCommand}<\\/execute-command>`,
@@ -39,7 +51,7 @@ export function replaceCommandTagsWithResults(
         '<execute-command>',
         command,
         '</execute-command>',
-        '\n\n```bash-output\n',
+        '\n\n**Command Result:**\n```bash\n',
         result,
         '\n```'
       ].join('');
@@ -48,13 +60,17 @@ export function replaceCommandTagsWithResults(
         '<execute-command>',
         command,
         '</execute-command>',
-        '\n\n```bash-error\n',
+        '\n\n**Command Error:**\n```bash\n',
         result.error,
         '\n```'
       ].join('');
     }
     
     updatedMessage = updatedMessage.replace(tagPattern, replacement);
+  }
+  
+  if (updatedMessage !== message) {
+    console.log(`✅ COMMAND PARSER: Replacement complete - added command results to message`);
   }
   
   return updatedMessage;
@@ -68,6 +84,7 @@ export function formatCommandOutput(
   result: { stdout: string; stderr: string; exitCode: number } | { error: string }
 ): string {
   if ('error' in result) {
+    console.log(`❌ COMMAND PARSER: Command error: ${result.error}`);
     return `Error: ${result.error}`;
   }
   
@@ -75,6 +92,7 @@ export function formatCommandOutput(
   let output = '';
   
   if (stdout) {
+    console.log(`📤 COMMAND PARSER: Command produced ${stdout.length} bytes of output`);
     output += stdout;
   }
   
@@ -88,5 +106,9 @@ export function formatCommandOutput(
     output += `Exit code: ${exitCode}`;
   }
   
-  return output || 'Command executed successfully (no output)';
+  if (!output) {
+    return 'Command executed successfully (no output)';
+  }
+  
+  return output;
 }

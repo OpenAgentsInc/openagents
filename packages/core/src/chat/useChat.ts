@@ -1,7 +1,7 @@
 import { UIMessage } from './types';
 import { dummyMessages } from './dummyData'
 import { useChat as vercelUseChat } from "@ai-sdk/react"
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseCommandsFromMessage, replaceCommandTagsWithResults, formatCommandOutput } from '../utils/commandParser';
 import { safeExecuteCommand, CommandExecutionOptions } from '../utils/commandExecutor';
 
@@ -101,82 +101,128 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     return result;
   }, [localCommandExecution, originalAppend]);
   
-  // Process assistant messages for command execution
-  const processAssistantMessage = useCallback(async (message: UIMessage) => {
-    if (message.role !== 'assistant' || typeof message.content !== 'string') {
-      return;
-    }
-    
-    const commands = parseCommandsFromMessage(message.content);
-    if (commands.length === 0) {
-      return;
-    }
-    
-    // Execute each command and collect results
-    const commandResults: Array<{ command: string; result: string | { error: string } }> = [];
-    for (const command of commands) {
-      try {
-        // Notify about command execution
-        onCommandStart?.(command);
-        
-        // Execute the command
-        const result = await safeExecuteCommand(command, commandOptions);
-        
-        // Format the result
-        const formattedResult = formatCommandOutput(command, result);
-        
-        // Add to results array
-        commandResults.push({
-          command,
-          result: formattedResult
-        });
-        
-        // Notify about command completion
-        onCommandComplete?.(command, result);
-      } catch (error) {
-        commandResults.push({
-          command,
-          result: { error: error instanceof Error ? error.message : String(error) }
-        });
-      }
-    }
-    
-    // Replace command tags with results in the message
-    const updatedContent = replaceCommandTagsWithResults(message.content, commandResults);
-    
-    // If content changed, update the message using the original client
-    if (updatedContent !== message.content) {
-      // In a real implementation, we would update the message here
-      // This is a placeholder since vercelChat doesn't expose an update method
-      console.log('Updated message with command results', { id: message.id, updatedContent });
-      
-      // In a full implementation, we would do something like this:
-      // await updateMessage(message.id, {
-      //   ...message,
-      //   content: updatedContent
-      // });
-    }
-  }, [localCommandExecution, commandOptions, onCommandStart, onCommandComplete]);
+  // Removed the processAssistantMessage callback
+  // (consolidated into the main processing useEffect)
   
-  // Monitor for new assistant messages
+  // Removed duplicate useEffect for monitoring assistant messages
+  // (consolidated into the main processing useEffect above)
+  
+  // Store processed messages with command execution results
+  const [processedMessages, setProcessedMessages] = useState<UIMessage[]>([]);
+  
+  // Update processed messages whenever original messages change
   useEffect(() => {
+    console.log(`🔄 USECHAT: Updating processed messages`);
+    setProcessedMessages(messages);
+  }, [messages]);
+  
+  // Additional function to manually update a message with command results
+  const updateMessage = useCallback((messageId: string, newContent: string) => {
+    console.log(`🔄 USECHAT: Manual message update for ID: ${messageId}`);
+    setProcessedMessages(current => 
+      current.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, content: newContent } 
+          : msg
+      )
+    );
+  }, []);
+  
+  // Use a ref to store processed message IDs to persist across renders
+  const processedMessageIds = useRef<Set<string>>(new Set());
+  
+  // Modified processAssistantMessage to update the message in our local state
+  useEffect(() => {
+    // Skip if command execution is disabled or no messages
     if (!localCommandExecution || messages.length === 0) {
       return;
     }
     
-    // Find the last assistant message
-    const lastAssistantMessage = [...messages]
-      .reverse()
-      .find(m => m.role === 'assistant');
+    // Define a function to update message content
+    const updateMessageWithCommandResults = async (message: UIMessage, results: Array<{ command: string; result: string | { error: string } }>) => {
+      if (results.length === 0) return;
+      
+      console.log(`🔄 USECHAT: Updating message with command results`);
+      const updatedContent = replaceCommandTagsWithResults(message.content, results);
+      
+      if (updatedContent !== message.content) {
+        console.log(`✅ USECHAT: Content changed, updating message in state`);
+        updateMessage(message.id, updatedContent);
+      }
+    };
     
-    if (lastAssistantMessage) {
-      processAssistantMessage(lastAssistantMessage);
-    }
-  }, [localCommandExecution, messages, processAssistantMessage]);
+    // Function to process a single message
+    const processSingleMessage = async (message: UIMessage) => {
+      // Skip already processed messages to prevent infinite loops
+      if (processedMessageIds.current.has(message.id)) {
+        console.log(`ℹ️ USECHAT: Message ${message.id} already processed, skipping`);
+        return;
+      }
+      
+      if (message.role !== 'assistant' || typeof message.content !== 'string') return;
+      
+      const commands = parseCommandsFromMessage(message.content);
+      if (commands.length === 0) return;
+      
+      // Mark message as processed BEFORE executing commands to prevent concurrent processing
+      processedMessageIds.current.add(message.id);
+      console.log(`🚀 USECHAT: Processing ${commands.length} commands for message ${message.id}`);
+      
+      // Execute commands and collect results
+      const commandResults: Array<{ command: string; result: string | { error: string } }> = [];
+      
+      for (const command of commands) {
+        try {
+          console.log(`⚙️ USECHAT: Executing command: ${command}`);
+          onCommandStart?.(command);
+          
+          const result = await safeExecuteCommand(command, commandOptions);
+          const formattedResult = formatCommandOutput(command, result);
+          
+          commandResults.push({ command, result: formattedResult });
+          onCommandComplete?.(command, result);
+        } catch (error) {
+          console.error(`❌ USECHAT: Command execution error:`, error);
+          commandResults.push({
+            command,
+            result: { error: error instanceof Error ? error.message : String(error) }
+          });
+        }
+      }
+      
+      // Update the message content with command results
+      await updateMessageWithCommandResults(message, commandResults);
+    };
+    
+    // Process all unprocessed assistant messages
+    const processNewMessages = async () => {
+      // Get all assistant messages
+      const assistantMessages = messages.filter(m => m.role === 'assistant');
+      
+      // Find messages that haven't been processed yet
+      const unprocessedMessages = assistantMessages.filter(msg => !processedMessageIds.current.has(msg.id));
+      
+      if (unprocessedMessages.length > 0) {
+        console.log(`🔍 USECHAT: Found ${unprocessedMessages.length} new assistant messages to process`);
+        
+        // Process each new message
+        for (const message of unprocessedMessages) {
+          await processSingleMessage(message);
+        }
+      }
+    };
+    
+    // Run the processing
+    processNewMessages();
+  }, [messages, localCommandExecution, commandOptions, onCommandStart, onCommandComplete, updateMessage]);
   
   return {
     ...rest,
-    messages,
-    append
+    // Return processed messages instead of original messages
+    messages: processedMessages,
+    append,
+    // Expose these values for debugging
+    localCommandExecution,
+    isCommandExecutionEnabled: Boolean(localCommandExecution)
   };
 }
