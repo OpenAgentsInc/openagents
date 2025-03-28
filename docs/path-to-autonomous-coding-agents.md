@@ -96,7 +96,7 @@ These capabilities can be implemented using the Cloudflare Agents SDK, which pro
 
 ### MVP: "Coding Overnight" Agent
 
-Building on the recent success of our overnight research agent (ep167), we'll develop an MVP autonomous coding agent capable of completing pull requests without human intervention. This agent will:
+Building on the recent success of our overnight research agent (ep167), we'll develop an MVP autonomous coding agent capable of completing pull requests without human intervention. This MVP has an aggressive development timeline of 1-2 days, with the goal of having it operational for overnight runs by Saturday or Sunday night. The agent will:
 
 1. **Accept Initial Requirements**: Take a feature request or bug description as input
 2. **Execute Tool Chain**: Make 15-20+ sequential tool calls autonomously
@@ -108,6 +108,10 @@ The MVP will demonstrate:
 - Ability to chain multiple reasoning and execution steps
 - Self-correction when encountering errors
 - Complete PR creation with appropriate descriptions
+
+Success will be measured primarily by one simple metric: the creation of one or more pull requests that can be merged with little to no human changes. This represents a true autonomous contribution to the codebase.
+
+For the initial test run, we plan to evaluate the agent across a range of difficulty levels, potentially assigning three different tasks: one easy, one medium, and one hard. This will help establish the boundaries of what's possible with the current implementation and identify areas for improvement.
 
 ### Subsequent Development Areas
 
@@ -135,15 +139,15 @@ The MVP will demonstrate:
 
 Let me explain how the autonomous coding agent will address these challenges in the MVP:
 
-The autonomous coding agent is built on our Cloudflare Agents SDK and leverages the existing MCP integration architecture. The process begins when a user submits a coding task (feature request or bug fix) to the agent through our API. This initial request includes repository details, task description, and authentication tokens for necessary services.
+The autonomous coding agent is built on our Cloudflare Agents SDK and leverages the existing MCP integration architecture. The process begins when a user submits a coding task (feature request or bug fix) to the agent through our Coder desktop app. The interface is intentionally minimal, with a simple text input for the overarching goal, a play/pause button to control execution, and a streaming view showing all agent actions in real-time. This initial request includes repository details, task description, and authentication tokens for necessary services that are already configured in the Coder app.
 
 ### Agent Execution Flow
 
-The flow starts with the Cloudflare Durable Object that represents our autonomous agent. When initialized, it creates an MCP client session that connects to our various MCP servers (GitHub, testing tools, etc.). The agent uses a scheduled job mechanism to maintain persistent execution without timeout constraints. This is critical for overnight operation.
+The flow starts with the Cloudflare Durable Object that represents our autonomous agent. When initialized, it creates an MCP client session that connects to our GitHub MCP server and a custom bash command execution tool. The agent uses a scheduled job mechanism to maintain persistent execution without timeout constraints. This is critical for overnight operation. Additional MCP servers will be provided later through the planned "MCP marketplace," but aren't needed for the initial MVP.
 
 What's key to the implementation is the concept of a stateful agent loop:
 
-1. **Task Analysis Phase**: The agent uses the LLM to parse the requirement and break it into executable sub-tasks. It stores this plan in its durable object storage.
+1. **Task Analysis Phase**: The agent uses Claude 3.5 Sonnet as its primary LLM to parse the requirement and break it into executable sub-tasks. It stores this plan in its durable object storage. For the MVP, we'll rely primarily or exclusively on Claude 3.5 Sonnet, though future iterations may supplement with cheaper local models via Ollama for basic indexing/tagging tasks, and potentially DeepSeek R1 for more advanced reasoning during complex analysis phases.
 
 2. **Context Gathering Phase**: The agent makes multiple MCP tool calls to gather relevant context about the codebase:
    - Repository structure (using GitHub tools)
@@ -180,14 +184,19 @@ The critical innovation is that between each step, the agent stores its state an
 4. Apply automatic linting and formatting through MCP tools
 5. Run tests and fix any issues before finalizing
 
-**Security and Permissions**: The agent operates with clearly defined boundaries. All GitHub operations happen through the MCP server with appropriate scopes. The user explicitly grants permissions during initialization, and they persist only for the lifetime of the agent. For the MVP, we focus on non-destructive operations (creating branches rather than modifying main) and implement approval gates for sensitive actions.
+**Security and Permissions**: The agent operates with clearly defined boundaries. GitHub operations happen through the MCP server with tokens provided by the user through the Coder desktop UI. The current chatserver/MCP implementation has token handling capabilities that will need to be extended and thoroughly tested for private repository access and write operations (commits, PRs, etc.). Authentication tokens persist only for the duration needed and are scoped appropriately for the required operations. For the MVP, we focus on creating branches rather than modifying main directly, and implement permission gates for sensitive actions.
 
 **Error Recovery**: This is perhaps the most critical aspect for overnight operation. We implement a comprehensive error handling system:
 1. Each tool call is wrapped in a try-catch mechanism
 2. Errors are classified by type (authentication, validation, syntax, etc.)
-3. The agent implements different recovery strategies based on error type
-4. For unrecoverable errors, the agent documents the issue and continues with other tasks
-5. A transaction log records all actions, enabling rollback if needed
+3. The agent implements retry logic with exponential backoff (3-5 attempts) for transient errors
+4. For persistent errors, the agent attempts alternative approaches rather than getting stuck
+5. Failed tool calls are highlighted in red in the UI for user visibility
+6. Most importantly, errors in one task never crash the overall agent loop - it continues execution
+7. Users can inspect failed steps and provide guidance messages to help the agent work around obstacles
+8. A transaction log records all actions, enabling diagnosis of failure patterns
+
+The key design principle is resilience - the agent must continue functioning throughout the night even when encountering errors, rather than requiring human intervention for every issue.
 
 **Testing Strategy**: The agent uses repository-specific testing commands discovered through MCP tools. It identifies test patterns in the codebase and generates matching tests for new code. For the MVP, we focus on ensuring existing tests continue to pass after modifications and that new functionality has appropriate test coverage.
 
