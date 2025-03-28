@@ -330,16 +330,20 @@ export class McpClientManager {
    * Disconnect from all MCP servers.
    */
   async disconnectAll(): Promise<void> {
-    for (const [serverName, client] of this.clients.entries()) {
-      try {
-        await client.close();
-        console.log(`Disconnected from ${serverName}`);
-      } catch (error) {
-        console.error(`Error disconnecting from ${serverName}:`, error);
-      }
+    // In Cloudflare Workers environment, we need to be careful with I/O across requests
+    // Instead of actually trying to close connections (which can cause I/O errors),
+    // we'll just clear our maps without attempting to close the connections
+    
+    // Log what we're clearing without trying to perform I/O operations
+    const serverNames = Array.from(this.clients.keys());
+    if (serverNames.length > 0) {
+      console.log(`Clearing connections to: ${serverNames.join(', ')}`);
     }
+    
+    // Clear maps without attempting to close connections
     this.clients.clear();
     this.toolRegistry.clear();
+    console.log(`Cleared all client connections and tool registry`);
   }
 }
 

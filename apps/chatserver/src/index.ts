@@ -154,15 +154,11 @@ Do NOT tell users you can't access GitHub content unless you've tried the approp
       // Force a new connection for each request to avoid stale connections
       console.log(`🔄 [${requestId}] Forcing a fresh MCP connection for this request`);
 
-      // Check if there's an existing connection and disconnect it first
-      // This ensures we always start with a fresh connection for each request
-      try {
-        await mcpClientManager.disconnectAll();
-        console.log(`✅ [${requestId}] Disconnected any existing MCP connections`);
-      } catch (disconnectError) {
-        console.warn(`⚠️ [${requestId}] Error during disconnection (non-critical):`, disconnectError);
-        // Continue anyway as this is just a cleanup step
-      }
+      // Clear any existing references without trying to close connections
+      // to avoid I/O across request context errors
+      mcpClientManager.clients.clear();
+      mcpClientManager.toolRegistry.clear();
+      console.log(`✅ [${requestId}] Cleared any existing MCP connections`)
 
       // Connect to the MCP server with a fresh connection
       await mcpClientManager.connectToServer('https://mcp-github.openagents.com/sse', 'github');
@@ -213,21 +209,53 @@ Do NOT tell users you can't access GitHub content unless you've tried the approp
 
       // --- Call streamText with tool configuration ---
       console.log(`🔄 Creating streamText config with API key: ${c.env.OPENROUTER_API_KEY.substring(0, 8)}...`);
-      // Try using an older/simpler model first as a test
-      const MODEL = "anthropic/claude-3.5-sonnet"; // More reliable for testing
+      const MODEL = "anthropic/claude-3.5-sonnet";
       console.log(`📝 Using model: ${MODEL}`);
+
+      // Add format instructions for custom tool format that will be rendered by ToolCall.tsx
+      const modifiedMessages = messages.map(msg => {
+        if (msg.role === 'system') {
+          return {
+            ...msg,
+            content: msg.content + `\n\nWhen you want to use a GitHub tool, use this format EXACTLY:
+
+<tool>
+{
+  "name": "tool_name",
+  "arguments": {
+    "arg1": "value1",
+    "arg2": "value2"
+  }
+}
+</tool>
+
+For example, to get the README.md from a repository:
+<tool>
+{
+  "name": "get_file_contents",
+  "arguments": {
+    "owner": "openagentsinc",
+    "repo": "openagents",
+    "path": "README.md"
+  }
+}
+</tool>
+
+After using a tool, report its results clearly without fabricating content.`
+          }
+        }
+        return msg;
+      });
 
       const streamResult = streamText({
         model: openrouter(MODEL),
-        messages: messages,
-        // Temporarily disable tools for testing the OpenRouter connection
-        // tools: hasTools ? tools : undefined,
-        // toolChoice: hasTools ? 'auto' : undefined,
-        tools: undefined,
-        toolChoice: undefined,
+        messages: modifiedMessages,
+        // Re-enable tools now that we've confirmed OpenRouter connection works
+        tools: hasTools ? tools : undefined,
+        toolChoice: hasTools ? 'auto' : undefined,
         temperature: 0.7,
 
-        toolCallStreaming: false, // Disable for basic testing
+        toolCallStreaming: true, // Enable for tool streaming
 
         // Pass auth token via headers for tool execution
         // Force proper Authorization format for OpenRouter
