@@ -45,12 +45,12 @@ async function installExtensions() {
   }
 }
 
+// Initialize command execution before anything else
+setupElectronCommandExecutor();
+console.log('✨ Command execution setup complete');
+
 app.whenReady()
   .then(() => {
-    // Set up command execution
-    setupElectronCommandExecutor();
-    console.log('✨ Command execution setup complete');
-    
     // Create window and install extensions
     return createWindow();
   })
