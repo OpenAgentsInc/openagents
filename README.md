@@ -60,6 +60,8 @@ Check out [episode one](https://twitter.com/OpenAgentsInc/status/172194243512571
 
 ## Screenshots
 
+![Coder MCP screenshot](docs/img/coder1.png)
+
 ![Onyx chat screenshot](docs/img/onyx2a.png)
 
 ![Onyx bitcoin wallet screenshot](docs/img/onyx1.png)
