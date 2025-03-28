@@ -1,3 +1,4 @@
+import React from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 interface ChevronIconProps {

@@ -1,3 +1,4 @@
+import React from 'react'
 import { View, TextInput, StyleSheet, Pressable, Platform } from 'react-native'
 import { useState } from 'react'
 import { ArrowUp } from 'lucide-react'

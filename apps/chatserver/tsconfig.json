@@ -6,12 +6,23 @@
     "strict": true,
     "skipLibCheck": true,
     "lib": [
-      "ESNext"
+      "ESNext",
+      "DOM"
     ],
     "types": [
-      "./worker-configuration.d.ts"
+      "./worker-configuration.d.ts",
+      "node"
     ],
     "jsx": "react-jsx",
-    "jsxImportSource": "hono/jsx"
+    "jsxImportSource": "hono/jsx",
+    "esModuleInterop": true,
+    "noImplicitAny": false
   },
+  "include": [
+    "src/**/*",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ]
 }
