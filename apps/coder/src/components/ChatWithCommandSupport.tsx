@@ -40,10 +40,10 @@ export const ChatWithCommandSupport: React.FC = () => {
       });
     }
   });
-  
+
   // Create a ref outside the effect to ensure we only run the test once
   const hasRunTest = React.useRef(false);
-  
+
   // Test command execution on component mount
   useEffect(() => {
     const testCommandExecution = async () => {
@@ -52,30 +52,30 @@ export const ChatWithCommandSupport: React.FC = () => {
         console.log('🧪 CODER: Command execution test already run, skipping');
         return;
       }
-      
+
       // Mark as run immediately to prevent multiple executions
       hasRunTest.current = true;
-      
+
       console.log('🧪 CODER: Testing command execution...');
       console.log('🧪 CODER: Command execution available via context:', isAvailable);
-      
+
       try {
         // Log window.commandExecution availability
         if (typeof window !== 'undefined') {
           console.log('🧪 CODER: window.commandExecution available:', !!window.commandExecution);
         }
-        
+
         // Test via our chat hook
         const result = await chat.testCommandExecution();
         console.log('🧪 CODER: Command test result:', result);
-        
+
         // We'll skip testing via command context to avoid infinite loops
         console.log('🧪 CODER: Skipping command context test to avoid potential loops');
       } catch (error) {
         console.error('🧪 CODER: Command test error:', error);
       }
     };
-    
+
     testCommandExecution();
   }, [chat, isAvailable]); // Removed executeCommand dependency
 
@@ -91,9 +91,9 @@ export const ChatWithCommandSupport: React.FC = () => {
   const processedMessages = useMemo(() => {
     // Only log on changes, not every render
     if (process.env.NODE_ENV !== 'production') {
-      console.log(`📊 CODER: Chat messages count: ${chat.messages.length}`);
+      // console.log(`📊 CODER: Chat messages count: ${chat.messages.length}`);
     }
-    
+
     return chat.messages;
   }, [chat.messages]);
 
