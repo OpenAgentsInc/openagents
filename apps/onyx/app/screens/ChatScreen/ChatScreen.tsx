@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react"
+import React, { useCallback } from "react"
 import { View, Text, ScrollView, TextInput, Pressable } from "react-native"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { Ionicons } from "@expo/vector-icons"
@@ -7,79 +7,22 @@ import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/h
 import { BlurView } from "expo-blur"
 import { styles } from "./ChatScreen.styles"
 import { fetch as expoFetch } from 'expo/fetch';
-import { useChat } from "@ai-sdk/react"
-import { ToastProvider, useToast, useInterval } from "@openagents/ui"
-import { useEarnings } from "@/models/earnings/EarningsContext"
-import { navigate } from "@/navigators/navigationUtilities"
-
-const DEMO_MESSAGES = [
-  { id: 1, text: "How can I help you today?", isAgent: true },
-  { id: 2, text: "I want to implement Lightning Network payments in my app", isUser: true },
-  { id: 3, text: "Great choice! Lightning Network is perfect for fast, low-cost Bitcoin transactions. Are you looking to implement a Lightning node or connect to an existing one?", isAgent: true },
-  { id: 4, text: "I want to use Breez SDK to handle the Lightning stuff", isUser: true },
-  { id: 5, text: "Excellent! Breez SDK is a great choice for adding Lightning capabilities without running your own node. Let's start by setting up the SDK and configuring it with your credentials. Would you like to see some example code?", isAgent: true },
-  { id: 6, text: "Yes - for React Native", isUser: true },
-  { id: 7, text: "Here's a basic example of initializing Breez SDK in a React Native app:\n\n```typescript\nconst mnemonic = '<mnemonics words>'\n\n// Create the default config, providing your Breez API key\nconst config = await defaultConfig(\n  LiquidNetwork.MAINNET,\n  '<your-Breez-API-key>'\n)\n\n// By default in React Native the workingDir is set to:\n// `/<APPLICATION_SANDBOX_DIRECTORY>/breezSdkLiquid`\n// You can change this to another writable directory or a\n// subdirectory of the workingDir if managing multiple mnemonics.\nconsole.log(`Working directory: ${config.workingDir}`)\n// config.workingDir = \"path to writable directory\"\n\nawait connect({ mnemonic, config })\n```\n\nThis example shows the basic setup. Would you like me to explain each part or show how to handle specific payment scenarios?", isAgent: true },
-]
-
-// Category mapping for earning types
-const CATEGORIES = ['compute', 'plugin', 'referral', 'content'];
-const DESCRIPTIONS = [
-  'MCP Server Usage',
-  'Agent Plugin',
-  'Referral Rewards',
-  'Content Creation'
-];
-
-// Random amount generator between 100-1000 satoshis
-const generateRandomAmount = () => Math.floor(Math.random() * 900) + 100;
+import { useChat } from "@openagents/core"
+import { ToastProvider } from "@openagents/ui"
 
 // Wrapper component that uses the toast context
 const ChatScreenContent = () => {
   const { theme } = useAppTheme()
   const { messages, append } = useChat({
     fetch: expoFetch as unknown as typeof globalThis.fetch,
-    api: "https://chat.openagents.com",
-    onError: error => console.error(error, 'ERROR'),
-    initialMessages: DEMO_MESSAGES.map(message => ({
-      id: message.id.toString(),
-      content: message.text,
-      role: message.isAgent ? 'assistant' : 'user'
-    }))
+    onError: error => console.error(error, 'ERROR')
   })
 
   const [message, setMessage] = React.useState("")
-  const { show } = useToast()
-  const { addEarning } = useEarnings()
-  
-  // Demo toast that shows earnings every 5 seconds
-  useInterval(() => {
-    const amount = generateRandomAmount();
-    const categoryIndex = Math.floor(Math.random() * CATEGORIES.length);
-    const category = CATEGORIES[categoryIndex] as 'compute' | 'plugin' | 'referral' | 'content';
-    const description = DESCRIPTIONS[categoryIndex];
-    
-    // Add to earnings context
-    addEarning({
-      amount,
-      category,
-      description
-    });
-    
-    // Show toast
-    show({
-      message: `Earned ${amount.toLocaleString()} ₿ ($${((amount / 100000000) * 87210).toFixed(2)})`,
-      duration: 3000,
-      icon: <Ionicons name="wallet-outline" size={20} color="white" />,
-      onPress: () => {
-        // Navigate to Agents tab (which shows AgentEarningsScreen)
-        navigate('Agents')
-      }
-    });
-  }, 5000);
-  
+
   const onSubmit = useCallback(() => {
-    console.log(message)
+    if (!message.trim()) return
+
     append({
       content: message,
       role: 'user'
