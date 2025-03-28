@@ -16,6 +16,7 @@ This repo holds our new cross-platform version (v5), a work in progress.
   │   ├── mcp-github-server/  # Remote MCP server with GitHub tools
   │   └── onyx/               # Onyx mobile app & bitcoin wallet
   ├── packages/               # Shared libraries/components
+  │   ├── core/               # Shared core logic
   │   └── ui/                 # UI components
   └── docs/                   # Documentation
 ```
