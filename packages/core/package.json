@@ -7,7 +7,6 @@
     "t": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/react": "1.2.2",
-    "@modelcontextprotocol/sdk": "1.8.0"
+    "@ai-sdk/react": "1.2.2"
   }
 }

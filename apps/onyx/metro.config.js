@@ -18,16 +18,17 @@ const monorepoPackages = {
 // Note how we change this from `monorepoRoot` to `projectRoot`. This is part of the optimization!
 config.watchFolders = [projectRoot, ...Object.values(monorepoPackages)];
 
-// Add the monorepo workspaces as `extraNodeModules` to Metro.
-// If your monorepo tooling creates workspace symlinks in the `node_modules` directory,
-// you can either add symlink support to Metro or set the `extraNodeModules` to avoid the symlinks.
-// See: https://metrobundler.dev/docs/configuration/#extranodemodules
-config.resolver.extraNodeModules = monorepoPackages;
+// Add the monorepo workspaces and MCP SDK as extraNodeModules
+config.resolver.extraNodeModules = {
+  ...monorepoPackages,
+  '@modelcontextprotocol/sdk': path.resolve(monorepoRoot, 'node_modules/@modelcontextprotocol/sdk/dist/esm')
+};
 
 // 2. Let Metro know where to resolve packages and in what order
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(monorepoRoot, 'node_modules'),
+  path.resolve(monorepoRoot, 'packages/core/node_modules'),
 ];
 
 module.exports = config;
