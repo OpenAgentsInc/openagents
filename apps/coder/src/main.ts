@@ -7,8 +7,6 @@ import {
   installExtension,
   REACT_DEVELOPER_TOOLS,
 } from "electron-devtools-installer";
-import { connectToServer } from "@openagents/core";
-import { setMcpClient } from "./helpers/ipc/mcp/mcp-listeners";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -22,7 +20,6 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: true,
       nodeIntegrationInSubFrames: false,
-
       preload: preload,
     },
     titleBarStyle: "hidden",
@@ -47,20 +44,9 @@ async function installExtensions() {
   }
 }
 
-async function setupMcp() {
-  try {
-    const client = await connectToServer();
-    setMcpClient(client);
-    console.log("MCP client connected successfully");
-  } catch (error) {
-    console.error("Failed to connect MCP client:", error);
-  }
-}
-
 app.whenReady()
   .then(createWindow)
-  .then(installExtensions)
-  .then(setupMcp);
+  .then(installExtensions);
 
 //osX only
 app.on("window-all-closed", () => {

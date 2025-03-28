@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { SSEClientTransport } from './mcp/sse'
-import { Client } from "@modelcontextprotocol/sdk/client/index.js"
-import { type JSONRPCMessage } from './mcp/types';
+// import { SSEClientTransport } from './mcp/sse'
+// import { Client } from "@modelcontextprotocol/sdk/client/index"
+// import { type JSONRPCMessage } from './mcp/types';
 
 export * from './chat/types'
 export * from './chat/useChat'
 
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
+/*
 interface MCPState {
   status: 'connecting' | 'connected' | 'disconnected' | 'error';
   error?: Error;
@@ -93,3 +94,4 @@ export async function connectToServer() {
 export function getCurrentUrl() {
   return currentUrl;
 }
+*/
