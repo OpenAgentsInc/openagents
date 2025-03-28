@@ -1,11 +1,13 @@
 import React from "react";
-import { useMCP } from "@openagents/core";
-import { Button, Chat } from "@openagents/ui";
+import { CommandProvider } from "../helpers/ipc/command/CommandProvider";
+import { ChatWithCommandSupport } from "../components/ChatWithCommandSupport";
 
 export default function HomePage() {
   return (
     <div className="font-mono flex h-full text-white">
-      <Chat />
+      <CommandProvider>
+        <ChatWithCommandSupport />
+      </CommandProvider>
     </div>
   );
 }

@@ -12,13 +12,40 @@ interface ThemeModeContext {
   system: () => Promise<boolean>;
   current: () => Promise<"dark" | "light" | "system">;
 }
+
 interface ElectronWindow {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
 }
 
+interface CommandExecutionResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  command: string;
+}
+
+interface CommandExecutionError {
+  error: string;
+  command: string;
+}
+
+type CommandResult = CommandExecutionResult | CommandExecutionError;
+
+interface CommandExecutionContext {
+  executeCommand: (
+    command: string, 
+    options?: { 
+      cwd?: string; 
+      timeout?: number; 
+      env?: Record<string, string>;
+    }
+  ) => Promise<CommandResult>;
+}
+
 declare interface Window {
   themeMode: ThemeModeContext;
   electronWindow: ElectronWindow;
+  commandExecution: CommandExecutionContext;
 }

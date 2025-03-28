@@ -5,6 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 
 export * from './chat/types'
 export * from './chat/useChat'
+export * from './utils/commandExecutor'
+export * from './utils/commandParser'
 
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
