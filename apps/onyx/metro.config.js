@@ -10,6 +10,7 @@ const config = getDefaultConfig(projectRoot);
 // If your monorepo tooling can give you the list of monorepo workspaces linked
 // in your app workspace, you can automate this list instead of hardcoding them.
 const monorepoPackages = {
+  '@openagents/core': path.resolve(monorepoRoot, 'packages/core'),
   '@openagents/ui': path.resolve(monorepoRoot, 'packages/ui'),
 };
 
