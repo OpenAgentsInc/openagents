@@ -7,7 +7,7 @@ import { xt256 as syntaxTheme } from "react-syntax-highlighter/dist/esm/styles/h
 import { BlurView } from "expo-blur"
 import { styles } from "./ChatScreen.styles"
 import { fetch as expoFetch } from 'expo/fetch';
-import { useChat } from "@ai-sdk/react"
+import { useChat } from "@openagents/core"
 import { ToastProvider } from "@openagents/ui"
 
 // Wrapper component that uses the toast context
@@ -15,7 +15,6 @@ const ChatScreenContent = () => {
   const { theme } = useAppTheme()
   const { messages, append } = useChat({
     fetch: expoFetch as unknown as typeof globalThis.fetch,
-    api: "https://chat.openagents.com",
     onError: error => console.error(error, 'ERROR')
   })
 
