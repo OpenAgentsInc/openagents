@@ -345,6 +345,16 @@ export class McpClientManager {
     this.toolRegistry.clear();
     console.log(`Cleared all client connections and tool registry`);
   }
+  
+  /**
+   * Clear all client connections and tool registrations
+   * This is a public method that can be used to clear the state
+   * without attempting to close connections
+   */
+  clearConnections(): void {
+    this.clients.clear();
+    this.toolRegistry.clear();
+  }
 }
 
 // Singleton instance for the application

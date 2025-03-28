@@ -1,5 +1,5 @@
-import React, { useCallback } from "react"
-import { View, Text, ScrollView, TextInput, Pressable } from "react-native"
+import React, { useCallback, useEffect } from "react"
+import { View, Text, ScrollView, TextInput, Pressable, Button } from "react-native"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { Ionicons } from "@expo/vector-icons"
 import CodeHighlighter from "react-native-code-highlighter"
@@ -13,10 +13,30 @@ import { ToastProvider } from "@openagents/ui"
 // Wrapper component that uses the toast context
 const ChatScreenContent = () => {
   const { theme } = useAppTheme()
-  const { messages, append } = useChat({
+  const { messages, append, testCommandExecution } = useChat({
     fetch: expoFetch as unknown as typeof globalThis.fetch,
-    onError: error => console.error(error, 'ERROR')
+    onError: error => console.error(error, 'ERROR'),
+    // Enable command execution with extensive logging
+    localCommandExecution: true,
+    onCommandStart: (command) => {
+      console.log(`🚀 ONYX: Starting command execution: ${command}`);
+    },
+    onCommandComplete: (command, result) => {
+      console.log(`✅ ONYX: Command completed: ${command}`);
+      console.log('📊 ONYX: Command result:', result);
+    }
   })
+  
+  // Test command execution on mount
+  useEffect(() => {
+    const runTest = async () => {
+      console.log('🧪 ONYX: Running command execution test...');
+      const result = await testCommandExecution();
+      console.log('🧪 ONYX: Command execution test completed:', result);
+    };
+    
+    runTest();
+  }, [testCommandExecution]);
 
   const [message, setMessage] = React.useState("")
 
