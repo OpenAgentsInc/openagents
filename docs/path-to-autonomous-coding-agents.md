@@ -92,36 +92,33 @@ The transcript from ep167 discusses agent swarms with capabilities like:
 
 These capabilities can be implemented using the Cloudflare Agents SDK, which provides durable objects and persistent memory.
 
-## Implementation Roadmap
+## Implementation Strategy
 
-### Phase 1: Foundation (Current State)
-- MCP integration with chat interfaces
-- GitHub tool integration
-- Basic agent infrastructure
+### MVP: "Coding Overnight" Agent
 
-### Phase 2: Extended Tooling (3-6 months)
+Building on the recent success of our overnight research agent (ep167), we'll develop an MVP autonomous coding agent capable of completing pull requests without human intervention. This agent will:
+
+1. **Accept Initial Requirements**: Take a feature request or bug description as input
+2. **Execute Tool Chain**: Make 15-20+ sequential tool calls autonomously
+3. **Complete PR Lifecycle**: From planning to code implementation to testing to PR creation
+4. **Loop Until Resolution**: Continue working overnight until the task is completed
+
+The MVP will demonstrate:
+- Unattended operation over several hours
+- Ability to chain multiple reasoning and execution steps
+- Self-correction when encountering errors
+- Complete PR creation with appropriate descriptions
+
+### Subsequent Development Areas
+
 - Expand MCP tool ecosystem beyond GitHub
-- Improve code generation capabilities
+- Improve code generation capabilities with better repository context
 - Develop sandbox environments for code execution
 - Implement basic agent memory systems
-
-### Phase 3: Autonomous Workflows (6-12 months)
-- Develop agents capable of executing simple, well-defined coding tasks
-- Create workflow templates for common development patterns
-- Build feedback mechanisms for agent improvement
-- Implement secure execution environments
-
-### Phase 4: Collaborative Intelligence (12-18 months)
 - Enable agent-to-agent communication
 - Implement swarm intelligence capabilities
 - Develop specialized agent roles (code writer, reviewer, tester)
 - Create incentive models for agent collaboration
-
-### Phase 5: Full Autonomy (18+ months)
-- Agents capable of understanding and implementing complex features
-- Self-healing and self-improving agent systems
-- Seamless human-agent collaboration models
-- Marketplace for specialized agents with Bitcoin-based incentives
 
 ## Technical Challenges
 
@@ -134,13 +131,6 @@ These capabilities can be implemented using the Cloudflare Agents SDK, which pro
 7. **Resource Efficiency**: Managing computational and API costs for agent operations
 8. **Human Collaboration**: Creating intuitive interfaces for human oversight and collaboration
 
-## Ethical Considerations
-
-1. **Developer Displacement**: Addressing concerns about job replacement vs augmentation
-2. **Accountability**: Determining responsibility for agent-written code
-3. **Transparency**: Making agent decision processes explainable
-4. **Control**: Ensuring humans maintain appropriate oversight
-5. **Bias**: Preventing perpetuation of biases in code generation
 
 ## Open Questions
 
