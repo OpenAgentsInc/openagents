@@ -138,3 +138,25 @@
 
   These changes should completely eliminate the infinite command execution loop while still ensuring command results appear in the chat
   UI properly.
+
+---
+
+
+⏺ I've made two critical changes to fix the issues with command results not showing in the UI:
+
+  1. Changed how command results are displayed in the commandParser.ts file:
+    - Instead of keeping the command tag in the output and adding results, now it replaces the entire tag with a more visible output
+  format
+    - The new format shows the command as a code block followed by the results, making it more visible
+  2. Completely changed the approach to displaying command results in useChat.ts:
+    - Now it ALWAYS creates a new assistant message with the command results
+    - This ensures results are guaranteed to be visible in the UI
+    - Uses a clearer formatting with Markdown headers to make the results stand out
+    - Still tries to update the original message if tag replacement is successful
+    - Uses timeout to ensure proper message ordering
+
+  The key insight is that instead of trying to update the existing message (which wasn't showing changes in the UI), we now always create
+   a brand new message with command results, guaranteeing they'll be displayed. This is a more reliable approach than trying to modify
+  existing message content.
+
+  These changes should fix the issue where commands were being executed but the results weren't visible in the UI.

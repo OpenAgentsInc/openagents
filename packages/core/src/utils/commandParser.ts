@@ -59,19 +59,21 @@ export function replaceCommandTagsWithResults(
     let replacement: string;
     
     if (typeof result === 'string') {
+      // MODIFIED: Change format to make output more visible - don't keep the command tag
       replacement = [
-        '<execute-command>',
+        '```',
         command,
-        '</execute-command>',
+        '```',
         '\n\n**Command Result:**\n```bash\n',
         result,
         '\n```'
       ].join('');
     } else {
+      // MODIFIED: Change format to make output more visible - don't keep the command tag
       replacement = [
-        '<execute-command>',
+        '```',
         command,
-        '</execute-command>',
+        '```',
         '\n\n**Command Error:**\n```bash\n',
         result.error,
         '\n```'

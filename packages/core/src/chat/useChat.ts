@@ -272,42 +272,43 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       // Get the updated content with command results
       const updatedContent = replaceCommandTagsWithResults(message.content, commandResults);
       
-      if (updatedContent === message.content) {
-        console.error(`❌ USECHAT: Failed to update message content with command results`);
-        console.log(`🔎 USECHAT: Original: ${message.content.substring(0, 100)}...`);
-        console.log(`🔎 USECHAT: Updated: ${updatedContent.substring(0, 100)}...`);
+      // COMPLETELY CHANGED APPROACH: Always create a new message with command results
+      // This ensures results are always visible even if tag replacement fails
+      const appendKey = `append-${message.id}`;
+      
+      if (!executedCommands.current.has(appendKey)) {
+        // Mark as appended to prevent duplicate appends
+        executedCommands.current.add(appendKey);
         
-        // Create a new assistant message with the command results - but only once
-        // Create a unique key for the append operation
-        const appendKey = `append-${message.id}`;
+        console.log(`🚨 USECHAT: Creating new message with command results (reliable approach)`);
         
-        if (!executedCommands.current.has(appendKey)) {
-          // Mark as appended to prevent duplicate appends
-          executedCommands.current.add(appendKey);
-          
-          console.log(`🚒 USECHAT: Creating new message with command results!`);
-          
-          // Format command results as a new message
-          const resultContent = "**Command Results:**\n\n" + 
-            commandResults.map(({command, result}) => {
-              const resultText = typeof result === 'string' 
-                ? result 
-                : `Error: ${result.error}`;
-              
-              return `**Command:** \`${command}\`\n\n\`\`\`\n${resultText}\n\`\`\`\n\n`;
-            }).join("\n");
-          
-          // Insert a new message with just the command results
-          console.log(`🚀 USECHAT: Appending new message with command results! (one time only)`);
+        // Format command results clearly in a new message
+        const resultContent = "# Command Results\n\n" + 
+          commandResults.map(({command, result}, index) => {
+            const resultText = typeof result === 'string' 
+              ? result 
+              : `Error: ${result.error}`;
+            
+            return `### Command ${index+1}: \`${command}\`\n\n\`\`\`bash\n${resultText}\n\`\`\`\n\n`;
+          }).join("\n---\n\n");
+        
+        // Insert a new message with just the command results
+        console.log(`🚀 USECHAT: Appending new message with command results (guaranteed)`);
+        
+        setTimeout(() => {
           originalAppend({
             role: 'assistant',
             content: resultContent
           });
+        }, 100);
+        
+        // Still try to update the original message as well
+        if (updatedContent !== message.content) {
+          console.log(`✅ USECHAT: Also updating original message with command results`);
+          updateMessage(message.id, updatedContent);
         }
       } else {
-        console.log(`✅ USECHAT: Successfully updated message content with command results`);
-        // Update the message in our local state
-        updateMessage(message.id, updatedContent);
+        console.log(`⏺️ USECHAT: Already appended command results for message ${message.id}`);
       }
       
       // Force a refresh of messages exactly once to ensure UI updates
