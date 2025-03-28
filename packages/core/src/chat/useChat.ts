@@ -81,6 +81,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     // Skip command execution if it's not enabled
     if (!localCommandExecution) {
+      console.log('ℹ️ USECHAT: Command execution disabled, skipping command check');
       return result;
     }
     
@@ -89,6 +90,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       const commands = parseCommandsFromMessage(message.content);
       
       if (commands.length > 0 && result) {
+        console.log(`🔍 USECHAT: Found ${commands.length} commands in user message`);
         // Store commands for processing after the response is received
         pendingCommandsRef.current = {
           messageId: typeof result === 'object' ? (result as any).id || 'unknown' : 'unknown',
@@ -216,13 +218,41 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     processNewMessages();
   }, [messages, localCommandExecution, commandOptions, onCommandStart, onCommandComplete, updateMessage]);
   
-  return {
+  // Add a simple function to test if command execution is available
+  const testCommandExecution = useCallback(async () => {
+    try {
+      const { safeExecuteCommand } = await import('../utils/commandExecutor');
+      const result = await safeExecuteCommand('echo "Command execution test"', commandOptions);
+      
+      console.log('🧪 USECHAT: Command execution test result:', result);
+      return result;
+    } catch (error) {
+      console.error('🧪 USECHAT: Command execution test error:', error);
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }, [commandOptions]);
+
+  // Prepare return value with proper typing
+  const returnValue = {
     ...rest,
     // Return processed messages instead of original messages
     messages: processedMessages,
     append,
-    // Expose these values for debugging
-    localCommandExecution,
-    isCommandExecutionEnabled: Boolean(localCommandExecution)
+    // Add the test function
+    testCommandExecution
   };
+
+  // Add debugging properties
+  Object.defineProperties(returnValue, {
+    localCommandExecution: {
+      enumerable: true,
+      value: localCommandExecution
+    },
+    isCommandExecutionEnabled: {
+      enumerable: true,
+      value: Boolean(localCommandExecution)
+    }
+  });
+
+  return returnValue;
 }

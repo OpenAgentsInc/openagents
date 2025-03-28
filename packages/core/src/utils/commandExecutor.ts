@@ -1,15 +1,86 @@
 // Conditionally import child_process only in Node.js environment
 // This prevents errors when this code is loaded in a browser context
+/**
+ * Helper function to detect if we're running in Electron
+ */
+function isElectron() {
+  // Renderer process
+  if (typeof window !== 'undefined' && typeof window.process === 'object' && 
+      (window.process as any)?.type === 'renderer') {
+    console.log('🔍 COMMAND EXECUTOR: Electron renderer process detected');
+    return true;
+  }
+
+  // Main process
+  if (typeof process !== 'undefined' && typeof process.versions === 'object' && 
+      process.versions.electron) {
+    console.log('🔍 COMMAND EXECUTOR: Electron main process detected');
+    return true;
+  }
+
+  // Detect the user agent when the `nodeIntegration` option is set to false
+  if (typeof navigator === 'object' && typeof (navigator as any).userAgent === 'string' && 
+      (navigator as any).userAgent.indexOf('Electron') >= 0) {
+    console.log('🔍 COMMAND EXECUTOR: Electron user agent detected');
+    return true;
+  }
+
+  console.log('🔍 COMMAND EXECUTOR: Not running in Electron');
+  return false;
+}
+
+/**
+ * Helper function to execute a command via Electron IPC
+ */
+async function executeViaElectronIPC(command: string, options: CommandExecutionOptions = {}) {
+  if (typeof window === 'undefined' || !isElectron()) {
+    throw new Error('Not in an Electron renderer process');
+  }
+
+  try {
+    // Try to get the electron IPC renderer
+    const electron = (window as any).require('electron');
+    if (!electron || !electron.ipcRenderer) {
+      throw new Error('Electron IPC renderer not available');
+    }
+
+    console.log('🔌 COMMAND EXECUTOR: Executing via Electron IPC:', command);
+    return await electron.ipcRenderer.invoke('execute-command', command, options);
+  } catch (error) {
+    console.error('❌ COMMAND EXECUTOR: Error executing via Electron IPC:', error);
+    throw error;
+  }
+}
+
 let childProcess: typeof import('child_process') | null = null;
 try {
-  // Check if we're in a Node.js environment
-  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+  // Check if we're in Electron or Node.js environment
+  const isNodeEnv = typeof process !== 'undefined' && process.versions && process.versions.node;
+  const isElectronEnv = isElectron();
+  
+  if (isNodeEnv || isElectronEnv) {
+    console.log('🔍 COMMAND EXECUTOR: Node.js/Electron environment detected');
     // Dynamic import to avoid bundling Node.js modules in browser builds
     childProcess = require('child_process');
+    console.log('✅ COMMAND EXECUTOR: child_process loaded successfully');
+  } else {
+    console.log('🔍 COMMAND EXECUTOR: Browser environment detected - command execution disabled');
   }
 } catch (e) {
-  // Silently fail - we'll handle the lack of child_process later
+  // Log the error for debugging
+  console.error('❌ COMMAND EXECUTOR: Error importing child_process:', e);
   console.debug('child_process not available - command execution will be disabled');
+}
+
+// Declare the global server command executor type
+declare global {
+  interface Window {
+    electron?: {
+      ipcRenderer?: {
+        invoke(channel: string, ...args: any[]): Promise<any>;
+      };
+    };
+  }
 }
 
 export interface CommandExecutionOptions {
@@ -159,16 +230,33 @@ export async function safeExecuteCommand(
   options: CommandExecutionOptions = {}
 ): Promise<CommandExecutionResult | { error: string }> {
   try {
-    // Check if we are in a browser environment
-    if (typeof window !== 'undefined' && !childProcess) {
-      return { 
-        error: 'Command execution is only available in the Electron app'
-      };
+    // First, check if we're in an Electron renderer process
+    // If so, try to execute via IPC
+    if (isElectron() && typeof window !== 'undefined' && window.electron?.ipcRenderer) {
+      try {
+        console.log('🔌 COMMAND EXECUTOR: Executing via Electron IPC:', command);
+        return await window.electron.ipcRenderer.invoke('execute-command', command, options);
+      } catch (ipcError) {
+        console.error('❌ COMMAND EXECUTOR: IPC execution failed:', ipcError);
+        return {
+          error: `IPC execution failed: ${ipcError instanceof Error ? ipcError.message : String(ipcError)}`
+        };
+      }
     }
     
-    // Execute command
-    return await executeCommand(command, options);
+    // Check if childProcess is available directly (Node.js/Electron main process)
+    if (childProcess) {
+      console.log('🔨 COMMAND EXECUTOR: Executing command directly with child_process');
+      return await executeCommand(command, options);
+    }
+    
+    // If we get here, no command execution methods are available
+    console.log('📌 COMMAND EXECUTOR: Command execution only available in Electron');
+    return { 
+      error: 'Command execution is only available in the Electron app'
+    };
   } catch (error) {
+    console.error('❌ COMMAND EXECUTOR: Error executing command:', error);
     return {
       error: error instanceof Error ? error.message : String(error)
     };
