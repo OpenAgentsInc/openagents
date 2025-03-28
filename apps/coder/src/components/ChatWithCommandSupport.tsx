@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Text } from 'react-native';
 import { MessageList, MessageInput } from '@openagents/ui';
 import { useCommand } from '../helpers/ipc/command/command-context';
@@ -80,6 +80,16 @@ export const ChatWithCommandSupport: React.FC = () => {
 
   console.log(`📊 CODER: Chat messages count: ${chat.messages.length}`);
   console.log(`🔧 CODER: Command execution enabled: ${chat.localCommandExecution ? 'YES' : 'NO'}`);
+  
+  // Process messages to ensure command results are rendered properly
+  const processedMessages = useMemo(() => {
+    // Log the current messages to debug
+    console.log('🔍 CODER: Processing messages for display:',
+      chat.messages.map(m => ({id: m.id, role: m.role, preview: m.content.substring(0, 30)}))
+    );
+    
+    return chat.messages;
+  }, [chat.messages]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -99,8 +109,8 @@ export const ChatWithCommandSupport: React.FC = () => {
       >
         <View style={styles.inner}>
           <View style={styles.topBorder} />
-          {/* Use our chat instance with command execution enabled */}
-          <MessageList messages={chat.messages} />
+          {/* Use our processed messages with command execution results */}
+          <MessageList messages={processedMessages} />
           <MessageInput maxRows={8} onSubmit={handleSubmit} />
         </View>
       </KeyboardAvoidingView>

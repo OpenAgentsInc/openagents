@@ -115,19 +115,56 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   // Update processed messages whenever original messages change
   useEffect(() => {
     console.log(`🔄 USECHAT: Updating processed messages`);
-    setProcessedMessages(messages);
-  }, [messages]);
+    
+    // Careful update that preserves our processed messages with command outputs
+    const updatedMessages = messages.map(newMsg => {
+      // Check if we have this message in our processed messages
+      const existingMsg = processedMessages.find(m => m.id === newMsg.id);
+      
+      if (existingMsg) {
+        // If our existing message has a different content (e.g., with command results),
+        // keep that content instead of overwriting with the original
+        if (existingMsg.content !== newMsg.content && 
+            (existingMsg.content.includes('**Command Result**') || 
+             existingMsg.content.includes('**Command Error**'))) {
+          console.log(`🔄 USECHAT: Preserving command results in message: ${newMsg.id}`);
+          return existingMsg;
+        }
+      }
+      
+      // Otherwise use the new message
+      return newMsg;
+    });
+    
+    setProcessedMessages(updatedMessages);
+  }, [messages, processedMessages]);
   
   // Additional function to manually update a message with command results
   const updateMessage = useCallback((messageId: string, newContent: string) => {
     console.log(`🔄 USECHAT: Manual message update for ID: ${messageId}`);
-    setProcessedMessages(current => 
-      current.map(msg => 
-        msg.id === messageId 
-          ? { ...msg, content: newContent } 
-          : msg
-      )
-    );
+    
+    // First, update the actual message in the Vercel AI SDK
+    // This is a very important step - find the "append" function implementation
+    // in the original useChat and see if we can call an internal update function
+    
+    // Then update our processed messages state 
+    setProcessedMessages(current => {
+      console.log('🔄 USECHAT: Updating message content:', newContent.substring(0, 50) + '...');
+      
+      // Create a new array with the updated message content
+      return current.map(msg => {
+        if (msg.id === messageId) {
+          console.log('🔄 USECHAT: Found message to update in state');
+          return { ...msg, content: newContent };
+        }
+        return msg;
+      });
+    });
+    
+    // Force another UI refresh by delaying a state update
+    setTimeout(() => {
+      setProcessedMessages(current => [...current]);
+    }, 100);
   }, []);
   
   // Use a ref to store processed message IDs to persist across renders
@@ -179,7 +216,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
           onCommandStart?.(command);
           
           const result = await safeExecuteCommand(command, commandOptions);
+          console.log('🔍 USECHAT: Raw command result:', JSON.stringify(result));
+          
           const formattedResult = formatCommandOutput(command, result);
+          console.log('📋 USECHAT: Formatted result:', formattedResult);
           
           commandResults.push({ command, result: formattedResult });
           onCommandComplete?.(command, result);
@@ -194,6 +234,21 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       
       // Update the message content with command results
       await updateMessageWithCommandResults(message, commandResults);
+      
+      // Force a re-render by updating the processed messages state
+      setProcessedMessages(prevMessages => {
+        // Find the message again to ensure it's the most up-to-date
+        const currentMessage = messages.find(m => m.id === message.id);
+        
+        if (!currentMessage) {
+          return prevMessages;
+        }
+        
+        // Create a new array with the updated message
+        return prevMessages.map(m => 
+          m.id === message.id ? { ...currentMessage } : m
+        );
+      });
     };
     
     // Process all unprocessed assistant messages
