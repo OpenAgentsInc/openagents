@@ -41,9 +41,21 @@ export const ChatWithCommandSupport: React.FC = () => {
     }
   });
   
+  // Create a ref outside the effect to ensure we only run the test once
+  const hasRunTest = React.useRef(false);
+  
   // Test command execution on component mount
   useEffect(() => {
     const testCommandExecution = async () => {
+      // Skip if already run
+      if (hasRunTest.current) {
+        console.log('🧪 CODER: Command execution test already run, skipping');
+        return;
+      }
+      
+      // Mark as run immediately to prevent multiple executions
+      hasRunTest.current = true;
+      
       console.log('🧪 CODER: Testing command execution...');
       console.log('🧪 CODER: Command execution available via context:', isAvailable);
       
@@ -57,18 +69,15 @@ export const ChatWithCommandSupport: React.FC = () => {
         const result = await chat.testCommandExecution();
         console.log('🧪 CODER: Command test result:', result);
         
-        // Also test via command context
-        if (isAvailable) {
-          const contextResult = await executeCommand('echo "Testing command context"');
-          console.log('🧪 CODER: Command context test result:', contextResult);
-        }
+        // We'll skip testing via command context to avoid infinite loops
+        console.log('🧪 CODER: Skipping command context test to avoid potential loops');
       } catch (error) {
         console.error('🧪 CODER: Command test error:', error);
       }
     };
     
     testCommandExecution();
-  }, [chat, executeCommand, isAvailable]);
+  }, [chat, isAvailable]); // Removed executeCommand dependency
 
   const handleSubmit = (message: string) => {
     console.log('📝 CODER: Message submitted:', message);
@@ -78,15 +87,12 @@ export const ChatWithCommandSupport: React.FC = () => {
     });
   };
 
-  console.log(`📊 CODER: Chat messages count: ${chat.messages.length}`);
-  console.log(`🔧 CODER: Command execution enabled: ${chat.localCommandExecution ? 'YES' : 'NO'}`);
-  
   // Process messages to ensure command results are rendered properly
   const processedMessages = useMemo(() => {
-    // Log the current messages to debug
-    console.log('🔍 CODER: Processing messages for display:',
-      chat.messages.map(m => ({id: m.id, role: m.role, preview: m.content.substring(0, 30)}))
-    );
+    // Only log on changes, not every render
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📊 CODER: Chat messages count: ${chat.messages.length}`);
+    }
     
     return chat.messages;
   }, [chat.messages]);

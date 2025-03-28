@@ -39,23 +39,22 @@ export function replaceCommandTagsWithResults(
   console.log("🔎 COMMAND PARSER: Original message:", message);
   console.log("🎯 COMMAND PARSER: Command results:", JSON.stringify(results));
   
-  let updatedMessage = message;
+  // Important debugging to check both the message and results
+  console.log("🔬 COMMAND PARSER: Message length:", message.length);
+  console.log("🔬 COMMAND PARSER: Results count:", results.length);
+  console.log("🔬 COMMAND PARSER: First result:", results[0]?.command);
+  
+  let updatedMessage = String(message);
   
   for (const { command, result } of results) {    
     console.log(`🔍 COMMAND PARSER: Processing result for command: ${command}`);
     
-    const escapedCommand = command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const tagPattern = new RegExp(
-      `<execute-command>${escapedCommand}<\\/execute-command>`,
-      'g'
-    );
+    // Create a simple tag to search for
+    const tagToFind = `<execute-command>${command}</execute-command>`;
     
     // Check if this command tag exists in the message
-    const tagExists = tagPattern.test(updatedMessage);
-    console.log(`🧩 COMMAND PARSER: Command tag exists in message: ${tagExists}`);
-    
-    // Reset the lastIndex property of the regex
-    tagPattern.lastIndex = 0;
+    const tagExists = updatedMessage.includes(tagToFind);
+    console.log(`🧩 COMMAND PARSER: Tag exists in message: ${tagExists}`);
     
     let replacement: string;
     
@@ -83,19 +82,31 @@ export function replaceCommandTagsWithResults(
     
     // Save the message before replacement for comparison
     const beforeReplace = updatedMessage;
-    updatedMessage = updatedMessage.replace(tagPattern, replacement);
     
-    // Log if replacement occurred
-    if (beforeReplace !== updatedMessage) {
+    // Use string replacement instead of regex for more reliable results
+    if (tagExists) {
+      updatedMessage = updatedMessage.split(tagToFind).join(replacement);
       console.log(`✅ COMMAND PARSER: Command tag replaced successfully`);
     } else {
-      console.log(`⚠️ COMMAND PARSER: No replacement occurred`);
+      console.log(`⚠️ COMMAND PARSER: Tag not found in message, can't replace`);
+      
+      // If we couldn't find the exact tag, try appending the results
+      updatedMessage += "\n\n**Command:** `" + command + "`\n\n";
+      
+      if (typeof result === 'string') {
+        updatedMessage += "**Result:**\n```bash\n" + result + "\n```\n\n";
+      } else {
+        updatedMessage += "**Error:**\n```bash\n" + result.error + "\n```\n\n";
+      }
+      
+      console.log(`🚨 COMMAND PARSER: Appended command results to message`);
     }
   }
   
   // Make one final check to ensure we have results in the final message
   const hasResults = updatedMessage.includes('**Command Result**') || 
-                     updatedMessage.includes('**Command Error**');
+                     updatedMessage.includes('**Command Error**') ||
+                     updatedMessage.includes('**Result:**');
   
   if (updatedMessage !== message) {
     console.log(`✅ COMMAND PARSER: Replacement complete - added command results to message`);

@@ -116,28 +116,31 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   useEffect(() => {
     console.log(`🔄 USECHAT: Updating processed messages`);
     
-    // Careful update that preserves our processed messages with command outputs
-    const updatedMessages = messages.map(newMsg => {
-      // Check if we have this message in our processed messages
-      const existingMsg = processedMessages.find(m => m.id === newMsg.id);
-      
-      if (existingMsg) {
-        // If our existing message has a different content (e.g., with command results),
-        // keep that content instead of overwriting with the original
-        if (existingMsg.content !== newMsg.content && 
-            (existingMsg.content.includes('**Command Result**') || 
-             existingMsg.content.includes('**Command Error**'))) {
-          console.log(`🔄 USECHAT: Preserving command results in message: ${newMsg.id}`);
-          return existingMsg;
+    // Get a reference to the current processed messages
+    // This avoids the circular dependency but still allows us to check
+    // existing processed messages
+    setProcessedMessages(prevProcessedMessages => {
+      // Careful update that preserves our processed messages with command outputs
+      return messages.map(newMsg => {
+        // Check if we have this message in our processed messages
+        const existingMsg = prevProcessedMessages.find(m => m.id === newMsg.id);
+        
+        if (existingMsg) {
+          // If our existing message has a different content (e.g., with command results),
+          // keep that content instead of overwriting with the original
+          if (existingMsg.content !== newMsg.content && 
+              (existingMsg.content.includes('**Command Result**') || 
+               existingMsg.content.includes('**Command Error**'))) {
+            console.log(`🔄 USECHAT: Preserving command results in message: ${newMsg.id}`);
+            return existingMsg;
+          }
         }
-      }
-      
-      // Otherwise use the new message
-      return newMsg;
+        
+        // Otherwise use the new message
+        return newMsg;
+      });
     });
-    
-    setProcessedMessages(updatedMessages);
-  }, [messages, processedMessages]);
+  }, [messages]); // Removed processedMessages from dependencies
   
   // Additional function to manually update a message with command results
   const updateMessage = useCallback((messageId: string, newContent: string) => {
@@ -169,6 +172,9 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   
   // Use a ref to store processed message IDs to persist across renders
   const processedMessageIds = useRef<Set<string>>(new Set());
+  
+  // Use a ref to track executed commands to prevent duplicate executions
+  const executedCommands = useRef<Set<string>>(new Set());
   
   // Modified processAssistantMessage to update the message in our local state
   useEffect(() => {
@@ -211,44 +217,111 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       const commandResults: Array<{ command: string; result: string | { error: string } }> = [];
       
       for (const command of commands) {
-        try {
-          console.log(`⚙️ USECHAT: Executing command: ${command}`);
-          onCommandStart?.(command);
+        // Create a unique key for this message+command combination to prevent duplicate executions
+        const commandKey = `${message.id}-${command}`;
+        
+        // Only execute this command if we haven't already executed it for this message
+        if (!executedCommands.current.has(commandKey)) {
+          // Mark as executed BEFORE actually executing to prevent concurrent executions
+          executedCommands.current.add(commandKey);
+          console.log(`⚙️ USECHAT: Executing command: ${command} (first time for this message)`);
           
-          const result = await safeExecuteCommand(command, commandOptions);
-          console.log('🔍 USECHAT: Raw command result:', JSON.stringify(result));
-          
-          const formattedResult = formatCommandOutput(command, result);
-          console.log('📋 USECHAT: Formatted result:', formattedResult);
-          
-          commandResults.push({ command, result: formattedResult });
-          onCommandComplete?.(command, result);
-        } catch (error) {
-          console.error(`❌ USECHAT: Command execution error:`, error);
-          commandResults.push({
-            command,
-            result: { error: error instanceof Error ? error.message : String(error) }
-          });
+          try {
+            onCommandStart?.(command);
+            
+            const result = await safeExecuteCommand(command, commandOptions);
+            console.log('🔍 USECHAT: Raw command result:', JSON.stringify(result));
+            
+            const formattedResult = formatCommandOutput(command, result);
+            console.log('📋 USECHAT: Formatted result:', formattedResult);
+            
+            commandResults.push({ command, result: formattedResult });
+            onCommandComplete?.(command, result);
+          } catch (error) {
+            console.error(`❌ USECHAT: Command execution error:`, error);
+            commandResults.push({
+              command,
+              result: { error: error instanceof Error ? error.message : String(error) }
+            });
+          }
+        } else {
+          console.log(`⏺️ USECHAT: Skipping already executed command: ${command} for message ${message.id}`);
         }
       }
       
-      // Update the message content with command results
-      await updateMessageWithCommandResults(message, commandResults);
+      // Only proceed with updating if we actually have command results to show
+      if (commandResults.length === 0) {
+        console.log(`ℹ️ USECHAT: No command results to display for message ${message.id}`);
+        return;
+      }
       
-      // Force a re-render by updating the processed messages state
-      setProcessedMessages(prevMessages => {
-        // Find the message again to ensure it's the most up-to-date
-        const currentMessage = messages.find(m => m.id === message.id);
+      // Create a unique key for this update to prevent duplicate updates
+      const updateKey = `update-${message.id}`;
+      
+      // Check if we've already updated this message to prevent infinite loops
+      if (executedCommands.current.has(updateKey)) {
+        console.log(`⏺️ USECHAT: Message ${message.id} already updated with command results, skipping`);
+        return;
+      }
+      
+      // Mark as updated to prevent duplicate updates
+      executedCommands.current.add(updateKey);
+      
+      console.log(`🔥 USECHAT: Updating message ${message.id} with command results (first time)`);
+      
+      // Get the updated content with command results
+      const updatedContent = replaceCommandTagsWithResults(message.content, commandResults);
+      
+      if (updatedContent === message.content) {
+        console.error(`❌ USECHAT: Failed to update message content with command results`);
+        console.log(`🔎 USECHAT: Original: ${message.content.substring(0, 100)}...`);
+        console.log(`🔎 USECHAT: Updated: ${updatedContent.substring(0, 100)}...`);
         
-        if (!currentMessage) {
-          return prevMessages;
+        // Create a new assistant message with the command results - but only once
+        // Create a unique key for the append operation
+        const appendKey = `append-${message.id}`;
+        
+        if (!executedCommands.current.has(appendKey)) {
+          // Mark as appended to prevent duplicate appends
+          executedCommands.current.add(appendKey);
+          
+          console.log(`🚒 USECHAT: Creating new message with command results!`);
+          
+          // Format command results as a new message
+          const resultContent = "**Command Results:**\n\n" + 
+            commandResults.map(({command, result}) => {
+              const resultText = typeof result === 'string' 
+                ? result 
+                : `Error: ${result.error}`;
+              
+              return `**Command:** \`${command}\`\n\n\`\`\`\n${resultText}\n\`\`\`\n\n`;
+            }).join("\n");
+          
+          // Insert a new message with just the command results
+          console.log(`🚀 USECHAT: Appending new message with command results! (one time only)`);
+          originalAppend({
+            role: 'assistant',
+            content: resultContent
+          });
         }
+      } else {
+        console.log(`✅ USECHAT: Successfully updated message content with command results`);
+        // Update the message in our local state
+        updateMessage(message.id, updatedContent);
+      }
+      
+      // Force a refresh of messages exactly once to ensure UI updates
+      const refreshKey = `refresh-${message.id}`;
+      
+      if (!executedCommands.current.has(refreshKey)) {
+        // Mark as refreshed to prevent multiple refreshes
+        executedCommands.current.add(refreshKey);
         
-        // Create a new array with the updated message
-        return prevMessages.map(m => 
-          m.id === message.id ? { ...currentMessage } : m
-        );
-      });
+        setTimeout(() => {
+          console.log(`🔄 USECHAT: Forcing one-time message refresh for UI update`);
+          setProcessedMessages(prevMessages => [...prevMessages]);
+        }, 200);
+      }
     };
     
     // Process all unprocessed assistant messages
@@ -276,26 +349,40 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   // Add a simple function to test if command execution is available
   const testCommandExecution = useCallback(async () => {
     try {
-      const { safeExecuteCommand } = await import('../utils/commandExecutor');
+      // IMPORTANT: Instead of dynamically importing, reference the module path
+      // This prevents webpack issues in browser environments
+      
+      // Don't import any modules, just check for the APIs
+      const isCommandExecutionAvailable = typeof window !== 'undefined' && (
+        !!window.commandExecution || 
+        !!(window.electron && window.electron.ipcRenderer)
+      );
       
       // Log all the available APIs on window
       if (typeof window !== 'undefined') {
-        console.log('🔍 USECHAT: Window APIs available:', {
+        console.log('🔍 USECHAT: Command execution API check:', {
+          available: isCommandExecutionAvailable,
           commandExecution: !!window.commandExecution,
           electron: !!window.electron,
           electronIPC: !!(window.electron?.ipcRenderer)
         });
       }
       
-      const result = await safeExecuteCommand('echo "Command execution test"', commandOptions);
-      
-      console.log('🧪 USECHAT: Command execution test result:', result);
-      return result;
+      // Just report API availability, don't actually execute anything
+      console.log('🧪 USECHAT: Command execution detection complete');
+      return { 
+        stdout: isCommandExecutionAvailable 
+          ? "Command execution API is available" 
+          : "Command execution API is not available in this environment",
+        stderr: "",
+        exitCode: 0,
+        command: "test" 
+      };
     } catch (error) {
       console.error('🧪 USECHAT: Command execution test error:', error);
       return { error: error instanceof Error ? error.message : String(error) };
     }
-  }, [commandOptions]);
+  }, []);
 
   // Prepare return value with proper typing
   const returnValue = {
