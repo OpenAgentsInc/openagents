@@ -16,19 +16,12 @@ interface Env {
 const app = new Hono<{ Bindings: Env }>();
 
 // Initialize MCP connections
-async function initMcp() {
-  try {
-    await mcpClientManager.connectToServer('https://mcp-github.openagents.com/sse', 'github');
-    console.log('[initMcp] Initial connection attempt finished.');
-    const initialTools = mcpClientManager.getAllTools();
-    console.log(`[initMcp] Tools immediately after initial connect attempt: ${initialTools.length}`);
-  } catch (error) {
-    console.error('[initMcp] Failed initial connection attempt:', error);
-  }
-}
+// We don't want to establish connections at startup anymore because they will be
+// stale by the time a request comes in due to serverless environment limitations
+// Each request will establish its own fresh connection
 
-// Call in a non-blocking way to avoid delaying server startup
-void initMcp();
+// Log startup message instead
+console.log('🚀 Chat server starting up - MCP connections will be established per-request');
 
 // Enable CORS for all routes
 app.use('*', cors({
@@ -109,15 +102,35 @@ app.post('/', async c => {
     // Type is now Record<string, CoreTool> when using the 'tool' helper
     let tools: Record<string, CoreTool> = {};
     try {
+      // Generate request ID for tracking
+      const requestId = `req-${crypto.randomUUID().substring(0, 8)}`;
+      console.log(`🆔 Request ID for MCP tracking: ${requestId}`);
+      
+      // Force a new connection for each request to avoid stale connections
+      console.log(`🔄 [${requestId}] Forcing a fresh MCP connection for this request`);
+      
+      // Check if there's an existing connection and disconnect it first
+      // This ensures we always start with a fresh connection for each request
+      try {
+        await mcpClientManager.disconnectAll();
+        console.log(`✅ [${requestId}] Disconnected any existing MCP connections`);
+      } catch (disconnectError) {
+        console.warn(`⚠️ [${requestId}] Error during disconnection (non-critical):`, disconnectError);
+        // Continue anyway as this is just a cleanup step
+      }
+      
+      // Connect to the MCP server with a fresh connection
       await mcpClientManager.connectToServer('https://mcp-github.openagents.com/sse', 'github');
-      console.log("✅ MCP connection attempt finished for request.");
+      console.log(`✅ [${requestId}] MCP connection attempt finished for request.`);
+      
+      // Extract tools with the new connection
       tools = extractToolDefinitions(); // Uses new version returning SDK 'tool' objects
       const toolNames = Object.keys(tools);
-      console.log(`✅ Extracted ${toolNames.length} tools for LLM (within request):`, toolNames.join(', '));
-      // Note: Logging the full 'tools' object might be verbose now as it contains functions/zod schemas
-      console.log('🔧 Tools object keys being passed to streamText:', toolNames);
+      console.log(`✅ [${requestId}] Extracted ${toolNames.length} tools for LLM (within request):`, toolNames.join(', '));
+      console.log(`🔧 [${requestId}] Tools object keys being passed to streamText:`, toolNames);
+      
       if (toolNames.length === 0) {
-        console.warn("⚠️ No tools extracted! Ensure tools.ts is mapping correctly.");
+        console.warn(`⚠️ [${requestId}] No tools extracted! Ensure tools.ts is mapping correctly.`);
       }
     } catch (mcpError) {
       const errorMsg = "Failed to connect to tool server or extract definitions";
