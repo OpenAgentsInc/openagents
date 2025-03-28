@@ -142,7 +142,7 @@ export function extractToolDefinitions(): Record<string, ReturnType<typeof tool>
       // Add the tool to our definitions
       toolDefinitions[toolName] = toolDef;
 
-      console.log(`[extractToolDefinitions] Added Zod-based schema for ${toolName}`);
+      // console.log(`[extractToolDefinitions] Added Zod-based schema for ${toolName}`);
 
     } catch (error) {
       console.error(`[extractToolDefinitions] Error creating schema for tool '${toolName}':`, error);

@@ -9,6 +9,7 @@ import * as commits from "./operations/commits.js";
 import * as branches from "./operations/branches.js";
 import { z } from "zod";
 import { githubRequest } from "./common/utils.js";
+import { GitHubError } from "./common/errors.js";
 
 type ToolContext = {
   token?: string;
@@ -269,12 +270,48 @@ export class MyMCP extends McpAgent {
         // Temporarily replace githubRequest with token-aware version
         const originalRequest = globalThis.githubRequest;
         try {
+          console.log(`🔧 Executing GitHub tool: ${tool.name}`);
+          console.log(`📊 Tool parameters: ${JSON.stringify(validatedParams).substring(0, 200)}`);
+          console.log(`🔑 GitHub token present: ${!!context.token}`);
+          
           globalThis.githubRequest = withToken(context.token);
           const result = await tool.handler(validatedParams as any);
+          
+          console.log(`✅ Tool ${tool.name} execution successful`);
           return {
             content: [{
               type: "text" as const,
               text: JSON.stringify(result)
+            }]
+          };
+        } catch (error) {
+          console.error(`❌ Tool execution error for ${tool.name}:`, error);
+          
+          // Improved error handling for specific GitHub errors
+          let errorResponse: any = {
+            error: error instanceof Error ? error.message : String(error)
+          };
+          
+          // For operations that fail without a token to public repositories
+          if (tool.name.startsWith('get_') && !context.token && 
+              (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
+            console.log(`🔄 Error might be due to GitHub rate limits or auth requirements`);
+            
+            errorResponse = {
+              error: "GitHub API access error",
+              details: {
+                message: `The GitHub API returned an error that might be due to rate limiting or authentication requirements.`,
+                original_error: error instanceof Error ? error.message : String(error),
+                status: error?.status || 'unknown',
+                suggestion: "For public repositories, you may still access content without authentication, but GitHub imposes stricter rate limits for unauthenticated requests. Providing a GitHub token would help avoid these limitations."
+              }
+            };
+          }
+          
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify(errorResponse)
             }]
           };
         } finally {

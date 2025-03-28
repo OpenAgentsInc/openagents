@@ -43,20 +43,48 @@ export async function githubRequest(
   if (options.token) {
     headers["Authorization"] = `Bearer ${options.token}`;
   }
+  
+  // Add logging for debugging the request
+  console.log(`🔄 GitHub API Request: ${url.substring(0, url.indexOf('?') > 0 ? url.indexOf('?') : url.length)}`);
+  console.log(`🔑 Auth present: ${!!options.token}`);
+  
+  try {
+    const response = await fetch(url, {
+      method: options.method || "GET",
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+    
+    console.log(`📥 GitHub API Response status: ${response.status}`);
+    const responseBody = await parseResponseBody(response);
 
-  const response = await fetch(url, {
-    method: options.method || "GET",
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+    if (!response.ok) {
+      // Enhanced error logging
+      console.error(`❌ GitHub API Error [${response.status}]: ${JSON.stringify(responseBody).substring(0, 200)}`);
+      
+      // For rate limit errors, add more details
+      if (response.status === 429) {
+        const resetTime = response.headers.get('x-ratelimit-reset');
+        const remaining = response.headers.get('x-ratelimit-remaining');
+        console.error(`⏱️ Rate limit details - Remaining: ${remaining}, Reset time: ${resetTime ? new Date(parseInt(resetTime) * 1000).toISOString() : 'unknown'}`);
+      }
+      
+      // For auth errors, give a hint that public repos should work without auth
+      if (response.status === 401 || response.status === 403) {
+        console.warn(`🔑 Note: Public repositories should be accessible without authentication. This could be a rate limit issue or the repo might be private.`);
+      }
+      
+      throw createGitHubError(response.status, responseBody);
+    }
 
-  const responseBody = await parseResponseBody(response);
-
-  if (!response.ok) {
-    throw createGitHubError(response.status, responseBody);
+    return responseBody;
+  } catch (error) {
+    // Catch network errors that might not be handled by response.ok check
+    if (!(error instanceof GitHubError)) {
+      console.error(`❌ GitHub API Network Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    throw error;
   }
-
-  return responseBody;
 }
 
 export function validateBranchName(branch: string): string {
