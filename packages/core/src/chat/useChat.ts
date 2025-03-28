@@ -5,12 +5,8 @@ import { useChat as vercelUseChat } from "@ai-sdk/react"
 export function useChat(options: Parameters<typeof vercelUseChat>[0] = {}) {
   return vercelUseChat({
     ...options,
+    maxSteps: 15,
     api: "https://chat.openagents.com",
-    // headers: {
-    //   'Content-Type': 'application/json',
-    //   'Accept': 'text/event-stream',
-    //   ...options.headers,
-    // },
     onError: (error) => {
       console.error('Chat error:', error);
       options.onError?.(error);
