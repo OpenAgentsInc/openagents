@@ -2,6 +2,82 @@
 
 Core functionality for OpenAgents applications.
 
+## Command Execution
+
+The command execution feature allows running shell commands in the Electron environment.
+
+### Setting Up Command Execution in Electron
+
+To enable command execution in your Electron app, follow these steps:
+
+1. In your Electron main process, set up the command execution handler:
+
+```typescript
+// In your Electron main process
+import { setupElectronCommandExecutor } from '@openagents/core';
+
+// Set up command execution for Electron
+setupElectronCommandExecutor();
+```
+
+This sets up the necessary IPC handlers for executing commands from renderer processes.
+
+### Using the useChat Hook with Command Execution
+
+The `useChat` hook supports command execution for AI conversations:
+
+```tsx
+import { useChat } from '@openagents/core';
+
+function ChatComponent() {
+  const { messages, append } = useChat({
+    // Enable command execution
+    localCommandExecution: true,
+    
+    // Optional command options
+    commandOptions: {
+      // Working directory for commands
+      cwd: '/path/to/working/directory',
+      
+      // Timeout in milliseconds (default: 30000)
+      timeout: 60000,
+      
+      // Additional environment variables
+      env: { NODE_ENV: 'development' }
+    },
+    
+    // Optional callbacks
+    onCommandStart: (command) => {
+      console.log(`Starting command: ${command}`);
+    },
+    onCommandComplete: (command, result) => {
+      console.log(`Command completed: ${command}`);
+      console.log('Result:', result);
+    }
+  });
+  
+  // ... rest of your component
+}
+```
+
+### Command Format
+
+Commands are executed when the AI sends messages with the following format:
+
+```
+You can use the <execute-command>echo "Hello World"</execute-command> syntax to run shell commands.
+```
+
+The command will be executed and the output will replace the command tag in the message.
+
+### Security Considerations
+
+- Command execution is disabled by default and must be explicitly enabled
+- Commands are executed with the same permissions as the Node.js/Electron process
+- A blacklist of potentially dangerous commands is implemented
+- Timeout limits prevent long-running commands
+- Command execution is restricted to Node.js and Electron environments
+
 ## MCP Client Implementation
 
 The core package provides a React hook `useMCP` that implements a client for the Model Context Protocol (MCP). This hook enables applications to connect to MCP servers and access their tools, resources, and capabilities through Electron's IPC system.
