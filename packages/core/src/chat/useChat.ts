@@ -282,15 +282,15 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
         
         console.log(`🚨 USECHAT: Creating new message with command results (reliable approach)`);
         
-        // Format command results clearly in a new message
-        const resultContent = "# Command Results\n\n" + 
-          commandResults.map(({command, result}, index) => {
+        // Format command results clearly in a new message without markdown headers
+        // Just the command and results - clean and simple
+        const resultContent = commandResults.map(({command, result}) => {
             const resultText = typeof result === 'string' 
               ? result 
               : `Error: ${result.error}`;
             
-            return `### Command ${index+1}: \`${command}\`\n\n\`\`\`bash\n${resultText}\n\`\`\`\n\n`;
-          }).join("\n---\n\n");
+            return `**Command:** \`${command}\`\n\n\`\`\`\n${resultText}\n\`\`\``;
+          }).join("\n\n");
         
         // Insert a new message with just the command results
         console.log(`🚀 USECHAT: Appending new message with command results (guaranteed)`);
