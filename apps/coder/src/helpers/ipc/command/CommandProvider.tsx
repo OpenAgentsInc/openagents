@@ -1,13 +1,7 @@
 import React, { useCallback, ReactNode, useState, useEffect } from 'react';
 import { CommandContext, CommandResult } from './command-context';
 
-declare global {
-  interface Window {
-    commandExecution?: {
-      executeCommand: (command: string, options?: any) => Promise<CommandResult>;
-    };
-  }
-}
+// The declaration for Window.commandExecution is now in types.d.ts
 
 interface CommandProviderProps {
   children: ReactNode;

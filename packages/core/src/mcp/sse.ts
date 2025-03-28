@@ -1,4 +1,4 @@
-import { EventSource, type ErrorEvent, type EventSourceInit } from "eventsource";
+import EventSource from "eventsource";
 import { Transport } from "./transport";
 import { JSONRPCMessage, JSONRPCMessageSchema } from "./types";
 
@@ -6,7 +6,7 @@ export class SseError extends Error {
   constructor(
     public readonly code: number | undefined,
     message: string | undefined,
-    public readonly event: ErrorEvent,
+    public readonly event: any,
   ) {
     super(`SSE error: ${message}`);
   }
@@ -19,7 +19,7 @@ export type SSEClientTransportOptions = {
   /**
    * Customizes the initial SSE request to the server (the request that begins the stream).
    */
-  eventSourceInit?: EventSourceInit;
+  eventSourceInit?: any;
 
   /**
    * Customizes recurring POST requests to the server.
@@ -36,7 +36,7 @@ export class SSEClientTransport implements Transport {
   private _endpoint?: URL;
   private _abortController?: AbortController;
   private _url: URL;
-  private _eventSourceInit?: EventSourceInit;
+  private _eventSourceInit?: any;
   private _requestInit?: RequestInit;
 
   onclose?: () => void;
@@ -60,7 +60,7 @@ export class SSEClientTransport implements Transport {
       );
       this._abortController = new AbortController();
 
-      this._eventSource.onerror = (event) => {
+      this._eventSource.onerror = (event: any) => {
         const error = new SseError(event.code, event.message, event);
         reject(error);
         this.onerror?.(error);

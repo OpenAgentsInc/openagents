@@ -1,21 +1,20 @@
 import React, { useState } from "react";
-import { useMCP } from "@openagents/core";
 import { Button } from "@openagents/ui";
 
 export default function MCPGitHubPage() {
-  const { status, result, error, serverUrl, callTool } = useMCP();
+  const [result, setResult] = useState<any>(null);
+  const [status, setStatus] = useState<string>("not implemented yet");
+  const [error, setError] = useState<Error | null>(null);
+  const serverUrl = "https://mcp-github.openagents.com/sse";
   const [owner, setOwner] = useState<string>("OpenAgentsInc");
   const [repo, setRepo] = useState<string>("openagents");
   const [branch, setBranch] = useState<string>("main");
   const [path, setPath] = useState<string>("README.md");
 
   const handleGetContents = () => {
-    callTool("get_file_contents", {
-      owner,
-      repo,
-      path,
-      branch,
-    });
+    // Not implemented yet
+    setStatus("MCP integration not implemented yet");
+    setResult({ message: "MCP integration not implemented yet" });
   };
 
   return (

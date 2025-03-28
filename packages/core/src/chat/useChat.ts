@@ -5,7 +5,20 @@ import { useCallback, useEffect, useRef } from 'react';
 import { parseCommandsFromMessage, replaceCommandTagsWithResults, formatCommandOutput } from '../utils/commandParser';
 import { safeExecuteCommand, CommandExecutionOptions } from '../utils/commandExecutor';
 
-export interface UseChatWithCommandsOptions extends Parameters<typeof vercelUseChat>[0] {
+// Define our own chat options interface
+export interface UseChatWithCommandsOptions {
+  // Standard options that might be in the original useChat
+  api?: string;
+  id?: string;
+  initialMessages?: any[];
+  initialInput?: string;
+  maxSteps?: number;
+  headers?: Record<string, string>;
+  body?: object;
+  onError?: (error: Error) => void;
+  onFinish?: (message: any) => void;
+  
+  // Command execution specific options
   /**
    * Enable local command execution (only works in Electron environment)
    */
@@ -27,7 +40,7 @@ export interface UseChatWithCommandsOptions extends Parameters<typeof vercelUseC
   onCommandComplete?: (command: string, result: any) => void;
 }
 
-export function useChat(options: UseChatWithCommandsOptions = {}) {
+export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<typeof vercelUseChat> {
   const {
     localCommandExecution = false,
     commandOptions,
@@ -70,10 +83,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}) {
     if (message.role === 'user' && typeof message.content === 'string') {
       const commands = parseCommandsFromMessage(message.content);
       
-      if (commands.length > 0) {
+      if (commands.length > 0 && result) {
         // Store commands for processing after the response is received
         pendingCommandsRef.current = {
-          messageId: result.id,
+          messageId: typeof result === 'object' ? (result as any).id || 'unknown' : 'unknown',
           commands,
           isProcessing: false
         };

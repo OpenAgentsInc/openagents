@@ -76,6 +76,7 @@ app.post('/', async c => {
     // --- Add System Message with GitHub Tool Instructions ---
     // Prepend system message to inform the model about GitHub tools
     const systemMessage: Message = {
+      id: crypto.randomUUID(),
       role: 'system', 
       content: `You are Claude, an AI assistant with GitHub integration capabilities. You have access to the following GitHub tools:
 
@@ -156,8 +157,7 @@ Do NOT tell users you can't access GitHub content unless you've tried the approp
 
       // Clear any existing references without trying to close connections
       // to avoid I/O across request context errors
-      mcpClientManager.clients.clear();
-      mcpClientManager.toolRegistry.clear();
+      mcpClientManager.clearConnections();
       console.log(`✅ [${requestId}] Cleared any existing MCP connections`)
 
       // Connect to the MCP server with a fresh connection
