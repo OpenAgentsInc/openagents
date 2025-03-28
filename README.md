@@ -10,13 +10,14 @@ This repo holds our new cross-platform version (v5), a work in progress.
 
 ```
   openagents/
-  ├── apps/              # Client applications
-  │   ├── chatserver/    # AI SDK chat API
-  │   ├── coder/         # Coding agent desktop app
-  │   └── onyx/          # Onyx mobile app & bitcoin wallet
-  ├── packages/          # Shared libraries/components
-  │   └── ui/            # UI components
-  └── docs/              # Documentation
+  ├── apps/                   # Client applications
+  │   ├── chatserver/         # AI SDK chat API
+  │   ├── coder/              # Coding agent desktop app
+  │   ├── mcp-github-server/  # Remote MCP server with GitHub tools
+  │   └── onyx/               # Onyx mobile app & bitcoin wallet
+  ├── packages/               # Shared libraries/components
+  │   └── ui/                 # UI components
+  └── docs/                   # Documentation
 ```
 
 ## v5 Tech Stack
