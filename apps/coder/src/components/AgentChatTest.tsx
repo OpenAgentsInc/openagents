@@ -89,28 +89,23 @@ export const AgentChatTest: React.FC = () => {
   // Execute a test command
   const executeTestCommand = async () => {
     try {
-      // Use agent-specific command execution if available
-      if (chat.agentConnection?.isConnected && chat.agentConnection?.utils) {
-        // console.log('⚙️ AGENT-TEST: Executing command via agent');
-        // Use type assertion to access the method (it exists at runtime)
-        const executeAgentCommand = (chat as any).executeAgentCommand;
-        if (typeof executeAgentCommand === 'function') {
-          const result = await executeAgentCommand('ls -la');
-          // console.log('✅ AGENT-TEST: Agent command result:', result);
-        } else {
-          // console.error('⚙️ AGENT-TEST: executeAgentCommand not available');
-          throw new Error('executeAgentCommand method not available');
-        }
+      // Use the unified command execution method that automatically routes
+      // to either agent or local execution based on connection state
+      const executeCommand = (chat as any).executeCommand;
+      if (typeof executeCommand === 'function') {
+        console.log('⚙️ AGENT-TEST: Executing command through unified executor');
+        const result = await executeCommand('ls -la');
+        console.log('✅ AGENT-TEST: Command execution result:', result);
       } else {
-        // console.log('⚙️ AGENT-TEST: Executing command locally');
-        // Add a command in the message that will be executed locally
+        console.log('⚙️ AGENT-TEST: Unified executor not available, using message-based command');
+        // Fall back to adding a command in the message that will be executed locally
         chat.append({
           role: 'user',
           content: 'Run this command: <<ls -la>>'
         });
       }
     } catch (error) {
-      // console.error('❌ AGENT-TEST: Command execution error:', error);
+      console.error('❌ AGENT-TEST: Command execution error:', error);
     }
   };
   
@@ -174,7 +169,7 @@ export const AgentChatTest: React.FC = () => {
             <View style={styles.statusRow}>
               <Text style={styles.statusLabel}>Agent Connected:</Text>
               <Text style={[styles.statusValue, {color: chat.agentConnection?.isConnected ? '#4caf50' : '#f44336'}]}>
-                {chat.agentConnection?.isConnected ? 'Yes (Mock in Dev Mode)' : 'No'}
+                {chat.agentConnection?.isConnected ? 'Yes' : 'No'}
               </Text>
             </View>
             <View style={styles.statusRow}>

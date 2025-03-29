@@ -158,13 +158,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
         // Connect to the agent
         const client = await createAgentConnection(connectionOptions);
         
-        // In development mode, the connection may return a mock client
-        const isMockClient = !!(typeof window !== 'undefined' && process.env.NODE_ENV !== 'production');
-        if (isMockClient) {
-          console.log('🔌 USECHAT: Connected to mock agent (development mode)');
-        } else {
-          console.log('✅ USECHAT: Connected to agent successfully');
-        }
+        // Connection was successful
+        console.log('✅ USECHAT: Connected to agent successfully');
         
         // Create utilities for interacting with the agent
         const utils = createAgentUtils(client);
@@ -186,36 +181,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
         onAgentConnectionChange?.(true);
         
       } catch (error) {
-        // In development mode, create a mock connection instead of failing
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('🛠️ USECHAT: Using mock agent in development mode due to connection error');
-          
-          // Create a minimal mock client
-          const mockClient = {
-            agent: agentId || 'coder-agent',
-            name: agentName || agentOptions?.agentName || 'default',
-            call: async () => null,
-            setState: () => {},
-            close: () => {}
-          } as AgentClient;
-          
-          // Create mock utilities
-          const mockUtils = createAgentUtils(mockClient);
-          
-          // Update connection state with mock
-          setAgentConnection({
-            isConnected: true,
-            client: mockClient,
-            utils: mockUtils
-          });
-          
-          // Notify of connection change
-          onAgentConnectionChange?.(true);
-          
-          return;
-        }
-        
-        // In production, handle the error normally
+        // Handle the connection error
         console.error('❌ USECHAT: Failed to connect to agent:', error);
         setAgentConnection({
           isConnected: false,
@@ -675,10 +641,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   // Prepare return value with proper typing
   const returnValue = {
     ...rest,
-    // Return processed messages instead of original messages
+    // Return the appropriate messages based on the active mode
     messages: shouldUseAgent && agentConnection.isConnected ? agentMessages : processedMessages,
     append,
-    // Add the test function
+    // Testing and debugging utilities
     testCommandExecution,
     // Add agent connection info
     agentConnection: {
@@ -686,7 +652,11 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       client: agentConnection.client,
       utils: agentConnection.utils
     },
-    // Add agent-specific functionality
+    // Add command execution capability that automatically routes to agent or local
+    executeCommand: shouldUseAgent && agentConnection.isConnected && agentConnection.utils 
+      ? executeAgentCommand 
+      : (command: string) => safeExecuteCommand(command, commandOptions),
+    // Also keep the specific agent command function for explicit agent calls
     executeAgentCommand
   };
 
