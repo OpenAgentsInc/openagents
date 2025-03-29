@@ -174,7 +174,7 @@ export const AgentChatTest: React.FC = () => {
             <View style={styles.statusRow}>
               <Text style={styles.statusLabel}>Agent Connected:</Text>
               <Text style={[styles.statusValue, {color: chat.agentConnection?.isConnected ? '#4caf50' : '#f44336'}]}>
-                {chat.agentConnection?.isConnected ? 'Yes' : 'No'}
+                {chat.agentConnection?.isConnected ? 'Yes (Mock in Dev Mode)' : 'No'}
               </Text>
             </View>
             <View style={styles.statusRow}>

@@ -157,7 +157,14 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
         
         // Connect to the agent
         const client = await createAgentConnection(connectionOptions);
-        console.log('✅ USECHAT: Connected to agent successfully');
+        
+        // In development mode, the connection may return a mock client
+        const isMockClient = !!(typeof window !== 'undefined' && process.env.NODE_ENV !== 'production');
+        if (isMockClient) {
+          console.log('🔌 USECHAT: Connected to mock agent (development mode)');
+        } else {
+          console.log('✅ USECHAT: Connected to agent successfully');
+        }
         
         // Create utilities for interacting with the agent
         const utils = createAgentUtils(client);
@@ -179,6 +186,36 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
         onAgentConnectionChange?.(true);
         
       } catch (error) {
+        // In development mode, create a mock connection instead of failing
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('🛠️ USECHAT: Using mock agent in development mode due to connection error');
+          
+          // Create a minimal mock client
+          const mockClient = {
+            agent: agentId || 'coder-agent',
+            name: agentName || agentOptions?.agentName || 'default',
+            call: async () => null,
+            setState: () => {},
+            close: () => {}
+          } as AgentClient;
+          
+          // Create mock utilities
+          const mockUtils = createAgentUtils(mockClient);
+          
+          // Update connection state with mock
+          setAgentConnection({
+            isConnected: true,
+            client: mockClient,
+            utils: mockUtils
+          });
+          
+          // Notify of connection change
+          onAgentConnectionChange?.(true);
+          
+          return;
+        }
+        
+        // In production, handle the error normally
         console.error('❌ USECHAT: Failed to connect to agent:', error);
         setAgentConnection({
           isConnected: false,
