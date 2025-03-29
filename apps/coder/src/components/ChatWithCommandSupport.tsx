@@ -26,14 +26,14 @@ export const ChatWithCommandSupport: React.FC = () => {
       timeout: 30000 // 30 second timeout
     },
     onCommandStart: (command) => {
-      console.log(`🚀 CODER: Executing command: ${command}`);
+      // console.log(`🚀 CODER: Executing command: ${command}`);
       setCommandStatus({
         isExecuting: true,
         currentCommand: command
       });
     },
     onCommandComplete: (command, result) => {
-      console.log(`✅ CODER: Command completed: ${command}`, result);
+      // console.log(`✅ CODER: Command completed: ${command}`, result);
       setCommandStatus({
         isExecuting: false,
         currentCommand: null
@@ -49,28 +49,28 @@ export const ChatWithCommandSupport: React.FC = () => {
     const testCommandExecution = async () => {
       // Skip if already run
       if (hasRunTest.current) {
-        console.log('🧪 CODER: Command execution test already run, skipping');
+        // console.log('🧪 CODER: Command execution test already run, skipping');
         return;
       }
 
       // Mark as run immediately to prevent multiple executions
       hasRunTest.current = true;
 
-      console.log('🧪 CODER: Testing command execution...');
-      console.log('🧪 CODER: Command execution available via context:', isAvailable);
+      // console.log('🧪 CODER: Testing command execution...');
+      // console.log('🧪 CODER: Command execution available via context:', isAvailable);
 
       try {
         // Log window.commandExecution availability
         if (typeof window !== 'undefined') {
-          console.log('🧪 CODER: window.commandExecution available:', !!window.commandExecution);
+          // console.log('🧪 CODER: window.commandExecution available:', !!window.commandExecution);
         }
 
         // For now, just log that we're skipping test execution
         // The testCommandExecution method in useChat.ts exists but isn't exported in the type
-        console.log('🧪 CODER: Skipping command execution test - method not available in type');
+        // console.log('🧪 CODER: Skipping command execution test - method not available in type');
 
         // We'll skip testing via command context to avoid infinite loops
-        console.log('🧪 CODER: Skipping command context test to avoid potential loops');
+        // console.log('🧪 CODER: Skipping command context test to avoid potential loops');
       } catch (error) {
         console.error('🧪 CODER: Command test error:', error);
       }
@@ -80,7 +80,7 @@ export const ChatWithCommandSupport: React.FC = () => {
   }, [chat, isAvailable]); // Removed executeCommand dependency
 
   const handleSubmit = (message: string) => {
-    console.log('📝 CODER: Message submitted:', message);
+    // console.log('📝 CODER: Message submitted:', message);
     chat.append({
       content: message,
       role: 'user'

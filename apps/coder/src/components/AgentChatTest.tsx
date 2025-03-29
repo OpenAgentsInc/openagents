@@ -62,13 +62,13 @@ export const AgentChatTest: React.FC = () => {
       if (typeof testFn === 'function') {
         const results = await testFn();
         setTestResults(results);
-        console.log('🧪 AGENT-TEST: Command test results:', results);
+        // console.log('🧪 AGENT-TEST: Command test results:', results);
       } else {
-        console.error('🧪 AGENT-TEST: testCommandExecution not available');
+        // console.error('🧪 AGENT-TEST: testCommandExecution not available');
         setTestResults({ error: 'testCommandExecution method not available' });
       }
     } catch (error) {
-      console.error('🧪 AGENT-TEST: Error testing commands:', error);
+      // console.error('🧪 AGENT-TEST: Error testing commands:', error);
       setTestResults({ error: String(error) });
     }
   };
@@ -77,7 +77,7 @@ export const AgentChatTest: React.FC = () => {
   const handleSendMessage = () => {
     if (!message.trim()) return;
     
-    console.log(`📤 AGENT-TEST: Sending message: ${message}`);
+    // console.log(`📤 AGENT-TEST: Sending message: ${message}`);
     chat.append({
       role: 'user',
       content: message
@@ -91,18 +91,18 @@ export const AgentChatTest: React.FC = () => {
     try {
       // Use agent-specific command execution if available
       if (chat.agentConnection?.isConnected && chat.agentConnection?.utils) {
-        console.log('⚙️ AGENT-TEST: Executing command via agent');
+        // console.log('⚙️ AGENT-TEST: Executing command via agent');
         // Use type assertion to access the method (it exists at runtime)
         const executeAgentCommand = (chat as any).executeAgentCommand;
         if (typeof executeAgentCommand === 'function') {
           const result = await executeAgentCommand('ls -la');
-          console.log('✅ AGENT-TEST: Agent command result:', result);
+          // console.log('✅ AGENT-TEST: Agent command result:', result);
         } else {
-          console.error('⚙️ AGENT-TEST: executeAgentCommand not available');
+          // console.error('⚙️ AGENT-TEST: executeAgentCommand not available');
           throw new Error('executeAgentCommand method not available');
         }
       } else {
-        console.log('⚙️ AGENT-TEST: Executing command locally');
+        // console.log('⚙️ AGENT-TEST: Executing command locally');
         // Add a command in the message that will be executed locally
         chat.append({
           role: 'user',
@@ -110,7 +110,7 @@ export const AgentChatTest: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('❌ AGENT-TEST: Command execution error:', error);
+      // console.error('❌ AGENT-TEST: Command execution error:', error);
     }
   };
   

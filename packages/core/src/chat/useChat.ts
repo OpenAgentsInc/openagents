@@ -299,7 +299,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     // Skip command execution if it's not enabled
     if (!localCommandExecution) {
-      console.log('ℹ️ USECHAT: Command execution disabled, skipping command check');
+      // console.log('ℹ️ USECHAT: Command execution disabled, skipping command check');
       return result;
     }
     
@@ -308,7 +308,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       const commands = parseCommandsFromMessage(message.content);
       
       if (commands.length > 0 && result) {
-        console.log(`🔍 USECHAT: Found ${commands.length} commands in user message`);
+        // console.log(`🔍 USECHAT: Found ${commands.length} commands in user message`);
         // Store commands for processing after the response is received
         pendingCommandsRef.current = {
           messageId: typeof result === 'object' ? (result as any).id || 'unknown' : 'unknown',
@@ -343,7 +343,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   
   // Update processed messages whenever original messages change
   useEffect(() => {
-    console.log(`🔄 USECHAT: Updating processed messages`);
+    // console.log(`🔄 USECHAT: Updating processed messages`);
     
     // Get a reference to the current processed messages
     // This avoids the circular dependency but still allows us to check
@@ -459,10 +459,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
             onCommandStart?.(command);
             
             const result = await safeExecuteCommand(command, commandOptions);
-            console.log('🔍 USECHAT: Raw command result:', JSON.stringify(result));
+            // console.log('🔍 USECHAT: Raw command result:', JSON.stringify(result));
             
             const formattedResult = formatCommandOutput(command, result);
-            console.log('📋 USECHAT: Formatted result:', formattedResult);
+            // console.log('📋 USECHAT: Formatted result:', formattedResult);
             
             commandResults.push({ command, result: formattedResult });
             onCommandComplete?.(command, result);
@@ -563,7 +563,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       const unprocessedMessages = assistantMessages.filter(msg => !processedMessageIds.current.has(msg.id));
       
       if (unprocessedMessages.length > 0) {
-        console.log(`🔍 USECHAT: Found ${unprocessedMessages.length} new assistant messages to process`);
+        // console.log(`🔍 USECHAT: Found ${unprocessedMessages.length} new assistant messages to process`);
         
         // Process each new message
         for (const message of unprocessedMessages) {
