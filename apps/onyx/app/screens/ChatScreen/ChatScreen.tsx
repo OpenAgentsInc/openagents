@@ -13,7 +13,7 @@ import { ToastProvider } from "@openagents/ui"
 // Wrapper component that uses the toast context
 const ChatScreenContent = () => {
   const { theme } = useAppTheme()
-  const { messages, append, testCommandExecution } = useChat({
+  const { messages, append } = useChat({
     fetch: expoFetch as unknown as typeof globalThis.fetch,
     onError: error => console.error(error, 'ERROR'),
     // Enable command execution with extensive logging
@@ -29,14 +29,8 @@ const ChatScreenContent = () => {
   
   // Test command execution on mount
   useEffect(() => {
-    const runTest = async () => {
-      console.log('🧪 ONYX: Running command execution test...');
-      const result = await testCommandExecution();
-      console.log('🧪 ONYX: Command execution test completed:', result);
-    };
-    
-    runTest();
-  }, [testCommandExecution]);
+    console.log('🧪 ONYX: Command execution testing disabled in mobile environment');
+  }, []);
 
   const [message, setMessage] = React.useState("")
 

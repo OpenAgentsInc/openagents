@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "esnext",
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "jsx": "react-jsx",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "outDir": "../dist",
+    "noImplicitAny": false
+  },
+  "include": ["."],
+  "exclude": ["node_modules"]
+}

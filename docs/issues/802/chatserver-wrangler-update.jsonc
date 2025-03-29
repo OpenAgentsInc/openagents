@@ -1,0 +1,33 @@
+/**
+ * Updated chatserver wrangler.jsonc with service binding for agents
+ * This should be applied to apps/chatserver/wrangler.jsonc
+ */
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "chatserver",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-28",
+  "routes": [
+    {
+      "pattern": "chat.openagents.com",
+      "custom_domain": true
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  // Service binding to the agents Worker
+  "services": [
+    {
+      "binding": "AGENTS_SERVICE",
+      "service": "agents"
+    }
+  ]
+}
