@@ -1,4 +1,4 @@
-![Mall-Cop Workflow Overview](docs/cloudflare/mallcop.png)
+![Mall-Cop Workflow Overview](mallcop.png)
 
 # Mall-Cop™ Workflow Overview
 
