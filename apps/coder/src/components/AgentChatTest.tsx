@@ -258,6 +258,7 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#000',
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   header: {
     flexDirection: 'row',
@@ -269,6 +270,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   toggleContainer: {
     flexDirection: 'row',
@@ -277,6 +279,7 @@ const styles = StyleSheet.create({
   toggleLabel: {
     marginRight: 8,
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   configPanel: {
     backgroundColor: '#111',
@@ -296,6 +299,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 8,
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   inputRow: {
     flexDirection: 'row',
@@ -305,6 +309,7 @@ const styles = StyleSheet.create({
   inputLabel: {
     width: 100,
     color: '#ccc',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   configInput: {
     flex: 1,
@@ -314,6 +319,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#222',
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   statusPanel: {
     backgroundColor: '#111',
@@ -336,10 +342,12 @@ const styles = StyleSheet.create({
   statusLabel: {
     width: 120,
     color: '#ccc',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   statusValue: {
     fontWeight: 'bold',
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   buttonRow: {
     flexDirection: 'row',
@@ -366,7 +374,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   resultText: {
-    fontFamily: 'monospace',
+    fontFamily: 'Berkeley Mono, monospace',
     fontSize: 12,
     color: '#aaa',
   },
@@ -414,10 +422,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 4,
     color: '#ccc',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   messageContent: {
     fontSize: 14,
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
   inputContainer: {
     flexDirection: 'row',
@@ -441,5 +451,6 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     backgroundColor: '#222',
     color: '#fff',
+    fontFamily: 'Berkeley Mono, monospace',
   },
 });
