@@ -151,45 +151,46 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
           agentId: agentId || 'CoderAgent', // Default to CoderAgent if only name is provided
           agentName: agentName || agentOptions?.agentName || 'default',
           serverUrl: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
+          // Try different path patterns to increase chance of successful connection
+          pathPattern: agentOptions?.pathPattern || 'api/agent',
           token: agentAuthToken || agentOptions?.token,
           onStateUpdate: agentOptions?.onStateUpdate
         };
         
-        // Connect to the agent
-        const client = await createAgentConnection(connectionOptions);
-        
-        // Connection was successful
-        console.log('✅ USECHAT: Connected to agent successfully');
-        
-        // Create utilities for interacting with the agent
-        const utils = createAgentUtils(client);
-        
-        // Set project context if provided
-        if (agentOptions?.projectContext) {
-          try {
-            // Add a delay to allow the connection to fully establish before setting context
-            setTimeout(async () => {
-              try {
-                await utils.setProjectContext(agentOptions.projectContext);
-                console.log('📁 USECHAT: Set project context for agent');
-              } catch (contextError) {
-                console.warn('Failed to set project context (delayed attempt):', contextError);
-              }
-            }, 500);
-          } catch (error) {
-            console.warn('Failed to set project context (immediate attempt):', error);
+        try {
+          // Connect to the agent
+          const client = await createAgentConnection(connectionOptions);
+          
+          // Connection client created, but WebSocket might not be connected yet
+          console.log('✅ USECHAT: Agent client created successfully');
+          
+          // Create utilities for interacting with the agent
+          const utils = createAgentUtils(client);
+          
+          // Set connection state now to allow user interface to update
+          setAgentConnection({
+            isConnected: true,
+            client,
+            utils
+          });
+          
+          // Notify of connection change
+          onAgentConnectionChange?.(true);
+          
+          // Set project context if provided - client will handle queueing if needed
+          if (agentOptions?.projectContext) {
+            try {
+              await utils.setProjectContext(agentOptions.projectContext);
+              console.log('📁 USECHAT: Set project context for agent');
+            } catch (contextError) {
+              console.warn('Failed to set project context:', contextError);
+            }
           }
+          
+        } catch (connectionError) {
+          console.error('❌ USECHAT: Failed to create agent client:', connectionError);
+          throw connectionError;
         }
-        
-        // Update connection state
-        setAgentConnection({
-          isConnected: true,
-          client,
-          utils
-        });
-        
-        // Notify of connection change
-        onAgentConnectionChange?.(true);
         
       } catch (error) {
         // Handle the connection error
@@ -249,11 +250,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     const fetchInitialMessages = async () => {
       try {
-        // Add a delay to ensure WebSocket connection is fully established
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
         console.log('📥 USECHAT: Fetching initial messages from agent');
-        // Add non-null assertion since we've already checked for null
+        // Add non-null assertion since we've already checked for null in the condition above
         const messages = await agentConnection.utils!.fetchMessages();
         console.log(`✅ USECHAT: Received ${messages.length} messages from agent`);
         setAgentMessages(messages);

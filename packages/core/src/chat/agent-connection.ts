@@ -30,6 +30,12 @@ export interface AgentConnectionOptions {
   serverUrl?: string;
   
   /**
+   * Path pattern for WebSocket endpoint 
+   * @default 'api/agent'
+   */
+  pathPattern?: string;
+  
+  /**
    * Optional callback when the agent's state is updated
    */
   onStateUpdate?: (state: any, source: 'server' | 'client') => void;
@@ -60,6 +66,7 @@ export const createAgentConnection = async (options: AgentConnectionOptions): Pr
     agentId, 
     agentName = 'default', 
     serverUrl = 'https://agents.openagents.com',
+    pathPattern,
     onStateUpdate,
     token
   } = options;
@@ -69,6 +76,7 @@ export const createAgentConnection = async (options: AgentConnectionOptions): Pr
     agent: agentId,
     name: agentName,
     host: serverUrl,
+    pathPattern,
     onStateUpdate,
   };
   
