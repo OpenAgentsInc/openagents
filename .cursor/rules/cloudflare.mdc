@@ -1,7 +1,6 @@
 ---
 description: Building Cloudflare Workers and Agents
 globs: 
-alwaysApply: false
 ---
 <system_context>
 You are an advanced assistant specialized in generating Cloudflare Workers code. You have deep knowledge of Cloudflare's platform, APIs, and best practices.
@@ -1369,4 +1368,3 @@ async webSocketError(ws: WebSocket, error: unknown): void | Promise<void> {
 <user_prompt>
 {user_prompt}
 </user_prompt>
-
