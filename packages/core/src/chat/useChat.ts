@@ -4,16 +4,14 @@ import { useChat as vercelUseChat } from "@ai-sdk/react"
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseCommandsFromMessage, replaceCommandTagsWithResults, formatCommandOutput } from '../utils/commandParser';
 import { safeExecuteCommand, CommandExecutionOptions } from '../utils/commandExecutor';
-import { 
-  AgentClient, 
-  AgentClientOptions 
-} from 'agents/client';
+// Use our local interfaces instead of direct imports
 import { 
   createAgentConnection, 
   fetchAgentMessages, 
   sendMessageToAgent, 
   createAgentUtils,
-  AgentConnectionOptions
+  AgentConnectionOptions,
+  AgentClient
 } from './agent-connection';
 
 // Define our own chat options interface
@@ -238,7 +236,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     const fetchInitialMessages = async () => {
       try {
         console.log('📥 USECHAT: Fetching initial messages from agent');
-        const messages = await agentConnection.utils.fetchMessages();
+        // Add non-null assertion since we've already checked for null
+        const messages = await agentConnection.utils!.fetchMessages();
         console.log(`✅ USECHAT: Received ${messages.length} messages from agent`);
         setAgentMessages(messages);
       } catch (error) {
@@ -577,49 +576,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     processNewMessages();
   }, [messages, localCommandExecution, commandOptions, onCommandStart, onCommandComplete, updateMessage]);
   
-  // Add a simple function to test if command execution is available
-  const testCommandExecution = useCallback(async () => {
-    try {
-      // IMPORTANT: Instead of dynamically importing, reference the module path
-      // This prevents webpack issues in browser environments
-      
-      // Don't import any modules, just check for the APIs
-      // @ts-ignore - Electron APIs are injected at runtime
-      const isCommandExecutionAvailable = typeof window !== 'undefined' && (
-        // @ts-ignore - Electron APIs are injected at runtime
-        !!window.commandExecution || 
-        // @ts-ignore - Electron APIs are injected at runtime
-        !!(window.electron && window.electron.ipcRenderer)
-      );
-      
-      // Log all the available APIs on window
-      if (typeof window !== 'undefined') {
-        console.log('🔍 USECHAT: Command execution API check:', {
-          available: isCommandExecutionAvailable,
-          // @ts-ignore - Electron APIs are injected at runtime
-          commandExecution: !!window.commandExecution,
-          // @ts-ignore - Electron APIs are injected at runtime
-          electron: !!window.electron,
-          // @ts-ignore - Electron APIs are injected at runtime
-          electronIPC: !!(window.electron?.ipcRenderer)
-        });
-      }
-      
-      // Just report API availability, don't actually execute anything
-      console.log('🧪 USECHAT: Command execution detection complete');
-      return { 
-        stdout: isCommandExecutionAvailable 
-          ? "Command execution API is available" 
-          : "Command execution API is not available in this environment",
-        stderr: "",
-        exitCode: 0,
-        command: "test" 
-      };
-    } catch (error) {
-      console.error('🧪 USECHAT: Command execution test error:', error);
-      return { error: error instanceof Error ? error.message : String(error) };
-    }
-  }, []);
+  // This function will be replaced by the enhanced version below
 
   // Command execution for agent
   const executeAgentCommand = useCallback(async (command: string) => {
@@ -653,7 +610,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     const localResult = await safeExecuteCommand('echo "Testing local command execution"', commandOptions).catch(() => null);
     
     // Test agent command execution if connected
-    let agentResult = null;
+    let agentResult: any = null;
     if (shouldUseAgent && agentConnection.isConnected && agentConnection.utils) {
       agentResult = await agentConnection.utils.executeCommand('echo "Testing agent command execution"').catch(() => null);
     }

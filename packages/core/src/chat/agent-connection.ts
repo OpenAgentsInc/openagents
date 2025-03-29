@@ -1,5 +1,41 @@
 import { Message, UIMessage } from './types';
-import { AgentClient, AgentClientOptions } from 'agents/client';
+
+// Model the AgentClient interface without directly importing it
+// This avoids TypeScript module resolution issues
+export interface AgentClientOptions {
+  /** Name of the agent to connect to */
+  agent: string;
+  /** Name of the specific Agent instance */
+  name?: string;
+  /** Called when the Agent's state is updated */
+  onStateUpdate?: (state: any, source: "server" | "client") => void;
+  /** Host URL for the agent server */
+  host?: string;
+  /** Headers for authentication */
+  headers?: Record<string, string>;
+}
+
+// Simplified AgentClient interface for type checking
+export interface AgentClient {
+  agent: string;
+  name: string;
+  setState(state: any): void;
+  call<T = unknown>(method: string, args?: unknown[]): Promise<T>;
+  close(): void;
+}
+
+// Runtime implementation helper
+export const getAgentClient = (): any => {
+  // This function will be used to dynamically import the real AgentClient at runtime
+  // and avoid TypeScript module resolution issues during compilation
+  try {
+    // @ts-ignore - We know this will be available at runtime
+    return require('agents/client').AgentClient;
+  } catch (error) {
+    console.error('Failed to load AgentClient:', error);
+    throw new Error('Agents SDK not available. Make sure agents package is installed.');
+  }
+};
 
 /**
  * Options for connecting to a Cloudflare Agent
@@ -73,10 +109,13 @@ export const createAgentConnection = async (options: AgentConnectionOptions): Pr
   }
   
   try {
-    // Create the agent client
-    const client = new AgentClient(clientOptions);
+    // Get the AgentClient constructor dynamically at runtime
+    const AgentClientClass = getAgentClient();
     
-    return client;
+    // Create the agent client
+    const client = new AgentClientClass(clientOptions);
+    
+    return client as AgentClient;
   } catch (error) {
     console.error('Failed to connect to agent:', error);
     throw new Error(`Failed to connect to agent: ${error instanceof Error ? error.message : String(error)}`);
@@ -92,7 +131,7 @@ export const fetchAgentMessages = async (client: AgentClient): Promise<UIMessage
     const messages = await client.call<Message[]>('getMessages');
     
     // Convert to UIMessages with proper typing
-    return messages.map(msg => ({
+    return messages.map((msg: Message) => ({
       ...msg,
       parts: msg.parts || [{
         type: 'text',
