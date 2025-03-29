@@ -1,83 +1,82 @@
 /**
  * Wrangler configuration for OpenAgents Agents Service
- * 
+ *
  * This configures the worker service that hosts our agents,
  * including the CoderAgent specialized for coding tasks.
  */
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "agents",
-	"main": "src/server.ts",
-	"compatibility_date": "2025-03-28",
-	"compatibility_flags": [
-		"nodejs_compat",
-		"nodejs_compat_populate_process_env"
-	],
-	
-	/**
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "agents",
+  "main": "src/server.ts",
+  "compatibility_date": "2025-03-28",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
+  ],
+  "routes": [
+    {
+      "pattern": "agents.openagents.com",
+      "custom_domain": true
+    }
+  ],
+  /**
 	 * Durable Objects for persisting agent state
 	 */
-	"durable_objects": {
-		"bindings": [
-			{
-				"name": "Chat",
-				"class_name": "Chat"
-			},
-			{
-				"name": "CoderAgent",
-				"class_name": "CoderAgent" 
-			}
-		]
-	},
-	
-	/**
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Chat",
+        "class_name": "Chat"
+      },
+      {
+        "name": "CoderAgent",
+        "class_name": "CoderAgent"
+      }
+    ]
+  },
+  /**
 	 * Migrations for Durable Objects
 	 */
-	"migrations": [
-		{
-			"tag": "v1",
-			"new_sqlite_classes": [
-				"Chat"
-			]
-		},
-		{
-			"tag": "v2",
-			"new_sqlite_classes": [
-				"CoderAgent"
-			]
-		}
-	],
-	
-	/**
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "Chat"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "CoderAgent"
+      ]
+    }
+  ],
+  /**
 	 * Enable observability for easier debugging
 	 */
-	"observability": {
-		"enabled": true
-	},
-	
-	/**
+  "observability": {
+    "enabled": true
+  },
+  /**
 	 * Access to AI models
 	 */
-	"ai": {
-		"binding": "AI"
-	},
-	
-	/**
+  "ai": {
+    "binding": "AI"
+  },
+  /**
 	 * Environment variables needed for operation
 	 * These will be passed to the worker environment
 	 */
-	"vars": {
-		"AGENT_ENV": "production"
-	},
-	
-	/**
+  "vars": {
+    "AGENT_ENV": "production"
+  },
+  /**
 	 * Smart placement for optimal performance
 	 */
-	"placement": { 
-		"mode": "smart" 
-	}
-	
-	/**
+  "placement": {
+    "mode": "smart"
+  }
+  /**
 	 * Notes:
 	 * 1. Use `wrangler secret put OPENAI_API_KEY` to set required API keys
 	 * 2. This agent service is designed to be called via service bindings from chatserver
