@@ -15,7 +15,7 @@ export const coderAgentContext = new AsyncLocalStorage<CoderAgent>();
 
 /**
  * Specialized agent for coding assistance and development tasks
- * 
+ *
  * This agent extends the base AIChatAgent to provide coding-specific functionality:
  * - Code generation and analysis
  * - Repository management
@@ -70,7 +70,7 @@ export class CoderAgent extends AIChatAgent<Env> {
 
           // Stream the AI response using Claude or GPT
           const model = openai("gpt-4o-2024-11-20"); // TODO: Make configurable or use Claude
-          
+
           const result = streamText({
             model,
             system: `You are Claude, a helpful AI coding assistant specialized in software development.
@@ -85,11 +85,11 @@ You can help with:
 
 You have access to specialized tools for coding tasks. When appropriate, use these tools to assist the user more effectively.
 
-${this.projectContext.repoOwner && this.projectContext.repoName ? 
-  `Current project context: ${this.projectContext.repoOwner}/${this.projectContext.repoName}` + 
-  (this.projectContext.branch ? ` (branch: ${this.projectContext.branch})` : '') : 
-  'No specific project context set. You can help with general coding questions or set a repository context.'
-}
+${this.projectContext.repoOwner && this.projectContext.repoName ?
+                `Current project context: ${this.projectContext.repoOwner}/${this.projectContext.repoName}` +
+                (this.projectContext.branch ? ` (branch: ${this.projectContext.branch})` : '') :
+                'No specific project context set. You can help with general coding questions or set a repository context.'
+              }
 
 Always provide thoughtful, well-explained responses for coding tasks. If writing code, include clear comments and follow best practices.`,
             messages: processedMessages,

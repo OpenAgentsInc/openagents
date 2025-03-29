@@ -78,8 +78,10 @@ const getRepositoryInfo = tool({
     
     try {
       // Extract auth token if available
-      const authToken = options?.headers?.['X-GitHub-Token'] || 
-                       (options?.headers?.Authorization?.replace('Bearer ', ''));
+      // TypeScript: Since headers isn't part of ToolExecutionOptions type, use type assertion
+      const headers = (options as any)?.headers;
+      const authToken = headers?.['X-GitHub-Token'] || 
+                       (headers?.Authorization?.replace('Bearer ', ''));
       
       // Call the MCP tool via our client
       const result = await mcpClient.callTool('get_repository', {
@@ -166,8 +168,10 @@ const getFileContents = tool({
     
     try {
       // Extract auth token if available
-      const authToken = options?.headers?.['X-GitHub-Token'] || 
-                       (options?.headers?.Authorization?.replace('Bearer ', ''));
+      // TypeScript: Since headers isn't part of ToolExecutionOptions type, use type assertion
+      const headers = (options as any)?.headers;
+      const authToken = headers?.['X-GitHub-Token'] || 
+                       (headers?.Authorization?.replace('Bearer ', ''));
       
       // Call the MCP tool via our client
       const result = await mcpClient.callTool('get_file_contents', {
@@ -219,8 +223,10 @@ const searchCode = tool({
     
     try {
       // Extract auth token if available
-      const authToken = options?.headers?.['X-GitHub-Token'] || 
-                       (options?.headers?.Authorization?.replace('Bearer ', ''));
+      // TypeScript: Since headers isn't part of ToolExecutionOptions type, use type assertion
+      const headers = (options as any)?.headers;
+      const authToken = headers?.['X-GitHub-Token'] || 
+                       (headers?.Authorization?.replace('Bearer ', ''));
       
       // Call the MCP tool via our client
       const result = await mcpClient.callTool('search_code', {
