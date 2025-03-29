@@ -1,87 +1,129 @@
 # WebSocket Connection Fix for Cloudflare Agents
 
-## Issue
+## Problem: "Missing namespace or room headers" Error
 
-The client was unable to establish a WebSocket connection to the Cloudflare Workers-based Agents. The connection attempts resulted in HTTP 500 errors with the following error patterns:
+The WebSocket connection to the CoderAgent Durable Object was failing with the following error:
 
 ```
-WebSocket connection to 'wss://agents.openagents.com/agents/api/coder-agent/test-instance' failed: Error during WebSocket handshake: Unexpected response code: 500
+Missing namespace or room headers when connecting to CoderAgent.
+Did you try connecting directly to this Durable Object? Try using getServerByName(namespace, id) instead.
 ```
+
+This error occurs because we need to handle WebSocket connections to Durable Objects properly by providing the required headers.
 
 ## Root Cause Analysis
 
-After investigating the Cloudflare Agents SDK documentation and the deployment, we identified several issues:
+1. The error "Missing namespace or room headers" indicates we were trying to access the Durable Object directly without going through the proper routing mechanism.
 
-1. **Incorrect Path Pattern**: We were using custom paths (`/agents/api/...`) that don't match the standard Agents SDK WebSocket routing pattern.
+2. According to the Cloudflare Agents SDK, WebSocket connections need to be routed correctly with namespace and room headers.
 
-2. **Case Sensitivity**: The agent ID was not matching the exported class name exactly. The Durable Object binding is case-sensitive.
+3. Based on the documentation, the `routeAgentRequest` function should handle this properly when given the right options.
 
-3. **Connection Timing**: We were attempting to use the connection immediately after establishment, without allowing the WebSocket handshake to complete.
+## Solution Implemented
 
-## Solution
+We've modified the server.ts file to:
 
-1. **Standardized WebSocket URL Pattern**:
-   - Updated the WebSocket URL to follow the pattern: `wss://hostname/agent/:agentId/:instanceName`
-   - This is the standard pattern used by the Cloudflare Agents SDK
+1. Remove the incorrect import of `getServerByName` which doesn't exist in the Agents SDK
+2. Enhance the `routeAgentRequest` function call with additional WebSocket-specific headers
+3. Add a fallback mechanism for direct Durable Object access with custom headers as a last resort
 
-2. **Corrected Agent ID**:
-   - Changed from `coder-agent` to `CoderAgent` to match the exact class name export
-   - The Durable Object lookups are case-sensitive and must match the class name in wrangler.jsonc
+```typescript
+// Customize the agent routing based on the Cloudflare agents SDK docs
+// Using routeAgentRequest with extended options to handle WebSocket connections
+console.log(`🚀 Routing request using routeAgentRequest with enhanced options...`);
+const options = {
+  // Enable CORS to allow connections from different origins
+  cors: true,
+  
+  // Add custom headers for WebSocket connections if needed
+  headers: upgradeHeader === 'websocket' ? {
+    'X-Agent-WS-Version': '1.0',
+    'X-Agent-Connection-Type': 'websocket'
+  } : undefined
+};
 
-3. **Improved Connection Handling**:
-   - Added better connection state checking in the SDK bridge
-   - Added delays for operation attempts to ensure the WebSocket connection is fully established
-   - Implemented automatic retries with exponential backoff for message fetching and context setting
+// Use the routeAgentRequest function to properly handle all agent requests
+// This will automatically handle the namespace and room headers for WebSockets
+const response = await routeAgentRequest(request, env, options);
+```
 
-4. **Enhanced Error Reporting**:
-   - Improved error messages to provide more detail about connection failures
-   - Added specific state reporting in the WebSocket readyState check
+If the normal routing fails, we have a fallback mechanism that tries direct Durable Object access with added headers:
 
-## Implementation
+```typescript
+// For CoderAgent requests, we can try to directly connect to the Durable Object
+if (agentName === 'coderagent' && upgradeHeader === 'websocket') {
+  console.log(`⚠️ routeAgentRequest failed to handle WebSocket connection. Attempting direct access...`);
+  
+  try {
+    // Create a Durable Object ID based on the instance name
+    const id = env.CoderAgent.idFromName(instanceName);
+    // Get a reference to the Durable Object
+    const agent = env.CoderAgent.get(id);
+    
+    // Add headers that might be required by the Durable Object
+    const headers = new Headers(request.headers);
+    headers.set('X-Agent-Name', agentName);
+    headers.set('X-Instance-Name', instanceName);
+    
+    // Create a new request with the added headers
+    const enhancedRequest = new Request(request.url, {
+      method: request.method,
+      headers: headers,
+      body: request.body,
+      redirect: request.redirect,
+    });
+    
+    // Forward the enhanced request to the Durable Object
+    return agent.fetch(enhancedRequest);
+  } catch (directError) {
+    console.error(`⛔ Direct Durable Object access failed:`, directError);
+  }
+}
+```
 
-1. **Changed in `agent-sdk-bridge.ts`**:
-   ```typescript
-   // Changed from
-   wsUrl = `${wsProtocol}://${url.host}/agents/api/${this.agent}/${this.name}`;
+## Deployment Instructions
+
+1. Deploy the updated server code:
+   ```bash
+   cd packages/agents
+   wrangler deploy
+   ```
+
+2. Verify the OpenRouter API key is set:
+   ```bash
+   wrangler secret get OPENROUTER_API_KEY
+   ```
    
-   // To
-   wsUrl = `${wsProtocol}://${url.host}/agent/${this.agent}/${this.name}`;
+   If not set, add it:
+   ```bash
+   wrangler secret put OPENROUTER_API_KEY
    ```
 
-2. **Updated in `AgentChatTest.tsx`**:
-   ```typescript
-   // Changed from
-   const [agentConfig, setAgentConfig] = useState({
-     agentId: 'coder-agent',
-     agentName: 'test-instance',
-     serverUrl: 'https://agents.openagents.com'
-   });
-   
-   // To
-   const [agentConfig, setAgentConfig] = useState({
-     agentId: 'CoderAgent', // Must match the export class name exactly
-     agentName: 'default-instance',
-     serverUrl: 'https://agents.openagents.com'
-   });
-   ```
+## Technical Notes
 
-3. **Added Delayed Operations in `useChat.ts`**:
-   ```typescript
-   // Added delay to allow connection to establish
-   await new Promise(resolve => setTimeout(resolve, 1000));
-   ```
+1. **Cloudflare Agents SDK and WebSockets:**
+   - The Agents SDK has specific routing requirements for WebSockets
+   - The `routeAgentRequest` function should handle WebSocket connections correctly
+   - Custom headers may help in routing the request properly 
 
-## Testing
+2. **Path Structure:**
+   - The correct path structure is `/agents/{agent-id}/{instance-name}`
+   - Both agent-id and instance-name should be lowercase
+   - The default instance-name is 'default' if not provided
 
-The changes have been tested by:
+3. **Error Handling:**
+   - All operations are wrapped in try-catch blocks to prevent uncaught exceptions
+   - Detailed error logs help diagnose connection issues
+   - Proper error responses are returned to the client
+   - Fallback mechanism attempts direct access if routing fails
 
-1. Connecting to the `agents.openagents.com` WebSocket endpoint
-2. Verifying the connection remains open and stable
-3. Successfully sending and receiving messages
-4. Setting project context and verifying it persists
+## Client-Side Integration
 
-## References
+No changes are needed to the client-side code. The agent-sdk-bridge.ts file is already configured to:
 
-- [Cloudflare Agents SDK Documentation](https://github.com/cloudflare/agents)
-- [Durable Objects Documentation](https://developers.cloudflare.com/workers/learning/using-durable-objects/)
-- [WebSocket API Standards](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
+1. Use the correct URL pattern: `/agents/coderagent/default`
+2. Handle all WebSocket connection states properly
+3. Queue messages until the connection is established
+4. Provide detailed error information
+
+This fix should now correctly route WebSocket connections to the CoderAgent Durable Object.

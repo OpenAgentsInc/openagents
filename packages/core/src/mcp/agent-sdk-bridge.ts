@@ -52,11 +52,13 @@ export class AgentClient implements BaseAgentClient {
   private socket: WebSocket | null = null;
   private messageQueue: Map<string, { resolve: Function, reject: Function }> = new Map();
   private pendingMessages: Array<{ id: string, data: string }> = [];
-  private connected = false;
+  /** Whether the client is connected to the agent via WebSocket */
+  connected = false;
   private connecting = false;
   private reconnectAttempts = 0;
   private messageId = 0;
-  private connectionPromise: Promise<void> | null = null;
+  /** Promise that resolves when the connection is established */
+  connectionPromise: Promise<void> | null = null;
   private currentPatternIndex = 0; // Track which pattern we're currently trying
   
   agent: string;
@@ -90,17 +92,11 @@ export class AgentClient implements BaseAgentClient {
       const url = new URL(hostWithProtocol);
       const wsProtocol = url.protocol === 'https:' ? 'wss' : 'ws';
       
-      // Define all possible patterns to try - THE CORRECT PATTERN IS THE THIRD ONE (/agents)
-      // Cloudflare Agents SDK follows this pattern: wss://{hostname}/{namespace}/{id}
-      // As documented in the SDK, the correct pattern is: /agents/{agent}/{instance}
+      // Use only the correct pattern for Cloudflare Agents
+      // This follows the standard pattern: wss://{hostname}/{namespace}/{id}
+      // As per error messages from the server, we need to connect through a server endpoint, not directly to the DO
       const allPatterns = [
-        'agents',     // Primary pattern (namespace) - THIS IS THE CORRECT ONE 
-        '',           // Direct path - in case there's no namespace
-        'api/agents', // With api prefix - alternative pattern
-        'api/agent',  // Original pattern attempt
-        'ws',         // WebSocket-specific
-        'worker',     // Worker-specific endpoint
-        'agent'       // Direct agent endpoint
+        'agents'      // The only correct pattern - /agents/{agent}/{instance}
       ];
       
       // If a pattern is provided, try it first, then fall back to others on reconnect attempts

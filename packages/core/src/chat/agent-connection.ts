@@ -1,5 +1,5 @@
 import { Message, UIMessage } from './types';
-import { BaseAgentClient, AgentClientOptions as BridgeClientOptions, createAgentClient } from '../mcp/agent-sdk-bridge';
+import { BaseAgentClient, AgentClientOptions as BridgeClientOptions, createAgentClient, AgentClient as AgentClientImpl } from '../mcp/agent-sdk-bridge';
 
 // Re-export the agent client interfaces
 export type AgentClientOptions = BridgeClientOptions;
@@ -148,7 +148,9 @@ export const createAgentUtils = (client: AgentClient) => {
     executeCommand: async (command: string) => {
       try {
         // Check if client is actually connected before attempting to execute command
-        if (client['connected'] === false) {
+        // We need to cast to the implementation type to access the connected property
+        const agentClient = client as AgentClientImpl;
+        if (agentClient.connected === false) {
           const notConnectedError = new Error('Cannot execute command: client not connected');
           console.error('⚠️ Agent command execution failed:', notConnectedError);
           throw notConnectedError;
@@ -163,7 +165,8 @@ export const createAgentUtils = (client: AgentClient) => {
     setProjectContext: async (context: any) => {
       try {
         // Check if client is actually connected before attempting to set context
-        if (client['connected'] === false) {
+        const agentClient = client as AgentClientImpl;
+        if (agentClient.connected === false) {
           console.warn('Cannot set project context: client not connected');
           return false;
         }
@@ -177,7 +180,8 @@ export const createAgentUtils = (client: AgentClient) => {
     getProjectContext: async () => {
       try {
         // Check if client is actually connected before attempting to get context
-        if (client['connected'] === false) {
+        const agentClient = client as AgentClientImpl;
+        if (agentClient.connected === false) {
           console.warn('Cannot get project context: client not connected');
           return {};
         }
