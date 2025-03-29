@@ -38,7 +38,7 @@ npm install
 Create a `.dev.vars` file:
 
 ```env
-OPENAI_API_KEY=your_openai_api_key
+OPENROUTER_API_KEY=your_openai_api_key
 ```
 
 4. Run locally:

@@ -7,7 +7,7 @@ import {
   streamText,
   type StreamTextOnFinishCallback,
 } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -15,12 +15,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // Import our CoderAgent
 import { CoderAgent } from "./coder-agent";
 
-const model = openai("gpt-4o-2024-11-20");
-// Cloudflare AI Gateway
-// const openai = createOpenAI({
-//   apiKey: env.OPENAI_API_KEY,
-//   baseURL: env.GATEWAY_BASE_URL,
-// });
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
+const model = openrouter("openai/gpt-4o-mini");
 
 // We use ALS to expose the agent context to the tools
 export const agentContext = new AsyncLocalStorage<Chat>();
@@ -51,7 +49,7 @@ export class Chat extends AIChatAgent<Env> {
           // Stream the AI response using GPT-4
           const result = streamText({
             model,
-            system: `You are a helpful assistant that can do various tasks... 
+            system: `You are a helpful assistant that can do various tasks...
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
@@ -95,38 +93,38 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     // Check for required API keys
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY) {
       console.error(
-        "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
+        "OPENROUTER_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
       );
-      return new Response("OPENAI_API_KEY is not set", { status: 500 });
+      return new Response("OPENROUTER_API_KEY is not set", { status: 500 });
     }
 
     // Extract the URL to check if this is a request for the coder agent
     const url = new URL(request.url);
-    
+
     // Route to the coder agent if the path indicates it
     if (url.pathname.startsWith('/coder')) {
       console.log("Routing request to CoderAgent");
-      
+
       // Rewrite the URL to use the standard agent routing pattern
       // This is necessary because routeAgentRequest expects a specific format
       const modifiedRequest = new Request(
         new URL(url.pathname.replace('/coder', ''), url.origin).toString(),
         request
       );
-      
+
       // For simplicity in development, just use the default agent factory
       // The actual implementation will handle proper instantiation
       console.log("Routing to CoderAgent - using default handler");
-      
+
       // When the CoderAgent is more stable, we'll customize the factory
       return (
         (await routeAgentRequest(modifiedRequest, env)) ||
         new Response("Coder agent not found", { status: 404 })
       );
     }
-    
+
     // Default route for the standard Chat agent
     return (
       (await routeAgentRequest(request, env)) ||

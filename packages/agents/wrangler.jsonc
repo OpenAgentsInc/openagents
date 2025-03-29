@@ -78,7 +78,7 @@
   }
   /**
 	 * Notes:
-	 * 1. Use `wrangler secret put OPENAI_API_KEY` to set required API keys
+	 * 1. Use `wrangler secret put OPENROUTER_API_KEY` to set required API keys
 	 * 2. This agent service is designed to be called via service bindings from chatserver
 	 * 3. Service bindings are configured in the calling service's wrangler config
 	 */
