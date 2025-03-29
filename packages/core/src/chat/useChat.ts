@@ -151,8 +151,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
           agentId: agentId || 'CoderAgent', // Default to CoderAgent if only name is provided
           agentName: agentName || agentOptions?.agentName || 'default',
           serverUrl: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
-          // Try different path patterns to increase chance of successful connection
-          pathPattern: agentOptions?.pathPattern || 'api/agent',
+          // Only use a pathPattern if explicitly provided, otherwise let agent-sdk-bridge try multiple patterns
+          pathPattern: agentOptions?.pathPattern,
           token: agentAuthToken || agentOptions?.token,
           onStateUpdate: agentOptions?.onStateUpdate
         };
@@ -167,12 +167,41 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
           // Create utilities for interacting with the agent
           const utils = createAgentUtils(client);
           
-          // Set connection state now to allow user interface to update
+          // At this point, we have a client object but the WebSocket connection might still be pending
+          // Only set isConnected to false until we confirm the WebSocket is actually connected
           setAgentConnection({
-            isConnected: true,
+            isConnected: false,
             client,
             utils
           });
+          
+          try {
+            // Wait for the actual WebSocket connection to be established
+            // The client has a connectionPromise property we can use to wait for the real connection
+            if ('connectionPromise' in client) {
+              console.log('⏳ USECHAT: Waiting for WebSocket connection to complete...');
+              await (client as any).connectionPromise;
+              console.log('✅ USECHAT: WebSocket connection established successfully');
+              
+              // Now we can safely set the connection status to true
+              setAgentConnection(prev => ({
+                ...prev,
+                isConnected: true
+              }));
+            } else {
+              // For older client implementations that don't have connectionPromise
+              // We'll set isConnected to true, but this might be inaccurate
+              console.warn('⚠️ USECHAT: Client does not expose connectionPromise, connection status may be inaccurate');
+              setAgentConnection(prev => ({
+                ...prev,
+                isConnected: true
+              }));
+            }
+          } catch (connectionError) {
+            console.error('❌ USECHAT: WebSocket connection failed:', connectionError);
+            // Don't throw here, as we already have a client object that might reconnect
+            // Just leave isConnected as false
+          }
           
           // Notify of connection change
           onAgentConnectionChange?.(true);

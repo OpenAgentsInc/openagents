@@ -31,7 +31,7 @@ export interface AgentConnectionOptions {
   
   /**
    * Path pattern for WebSocket endpoint 
-   * @default 'api/agent'
+   * @default 'api/agents'
    */
   pathPattern?: string;
   

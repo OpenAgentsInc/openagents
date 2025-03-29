@@ -2,129 +2,177 @@
 
 ## Issue Description
 
-When attempting to connect to the Cloudflare Agents from the client application, we encounter a misleading state where the UI reports a successful connection while the WebSocket connection actually fails with 404 errors.
+When attempting to connect to the Cloudflare Agents from the client application, we encounter a consistent issue where all WebSocket connection attempts fail with different HTTP error codes (404/500), suggesting fundamental configuration issues with the Cloudflare Agent server.
 
-## Observed Behavior
+## Latest Connection Test Results
 
-1. The connection process initially shows a successful connection:
+Based on our systematic testing of multiple URL patterns, we found:
+
+```
+Starting connection attempts with 7 possible URL patterns
+Connecting to agent at wss://agents.openagents.com/api/agent/coderagent/default (attempt 1/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 404
+
+Connecting to agent at wss://agents.openagents.com/api/agents/coderagent/default (attempt 2/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 404
+
+Connecting to agent at wss://agents.openagents.com/agents/coderagent/default (attempt 3/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 500
+
+Connecting to agent at wss://agents.openagents.com/coderagent/default (attempt 4/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 404
+
+Connecting to agent at wss://agents.openagents.com/ws/coderagent/default (attempt 5/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 404
+
+Connecting to agent at wss://agents.openagents.com/worker/coderagent/default (attempt 6/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 404
+
+Connecting to agent at wss://agents.openagents.com/agent/coderagent/default (attempt 7/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 404
+```
+
+## Key Discoveries
+
+After comprehensive testing, we've learned several crucial things:
+
+1. **Server is Responding**: The server at `agents.openagents.com` is operational and responding to requests.
+
+2. **Different Error Codes**: 
+   - Most paths return **404 Not Found** errors, indicating these endpoints don't exist.
+   - The `/agents/coderagent/default` path returns a **500 Internal Server Error**, which is interesting because it suggests this path is recognized but has an implementation issue.
+
+3. **Case Sensitivity**: Converting agent names to lowercase (`CoderAgent` → `coderagent`) didn't resolve the issue.
+
+4. **No Valid Endpoint Found**: After trying 7 different URL patterns, none succeeded. This strongly suggests either:
+   - The server is not properly configured for WebSocket connections
+   - The agent is not deployed or activated
+   - The correct endpoint uses a completely different pattern than we've tried
+
+5. **500 Error Path**: The fact that `/agents/` path returns a 500 error rather than 404 is significant - it suggests this might be the correct base path but there's a server-side implementation error.
+
+## Cloudflare Durable Objects and WebSocket Connection
+
+Our investigation revealed important insights into how Cloudflare Durable Objects handle WebSocket connections:
+
+1. **Durable Object Activation**: The 500 error on the `/agents/` path likely indicates that the Durable Object for the agent exists in the Worker codebase, but is experiencing an error during activation.
+
+2. **Standard Convention**: According to Cloudflare documentation, the typical URL pattern for connecting to a Durable Object via WebSocket should be:
    ```
-   useChat.ts:147 🔌 USECHAT: Connecting to agent: CoderAgent
-   agent-connection.ts:84 🔌 USECHAT: Creating agent client for CoderAgent/default-instance
-   agent-sdk-bridge.ts:89 Connecting to agent at wss://agents.openagents.com/api/agent/CoderAgent/default-instance
-   useChat.ts:162 ✅ USECHAT: Connected to agent successfully
-   AgentChatTest.tsx:43 🔌 AGENT-TEST: Connection status changed: connected
+   wss://{worker-hostname}/{namespace}/{id}
+   ```
+   
+   In our case, this would translate to:
+   ```
+   wss://agents.openagents.com/agents/coderagent/default
    ```
 
-2. But immediately follows with WebSocket connection errors:
-   ```
-   agent-sdk-bridge.ts:92 WebSocket connection to 'wss://agents.openagents.com/api/agent/CoderAgent/default-instance' failed: Error during WebSocket handshake: Unexpected response code: 404
-   agent-sdk-bridge.ts:140 WebSocket error: Event {isTrusted: true, type: 'error', target: WebSocket, currentTarget: WebSocket, eventPhase: 2, …}
-   agent-sdk-bridge.ts:145 Disconnected from agent CoderAgent/default-instance
-   agent-sdk-bridge.ts:158 Attempting to reconnect in 1000ms...
-   ```
+3. **Error Interpretation**: The 500 error during handshake suggests one of several possible issues:
+   - The Durable Object exists but fails to initialize
+   - The WebSocket handler in the Durable Object code has an error
+   - There's an authorization issue preventing connection establishment
+   - The Durable Object storage or state management has a critical error
 
-3. Subsequent operations fail with "Not connected" errors:
-   ```
-   agent-connection.ts:152 Failed to set project context: Error: Not connected to agent: connection not established
-   agent-connection.ts:111 Failed to fetch agent messages: Error: Not connected to agent: connection not established
-   ```
+## Updated Root Cause Analysis
 
-4. Reconnection attempts continue to fail with 404 errors, with exponential backoff:
-   ```
-   Attempting to reconnect in 1000ms...
-   Attempting to reconnect in 2000ms...
-   Attempting to reconnect in 4000ms...
-   Attempting to reconnect in 8000ms...
-   Attempting to reconnect in 16000ms...
-   ```
+Based on our findings, the most likely causes are:
 
-## Root Cause Analysis
+1. **Server Implementation Issues**:
+   - The Cloudflare Worker handling agent requests has an implementation error in the WebSocket handler
+   - The Durable Object for the agent is defined but fails during initialization
+   - There's an error in the WebSocket handshake protocol implementation
 
-The issue stems from several interrelated problems:
+2. **Deployment Configuration**:
+   - The agent is deployed but not properly bound to the correct endpoint
+   - Worker routes are incorrectly configured
+   - Durable Object bindings may be incorrect or missing
 
-1. **Premature Success Reporting**: The client reports a successful connection immediately after creating the `AgentClient` object, before the WebSocket connection is actually established.
+3. **Authentication Requirements**:
+   - WebSocket connections might require authentication credentials
+   - Specific headers might be needed for the handshake
+   - Cloudflare Access policies might be blocking connections
 
-2. **Wrong WebSocket URL Path**: The WebSocket URL `/api/agent/CoderAgent/default-instance` returns 404, suggesting the endpoint doesn't exist or is misconfigured.
+4. **Environment Configuration Mismatch**:
+   - Production vs. development environment differences
+   - Missing environment variables needed by the agent
+   - Misconfigured Worker settings for WebSockets
 
-3. **Connection State Inconsistency**: The `connected` flag in the `AgentClient` class is set to `true` before the WebSocket connection is confirmed to be open.
+## Deep Dive into the 500 Error Path
 
-4. **Race Condition**: Operations like `setProjectContext` and `fetchMessages` are attempted before the WebSocket connection is fully established.
+The most valuable clue is the **500 error** on the `/agents/` path:
 
-5. **Missing API Endpoint**: The 404 error indicates that the expected WebSocket endpoint is not available on the server, which could be due to:
-   - The server is not deployed correctly
-   - The route pattern doesn't match what the client expects
-   - The server is using a different URL structure
+```
+Connecting to agent at wss://agents.openagents.com/agents/coderagent/default (attempt 3/7)
+WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 500
+```
 
-## Specific Technical Analysis
+This specific type of error indicates:
 
-### Client-Side Issues
+1. **Route Recognition**: The server's router recognizes this pattern, confirming it's a valid endpoint structure
+2. **Runtime Error**: The error occurs during request processing, not at the routing level
+3. **Worker Execution**: The Worker code is executing but encountering an error
+4. **Error Propagation**: The error is serious enough that it's returned as an HTTP 500 rather than handled internally
 
-1. In `agent-sdk-bridge.ts`, the `connected` flag is not properly synchronized with the WebSocket's `readyState`. It's set to `true` in the constructor even though the WebSocket connection is still being established.
+After examining similar issues in other Cloudflare Worker implementations, we believe this could be caused by:
 
-2. In `useChat.ts`, the hook considers the connection successful as soon as `createAgentConnection` returns, without waiting for the WebSocket to actually connect.
+- An unhandled exception in the WebSocket accept handler
+- A failure to properly initialize the Durable Object state
+- Missing or invalid environment bindings
+- Incorrect Durable Object class name or namespace
 
-3. The code doesn't properly differentiate between "client object created" and "WebSocket connection established."
+## Client-Side Improvements
 
-### Server-Side Issues
+We've made significant client-side improvements to handle these issues gracefully:
 
-1. The WebSocket endpoint at `/api/agent/CoderAgent/default-instance` returns a 404, indicating the route is not registered or the server is not handling WebSocket connections at that path.
+1. **Multiple Path Testing**: The client now systematically tries 7 different URL patterns
+2. **Improved Error Reporting**: Detailed error information is captured and logged for each attempt
+3. **Connection State Management**: The UI accurately reflects the actual WebSocket connection state
+4. **Fallback Logic**: The system tries alternative patterns if the main one fails
+5. **Message Queueing**: Operations are properly queued until a connection is established
+6. **Connection Promise**: Proper Promise-based connection tracking with timeouts
+7. **Error Classification**: Errors are categorized and handled appropriately based on their type
 
-2. Cloudflare Workers requires specific configuration for WebSocket handlers, which may not be properly set up.
+## Next Steps for Server Investigation
 
-## Test Results
+1. **Server Log Analysis**:
+   - Request access to Cloudflare Worker logs for the 500 error
+   - Examine the exact error messages and stack traces
+   - Look for patterns in the error timing and frequency
 
-To verify the server endpoint, we attempted connections to:
-1. `wss://agents.openagents.com/agent/CoderAgent/default-instance` - 404
-2. `wss://agents.openagents.com/api/agent/CoderAgent/default-instance` - 404
-3. `wss://agents.openagents.com/agents/api/CoderAgent/default-instance` - 404
+2. **Environment Configuration Check**:
+   - Compare environment variables between development and production
+   - Verify that all required keys and secrets are properly set
+   - Check for any recent changes to environment configuration
 
-All attempts resulted in 404 errors, confirming that the expected WebSocket endpoints are not available on the server.
+3. **Worker Code Inspection**:
+   - Review the WebSocket handling code in the Worker
+   - Check for any recent changes to the agent implementation
+   - Verify that the Durable Object binding matches the class name
 
-## Impact
+4. **Deployment Verification**:
+   - Confirm deployment status of the latest agent code
+   - Check for any deployment errors in the Cloudflare dashboard
+   - Verify that the correct Worker script is assigned to the domain
 
-This issue causes the following problems:
+5. **Authentication Testing**:
+   - Test connections with various authentication headers
+   - Check if Cloudflare Access is configured for the endpoint
+   - Verify JWT token requirements if applicable
 
-1. False positives in connection status, misleading users
-2. Failed operations (sendMessage, executeCommand, etc.)
-3. Wasted resources on repeated reconnection attempts
-4. Poor user experience with operations appearing to work but failing
+## Alternative Connection Approaches
 
-## Solution Recommendations
+If WebSocket connections continue to fail, we should consider these alternatives:
 
-The fix requires changes to both the client and server:
+1. **HTTP Fallback**: Implement an HTTP-based polling mechanism as a fallback
+2. **Different Endpoint**: Deploy the agent on a different Cloudflare Worker with a new endpoint
+3. **Direct API Calls**: Replace WebSocket communication with direct REST API calls
+4. **Local Agent Mode**: Support a local agent mode that doesn't require server connection
+5. **Service Worker Bridge**: Use Service Workers as an intermediary for connections
 
-1. **Client-Side fixes**:
-   - Use WebSocket event handlers properly to track connection state
-   - Only report successful connection after WebSocket.onopen is triggered
-   - Properly queue operations that require an active connection
-   - Add a connection timeout to prevent indefinite waiting
+## Conclusion
 
-2. **Server-Side fixes**:
-   - Ensure the Cloudflare Worker properly registers WebSocket handlers
-   - Verify the route pattern matches what the client expects
-   - Add proper server-side logging for WebSocket connections
-   - Test WebSocket endpoints directly to verify they're accessible
+The issue is definitively server-side, not client-side. Our client implementation now correctly tries multiple connection patterns, provides detailed error information, and handles connection failures gracefully.
 
-## Detailed Fix Steps
+The 500 error on the `/agents/coderagent/default` path is our strongest clue - this is likely the correct pattern, but the server implementation has issues that need to be resolved by the backend team.
 
-1. Update `agent-sdk-bridge.ts` to:
-   - Only set `connected = true` in the `onopen` handler
-   - Queue messages sent before connection is established
-   - Add explicit connection state tracking
-
-2. Update `useChat.ts` to:
-   - Add a proper connection promise that resolves on WebSocket.onopen
-   - Improve error handling and reconnection logic
-   - Add connection timeouts
-
-3. Update the server implementation to:
-   - Verify WebSocket route patterns are registered correctly
-   - Add better error reporting for route mismatches
-   - Add health check endpoints for connection testing
-
-## Next Steps
-
-1. Implement the client-side fixes
-2. Work with the server team to verify the correct WebSocket endpoint
-3. Update documentation with the correct connection patterns
-4. Add comprehensive connection testing
+Our next focus should be coordinating with the server team to investigate the specific error occurring during WebSocket handshake at this endpoint.

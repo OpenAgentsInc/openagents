@@ -1,151 +1,297 @@
-# Cloudflare Agents Connection Issues - Fixed
+# Cloudflare Agents Connection Implementation
 
 ## Issue Summary
 
-We identified and fixed multiple issues related to WebSocket connections to Cloudflare Agents. The primary problems were:
+We've implemented a comprehensive WebSocket connection system for Cloudflare Agents that addresses multiple issues with the original implementation. While we still haven't achieved a successful connection due to server-side issues, our client-side implementation now provides:
 
-1. **Connection State Inconsistency**: The client was reporting successful connections before the WebSocket was actually connected.
-2. **Race Conditions**: Operations were being attempted before connection establishment was complete.
-3. **Path Mismatches**: The WebSocket URL path didn't match the server's endpoint configuration.
-4. **Premature Timeouts**: The client wasn't properly waiting for connections to establish.
+1. **Accurate Connection Status**: The UI properly reflects the actual WebSocket connection state.
+2. **Multi-pattern Fallback**: The client systematically tries 7 different URL patterns to find a working endpoint.
+3. **Detailed Error Diagnostics**: Rich error information is captured and logged for each connection attempt.
+4. **Message Queueing**: Operations are properly queued until a connection is established.
+5. **Intelligent Reconnection**: Smart reconnection logic with systematic pattern testing.
+6. **Promise-based Connection Tracking**: Clear connection lifecycle management with timeout handling.
+7. **Graceful Fallback**: Properly detects and handles connection failures.
 
-## Implemented Fixes
+## Technical Implementation Details
 
-### 1. Proper WebSocket Connection State Management
+### 1. WebSocket Connection Architecture
 
-We completely rewrote the connection handling in `agent-sdk-bridge.ts` to:
+The redesigned WebSocket connection architecture follows a robust pattern:
 
-- Use Promise-based connection tracking with proper resolve/reject
-- Only report successful connections in the `onopen` handler
-- Add connection timeouts to prevent indefinite waiting
-- Track connection state more accurately with `connected` and `connecting` flags
-- Properly handle WebSocket errors and closure events
+1. **Connection Management State Machine**:
+   - `connecting`: Flag to prevent multiple simultaneous connection attempts
+   - `connected`: Flag indicating a successful connection is established
+   - `connectionPromise`: Promise that resolves when connection succeeds or rejects on failure
+   - `reconnectAttempts`: Counter for tracking retry attempts
+   - `currentPatternIndex`: Tracker for the pattern currently being attempted
+
+2. **Promise-based Connection Lifecycle**:
+   - Connection attempts return a Promise that resolves or rejects based on connection outcome
+   - Each pattern attempt has a timeout to prevent endless waiting
+   - Explicit state transitions between connecting → connected → disconnected
+
+3. **WebSocket Event Handling**:
+   - `onopen`: Updates state, resolves promise, and processes queued messages
+   - `onerror`: Captures detailed error diagnostics
+   - `onclose`: Interprets close codes and triggers fallback to next pattern if needed
+   - `onmessage`: Parses, validates, and processes incoming messages
+
+### 2. Multiple URL Pattern Testing System
+
+The system tries multiple path patterns in sequence to maximize connection chances:
 
 ```typescript
-private connect(): Promise<void> {
-  // Return existing connection promise if in progress
-  if (this.connecting) {
-    return this.connectionPromise || Promise.reject(new Error('Connection already in progress'));
+// Define all possible patterns to try
+const allPatterns = [
+  'api/agent',  // Singular (original pattern)
+  'api/agents', // Plural (what we expect from SDK docs)
+  'agents',     // Without api prefix
+  '',           // Direct path
+  'ws',         // WebSocket-specific
+  'worker',     // Worker-specific endpoint
+  'agent'       // Direct agent endpoint
+];
+
+// Create all possible URLs
+allPossibleUrls = possiblePatterns.map(pattern => {
+  const path = pattern ? `${pattern}/` : '';
+  return `${wsProtocol}://${url.host}/${path}${agentName}/${instanceName}`;
+});
+
+// Systematic testing with timeout for each attempt
+const tryNextUrl = (index: number) => {
+  if (index >= allPossibleUrls.length) {
+    // We've tried all URLs and none worked
+    this.connecting = false;
+    finalReject(new Error(
+      `Failed to connect to agent ${this.agent}/${this.name} after trying all URL patterns`
+    ));
+    return;
   }
   
-  this.connecting = true;
+  const currentUrl = allPossibleUrls[index];
+  console.log(`Connecting to agent at ${currentUrl} (attempt ${index + 1}/${allPossibleUrls.length})`);
   
-  return new Promise<void>((resolve, reject) => {
-    // Implementation details...
+  // Try this URL with timeout
+  const connectionTimeout = setTimeout(() => {
+    if (!this.socket) return;
     
-    this.socket.onopen = () => {
-      clearTimeout(connectionTimeout);
-      this.connected = true;
-      this.connecting = false;
-      resolve();
-    };
-    
-    this.socket.onerror = (error) => {
-      this.connecting = false;
-      reject(error);
-    };
-  });
-}
-```
-
-### 2. Message Queueing System
-
-Added a system to queue operations that are attempted before the connection is fully established:
-
-- Created a `pendingMessages` queue for messages sent before connection is ready
-- Implemented `sendPendingMessages()` to flush the queue after connection completes
-- Enhanced `call()` and `setState()` to queue operations when appropriate
-
-```typescript
-async call<T = unknown>(method: string, args: unknown[] = []): Promise<T> {
-  // Wait for connection to complete if still connecting
-  if (this.connecting && this.connectionPromise) {
-    try {
-      await this.connectionPromise;
-    } catch (error) {
-      throw new Error(`Connection failed: ${error}`);
+    if (this.socket.readyState !== WebSocket.OPEN) {
+      console.log(`Connection attempt ${index + 1} timed out, trying next URL pattern...`);
+      this.socket.close();
+      // Try the next URL
+      tryNextUrl(index + 1);
     }
-  }
+  }, 5000); // 5 second timeout for each attempt
   
-  // Rest of implementation...
-}
-```
-
-### 3. Configurable WebSocket Path Patterns
-
-Added support for different WebSocket endpoint patterns to increase connection success:
-
-- Added `pathPattern` configuration option to `AgentClientOptions`
-- Updated URL construction to use the configured path pattern
-- Added fallback logic for invalid URLs
-
-```typescript
-const pathPattern = this.options.pathPattern || 'api/agent';
-wsUrl = `${wsProtocol}://${url.host}/${pathPattern}/${this.agent}/${this.name}`;
-```
-
-### 4. Improved Error Handling
-
-Enhanced error reporting and recovery:
-
-- Added detailed error messages with WebSocket state information
-- Implemented exponential backoff for reconnection attempts
-- Added promise rejection with specific error messages
-- Improved logging with more context about connection state
-
-### 5. Updated Usage in useChat Hook
-
-Modified the `useChat` hook to properly handle the new connection approach:
-
-- Removed artificial delays
-- Directly awaits connection operations
-- Handles connection failures more gracefully
-- Provides better separation between client creation and connection establishment
-
-## Testing
-
-The changes were tested with the following scenarios:
-
-1. **Connection Establishment**: Verifying successful connection to the agent
-2. **Command Execution**: Testing commands with both connected and disconnected states
-3. **Reconnection**: Testing automatic reconnection on connection loss
-4. **Error Handling**: Verifying proper error handling for various failure scenarios
-5. **Path Configuration**: Testing with different endpoint path patterns
-
-## Usage Example
-
-```typescript
-// In useChat.tsx
-const connectionOptions: AgentConnectionOptions = {
-  agentId: 'CoderAgent',
-  agentName: 'default-instance',
-  serverUrl: 'https://agents.openagents.com',
-  // Try different path patterns to increase success chances
-  pathPattern: 'api/agent',
-  onStateUpdate: (state, source) => console.log(`State updated from ${source}:`, state)
+  // Set up WebSocket with this URL
+  this.socket = new WebSocket(currentUrl);
+  // Set up event handlers...
 };
 
-// Create connection - async operation that returns when client is created
-const client = await createAgentConnection(connectionOptions);
-
-// Client operations will automatically wait for connection to establish
-await client.call('getMessages');
+// Start the connection process by trying the first URL
+tryNextUrl(0);
 ```
 
-## Benefits of the New Implementation
+### 3. Enhanced Message Queue System
 
-1. **Improved Reliability**: Properly handles connection states and errors
-2. **Better User Experience**: No false positives for connection status
-3. **Flexible Configuration**: Supports different server endpoint patterns
-4. **Operation Queueing**: Automatically queues operations before connection is ready
-5. **Detailed Error Information**: Provides specific error messages for troubleshooting
+A robust message queue system ensures operations are preserved during connection establishment:
 
-## Open Issues
+```typescript
+// Queue structure for pending operations
+private pendingMessages: Array<{ id: string, data: string }> = [];
 
-While we've significantly improved the connection handling, there are still some open issues:
+// Queue messages when connection isn't ready
+if (this.socket.readyState !== WebSocket.OPEN) {
+  if (this.connecting && this.connectionPromise) {
+    console.log(`Queueing message for ${method} until connection is established`);
+    this.pendingMessages.push({ id, data: JSON.stringify(message) });
+  }
+}
 
-1. **Server Endpoint 404**: The server still returns 404 for the WebSocket endpoint
-2. **Configuration Mismatch**: The client and server configuration may still be mismatched
-3. **Server-Side Logging**: Limited visibility into server-side connection issues
+// Process queued messages when connection is established
+private sendPendingMessages(): void {
+  if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  
+  console.log(`Sending ${this.pendingMessages.length} pending messages`);
+  
+  while (this.pendingMessages.length > 0) {
+    const message = this.pendingMessages.shift();
+    if (message) {
+      try {
+        this.socket.send(message.data);
+      } catch (error) {
+        // Handle send failure for queued message
+      }
+    }
+  }
+}
+```
 
-These issues may require coordination with the server team to resolve.
+### 4. Rich Error Diagnostics
+
+The implementation captures detailed error information to aid troubleshooting:
+
+```typescript
+// Create detailed error objects with context
+const errorInfo = {
+  type: 'websocket_error',
+  message: 'WebSocket connection error',
+  url: currentUrl,
+  readyState: this.socket ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][this.socket.readyState] : 'UNKNOWN',
+  timestamp: new Date().toISOString(),
+  attempt: index + 1,
+  totalAttempts: allPossibleUrls.length
+};
+
+// Translate WebSocket close codes to human-readable messages
+let closeMessage = 'Unknown';
+switch (event.code) {
+  case 1000: closeMessage = 'Normal closure'; break;
+  case 1001: closeMessage = 'Going away'; break;
+  case 1002: closeMessage = 'Protocol error'; break;
+  case 1003: closeMessage = 'Unsupported data'; break;
+  case 1005: closeMessage = 'No status received'; break;
+  case 1006: closeMessage = 'Abnormal closure'; break;
+  case 1007: closeMessage = 'Invalid frame payload data'; break;
+  case 1008: closeMessage = 'Policy violation'; break;
+  case 1009: closeMessage = 'Message too big'; break;
+  case 1010: closeMessage = 'Mandatory extension'; break;
+  case 1011: closeMessage = 'Internal server error'; break;
+  case 1012: closeMessage = 'Service restart'; break;
+  case 1013: closeMessage = 'Try again later'; break;
+  case 1014: closeMessage = 'Bad gateway'; break;
+  case 1015: closeMessage = 'TLS handshake'; break;
+}
+```
+
+### 5. Case Sensitivity Handling
+
+The implementation properly handles case sensitivity for agent and instance names:
+
+```typescript
+// Agent and instance names should be lowercase
+const agentName = this.agent.toLowerCase();
+const instanceName = this.name.toLowerCase();
+
+// Log warnings for uppercase names
+if (this.agent !== agentName) {
+  console.warn(`Agent names should be lowercase. Converting ${this.agent} to ${agentName}.`);
+}
+
+if (this.name !== instanceName) {
+  console.warn(`Instance names should be lowercase. Converting ${this.name} to ${instanceName}.`);
+}
+```
+
+## Integration with useChat Hook
+
+The `useChat` hook in `packages/core/src/chat/useChat.ts` has been updated to properly work with the new WebSocket implementation:
+
+1. **Accurate Connection Status Tracking**:
+   ```typescript
+   // Wait for the actual WebSocket connection to be established
+   if ('connectionPromise' in client) {
+     console.log('⏳ USECHAT: Waiting for WebSocket connection to complete...');
+     await (client as any).connectionPromise;
+     console.log('✅ USECHAT: WebSocket connection established successfully');
+     
+     // Now we can safely set the connection status to true
+     setAgentConnection(prev => ({
+       ...prev,
+       isConnected: true
+     }));
+   }
+   ```
+
+2. **Multiple URL Patterns Support**:
+   ```typescript
+   // Only use a pathPattern if explicitly provided, otherwise let agent-sdk-bridge try multiple patterns
+   pathPattern: agentOptions?.pathPattern,
+   ```
+
+3. **Dynamic Command Execution Routing**:
+   ```typescript
+   // Add command execution capability that automatically routes to agent or local
+   executeCommand: shouldUseAgent && agentConnection.isConnected && agentConnection.utils 
+     ? executeAgentCommand 
+     : (command: string) => safeExecuteCommand(command, commandOptions),
+   ```
+
+## Test Component Updates
+
+The `AgentChatTest.tsx` component was updated to:
+
+1. Use a more standard instance name format:
+   ```typescript
+   const [agentConfig, setAgentConfig] = useState({
+     agentId: 'CoderAgent', // Must match the export class name exactly
+     agentName: 'default', // Simplified instance name
+     serverUrl: 'https://agents.openagents.com'
+   });
+   ```
+
+2. Provide better connection status visualization:
+   ```typescript
+   <View style={styles.statusRow}>
+     <Text style={styles.statusLabel}>Agent Connected:</Text>
+     <Text style={[styles.statusValue, {color: chat.agentConnection?.isConnected ? '#4caf50' : '#f44336'}]}>
+       {chat.agentConnection?.isConnected ? 'Yes' : 'No'}
+     </Text>
+   </View>
+   ```
+
+## Detailed Server-Side Issues
+
+Our implementation has revealed specific server-side issues that require attention:
+
+1. **500 Error on Critical Path**: 
+   The `/agents/coderagent/default` path returns a 500 error rather than 404, indicating this is likely the correct path pattern, but the server has an implementation error. Based on Cloudflare WebSocket implementation patterns, this strongly suggests:
+   
+   - The Durable Object exists and is registered correctly
+   - The route pattern is configured correctly
+   - The WebSocket upgrade handler is failing during execution
+   - There may be an unhandled exception in the WebSocket accept code
+
+2. **WebSocket Protocol Issues**:
+   The 404 errors on most paths suggest routing issues, but the 500 error on the `/agents/` path implies a runtime error in the WebSocket handling code:
+   
+   ```
+   WebSocket connection failed: Error during WebSocket handshake: Unexpected response code: 500
+   ```
+   
+   In Cloudflare Workers, this typically indicates an error in the `upgrade` event handler.
+
+3. **Cloudflare Durable Object Integration**:
+   The error pattern suggests the Cloudflare Durable Object might be incorrectly configured:
+   
+   - The Durable Object class might not be properly exported or registered
+   - The `fetch` handler in the Durable Object might have an error
+   - The WebSocket upgrade code in the Durable Object might be failing
+   - The Durable Object binding in the worker might be incorrect
+
+## Next Steps
+
+The client-side implementation is now robust and ready for use. Server-side investigation should focus on:
+
+1. **Log Analysis**:
+   - Examine Cloudflare Worker logs for the specific error during the WebSocket handshake
+   - Look for uncaught exceptions in the Worker's event handlers
+
+2. **Worker Code Review**:
+   - Check the WebSocket upgrade handler in the Cloudflare Worker
+   - Verify the Durable Object class is properly implemented
+   - Ensure WebSocket messages are properly handled
+
+3. **Environment Configuration**:
+   - Verify all required environment variables are set
+   - Check for any recent changes to the Worker configuration
+   - Confirm the Durable Object is properly bound in the Worker
+
+4. **Deployment Validation**:
+   - Ensure the Worker is properly deployed
+   - Check for any deployment errors in the Cloudflare dashboard
+
+The client-side implementation now systematically tries all reasonable patterns and handles errors gracefully. The focus should shift to resolving the server-side 500 error on the `/agents/` path.

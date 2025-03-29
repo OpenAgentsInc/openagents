@@ -12,7 +12,7 @@ export const AgentChatTest: React.FC = () => {
   // State for agent configuration
   const [agentConfig, setAgentConfig] = useState({
     agentId: 'CoderAgent', // Must match the export class name exactly
-    agentName: 'default-instance',
+    agentName: 'default', // Simplified instance name
     serverUrl: 'https://agents.openagents.com'
   });
   
