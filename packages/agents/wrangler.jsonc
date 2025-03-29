@@ -25,10 +25,6 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "Chat",
-        "class_name": "Chat"
-      },
-      {
         "name": "CoderAgent",
         "class_name": "CoderAgent"
       }
@@ -40,12 +36,6 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": [
-        "Chat"
-      ]
-    },
-    {
-      "tag": "v2",
       "new_sqlite_classes": [
         "CoderAgent"
       ]
