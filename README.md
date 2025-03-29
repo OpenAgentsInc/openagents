@@ -6,6 +6,8 @@ Our current flagship product (v4) is an agentic chat app live at [openagents.com
 
 This repo holds our new cross-platform version (v5), a work in progress.
 
+Initial focus is Coder, our desktop app intended to be a drop-in replacement for Claude Code with standard chat UI & thread history and first-class MCP integration.
+
 ## Repo Structure
 
 ```
