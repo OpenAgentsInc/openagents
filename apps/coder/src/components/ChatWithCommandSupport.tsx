@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Text } from 'react-native';
+import { Platform } from 'react-native';
 import { MessageList, MessageInput } from '@openagents/ui';
 import { useCommand } from '../helpers/ipc/command/command-context';
 import { useChat } from '@openagents/core';
@@ -98,60 +98,29 @@ export const ChatWithCommandSupport: React.FC = () => {
   }, [chat.messages]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <div className="flex flex-col h-full bg-black">
       {/* Command execution status indicator */}
       {commandStatus.isExecuting && commandStatus.currentCommand && (
-        <View style={styles.commandStatus}>
-          <Text style={styles.commandText}>
-            Executing: {commandStatus.currentCommand}
-          </Text>
-        </View>
+        <div className="bg-yellow-500 text-black p-2 z-10">
+          Executing: {commandStatus.currentCommand}
+        </div>
       )}
 
-      {/* Use MessageList and MessageInput directly with our configured chat instance */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.keyboardAvoidingView}
-      >
-        <View style={styles.inner}>
-          <View style={styles.topBorder} />
-          {/* Use our processed messages with command execution results */}
+      {/* Main content with absolute positioned input */}
+      <div className="flex-1 relative h-full overflow-hidden">
+        {/* Message list with bottom padding to ensure messages don't go behind input */}
+        <div className="absolute top-0 left-0 right-0 bottom-16 overflow-auto pb-4">
+          <div className="h-px bg-gray-800 w-full" />
           <MessageList messages={processedMessages} />
+        </div>
+        
+        {/* Input fixed at the bottom */}
+        <div className="absolute bottom-0 left-0 right-0 bg-black border-t border-gray-800 py-2 h-16">
           <MessageInput maxRows={8} onSubmit={handleSubmit} />
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </div>
+      </div>
+    </div>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-    position: 'relative',
-  },
-  keyboardAvoidingView: {
-    flex: 1,
-  },
-  inner: {
-    flex: 1,
-    position: 'relative',
-  },
-  topBorder: {
-    height: 1,
-    backgroundColor: '#333',
-    width: '100%',
-  },
-  commandStatus: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#f0ad4e',
-    zIndex: 10,
-    padding: 8,
-  },
-  commandText: {
-    color: '#000',
-  }
-});
+// Styles now use Tailwind classes directly in the JSX

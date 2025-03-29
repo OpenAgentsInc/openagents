@@ -30,6 +30,13 @@ Issue 804 involved extending the `useChat` hook to support connecting to Cloudfl
    - Support for setting repository context (owner, name, branch)
    - Context persistence for coding-related tasks
 
+6. **UI Integration**
+   - Test component for agent connection and chat interaction
+   - Configuration UI for agent settings
+   - Status indicators for connection state
+   - Toggle for switching between agent and local modes
+   - Command testing utilities
+
 ## Implementation Details
 
 The implementation involved the following main components:
@@ -37,12 +44,23 @@ The implementation involved the following main components:
 1. **agent-connection.ts**
    - New module providing agent connection utilities
    - Functions for connection, message fetching, and command execution
+   - Type definitions for Agents SDK compatibility
 
 2. **useChat.ts**
    - Enhanced interface with agent-specific options
    - Updated implementation to handle agent connections
    - Message routing between local and agent processing
    - Extended return value with agent connection information
+
+3. **AgentChatTest.tsx**
+   - Test UI component for agent integration
+   - Configuration UI for agent settings
+   - Message display and interaction
+   - Command execution testing
+   
+4. **HomePage.tsx**
+   - Integration of agent test UI with toggle
+   - Switchable view between standard chat and agent test
 
 ## Multi-Agent Architecture
 
