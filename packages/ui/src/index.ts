@@ -2,7 +2,7 @@
 export * from './chat/Chat';
 export * from './chat/MessageList';
 export * from './chat/MessageInput';
-export * from './chat/ToolCall';
+export { ToolCall } from './chat/ToolCall';
 export * from './chat/types';
 
 // UI components
