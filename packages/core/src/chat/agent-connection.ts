@@ -147,6 +147,13 @@ export const createAgentUtils = (client: AgentClient) => {
     sendMessage: (message: Message) => sendMessageToAgent(client, message),
     executeCommand: async (command: string) => {
       try {
+        // Check if client is actually connected before attempting to execute command
+        if (client['connected'] === false) {
+          const notConnectedError = new Error('Cannot execute command: client not connected');
+          console.error('⚠️ Agent command execution failed:', notConnectedError);
+          throw notConnectedError;
+        }
+        
         return await client.call('executeCommand', [command]);
       } catch (error) {
         console.error('Failed to execute command on agent:', error);
@@ -155,6 +162,12 @@ export const createAgentUtils = (client: AgentClient) => {
     },
     setProjectContext: async (context: any) => {
       try {
+        // Check if client is actually connected before attempting to set context
+        if (client['connected'] === false) {
+          console.warn('Cannot set project context: client not connected');
+          return false;
+        }
+        
         return await client.call('setProjectContext', [context]);
       } catch (error) {
         console.error('Failed to set project context:', error);
@@ -163,6 +176,12 @@ export const createAgentUtils = (client: AgentClient) => {
     },
     getProjectContext: async () => {
       try {
+        // Check if client is actually connected before attempting to get context
+        if (client['connected'] === false) {
+          console.warn('Cannot get project context: client not connected');
+          return {};
+        }
+        
         return await client.call('getProjectContext');
       } catch (error) {
         console.error('Failed to get project context:', error);

@@ -272,6 +272,28 @@ Our implementation has revealed specific server-side issues that require attenti
    - The WebSocket upgrade code in the Durable Object might be failing
    - The Durable Object binding in the worker might be incorrect
 
+## Recent Fixes
+
+We've just fixed a critical issue with connection status reporting:
+
+1. **Connection Status Fix**:
+   - The UI was showing "connected" status even when the WebSocket connection failed
+   - Fixed by properly moving the `onAgentConnectionChange` callback inside the success path
+   - Now correctly reports "disconnected" when WebSocket connection fails
+   - Includes proper error handling to prevent false positives
+
+2. **Project Context Handling**:
+   - Added protection to `setProjectContext` and `getProjectContext` methods
+   - Now checks if client is actually connected before attempting operations
+   - Prevents unnecessary errors when trying to set context on disconnected clients
+   - Provides clear warning messages when operations can't be performed
+
+3. **Command Execution Safety**:
+   - Enhanced the `executeCommand` method with connection state checking
+   - Prevents command execution attempts on disconnected clients
+   - Provides clear error messages when commands can't be executed
+   - Ensures graceful fallback to local execution when available
+
 ## Next Steps
 
 The client-side implementation is now robust and ready for use. Server-side investigation should focus on:

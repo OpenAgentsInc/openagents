@@ -188,6 +188,19 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
                 ...prev,
                 isConnected: true
               }));
+              
+              // Notify of successful connection
+              onAgentConnectionChange?.(true);
+              
+              // Set project context if provided - client will handle queueing if needed
+              if (agentOptions?.projectContext) {
+                try {
+                  await utils.setProjectContext(agentOptions.projectContext);
+                  console.log('📁 USECHAT: Set project context for agent');
+                } catch (contextError) {
+                  console.warn('Failed to set project context:', contextError);
+                }
+              }
             } else {
               // For older client implementations that don't have connectionPromise
               // We'll set isConnected to true, but this might be inaccurate
@@ -196,24 +209,17 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
                 ...prev,
                 isConnected: true
               }));
+              
+              // Notify of connection change, but warn about potential inaccuracy
+              onAgentConnectionChange?.(true);
             }
           } catch (connectionError) {
             console.error('❌ USECHAT: WebSocket connection failed:', connectionError);
             // Don't throw here, as we already have a client object that might reconnect
             // Just leave isConnected as false
-          }
-          
-          // Notify of connection change
-          onAgentConnectionChange?.(true);
-          
-          // Set project context if provided - client will handle queueing if needed
-          if (agentOptions?.projectContext) {
-            try {
-              await utils.setProjectContext(agentOptions.projectContext);
-              console.log('📁 USECHAT: Set project context for agent');
-            } catch (contextError) {
-              console.warn('Failed to set project context:', contextError);
-            }
+            
+            // Notify that connection failed
+            onAgentConnectionChange?.(false);
           }
           
         } catch (connectionError) {

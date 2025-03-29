@@ -41,6 +41,7 @@ export const AgentChatTest: React.FC = () => {
     // Callbacks for connection status
     onAgentConnectionChange: (connected) => {
       console.log(`🔌 AGENT-TEST: Connection status changed: ${connected ? 'connected' : 'disconnected'}`);
+      // Additional visual feedback could be added here
     },
     
     // Enable local fallback
