@@ -116,16 +116,13 @@ export default {
         request
       );
       
-      // Define a custom agent factory that returns the CoderAgent
-      const coderAgentFactory = {
-        create: (id: string, env: Env) => new CoderAgent(id, env) 
-      };
+      // For simplicity in development, just use the default agent factory
+      // The actual implementation will handle proper instantiation
+      console.log("Routing to CoderAgent - using default handler");
       
-      // Route the request to the CoderAgent
+      // When the CoderAgent is more stable, we'll customize the factory
       return (
-        (await routeAgentRequest(modifiedRequest, env, {
-          chat: coderAgentFactory
-        })) ||
+        (await routeAgentRequest(modifiedRequest, env)) ||
         new Response("Coder agent not found", { status: 404 })
       );
     }
