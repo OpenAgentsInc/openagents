@@ -6,9 +6,9 @@ import {
   type StreamTextOnFinishCallback,
 } from "ai";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { openai } from "@ai-sdk/openai";
 import { processToolCalls } from "./utils";
 import { coderTools, coderExecutions } from "./coder-tools";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
 // We use AsyncLocalStorage to expose the agent context to the tools
 export const coderAgentContext = new AsyncLocalStorage<CoderAgent>();
@@ -56,6 +56,13 @@ export class CoderAgent extends AIChatAgent<Env> {
    * @param onFinish - Callback function executed when streaming completes
    */
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
+
+    // not sure this is the best place for this
+    const openrouter = createOpenRouter({
+      apiKey: process.env.OPENROUTER_API_KEY,
+    });
+    const model = openrouter("openai/gpt-4o-mini");
+
     // Create a streaming response that handles both text and tool outputs
     return coderAgentContext.run(this, async () => {
       const dataStreamResponse = createDataStreamResponse({
@@ -69,8 +76,6 @@ export class CoderAgent extends AIChatAgent<Env> {
           });
 
           // Stream the AI response using Claude or GPT
-          const model = openai("gpt-4o-2024-11-20"); // TODO: Make configurable or use Claude
-
           const result = streamText({
             model,
             system: `You are Claude, a helpful AI coding assistant specialized in software development.

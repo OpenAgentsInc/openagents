@@ -14,28 +14,28 @@ function isElectron() {
       // Electron renderer process (safest check for browsers)
       if (window.navigator && window.navigator.userAgent && 
           window.navigator.userAgent.indexOf('Electron') >= 0) {
-        console.log('🔍 COMMAND EXECUTOR: Electron user agent detected');
+        // console.log('🔍 COMMAND EXECUTOR: Electron user agent detected');
         return true;
       }
       
       // Check for Electron APIs on window
       // @ts-ignore - Electron APIs are injected at runtime
       if (window.electron || ('commandExecution' in window && window.commandExecution)) {
-        console.log('🔍 COMMAND EXECUTOR: Electron APIs detected on window object');
+        // console.log('🔍 COMMAND EXECUTOR: Electron APIs detected on window object');
         return true;
       }
     } else {
       // Server-side detection (Node.js environment)
       if (typeof process !== 'undefined' && typeof process.versions === 'object') {
         if (process.versions.electron) {
-          console.log('🔍 COMMAND EXECUTOR: Electron main process detected');
+          // console.log('🔍 COMMAND EXECUTOR: Electron main process detected');
           return true;
         }
       }
     }
     
     // If we got here, no Electron indicators were found
-    console.log('🔍 COMMAND EXECUTOR: Not running in Electron');
+    // console.log('🔍 COMMAND EXECUTOR: Not running in Electron');
     return false;
   } catch (err) {
     // If any error occurs during detection, assume not Electron
@@ -77,19 +77,19 @@ try {
     // Only attempt to use require if we're in a Node.js context
     // and if the require function exists (not in browser)
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-      console.log('🔍 COMMAND EXECUTOR: Electron renderer process detected - will use IPC for commands');
+      // console.log('🔍 COMMAND EXECUTOR: Electron renderer process detected - will use IPC for commands');
       // In renderer process, we'll use IPC instead of direct child_process
     } else if (typeof require === 'function') {
-      console.log('🔍 COMMAND EXECUTOR: Node.js main process detected - can use child_process');
+      // console.log('🔍 COMMAND EXECUTOR: Node.js main process detected - can use child_process');
       // Only try to require in Node.js environments where require is available
       childProcess = require('child_process');
-      console.log('✅ COMMAND EXECUTOR: child_process loaded successfully');
+      // console.log('✅ COMMAND EXECUTOR: child_process loaded successfully');
     } else {
-      console.log('🔍 COMMAND EXECUTOR: Detected Electron environment but require is not available');
-      console.log('🔍 COMMAND EXECUTOR: Will use IPC or commandExecution API instead');
+      // console.log('🔍 COMMAND EXECUTOR: Detected Electron environment but require is not available');
+      // console.log('🔍 COMMAND EXECUTOR: Will use IPC or commandExecution API instead');
     }
   } else {
-    console.log('🔍 COMMAND EXECUTOR: Browser environment detected - command execution disabled');
+    // console.log('🔍 COMMAND EXECUTOR: Browser environment detected - command execution disabled');
   }
 } catch (e) {
   // Log the error for debugging
