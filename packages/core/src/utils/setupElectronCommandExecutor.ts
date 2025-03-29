@@ -1,3 +1,4 @@
+// @ts-nocheck - This file contains Electron specific code that TypeScript can't validate in a cross-platform context
 /**
  * A utility file to set up command execution in Electron environments
  * 
@@ -57,6 +58,7 @@ export function setupElectronCommandExecutor() {
  * if command execution is available
  */
 export async function checkElectronCommandExecutionAvailable(): Promise<boolean> {
+  // @ts-ignore - Electron APIs are injected at runtime
   if (typeof window === 'undefined' || !window.electron?.ipcRenderer) {
     console.log('🔌 ELECTRON: Not in an Electron renderer process or IPC not available');
     return false;
@@ -64,6 +66,7 @@ export async function checkElectronCommandExecutionAvailable(): Promise<boolean>
   
   try {
     // Send a test command to see if execution works
+    // @ts-ignore - Electron APIs are injected at runtime
     const result = await window.electron.ipcRenderer.invoke('execute-command', 'echo "Test"');
     
     const success = !('error' in result);

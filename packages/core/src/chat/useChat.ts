@@ -354,8 +354,11 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       // This prevents webpack issues in browser environments
       
       // Don't import any modules, just check for the APIs
+      // @ts-ignore - Electron APIs are injected at runtime
       const isCommandExecutionAvailable = typeof window !== 'undefined' && (
+        // @ts-ignore - Electron APIs are injected at runtime
         !!window.commandExecution || 
+        // @ts-ignore - Electron APIs are injected at runtime
         !!(window.electron && window.electron.ipcRenderer)
       );
       
@@ -363,8 +366,11 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
       if (typeof window !== 'undefined') {
         console.log('🔍 USECHAT: Command execution API check:', {
           available: isCommandExecutionAvailable,
+          // @ts-ignore - Electron APIs are injected at runtime
           commandExecution: !!window.commandExecution,
+          // @ts-ignore - Electron APIs are injected at runtime
           electron: !!window.electron,
+          // @ts-ignore - Electron APIs are injected at runtime
           electronIPC: !!(window.electron?.ipcRenderer)
         });
       }

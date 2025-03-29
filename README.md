@@ -18,6 +18,7 @@ Initial focus is Coder, our desktop app intended to be a drop-in replacement for
   │   ├── mcp-github-server/  # Remote MCP server with GitHub tools
   │   └── onyx/               # Onyx mobile app & bitcoin wallet
   ├── packages/               # Shared libraries/components
+  │   ├── agents/             # Agent definitions
   │   ├── core/               # Shared core logic
   │   └── ui/                 # UI components
   └── docs/                   # Documentation
