@@ -90,12 +90,14 @@ export class AgentClient implements BaseAgentClient {
       const url = new URL(hostWithProtocol);
       const wsProtocol = url.protocol === 'https:' ? 'wss' : 'ws';
       
-      // Define all possible patterns to try
+      // Define all possible patterns to try - THE CORRECT PATTERN IS THE THIRD ONE (/agents)
+      // Cloudflare Agents SDK follows this pattern: wss://{hostname}/{namespace}/{id}
+      // As documented in the SDK, the correct pattern is: /agents/{agent}/{instance}
       const allPatterns = [
-        'api/agent',  // Singular (original pattern)
-        'api/agents', // Plural (what we expect from SDK docs)
-        'agents',     // Without api prefix
-        '',           // Direct path
+        'agents',     // Primary pattern (namespace) - THIS IS THE CORRECT ONE 
+        '',           // Direct path - in case there's no namespace
+        'api/agents', // With api prefix - alternative pattern
+        'api/agent',  // Original pattern attempt
         'ws',         // WebSocket-specific
         'worker',     // Worker-specific endpoint
         'agent'       // Direct agent endpoint
@@ -182,6 +184,7 @@ export class AgentClient implements BaseAgentClient {
         
         try {
           // Try to connect with this URL
+          console.log(`🔌 Initiating WebSocket connection to ${currentUrl}`);
           this.socket = new WebSocket(currentUrl);
           
           // Set a timeout for this connection attempt

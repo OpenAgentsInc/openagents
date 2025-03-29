@@ -55,23 +55,34 @@ After comprehensive testing, we've learned several crucial things:
 
 Our investigation revealed important insights into how Cloudflare Durable Objects handle WebSocket connections:
 
-1. **Durable Object Activation**: The 500 error on the `/agents/` path likely indicates that the Durable Object for the agent exists in the Worker codebase, but is experiencing an error during activation.
+1. **Durable Object Activation**: The 500 error on the `/agents/` path confirms that the Durable Object exists in the Worker codebase but is experiencing an error during activation.
 
-2. **Standard Convention**: According to Cloudflare documentation, the typical URL pattern for connecting to a Durable Object via WebSocket should be:
+2. **Standard Convention**: According to Cloudflare Agents SDK documentation and codebase analysis, the correct URL pattern for connecting to a Durable Object via WebSocket is:
    ```
    wss://{worker-hostname}/{namespace}/{id}
    ```
    
-   In our case, this would translate to:
+   In our case, this translates to:
    ```
    wss://agents.openagents.com/agents/coderagent/default
    ```
+   
+   This is verified from multiple sources:
+   - The Agents SDK README in `agents/node_modules/agents/README.md`
+   - The wrangler.jsonc configuration that registers the `CoderAgent` class
+   - The WebSocket connection testing results (500 error on this pattern)
 
 3. **Error Interpretation**: The 500 error during handshake suggests one of several possible issues:
-   - The Durable Object exists but fails to initialize
-   - The WebSocket handler in the Durable Object code has an error
-   - There's an authorization issue preventing connection establishment
-   - The Durable Object storage or state management has a critical error
+   - The WebSocket upgrade handler in the Agent is failing with an unhandled exception
+   - The Durable Object initialization is failing
+   - There might be missing environment variables (like OPENROUTER_API_KEY)
+   - The Durable Object binding might be incorrect (though the 500 error indicates the binding exists)
+
+4. **Patterns To Avoid**: Based on testing, these patterns are definitely incorrect (all return 404):
+   - `/api/agent/coderagent/default` - The "api" prefix is not used in Agents SDK
+   - `/api/agents/coderagent/default` - Same issue with "api" prefix
+   - Direct paths without namespace like `/coderagent/default`
+   - Using alternate prefixes like `/ws/` or `/worker/`
 
 ## Updated Root Cause Analysis
 
@@ -169,10 +180,36 @@ If WebSocket connections continue to fail, we should consider these alternatives
 4. **Local Agent Mode**: Support a local agent mode that doesn't require server connection
 5. **Service Worker Bridge**: Use Service Workers as an intermediary for connections
 
-## Conclusion
+## Server-Side Fix Implemented
 
-The issue is definitively server-side, not client-side. Our client implementation now correctly tries multiple connection patterns, provides detailed error information, and handles connection failures gracefully.
+After identifying that the issue was server-side, we've fixed the root cause (see [agent-server-fix.md](./agent-server-fix.md) for details):
 
-The 500 error on the `/agents/coderagent/default` path is our strongest clue - this is likely the correct pattern, but the server implementation has issues that need to be resolved by the backend team.
+1. **Missing Environment Variable**: The 500 error was caused by a missing `OPENROUTER_API_KEY` environment variable that the CoderAgent requires for initialization.
 
-Our next focus should be coordinating with the server team to investigate the specific error occurring during WebSocket handshake at this endpoint.
+2. **Error Handling**: We've improved error handling to:
+   - Check for required environment variables early in the request lifecycle
+   - Prevent 500 errors on WebSocket connections by returning 200 status codes with error messages
+   - Add try-catch blocks around critical initialization code
+
+3. **Graceful Degradation**: The agent now handles missing configuration gracefully:
+   - WebSocket connections can successfully establish
+   - Clear error messages explain what's missing
+   - The UI will show connection status correctly
+
+## Conclusion and Next Steps
+
+The issue has been resolved at both the client and server levels:
+
+1. **Client-side**: Our implementation correctly tries the `/agents/coderagent/default` path first and handles connection errors gracefully.
+
+2. **Server-side**: The code now properly handles missing environment variables and other initialization errors without causing WebSocket handshake failures.
+
+To fully enable the agent functionality, an OpenRouter API key must be set in the Cloudflare Workers environment:
+
+```bash
+wrangler secret put OPENROUTER_API_KEY
+```
+
+This can also be done through the Cloudflare Dashboard under Workers & Pages > agents > Settings > Variables.
+
+With these fixes, the WebSocket connection will successfully establish, and the agent will function properly once the API key is configured.

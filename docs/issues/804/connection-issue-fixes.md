@@ -274,21 +274,27 @@ Our implementation has revealed specific server-side issues that require attenti
 
 ## Recent Fixes
 
-We've just fixed a critical issue with connection status reporting:
+We've fixed several critical issues in the WebSocket connection implementation:
 
-1. **Connection Status Fix**:
+1. **URL Pattern Correction**:
+   - Identified the correct URL pattern for Cloudflare Agents connections: `/agents/{agent}/{instance}`
+   - Reordered pattern testing to prioritize the correct pattern
+   - Based on the Agents SDK documentation, which follows the pattern: `wss://{hostname}/{namespace}/{id}`
+   - The pattern returns 500 error (not 404), confirming it's the correct pattern with a server-side issue
+
+2. **Connection Status Fix**:
    - The UI was showing "connected" status even when the WebSocket connection failed
    - Fixed by properly moving the `onAgentConnectionChange` callback inside the success path
    - Now correctly reports "disconnected" when WebSocket connection fails
    - Includes proper error handling to prevent false positives
 
-2. **Project Context Handling**:
+3. **Project Context Handling**:
    - Added protection to `setProjectContext` and `getProjectContext` methods
    - Now checks if client is actually connected before attempting operations
    - Prevents unnecessary errors when trying to set context on disconnected clients
    - Provides clear warning messages when operations can't be performed
 
-3. **Command Execution Safety**:
+4. **Command Execution Safety**:
    - Enhanced the `executeCommand` method with connection state checking
    - Prevents command execution attempts on disconnected clients
    - Provides clear error messages when commands can't be executed

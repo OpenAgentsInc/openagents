@@ -57,28 +57,46 @@ export class CoderAgent extends AIChatAgent<Env> {
    */
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
 
-    // not sure this is the best place for this
-    const openrouter = createOpenRouter({
-      apiKey: process.env.OPENROUTER_API_KEY,
-    });
-    const model = openrouter("openai/gpt-4o-mini");
+    // Check for required OpenRouter API key
+    if (!process.env.OPENROUTER_API_KEY) {
+      console.error("🚨 CRITICAL ERROR: OPENROUTER_API_KEY environment variable is not set!");
+      // Fallback to a dummy model - this won't work for real AI responses but allows connection
+      const model = {
+        invoke: async () => { 
+          return { text: "⚠️ This agent requires an OpenRouter API key to be configured. Please contact the administrator." };
+        }
+      };
+      return coderAgentContext.run(this, async () => {
+        return new Response("Agent is misconfigured. Please set OPENROUTER_API_KEY in environment variables.", {
+          status: 200, // Don't use 500 as it breaks WebSocket connections
+          headers: { "Content-Type": "text/plain" }
+        });
+      });
+    }
+    
+    // With API key available, create the OpenRouter instance
+    try {
+      const openrouter = createOpenRouter({
+        apiKey: process.env.OPENROUTER_API_KEY,
+      });
+      const model = openrouter("openai/gpt-4o-mini");
 
-    // Create a streaming response that handles both text and tool outputs
-    return coderAgentContext.run(this, async () => {
-      const dataStreamResponse = createDataStreamResponse({
-        execute: async (dataStream) => {
-          // Process any pending tool calls from previous messages
-          const processedMessages = await processToolCalls({
-            messages: this.messages,
-            dataStream,
-            tools: coderTools,
-            executions: coderExecutions,
-          });
+      // Create a streaming response that handles both text and tool outputs
+      return coderAgentContext.run(this, async () => {
+        const dataStreamResponse = createDataStreamResponse({
+          execute: async (dataStream) => {
+            // Process any pending tool calls from previous messages
+            const processedMessages = await processToolCalls({
+              messages: this.messages,
+              dataStream,
+              tools: coderTools,
+              executions: coderExecutions,
+            });
 
-          // Stream the AI response using Claude or GPT
-          const result = streamText({
-            model,
-            system: `You are Claude, a helpful AI coding assistant specialized in software development.
+            // Stream the AI response using Claude or GPT
+            const result = streamText({
+              model,
+              system: `You are Claude, a helpful AI coding assistant specialized in software development.
 
 You can help with:
 - Writing, refactoring, and debugging code
@@ -91,28 +109,35 @@ You can help with:
 You have access to specialized tools for coding tasks. When appropriate, use these tools to assist the user more effectively.
 
 ${this.projectContext.repoOwner && this.projectContext.repoName ?
-                `Current project context: ${this.projectContext.repoOwner}/${this.projectContext.repoName}` +
-                (this.projectContext.branch ? ` (branch: ${this.projectContext.branch})` : '') :
-                'No specific project context set. You can help with general coding questions or set a repository context.'
-              }
+                  `Current project context: ${this.projectContext.repoOwner}/${this.projectContext.repoName}` +
+                  (this.projectContext.branch ? ` (branch: ${this.projectContext.branch})` : '') :
+                  'No specific project context set. You can help with general coding questions or set a repository context.'
+                }
 
 Always provide thoughtful, well-explained responses for coding tasks. If writing code, include clear comments and follow best practices.`,
-            messages: processedMessages,
-            tools: coderTools,
-            onFinish,
-            onError: (error) => {
-              console.error("Error while streaming:", error);
-            },
-            maxSteps: 15, // More steps for complex coding tasks
-          });
+              messages: processedMessages,
+              tools: coderTools,
+              onFinish,
+              onError: (error) => {
+                console.error("Error while streaming:", error);
+              },
+              maxSteps: 15, // More steps for complex coding tasks
+            });
 
-          // Merge the AI response stream with tool execution outputs
-          result.mergeIntoDataStream(dataStream);
-        },
+            // Merge the AI response stream with tool execution outputs
+            result.mergeIntoDataStream(dataStream);
+          },
+        });
+
+        return dataStreamResponse;
       });
-
-      return dataStreamResponse;
-    });
+    } catch (error) {
+      console.error("🚨 Error creating OpenRouter client:", error);
+      return new Response(`Error initializing AI model: ${error instanceof Error ? error.message : String(error)}`, { 
+        status: 200, // Don't use 500 as it breaks WebSocket connections
+        headers: { "Content-Type": "text/plain" }
+      });
+    }
   }
 
   /**
