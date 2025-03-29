@@ -6,9 +6,62 @@ import { tool } from "ai";
 import { z } from "zod";
 import { coderAgentContext } from "./coder-agent";
 
-// Import MCP client manager for GitHub operations
-// This is a mock import - the actual path needs to be adjusted based on your project structure
-// import { mcpClientManager } from "../../apps/chatserver/src/mcp/client";
+// HTTP client for calling MCP services
+// Since we can't directly import from chatserver due to package boundaries,
+// we'll implement a lightweight MCP client for tool calls
+class MCPToolClient {
+  private baseUrl: string;
+  private callId: string;
+
+  constructor(baseUrl: string = 'https://mcp-github.openagents.com/sse') {
+    this.baseUrl = baseUrl;
+    this.callId = crypto.randomUUID().substring(0, 8);
+  }
+
+  /**
+   * Call an MCP tool with parameters and optional auth token
+   */
+  async callTool(toolName: string, args: Record<string, any>, token?: string): Promise<any> {
+    console.log(`🔄 [${this.callId}] Calling MCP tool '${toolName}'`);
+    
+    try {
+      // Using JSON payload for tool calls
+      const payload = {
+        name: toolName,
+        arguments: args,
+        _meta: {
+          ...(token ? { token } : {}),
+          requestId: this.callId
+        }
+      };
+
+      // Make a direct fetch request to the MCP GitHub server
+      const response = await fetch('https://mcp-github.openagents.com/api/tool', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`MCP tool call failed with status ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log(`✅ [${this.callId}] MCP tool '${toolName}' succeeded`);
+      return result;
+    } catch (error) {
+      console.error(`🚨 [${this.callId}] MCP tool '${toolName}' error:`, error);
+      throw error;
+    }
+  }
+}
+
+// Create a singleton instance for use across tool calls
+const mcpClient = new MCPToolClient();
 
 /**
  * Get Repository Info
@@ -20,21 +73,33 @@ const getRepositoryInfo = tool({
     owner: z.string().describe("The owner of the repository"),
     repo: z.string().describe("The name of the repository")
   }),
-  execute: async ({ owner, repo }) => {
-    // TODO: Implement actual MCP client call when integrated
+  execute: async ({ owner, repo }, options) => {
     console.log(`Getting info for repository ${owner}/${repo}`);
     
-    // For development, return mock data
-    // In production, this would call the MCP GitHub API
-    return {
-      name: repo,
-      owner: owner,
-      description: "Repository information would be fetched from GitHub",
-      defaultBranch: "main",
-      isPrivate: false,
-      stars: 0,
-      openIssues: 0
-    };
+    try {
+      // Extract auth token if available
+      const authToken = options?.headers?.['X-GitHub-Token'] || 
+                       (options?.headers?.Authorization?.replace('Bearer ', ''));
+      
+      // Call the MCP tool via our client
+      const result = await mcpClient.callTool('get_repository', {
+        owner: owner,
+        repo: repo
+      }, authToken);
+      
+      return result;
+    } catch (error) {
+      console.error(`Failed to get repository info: ${error}`);
+      return {
+        error: `Failed to get repository info: ${error instanceof Error ? error.message : String(error)}`,
+        // Fallback data
+        name: repo,
+        owner: owner,
+        description: "Could not fetch repository information",
+        defaultBranch: "main",
+        isPrivate: false,
+      };
+    }
   }
 });
 
@@ -79,7 +144,7 @@ const getFileContents = tool({
     path: z.string().describe("The path to the file within the repository"),
     ref: z.string().optional().describe("The git reference (branch, tag, commit) to get the file from (optional)")
   }),
-  execute: async ({ owner, repo, path, ref }) => {
+  execute: async ({ owner, repo, path, ref }, options) => {
     // Get project context if owner or repo is not provided
     const agent = coderAgentContext.getStore();
     if (!agent) {
@@ -99,15 +164,25 @@ const getFileContents = tool({
     
     console.log(`Getting file: ${path} from ${repoOwner}/${repoName}${gitRef ? ` (ref: ${gitRef})` : ''}`);
     
-    // TODO: Implement actual MCP client call when integrated
-    // In production, this would fetch the file from GitHub via MCP
-    return `// This is a mock file content for ${path}
-// In production, this would be the actual file contents from GitHub
-
-function helloWorld() {
-  console.log("Hello from ${repoOwner}/${repoName}");
-}
-`;
+    try {
+      // Extract auth token if available
+      const authToken = options?.headers?.['X-GitHub-Token'] || 
+                       (options?.headers?.Authorization?.replace('Bearer ', ''));
+      
+      // Call the MCP tool via our client
+      const result = await mcpClient.callTool('get_file_contents', {
+        owner: repoOwner,
+        repo: repoName,
+        path: path,
+        ...(gitRef ? { ref: gitRef } : {})
+      }, authToken);
+      
+      return result.content;
+    } catch (error) {
+      console.error(`Failed to get file contents: ${error}`);
+      return `// Error fetching ${path} from ${repoOwner}/${repoName}:
+// ${error instanceof Error ? error.message : String(error)}`;
+    }
   }
 });
 
@@ -123,7 +198,7 @@ const searchCode = tool({
     query: z.string().describe("The search query to find code"),
     path: z.string().optional().describe("Filter results to this path prefix")
   }),
-  execute: async ({ owner, repo, query, path }) => {
+  execute: async ({ owner, repo, query, path }, options) => {
     // Get project context if owner or repo is not provided
     const agent = coderAgentContext.getStore();
     if (!agent) {
@@ -142,23 +217,28 @@ const searchCode = tool({
     
     console.log(`Searching for "${query}" in ${repoOwner}/${repoName}${path ? ` (path: ${path})` : ''}`);
     
-    // TODO: Implement actual MCP client call when integrated
-    // In production, this would search the repository via the GitHub API
-    return {
-      totalCount: 2,
-      items: [
-        {
-          path: "src/example.js",
-          lineNumber: 42,
-          snippet: `function searchExample() { console.log("Found ${query}"); }`
-        },
-        {
-          path: "lib/utils.js",
-          lineNumber: 123,
-          snippet: `// This is where ${query} would be implemented`
-        }
-      ]
-    };
+    try {
+      // Extract auth token if available
+      const authToken = options?.headers?.['X-GitHub-Token'] || 
+                       (options?.headers?.Authorization?.replace('Bearer ', ''));
+      
+      // Call the MCP tool via our client
+      const result = await mcpClient.callTool('search_code', {
+        owner: repoOwner,
+        repo: repoName,
+        query: query,
+        ...(path ? { path: path } : {})
+      }, authToken);
+      
+      return result;
+    } catch (error) {
+      console.error(`Failed to search code: ${error}`);
+      return {
+        error: `Failed to search code: ${error instanceof Error ? error.message : String(error)}`,
+        totalCount: 0,
+        items: []
+      };
+    }
   }
 });
 
@@ -182,9 +262,12 @@ const runCommand = tool({
 const createFile = tool({
   description: "Create a new file in the repository",
   parameters: z.object({
+    owner: z.string().optional().describe("The owner of the repository (optional if project context is set)"),
+    repo: z.string().optional().describe("The name of the repository (optional if project context is set)"),
     path: z.string().describe("The path where the file should be created"),
     content: z.string().describe("The content of the file"),
-    commitMessage: z.string().optional().describe("The commit message (optional)")
+    commitMessage: z.string().optional().describe("The commit message (optional)"),
+    branch: z.string().optional().describe("The branch to commit to (optional)")
   }),
   // No execute function - this requires human confirmation
 });
@@ -196,6 +279,8 @@ const createFile = tool({
 const createPullRequest = tool({
   description: "Create a pull request in the repository",
   parameters: z.object({
+    owner: z.string().optional().describe("The owner of the repository (optional if project context is set)"),
+    repo: z.string().optional().describe("The name of the repository (optional if project context is set)"),
     title: z.string().describe("The title of the pull request"),
     body: z.string().describe("The description of the pull request"),
     head: z.string().describe("The name of the branch where your changes are implemented"),
@@ -225,30 +310,115 @@ export const coderExecutions = {
   runCommand: async ({ command, workingDirectory }: { command: string, workingDirectory?: string }) => {
     console.log(`Executing command: ${command} in directory: ${workingDirectory || 'current directory'}`);
     
-    // This is where the actual command execution would happen after human approval
-    // In a real implementation, this would use proper sandboxing and security measures
-    return `Command executed: ${command}
-Output: Command would run in production environment after approval
-Exit code: 0`;
+    try {
+      // For development purposes, just log the command
+      // In production with the Electron app, this would use the command execution API
+      console.log(`Would execute: ${command}`);
+      
+      // Format for command execution in ChatWithCommandSupport component
+      return {
+        command: command,
+        output: `This command would be executed in the desktop client.\nIn the web version, command execution is limited.`,
+        exitCode: 0
+      };
+    } catch (error) {
+      console.error(`Command execution error: ${error}`);
+      return {
+        command: command,
+        output: `Error: ${error instanceof Error ? error.message : String(error)}`,
+        exitCode: 1
+      };
+    }
   },
   
-  createFile: async ({ path, content, commitMessage }: { path: string, content: string, commitMessage?: string }) => {
+  createFile: async ({ owner, repo, path, content, commitMessage, branch }: { 
+    owner?: string, 
+    repo?: string, 
+    path: string, 
+    content: string, 
+    commitMessage?: string,
+    branch?: string
+  }) => {
     console.log(`Creating file at: ${path} with commit message: ${commitMessage || 'Create ' + path}`);
     
-    // This is where the actual file creation would happen after human approval
-    return `File created successfully at ${path}
-Commit: ${commitMessage || 'Create ' + path}`;
+    try {
+      // Get project context if owner or repo is not provided
+      const agent = coderAgentContext.getStore();
+      if (!agent) {
+        throw new Error("No agent context found");
+      }
+      
+      const context = agent.getProjectContext();
+      
+      // Use provided values or fall back to context
+      const repoOwner = owner || context.repoOwner;
+      const repoName = repo || context.repoName;
+      const gitBranch = branch || context.branch;
+      
+      if (!repoOwner || !repoName) {
+        throw new Error("Repository owner and name must be provided either directly or via project context");
+      }
+      
+      // For now, just log what would happen
+      // In production, this would call the GitHub API via MCP after human approval
+      return {
+        message: `File would be created at ${path} in ${repoOwner}/${repoName}`,
+        path: path,
+        commit: {
+          message: commitMessage || `Create ${path}`,
+          branch: gitBranch || 'main'
+        }
+      };
+    } catch (error) {
+      console.error(`File creation error: ${error}`);
+      return {
+        error: `Failed to create file: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
   },
   
-  createPullRequest: async ({ title, body, head, base }: { title: string, body: string, head: string, base: string }) => {
+  createPullRequest: async ({ owner, repo, title, body, head, base }: { 
+    owner?: string, 
+    repo?: string, 
+    title: string, 
+    body: string, 
+    head: string, 
+    base: string 
+  }) => {
     console.log(`Creating PR: ${title} from ${head} to ${base}`);
     
-    // This is where the actual PR creation would happen after human approval
-    return {
-      number: 123,
-      title: title,
-      html_url: `https://github.com/example/repo/pull/123`,
-      message: `Pull request created successfully`
-    };
+    try {
+      // Get project context if owner or repo is not provided
+      const agent = coderAgentContext.getStore();
+      if (!agent) {
+        throw new Error("No agent context found");
+      }
+      
+      const context = agent.getProjectContext();
+      
+      // Use provided values or fall back to context
+      const repoOwner = owner || context.repoOwner;
+      const repoName = repo || context.repoName;
+      
+      if (!repoOwner || !repoName) {
+        throw new Error("Repository owner and name must be provided either directly or via project context");
+      }
+      
+      // For now, just log what would happen
+      // In production, this would call the GitHub API via MCP after human approval
+      return {
+        message: `Pull request would be created in ${repoOwner}/${repoName}`,
+        number: 123, // Mock PR number
+        title: title,
+        html_url: `https://github.com/${repoOwner}/${repoName}/pull/123`,
+        head: head,
+        base: base
+      };
+    } catch (error) {
+      console.error(`Pull request creation error: ${error}`);
+      return {
+        error: `Failed to create pull request: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
   }
 };
