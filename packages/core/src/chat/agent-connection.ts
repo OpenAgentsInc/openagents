@@ -13,7 +13,7 @@ export { createAgentClient } from '../mcp/agent-sdk-bridge';
  */
 export interface AgentConnectionOptions {
   /**
-   * The ID of the agent to connect to (e.g., 'coder-agent')
+   * The ID of the agent to connect to (e.g., 'CoderAgent')
    */
   agentId: string;
   

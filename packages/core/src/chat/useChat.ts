@@ -144,11 +144,11 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     const connectToAgent = async () => {
       try {
-        console.log('🔌 USECHAT: Connecting to agent:', agentId || (agentOptions?.agentName ? 'coder-agent' : 'unknown'));
+        console.log('🔌 USECHAT: Connecting to agent:', agentId || (agentOptions?.agentName ? 'CoderAgent' : 'unknown'));
         
         // Create connection options
         const connectionOptions: AgentConnectionOptions = {
-          agentId: agentId || 'coder-agent', // Default to coder-agent if only name is provided
+          agentId: agentId || 'CoderAgent', // Default to CoderAgent if only name is provided
           agentName: agentName || agentOptions?.agentName || 'default',
           serverUrl: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
           token: agentAuthToken || agentOptions?.token,
@@ -166,8 +166,19 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
         
         // Set project context if provided
         if (agentOptions?.projectContext) {
-          await utils.setProjectContext(agentOptions.projectContext);
-          console.log('📁 USECHAT: Set project context for agent');
+          try {
+            // Add a delay to allow the connection to fully establish before setting context
+            setTimeout(async () => {
+              try {
+                await utils.setProjectContext(agentOptions.projectContext);
+                console.log('📁 USECHAT: Set project context for agent');
+              } catch (contextError) {
+                console.warn('Failed to set project context (delayed attempt):', contextError);
+              }
+            }, 500);
+          } catch (error) {
+            console.warn('Failed to set project context (immediate attempt):', error);
+          }
         }
         
         // Update connection state
@@ -238,6 +249,9 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     const fetchInitialMessages = async () => {
       try {
+        // Add a delay to ensure WebSocket connection is fully established
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         console.log('📥 USECHAT: Fetching initial messages from agent');
         // Add non-null assertion since we've already checked for null
         const messages = await agentConnection.utils!.fetchMessages();
@@ -245,6 +259,20 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
         setAgentMessages(messages);
       } catch (error) {
         console.error('❌ USECHAT: Failed to fetch messages from agent:', error);
+        
+        // If this fails, try again once more after a longer delay
+        setTimeout(async () => {
+          try {
+            if (agentConnection.isConnected && agentConnection.utils) {
+              console.log('📥 USECHAT: Retry fetching initial messages from agent');
+              const retryMessages = await agentConnection.utils.fetchMessages();
+              console.log(`✅ USECHAT: Retry received ${retryMessages.length} messages from agent`);
+              setAgentMessages(retryMessages);
+            }
+          } catch (retryError) {
+            console.error('❌ USECHAT: Retry failed to fetch messages from agent:', retryError);
+          }
+        }, 3000);
       }
     };
     

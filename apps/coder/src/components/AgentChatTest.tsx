@@ -11,8 +11,8 @@ export const AgentChatTest: React.FC = () => {
   
   // State for agent configuration
   const [agentConfig, setAgentConfig] = useState({
-    agentId: 'coder-agent',
-    agentName: 'test-instance',
+    agentId: 'CoderAgent', // Must match the export class name exactly
+    agentName: 'default-instance',
     serverUrl: 'https://agents.openagents.com'
   });
   
@@ -391,8 +391,8 @@ const styles = StyleSheet.create({
   messagesContainer: {
     flex: 1,
     marginBottom: 16,
-    overflow: 'auto',
-    maxHeight: 'calc(100% - 60px)', // Reserve space for input
+    overflow: 'scroll',
+    maxHeight: '80%', // Use percentage instead of calc
   },
   message: {
     marginBottom: 12,
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#333',
     paddingTop: 8,
-    position: 'sticky',
+    position: 'relative', // Changed from 'sticky' to 'relative'
     bottom: 0,
     backgroundColor: '#111',
   },

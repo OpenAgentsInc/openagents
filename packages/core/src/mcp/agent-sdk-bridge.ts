@@ -77,6 +77,8 @@ export class AgentClient implements BaseAgentClient {
       const hostWithProtocol = host.startsWith('http') ? host : `https://${host}`;
       const url = new URL(hostWithProtocol);
       const wsProtocol = url.protocol === 'https:' ? 'wss' : 'ws';
+      
+      // This must match the exact route pattern defined in the Cloudflare Worker
       wsUrl = `${wsProtocol}://${url.host}/api/agent/${this.agent}/${this.name}`;
     } catch (e) {
       // Fallback for invalid URLs
@@ -93,6 +95,18 @@ export class AgentClient implements BaseAgentClient {
         console.log(`Connected to agent ${this.agent}/${this.name}`);
         this.connected = true;
         this.reconnectAttempts = 0;
+        
+        // Notify connection is ready via an initial handshake
+        try {
+          this.socket?.send(JSON.stringify({
+            type: 'handshake',
+            agent: this.agent,
+            name: this.name,
+            version: '1.0.0'
+          }));
+        } catch (error) {
+          console.warn('Failed to send handshake message:', error);
+        }
       };
       
       this.socket.onmessage = (event) => {
@@ -155,8 +169,19 @@ export class AgentClient implements BaseAgentClient {
    * Calls a method on the agent
    */
   async call<T = unknown>(method: string, args: unknown[] = []): Promise<T> {
-    if (!this.socket || !this.connected) {
-      throw new Error('Not connected to agent');
+    // More robust check for connection status
+    if (!this.socket) {
+      throw new Error('Not connected to agent: socket not initialized');
+    }
+
+    if (!this.connected) {
+      throw new Error('Not connected to agent: connection not established');
+    }
+
+    if (this.socket.readyState !== WebSocket.OPEN) {
+      // Check specific socket state and provide more detailed error
+      const states = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+      throw new Error(`Not connected to agent: socket in ${states[this.socket.readyState]} state`);
     }
     
     return new Promise<T>((resolve, reject) => {
@@ -181,10 +206,10 @@ export class AgentClient implements BaseAgentClient {
       
       // Send the message
       try {
-        if (this.socket) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
           this.socket.send(JSON.stringify(message));
         } else {
-          throw new Error('Socket not available');
+          throw new Error('Socket not available or not in OPEN state');
         }
       } catch (error) {
         clearTimeout(timeout);
