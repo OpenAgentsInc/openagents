@@ -10,7 +10,8 @@
     "test": "vitest",
     "types": "wrangler types",
     "format": "prettier --write .",
-    "check": "prettier . --check && biome lint && tsc"
+    "check": "prettier . --check && biome lint && tsc",
+    "t": "tsc --noEmit"
   },
   "keywords": [
     "cloudflare",
