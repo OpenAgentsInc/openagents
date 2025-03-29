@@ -32,6 +32,7 @@
     "wrangler": "^4.6.0"
   },
   "dependencies": {
+    "@cloudflare/vite-plugin": "^0.1.19",
     "@openrouter/ai-sdk-provider": "^0.4.5",
     "agents": "^0.0.44",
     "ai": "^4.2.5",
