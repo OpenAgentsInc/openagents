@@ -4,7 +4,7 @@
     "strict": true,
     "noImplicitAny": false,
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "paths": {
       "@/*": [
         "./app/*"
@@ -17,6 +17,9 @@
       ],
       "@openagents/ui/*": [
         "../../packages/ui/src/*"
+      ],
+      "agents/*": [
+        "../../node_modules/agents/dist/*"
       ]
     },
   }

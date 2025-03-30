@@ -2,8 +2,8 @@
   "compilerOptions": {
     "jsx": "react",
     "target": "ESNext",
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "lib": [
       "DOM",
       "DOM.Iterable",
@@ -35,6 +35,9 @@
       ],
       "@openagents/ui/*": [
         "../../packages/ui/src/*"
+      ],
+      "agents/*": [
+        "../../node_modules/agents/dist/*"
       ]
     },
     "outDir": "dist",

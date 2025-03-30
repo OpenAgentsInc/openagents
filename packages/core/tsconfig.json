@@ -10,7 +10,10 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "paths": {
+      "agents/*": ["../../node_modules/agents/dist/*"]
+    },
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,

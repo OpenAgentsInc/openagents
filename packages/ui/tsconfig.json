@@ -6,7 +6,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,
@@ -16,7 +16,8 @@
     "outDir": "dist",
     "paths": {
       "react": ["./node_modules/@types/react"],
-      "react-native": ["./node_modules/@types/react-native"]
+      "react-native": ["./node_modules/@types/react-native"],
+      "agents/*": ["../../node_modules/agents/dist/*"]
     }
   },
   "include": ["src"],

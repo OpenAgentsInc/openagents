@@ -1,13 +1,12 @@
-import type { ForgeConfig } from "@electron-forge/shared-types";
-import { MakerSquirrel } from "@electron-forge/maker-squirrel";
-import { MakerZIP } from "@electron-forge/maker-zip";
-import { MakerDeb } from "@electron-forge/maker-deb";
-import { MakerRpm } from "@electron-forge/maker-rpm";
-import { VitePlugin } from "@electron-forge/plugin-vite";
-import { FusesPlugin } from "@electron-forge/plugin-fuses";
-import { FuseV1Options, FuseVersion } from "@electron/fuses";
+const { MakerSquirrel } = require("@electron-forge/maker-squirrel");
+const { MakerZIP } = require("@electron-forge/maker-zip");
+const { MakerDeb } = require("@electron-forge/maker-deb");
+const { MakerRpm } = require("@electron-forge/maker-rpm");
+const { VitePlugin } = require("@electron-forge/plugin-vite");
+const { FusesPlugin } = require("@electron-forge/plugin-fuses");
+const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 
-const config: ForgeConfig = {
+const config = {
   packagerConfig: {
     asar: true,
   },
@@ -56,4 +55,4 @@ const config: ForgeConfig = {
   ],
 };
 
-export default config;
+module.exports = config;

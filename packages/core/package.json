@@ -1,12 +1,23 @@
 {
   "name": "@openagents/core",
   "version": "0.0.1",
+  "type": "module",
   "main": "src/index.ts",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "t": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/react": "1.2.2"
+    "@ai-sdk/react": "1.2.2",
+    "agents": "^0.0.46",
+    "partysocket": "^1.1.2"
+  },
+  "peerDependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0"
   }
 }
