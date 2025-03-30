@@ -29,13 +29,13 @@ export default function HomePage() {
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex h-full w-full flex-col text-primary font-mono">
-        <div className="relative flex h-full w-full flex-1 overflow-hidden transition-colors z-0">
+        <div className="relative flex h-full w-full flex-1 overflow-hidden z-0">
           <div className="relative flex h-full w-full flex-row overflow-hidden">
             <Sidebar>
-              <SidebarHeader>
-                <div className="pt-8 flex items-center justify-between px-2">
-                  <span className="text-md font-semibold">OpenAgents Coder</span>
-                  {/* <SidebarTrigger /> */}
+              <SidebarHeader className="border-y h-14 mt-[30px]">
+                <div className="flex items-center h-full justify-between px-3">
+                  <span className="text-sm font-semibold">OpenAgents</span>
+                  <SidebarTrigger />
                 </div>
               </SidebarHeader>
               <SidebarContent>
@@ -72,7 +72,7 @@ export default function HomePage() {
             </Sidebar>
             <SidebarInset>
               <div className="grid grid-rows-[auto_1fr_auto] h-screen">
-                <div className="border-b border-t bg-background p-3 flex items-center justify-between z-10 h-14 font-semibold">
+                <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14 font-semibold">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <SidebarTrigger className="md:hidden" />
                     <button
