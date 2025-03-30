@@ -10,7 +10,6 @@ import {
   SidebarContent,
   SidebarHeader,
   SidebarProvider,
-  SidebarTrigger,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -18,7 +17,6 @@ import {
   SidebarGroup,
   SidebarInset
 } from "@/components/ui/sidebar"
-import { cn } from "@/utils/tailwind"
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react"
 
 export default function HomePage() {
@@ -44,7 +42,6 @@ export default function HomePage() {
                       v0.0.1
                     </Badge>
                   </span>
-                  <SidebarTrigger />
                 </div>
               </SidebarHeader>
               <SidebarContent>
@@ -83,7 +80,6 @@ export default function HomePage() {
               <div className="grid grid-rows-[auto_1fr_auto] h-screen">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14 font-semibold">
                   <div className="flex items-center gap-2 overflow-hidden">
-                    <SidebarTrigger className="md:hidden" />
                     <button
                       aria-label="Model selector"
                       type="button"
