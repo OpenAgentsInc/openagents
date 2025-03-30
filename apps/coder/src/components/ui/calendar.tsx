@@ -1,9 +1,14 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { DayPicker } from "react-day-picker"
+import { react19 } from "@openagents/core"
 
 import { cn } from "@/utils/tailwind"
 import { buttonVariants } from "@/components/ui/button"
+
+// Make lucide icons compatible with React 19
+const CompatChevronLeft = react19.icon(ChevronLeft)
+const CompatChevronRight = react19.icon(ChevronRight)
 
 function Calendar({
   className,
@@ -59,10 +64,10 @@ function Calendar({
       }}
       components={{
         IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("size-4", className)} {...props} />
+          <CompatChevronLeft className={cn("size-4", className)} {...props} />
         ),
         IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("size-4", className)} {...props} />
+          <CompatChevronRight className={cn("size-4", className)} {...props} />
         ),
       }}
       {...props}
