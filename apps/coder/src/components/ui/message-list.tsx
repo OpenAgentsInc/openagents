@@ -20,7 +20,7 @@ interface MessageListProps {
 
 export function MessageList({
   messages,
-  showTimeStamps = true,
+  showTimeStamps = false,
   isTyping = false,
   messageOptions,
 }: MessageListProps) {
