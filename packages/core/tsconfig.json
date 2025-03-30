@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "es2019",
-    "module": "esnext",
+    "module": "Node16",
     "lib": [
       "DOM",
       "DOM.Iterable",
@@ -10,7 +10,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "bundler",
+    "moduleResolution": "node16",
     "jsx": "react-jsx",
     "strict": true,
     "esModuleInterop": true,

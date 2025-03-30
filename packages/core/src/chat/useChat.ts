@@ -8,7 +8,7 @@ import { safeExecuteCommand, CommandExecutionOptions } from '../utils/commandExe
 import { useAgent } from 'agents/react';
 import { useAgentChat } from 'agents/ai-react';
 // Import types from agent-connection
-import type { AgentConnectionOptions } from './agent-connection';
+import type { AgentConnectionOptions, AgentClient } from './agent-connection';
 
 // Define our own chat options interface
 export interface UseChatWithCommandsOptions {
@@ -96,12 +96,27 @@ export interface UseChatWithCommandsOptions {
   agentAuthToken?: string;
 }
 
-export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<typeof vercelUseChat> & {
+// Define the return type to properly merge vercelUseChat with our extensions
+export type UseChatReturn = ReturnType<typeof vercelUseChat> & {
   agentConnection: { 
     isConnected: boolean; 
-    client: any; 
+    client: AgentClient | null; 
   };
-} {
+  // Additional methods for agent interaction
+  fetchMessages?: () => Promise<UIMessage[]>;
+  executeAgentCommand?: (command: string) => Promise<any>;
+  testCommandExecution?: () => Promise<{
+    local: { available: boolean; enabled: boolean; result: any | null };
+    agent: { available: boolean; connected: boolean; result: any | null };
+  }>;
+  // Properties added via Object.defineProperties
+  localCommandExecution?: boolean;
+  isCommandExecutionEnabled?: boolean;
+  isAgentConnected?: boolean;
+  isUsingAgent?: boolean;
+};
+
+export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn {
   const {
     localCommandExecution = false,
     commandOptions,
@@ -284,8 +299,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   useEffect(() => {
     setProcessedMessages(prevProcessedMessages => {
       // Careful update that preserves our processed messages with command outputs
-      // Type cast to handle different UIMessage definitions
-      return (messages as any[]).map((newMsg: any) => {
+      return messages.map((newMsg: UIMessage) => {
         // Check if we have this message in our processed messages
         const existingMsg = prevProcessedMessages.find(m => m.id === newMsg.id);
         
@@ -300,8 +314,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
           }
         }
         
-        // Otherwise use the new message (with type cast)
-        return newMsg as UIMessage;
+        // Otherwise use the new message
+        return newMsg;
       });
     });
   }, [messages]); // Removed processedMessages from dependencies
@@ -497,17 +511,16 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     // Process all unprocessed assistant messages
     const processNewMessages = async () => {
-      // Get all assistant messages - use any[] cast to avoid type issues
-      const assistantMessages = (messages as any[]).filter((m: any) => m.role === 'assistant');
+      // Get all assistant messages
+      const assistantMessages = messages.filter((m: UIMessage) => m.role === 'assistant');
       
       // Find messages that haven't been processed yet
-      const unprocessedMessages = assistantMessages.filter((msg: any) => !processedMessageIds.current.has(msg.id));
+      const unprocessedMessages = assistantMessages.filter((msg: UIMessage) => !processedMessageIds.current.has(msg.id));
       
       if (unprocessedMessages.length > 0) {
         // Process each new message
         for (const message of unprocessedMessages) {
-          // Cast to UIMessage to satisfy type checker
-          await processSingleMessage(message as UIMessage);
+          await processSingleMessage(message);
         }
       }
     };
@@ -636,6 +649,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     }
   });
   
-  // Type cast to satisfy the type checker
-  return returnValue as any;
+  // We need to use 'as UseChatReturn' because TypeScript can't reconcile the
+  // different UIMessage types from different node_modules instances
+  return returnValue as UseChatReturn;
 }

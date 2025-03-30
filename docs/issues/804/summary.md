@@ -59,10 +59,12 @@ In this PR, we replaced the custom agent-sdk-bridge implementation with the offi
    - Removed all redundant functions like createAgentUtils
    - Simply re-exports the official SDK hooks and types
 
-3. **Type Handling**:
-   - Updated tsconfig.json moduleResolution to "bundler"
-   - Added necessary type casts to handle conflicts between SDK types and local types
-   - Added StepStartUIPart support to Message types
+3. **Proper Type Handling**:
+   - Updated tsconfig.json moduleResolution to "bundler" for better ESM support
+   - Made StepStartUIPart.step optional to match the SDK's definition
+   - Created a proper UseChatReturn type interface for the hook's return value
+   - Eliminated unnecessary `any` casts throughout the code
+   - Properly typed all functions, callbacks and variables
 
 ## Testing
 

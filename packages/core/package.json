@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "1.2.2",
-    "agents": "^0.0.44",
+    "agents": "^0.0.45",
     "partysocket": "^1.1.2"
   }
 }

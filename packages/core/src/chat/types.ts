@@ -278,10 +278,13 @@ that the assistant made as part of this message.
 
 /**
  * A step start part of a message.
+ * 
+ * Matching the official @ai-sdk/ui-utils StepStartUIPart definition
+ * which doesn't require the 'step' property.
  */
 export type StepStartUIPart = {
   type: 'step-start';
-  step: number;
+  step?: number; // Make step optional to match the ai-sdk definition
 };
 
 export type UIMessage = Message & {
