@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "jsx": "react",
+    "jsx": "react-jsx",
     "target": "ESNext",
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -14,7 +14,8 @@
       "node",
       "electron",
       "react-native",
-      "@types/react-native"
+      "@types/react-native",
+      "@types/react"
     ],
     "experimentalDecorators": true,
     "composite": true,
@@ -38,6 +39,9 @@
       ],
       "agents/*": [
         "../../node_modules/agents/dist/*"
+      ],
+      "react": [
+        "../../node_modules/@types/react"
       ]
     },
     "outDir": "dist",
@@ -47,6 +51,6 @@
   "include": [
     "src/**/*",
     "../../packages/ui/src/**/*",
-    "../../packages/core/src/**/*",
+    "../../packages/core/src/**/*"
   ]
 }

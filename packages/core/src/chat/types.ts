@@ -1,3 +1,7 @@
+import { Message as VercelMessage } from 'ai/react';
+import { v4 as uuidv4 } from 'uuid';
+import { DeepReadonlyObject } from '../types';
+
 export type IdGenerator = () => string;
 
 /**
@@ -278,7 +282,7 @@ that the assistant made as part of this message.
 
 /**
  * A step start part of a message.
- * 
+ *
  * Matching the official @ai-sdk/ui-utils StepStartUIPart definition
  * which doesn't require the 'step' property.
  */
@@ -287,22 +291,64 @@ export type StepStartUIPart = {
   step?: number; // Make step optional to match the ai-sdk definition
 };
 
-export type UIMessage = Message & {
-  /**
-   * The parts of the message. Use this for rendering the message in the UI.
-   *
-   * Assistant messages can have text, reasoning and tool invocation parts.
-   * User messages can have text parts.
-   */
-  parts: Array<
-    | TextUIPart
-    | ReasoningUIPart
-    | ToolInvocationUIPart
-    | SourceUIPart
-    | FileUIPart
-    | StepStartUIPart
-  >;
-};
+/**
+ * Base message part types
+ */
+export type BasePart = TextUIPart | ReasoningUIPart | ToolInvocationUIPart | SourceUIPart | FileUIPart;
+
+/**
+ * UI-specific part types
+ */
+export type UIPart = BasePart | StepStartUIPart;
+
+/**
+ * Base message interface that extends Vercel's Message type but makes parts optional
+ */
+export interface BaseMessage extends Omit<VercelMessage, 'parts'> {
+  parts?: BasePart[];
+}
+
+/**
+ * Extended UI message interface that adds our custom functionality
+ */
+export interface UIMessage {
+  id?: string;
+  role: 'user' | 'assistant' | 'system' | 'data';
+  content: string;
+  createdAt?: Date;
+  threadId?: string;
+  parts: UIPart[];
+  experimental_attachments?: any[];
+}
+
+/**
+ * Convert UIMessage to Vercel Message
+ */
+export function toVercelMessage(message: UIMessage): BaseMessage {
+  const parts = message.parts.filter(part =>
+    part.type !== 'step-start'
+  ) as BasePart[];
+
+  return {
+    id: message.id || uuidv4(),
+    role: message.role,
+    content: message.content,
+    parts
+  };
+}
+
+/**
+ * Convert Vercel Message to UIMessage
+ */
+export function fromVercelMessage(message: VercelMessage): UIMessage {
+  return {
+    id: message.id || uuidv4(),
+    role: message.role,
+    content: message.content,
+    createdAt: new Date(),
+    parts: (message.parts || []) as UIPart[]
+  };
+}
 
 /**
  * A text part of a message.

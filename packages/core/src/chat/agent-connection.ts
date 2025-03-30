@@ -1,6 +1,6 @@
 /**
  * Agent Connection - Thin wrapper around the official Cloudflare Agents SDK
- * 
+ *
  * This module provides types and re-exports from the Cloudflare Agents SDK.
  * It's a compatibility layer for existing code that uses the custom bridge.
  */
@@ -12,17 +12,8 @@ import { useAgent } from 'agents/react';
 import { useAgentChat } from 'agents/ai-react';
 
 // Define local interfaces that match the SDK types for compatibility with useChat
-export interface AgentClient<T = unknown> {
-  agent: string;
-  name: string;
-  setState: (state: unknown) => void;
-  call: <R = unknown>(
-    method: string,
-    args?: unknown[],
-    streamOptions?: { onUpdate?: (value: R) => void }
-  ) => Promise<R>;
-}
-export interface AgentClientOptions extends SDKAgentClientOptions {}
+export interface AgentClient<T = unknown> extends SDKAgentClient<T> { }
+export interface AgentClientOptions extends SDKAgentClientOptions { }
 
 /**
  * Options for connecting to a Cloudflare Agent
@@ -32,31 +23,31 @@ export interface AgentConnectionOptions {
    * The ID of the agent to connect to (e.g., 'coderagent')
    */
   agentId: string;
-  
+
   /**
    * The name of the specific agent instance
    * This allows connecting to different instances of the same agent type
    */
   agentName?: string;
-  
+
   /**
    * The base URL for the agent server
    * @default 'https://agents.openagents.com'
    */
   serverUrl?: string;
-  
+
   /**
-   * Path pattern for WebSocket endpoint 
+   * Path pattern for WebSocket endpoint
    * Not needed for official SDK
    * @deprecated
    */
   pathPattern?: string;
-  
+
   /**
    * Optional callback when the agent's state is updated
    */
   onStateUpdate?: (state: any, source: 'server' | 'client') => void;
-  
+
   /**
    * Optional token for authentication
    */

@@ -1,5 +1,7 @@
 import { UIMessage } from '../chat/types';
 import { RxCollection, RxDatabase, RxDocument } from 'rxdb';
+import { DeepReadonlyObject } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Thread data object
@@ -23,12 +25,12 @@ export type ThreadDocument = RxDocument<Thread>;
  * Message data object (for database storage)
  */
 export interface StoredMessage {
-  id: string;
+  id?: string;
   threadId: string;
   role: string;
   content: string;
   createdAt: number;
-  parts?: any[];
+  parts: any[];
   attachments?: any[];
 }
 
@@ -66,28 +68,32 @@ export interface DatabaseCollections {
  * RxDB database with our collections
  */
 export interface Database extends RxDatabase<DatabaseCollections> {
-  destroy: () => Promise<void>;
+  destroy(): Promise<void>;
 }
-
-// Type to represent a deep readonly object (RxDB returns readonly objects)
-export type DeepReadonlyObject<T> = {
-  readonly [K in keyof T]: T[K] extends object ? DeepReadonlyObject<T[K]> : T[K];
-};
 
 /**
  * Factory function to convert stored message to UIMessage
  */
 export function storedMessageToUIMessage(storedMessage: StoredMessage | DeepReadonlyObject<StoredMessage>): UIMessage {
+  // Create a mutable copy of the parts array
+  const parts = Array.isArray(storedMessage.parts)
+    ? storedMessage.parts.map(part => ({ ...part }))
+    : [];
+
+  // Create a mutable copy of attachments if they exist
+  const attachments = storedMessage.attachments
+    ? storedMessage.attachments.map(attachment => ({ ...attachment }))
+    : undefined;
+
   return {
-    id: storedMessage.id,
-    role: storedMessage.role as any,
+    id: storedMessage.id || uuidv4(),
+    role: storedMessage.role as 'user' | 'assistant' | 'system' | 'data',
     content: storedMessage.content,
+    threadId: storedMessage.threadId,
     createdAt: new Date(storedMessage.createdAt),
-    parts: Array.isArray(storedMessage.parts) ? [...storedMessage.parts] : [],
-    ...(storedMessage.attachments ? {
-      experimental_attachments: Array.isArray(storedMessage.attachments) ? [...storedMessage.attachments] : []
-    } : {})
-  } as UIMessage;
+    parts,
+    ...(attachments ? { experimental_attachments: attachments } : {})
+  };
 }
 
 /**
@@ -95,12 +101,12 @@ export function storedMessageToUIMessage(storedMessage: StoredMessage | DeepRead
  */
 export function uiMessageToStoredMessage(message: UIMessage, threadId: string): StoredMessage {
   return {
-    id: message.id,
+    id: message.id || uuidv4(),
     threadId,
     role: message.role,
     content: message.content,
-    createdAt: message.createdAt ? message.createdAt.getTime() : Date.now(),
-    parts: Array.isArray(message.parts) ? [...message.parts] : [],
-    attachments: Array.isArray(message.experimental_attachments) ? [...message.experimental_attachments] : []
+    createdAt: message.createdAt?.getTime() || Date.now(),
+    parts: message.parts?.map(part => ({ ...part })) || [],
+    attachments: message.experimental_attachments?.map(attachment => ({ ...attachment }))
   };
 }
