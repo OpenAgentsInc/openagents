@@ -12,6 +12,9 @@
     "onyx": "yarn workspace @openagents/onyx ios",
     "mcp": "yarn workspace @openagents/mcp-github-server dev",
     "onyx:start": "yarn workspace @openagents/onyx start",
+    "d": "yarn workspace @openagents/chatserver deploy && yarn workspace @openagents/agents deploy",
+    "d:chat": "yarn workspace @openagents/chatserver deploy",
+    "d:agents": "yarn workspace @openagents/agents deploy",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
     "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
@@ -25,10 +28,7 @@
     "typescript": "^5.3.3"
   },
   "resolutions": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "react-native": "0.76.7",
-    "@types/react": "~18.2.45",
-    "@types/react-dom": "~18.2.17"
-  }
+    "react-native": "0.76.7"
+  },
+  "_comment": "React and React-DOM resolutions were removed to allow workspaces like core, coder, and ui to use React 19.x which is needed for the `use()` hook in agents SDK. Keep react-native locked to prevent onyx app dependency issues."
 }

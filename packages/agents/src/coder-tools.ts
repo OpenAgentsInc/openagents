@@ -11,18 +11,17 @@ import { coderAgentContext } from "./coder-agent";
 // we'll implement a lightweight MCP client for tool calls
 class MCPToolClient {
   private baseUrl: string;
-  private callId: string;
-
+  
   constructor(baseUrl: string = 'https://mcp-github.openagents.com/sse') {
     this.baseUrl = baseUrl;
-    this.callId = crypto.randomUUID().substring(0, 8);
   }
 
   /**
    * Call an MCP tool with parameters and optional auth token
    */
   async callTool(toolName: string, args: Record<string, any>, token?: string): Promise<any> {
-    console.log(`🔄 [${this.callId}] Calling MCP tool '${toolName}'`);
+    const callId = this.generateCallId();
+    console.log(`🔄 [${callId}] Calling MCP tool '${toolName}'`);
     
     try {
       // Using JSON payload for tool calls
@@ -31,7 +30,7 @@ class MCPToolClient {
         arguments: args,
         _meta: {
           ...(token ? { token } : {}),
-          requestId: this.callId
+          requestId: callId
         }
       };
 
@@ -51,17 +50,27 @@ class MCPToolClient {
       }
 
       const result = await response.json();
-      console.log(`✅ [${this.callId}] MCP tool '${toolName}' succeeded`);
+      console.log(`✅ [${callId}] MCP tool '${toolName}' succeeded`);
       return result;
     } catch (error) {
-      console.error(`🚨 [${this.callId}] MCP tool '${toolName}' error:`, error);
+      console.error(`🚨 [${callId}] MCP tool '${toolName}' error:`, error);
       throw error;
     }
   }
+  
+  // Helper method to generate a call ID without crypto.randomUUID in global scope
+  private generateCallId(): string {
+    // Simple implementation that doesn't rely on crypto in global scope
+    const timestamp = Date.now().toString(36);
+    const random = Math.floor(Math.random() * 1000000).toString(36);
+    return `${timestamp}-${random}`;
+  }
 }
 
-// Create a singleton instance for use across tool calls
-const mcpClient = new MCPToolClient();
+// Instead of creating the client in global scope, we'll create a function to get it
+function getMCPClient(): MCPToolClient {
+  return new MCPToolClient();
+}
 
 /**
  * Get Repository Info
@@ -77,6 +86,9 @@ const getRepositoryInfo = tool({
     console.log(`Getting info for repository ${owner}/${repo}`);
     
     try {
+      // Create client on demand rather than in global scope
+      const mcpClient = getMCPClient();
+      
       // Extract auth token if available
       // TypeScript: Since headers isn't part of ToolExecutionOptions type, use type assertion
       const headers = (options as any)?.headers;
@@ -153,7 +165,8 @@ const getFileContents = tool({
       throw new Error("No agent context found");
     }
     
-    const context = agent.getProjectContext();
+    // Get the context synchronously from the agent's instance property
+    const context = agent.projectContext;
     
     // Use provided values or fall back to context
     const repoOwner = owner || context.repoOwner;
@@ -167,6 +180,9 @@ const getFileContents = tool({
     console.log(`Getting file: ${path} from ${repoOwner}/${repoName}${gitRef ? ` (ref: ${gitRef})` : ''}`);
     
     try {
+      // Create client on demand rather than in global scope
+      const mcpClient = getMCPClient();
+      
       // Extract auth token if available
       // TypeScript: Since headers isn't part of ToolExecutionOptions type, use type assertion
       const headers = (options as any)?.headers;
@@ -209,7 +225,7 @@ const searchCode = tool({
       throw new Error("No agent context found");
     }
     
-    const context = agent.getProjectContext();
+    const context = agent.projectContext;
     
     // Use provided values or fall back to context
     const repoOwner = owner || context.repoOwner;
@@ -222,6 +238,9 @@ const searchCode = tool({
     console.log(`Searching for "${query}" in ${repoOwner}/${repoName}${path ? ` (path: ${path})` : ''}`);
     
     try {
+      // Create client on demand rather than in global scope
+      const mcpClient = getMCPClient();
+      
       // Extract auth token if available
       // TypeScript: Since headers isn't part of ToolExecutionOptions type, use type assertion
       const headers = (options as any)?.headers;
@@ -354,7 +373,7 @@ export const coderExecutions = {
         throw new Error("No agent context found");
       }
       
-      const context = agent.getProjectContext();
+      const context = agent.projectContext;
       
       // Use provided values or fall back to context
       const repoOwner = owner || context.repoOwner;
@@ -400,7 +419,7 @@ export const coderExecutions = {
         throw new Error("No agent context found");
       }
       
-      const context = agent.getProjectContext();
+      const context = agent.projectContext;
       
       // Use provided values or fall back to context
       const repoOwner = owner || context.repoOwner;
