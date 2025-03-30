@@ -293,7 +293,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldUseAgent]);
   
-  // --- Simplified Effect to Fetch Initial Messages ---
+  // --- Enhanced Effect to Fetch Initial Messages (WITH TIMEOUT & BETTER LOGGING) ---
   useEffect(() => {
     // Skip if agent isn't active or we've already fetched messages
     // Note: using shouldUseAgent && agentConnection.isConnected instead of isAgentActive 
@@ -305,38 +305,153 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     console.log('📄 USECHAT: Agent active, attempting to fetch initial messages...');
     initialMessagesFetchedRef.current = true; // Set flag immediately to prevent re-fetch attempts
 
-    // Use the agent's getMessages RPC call to fetch messages
-    agent.call('getMessages')
-      .then((fetchedMessages: unknown) => { 
-        // Cast to Message[] after receiving
-        const typedMessages = fetchedMessages as Message[];
+    console.log('📞 USECHAT: Preparing to call agent.call("getMessages"). Agent:', agent);
+    console.log('🔍 USECHAT: WebSocket status - Check Network tab for WS frames with type="rpc"');
+    
+    // Log agent details that might help with debugging
+    console.log('👤 USECHAT: Agent details:', {
+      agentId: agent.agent,
+      name: agent.name,
+      host: (agent as any).host, 
+      hasCallMethod: typeof agent.call === 'function',
+      connectionState: (agent as any).connection?.state
+    });
+    
+    try {
+      // Function to create a promise with timeout
+      const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> => {
+        let timeoutId: NodeJS.Timeout;
         
-        if (typedMessages && Array.isArray(typedMessages) && typedMessages.length > 0) {
-          console.log(`✅ USECHAT: Fetched ${typedMessages.length} initial messages from agent.`);
-          // Use the agent chat's setMessages function
-          agentChat.setMessages(typedMessages);
-        } else {
-          console.log('ℹ️ USECHAT: No initial messages found on agent or fetch returned empty/invalid.');
+        // Create tracking IDs for the WebSocket messages
+        const operationId = Math.random().toString(36).substring(2, 10);
+        console.log(`🆔 USECHAT: Starting ${operation} with tracking ID: ${operationId}`);
+        
+        // Create a race between the original promise and a timeout
+        return Promise.race<T>([
+          // Original promise with additional logging
+          promise.then(result => {
+            console.log(`🟢 USECHAT: [${operationId}] ${operation} RESOLVED before timeout.`);
+            clearTimeout(timeoutId);
+            return result;
+          }).catch(error => {
+            console.log(`🔴 USECHAT: [${operationId}] ${operation} REJECTED before timeout:`, error);
+            clearTimeout(timeoutId);
+            throw error;
+          }),
           
-          // Fall back to initialMessages if provided
-          if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
-            console.log('ℹ️ USECHAT: Falling back to initialMessages.');
-            agentChat.setMessages(chatOptions.initialMessages);
-          } else {
-            // Ensure we have at least an empty array
-            agentChat.setMessages([]);
-          }
-        }
-      })
-      .catch((error: Error) => {
-        console.error('❌ USECHAT: Failed to fetch initial messages from agent:', error);
-        
-        // Fall back to initialMessages on error if available
-        if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
-          console.log('ℹ️ USECHAT: Falling back to initialMessages due to fetch error.');
-          agentChat.setMessages(chatOptions.initialMessages);
-        }
-      });
+          // Timeout promise
+          new Promise<T>((_resolve, reject) => {
+            timeoutId = setTimeout(() => {
+              console.log(`⏱️ USECHAT: [${operationId}] ${operation} TIMED OUT after ${timeoutMs}ms.`);
+              console.log(`🔍 USECHAT: Check Network -> WS tab for message with ID "${operationId}"`);
+              reject(new Error(`Timeout (${timeoutMs}ms) exceeded for ${operation}`));
+            }, timeoutMs);
+          })
+        ]);
+      };
+      
+      // First, test with executeCommand to see if that RPC call works
+      console.log('🧪 USECHAT: TESTING agent.call("executeCommand") first...');
+      withTimeout(
+        agent.call('executeCommand', [`echo "Testing agent RPC connectivity - ${Date.now()}"`]), 
+        5000, 
+        "executeCommand test"
+      )
+        .then((testResult: unknown) => {
+          console.log('✅ USECHAT: Test agent.call("executeCommand") succeeded. Result:', testResult);
+          
+          // Now try the actual getMessages call
+          console.log('📞 USECHAT: Now trying the actual agent.call("getMessages")...');
+          
+          withTimeout(agent.call('getMessages'), 5000, "getMessages call")
+            .then((fetchedMessages: unknown) => { 
+              console.log('✅ USECHAT: agent.call("getMessages") succeeded.');
+              // Cast to Message[] after receiving
+              const typedMessages = fetchedMessages as Message[];
+              
+              if (typedMessages && Array.isArray(typedMessages) && typedMessages.length > 0) {
+                console.log(`📊 USECHAT: Fetched ${typedMessages.length} initial messages from agent.`);
+                // Use the agent chat's setMessages function
+                agentChat.setMessages(typedMessages);
+              } else {
+                console.log('ℹ️ USECHAT: No initial messages found on agent or fetch returned empty/invalid.');
+                
+                // Fall back to initialMessages if provided
+                if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
+                  console.log('ℹ️ USECHAT: Falling back to initialMessages.');
+                  agentChat.setMessages(chatOptions.initialMessages);
+                } else {
+                  // Ensure we have at least an empty array
+                  agentChat.setMessages([]);
+                }
+              }
+            })
+            .catch((error: Error) => {
+              console.log('❌ USECHAT: agent.call("getMessages") failed:', error);
+              
+              // Fall back to initialMessages on error if available
+              if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
+                console.log('ℹ️ USECHAT: Falling back to initialMessages due to error.');
+                agentChat.setMessages(chatOptions.initialMessages);
+              } else {
+                // Start with empty array rather than hanging
+                console.log('ℹ️ USECHAT: Starting with empty messages array due to getMessages failure.');
+                agentChat.setMessages([]);
+              }
+            });
+        })
+        .catch((testError: Error) => {
+          console.log('❌ USECHAT: Test agent.call("executeCommand") failed:', testError);
+          
+          // If test fails, try getMessages directly but still with timeout
+          console.log('📞 USECHAT: Will still try agent.call("getMessages") despite test failure...');
+          
+          withTimeout(agent.call('getMessages'), 5000, "getMessages call after test failure")
+            .then((fetchedMessages: unknown) => { 
+              console.log('✅ USECHAT: agent.call("getMessages") succeeded despite test failure.');
+              // Rest of the original logic...
+              const typedMessages = fetchedMessages as Message[];
+              
+              if (typedMessages && Array.isArray(typedMessages) && typedMessages.length > 0) {
+                console.log(`📊 USECHAT: Fetched ${typedMessages.length} initial messages from agent.`);
+                agentChat.setMessages(typedMessages);
+              } else {
+                console.log('ℹ️ USECHAT: No initial messages found on agent or fetch returned empty/invalid.');
+                
+                if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
+                  console.log('ℹ️ USECHAT: Falling back to initialMessages.');
+                  agentChat.setMessages(chatOptions.initialMessages);
+                } else {
+                  // Always set messages to avoid leaving UI hanging
+                  agentChat.setMessages([]);
+                }
+              }
+            })
+            .catch((error: Error) => {
+              console.log('❌ USECHAT: Both test and getMessages failed:', error);
+              
+              // Always set some messages to avoid UI hanging
+              if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
+                console.log('ℹ️ USECHAT: Falling back to initialMessages after both calls failed.');
+                agentChat.setMessages(chatOptions.initialMessages);
+              } else {
+                console.log('ℹ️ USECHAT: Starting with empty messages array after all failures.');
+                agentChat.setMessages([]);
+              }
+            });
+        });
+    } catch (syncError) {
+      console.error('💥 USECHAT: Synchronous error in RPC call testing block:', syncError);
+      
+      // Fall back to initialMessages on synchronous error
+      if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
+        console.log('ℹ️ USECHAT: Falling back to initialMessages due to synchronous error.');
+        agentChat.setMessages(chatOptions.initialMessages);
+      } else {
+        console.log('ℹ️ USECHAT: Starting with empty messages array due to synchronous error.');
+        agentChat.setMessages([]);
+      }
+    }
   }, [
     shouldUseAgent, 
     agentConnection.isConnected,

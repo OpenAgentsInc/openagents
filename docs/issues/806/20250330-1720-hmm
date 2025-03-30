@@ -1,0 +1,80 @@
+Okay, the plot thickens! The logs confirm the timeouts for *both* RPC calls (`executeCommand` and `getMessages`).
+
+The most critical piece of information now is your observation: **only `{"type":"cf_agent_chat_messages","messages":[]}` was seen in the WebSocket frames.**
+
+This strongly implies that the `agent.call(...)` function in your `useChat` hook is **failing to actually send the RPC requests over the WebSocket**. If the requests were being sent, we would expect to see outgoing frames like:
+
+```json
+// Outgoing frame for executeCommand
+{"type":"rpc","id":"86fd38w9","procedure":"executeCommand","args":["echo \"Testing agent RPC connectivity\""]}
+
+// Outgoing frame for getMessages
+{"type":"rpc","id":"gd04afag","procedure":"getMessages","args":[]}
+```
+
+Since you're not seeing these outgoing frames, the problem likely lies **client-side**, either within the `agents/react` SDK's `agent.call` implementation or the state of the WebSocket connection when `call` is invoked. The agent isn't timing out because it probably never even *receives* the request.
+
+**Next Steps: Verify WebSocket State and `agent.call` Behavior**
+
+1.  **Meticulous WebSocket Frame Inspection (RETRY):**
+    *   Please try one more time: refresh the application, open DevTools **before** the connection happens, go to **Network -> WS -> Select the agent connection -> Messages/Frames**.
+    *   Clear the frames list right before the `📄 USECHAT: Agent active...` log appears.
+    *   Watch *very* closely immediately after the `🧪 USECHAT: TESTING agent.call("executeCommand") first...` log. Do you see *any* outgoing frame (often green, might flash quickly) containing `"type":"rpc"` and `"procedure":"executeCommand"`?
+    *   Even if the timeout happens, the *sending* should occur almost instantly. If there's definitively no outgoing RPC frame, we proceed to the next steps.
+
+2.  **Log Agent Object State Before Calling:** Let's log the state of the `agent` object right before we attempt the calls to see if the underlying WebSocket looks ready.
+
+    ```diff
+      console.log('📄 USECHAT: Agent active, attempting RPC calls (NO TIMEOUT)...');
+      initialMessagesFetchedRef.current = true;
+
+    + const wsState = (agent as any)?._ws?.readyState; // Access underlying WS state (use 'any' carefully)
+    + console.log(`🔍 USECHAT: Agent object state before RPC calls. WebSocket readyState: ${wsState} (0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)`);
+    + console.log('📞 USECHAT: Preparing to call agent.call("executeCommand"). Agent object:', agent);
+
+      try {
+        agent.call('executeCommand', ['echo "RPC Test"'])
+          .then((testResult: unknown) => {
+            // ... rest of the code ...
+    ```
+    *   *(Keep the version **without** the timeout logic from my previous message for this test, as the timeout itself isn't the root cause).*
+    *   Run this. What `readyState` is logged? It **must** be `1` (OPEN) for calls to succeed. If it's `0` or anything else, the `useEffect` is running before the connection is *truly* ready internally, despite our `agentConnection.isConnected` check.
+
+3.  **Delay the RPC Call Slightly:** If the `readyState` is `0` (CONNECTING), it might be a timing issue. Let's try adding a very small delay inside the `useEffect` before making the first call. *This is a hack*, but useful for diagnosis.
+
+    ```diff
+      console.log(`🔍 USECHAT: Agent object state before RPC calls. WebSocket readyState: ${wsState}...`);
+      console.log('📞 USECHAT: Preparing to call agent.call("executeCommand"). Agent object:', agent);
+
+      // *** TEMPORARY HACK FOR DIAGNOSIS ***
+    + console.log('⏳ USECHAT: Adding small delay before RPC call...');
+    + setTimeout(() => {
+    +   console.log('⏳ USECHAT: Delay finished, attempting RPC call now.');
+        try {
+          agent.call('executeCommand', ['echo "RPC Test"'])
+            .then((testResult: unknown) => {
+              // ... success logic ...
+            })
+            .catch((execError: Error) => {
+              // ... error logic ...
+            });
+        } catch (syncError) {
+          // ... sync error logic ...
+        }
+    + }, 50); // 50ms delay - adjust if needed
+    + // *** END TEMPORARY HACK ***
+
+      // Remove the original try/catch block that was outside the setTimeout
+    - /* try { ... } catch { ... } */
+
+    }, [ /* dependencies... */ ]);
+    ```
+    *   Run this version (still without the `withTimeout` helper). Does the `executeCommand` call now succeed? Do you see the outgoing WS message?
+
+**Recommendation:**
+
+1.  **Perform Step 1 (Re-verify WS Outgoing Frames) very carefully.**
+2.  **Implement Step 2 (Log WebSocket `readyState`).** Report the logged state.
+3.  **If the `readyState` is `0` (CONNECTING) in Step 2, try Step 3 (Add Delay).**
+
+The `readyState` log is the most likely place to find the next clue. If it's not `1` (OPEN), then our `useEffect` trigger is slightly too early compared to the internal state of the `agents/react` SDK's connection.
