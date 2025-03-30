@@ -1,8 +1,8 @@
 import React from 'react'
-import { ScrollView, View, Text, StyleSheet } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { UIMessage } from './types'
 import { ToolCall } from './ToolCall'
-import Markdown from 'react-native-markdown-display'
+import { View, Text, ScrollView, Markdown } from '@openagents/core'
 
 interface MessageListProps {
   messages: UIMessage[]

@@ -1,7 +1,16 @@
-import React from 'react'
-import { View, TextInput, StyleSheet, Pressable, Platform } from 'react-native'
-import { useState } from 'react'
+import React, { useState } from 'react'
+import { StyleSheet, Platform } from 'react-native'
 import { ArrowUp } from 'lucide-react'
+import { View, TextInput, Pressable } from '@openagents/core'
+import { react19 } from '@openagents/core'
+
+// Make icons React 19 compatible
+interface IconProps {
+  size?: number;
+  color?: string;
+  [key: string]: any;
+}
+const ArrowUpIcon = react19.icon<IconProps>(ArrowUp)
 
 interface MessageInputProps {
   maxRows?: number
@@ -22,7 +31,13 @@ export const MessageInput = ({ maxRows = 8, onSubmit }: MessageInputProps) => {
     setHeight(0)
   }
 
-  const handleKeyPress = (e: any) => {
+  // More complete event type for different platforms
+  type KeyPressEvent = {
+    nativeEvent: { key: string; shiftKey?: boolean };
+    preventDefault?: () => void;
+  };
+
+  const handleKeyPress = (e: KeyPressEvent) => {
     // Check if it's the Enter key
     if (e.nativeEvent.key === 'Enter') {
       // If shift is held, allow the newline
@@ -30,7 +45,9 @@ export const MessageInput = ({ maxRows = 8, onSubmit }: MessageInputProps) => {
         return
       }
       // Prevent default newline behavior and submit
-      e.preventDefault()
+      if (e.preventDefault) {
+        e.preventDefault()
+      }
       handleSubmit()
     }
   }
@@ -52,7 +69,7 @@ export const MessageInput = ({ maxRows = 8, onSubmit }: MessageInputProps) => {
                 height: Math.min(Math.max(lineHeight, height), maxHeight),
               },
             ]}
-            onContentSizeChange={(e) => {
+            onContentSizeChange={(e: { nativeEvent: { contentSize: { height: number } } }) => {
               setHeight(e.nativeEvent.contentSize.height)
             }}
             placeholder="Message Coder"
@@ -67,7 +84,7 @@ export const MessageInput = ({ maxRows = 8, onSubmit }: MessageInputProps) => {
               !value.trim() && styles.submitButtonDisabled
             ]}
           >
-            <ArrowUp size={20} color={value.trim() ? '#fff' : '#666'} />
+            <ArrowUpIcon size={20} color={value.trim() ? '#fff' : '#666'} />
           </Pressable>
         </View>
       </View>

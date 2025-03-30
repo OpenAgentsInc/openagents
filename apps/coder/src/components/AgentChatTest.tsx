@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Button, TextInput, ScrollView, Platform } from 'react-native';
-import { useChat } from '@openagents/core';
+import { StyleSheet, Platform } from 'react-native';
+import { 
+  useChat, 
+  View, 
+  Text, 
+  TouchableOpacity,
+  Button,
+  TextInput,
+  ScrollView
+} from '@openagents/core';
 
 /**
  * Test component for Cloudflare Agent integration
@@ -132,7 +140,7 @@ export const AgentChatTest: React.FC = () => {
             <TextInput
               style={styles.configInput}
               value={agentConfig.agentId}
-              onChangeText={(text) => setAgentConfig({...agentConfig, agentId: text})}
+              onChangeText={(text: string) => setAgentConfig({...agentConfig, agentId: text})}
               placeholder="coder-agent"
             />
           </View>
@@ -141,7 +149,7 @@ export const AgentChatTest: React.FC = () => {
             <TextInput
               style={styles.configInput}
               value={agentConfig.agentName}
-              onChangeText={(text) => setAgentConfig({...agentConfig, agentName: text})}
+              onChangeText={(text: string) => setAgentConfig({...agentConfig, agentName: text})}
               placeholder="default"
             />
           </View>
@@ -150,7 +158,7 @@ export const AgentChatTest: React.FC = () => {
             <TextInput
               style={styles.configInput}
               value={agentConfig.serverUrl}
-              onChangeText={(text) => setAgentConfig({...agentConfig, serverUrl: text})}
+              onChangeText={(text: string) => setAgentConfig({...agentConfig, serverUrl: text})}
               placeholder="https://agents.openagents.com"
             />
           </View>

@@ -1,9 +1,21 @@
 import * as React from "react"
 import * as NavigationMenuPrimitive from "@radix-ui/react-navigation-menu"
 import { cva } from "class-variance-authority"
-import { ChevronDown } from "lucide-react"
+import { ChevronDown as LucideChevronDown } from "lucide-react"
+import { react19 } from "@openagents/core"
 
 import { cn } from "@/utils/tailwind"
+
+// Define interface for the icon props
+interface IconProps {
+  className?: string;
+  "aria-hidden"?: string;
+  size?: number;
+  [key: string]: any;
+}
+
+// Make Lucide icons compatible with React 19
+const ChevronDown = react19.icon<IconProps>(LucideChevronDown)
 
 const NavigationMenu = React.forwardRef<
   React.ElementRef<typeof NavigationMenuPrimitive.Root>,

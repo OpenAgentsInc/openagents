@@ -11,8 +11,17 @@ import type { AgentClient as SDKAgentClient, AgentClientOptions as SDKAgentClien
 import { useAgent } from 'agents/react';
 import { useAgentChat } from 'agents/ai-react';
 
-// Define local interfaces that match the SDK types
-export interface AgentClient extends SDKAgentClient {}
+// Define local interfaces that match the SDK types for compatibility with useChat
+export interface AgentClient<T = unknown> {
+  agent: string;
+  name: string;
+  setState: (state: unknown) => void;
+  call: <R = unknown>(
+    method: string,
+    args?: unknown[],
+    streamOptions?: { onUpdate?: (value: R) => void }
+  ) => Promise<R>;
+}
 export interface AgentClientOptions extends SDKAgentClientOptions {}
 
 /**

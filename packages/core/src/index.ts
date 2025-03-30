@@ -5,9 +5,15 @@ import { useState, useEffect, useCallback } from 'react';
 
 export * from './chat/types'
 export * from './chat/useChat'
+export * from './chat/agent-connection'
+// Selectively re-export from MCP to avoid duplicate exports
+export type { Transport } from './mcp/transport'
+export * from './mcp/schema'
+export * from './mcp/sse'
 export * from './utils/commandExecutor'
 export * from './utils/commandParser'
 export * from './utils/setupElectronCommandExecutor'
+export * from './utils/reactCompatibility'
 
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 

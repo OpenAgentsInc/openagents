@@ -1,6 +1,6 @@
 import React from 'react';
-import { View } from 'react-native';
 import { CardProps } from './Card.types';
+import { View } from '@openagents/core';
 import { styles, getCardPadding } from './Card.styles';
 
 export const Card = ({
@@ -24,7 +24,7 @@ export const Card = ({
       ]}
       {...rest}
     >
-      {children}
+      {children as React.ReactNode}
     </View>
   );
 };

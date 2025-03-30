@@ -248,7 +248,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     // Update connection state
     setAgentConnection({
       isConnected: true,
-      client: agent
+      client: agent as unknown as AgentClient
     });
     
     // Notify of successful connection

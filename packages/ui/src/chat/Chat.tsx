@@ -1,8 +1,8 @@
 import React from 'react'
-import { View, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native'
+import { StyleSheet, Platform } from 'react-native'
 import { MessageList } from './MessageList'
 import { MessageInput } from './MessageInput'
-import { useChat } from "@openagents/core"
+import { useChat, View, SafeAreaView, KeyboardAvoidingView } from "@openagents/core"
 
 export const Chat = () => {
 
