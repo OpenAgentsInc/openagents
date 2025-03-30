@@ -68,15 +68,30 @@ function updateDocumentTheme(isDarkMode: boolean) {
   // First, apply theme to html element (root)
   if (!isDarkMode) {
     document.documentElement.classList.remove("dark");
+    document.documentElement.classList.add("light");
     document.documentElement.style.colorScheme = "light";
+    document.body.style.backgroundColor = "#ffffff";
   } else {
+    document.documentElement.classList.remove("light");
     document.documentElement.classList.add("dark");
     document.documentElement.style.colorScheme = "dark";
+    document.body.style.backgroundColor = "#020817";
   }
   
-  // Force CSS to repaint by adding a trivial style change and removing it
-  document.documentElement.style.setProperty("--repaint-hack", "1");
+  // Trigger a CSS variable recalculation to ensure sidebar updates
+  document.body.style.setProperty("--force-theme-update", isDarkMode ? "dark" : "light");
+  
+  // Force all custom elements to re-render by dispatching a custom event
+  window.dispatchEvent(new CustomEvent('theme-changed', { detail: { isDarkMode } }));
+  
+  // Force CSS to repaint by touching the DOM tree
+  const forceRepaint = document.createElement('div');
+  document.body.appendChild(forceRepaint);
+  window.getComputedStyle(forceRepaint).opacity;
+  document.body.removeChild(forceRepaint);
+  
+  // Final cleanup
   setTimeout(() => {
-    document.documentElement.style.removeProperty("--repaint-hack");
-  }, 0);
+    document.body.style.removeProperty("--force-theme-update");
+  }, 50);
 }

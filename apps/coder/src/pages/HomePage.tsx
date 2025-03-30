@@ -44,7 +44,7 @@ export default function HomePage() {
                       v0.0.1
                     </Badge>
                   </span>
-                  {/* <SidebarTrigger /> */}
+                  <SidebarTrigger />
                 </div>
               </SidebarHeader>
               <SidebarContent>

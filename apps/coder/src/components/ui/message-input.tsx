@@ -358,7 +358,7 @@ function showFileUploadDialog() {
 function TranscribingOverlay() {
   return (
     <motion.div
-      className="flex h-full w-full flex-col items-center justify-center  bg-background/80 backdrop-blur-sm"
+      className="flex h-full w-full flex-col items-center justify-center bg-background/80 backdrop-blur-sm"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

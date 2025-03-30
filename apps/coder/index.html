@@ -1,11 +1,22 @@
 <!doctype html>
-<html>
+<html class="dark">
 
 <head>
   <meta charset="UTF-8" />
-  <title>electron-shadcn Template</title>
+  <title>OpenAgents Coder</title>
   <meta http-equiv="Content-Security-Policy" content="script-src 'self';" />
   <link rel="stylesheet" href="/src/styles/global.css" />
+  <style>
+    /* Prevent white flash */
+    html, body {
+      background-color: #020817; /* Dark background color */
+      color-scheme: dark;
+    }
+    html.light, html.light body {
+      background-color: #ffffff;
+      color-scheme: light;
+    }
+  </style>
 </head>
 
 <body>
