@@ -3,6 +3,7 @@ import { useChat } from "@ai-sdk/react"
 import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { ChatForm } from "@/components/ui/chat"
+import ToggleTheme from "@/components/ToggleTheme"
 
 export default function HomePage() {
   const { messages, input, handleInputChange, handleSubmit, isLoading: isGenerating, stop }
@@ -88,7 +89,7 @@ function ChatHeader() {
       className="draggable no-draggable-children sticky top-0 p-3 flex items-center justify-between z-10 h-header-height font-semibold bg-token-main-surface-primary pointer-events-none select-none [view-transition-name:--vt-page-header] *:pointer-events-auto motion-safe:transition max-md:hidden @thread-xl/thread:absolute @thread-xl/thread:left-0 @thread-xl/thread:right-0 @thread-xl/thread:bg-transparent @thread-xl/thread:!shadow-none [box-shadow:var(--sharp-edge-top-shadow-placeholder)]"
     >
       <div className="absolute start-1/2 ltr:-translate-x-1/2 rtl:translate-x-1/2" />
-      <div className="flex items-center gap-0 overflow-hidden">
+      <div className="flex items-center gap-2 overflow-hidden">
         <button
           aria-label="Model selector, current model is 4o"
           type="button"
@@ -107,6 +108,7 @@ function ChatHeader() {
             <path fillRule="evenodd" clipRule="evenodd" d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z" fill="currentColor" />
           </svg>
         </button>
+        <ToggleTheme />
       </div>
     </div>
   )
