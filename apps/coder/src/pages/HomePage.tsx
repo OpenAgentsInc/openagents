@@ -59,12 +59,12 @@ export default function HomePage() {
                         <span>Settings</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                    <SidebarMenuItem>
+                    {/* <SidebarMenuItem>
                       <SidebarMenuButton tooltip="Help">
                         <HelpCircleIcon className="mr-2" />
                         <span>Help</span>
                       </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    </SidebarMenuItem> */}
                   </SidebarMenu>
                 </SidebarGroup>
               </SidebarContent>
