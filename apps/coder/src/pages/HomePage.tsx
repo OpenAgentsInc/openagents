@@ -18,7 +18,7 @@ import {
   SidebarInset
 } from "@/components/ui/sidebar"
 import { cn } from "@/utils/tailwind"
-import { PanelLeftIcon, MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react"
+import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react"
 
 export default function HomePage() {
   const { messages, input, handleInputChange, handleSubmit, isLoading: isGenerating, stop }
@@ -72,7 +72,23 @@ export default function HomePage() {
             </Sidebar>
             <SidebarInset>
               <div className="grid grid-rows-[auto_1fr_auto] h-screen">
-                <ChatHeader />
+                <div className="border-b border-t bg-background p-3 flex items-center justify-between z-10 h-14 font-semibold">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <SidebarTrigger className="md:hidden" />
+                    <button
+                      aria-label="Model selector"
+                      type="button"
+                      className="select-none group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-sm hover:bg-muted font-semibold overflow-hidden whitespace-nowrap"
+                    >
+                      <div>
+                        Claude 3.5 Sonnet
+                      </div>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-md">
+                        <path fillRule="evenodd" clipRule="evenodd" d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z" fill="currentColor" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
 
                 <div className="overflow-y-auto">
                   <div className="h-full p-4">
@@ -112,36 +128,3 @@ export default function HomePage() {
     </SidebarProvider>
   )
 }
-
-function ChatHeader() {
-  return (
-    <div
-      className="sticky top-0 p-3 flex items-center justify-between z-10 h-14 font-semibold bg-background border-b"
-    >
-      <div className="flex items-center gap-2 overflow-hidden">
-        <SidebarTrigger className="md:hidden" />
-        <button
-          aria-label="Model selector"
-          type="button"
-          className="group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-lg hover:bg-muted font-semibold overflow-hidden whitespace-nowrap"
-        >
-          <div>
-            Claude 3.5 Sonnet
-          </div>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-md">
-            <path fillRule="evenodd" clipRule="evenodd" d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z" fill="currentColor" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// <Chat
-//                 messages={messages}
-//                 input={input}
-//                 handleInputChange={handleInputChange}
-//                 handleSubmit={handleSubmit}
-//                 isGenerating={isGenerating}
-//                 stop={stop}
-//               />
