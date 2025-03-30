@@ -1,6 +1,17 @@
 import React from "react";
-import { Link } from "@tanstack/react-router";
+import { Link as RouterLink } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { react19 } from "@openagents/core";
+
+// Define interface for router Link props
+interface LinkProps {
+  to: string;
+  children?: React.ReactNode;
+  [key: string]: any;
+}
+
+// Make React Router components compatible with React 19
+const Link = react19.router<LinkProps>(RouterLink);
 import {
   NavigationMenu as NavigationMenuBase,
   NavigationMenuItem,

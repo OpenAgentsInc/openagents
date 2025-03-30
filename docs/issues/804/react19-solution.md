@@ -99,8 +99,74 @@ This prevents the infinite connection/disconnection loop by ensuring the agent I
 - The app starts successfully with agent connection working properly
 - Type errors related to React Native component compatibility remain but don't affect functionality
 
+## Type Compatibility Solution
+
+To address the React Native component type issues with React 19, we've created a compatibility utility:
+
+1. Created a utility file `reactCompatibility.ts` in the core package:
+
+```typescript
+import React, { ComponentType, ForwardRefExoticComponent, PropsWithoutRef, RefAttributes } from 'react';
+
+/**
+ * This function adds React 19 compatibility to React Native components
+ * 
+ * In React 19, the typing for ReactNode changed and it no longer accepts BigInt.
+ * This creates type errors with React Native components that expect the old ReactNode type.
+ */
+export function createReactComponent<P = any>(
+  Component: any
+): React.FC<P> {
+  return Component as unknown as React.FC<P>;
+}
+
+// Re-export wrapped React Native components for use throughout the app
+import { 
+  View as RNView, 
+  Text as RNText, 
+  TouchableOpacity as RNTouchableOpacity,
+  SafeAreaView as RNSafeAreaView,
+  ActivityIndicator as RNActivityIndicator,
+  ScrollView as RNScrollView,
+  Button as RNButton,
+  TextInput as RNTextInput,
+  FlatList as RNFlatList,
+  Animated,
+} from 'react-native';
+
+// Create React 19 compatible versions of common React Native components
+export const View = createReactComponent(RNView);
+export const Text = createReactComponent(RNText);
+export const TouchableOpacity = createReactComponent(RNTouchableOpacity);
+export const SafeAreaView = createReactComponent(RNSafeAreaView);
+export const ActivityIndicator = createReactComponent(RNActivityIndicator);
+export const ScrollView = createReactComponent(RNScrollView);
+export const Button = createReactComponent(RNButton);
+export const TextInput = createReactComponent(RNTextInput); 
+export const FlatList = createReactComponent(RNFlatList);
+export const AnimatedView = createReactComponent(Animated.View);
+```
+
+2. Made the utility available through the core package by adding it to index.ts:
+
+```typescript
+export * from './utils/reactCompatibility'
+```
+
+3. Updated components to use the compatible versions:
+
+```typescript
+// Before
+import { View, Text } from 'react-native';
+
+// After
+import { View, Text } from '@openagents/core';
+```
+
 ## Future Improvements
 
-1. **Backend Support:** Consider adding proper backend support for `/agents/:agent/:instance/get-messages` with CORS headers
-2. **React Native Types:** Fix React Native component type errors for a cleaner development experience
+1. **Backend Support:** Add proper backend support for `/agents/:agent/:instance/get-messages` with CORS headers
+2. **Type Compatibility:** Complete the React 19 compatibility updates for all UI components 
 3. **Agent Naming:** Update documentation to clearly indicate that agent IDs should always be lowercase
+4. **Error Handling:** Add better error handling for agent connections to help debug issues
+5. **React Versions:** Consider aligning all packages on the same React version in the future

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Text, TouchableOpacity, ActivityIndicator, View } from 'react-native';
 import { ButtonProps } from './Button.types';
+import { View, Text, TouchableOpacity, ActivityIndicator } from '@openagents/core';
 import { getButtonStyles, getButtonHeight, getTextStyle, getTextSize, styles, COLORS } from './Button.styles';
 
 export const Button = ({
@@ -43,13 +43,13 @@ export const Button = ({
         )}
         {!loading && leftIcon && renderIcon && (
           <View style={{ marginRight: 8 }}>
-            {renderIcon(leftIcon)}
+            {renderIcon(leftIcon) as React.ReactElement}
           </View>
         )}
         <Text style={[textStyles, { fontSize }]}>{label}</Text>
         {!loading && rightIcon && renderIcon && (
           <View style={{ marginLeft: 8 }}>
-            {renderIcon(rightIcon)}
+            {renderIcon(rightIcon) as React.ReactElement}
           </View>
         )}
       </View>
