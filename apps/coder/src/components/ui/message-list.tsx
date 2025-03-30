@@ -1,19 +1,21 @@
+import React from "react"
 import {
   ChatMessage,
   type ChatMessageProps,
   type Message,
 } from "@/components/ui/chat-message"
 import { TypingIndicator } from "@/components/ui/typing-indicator"
+import { UIMessage } from "@openagents/core"
 
 type AdditionalMessageOptions = Omit<ChatMessageProps, keyof Message>
 
 interface MessageListProps {
-  messages: Message[]
+  messages: UIMessage[]
   showTimeStamps?: boolean
   isTyping?: boolean
   messageOptions?:
-    | AdditionalMessageOptions
-    | ((message: Message) => AdditionalMessageOptions)
+  | AdditionalMessageOptions
+  | ((message: Message) => AdditionalMessageOptions)
 }
 
 export function MessageList({
@@ -27,14 +29,14 @@ export function MessageList({
       {messages.map((message, index) => {
         const additionalOptions =
           typeof messageOptions === "function"
-            ? messageOptions(message)
+            ? messageOptions(message as Message)
             : messageOptions
 
         return (
           <ChatMessage
             key={index}
             showTimeStamp={showTimeStamps}
-            {...message}
+            {...(message as Message)}
             {...additionalOptions}
           />
         )
