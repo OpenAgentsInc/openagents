@@ -38,11 +38,25 @@ export async function setTheme(newTheme: ThemeMode) {
 }
 
 export async function toggleTheme() {
-  const isDarkMode = await window.themeMode.toggle();
-  const newTheme = isDarkMode ? "dark" : "light";
-
-  updateDocumentTheme(isDarkMode);
-  localStorage.setItem(THEME_KEY, newTheme);
+  try {
+    // First check current state
+    const current = await getCurrentTheme();
+    console.log("Current theme before toggle:", current);
+    
+    // Toggle the theme in electron
+    const isDarkMode = await window.themeMode.toggle();
+    const newTheme = isDarkMode ? "dark" : "light";
+    console.log("New theme after toggle:", newTheme, "isDarkMode:", isDarkMode);
+    
+    // Update DOM and localStorage
+    updateDocumentTheme(isDarkMode);
+    localStorage.setItem(THEME_KEY, newTheme);
+    
+    // Force a style recalculation
+    document.body.offsetHeight;
+  } catch (error) {
+    console.error("Error toggling theme:", error);
+  }
 }
 
 export async function syncThemeWithLocal() {
@@ -56,11 +70,20 @@ export async function syncThemeWithLocal() {
 }
 
 function updateDocumentTheme(isDarkMode: boolean) {
+  // First, apply theme to html element (root)
   if (!isDarkMode) {
     document.documentElement.classList.remove("dark");
-    document.body.classList.remove("dark");
+    document.documentElement.style.colorScheme = "light";
+    console.log("THEME: Removed dark class", document.documentElement.classList.contains("dark"));
   } else {
     document.documentElement.classList.add("dark");
-    document.body.classList.add("dark");
+    document.documentElement.style.colorScheme = "dark";
+    console.log("THEME: Added dark class", document.documentElement.classList.contains("dark"));
   }
+  
+  // Force CSS to repaint by adding a trivial style change and removing it
+  document.documentElement.style.setProperty("--repaint-hack", "1");
+  setTimeout(() => {
+    document.documentElement.style.removeProperty("--repaint-hack");
+  }, 0);
 }

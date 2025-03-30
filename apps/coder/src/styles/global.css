@@ -3,7 +3,11 @@
 
 @plugin 'tailwindcss-animate';
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* 
+ * Tailwind v4 dark mode configuration
+ * This targets when the html tag has the dark class
+ */
+@custom-variant dark (html.dark &);
 
 @theme {
   --color-border: hsl(var(--border));

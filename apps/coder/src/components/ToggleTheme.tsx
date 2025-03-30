@@ -1,7 +1,7 @@
-import { Moon as LucideMoon } from "lucide-react";
-import React from "react";
+import { Moon as LucideMoon, Sun as LucideSun } from "lucide-react";
+import React, { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { toggleTheme } from "@/helpers/theme_helpers";
+import { useDarkMode } from "@/hooks/use-dark-mode";
 import { react19 } from "@openagents/core";
 
 // Define interface for the icon props
@@ -14,11 +14,25 @@ interface IconProps {
 
 // Make Lucide icons compatible with React 19
 const Moon = react19.icon<IconProps>(LucideMoon);
+const Sun = react19.icon<IconProps>(LucideSun);
 
 export default function ToggleTheme() {
+  const { isDark, toggleDarkMode } = useDarkMode();
+
+  // This logs the current class status to help with debugging
+  useEffect(() => {
+    console.log("ToggleTheme: Dark mode is", isDark ? "ON" : "OFF");
+    console.log("HTML classes:", document.documentElement.className);
+  }, [isDark]);
+
   return (
-    <Button onClick={toggleTheme} size="icon">
-      <Moon size={16} />
+    <Button 
+      onClick={toggleDarkMode} 
+      size="icon"
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      className={isDark ? "bg-primary text-background" : ""}
+    >
+      {isDark ? <Sun size={16} /> : <Moon size={16} />}
     </Button>
   );
 }
