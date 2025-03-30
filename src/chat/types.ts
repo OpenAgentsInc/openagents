@@ -1,5 +1,5 @@
 import { Message as VercelMessage } from 'ai/react';
-import { DeepReadonlyObject } from '../../types';
+import { DeepReadonlyObject } from '@openagents/core/src/types';
 
 export type Role = 'user' | 'assistant' | 'system' | 'data';
 

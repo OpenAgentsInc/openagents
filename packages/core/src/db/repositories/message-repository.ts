@@ -33,7 +33,7 @@ export class MessageRepository {
 
     const storedMessage = uiMessageToStoredMessage(message, message.threadId);
     const doc = await this.database.messages.insert(storedMessage);
-    return storedMessageToUIMessage(doc.toJSON());
+    return storedMessageToUIMessage(doc.toJSON() as StoredMessage);
   }
 
   /**
@@ -49,8 +49,7 @@ export class MessageRepository {
       return null;
     }
 
-    const messageData = message.toJSON() as DeepReadonlyObject<StoredMessage>;
-    return storedMessageToUIMessage(messageData);
+    return storedMessageToUIMessage(message.toJSON() as StoredMessage);
   }
 
   /**
@@ -68,8 +67,7 @@ export class MessageRepository {
       .exec();
 
     return messages.map(message => {
-      const messageData = message.toJSON() as DeepReadonlyObject<StoredMessage>;
-      return storedMessageToUIMessage(messageData);
+      return storedMessageToUIMessage(message.toJSON() as StoredMessage);
     });
   }
 
@@ -99,7 +97,7 @@ export class MessageRepository {
       $set: storedUpdates
     });
 
-    return storedMessageToUIMessage(message.toJSON());
+    return storedMessageToUIMessage(message.toJSON() as StoredMessage);
   }
 
   /**

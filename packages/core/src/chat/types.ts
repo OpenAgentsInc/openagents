@@ -312,13 +312,14 @@ export interface BaseMessage extends Omit<VercelMessage, 'parts'> {
  * Extended UI message interface that adds our custom functionality
  */
 export interface UIMessage {
-  id?: string;
-  role: 'user' | 'assistant' | 'system' | 'data';
+  id: string;
+  role: 'system' | 'data' | 'user' | 'assistant';
   content: string;
   createdAt?: Date;
   threadId?: string;
   parts: UIPart[];
   experimental_attachments?: any[];
+  toolInvocations?: ToolInvocation[];
 }
 
 /**
