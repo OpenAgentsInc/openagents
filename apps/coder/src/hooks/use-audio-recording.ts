@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import { recordAudio } from "@/components/lib/audio-utils"
+import { recordAudio } from "@/utils/audio-utils"
 
 interface UseAudioRecordingOptions {
   transcribeAudio?: (blob: Blob) => Promise<string>
