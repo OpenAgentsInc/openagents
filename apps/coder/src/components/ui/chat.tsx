@@ -237,7 +237,7 @@ export function ChatMessages({
   messages,
   children,
 }: React.PropsWithChildren<{
-  messages: Message[]
+  messages: UIMessage[] | Message[];
 }>) {
   const {
     containerRef,
