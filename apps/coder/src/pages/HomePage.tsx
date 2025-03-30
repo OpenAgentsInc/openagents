@@ -4,6 +4,7 @@ import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { ChatForm } from "@/components/ui/chat"
 import ToggleTheme from "@/components/ToggleTheme"
+import { Badge } from "@/components/ui/badge"
 import {
   Sidebar,
   SidebarContent,
@@ -34,7 +35,15 @@ export default function HomePage() {
             <Sidebar>
               <SidebarHeader className="border-y h-14 mt-[30px]">
                 <div className="flex items-center h-full justify-between px-3">
-                  <span className="text-sm font-semibold">Coder v0.0.1</span>
+                  <span className="flex items-center text-sm font-semibold">
+                    OpenAgents Coder
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1 py-0 ml-1 mt-[1px]"
+                    >
+                      v0.0.1
+                    </Badge>
+                  </span>
                   {/* <SidebarTrigger /> */}
                 </div>
               </SidebarHeader>
