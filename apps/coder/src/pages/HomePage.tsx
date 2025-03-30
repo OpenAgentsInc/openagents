@@ -34,8 +34,8 @@ export default function HomePage() {
             <Sidebar>
               <SidebarHeader>
                 <div className="pt-8 flex items-center justify-between px-2">
-                  <span className="text-lg font-semibold">OpenAgents</span>
-                  <SidebarTrigger />
+                  <span className="text-md font-semibold">OpenAgents Coder</span>
+                  {/* <SidebarTrigger /> */}
                 </div>
               </SidebarHeader>
               <SidebarContent>
