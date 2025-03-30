@@ -71,45 +71,37 @@ export default function HomePage() {
               </SidebarFooter>
             </Sidebar>
             <SidebarInset>
-              {/* Main container with absolute positioned elements */}
-              <div className="relative h-full">
-                {/* Header - fixed at top */}
-                <div className="absolute top-0 left-0 right-0 z-10">
-                  <ChatHeader />
-                </div>
-                
-                {/* Message list - scrollable area between header and footer */}
-                <div className="absolute top-14 bottom-[144px] left-0 right-0 overflow-y-auto">
-                  <div className="container mx-auto max-w-4xl px-4 py-4">
+              <div className="grid grid-rows-[auto_1fr_auto] h-screen">
+                <ChatHeader />
+
+                <div className="overflow-y-auto">
+                  <div className="h-full p-4">
                     <MessageList
                       messages={messages}
                       isTyping={isGenerating}
                     />
                   </div>
                 </div>
-                
-                {/* Footer - fixed at bottom */}
-                <div className="absolute bottom-0 left-0 right-0 border-t bg-background">
-                  <div className="container mx-auto max-w-4xl px-4 py-4">
-                    <ChatForm
-                      isPending={isGenerating}
-                      handleSubmit={handleSubmit}
-                    >
-                      {({ files, setFiles }) => (
-                        <MessageInput
-                          value={input}
-                          onChange={handleInputChange}
-                          allowAttachments
-                          files={files}
-                          setFiles={setFiles}
-                          stop={stop}
-                          isGenerating={isGenerating}
-                        />
-                      )}
-                    </ChatForm>
-                    <div className="mt-2 text-center text-xs text-muted-foreground">
-                      <div>Coder will make mistakes. Commit to git regularly.</div>
-                    </div>
+
+                <div className="border-t bg-background p-4">
+                  <ChatForm
+                    isPending={isGenerating}
+                    handleSubmit={handleSubmit}
+                  >
+                    {({ files, setFiles }) => (
+                      <MessageInput
+                        value={input}
+                        onChange={handleInputChange}
+                        allowAttachments
+                        files={files}
+                        setFiles={setFiles}
+                        stop={stop}
+                        isGenerating={isGenerating}
+                      />
+                    )}
+                  </ChatForm>
+                  <div className="mt-2 text-center text-xs text-muted-foreground">
+                    <div>Coder will make mistakes. Commit to git regularly.</div>
                   </div>
                 </div>
               </div>
