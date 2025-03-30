@@ -4,11 +4,11 @@ import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { ChatForm } from "@/components/ui/chat"
 import ToggleTheme from "@/components/ToggleTheme"
-import { 
-  Sidebar, 
-  SidebarContent, 
-  SidebarHeader, 
-  SidebarProvider, 
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarProvider,
   SidebarTrigger,
   SidebarMenu,
   SidebarMenuItem,
@@ -33,7 +33,7 @@ export default function HomePage() {
           <div className="relative flex h-full w-full flex-row overflow-hidden">
             <Sidebar>
               <SidebarHeader>
-                <div className="flex items-center justify-between px-2">
+                <div className="pt-8 flex items-center justify-between px-2">
                   <span className="text-lg font-semibold">OpenAgents</span>
                   <SidebarTrigger />
                 </div>
@@ -71,61 +71,42 @@ export default function HomePage() {
               </SidebarFooter>
             </Sidebar>
             <SidebarInset>
-              <div className="relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
-                <div className="relative h-full w-full flex-1 overflow-auto transition-width">
-                  <div className="flex h-full flex-col focus-visible:outline-0">
-                    <ChatHeader />
-                    <div className="flex flex-1 flex-col overflow-hidden">
-                      <div className="relative flex-1 overflow-y-auto">
-                        <div className="flex h-full flex-col">
-                          <div className="flex-1">
-                            <div className="text-base mx-auto px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5">
-                              <div className="mx-auto flex flex-1 text-base gap-4 md:gap-5 lg:gap-6 md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
-                                <div className="flex justify-center empty:hidden" />
-                                <div className="relative flex max-w-full flex-1 flex-col">
-                                  <MessageList
-                                    messages={messages}
-                                    isTyping={isGenerating}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="w-full">
-                        <div className="isolate w-full basis-auto has-[[data-has-thread-error]]:pt-2 has-[[data-has-thread-error]]:[box-shadow:var(--sharp-edge-bottom-shadow)] dark:border-white/20 md:border-transparent md:pt-0 md:dark:border-transparent flex flex-col">
-                          <div>
-                            <div className="text-base mx-auto px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5">
-                              <div className="mx-auto flex flex-1 text-base gap-4 md:gap-5 lg:gap-6 md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
-                                <div className="flex justify-center empty:hidden" />
-                                <div className="relative z-[1] flex max-w-full flex-1 flex-col h-full max-xs:[--force-hide-label:none]">
-                                  <ChatForm
-                                    className="mt-auto"
-                                    isPending={isGenerating}
-                                    handleSubmit={handleSubmit}
-                                  >
-                                    {({ files, setFiles }) => (
-                                      <MessageInput
-                                        value={input}
-                                        onChange={handleInputChange}
-                                        allowAttachments
-                                        files={files}
-                                        setFiles={setFiles}
-                                        stop={stop}
-                                        isGenerating={isGenerating}
-                                      />
-                                    )}
-                                  </ChatForm>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="relative mt-0 flex min-h-6 w-full items-center justify-center p-2 text-center text-xs text-token-text-secondary md:px-[60px]">
-                            <div>Coder will make mistakes. Commit to git regularly.</div>
-                          </div>
-                        </div>
-                      </div>
+              {/* Main container with fixed header and footer */}
+              <div className="flex flex-col h-full">
+                {/* Header - fixed at top */}
+                <ChatHeader />
+                
+                {/* Message list - takes remaining space and scrolls */}
+                <div className="flex-1 overflow-y-auto">
+                  <div className="container mx-auto max-w-4xl px-4 py-6">
+                    <MessageList
+                      messages={messages}
+                      isTyping={isGenerating}
+                    />
+                  </div>
+                </div>
+                
+                {/* Footer - fixed at bottom */}
+                <div className="border-t bg-background">
+                  <div className="container mx-auto max-w-4xl px-4 py-4">
+                    <ChatForm
+                      isPending={isGenerating}
+                      handleSubmit={handleSubmit}
+                    >
+                      {({ files, setFiles }) => (
+                        <MessageInput
+                          value={input}
+                          onChange={handleInputChange}
+                          allowAttachments
+                          files={files}
+                          setFiles={setFiles}
+                          stop={stop}
+                          isGenerating={isGenerating}
+                        />
+                      )}
+                    </ChatForm>
+                    <div className="mt-2 text-center text-xs text-muted-foreground">
+                      <div>Coder will make mistakes. Commit to git regularly.</div>
                     </div>
                   </div>
                 </div>
