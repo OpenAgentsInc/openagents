@@ -21,15 +21,14 @@ export default function HomePage() {
             <div className="relative h-full w-full flex-1 overflow-auto transition-width">
               <div className="flex h-full flex-col focus-visible:outline-0">
                 <ChatHeader />
-                <div className="flex flex-1 grow basis-auto flex-col overflow-hidden">
-                  <div className="relative h-full">
-                    <div className="flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
-                      <div aria-hidden="true" data-edge="true" className="pointer-events-none h-px w-px" />
-                      <div className="flex-1 mt-1.5 flex flex-col text-sm @thread-xl/thread:pt-header-height md:pb-9">
+                <div className="flex flex-1 flex-col overflow-hidden">
+                  <div className="relative flex-1 overflow-y-auto">
+                    <div className="flex h-full flex-col">
+                      <div className="flex-1">
                         <div className="text-base mx-auto px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5">
                           <div className="mx-auto flex flex-1 text-base gap-4 md:gap-5 lg:gap-6 md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
                             <div className="flex justify-center empty:hidden" />
-                            <div className="relative z-[1] flex max-w-full flex-1 flex-col h-full">
+                            <div className="relative flex max-w-full flex-1 flex-col">
                               <MessageList
                                 messages={messages}
                                 isTyping={isGenerating}
@@ -38,39 +37,38 @@ export default function HomePage() {
                           </div>
                         </div>
                       </div>
-                      <div aria-hidden="true" data-edge="true" className="pointer-events-none h-px w-px" />
-                      <div className="mt-auto">
-                        <div className="isolate w-full basis-auto has-[[data-has-thread-error]]:pt-2 has-[[data-has-thread-error]]:[box-shadow:var(--sharp-edge-bottom-shadow)] dark:border-white/20 md:border-transparent md:pt-0 md:dark:border-transparent flex flex-col">
-                          <div>
-                            <div className="text-base mx-auto px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5">
-                              <div className="mx-auto flex flex-1 text-base gap-4 md:gap-5 lg:gap-6 md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
-                                <div className="flex justify-center empty:hidden" />
-                                <div className="relative z-[1] flex max-w-full flex-1 flex-col h-full max-xs:[--force-hide-label:none]">
-                                  <ChatForm
-                                    className="mt-auto"
-                                    isPending={isGenerating}
-                                    handleSubmit={handleSubmit}
-                                  >
-                                    {({ files, setFiles }) => (
-                                      <MessageInput
-                                        value={input}
-                                        onChange={handleInputChange}
-                                        allowAttachments
-                                        files={files}
-                                        setFiles={setFiles}
-                                        stop={stop}
-                                        isGenerating={isGenerating}
-                                      />
-                                    )}
-                                  </ChatForm>
-                                </div>
-                              </div>
+                    </div>
+                  </div>
+                  <div className="w-full">
+                    <div className="isolate w-full basis-auto has-[[data-has-thread-error]]:pt-2 has-[[data-has-thread-error]]:[box-shadow:var(--sharp-edge-bottom-shadow)] dark:border-white/20 md:border-transparent md:pt-0 md:dark:border-transparent flex flex-col">
+                      <div>
+                        <div className="text-base mx-auto px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5">
+                          <div className="mx-auto flex flex-1 text-base gap-4 md:gap-5 lg:gap-6 md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+                            <div className="flex justify-center empty:hidden" />
+                            <div className="relative z-[1] flex max-w-full flex-1 flex-col h-full max-xs:[--force-hide-label:none]">
+                              <ChatForm
+                                className="mt-auto"
+                                isPending={isGenerating}
+                                handleSubmit={handleSubmit}
+                              >
+                                {({ files, setFiles }) => (
+                                  <MessageInput
+                                    value={input}
+                                    onChange={handleInputChange}
+                                    allowAttachments
+                                    files={files}
+                                    setFiles={setFiles}
+                                    stop={stop}
+                                    isGenerating={isGenerating}
+                                  />
+                                )}
+                              </ChatForm>
                             </div>
                           </div>
-                          <div className="relative mt-0 flex min-h-6 w-full items-center justify-center p-2 text-center text-xs text-token-text-secondary md:px-[60px]">
-                            <div>Coder will make mistakes. Commit to git regularly.</div>
-                          </div>
                         </div>
+                      </div>
+                      <div className="relative mt-0 flex min-h-6 w-full items-center justify-center p-2 text-center text-xs text-token-text-secondary md:px-[60px]">
+                        <div>Coder will make mistakes. Commit to git regularly.</div>
                       </div>
                     </div>
                   </div>

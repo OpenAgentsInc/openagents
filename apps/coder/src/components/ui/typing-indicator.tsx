@@ -1,13 +1,13 @@
-import { Dot } from "lucide-react"
+import React from "react"
 
 export function TypingIndicator() {
   return (
-    <div className="justify-left flex space-x-1">
-      <div className="rounded-lg bg-muted p-3">
-        <div className="flex -space-x-2.5">
-          <Dot className="h-5 w-5 animate-typing-dot-bounce" />
-          <Dot className="h-5 w-5 animate-typing-dot-bounce [animation-delay:90ms]" />
-          <Dot className="h-5 w-5 animate-typing-dot-bounce [animation-delay:180ms]" />
+    <div className="-mt-6 mb-6 justify-left flex space-x-1">
+      <div className="font-mono bg-background p-2">
+        <div className="flex space-x-[3px]">
+          <span className="inline-block w-2 h-4 bg-foreground animate-typing-dot" />
+          <span className="inline-block w-2 h-4 bg-foreground animate-typing-dot [animation-delay:150ms]" />
+          <span className="inline-block w-2 h-4 bg-foreground animate-typing-dot [animation-delay:300ms]" />
         </div>
       </div>
     </div>
