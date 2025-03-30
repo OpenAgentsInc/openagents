@@ -25,7 +25,7 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "CoderAgent",
+        "name": "coderagent",
         "class_name": "CoderAgent"
       }
     ]
