@@ -44,8 +44,23 @@ We implemented a proper type compatibility approach with these changes:
 4. **Reduced type assertion usage:**
    - Only using `as UseChatReturn` in the final return value where it's unavoidable due to library type differences
    - Eliminated all other `any` casts throughout the code
+   - Kept the final `return returnValue as UseChatReturn;` with the following comment explaining why:
+     ```typescript
+     // We must keep this type cast because TypeScript cannot reconcile UIMessage types 
+     // from different node_modules instances (@ai-sdk/ui-utils). The two instances have 
+     // different type definitions - one includes StepStartUIPart in the UIMessage.parts union
+     // while the other does not. This causes type incompatibility even with proper path aliases.
+     ```
 
 5. **Used moduleResolution: "bundler"** in tsconfig.json to improve module resolution for modern ESM projects
+
+6. **Added paths aliases** in the tsconfig.json files of all affected packages:
+   ```json
+   "paths": {
+     "agents/*": ["../../node_modules/agents/dist/*"]
+   }
+   ```
+   This was necessary for `@openagents/core`, `@openagents/coder`, `@openagents/onyx`, and `@openagents/ui` to resolve the Agents SDK imports, despite the package having a correct `exports` map in its package.json. The paths alias explicitly tells TypeScript where to find the type definitions for imports like `agents/ai-react` and `agents/client`.
 
 ## Benefits
 

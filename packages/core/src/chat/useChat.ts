@@ -649,7 +649,9 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     }
   });
   
-  // We need to use 'as UseChatReturn' because TypeScript can't reconcile the
-  // different UIMessage types from different node_modules instances
+  // We must keep this type cast because TypeScript cannot reconcile UIMessage types 
+  // from different node_modules instances (@ai-sdk/ui-utils). The two instances have 
+  // different type definitions - one includes StepStartUIPart in the UIMessage.parts union
+  // while the other does not. This causes type incompatibility even with proper path aliases.
   return returnValue as UseChatReturn;
 }
