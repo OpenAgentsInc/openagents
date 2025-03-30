@@ -25,11 +25,18 @@ export default function HomePage() {
                   <div className="relative h-full">
                     <div className="flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
                       <div aria-hidden="true" data-edge="true" className="pointer-events-none h-px w-px" />
-                      <div className="px-8 flex-1 mt-1.5 flex flex-col text-sm @thread-xl/thread:pt-header-height md:pb-9">
-                        <MessageList
-                          messages={messages}
-                          isTyping={isGenerating}
-                        />
+                      <div className="flex-1 mt-1.5 flex flex-col text-sm @thread-xl/thread:pt-header-height md:pb-9">
+                        <div className="text-base mx-auto px-3 md:px-4 w-full md:px-5 lg:px-4 xl:px-5">
+                          <div className="mx-auto flex flex-1 text-base gap-4 md:gap-5 lg:gap-6 md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+                            <div className="flex justify-center empty:hidden" />
+                            <div className="relative z-[1] flex max-w-full flex-1 flex-col h-full">
+                              <MessageList
+                                messages={messages}
+                                isTyping={isGenerating}
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                       <div aria-hidden="true" data-edge="true" className="pointer-events-none h-px w-px" />
                       <div className="mt-auto">
@@ -60,8 +67,8 @@ export default function HomePage() {
                               </div>
                             </div>
                           </div>
-                          <div className="relative mt-auto flex min-h-8 w-full items-center justify-center p-2 text-center text-xs text-token-text-secondary md:px-[60px]">
-                            <div>Coder can make mistakes. Commit to git regularly.</div>
+                          <div className="relative mt-0 flex min-h-6 w-full items-center justify-center p-2 text-center text-xs text-token-text-secondary md:px-[60px]">
+                            <div>Coder will make mistakes. Commit to git regularly.</div>
                           </div>
                         </div>
                       </div>

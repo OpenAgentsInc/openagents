@@ -36,7 +36,7 @@ type MessageInputProps =
   | MessageInputWithAttachmentsProps
 
 export function MessageInput({
-  placeholder = "Ask AI...",
+  placeholder = "Ask Coder",
   className,
   onKeyDown: onKeyDownProp,
   submitOnEnter = true,
@@ -198,6 +198,7 @@ export function MessageInput({
       <div className="relative flex w-full items-center space-x-2">
         <div className="relative flex-1">
           <textarea
+            autoFocus
             aria-label="Write your prompt here"
             placeholder={placeholder}
             ref={textAreaRef}

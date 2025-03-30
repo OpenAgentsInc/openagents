@@ -19,7 +19,7 @@ const chatBubbleVariants = cva(
   {
     variants: {
       isUser: {
-        true: "bg-primary text-primary-foreground",
+        true: "border-muted-foreground border bg-muted text-foreground",
         false: "bg-muted text-foreground",
       },
       animation: {
