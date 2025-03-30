@@ -1,10 +1,11 @@
-import React, { useState } from "react";
-import { useChat } from "@ai-sdk/react"
-import { MessageInput } from "@/components/ui/message-input"
-import { MessageList } from "@/components/ui/message-list"
-import { ChatForm } from "@/components/ui/chat"
-import ToggleTheme from "@/components/ToggleTheme"
-import { Badge } from "@/components/ui/badge"
+import React, { useState, useCallback } from "react";
+import { usePersistentChat, Thread } from "@openagents/core";
+import { MessageInput } from "@/components/ui/message-input";
+import { MessageList } from "@/components/ui/message-list";
+import { ChatForm } from "@/components/ui/chat";
+import { ThreadList } from "@/components/ThreadList";
+import ToggleTheme from "@/components/ToggleTheme";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -16,14 +17,52 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarInset
-} from "@/components/ui/sidebar"
-import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react"
+} from "@/components/ui/sidebar";
+import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading: isGenerating, stop }
-    = useChat({ api: "https://chat.openagents.com", maxSteps: 10 })
+  // Use persistent chat hook
+  const { 
+    messages, 
+    input, 
+    handleInputChange, 
+    handleSubmit, 
+    isLoading: isGenerating, 
+    stop,
+    // Thread management capabilities
+    currentThreadId,
+    switchThread,
+    createNewThread,
+    deleteThread,
+    updateThread
+  } = usePersistentChat({ 
+    api: "https://chat.openagents.com", 
+    maxSteps: 10,
+    persistenceEnabled: true,
+    onThreadChange: (threadId) => {
+      console.log(`Switched to thread: ${threadId}`);
+    }
+  });
 
-  const [files, setFiles] = useState<File[] | null>(null)
+  // Handler for creating a new thread
+  const handleCreateThread = useCallback(() => {
+    createNewThread("New Chat");
+  }, [createNewThread]);
+  
+  // Handler for selecting a thread
+  const handleSelectThread = useCallback((threadId: string) => {
+    switchThread(threadId);
+  }, [switchThread]);
+  
+  // Handler for deleting a thread
+  const handleDeleteThread = useCallback((threadId: string) => {
+    deleteThread(threadId);
+  }, [deleteThread]);
+  
+  // Handler for renaming a thread
+  const handleRenameThread = useCallback((threadId: string, title: string) => {
+    updateThread(threadId, { title });
+  }, [updateThread]);
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -59,14 +98,17 @@ export default function HomePage() {
                         <span>Settings</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                    {/* <SidebarMenuItem>
-                      <SidebarMenuButton tooltip="Help">
-                        <HelpCircleIcon className="mr-2" />
-                        <span>Help</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem> */}
                   </SidebarMenu>
                 </SidebarGroup>
+                
+                {/* Thread list component */}
+                <ThreadList
+                  currentThreadId={currentThreadId}
+                  onSelectThread={handleSelectThread}
+                  onCreateThread={handleCreateThread}
+                  onDeleteThread={handleDeleteThread}
+                  onRenameThread={handleRenameThread}
+                />
               </SidebarContent>
               <SidebarFooter>
                 <div className="px-3 py-2">
@@ -135,5 +177,5 @@ export default function HomePage() {
         </div>
       </div>
     </SidebarProvider>
-  )
+  );
 }
