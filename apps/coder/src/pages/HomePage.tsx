@@ -21,7 +21,7 @@ import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react"
 
 export default function HomePage() {
   const { messages, input, handleInputChange, handleSubmit, isLoading: isGenerating, stop }
-    = useChat({ api: "https://chat.openagents.com" })
+    = useChat({ api: "https://chat.openagents.com", maxSteps: 10 })
 
   const [files, setFiles] = useState<File[] | null>(null)
 
