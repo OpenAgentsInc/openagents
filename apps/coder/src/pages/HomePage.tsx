@@ -11,10 +11,10 @@ export default function HomePage() {
   const [files, setFiles] = useState<File[] | null>(null)
 
   return (
-    <div className="flex h-full w-full flex-col text-white font-mono">
+    <div className="flex h-full w-full flex-col text-primary font-mono">
       <div className="relative flex h-full w-full flex-1 overflow-hidden transition-colors z-0">
         <div className="relative flex h-full w-full flex-row overflow-hidden">
-          <div className="w-[260px] z-[21] flex-shrink-0 overflow-x-hidden bg-zinc-900 [view-transition-name:--sidebar-slideover] max-md:!w-0">
+          <div className="w-[260px] z-[21] flex-shrink-0 overflow-x-hidden bg-secondary [view-transition-name:--sidebar-slideover] max-md:!w-0">
             {/* Sidebar */}
           </div>
           <div className="z-[20] relative flex h-full max-w-full flex-1 flex-col overflow-hidden">
