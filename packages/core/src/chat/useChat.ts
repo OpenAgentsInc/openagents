@@ -163,6 +163,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   const agentChat = useAgentChat({
     agent, // Always pass the agent returned by useAgent
     initialMessages: chatOptions.initialMessages,
+    // Disable the automatic fetch of initial messages that causes CORS errors
+    getInitialMessages: null,
     // The connection will only be used if shouldUseAgent is true (checked in useEffect)
   });
   
