@@ -10,11 +10,11 @@
   "dependencies": {
     "@ai-sdk/react": "1.2.2",
     "agents": "^0.0.46",
+    "dexie": "^4.0.11",
     "partysocket": "^1.1.2",
-    "rxdb": "^14.17.1",
-    "rxjs": "^7.8.1",
-    "dexie": "^3.2.4",
-    "uuid": "^9.0.1"
+    "rxdb": "^16.8.1",
+    "rxjs": "^7.8.2",
+    "uuid": "^11.1.0"
   },
   "peerDependencies": {
     "react": "19.1.0",
@@ -23,6 +23,6 @@
   "devDependencies": {
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",
-    "@types/uuid": "^9.0.7"
+    "@types/uuid": "^10.0.0"
   }
 }
