@@ -39,14 +39,9 @@ export async function setTheme(newTheme: ThemeMode) {
 
 export async function toggleTheme() {
   try {
-    // First check current state
-    const current = await getCurrentTheme();
-    console.log("Current theme before toggle:", current);
-    
     // Toggle the theme in electron
     const isDarkMode = await window.themeMode.toggle();
     const newTheme = isDarkMode ? "dark" : "light";
-    console.log("New theme after toggle:", newTheme, "isDarkMode:", isDarkMode);
     
     // Update DOM and localStorage
     updateDocumentTheme(isDarkMode);
@@ -74,11 +69,9 @@ function updateDocumentTheme(isDarkMode: boolean) {
   if (!isDarkMode) {
     document.documentElement.classList.remove("dark");
     document.documentElement.style.colorScheme = "light";
-    console.log("THEME: Removed dark class", document.documentElement.classList.contains("dark"));
   } else {
     document.documentElement.classList.add("dark");
     document.documentElement.style.colorScheme = "dark";
-    console.log("THEME: Added dark class", document.documentElement.classList.contains("dark"));
   }
   
   // Force CSS to repaint by adding a trivial style change and removing it

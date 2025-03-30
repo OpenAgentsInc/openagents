@@ -19,11 +19,6 @@ const Sun = react19.icon<IconProps>(LucideSun);
 export default function ToggleTheme() {
   const { isDark, toggleDarkMode } = useDarkMode();
 
-  // This logs the current class status to help with debugging
-  useEffect(() => {
-    console.log("ToggleTheme: Dark mode is", isDark ? "ON" : "OFF");
-    console.log("HTML classes:", document.documentElement.className);
-  }, [isDark]);
 
   return (
     <Button 
