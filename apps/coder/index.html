@@ -3,13 +3,28 @@
 
 <head>
   <meta charset="UTF-8" />
-  <title>electron-shadcn Template</title>
+  <title>OpenAgents Coder</title>
   <meta http-equiv="Content-Security-Policy" content="script-src 'self';" />
   <link rel="stylesheet" href="/src/styles/global.css" />
+  <style>
+    /* Prevent white flash */
+    html,
+    body {
+      background-color: #000000;
+      /* Dark background color */
+      color-scheme: dark;
+    }
+
+    html.light,
+    html.light body {
+      background-color: #ffffff;
+      color-scheme: light;
+    }
+  </style>
 </head>
 
-<body class="bg-black">
-  <div id="app" />
+<body>
+  <div id="app" class="h-full w-full" />
   <script type="module" src="/src/renderer.ts"></script>
 </body>
 

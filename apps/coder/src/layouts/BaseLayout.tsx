@@ -9,7 +9,7 @@ export default function BaseLayout({
   return (
     <>
       <DragWindowRegion />
-      <main className="h-screen pt-[30px]">{children}</main>
+      <main className="text-primary h-screen pt-[30px]">{children}</main>
     </>
   );
 }
