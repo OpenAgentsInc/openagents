@@ -14,47 +14,23 @@ import {
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 
+type Animation = "none" | "fade" | null | undefined
+
 const chatBubbleVariants = cva(
-  "group/message relative break-words rounded-lg p-3 text-sm sm:max-w-[70%]",
+  "group/message relative break-words rounded-lg p-3 text-sm",
   {
     variants: {
       isUser: {
-        true: "border-muted-foreground border bg-transparent text-foreground",
-        false: "text-foreground",
+        true: "border-muted-foreground border bg-transparent text-foreground sm:max-w-[70%]",
+        false: "text-foreground w-full",
       },
       animation: {
         none: "",
-        slide: "duration-300 animate-in fade-in-0",
-        scale: "duration-300 animate-in fade-in-0 zoom-in-75",
         fade: "duration-500 animate-in fade-in-0",
       },
     },
-    compoundVariants: [
-      {
-        isUser: true,
-        animation: "slide",
-        class: "slide-in-from-right",
-      },
-      {
-        isUser: false,
-        animation: "slide",
-        class: "slide-in-from-left",
-      },
-      {
-        isUser: true,
-        animation: "scale",
-        class: "origin-bottom-right",
-      },
-      {
-        isUser: false,
-        animation: "scale",
-        class: "origin-bottom-left",
-      },
-    ],
   }
 )
-
-type Animation = VariantProps<typeof chatBubbleVariants>["animation"]
 
 interface Attachment {
   name?: string
