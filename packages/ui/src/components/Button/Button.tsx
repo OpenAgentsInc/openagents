@@ -43,13 +43,13 @@ export const Button = ({
         )}
         {!loading && leftIcon && renderIcon && (
           <View style={{ marginRight: 8 }}>
-            {renderIcon(leftIcon) as JSX.Element}
+            {renderIcon(leftIcon) as React.ReactElement}
           </View>
         )}
         <Text style={[textStyles, { fontSize }]}>{label}</Text>
         {!loading && rightIcon && renderIcon && (
           <View style={{ marginLeft: 8 }}>
-            {renderIcon(rightIcon) as JSX.Element}
+            {renderIcon(rightIcon) as React.ReactElement}
           </View>
         )}
       </View>

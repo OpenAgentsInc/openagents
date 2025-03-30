@@ -1,8 +1,20 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Animated, GestureResponderEvent } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons as ExpoIonicons } from '@expo/vector-icons';
 import { ToastProps, ToastProviderProps, ToastOptions, ToastContextType } from './Toast.types';
 import { View, Text, TouchableOpacity, SafeAreaView, AnimatedView } from '@openagents/core';
+import { react19 } from '@openagents/core';
+
+// Define interface for the icon props
+interface IconProps {
+  name: string;
+  size: number;
+  style?: any;
+  [key: string]: any;
+}
+
+// Make Expo icons compatible with React 19
+const Ionicons = react19.icon<IconProps>(ExpoIonicons);
 import { styles, getVariantStyles } from './Toast.styles';
 
 // Create a unique ID for each toast
@@ -73,7 +85,7 @@ export const Toast = ({
           },
         ]}
       >
-        {icon && <View>{icon as JSX.Element}</View>}
+        {icon && <View>{icon as React.ReactNode}</View>}
 
         <View style={styles.contentContainer}>
           {title && <Text style={styles.title}>{title}</Text>}
@@ -145,7 +157,7 @@ export const ToastProvider = ({ children }: ToastProviderProps) => {
 
   return (
     <ToastContext.Provider value={contextValue}>
-      {children}
+      {children as React.ReactNode}
       <SafeAreaView style={styles.container} pointerEvents="box-none">
         {Array.from(toasts.values()).map((toast) => (
           <Toast

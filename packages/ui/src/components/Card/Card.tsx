@@ -24,7 +24,7 @@ export const Card = ({
       ]}
       {...rest}
     >
-      {children as JSX.Element}
+      {children as React.ReactNode}
     </View>
   );
 };

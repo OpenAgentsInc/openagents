@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import { StyleSheet, Pressable } from 'react-native'
+import { StyleSheet } from 'react-native'
 import { ToolInvocation } from './types'
 import { ChevronIcon } from './icons/ChevronIcon'
-import { View, Text } from '@openagents/core'
+import { View, Text, Pressable } from '@openagents/core'
 
 interface ToolCallProps {
   toolInvocation: ToolInvocation
