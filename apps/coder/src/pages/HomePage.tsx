@@ -71,14 +71,16 @@ export default function HomePage() {
               </SidebarFooter>
             </Sidebar>
             <SidebarInset>
-              {/* Main container with fixed header and footer */}
-              <div className="flex flex-col h-full">
+              {/* Main container with absolute positioned elements */}
+              <div className="relative h-full">
                 {/* Header - fixed at top */}
-                <ChatHeader />
+                <div className="absolute top-0 left-0 right-0 z-10">
+                  <ChatHeader />
+                </div>
                 
-                {/* Message list - takes remaining space and scrolls */}
-                <div className="flex-1 overflow-y-auto">
-                  <div className="container mx-auto max-w-4xl px-4 py-6">
+                {/* Message list - scrollable area between header and footer */}
+                <div className="absolute top-14 bottom-[144px] left-0 right-0 overflow-y-auto">
+                  <div className="container mx-auto max-w-4xl px-4 py-4">
                     <MessageList
                       messages={messages}
                       isTyping={isGenerating}
@@ -87,7 +89,7 @@ export default function HomePage() {
                 </div>
                 
                 {/* Footer - fixed at bottom */}
-                <div className="border-t bg-background">
+                <div className="absolute bottom-0 left-0 right-0 border-t bg-background">
                   <div className="container mx-auto max-w-4xl px-4 py-4">
                     <ChatForm
                       isPending={isGenerating}
