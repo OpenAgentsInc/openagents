@@ -2,6 +2,7 @@ import path from "path";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
   // Configure asset handling
@@ -9,6 +10,14 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     react(),
+    // Add Node.js polyfills for browser environment
+    nodePolyfills({
+      // To add specific polyfills, specify them here
+      include: ['url', 'util', 'events'],
+      globals: {
+        Buffer: true,
+      },
+    }),
   ],
   resolve: {
     preserveSymlinks: false,  // Changed to false to ensure symlinks work
@@ -21,6 +30,8 @@ export default defineConfig({
       // "@openagents/ui/*": path.resolve(__dirname, "../../packages/ui/src/*"),
       // Add aliases for Expo packages
       "@expo/vector-icons": path.resolve(__dirname, "./src/shims/expo-vector-icons.ts"),
+      // Add shim for eventsource
+      "eventsource": path.resolve(__dirname, "./src/shims/eventsource.ts"),
     },
   },
   optimizeDeps: {
@@ -29,6 +40,7 @@ export default defineConfig({
       'react-native-web',
       'react-native-vector-icons',
       'react-native-vector-icons/Ionicons',
+      'eventsource', // Add eventsource to be pre-bundled
     ],
     esbuildOptions: {
       loader: {
@@ -36,6 +48,12 @@ export default defineConfig({
       },
       resolveExtensions: ['.web.js', '.js', '.ts', '.jsx', '.tsx', '.json'],
       mainFields: ['browser', 'module', 'main'],
+    },
+  },
+  // Add Node.js built-in modules for browser
+  build: {
+    rollupOptions: {
+      plugins: [],
     },
   },
   server: {
