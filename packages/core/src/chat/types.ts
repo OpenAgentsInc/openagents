@@ -272,8 +272,17 @@ that the assistant made as part of this message.
     | ToolInvocationUIPart
     | SourceUIPart
     | FileUIPart
+    | StepStartUIPart
   >;
 }
+
+/**
+ * A step start part of a message.
+ */
+export type StepStartUIPart = {
+  type: 'step-start';
+  step: number;
+};
 
 export type UIMessage = Message & {
   /**
@@ -288,6 +297,7 @@ export type UIMessage = Message & {
     | ToolInvocationUIPart
     | SourceUIPart
     | FileUIPart
+    | StepStartUIPart
   >;
 };
 

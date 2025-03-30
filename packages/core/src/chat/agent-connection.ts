@@ -1,19 +1,26 @@
+/**
+ * Agent Connection - Wrapper around the official Cloudflare Agents SDK
+ * 
+ * This module provides a simplified interface to the Cloudflare Agents SDK
+ * for use in the OpenAgents application.
+ */
 import { Message, UIMessage } from './types';
-import { BaseAgentClient, AgentClientOptions as BridgeClientOptions, createAgentClient, AgentClient as AgentClientImpl } from '../mcp/agent-sdk-bridge';
+import type { AgentClient as SDKAgentClient, AgentClientOptions as SDKAgentClientOptions } from 'agents/client';
+import type { UseAgentOptions } from 'agents/react';
+// Import for re-export
+import { useAgent } from 'agents/react';
+import { useAgentChat } from 'agents/ai-react';
 
-// Re-export the agent client interfaces
-export type AgentClientOptions = BridgeClientOptions;
-export type AgentClient = BaseAgentClient;
-
-// Ensure exports for IDE intellisense
-export { createAgentClient } from '../mcp/agent-sdk-bridge';
+// Define local interfaces that match the SDK types
+export interface AgentClient extends SDKAgentClient {}
+export interface AgentClientOptions extends SDKAgentClientOptions {}
 
 /**
  * Options for connecting to a Cloudflare Agent
  */
 export interface AgentConnectionOptions {
   /**
-   * The ID of the agent to connect to (e.g., 'CoderAgent')
+   * The ID of the agent to connect to (e.g., 'coderagent')
    */
   agentId: string;
   
@@ -31,7 +38,8 @@ export interface AgentConnectionOptions {
   
   /**
    * Path pattern for WebSocket endpoint 
-   * @default 'api/agents'
+   * Not needed for official SDK
+   * @deprecated
    */
   pathPattern?: string;
   
@@ -59,14 +67,29 @@ export interface AgentConnectionState {
 }
 
 /**
+ * Creates a connection to a Cloudflare Agent using the official SDK
+ */
+export const createAgentClient = (options: AgentClientOptions): AgentClient => {
+  // This now uses the official SDK implementation
+  if (typeof window !== 'undefined') {
+    console.warn('createAgentClient should be used with useAgent hook in React components');
+  }
+  
+  // Import dynamically to avoid SSR issues
+  // In practice, you should use the useAgent hook in React components
+  const { AgentClient } = require('agents/client');
+  return new AgentClient(options) as AgentClient;
+};
+
+/**
  * Creates a connection to a Cloudflare Agent
+ * This is a compatibility wrapper around the official SDK
  */
 export const createAgentConnection = async (options: AgentConnectionOptions): Promise<AgentClient> => {
   const { 
     agentId, 
     agentName = 'default', 
     serverUrl = 'https://agents.openagents.com',
-    pathPattern,
     onStateUpdate,
     token
   } = options;
@@ -76,7 +99,6 @@ export const createAgentConnection = async (options: AgentConnectionOptions): Pr
     agent: agentId,
     name: agentName,
     host: serverUrl,
-    pathPattern,
     onStateUpdate,
   };
   
@@ -88,11 +110,9 @@ export const createAgentConnection = async (options: AgentConnectionOptions): Pr
   }
   
   try {
-    // Create the agent client using our WebSocket implementation
-    console.log(`🔌 USECHAT: Creating agent client for ${agentId}/${agentName}`);
-    const client = createAgentClient(clientOptions);
-    
-    return client;
+    // Create the agent client using the official SDK implementation
+    console.log(`🔌 Creating agent client for ${agentId}/${agentName} using official SDK`);
+    return createAgentClient(clientOptions);
   } catch (error) {
     console.error('Failed to connect to agent:', error);
     throw new Error(`Failed to connect to agent: ${error instanceof Error ? error.message : String(error)}`);
@@ -147,10 +167,8 @@ export const createAgentUtils = (client: AgentClient) => {
     sendMessage: (message: Message) => sendMessageToAgent(client, message),
     executeCommand: async (command: string) => {
       try {
-        // Check if client is actually connected before attempting to execute command
-        // We need to cast to the implementation type to access the connected property
-        const agentClient = client as AgentClientImpl;
-        if (agentClient.connected === false) {
+        // Check if client is connected
+        if (!client) {
           const notConnectedError = new Error('Cannot execute command: client not connected');
           console.error('⚠️ Agent command execution failed:', notConnectedError);
           throw notConnectedError;
@@ -164,9 +182,7 @@ export const createAgentUtils = (client: AgentClient) => {
     },
     setProjectContext: async (context: any) => {
       try {
-        // Check if client is actually connected before attempting to set context
-        const agentClient = client as AgentClientImpl;
-        if (agentClient.connected === false) {
+        if (!client) {
           console.warn('Cannot set project context: client not connected');
           return false;
         }
@@ -179,9 +195,7 @@ export const createAgentUtils = (client: AgentClient) => {
     },
     getProjectContext: async () => {
       try {
-        // Check if client is actually connected before attempting to get context
-        const agentClient = client as AgentClientImpl;
-        if (agentClient.connected === false) {
+        if (!client) {
           console.warn('Cannot get project context: client not connected');
           return {};
         }
@@ -201,3 +215,6 @@ export const createAgentUtils = (client: AgentClient) => {
     }
   };
 };
+
+// Export the official SDK hooks for direct use
+export { useAgent, useAgentChat };

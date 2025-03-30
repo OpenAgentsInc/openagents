@@ -1,4 +1,5 @@
 import { AIChatAgent } from "agents/ai-chat-agent";
+import { unstable_callable } from "agents";
 import {
   createDataStreamResponse,
   generateId,
@@ -24,7 +25,7 @@ export const coderAgentContext = new AsyncLocalStorage<CoderAgent>();
  */
 export class CoderAgent extends AIChatAgent<Env> {
   // Track the current repository/project context
-  private projectContext: {
+  projectContext: {
     repoOwner?: string;
     repoName?: string;
     branch?: string;
@@ -33,22 +34,89 @@ export class CoderAgent extends AIChatAgent<Env> {
 
   /**
    * Set the project context for this agent
+   * This method is marked as callable by clients through RPC
    */
-  setProjectContext(context: {
+  @unstable_callable({
+    description: "Set the repository context for the coding agent"
+  })
+  async setProjectContext(context: {
     repoOwner?: string;
     repoName?: string;
     branch?: string;
     path?: string;
   }) {
-    this.projectContext = { ...this.projectContext, ...context };
-    console.log("📁 Updated project context:", this.projectContext);
+    try {
+      console.log("📁 Setting project context:", JSON.stringify(context));
+      this.projectContext = { ...this.projectContext, ...context };
+      console.log("🔄 Updated project context:", JSON.stringify(this.projectContext));
+      
+      // Return the updated context to confirm success
+      return { 
+        success: true, 
+        context: this.projectContext 
+      };
+    } catch (error) {
+      console.error("❌ Error setting project context:", error);
+      return {
+        success: false,
+        error: String(error)
+      };
+    }
   }
 
   /**
    * Get the current project context
+   * This method is marked as callable by clients through RPC
    */
-  getProjectContext() {
-    return { ...this.projectContext };
+  @unstable_callable({
+    description: "Get the current repository context"
+  })
+  async getProjectContext() {
+    try {
+      console.log("🔍 Getting project context:", JSON.stringify(this.projectContext));
+      return { ...this.projectContext };
+    } catch (error) {
+      console.error("❌ Error getting project context:", error);
+      return { error: String(error) };
+    }
+  }
+  
+  /**
+   * Get messages for this agent
+   * This method is marked as callable by clients through RPC
+   */
+  @unstable_callable({
+    description: "Get the message history for this agent"
+  })
+  async getMessages() {
+    try {
+      console.log(`📋 Getting ${this.messages.length} messages from agent`);
+      // Ensure we get the latest messages from storage
+      const messages = this.sql`select * from cf_ai_chat_agent_messages order by created_at asc`;
+      console.log(`📊 Found ${messages?.length || 0} messages in storage`);
+      
+      if (!messages || messages.length === 0) {
+        console.log(`📝 No messages found in storage, returning in-memory messages`);
+        return this.messages;
+      }
+      
+      // Parse the messages from storage
+      const parsedMessages = messages.map(row => {
+        try {
+          return JSON.parse(String(row.message));
+        } catch (e) {
+          console.error(`❌ Error parsing message: ${e}`);
+          return null;
+        }
+      }).filter(Boolean);
+      
+      console.log(`🔄 Returning ${parsedMessages.length} messages from storage`);
+      return parsedMessages;
+    } catch (error) {
+      console.error("❌ Error getting messages:", error);
+      // Return empty array instead of error to avoid breaking the client
+      return [];
+    }
   }
 
   /**
@@ -56,6 +124,7 @@ export class CoderAgent extends AIChatAgent<Env> {
    * @param onFinish - Callback function executed when streaming completes
    */
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
+    console.log(`📝 CoderAgent.onChatMessage called with ${this.messages.length} messages`);
 
     // Check for required OpenRouter API key
     if (!process.env.OPENROUTER_API_KEY) {
@@ -83,6 +152,13 @@ export class CoderAgent extends AIChatAgent<Env> {
 
       // Create a streaming response that handles both text and tool outputs
       return coderAgentContext.run(this, async () => {
+        // Log current messages for debugging
+        console.log(`📊 Current messages in CoderAgent:`, JSON.stringify(this.messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          contentLength: m.content?.length || 0
+        }))));
+        
         const dataStreamResponse = createDataStreamResponse({
           execute: async (dataStream) => {
             // Process any pending tool calls from previous messages
@@ -92,6 +168,26 @@ export class CoderAgent extends AIChatAgent<Env> {
               tools: coderTools,
               executions: coderExecutions,
             });
+
+            console.log(`🔄 Processing ${processedMessages.length} messages`);
+
+            // Create a wrapper for onFinish that will save messages
+            const saveMessagesOnFinish: StreamTextOnFinishCallback<{}> = async (completion) => {
+              try {
+                console.log(`✅ AI response complete, saving conversation state`);
+                
+                // Let the original callback process as normal
+                if (onFinish) {
+                  await onFinish(completion);
+                }
+                
+                // No need to save messages here - AIChatAgent base class will handle this
+                // through its own messaging mechanism
+                console.log(`💾 Messages will be persisted by the AIChatAgent base class`);
+              } catch (error) {
+                console.error("❌ Error in saveMessagesOnFinish:", error);
+              }
+            };
 
             // Stream the AI response using Claude or GPT
             const result = streamText({
@@ -117,7 +213,7 @@ ${this.projectContext.repoOwner && this.projectContext.repoName ?
 Always provide thoughtful, well-explained responses for coding tasks. If writing code, include clear comments and follow best practices.`,
               messages: processedMessages,
               tools: coderTools,
-              onFinish,
+              onFinish: saveMessagesOnFinish, 
               onError: (error) => {
                 console.error("Error while streaming:", error);
               },

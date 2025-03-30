@@ -1,12 +1,15 @@
 {
   "name": "@openagents/core",
   "version": "0.0.1",
+  "type": "module",
   "main": "src/index.ts",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "t": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/react": "1.2.2"
+    "@ai-sdk/react": "1.2.2",
+    "agents": "^0.0.44",
+    "partysocket": "^1.1.2"
   }
 }

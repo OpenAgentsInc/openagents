@@ -1,63 +1,51 @@
-# Issue #804: Fixing WebSocket Connections to Cloudflare Agents
+# Replacing Custom SDK Bridge with Official Cloudflare Agents SDK
 
-## Problem
+## Summary
+In this PR, we replaced the custom agent-sdk-bridge implementation with the official Cloudflare Agents SDK hooks and libraries. This change significantly improves the reliability and maintainability of our WebSocket connections to Cloudflare Agents.
 
-WebSocket connections to the CoderAgent Durable Object were failing with errors:
+## Key Changes
 
-1. `The url https://agents.openagents.com/agents/coderagent/default does not match any server namespace.`
-2. `Missing namespace or room headers when connecting to CoderAgent.`
+1. **Custom WebSocket Bridge Removed**:
+   - Deleted the custom WebSocket implementation in `/packages/core/src/mcp/agent-sdk-bridge.ts`
+   - This removes approximately 700 lines of complex WebSocket management code
 
-This prevented the useChat hook from establishing real-time communication with the agent.
+2. **Official SDK Integration**:
+   - Added direct imports for `useAgent` from 'agents/react'
+   - Added direct imports for `useAgentChat` from 'agents/ai-react'
+   - Updated agent-connection.ts to be a thin wrapper around the official SDK
 
-## Root Cause
+3. **Improved useChat Implementation**:
+   - Modified useChat to use the official SDK hooks directly
+   - Better message persistence with official message synchronization 
+   - Fixed RPC method timeout issues
 
-A case sensitivity mismatch between different parts of the system:
+4. **Configuration Updates**:
+   - Updated dependencies in package.json
+   - Added proper module configuration
 
-1. Client-side code (agent-sdk-bridge.ts) automatically converts agent names to lowercase: `CoderAgent` → `coderagent`
-2. Our wrangler.jsonc had the binding name as `CoderAgent` (uppercase)
-3. The Cloudflare Agents SDK expects an exact case-sensitive match between the URL and the binding name
+## Benefits
 
-## Solution
+1. **Simplified Codebase**:
+   - Removed complex custom code that was difficult to maintain
+   - Better alignment with official SDK documentation and examples
 
-1. **Binding Name Alignment**: Changed the binding name in wrangler.jsonc to lowercase to match client expectations:
-   ```diff
-   "durable_objects": {
-     "bindings": [
-       {
-   -     "name": "CoderAgent",
-   +     "name": "coderagent",
-         "class_name": "CoderAgent"
-       }
-     ]
-   },
-   ```
+2. **Improved Reliability**:
+   - Fixed WebSocket connection issues
+   - Fixed case sensitivity problems in agent names
+   - Better message persistence between sessions
 
-2. **Simplified Implementation**: Followed the example app pattern exactly, using the SDK's routing:
-   ```typescript
-   export default {
-     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-       return (
-         (await routeAgentRequest(request, env)) ||
-         new Response("Not found", { status: 404 })
-       );
-     },
-   };
-   ```
+3. **Better Debugging**:
+   - Official SDK provides better error messages and connection status
+   - Improved logging for connection and message handling
 
-## Lessons Learned
+4. **Future Compatibility**:
+   - Easier to upgrade as the Agents SDK evolves
+   - Direct access to new features as they are added to the SDK
 
-1. Cloudflare Agents SDK has specific expectations for case sensitivity in binding names
-2. Simplicity wins - minimal code following the exact example pattern is most reliable
-3. The client-side code makes automatic transformations (lowercase) that must be matched in server config
-4. Direct Durable Object access requires precise headers; using routeAgentRequest is generally preferable
+## Testing
 
-## Timeline
-
-1. Initial errors identified when testing WebSocket connections
-2. Multiple approaches tried:
-   - Custom header manipulation (failed)
-   - Direct Durable Object access (failed)
-   - SDK routing functions with enhanced headers (failed)
-3. Discovered case sensitivity mismatch by examining client logs
-4. Fixed by aligning binding name case and simplifying implementation
-5. Verified working solution with successful WebSocket connections
+To verify these changes:
+1. Test WebSocket connections to coderagent and other agents
+2. Verify message persistence between sessions
+3. Test RPC method calls like setProjectContext and getMessages
+4. Test command execution through the agent

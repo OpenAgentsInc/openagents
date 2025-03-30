@@ -165,7 +165,8 @@ const getFileContents = tool({
       throw new Error("No agent context found");
     }
     
-    const context = agent.getProjectContext();
+    // Get the context synchronously from the agent's instance property
+    const context = agent.projectContext;
     
     // Use provided values or fall back to context
     const repoOwner = owner || context.repoOwner;
@@ -224,7 +225,7 @@ const searchCode = tool({
       throw new Error("No agent context found");
     }
     
-    const context = agent.getProjectContext();
+    const context = agent.projectContext;
     
     // Use provided values or fall back to context
     const repoOwner = owner || context.repoOwner;
@@ -372,7 +373,7 @@ export const coderExecutions = {
         throw new Error("No agent context found");
       }
       
-      const context = agent.getProjectContext();
+      const context = agent.projectContext;
       
       // Use provided values or fall back to context
       const repoOwner = owner || context.repoOwner;
@@ -418,7 +419,7 @@ export const coderExecutions = {
         throw new Error("No agent context found");
       }
       
-      const context = agent.getProjectContext();
+      const context = agent.projectContext;
       
       // Use provided values or fall back to context
       const repoOwner = owner || context.repoOwner;
