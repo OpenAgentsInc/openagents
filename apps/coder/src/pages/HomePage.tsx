@@ -10,7 +10,7 @@ export default function HomePage() {
   return (
 
     <div className="font-mono flex flex-col h-full text-white">
-      <div>
+      <div className="px-8">
         <Chat
           messages={messages}
           input={input}
