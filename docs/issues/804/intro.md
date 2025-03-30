@@ -1,81 +1,73 @@
-# Issue 804: Extend useChat to Connect to Cloudflare Agents
+# Issue #804: WebSocket Connection to Cloudflare Agents
 
-## Understanding the Issue
+## Problem Statement
 
-Issue 804 is focused on enhancing the `useChat` hook to support Cloudflare Agents, particularly the CoderAgent. Currently, the `useChat` hook in the OpenAgents project is used for local chat interactions and command execution, but it doesn't support connecting to remote agents built with the Cloudflare Agents SDK.
+Implementation of WebSocket connections to Cloudflare Agents, specifically the CoderAgent for coding assistance, is needed for real-time communication with AI agents. However, attempts to connect to the CoderAgent via WebSocket were failing with the following errors:
 
-The primary goal is to extend the existing `useChat` hook to:
+1. `The url https://agents.openagents.com/agents/coderagent/default does not match any server namespace.`
+2. `Missing namespace or room headers when connecting to CoderAgent.` 
 
-1. Accept an agent ID/name parameter to identify which agent to connect to
-2. Connect to the specified Cloudflare Agent using the Agents SDK client
-3. Fetch and display initial chat history from the agent
-4. Route chat interactions to the appropriate agent (vs local processing)
-5. Support hybrid operation with both local command execution and agent-based functionality
+This prevented the useChat hook from establishing real-time communication with the CoderAgent.
 
-This is a sub-task of the larger "Overnight Autonomous Coding Agent MVP" (issue #796), which aims to create an autonomous coding agent capable of completing pull requests without human intervention.
+## Root Cause
 
-## Technical Analysis
+After extensive debugging, we identified the core issue as a case sensitivity mismatch between different parts of the system:
 
-After reviewing the codebase and the Cloudflare Agents SDK, I've identified the following key components:
+1. The client-side code in `agent-sdk-bridge.ts` automatically converts agent names to lowercase:
+   ```
+   Agent names should be lowercase. Converting CoderAgent to coderagent.
+   ```
 
-1. **Current useChat Hook**: Defined in `packages/core/src/chat/useChat.ts`
-   - Currently supports local chat interactions and command execution
-   - Uses Vercel AI SDK's `useChat` under the hood
-   - Has special handling for command execution within messages
+2. Our wrangler.jsonc had the binding name as `CoderAgent` (uppercase), which didn't match the lowercase name used in URLs.
 
-2. **CoderAgent**: Defined in `packages/agents/src/coder-agent.ts`
-   - Extends the Cloudflare `AIChatAgent` class
-   - Has project context management
-   - Uses AI to respond to coding-related requests
-   - Can execute tools for various coding tasks
+3. The Cloudflare Agents SDK expects an exact case-sensitive match between the URL path and the binding name in wrangler.jsonc.
 
-3. **Cloudflare Agents SDK**: Available via the `agents` npm package
-   - Provides `AgentClient` for client-side connection to agents
-   - Offers React hooks like `useAgent` and `useAgentChat` for agent integration
-   - Supports state synchronization, WebSocket communication, and tool execution
+## Completed Work
 
-## Implementation Plan
+We have successfully resolved this issue by:
 
-I'll extend the `useChat` hook to support Cloudflare Agents through the following steps:
+1. Making the binding name match the client expectations in wrangler.jsonc:
+   ```diff
+   "durable_objects": {
+     "bindings": [
+       {
+   -     "name": "CoderAgent",
+   +     "name": "coderagent",
+         "class_name": "CoderAgent"
+       }
+     ]
+   },
+   ```
 
-1. **Update TypeScript interfaces**:
-   - Extend `UseChatWithCommandsOptions` to include `agentId` and `agentOptions`
-   - Add new types for agent-specific operations
+2. Simplifying the server.ts implementation to follow the example app pattern:
+   ```typescript
+   import { AsyncLocalStorage } from "node:async_hooks";
+   import { routeAgentRequest } from "agents";
+   import { CoderAgent } from "./coder-agent";
+   
+   export const agentContext = new AsyncLocalStorage<CoderAgent>();
+   export { CoderAgent };
+   
+   export default {
+     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+       return (
+         (await routeAgentRequest(request, env)) ||
+         new Response("Not found", { status: 404 })
+       );
+     },
+   };
+   ```
 
-2. **Implement agent connection logic**:
-   - Add conditional logic to connect to specified agent if `agentId` is provided
-   - Utilize the Cloudflare Agents SDK's `AgentClient` or `useAgent` hook
-   - Set up WebSocket connection for real-time communication
+## Documentation Updates
 
-3. **Add message handling**:
-   - Fetch initial messages from the agent's history
-   - Route new messages to the appropriate destination (local or agent)
-   - Handle streaming responses from the agent
+We have created the following documentation to help with future Cloudflare Agents integration:
 
-4. **Support tool execution**:
-   - Enable execution of tools via the agent
-   - Maintain compatibility with local command execution when needed
+1. `final-solution.md` - Detailed explanation of the final solution
+2. `cloudflare-agents-integration.md` - Integration guide for Cloudflare Agents SDK
+3. `sdk-situation.md` - Overview of the Agents SDK requirements
+4. `usage.md` - How to use the CoderAgent with WebSocket connections
+5. `summary.md` - Summary of the issue, cause, and resolution
 
-5. **Ensure state synchronization**:
-   - Keep local and agent states synchronized
-   - Provide clean fallback when agent connection is unavailable
+## Deployment
 
-## Dependencies and Requirements
-
-This implementation depends on:
-- Cloudflare Agents SDK (`agents` package)
-- Vercel AI SDK (already in use)
-- PartySocket library (used by Agents SDK for WebSocket communication)
-
-The implementation must maintain backward compatibility with the existing `useChat` functionality while adding new capabilities for agent integration.
-
-## Testing Approach
-
-I'll test the implementation by:
-1. Verifying connection to a Cloudflare Agent
-2. Testing message sending and receiving
-3. Ensuring history is properly synchronized
-4. Validating tool execution through the agent
-5. Confirming graceful fallback to local processing when needed
-
-I will now await your review before proceeding with the actual implementation.
+The fix has been deployed using the provided `deploy-fix.sh` script and has been verified working with WebSocket connections successfully connecting to the CoderAgent.

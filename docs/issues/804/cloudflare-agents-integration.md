@@ -1,127 +1,105 @@
-# Cloudflare Agents Integration for OpenAgents
+# Cloudflare Agents SDK Integration Guide
 
-## Overview
+This document provides a guide to integrating the Cloudflare Agents SDK with OpenAgents, based on our experience fixing issue #804.
 
-This document outlines the integration between OpenAgents and Cloudflare Workers-based AI agents. The integration allows clients to connect directly to Cloudflare Workers running the Agents SDK through WebSockets, enabling real-time AI assistance with specialized capabilities.
+## Setup Requirements
 
-## Architecture
+1. **Wrangler Configuration**:
+   ```jsonc
+   "durable_objects": {
+     "bindings": [
+       {
+         "name": "coderagent", // IMPORTANT: Must be lowercase
+         "class_name": "CoderAgent" // Matches the exported class name
+       }
+     ]
+   },
+   "migrations": [
+     {
+       "tag": "v1",
+       "new_sqlite_classes": [
+         "CoderAgent"
+       ]
+     }
+   ]
+   ```
 
-The architecture consists of three main components:
+2. **Server Implementation**:
+   ```typescript
+   import { AsyncLocalStorage } from "node:async_hooks";
+   import { routeAgentRequest } from "agents";
+   import { CoderAgent } from "./coder-agent";
+   
+   // We use ALS to expose the agent context to the tools
+   export const agentContext = new AsyncLocalStorage<CoderAgent>();
+   
+   // Export the CoderAgent class for the Durable Object
+   export { CoderAgent };
+   
+   /**
+    * Worker entry point that routes incoming requests to the appropriate handler
+    */
+   export default {
+     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+       // Check for required API keys
+       if (!env.OPENROUTER_API_KEY) {
+         return new Response("OPENROUTER_API_KEY is not set", { status: 500 });
+       }
+       
+       return (
+         // Route the request to our agent or return 404 if not found
+         (await routeAgentRequest(request, env)) ||
+         new Response("Not found", { status: 404 })
+       );
+     },
+   };
+   ```
 
-1. **Client-Side SDK Bridge**: A WebSocket-based implementation that allows browser-based clients to connect directly to Cloudflare Workers without requiring Node.js.
+## Important Notes
 
-2. **Cloudflare Worker Agent**: A Durable Object-based implementation running on Cloudflare Workers, providing specialized AI capabilities through tools and API integrations.
+1. **Binding Names Must Be Lowercase**: The client automatically converts agent names to lowercase (e.g., "CoderAgent" → "coderagent"), so your binding name in wrangler.jsonc must also be lowercase.
 
-3. **Integration Layer (useChat)**: The integration with the existing UI components through an enhanced version of the useChat hook.
+2. **Class Naming**: The class_name in wrangler.jsonc must match the exported class name in your server.ts file.
 
-## WebSocket Protocol
+3. **Simple Integration Pattern**: Keep the server.ts file simple, following the exact pattern in the starter app.
 
-The WebSocket connection follows this protocol:
+4. **No Custom Headers**: Don't try to add headers manually - let routeAgentRequest handle all the routing logic.
 
-1. **Connection**: Client establishes a WebSocket connection to `/agents/api/:agentId/:agentName`
-2. **Handshake**: Client sends a handshake message with agent information
-3. **Method Calls**: Client sends method calls with a unique ID, the agent processes them and responds
-4. **State Updates**: Server can push state updates to the client at any time
-5. **Reconnection**: Client handles reconnection with exponential backoff on connection failures
+5. **AIChatAgent Extension**: Your agent should extend AIChatAgent from the Agents SDK:
+   ```typescript
+   import { AIChatAgent } from "agents/ai-chat-agent";
+   
+   export class CoderAgent extends AIChatAgent<Env> {
+     // Agent implementation...
+   }
+   ```
 
-### Message Format
+## Client Connection
 
-```json
-// Method call from client to server
-{
-  "id": "1647347511111-0",
-  "type": "call",
-  "method": "getMessages",
-  "args": []
-}
+Client code should use the AgentClient from the Agents SDK:
 
-// Response from server to client
-{
-  "id": "1647347511111-0",
-  "type": "response",
-  "result": [{"id": "msg1", "role": "assistant", "content": "Hello!"}]
-}
+```typescript
+import { AgentClient } from "agents/client";
 
-// State update from server to client
-{
-  "type": "state",
-  "state": {"context": {"repoOwner": "example", "repoName": "project"}}
-}
+const client = new AgentClient({
+  agent: "coderagent", // Lowercase name matching the binding
+  name: "default"
+});
 ```
 
-## Client Implementation
+## Troubleshooting
 
-The client implementation includes:
+1. **Case Sensitivity**: If you see "URL does not match any server namespace" errors, check that binding names are lowercase in wrangler.jsonc.
 
-1. **Agent SDK Bridge**: A WebSocket-based client that implements the same interface as the official Cloudflare Agents SDK.
-2. **Agent Connection**: Utilities for managing connections, message routing, and command execution.
-3. **Enhanced useChat Hook**: Integration with the existing chat UI and command execution system.
+2. **Missing Headers**: If you see "Missing namespace or room headers" errors, don't try to add headers manually - let routeAgentRequest handle it.
 
-## Durable Object Agent
+3. **Connection Issues**: Check browser console for WebSocket errors and ensure the URL pattern matches the binding name.
 
-The Durable Object agent provides:
+## Deployment
 
-1. **State Persistence**: Messages and context are stored in the Durable Object's state.
-2. **Tool Integration**: Access to specialized tools for tasks like repository management.
-3. **LLM Integration**: Connection to LLMs through providers like OpenRouter.
+Deploy using Wrangler:
 
-## Example Usage
-
-```tsx
-// Using the agent-enabled useChat hook
-const chat = useChat({
-  // Agent configuration
-  agentId: 'coder-agent',
-  agentName: 'my-instance',
-  agentServerUrl: 'https://agents.openagents.com',
-  
-  // Project context for the agent
-  agentOptions: {
-    projectContext: {
-      repoOwner: 'OpenAgentsInc',
-      repoName: 'openagents',
-      branch: 'main'
-    }
-  },
-  
-  // Enable local fallback
-  localCommandExecution: true
-});
-
-// Send a message to the agent
-chat.append({
-  role: 'user',
-  content: 'What files are in the src directory?'
-});
-
-// Execute a command through the agent
-const result = await chat.executeCommand('ls -la src');
+```bash
+cd packages/agents
+wrangler deploy
 ```
-
-## Connection Flow
-
-1. Client creates a WebSocket connection to the server
-2. Server instantiates or retrieves the appropriate Durable Object for the requested agent
-3. Client sends a handshake message to identify its agent type and instance
-4. After connection is established, client can call methods on the agent
-5. Agent responses and state updates are streamed back to the client
-
-## Benefits
-
-1. **Real-time AI Assistance**: Provides a streaming, interactive experience with specialized AI capabilities.
-2. **Scalability**: Leverages Cloudflare's globally distributed network to ensure low-latency responses.
-3. **Persistence**: Maintains conversation history and context using Durable Objects.
-4. **Specialization**: Different agent types can provide domain-specific capabilities.
-5. **Cross-Platform**: Works in browser, desktop, and mobile environments.
-
-## Future Enhancements
-
-1. **Multiple Agent Types**: Support for different specialized agents beyond the CoderAgent.
-2. **Authentication**: Integration with OAuth for GitHub and other services.
-3. **Tool Extensions**: Adding more specialized tools for different domains.
-4. **Offline Support**: Caching and offline operation capabilities.
-5. **Multi-User Collaborations**: Enabling shared agent sessions between multiple users.
-
-## Implementation Details
-
-The implementation ensures proper error handling, reconnection logic, and progressive enhancement. It gracefully degrades to local functionality when agent connections cannot be established, ensuring users always have a working experience.

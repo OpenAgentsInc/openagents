@@ -1,109 +1,73 @@
-# Understanding the Cloudflare Agents SDK Integration Issues
+# Understanding the Cloudflare Agents SDK Integration
 
-## The Current Situation
+## Overview
 
-When implementing issue #804 to integrate Cloudflare Agents with the `useChat` hook, we encountered a critical error:
+The Cloudflare Agents SDK is a framework for creating stateful AI agents that can maintain persistent connections and state. Integration with OpenAgents requires careful attention to naming conventions and API usage patterns.
 
-```
-Failed to load AgentClient: ReferenceError: require is not defined
-```
+## Key Components
 
-This error points to a fundamental problem with how the Agents SDK is being imported in a browser environment.
+1. **Durable Objects**: The foundation of Agents SDK, providing persistent state storage.
+2. **WebSocket Connections**: Used for real-time, bidirectional communication with agents.
+3. **routeAgentRequest**: The main SDK function that handles request routing to the appropriate Agent.
 
-## Root Cause Analysis
+## Integration Requirements
 
-1. **Module System Incompatibility**:
-   - The Cloudflare Agents SDK is designed as a Node.js module that relies on `require()`.
-   - In the browser environment, the standard ES module system uses `import` instead of `require()`.
-   - Our attempt to use `require('agents/client').AgentClient` in the browser environment fails with "require is not defined".
+For successful integration with the Agents SDK:
 
-2. **Bundling Configuration Issue**:
-   - The `agents` package is imported but not properly configured in the bundler to work in a web environment.
-   - The package is installed (in node_modules) but the module resolution strategy doesn't properly handle the imports.
+1. **Binding Naming Convention**:
+   - The binding name in wrangler.jsonc must be lowercase (e.g., "coderagent")
+   - The class_name must match the exported class (e.g., "CoderAgent")
 
-3. **SDK Design Considerations**:
-   - The Cloudflare Agents SDK appears to be designed primarily for backend/server usage.
-   - Client-side components rely on specific transports like WebSockets for communication.
-   - The browser import path is not matching the expected resolution.
+2. **Server Implementation**:
+   - Export the Agent class directly without renaming
+   - Use routeAgentRequest for all routing logic
+   - Avoid custom header manipulation
 
-## Proper Resolution Options
+3. **Client Implementation**:
+   - The client automatically converts agent names to lowercase
+   - URLs will use this lowercase name (e.g., `/agents/coderagent/default`)
 
-Instead of using mocks (which was a temporary fix), here are the correct approaches to resolve this:
+## Common Issues
 
-### Option 1: Update Module Resolution in Bundler Config
-
-The bundling configuration (Webpack, Vite, etc.) should be updated to properly handle the Agents SDK:
-
-```js
-// In vite.config.js or webpack.config.js
-export default {
-  // ...
-  resolve: {
-    alias: {
-      'agents/client': 'agents/dist/client.js',
-      'agents/react': 'agents/dist/react.js'
-    }
-  }
-}
-```
-
-### Option 2: Use Dynamic Import Instead of Require
-
-Replace direct require calls with dynamic imports:
-
-```typescript
-// Instead of:
-const AgentClient = require('agents/client').AgentClient;
-
-// Use:
-const getAgentClient = async () => {
-  const module = await import('agents/client');
-  return module.AgentClient;
-};
-```
-
-### Option 3: Create Proper Browser Entry Points
-
-The Agents SDK should provide browser-specific entry points with proper ESM support:
-
-```typescript
-// In package.json of the agents package
-{
-  "main": "dist/index.js",
-  "module": "dist/index.esm.js",
-  "browser": "dist/index.browser.js",
-  // ...
-}
-```
-
-## Technical Details of the Error
-
-The error occurs because:
-
-1. The browser doesn't have access to Node.js's `require` function.
-2. The dynamic import attempt fails because the module path resolution is incorrect.
-3. The package is being imported directly from 'agents/client' instead of using a browser-compatible path.
-
-## Recommended Solution for This Project
-
-1. **Short-term Fix**: Use dynamic import with proper error handling:
-   ```typescript
-   let AgentClient: any = null;
-   try {
-     const module = await import('agents/client');
-     AgentClient = module.AgentClient;
-   } catch (error) {
-     console.error('Failed to load Agents SDK:', error);
-     // Provide fallback
-   }
+1. **Case Sensitivity Mismatch**:
+   When the binding name in wrangler.jsonc doesn't match the lowercase name in URLs:
+   ```
+   The url https://agents.openagents.com/agents/coderagent/default does not match any server namespace.
    ```
 
-2. **Mid-term Fix**: Create a browser-compatible wrapper for the Agents SDK that uses WebSockets directly for communication.
+2. **Missing Headers**:
+   When trying to access Durable Objects directly without proper headers:
+   ```
+   Missing namespace or room headers when connecting to CoderAgent.
+   ```
 
-3. **Long-term Fix**: Work with the Cloudflare Agents SDK team to ensure proper browser support or create our own client implementation that follows the same protocol.
+## Best Practices
 
-## Conclusion
+1. **Follow the Example**: Use the Cloudflare Agents starter app as a reference point.
+2. **Keep It Simple**: Minimal code that delegates to routeAgentRequest is best.
+3. **Consistent Naming**: Ensure naming consistency between wrangler.jsonc and exports.
+4. **Let the SDK Handle Routing**: Don't try to manually route or manipulate headers.
 
-The current error is not due to missing dependencies but a fundamental module resolution and environment compatibility issue. The Agents SDK needs to be properly configured for browser usage, or we need to create a browser-compatible client that can communicate with Cloudflare Agent servers using the same protocol.
+## Updated Configuration
 
-**DO NOT USE MOCKS IN PRODUCTION.** Instead, fix the underlying bundling and module resolution issues to properly integrate the real Agents SDK.
+Our working solution uses:
+
+1. Lowercase binding name in wrangler.jsonc:
+   ```
+   "name": "coderagent",
+   "class_name": "CoderAgent"
+   ```
+
+2. Minimal server implementation:
+   ```typescript
+   export { CoderAgent };
+   
+   export default {
+     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+       return (
+         (await routeAgentRequest(request, env)) ||
+         new Response("Not found", { status: 404 })
+       );
+     },
+   };
+   ```

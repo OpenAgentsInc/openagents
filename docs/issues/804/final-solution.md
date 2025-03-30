@@ -2,76 +2,90 @@
 
 ## Problem Solved
 
-We've fixed the WebSocket connection issues with the CoderAgent that were causing the error:
+We've fixed the WebSocket connection issues with the CoderAgent that were causing the errors:
+
+```
+The url https://agents.openagents.com/agents/coderagent/default does not match any server namespace.
+```
+
+and 
 
 ```
 Missing namespace or room headers when connecting to CoderAgent.
-Did you try connecting directly to this Durable Object? Try using getServerByName(namespace, id) instead.
 ```
 
-## Key Insights
+## Root Cause Identified
 
-1. The error message itself gave us the clue: We need to add namespace and room headers when connecting to the Durable Object.
+After extensive debugging, we identified that the core issue was a **case sensitivity mismatch** between the binding configuration and client expectations:
 
-2. From the diagnostics, we confirmed that:
-   - The CoderAgent binding exists in the worker environment
-   - The binding has all required methods including `idFromName`
-   - The class exists and is correctly exported
+1. The client automatically converts agent names to lowercase:
+   ```
+   Agent names should be lowercase. Converting CoderAgent to coderagent.
+   ```
 
-3. The routeAgentRequest function wasn't properly handling our WebSocket connections due to missing headers.
+2. Our wrangler.jsonc had the binding name as "CoderAgent" (uppercase) which didn't match the lowercase "coderagent" in URLs.
 
 ## Solution Implemented
 
-1. **Enhanced Headers Approach**: We now explicitly add headers to WebSocket requests to ensure they're properly routed:
+1. **Binding Name Change**: Updated wrangler.jsonc to use lowercase binding name:
 
-   ```typescript
-   // Add special headers for agents
-   const enhancedHeaders = new Headers(request.headers);
-   enhancedHeaders.set('X-Agents-Force-WebSocket', 'true');
-   enhancedHeaders.set('X-Agents-Namespace', 'agents');
-   
-   // Create a new request with the added headers
-   const enhancedRequest = new Request(request.url, {
-     method: request.method,
-     headers: enhancedHeaders,
-     body: request.body,
-     redirect: request.redirect
-   });
-   ```
-
-2. **Specialized WebSocket Handling**: We route WebSocket requests separately with enhanced options:
-
-   ```typescript
-   // Use routeAgentRequest with enhanced options
-   const response = await routeAgentRequest(enhancedRequest, env, {
-     cors: true,
-     prefix: 'agents'
-   });
-   ```
-
-3. **Fallback Mechanisms**: If the standard approach fails, we handle the request differently based on the path:
-
-   ```typescript
-   // Special message for CoderAgent
-   if (agentName === 'coderagent') {
-     return new Response(
-       `The CoderAgent is experiencing connection issues. Please try again later.\n\n` +
-       `Technical details: The system tried to connect to CoderAgent/${instanceName} but was unable to establish a connection.`,
+   ```diff
+   "durable_objects": {
+     "bindings": [
        {
-         status: 503, // Service Unavailable 
-         headers: { 'Content-Type': 'text/plain' }
+   -     "name": "CoderAgent",
+   +     "name": "coderagent",
+         "class_name": "CoderAgent"
        }
-     );
-   }
+     ]
+   },
    ```
 
-4. **Extensive Logging**: We've added detailed logging at each step to help diagnose any remaining issues.
+2. **Simplified Server Implementation**: Followed the example app pattern exactly:
+
+   ```typescript
+   import { AsyncLocalStorage } from "node:async_hooks";
+   import { routeAgentRequest } from "agents";
+   
+   // Import our CoderAgent
+   import { CoderAgent } from "./coder-agent";
+   
+   // We use ALS to expose the agent context to the tools
+   export const agentContext = new AsyncLocalStorage<CoderAgent>();
+   
+   // Export the CoderAgent class for the Durable Object
+   export { CoderAgent };
+   
+   /**
+    * Worker entry point that routes incoming requests to the appropriate handler
+    */
+   export default {
+     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+       if (!env.OPENROUTER_API_KEY) {
+         console.error(
+           "OPENROUTER_API_KEY is not set, don't forget to set it using 'wrangler secret put OPENROUTER_API_KEY'"
+         );
+         return new Response("OPENROUTER_API_KEY is not set", { status: 500 });
+       }
+       
+       return (
+         // Route the request to our agent or return 404 if not found
+         (await routeAgentRequest(request, env)) ||
+         new Response("Not found", { status: 404 })
+       );
+     },
+   };
+   ```
 
 ## Technical Background
 
-The Cloudflare Agents SDK is built on top of Durable Objects, which require specific headers when establishing WebSocket connections. The "Missing namespace or room headers" error occurs when a direct request is made to a Durable Object without these headers.
+The Cloudflare Agents SDK has some specific requirements for proper WebSocket connections:
 
-The `routeAgentRequest` function is supposed to handle this automatically, but it needs proper configuration to do so. By explicitly adding these headers and setting the prefix option, we ensure the request gets correctly routed through the Agents SDK's internal machinery.
+1. Binding names in wrangler.jsonc must match the lowercase names used in URLs
+2. The SDK's `routeAgentRequest` function handles all the routing complexity internally
+3. Simple delegation to `routeAgentRequest` without additional logic is the recommended pattern
+
+By matching the exact pattern used in the Cloudflare Agents starter app, we ensure compatibility with the SDK's internal handling of WebSocket connections.
 
 ## Deployment
 
@@ -89,4 +103,4 @@ Test the WebSocket connection by connecting to:
 wss://agents.openagents.com/agents/coderagent/default
 ```
 
-The connection should now be established without the "Missing namespace or room headers" error.
+The connection should now be established successfully without any errors.

@@ -1,149 +1,121 @@
-# Agent Connection Troubleshooting Guide
+# Troubleshooting WebSocket Connections to Cloudflare Agents
 
-This document provides guidance on troubleshooting WebSocket connections to Cloudflare Agents in the OpenAgents system.
+This document provides guidance for troubleshooting WebSocket connection issues with Cloudflare Agents.
 
-## Common Connection Issues
+## Common Issues and Solutions
 
-When connecting to Cloudflare Agents, you might encounter the following issues:
+### 1. "URL does not match any server namespace" Error
 
-1. **404 Not Found Errors**
-   - The WebSocket endpoint path may be incorrect
-   - The agent name may be incorrectly formatted
-   - The server might be running at a different URL
+**Error Message:**
+```
+The url https://agents.openagents.com/agents/coderagent/default does not match any server namespace.
+```
 
-2. **Connection Status Mismatch**
-   - The UI shows "connected" but the WebSocket is not actually connected
-   - Commands fail with "connection not established" errors
+**Possible Causes:**
+- Case sensitivity mismatch between binding name and URL
+- Missing or incorrectly configured Durable Object binding
+- Incorrect URL pattern
 
-3. **Authentication Failures**
-   - Missing or invalid authentication token
+**Solutions:**
+1. Ensure binding name in wrangler.jsonc is lowercase to match client-side naming:
+   ```json
+   "name": "coderagent",  // Not "CoderAgent"
+   ```
+2. Verify that the binding exists and is correctly configured
+3. Check that URL patterns match the expected format: `/agents/{agent-name}/{instance-name}`
 
-## Connection Path Patterns
+### 2. "Missing namespace or room headers" Error
 
-The agent-sdk-bridge will now automatically try multiple URL patterns to find the correct endpoint:
+**Error Message:**
+```
+Missing namespace or room headers when connecting to CoderAgent.
+```
 
+**Possible Causes:**
+- Attempting to access Durable Object directly without proper routing
+- Manually adding incorrect headers
+- Not using routeAgentRequest for routing
+
+**Solutions:**
+1. Use routeAgentRequest without any custom header manipulation
+2. Simplify your server.ts implementation to match the example app
+3. Don't attempt direct Durable Object access for WebSocket connections
+
+### 3. WebSocket Connection Failures with Code 1006
+
+**Error Message:**
+```
+Connection to wss://agents.openagents.com/agents/coderagent/default closed with code 1006 (Abnormal closure)
+```
+
+**Possible Causes:**
+- Server-side error handling issue
+- CORS configuration problem
+- Authorization issues
+
+**Solutions:**
+1. Check server logs for errors during the WebSocket handshake
+2. Ensure CORS is properly configured for WebSocket connections
+3. Verify that all required API keys are set (e.g., OPENROUTER_API_KEY)
+
+## Diagnostic Steps
+
+When troubleshooting WebSocket connection issues:
+
+1. **Check Client Console Logs:**
+   - Look for WebSocket connection attempts
+   - Note any error messages or status codes
+
+2. **Check Server Logs:**
+   - Look for request handling information
+   - Note any errors during WebSocket upgrade
+
+3. **Verify Configuration:**
+   - Ensure wrangler.jsonc has the correct binding name (lowercase)
+   - Verify that the class_name matches the exported class
+   - Check that the server.ts file follows the example app pattern
+
+4. **Test with Simple Implementation:**
+   - Simplify to the most basic implementation
+   - Use the exact pattern from the Cloudflare Agents starter app
+
+## Helpful Commands
+
+```bash
+# Deploy worker and check for errors
+wrangler deploy
+
+# Test WebSocket connection from command line
+websocat wss://agents.openagents.com/agents/coderagent/default
+
+# Check for TypeScript errors
+npx tsc --noEmit
+```
+
+## Example of Working Configuration
+
+**wrangler.jsonc:**
+```jsonc
+"durable_objects": {
+  "bindings": [
+    {
+      "name": "coderagent",
+      "class_name": "CoderAgent"
+    }
+  ]
+},
+```
+
+**server.ts:**
 ```typescript
-const possiblePatterns = [
-  'api/agent',  // Singular (original pattern)
-  'api/agents', // Plural (SDK docs pattern)
-  'agents',     // Without api prefix
-  '',           // Direct path
-  'ws',         // WebSocket-specific
-  'worker',     // Worker-specific endpoint
-  'agent'       // Direct agent endpoint
-];
+import { routeAgentRequest } from "agents";
+import { CoderAgent } from "./coder-agent";
+
+export { CoderAgent };
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    return (await routeAgentRequest(request, env)) || new Response("Not found", { status: 404 });
+  },
+};
 ```
-
-Each pattern is combined with the agent name and instance name:
-`wss://host/{pattern}/{agentName}/{instanceName}`
-
-## Best Practices
-
-1. **Use Lowercase Agent Names**
-   - Always use lowercase agent names for compatibility
-   - The system will automatically convert names to lowercase
-
-2. **Use Simple Instance Names**
-   - Use simple instance names like `default` instead of `default-instance`
-   - Avoid special characters and spaces
-
-3. **Don't Specify Path Pattern Unless Necessary**
-   - Let the system try multiple patterns to find the working one
-   - Only specify a path pattern if you know the exact endpoint structure
-
-4. **Check Console Logs**
-   - The system now logs detailed connection attempts and errors
-   - Look for "Starting connection attempts with X possible URL patterns"
-   - Check for "Connection to [URL] closed with code [code]" messages
-
-## Monitoring Connection Status
-
-The system now provides accurate connection status reporting:
-
-```typescript
-// In your component
-const chat = useChat({
-  agentId: 'coderagent',
-  onAgentConnectionChange: (connected) => {
-    console.log(`Connection status: ${connected ? 'connected' : 'disconnected'}`);
-  }
-});
-
-// Check connection status
-if (chat.agentConnection?.isConnected) {
-  console.log('WebSocket is connected');
-} else {
-  console.log('WebSocket is not connected');
-}
-```
-
-## Testing Connection
-
-You can test WebSocket connections directly in your browser console:
-
-```javascript
-// Test different URL patterns
-function testAgentConnections() {
-  const host = 'agents.openagents.com';
-  const agentName = 'coderagent';
-  const instanceName = 'default';
-  
-  const patterns = [
-    'api/agent',
-    'api/agents',
-    'agents',
-    '',
-    'ws',
-    'worker',
-    'agent'
-  ];
-  
-  patterns.forEach((pattern, index) => {
-    const path = pattern ? `${pattern}/` : '';
-    const url = `wss://${host}/${path}${agentName}/${instanceName}`;
-    
-    console.log(`Testing pattern ${index + 1}: ${url}`);
-    
-    const socket = new WebSocket(url);
-    
-    socket.onopen = () => {
-      console.log(`✅ CONNECTED using pattern: ${pattern}`);
-      // Close this socket since we're just testing
-      setTimeout(() => socket.close(), 1000);
-    };
-    
-    socket.onerror = () => {
-      console.log(`❌ FAILED using pattern: ${pattern}`);
-    };
-    
-    socket.onclose = (event) => {
-      console.log(`CLOSED pattern ${pattern}: code=${event.code}`);
-    };
-  });
-}
-
-// Run the test
-testAgentConnections();
-```
-
-## Debugging Tips
-
-1. **Check Server Logs**
-   - If you have access to the Cloudflare Worker logs, check for WebSocket connection attempts
-   - Look for 404 errors which indicate incorrect paths
-
-2. **Verify Agent Name**
-   - Make sure the agent name exactly matches the exported class on the server
-   - Check case sensitivity (although the client converts to lowercase)
-
-3. **Test Each Component Separately**
-   - Test direct WebSocket connections using the browser console
-   - Test agent client without the UI layer
-   - Test basic functionality before adding complexity
-
-4. **Check Network Tab**
-   - In browser DevTools, check the Network tab for WebSocket connection attempts
-   - Look for 101 (Switching Protocols) responses for successful connections
-   - Check for 404, 401, or other error responses
-
-By following these troubleshooting steps, you should be able to identify and resolve connection issues with Cloudflare Agents.
