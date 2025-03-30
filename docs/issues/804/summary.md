@@ -1,7 +1,7 @@
 # Replacing Custom SDK Bridge with Official Cloudflare Agents SDK
 
 ## Summary
-In this PR, we replaced the custom agent-sdk-bridge implementation with the official Cloudflare Agents SDK hooks and libraries. This change significantly improves the reliability and maintainability of our WebSocket connections to Cloudflare Agents.
+In this PR, we replaced the custom agent-sdk-bridge implementation with the official Cloudflare Agents SDK hooks and libraries. This change significantly improves the reliability and maintainability of our WebSocket connections to Cloudflare Agents while reducing code complexity.
 
 ## Key Changes
 
@@ -12,27 +12,30 @@ In this PR, we replaced the custom agent-sdk-bridge implementation with the offi
 2. **Official SDK Integration**:
    - Added direct imports for `useAgent` from 'agents/react'
    - Added direct imports for `useAgentChat` from 'agents/ai-react'
-   - Updated agent-connection.ts to be a thin wrapper around the official SDK
+   - Converted agent-connection.ts to a minimal type wrapper around the official SDK
 
-3. **Improved useChat Implementation**:
+3. **Simplified useChat Implementation**:
    - Modified useChat to use the official SDK hooks directly
+   - Removed the extra utility layer between hooks and SDK
+   - Direct agent.call() usage for RPC methods instead of going through wrappers
    - Better message persistence with official message synchronization 
-   - Fixed RPC method timeout issues
 
 4. **Configuration Updates**:
    - Updated dependencies in package.json
-   - Added proper module configuration
+   - Configured moduleResolution to "bundler" for better ESM support
 
 ## Benefits
 
 1. **Simplified Codebase**:
-   - Removed complex custom code that was difficult to maintain
+   - Removed complex custom WebSocket management code
+   - Removed redundant wrapper functions that added no value
    - Better alignment with official SDK documentation and examples
 
 2. **Improved Reliability**:
-   - Fixed WebSocket connection issues
+   - Fixed WebSocket connection issues with direct SDK usage
    - Fixed case sensitivity problems in agent names
    - Better message persistence between sessions
+   - Fixed RPC method timeout issues by using SDK directly
 
 3. **Better Debugging**:
    - Official SDK provides better error messages and connection status
@@ -41,6 +44,25 @@ In this PR, we replaced the custom agent-sdk-bridge implementation with the offi
 4. **Future Compatibility**:
    - Easier to upgrade as the Agents SDK evolves
    - Direct access to new features as they are added to the SDK
+
+## Implementation Details
+
+1. **useChat.ts Changes**:
+   - Now uses useAgent and useAgentChat hooks directly
+   - Directly calls agent.call('method', [...args]) instead of going through utils
+   - Uses agent.close() for disconnection
+   - Preserves local command execution functionality
+   - Simplifies project context setting
+
+2. **agent-connection.ts Changes**:
+   - Converted to a minimal type interface and re-export layer
+   - Removed all redundant functions like createAgentUtils
+   - Simply re-exports the official SDK hooks and types
+
+3. **Type Handling**:
+   - Updated tsconfig.json moduleResolution to "bundler"
+   - Added necessary type casts to handle conflicts between SDK types and local types
+   - Added StepStartUIPart support to Message types
 
 ## Testing
 

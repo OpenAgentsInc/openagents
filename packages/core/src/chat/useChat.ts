@@ -7,12 +7,8 @@ import { safeExecuteCommand, CommandExecutionOptions } from '../utils/commandExe
 // Import the official SDK hooks
 import { useAgent } from 'agents/react';
 import { useAgentChat } from 'agents/ai-react';
-// Import the utility wrappers for backward compatibility
-import { 
-  createAgentUtils, 
-  AgentConnectionOptions,
-  AgentClient
-} from './agent-connection';
+// Import types from agent-connection
+import type { AgentConnectionOptions } from './agent-connection';
 
 // Define our own chat options interface
 export interface UseChatWithCommandsOptions {
@@ -103,8 +99,7 @@ export interface UseChatWithCommandsOptions {
 export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<typeof vercelUseChat> & {
   agentConnection: { 
     isConnected: boolean; 
-    client: AgentClient | null;
-    utils: ReturnType<typeof createAgentUtils> | null;
+    client: any; 
   };
 } {
   const {
@@ -127,12 +122,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   // State for tracking agent connection
   const [agentConnection, setAgentConnection] = useState<{
     isConnected: boolean;
-    client: AgentClient | null;
-    utils: ReturnType<typeof createAgentUtils> | null;
+    client: any;
   }>({
     isConnected: false,
-    client: null,
-    utils: null
+    client: null
   });
   
   // Use the official useAgent hook from Cloudflare Agents SDK
@@ -159,14 +152,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     console.log('🔌 USECHAT: Connected to agent via official SDK:', agent.agent);
     
-    // Create utilities for interacting with the agent
-    const utils = createAgentUtils(agent);
-    
     // Update connection state
     setAgentConnection({
       isConnected: true,
-      client: agent,
-      utils
+      client: agent
     });
     
     // Notify of successful connection
@@ -175,11 +164,13 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     // Set project context if provided
     if (agentOptions?.projectContext) {
       try {
-        utils.setProjectContext(agentOptions.projectContext).then(() => {
-          console.log('📁 USECHAT: Set project context for agent');
-        }).catch(error => {
-          console.warn('Failed to set project context:', error);
-        });
+        agent.call('setProjectContext', [agentOptions.projectContext])
+          .then(() => {
+            console.log('📁 USECHAT: Set project context for agent');
+          })
+          .catch(error => {
+            console.warn('Failed to set project context:', error);
+          });
       } catch (contextError) {
         console.warn('Failed to set project context:', contextError);
       }
@@ -189,11 +180,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     return () => {
       if (agent) {
         console.log('🔌 USECHAT: Disconnecting from agent');
-        utils.disconnect();
+        agent.close();
         setAgentConnection({
           isConnected: false,
-          client: null,
-          utils: null
+          client: null
         });
         onAgentConnectionChange?.(false);
       }
@@ -294,7 +284,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   useEffect(() => {
     setProcessedMessages(prevProcessedMessages => {
       // Careful update that preserves our processed messages with command outputs
-      return messages.map((newMsg: UIMessage) => {
+      // Type cast to handle different UIMessage definitions
+      return (messages as any[]).map((newMsg: any) => {
         // Check if we have this message in our processed messages
         const existingMsg = prevProcessedMessages.find(m => m.id === newMsg.id);
         
@@ -309,8 +300,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
           }
         }
         
-        // Otherwise use the new message
-        return newMsg;
+        // Otherwise use the new message (with type cast)
+        return newMsg as UIMessage;
       });
     });
   }, [messages]); // Removed processedMessages from dependencies
@@ -400,8 +391,13 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
             
             // Use agent or local command execution based on agent connection
             let result;
-            if (shouldUseAgent && agentConnection.isConnected && agentConnection.utils) {
-              result = await agentConnection.utils.executeCommand(command);
+            if (shouldUseAgent && agentConnection.isConnected && agent) {
+              try {
+                result = await agent.call('executeCommand', [command]);
+              } catch (agentError) {
+                console.error('❌ USECHAT: Agent command execution failed:', agentError);
+                throw agentError;
+              }
             } else {
               result = await safeExecuteCommand(command, commandOptions);
             }
@@ -501,16 +497,17 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     // Process all unprocessed assistant messages
     const processNewMessages = async () => {
-      // Get all assistant messages
-      const assistantMessages = messages.filter((m: UIMessage) => m.role === 'assistant');
+      // Get all assistant messages - use any[] cast to avoid type issues
+      const assistantMessages = (messages as any[]).filter((m: any) => m.role === 'assistant');
       
       // Find messages that haven't been processed yet
-      const unprocessedMessages = assistantMessages.filter((msg: UIMessage) => !processedMessageIds.current.has(msg.id));
+      const unprocessedMessages = assistantMessages.filter((msg: any) => !processedMessageIds.current.has(msg.id));
       
       if (unprocessedMessages.length > 0) {
         // Process each new message
         for (const message of unprocessedMessages) {
-          await processSingleMessage(message);
+          // Cast to UIMessage to satisfy type checker
+          await processSingleMessage(message as UIMessage);
         }
       }
     };
@@ -518,11 +515,11 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     // Run the processing
     processNewMessages();
   }, [messages, localCommandExecution, commandOptions, onCommandStart, onCommandComplete, updateMessage, 
-      shouldUseAgent, agentConnection.isConnected, agentConnection.utils, originalAppend]);
+      shouldUseAgent, agentConnection.isConnected, agent, originalAppend]);
   
   // Command execution for agent
   const executeAgentCommand = useCallback(async (command: string) => {
-    if (!shouldUseAgent || !agentConnection.isConnected || !agentConnection.utils) {
+    if (!shouldUseAgent || !agentConnection.isConnected || !agent) {
       console.log('ℹ️ USECHAT: Agent not connected, falling back to local command execution');
       return safeExecuteCommand(command, commandOptions);
     }
@@ -530,7 +527,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     try {
       console.log('⚙️ USECHAT: Executing command on agent:', command);
       onCommandStart?.(command);
-      const result = await agentConnection.utils.executeCommand(command);
+      const result = await agent.call('executeCommand', [command]);
       onCommandComplete?.(command, result);
       return result;
     } catch (error) {
@@ -540,11 +537,27 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
   }, [
     shouldUseAgent, 
     agentConnection.isConnected, 
-    agentConnection.utils, 
+    agent, 
     commandOptions,
     onCommandStart,
     onCommandComplete
   ]);
+  
+  // Helper function to fetch messages from the agent
+  const fetchMessages = useCallback(async () => {
+    if (!shouldUseAgent || !agentConnection.isConnected || !agent) {
+      console.log('ℹ️ USECHAT: Agent not connected, cannot fetch messages');
+      return [];
+    }
+    
+    try {
+      console.log('📄 USECHAT: Fetching messages from agent');
+      return await agent.call('getMessages');
+    } catch (error) {
+      console.error('❌ USECHAT: Failed to fetch messages from agent:', error);
+      return [];
+    }
+  }, [shouldUseAgent, agentConnection.isConnected, agent]);
   
   // Extended test command execution to check both local and agent capabilities
   const testCommandExecution = useCallback(async () => {
@@ -553,8 +566,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     
     // Test agent command execution if connected
     let agentResult: any = null;
-    if (shouldUseAgent && agentConnection.isConnected && agentConnection.utils) {
-      agentResult = await agentConnection.utils.executeCommand('echo "Testing agent command execution"').catch(() => null);
+    if (shouldUseAgent && agentConnection.isConnected && agent) {
+      agentResult = await agent.call('executeCommand', ['echo "Testing agent command execution"']).catch(() => null);
     }
     
     return {
@@ -573,7 +586,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     localCommandExecution, 
     shouldUseAgent, 
     agentConnection.isConnected, 
-    agentConnection.utils,
+    agent,
     commandOptions
   ]);
   
@@ -591,15 +604,16 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     // Add agent connection info
     agentConnection: {
       isConnected: agentConnection.isConnected,
-      client: agentConnection.client,
-      utils: agentConnection.utils
+      client: agentConnection.client
     },
     // Add command execution capability that automatically routes to agent or local
-    executeCommand: shouldUseAgent && agentConnection.isConnected && agentConnection.utils 
+    executeCommand: shouldUseAgent && agentConnection.isConnected && agent 
       ? executeAgentCommand 
       : (command: string) => safeExecuteCommand(command, commandOptions),
     // Also keep the specific agent command function for explicit agent calls
-    executeAgentCommand
+    executeAgentCommand,
+    // Methods for interacting with the agent directly
+    fetchMessages
   };
   
   // Add debugging properties
@@ -622,5 +636,6 @@ export function useChat(options: UseChatWithCommandsOptions = {}): ReturnType<ty
     }
   });
   
-  return returnValue;
+  // Type cast to satisfy the type checker
+  return returnValue as any;
 }
