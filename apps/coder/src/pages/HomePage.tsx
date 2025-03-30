@@ -92,32 +92,36 @@ export default function HomePage() {
 
                 <div className="overflow-y-auto">
                   <div className="h-full p-4">
-                    <MessageList
-                      messages={messages}
-                      isTyping={isGenerating}
-                    />
+                    <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+                      <MessageList
+                        messages={messages}
+                        isTyping={isGenerating}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <div className="border-t bg-background p-4">
-                  <ChatForm
-                    isPending={isGenerating}
-                    handleSubmit={handleSubmit}
-                  >
-                    {({ files, setFiles }) => (
-                      <MessageInput
-                        value={input}
-                        onChange={handleInputChange}
-                        allowAttachments
-                        files={files}
-                        setFiles={setFiles}
-                        stop={stop}
-                        isGenerating={isGenerating}
-                      />
-                    )}
-                  </ChatForm>
-                  <div className="mt-2 text-center text-xs text-muted-foreground">
-                    <div>Coder will make mistakes. Commit to git regularly.</div>
+                  <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+                    <ChatForm
+                      isPending={isGenerating}
+                      handleSubmit={handleSubmit}
+                    >
+                      {({ files, setFiles }) => (
+                        <MessageInput
+                          value={input}
+                          onChange={handleInputChange}
+                          allowAttachments
+                          files={files}
+                          setFiles={setFiles}
+                          stop={stop}
+                          isGenerating={isGenerating}
+                        />
+                      )}
+                    </ChatForm>
+                    <div className="mt-2 text-center text-xs text-muted-foreground">
+                      <div>Coder will make mistakes. Commit to git regularly.</div>
+                    </div>
                   </div>
                 </div>
               </div>
