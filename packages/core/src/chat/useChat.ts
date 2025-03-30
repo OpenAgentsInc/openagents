@@ -183,7 +183,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
           .then(() => {
             console.log('📁 USECHAT: Set project context for agent');
           })
-          .catch(error => {
+          .catch((error: Error) => {
             console.warn('Failed to set project context:', error);
           });
       } catch (contextError) {
