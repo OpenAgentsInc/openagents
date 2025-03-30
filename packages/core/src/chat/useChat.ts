@@ -296,7 +296,9 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   // --- Simplified Effect to Fetch Initial Messages ---
   useEffect(() => {
     // Skip if agent isn't active or we've already fetched messages
-    if (!isAgentActive || !agent || initialMessagesFetchedRef.current === true) {
+    // Note: using shouldUseAgent && agentConnection.isConnected instead of isAgentActive 
+    // since isAgentActive is defined later in the file
+    if (!(shouldUseAgent && agentConnection.isConnected) || !agent || initialMessagesFetchedRef.current === true) {
       return;
     }
     
@@ -336,7 +338,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
         }
       });
   }, [
-    isAgentActive, // Simplified dependency using isAgentActive flag
+    shouldUseAgent, 
+    agentConnection.isConnected,
     agent,
     agentChat.setMessages,
     chatOptions.initialMessages
@@ -372,11 +375,14 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   
   // Custom append function - delegates to active implementation
   const append = useCallback(async (message: any /* TODO: Type */) => {
+    // Using shouldUseAgent && agentConnection.isConnected instead of isAgentActive
+    const isAgentMode = shouldUseAgent && agentConnection.isConnected;
+    
     try {
-      if (isAgentActive && agentChat?.append) {
+      if (isAgentMode && agentChat?.append) {
         console.log('📤 USECHAT: Appending via agentChat');
         return await agentChat.append(message);
-      } else if (!isAgentActive && vercelChat?.append) {
+      } else if (!isAgentMode && vercelChat?.append) {
         console.log('📤 USECHAT: Appending via vercelChat');
         return await vercelChat.append(message);
       } else {
@@ -384,31 +390,34 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
         return null; // Or throw an error
       }
     } catch (error) {
-        console.error(`❌ USECHAT: Error during append (active: ${isAgentActive}):`, error);
+        console.error(`❌ USECHAT: Error during append (active: ${isAgentMode}):`, error);
         // Use the onError from the *options* passed to the main useChat hook
         options.onError?.(error instanceof Error ? error : new Error(String(error)));
         return null;
     }
-  }, [isAgentActive, agentChat, vercelChat, options.onError]);
+  }, [shouldUseAgent, agentConnection.isConnected, agentChat, vercelChat, options.onError]);
   
   // Custom handleSubmit to work with combined append and active input/setters
   const handleSubmit = useCallback((e?: React.FormEvent<HTMLFormElement>) => {
       e?.preventDefault();
+      // Using shouldUseAgent && agentConnection.isConnected instead of isAgentActive
+      const isAgentMode = shouldUseAgent && agentConnection.isConnected;
+      
       // Get input value from the *active* chat hook
-      const messageToSend = isAgentActive ? agentChat?.input : vercelChat?.input;
+      const messageToSend = isAgentMode ? agentChat?.input : vercelChat?.input;
       if (!messageToSend) return;
 
-      console.log(`📤 USECHAT: handleSubmit called. Active: ${isAgentActive}. Message: "${messageToSend}"`);
+      console.log(`📤 USECHAT: handleSubmit called. Active: ${isAgentMode}. Message: "${messageToSend}"`);
       // Call the combined append function
       append({ role: 'user', content: messageToSend });
 
       // Manually clear input using the *active* chat's setter
-      if (isAgentActive && agentChat?.setInput) {
+      if (isAgentMode && agentChat?.setInput) {
           agentChat.setInput('');
-      } else if (!isAgentActive && vercelChat?.setInput) {
+      } else if (!isAgentMode && vercelChat?.setInput) {
           vercelChat.setInput('');
       }
-  }, [append, isAgentActive, agentChat, vercelChat]);
+  }, [append, shouldUseAgent, agentConnection.isConnected, agentChat, vercelChat]);
   
   // Helper function to generate a unique ID (simplified version)
   const generateId = () => {
@@ -476,7 +485,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   // Process local commands in assistant messages
   useEffect(() => {
     // Skip if command execution is disabled, no messages, or agent is active
-    if (isAgentActive || !localCommandExecution || messages.length === 0) {
+    // Using shouldUseAgent && agentConnection.isConnected instead of isAgentActive
+    if ((shouldUseAgent && agentConnection.isConnected) || !localCommandExecution || messages.length === 0) {
       return;
     }
     
@@ -805,9 +815,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     }
   });
   
-  // We must keep this type cast because TypeScript cannot reconcile UIMessage types 
-  // from different node_modules instances (@ai-sdk/ui-utils). The two instances have 
-  // different type definitions - one includes StepStartUIPart in the UIMessage.parts union
-  // while the other does not. This causes type incompatibility even with proper path aliases.
-  return returnValue as UseChatReturn;
+  // We must cast to unknown first, then to the expected return type
+  // This is necessary because the types from different libraries are not directly compatible
+  // even though they have the same structure in practice.
+  return returnValue as unknown as UseChatReturn;
 }
