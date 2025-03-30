@@ -8,6 +8,7 @@ import { CoderAgent } from "./coder-agent";
 export const agentContext = new AsyncLocalStorage<CoderAgent>();
 
 // Export the CoderAgent class for the Durable Object
+// IMPORTANT: This export name MUST match the class_name in wrangler.jsonc
 export { CoderAgent };
 
 /**
