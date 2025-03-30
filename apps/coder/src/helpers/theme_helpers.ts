@@ -75,7 +75,7 @@ function updateDocumentTheme(isDarkMode: boolean) {
     document.documentElement.classList.remove("light");
     document.documentElement.classList.add("dark");
     document.documentElement.style.colorScheme = "dark";
-    document.body.style.backgroundColor = "#020817";
+    document.body.style.backgroundColor = "#000000";
   }
   
   // Trigger a CSS variable recalculation to ensure sidebar updates

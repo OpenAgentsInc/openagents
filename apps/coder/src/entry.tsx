@@ -25,7 +25,7 @@ import App from './App';
 
   // Set background color based on theme to prevent white flash
   const isDark = document.documentElement.classList.contains('dark');
-  document.body.style.backgroundColor = isDark ? '#020817' : '#ffffff';
+  document.body.style.backgroundColor = isDark ? '#000000' : '#ffffff';
 })();
 
 // Mount the app to the DOM
