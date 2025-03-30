@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, Animated, TouchableOpacity, SafeAreaView, GestureResponderEvent } from 'react-native';
+import { Animated, GestureResponderEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToastProps, ToastProviderProps, ToastOptions, ToastContextType } from './Toast.types';
+import { View, Text, TouchableOpacity, SafeAreaView, AnimatedView } from '@openagents/core';
 import { styles, getVariantStyles } from './Toast.styles';
 
 // Create a unique ID for each toast
@@ -54,7 +55,7 @@ export const Toast = ({
       onPress={onPress}
       disabled={!onPress}
     >
-      <Animated.View
+      <AnimatedView
         style={[
           styles.toast,
           variantStyles,
@@ -72,19 +73,19 @@ export const Toast = ({
           },
         ]}
       >
-        {icon && <View>{icon}</View>}
+        {icon && <View>{icon as JSX.Element}</View>}
 
         <View style={styles.contentContainer}>
           {title && <Text style={styles.title}>{title}</Text>}
           <Text style={styles.message}>{message}</Text>
         </View>
 
-        {action && <View style={styles.actionContainer}>{action}</View>}
+        {action && <View style={styles.actionContainer}>{action as React.ReactNode}</View>}
 
         <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
           <Ionicons name="close" size={18} style={styles.closeIcon} />
         </TouchableOpacity>
-      </Animated.View>
+      </AnimatedView>
     </TouchableOpacity>
   );
 };
@@ -174,7 +175,7 @@ export const useToast = () => {
 
 // Custom hook for interval
 export const useInterval = (callback: () => void, delay: number | null) => {
-  const savedCallback = useRef<() => void>();
+  const savedCallback = useRef<() => void>(() => {});
 
   useEffect(() => {
     savedCallback.current = callback;
