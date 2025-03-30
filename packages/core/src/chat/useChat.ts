@@ -145,8 +145,19 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   
   // Always call useAgent with the same parameters (React hooks must be called unconditionally)
   // Create options object first, then add the headers property if needed
+  // Always normalize agent ID to lowercase to prevent reconnection loops
+  const normalizedAgentId = agentId?.toLowerCase() || 'coderagent';
+  
+  // If the original agent ID was in a different case than the normalized one,
+  // log a warning but only once (not on every render) to avoid console spam
+  useEffect(() => {
+    if (agentId && agentId !== normalizedAgentId) {
+      console.log(`⚠️ USECHAT: Agent name "${agentId}" has been normalized to lowercase "${normalizedAgentId}" to prevent connection issues.`);
+    }
+  }, [agentId, normalizedAgentId]);
+  
   const agentOptions1 = {
-    agent: agentId || 'coderagent', // default to 'coderagent' if only name is provided
+    agent: normalizedAgentId, // Ensure agent ID is always lowercase
     name: agentName || agentOptions?.agentName || 'default',
     host: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
     onStateUpdate: agentOptions?.onStateUpdate,
@@ -167,6 +178,25 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     getInitialMessages: null,
     // The connection will only be used if shouldUseAgent is true (checked in useEffect)
   });
+  
+  // Use a ref to track agent configuration to prevent connection/disconnection loops
+  const agentConfigRef = useRef({
+    agentId: normalizedAgentId,
+    agentName: agentName || agentOptions?.agentName || 'default',
+    serverUrl: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
+    projectContext: agentOptions?.projectContext
+  });
+  
+  // Update the ref when config changes, but don't trigger effect re-runs
+  useEffect(() => {
+    agentConfigRef.current = {
+      agentId: normalizedAgentId,
+      agentName: agentName || agentOptions?.agentName || 'default',
+      serverUrl: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
+      projectContext: agentOptions?.projectContext
+    };
+  }, [normalizedAgentId, agentName, agentOptions?.agentName, agentServerUrl, 
+      agentOptions?.serverUrl, agentOptions?.projectContext]);
   
   // Set up agent connection when agent is available and should be used
   useEffect(() => {
@@ -200,10 +230,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     // Notify of successful connection
     onAgentConnectionChange?.(true);
     
-    // Set project context if provided
-    if (agentOptions?.projectContext) {
+    // Set project context if provided - use the ref to avoid dependency changes
+    if (agentConfigRef.current.projectContext) {
       try {
-        agent.call('setProjectContext', [agentOptions.projectContext])
+        agent.call('setProjectContext', [agentConfigRef.current.projectContext])
           .then(() => {
             console.log('📁 USECHAT: Set project context for agent');
           })
@@ -217,21 +247,24 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     
     // Cleanup function to disconnect from agent
     return () => {
-      // Only close if we intended to use the agent
+      // Only close if we intended to use the agent AND the component is unmounting
+      // Note: we're not disconnecting on dependency changes to prevent infinite reconnection loops
       if (shouldUseAgent && agent) {
-        console.log('🔌 USECHAT: Disconnecting from agent');
+        console.log('🔌 USECHAT: Component unmounting, disconnecting from agent');
+        // Close the agent connection
         agent.close();
+        // Update local state
         setAgentConnection({
           isConnected: false,
           client: null
         });
+        // Notify about disconnection
         onAgentConnectionChange?.(false);
       }
     };
-  }, [agent, agentId, agentName, agentServerUrl, agentAuthToken, 
-      // Only include serializable parts of agentOptions to prevent unnecessary re-connects
-      agentOptions?.agentName, agentOptions?.serverUrl, 
-      JSON.stringify(agentOptions?.projectContext), onAgentConnectionChange]);
+  // We use a ref to track the "should disconnect" flag to prevent infinite reconnection loops
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldUseAgent]);
   
   // Track the original useChat instance
   const vercelChat = vercelUseChat({

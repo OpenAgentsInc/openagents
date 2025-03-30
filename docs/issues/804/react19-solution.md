@@ -2,7 +2,7 @@
 
 ## Problem Summary
 
-Two key issues were identified and fixed:
+Three key issues were identified and fixed:
 
 1. **Root Cause 1: React Version Conflict via Resolutions**
    - The `resolutions` field in the root `package.json` was forcing React 18.3.1 throughout the monorepo
@@ -13,6 +13,11 @@ Two key issues were identified and fixed:
    - After fixing React versions, a second issue appeared: CORS errors when fetching initial agent chat messages
    - The `useAgentChat` hook was making HTTP requests to `/agents/coderagent/default/get-messages` 
    - The backend wasn't configured to handle these requests with proper CORS headers
+
+3. **Root Cause 3: Agent Name Case Sensitivity Causing Reconnection Loops**
+   - After fixing the previous issues, a third problem emerged: infinite reconnection loops
+   - The agent SDK was converting agent names to lowercase internally (`CoderAgent` → `coderagent`)
+   - This case change caused React to detect a prop change on every render, leading to connect/disconnect cycles
 
 ## Solution
 
@@ -48,10 +53,49 @@ Modified `useChat.ts` in the core package to disable automatic fetching of initi
 
 This prevents the CORS error by avoiding the HTTP GET request to fetch initial messages.
 
+### Fix 3: Normalize Agent Name Case
+
+1. Modified `AgentChatTest.tsx` to use lowercase agent ID by default:
+
+```diff
+  const [agentConfig, setAgentConfig] = useState({
+-   agentId: 'CoderAgent', // Must match the export class name exactly
++   agentId: 'coderagent', // Must be lowercase to avoid reconnection loops
+    agentName: 'default', // Simplified instance name
+    serverUrl: 'https://agents.openagents.com'
+  });
+```
+
+2. Modified `useChat.ts` to always normalize agent ID to lowercase and prevent reconnection loops:
+
+```diff
++ // Always normalize agent ID to lowercase to prevent reconnection loops
++ const normalizedAgentId = agentId?.toLowerCase() || 'coderagent';
++
++ // If the original agent ID was in a different case than the normalized one,
++ // log a warning but only once (not on every render) to avoid console spam
++ useEffect(() => {
++   if (agentId && agentId !== normalizedAgentId) {
++     console.log(`⚠️ USECHAT: Agent name "${agentId}" has been normalized to lowercase "${normalizedAgentId}" to prevent connection issues.`);
++   }
++ }, [agentId, normalizedAgentId]);
+
+  const agentOptions1 = {
+-   agent: agentId || 'coderagent',
++   agent: normalizedAgentId, // Ensure agent ID is always lowercase
+    name: agentName || agentOptions?.agentName || 'default',
+    host: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
+    onStateUpdate: agentOptions?.onStateUpdate,
+  };
+```
+
+This prevents the infinite connection/disconnection loop by ensuring the agent ID is always consistently lowercase throughout the component lifecycle.
+
 ## Results
 
 - The `Uncaught TypeError: (0 , import_react7.use) is not a function` error is gone
 - The CORS error when fetching initial messages is gone 
+- The infinite connection/disconnection loops are resolved
 - The app starts successfully with agent connection working properly
 - Type errors related to React Native component compatibility remain but don't affect functionality
 
@@ -59,3 +103,4 @@ This prevents the CORS error by avoiding the HTTP GET request to fetch initial m
 
 1. **Backend Support:** Consider adding proper backend support for `/agents/:agent/:instance/get-messages` with CORS headers
 2. **React Native Types:** Fix React Native component type errors for a cleaner development experience
+3. **Agent Naming:** Update documentation to clearly indicate that agent IDs should always be lowercase
