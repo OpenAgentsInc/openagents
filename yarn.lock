@@ -1378,9 +1378,9 @@
   optionalDependencies:
     global-agent "^3.0.0"
 
-"@electron/node-gyp@git+https://github.com/electron/node-gyp.git#06b29aafb7708acef8b3669835c8a7857ebc92d2":
+"@electron/node-gyp@https://github.com/electron/node-gyp#06b29aafb7708acef8b3669835c8a7857ebc92d2":
   version "10.2.0-electron.1"
-  resolved "git+https://github.com/electron/node-gyp.git#06b29aafb7708acef8b3669835c8a7857ebc92d2"
+  resolved "https://github.com/electron/node-gyp#06b29aafb7708acef8b3669835c8a7857ebc92d2"
   dependencies:
     env-paths "^2.2.0"
     exponential-backoff "^3.1.1"
@@ -3937,30 +3937,10 @@ agentkeepalive@^4.2.1:
   dependencies:
     humanize-ms "^1.2.1"
 
-agents@^0.0.43:
-  version "0.0.43"
-  resolved "https://registry.yarnpkg.com/agents/-/agents-0.0.43.tgz#7712836cf524218cb2328405a8bd9b5bda4889f8"
-  integrity sha512-4acJ/rseNeF7k4oU29KjBXPWZXMrsBwY3Z6cBGvfwkrs3X+7dIlyNpm/eqTSUTgndUoPTdt8ygNWyA2CG+By7A==
-  dependencies:
-    cron-schedule "^5.0.4"
-    nanoid "^5.1.5"
-    partyserver "^0.0.66"
-    partysocket "1.1.0"
-
-agents@^0.0.44:
-  version "0.0.44"
-  resolved "https://registry.yarnpkg.com/agents/-/agents-0.0.44.tgz#5d0d455f7cb5cdb7fcd6155b1f0c4400ce64b594"
-  integrity sha512-rplum75tKVdlJWt39+J6SLkyZKBVp5XpXXrHTLk5rkNUkbpVLvIY1al4v5QrTLYI0Ljkzd34Ll3Htzek7yhfbA==
-  dependencies:
-    cron-schedule "^5.0.4"
-    nanoid "^5.1.5"
-    partyserver "^0.0.66"
-    partysocket "1.1.2"
-
-agents@^0.0.45:
-  version "0.0.45"
-  resolved "https://registry.yarnpkg.com/agents/-/agents-0.0.45.tgz#c5f710fa270b2ffbcbc3ab0667a173ee8fa84a8e"
-  integrity sha512-HWVs2McC1DNCQ5V54Lplbx/VmIf84FYjJZTDVwB00YHnM7Yh6TlmAM5uBOd77MW7WyRZKGIo1D4R/sAPkz10/w==
+agents@^0.0.46:
+  version "0.0.46"
+  resolved "https://registry.yarnpkg.com/agents/-/agents-0.0.46.tgz#ed0b6083e3fed4b231fcf113269a1a874c7f1e5d"
+  integrity sha512-YC49h/KCP1Og7Pd0XVWD22f5Xg6MevUL0qtIJUjK3xP7Zb2F9lGzGqcvgkRmqalLEwZByZqDknvMb9nuDPnVXg==
   dependencies:
     cron-schedule "^5.0.4"
     nanoid "^5.1.5"
@@ -9881,13 +9861,6 @@ partyserver@^0.0.66:
   integrity sha512-GyC1uy4dvC4zPkwdzHqCkQ1J1CMiI0swIJQ0qqsJh16WNkEo5QHuU3l3ikLO8t+Yq0cRr0qO8++xbr11h+107w==
   dependencies:
     nanoid "^5.1.2"
-
-partysocket@1.1.0:
-  version "1.1.0"
-  resolved "https://registry.yarnpkg.com/partysocket/-/partysocket-1.1.0.tgz#cbedcd59920a26c6262cfc85ec475f3041e43245"
-  integrity sha512-G+fYGqBPx5tCjqmUmhtIKxZqnS/JjYd0E94hqRe+MRvggZ/RNy3+07t+WxewqdW+BlXEhW9eXu9WA5CjCn9BDQ==
-  dependencies:
-    event-target-shim "^6.0.2"
 
 partysocket@1.1.2:
   version "1.1.2"
