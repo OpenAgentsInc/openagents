@@ -72,13 +72,13 @@ app.post('/', async c => {
     if (!messages.every(m => m && typeof m.role === 'string' && typeof m.content === 'string')) {
       return c.json({ error: "Invalid message format" }, 400);
     }
-    
+
     // --- Add System Message with GitHub Tool Instructions ---
     // Prepend system message to inform the model about GitHub tools
     const systemMessage: Message = {
       id: crypto.randomUUID(),
-      role: 'system', 
-      content: `You are Claude, an AI assistant with GitHub integration capabilities and command execution abilities. 
+      role: 'system',
+      content: `You are Coder, an AI coding agent from the OpenAgents network. You have GitHub integration capabilities and command execution abilities.
 
 ## GitHub Tools
 You have access to the following GitHub tools:
@@ -141,7 +141,7 @@ You are allowed to run multiple commands in one response by including multiple c
     if (!messages.some(m => m.role === 'system')) {
       messages = [systemMessage, ...messages];
     }
-    
+
     console.log(`📨 Using message array with system prompt:`, messages);
 
     // --- Auth Token Extraction ---

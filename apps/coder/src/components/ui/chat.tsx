@@ -15,13 +15,14 @@ import { CopyButton } from "@/components/ui/copy-button"
 import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { PromptSuggestions } from "@/components/ui/prompt-suggestions"
+import { UIMessage } from "@openagents/core"
 
 interface ChatPropsBase {
   handleSubmit: (
     event?: { preventDefault?: () => void },
     options?: { experimental_attachments?: FileList }
   ) => void
-  messages: Array<Message>
+  messages: Array<UIMessage>
   input: string
   className?: string
   handleInputChange: React.ChangeEventHandler<HTMLTextAreaElement>
