@@ -293,57 +293,53 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldUseAgent]);
   
-  // --- New Effect to Fetch Initial Messages ---
+  // --- Simplified Effect to Fetch Initial Messages ---
   useEffect(() => {
-    // Only fetch if using agent, connected, agentChat is ready, and not already fetched
-    if (
-        shouldUseAgent &&
-        agentConnection.isConnected &&
-        agent && // Ensure agent object is available
-        agentChat.setMessages && // Ensure setMessages function is available
-        !initialMessagesFetchedRef.current // Check flag
-       )
-    {
-      console.log('📄 USECHAT: Agent connected, attempting to fetch initial messages...');
-      initialMessagesFetchedRef.current = true; // Set flag immediately to prevent re-fetch attempts
-
-      agent.call('getMessages')
-        .then((fetchedMessages: unknown) => { 
-          // Cast to Message[] after receiving
-          const typedMessages = fetchedMessages as Message[];
-          if (typedMessages && Array.isArray(typedMessages) && typedMessages.length > 0) {
-            console.log(`✅ USECHAT: Fetched ${typedMessages.length} initial messages from agent.`);
-            // Use setMessages from useAgentChat to populate the history
-            agentChat.setMessages(typedMessages);
-          } else {
-            console.log('ℹ️ USECHAT: No initial messages found on agent or fetch returned empty/invalid.');
-             // If chatOptions.initialMessages exist, set them now? Or leave empty?
-             // Let's leave empty for now, assuming agent is source of truth.
-             if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
-                console.log('ℹ️ USECHAT: Falling back to chatOptions.initialMessages (if any).');
-                agentChat.setMessages(chatOptions.initialMessages);
-             } else {
-                agentChat.setMessages([]); // Ensure it's at least an empty array
-             }
-          }
-        })
-        .catch((error: Error) => {
-          console.error('❌ USECHAT: Failed to fetch initial messages from agent:', error);
-          // Potentially fall back to chatOptions.initialMessages on error
-          if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
-             console.log('ℹ️ USECHAT: Falling back to chatOptions.initialMessages due to fetch error.');
-             agentChat.setMessages(chatOptions.initialMessages);
-          }
-          // Don't reset the flag here, we don't want to retry on error constantly
-        });
+    // Skip if agent isn't active or we've already fetched messages
+    if (!isAgentActive || !agent || initialMessagesFetchedRef.current === true) {
+      return;
     }
-  // Dependencies: connection status, agent instance, setMessages function, and agent usage flag
+    
+    console.log('📄 USECHAT: Agent active, attempting to fetch initial messages...');
+    initialMessagesFetchedRef.current = true; // Set flag immediately to prevent re-fetch attempts
+
+    // Use the agent's getMessages RPC call to fetch messages
+    agent.call('getMessages')
+      .then((fetchedMessages: unknown) => { 
+        // Cast to Message[] after receiving
+        const typedMessages = fetchedMessages as Message[];
+        
+        if (typedMessages && Array.isArray(typedMessages) && typedMessages.length > 0) {
+          console.log(`✅ USECHAT: Fetched ${typedMessages.length} initial messages from agent.`);
+          // Use the agent chat's setMessages function
+          agentChat.setMessages(typedMessages);
+        } else {
+          console.log('ℹ️ USECHAT: No initial messages found on agent or fetch returned empty/invalid.');
+          
+          // Fall back to initialMessages if provided
+          if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
+            console.log('ℹ️ USECHAT: Falling back to initialMessages.');
+            agentChat.setMessages(chatOptions.initialMessages);
+          } else {
+            // Ensure we have at least an empty array
+            agentChat.setMessages([]);
+          }
+        }
+      })
+      .catch((error: Error) => {
+        console.error('❌ USECHAT: Failed to fetch initial messages from agent:', error);
+        
+        // Fall back to initialMessages on error if available
+        if (chatOptions.initialMessages && chatOptions.initialMessages.length > 0) {
+          console.log('ℹ️ USECHAT: Falling back to initialMessages due to fetch error.');
+          agentChat.setMessages(chatOptions.initialMessages);
+        }
+      });
   }, [
-      shouldUseAgent,
-      agentConnection.isConnected,
-      agent,
-      agentChat.setMessages, // Add setMessages as a dependency
-      chatOptions.initialMessages // Add chatOptions.initialMessages as dependency for fallback logic
+    isAgentActive, // Simplified dependency using isAgentActive flag
+    agent,
+    agentChat.setMessages,
+    chatOptions.initialMessages
   ]);
   // --- End New Effect ---
   
@@ -374,60 +370,45 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     isProcessing: boolean;
   } | null>(null);
   
-  // Custom append function that checks for commands or routes to agent
-  const append = useCallback(async (message: any) => { // TODO: Type compatibility issues between UIMessage and Message, using any as workaround
-    // If using agent and connected, send message to agent via agentChat
-    if (shouldUseAgent && agentConnection.isConnected && agentChat) {
-      try {
-        console.log('📤 USECHAT: Sending message to agent via official SDK:', message.role);
-        
-        // Use the official SDK to send the message
-        // Ensure message format is compatible with agentChat.append
-        const result = await agentChat.append(message); // Pass message directly
-        console.log('✅ USECHAT: Message sent to agent successfully');
-        
-        return result;
-      } catch (error) {
-        console.error('❌ USECHAT: Failed to send message to agent:', error);
-        // Call onError and don't fall back to originalAppend as that goes to a different API
-        chatOptions.onError?.(error instanceof Error ? error : new Error(String(error)));
-        // Return null to match originalAppend's potential void return
+  // Custom append function - delegates to active implementation
+  const append = useCallback(async (message: any /* TODO: Type */) => {
+    try {
+      if (isAgentActive && agentChat?.append) {
+        console.log('📤 USECHAT: Appending via agentChat');
+        return await agentChat.append(message);
+      } else if (!isAgentActive && vercelChat?.append) {
+        console.log('📤 USECHAT: Appending via vercelChat');
+        return await vercelChat.append(message);
+      } else {
+        console.error("❌ USECHAT: Cannot append. No active chat implementation available.");
+        return null; // Or throw an error
+      }
+    } catch (error) {
+        console.error(`❌ USECHAT: Error during append (active: ${isAgentActive}):`, error);
+        // Use the onError from the *options* passed to the main useChat hook
+        options.onError?.(error instanceof Error ? error : new Error(String(error)));
         return null;
+    }
+  }, [isAgentActive, agentChat, vercelChat, options.onError]);
+  
+  // Custom handleSubmit to work with combined append and active input/setters
+  const handleSubmit = useCallback((e?: React.FormEvent<HTMLFormElement>) => {
+      e?.preventDefault();
+      // Get input value from the *active* chat hook
+      const messageToSend = isAgentActive ? agentChat?.input : vercelChat?.input;
+      if (!messageToSend) return;
+
+      console.log(`📤 USECHAT: handleSubmit called. Active: ${isAgentActive}. Message: "${messageToSend}"`);
+      // Call the combined append function
+      append({ role: 'user', content: messageToSend });
+
+      // Manually clear input using the *active* chat's setter
+      if (isAgentActive && agentChat?.setInput) {
+          agentChat.setInput('');
+      } else if (!isAgentActive && vercelChat?.setInput) {
+          vercelChat.setInput('');
       }
-    }
-    
-    // If not using agent, use the original append function
-    console.log('📤 USECHAT: Sending message via vercelUseChat');
-    const result = await originalAppend(message); // Pass the potentially UIMessage
-    
-    // Skip command execution if it's not enabled
-    if (!localCommandExecution) {
-      return result;
-    }
-    
-    // Check if this is a user message and parse commands (Local command execution part)
-    if (message.role === 'user' && typeof message.content === 'string') {
-      const commands = parseCommandsFromMessage(message.content);
-      
-      if (commands.length > 0 && result) {
-        // Store commands for processing after the response is received
-        pendingCommandsRef.current = {
-          messageId: typeof result === 'object' && result !== null && 'id' in result ? (result as any).id || 'unknown' : 'unknown',
-          commands,
-          isProcessing: false
-        };
-      }
-    }
-    
-    return result;
-  }, [
-    shouldUseAgent, 
-    agentConnection.isConnected,
-    agentChat,
-    localCommandExecution, 
-    originalAppend,
-    chatOptions.onError
-  ]);
+  }, [append, isAgentActive, agentChat, vercelChat]);
   
   // Helper function to generate a unique ID (simplified version)
   const generateId = () => {
@@ -494,8 +475,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   
   // Process local commands in assistant messages
   useEffect(() => {
-    // Skip if command execution is disabled or no messages
-    if (!localCommandExecution || messages.length === 0) {
+    // Skip if command execution is disabled, no messages, or agent is active
+    if (isAgentActive || !localCommandExecution || messages.length === 0) {
       return;
     }
     
@@ -759,29 +740,40 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     commandOptions
   ]);
   
+  // Flag to determine if agent mode is active (both should use agent AND connection is established)
+  const isAgentActive = shouldUseAgent && agentConnection.isConnected;
+  
+  // Define activeChat based on whether agent is active
+  const activeChat = isAgentActive ? agentChat : vercelChat;
+  
   // Prepare return value with proper typing
   const returnValue = {
-    ...rest, // Includes things like isLoading, error from vercelUseChat
-    // Return the appropriate messages based on the active mode
-    messages: shouldUseAgent && agentConnection.isConnected ? agentMessages : processedMessages,
+    // Core chat properties from the active chat implementation
+    messages: isAgentActive ? agentMessages : processedMessages,
+    isLoading: activeChat.isLoading,
+    error: activeChat.error,
+    input: activeChat.input,
+    handleInputChange: activeChat.handleInputChange,
+    setMessages: activeChat.setMessages,
+    reload: activeChat.reload,
+    stop: activeChat.stop,
+    
     append,
-    // For compatibility with the official useAgentChat hook
-    setMessages: agentChat?.setMessages, // Pass through setMessages from agentChat
-    reload: agentChat?.reload,       // Pass through reload
-    stop: agentChat?.stop,           // Pass through stop
-    isLoading: (shouldUseAgent && agentConnection.isConnected) ? agentChat?.isLoading : rest.isLoading, // Use agentChat's loading state if agent active
-    error: (shouldUseAgent && agentConnection.isConnected) ? agentChat?.error : rest.error,             // Use agentChat's error state if agent active
-    // Testing and debugging utilities
-    testCommandExecution,
-    // Add agent connection info
+    handleSubmit,
+    
+    // Agent connection info
     agentConnection: {
       isConnected: agentConnection.isConnected,
       client: agentConnection.client
     },
-    // Add command execution capability that automatically routes to agent or local
-    // Ensure safeExecuteCommand is used correctly when local is fallback
-    executeCommand: (shouldUseAgent && agentConnection.isConnected && agent)
-      ? executeAgentCommand // This already handles fallback internally if needed
+    
+    // Utilities specific to this implementation
+    testCommandExecution,
+    fetchMessages,
+    
+    // Combined command execution capability
+    executeCommand: isAgentActive
+      ? executeAgentCommand 
       : (command: string) => {
           if (localCommandExecution) {
               return safeExecuteCommand(command, commandOptions);
@@ -789,11 +781,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
               console.error("❌ USECHAT: Cannot execute command. Agent not connected and local execution disabled.");
               return Promise.reject("Command execution not available.");
           }
-       },
-    // Also keep the specific agent command function for explicit agent calls
-    executeAgentCommand, // This is fine
-    // Methods for interacting with the agent directly
-    fetchMessages // Expose the RPC fetch
+        },
+    executeAgentCommand,
   };
   
   // Add debugging properties
