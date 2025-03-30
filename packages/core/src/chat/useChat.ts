@@ -143,25 +143,47 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     client: null
   });
   
-  // Use the official useAgent hook from Cloudflare Agents SDK
-  const agent = shouldUseAgent ? useAgent({
+  // Always call useAgent with the same parameters (React hooks must be called unconditionally)
+  // Create options object first, then add the headers property if needed
+  const agentOptions1 = {
     agent: agentId || 'coderagent', // default to 'coderagent' if only name is provided
     name: agentName || agentOptions?.agentName || 'default',
     host: agentServerUrl || agentOptions?.serverUrl || 'https://agents.openagents.com',
     onStateUpdate: agentOptions?.onStateUpdate,
-    // @ts-ignore - headers is not in the type but it is supported
-    headers: agentAuthToken ? { Authorization: `Bearer ${agentAuthToken}` } : undefined,
-  }) : null;
+  };
   
-  // Use the official useAgentChat hook from Cloudflare Agents SDK if an agent is available
-  const agentChat = shouldUseAgent && agent ? useAgentChat({
-    agent,
+  // Add headers through type assertion if auth token is provided
+  const agentOptionsWithHeaders = agentAuthToken 
+    ? { ...agentOptions1, headers: { Authorization: `Bearer ${agentAuthToken}` } } as any
+    : agentOptions1;
+    
+  const agent = useAgent(agentOptionsWithHeaders);
+  
+  // Always call useAgentChat (React hooks must be called unconditionally)
+  const agentChat = useAgentChat({
+    agent, // Always pass the agent returned by useAgent
     initialMessages: chatOptions.initialMessages,
-  }) : null;
+    // The connection will only be used if shouldUseAgent is true (checked in useEffect)
+  });
   
-  // Set up agent connection when agent is available
+  // Set up agent connection when agent is available and should be used
   useEffect(() => {
-    if (!shouldUseAgent || !agent) {
+    // If agent shouldn't be used, make sure connection state is reset
+    if (!shouldUseAgent) {
+      if (agentConnection.isConnected) {
+        console.log('🔌 USECHAT: Agent not selected, resetting connection state');
+        setAgentConnection({
+          isConnected: false,
+          client: null
+        });
+        onAgentConnectionChange?.(false);
+      }
+      return;
+    }
+    
+    // Skip if agent isn't available for some reason
+    if (!agent) {
+      console.log('🔌 USECHAT: Agent instance not available');
       return;
     }
     
@@ -193,7 +215,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     
     // Cleanup function to disconnect from agent
     return () => {
-      if (agent) {
+      // Only close if we intended to use the agent
+      if (shouldUseAgent && agent) {
         console.log('🔌 USECHAT: Disconnecting from agent');
         agent.close();
         setAgentConnection({
