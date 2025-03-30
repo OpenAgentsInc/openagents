@@ -6,8 +6,10 @@ import { parseCommandsFromMessage, replaceCommandTagsWithResults, formatCommandO
 import { safeExecuteCommand, CommandExecutionOptions } from '../utils/commandExecutor';
 // Import the official SDK hooks
 import { useAgent } from 'agents/react';
-// Import the hook from ai-react
+// Import the hook and Message type from ai-react
 import { useAgentChat } from 'agents/ai-react';
+// Import the Message type from the ai package (used by agents/ai-react)
+import { Message } from 'ai';
 // Import types from agent-connection
 import type { AgentConnectionOptions, AgentClient } from './agent-connection';
 
@@ -267,10 +269,11 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
       }
     }
     
-    // Cleanup function to disconnect from agent
+    // Cleanup function to disconnect from agent - ONLY RUN ON UNMOUNT
+    // NOT when dependencies change (to prevent infinite reconnection loops)
     return () => {
-      // Only close if we intended to use the agent AND the component is unmounting
-      // Note: we're not disconnecting on dependency changes to prevent infinite reconnection loops
+      // We rely on the component unmounting to trigger this cleanup
+      // Do not disconnect on dependency changes or re-renders
       if (shouldUseAgent && agent) {
         console.log('🔌 USECHAT: Component unmounting, disconnecting from agent');
         // Close the agent connection
@@ -285,9 +288,10 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
         initialMessagesFetchedRef.current = false; // Reset fetch flag on unmount
       }
     };
-  // We include agent and onAgentConnectionChange in dependencies to properly handle connection state changes
+  // IMPORTANT: Only depend on shouldUseAgent to prevent infinite connection/disconnection loops
+  // Changes to agent or onAgentConnectionChange should NOT trigger reconnection
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shouldUseAgent, agent, onAgentConnectionChange]);
+  }, [shouldUseAgent]);
   
   // --- New Effect to Fetch Initial Messages ---
   useEffect(() => {
@@ -304,11 +308,13 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
       initialMessagesFetchedRef.current = true; // Set flag immediately to prevent re-fetch attempts
 
       agent.call('getMessages')
-        .then((fetchedMessages: any) => { // Use any type for now
-          if (fetchedMessages && Array.isArray(fetchedMessages) && fetchedMessages.length > 0) {
-            console.log(`✅ USECHAT: Fetched ${fetchedMessages.length} initial messages from agent.`);
+        .then((fetchedMessages: unknown) => { 
+          // Cast to Message[] after receiving
+          const typedMessages = fetchedMessages as Message[];
+          if (typedMessages && Array.isArray(typedMessages) && typedMessages.length > 0) {
+            console.log(`✅ USECHAT: Fetched ${typedMessages.length} initial messages from agent.`);
             // Use setMessages from useAgentChat to populate the history
-            agentChat.setMessages(fetchedMessages);
+            agentChat.setMessages(typedMessages);
           } else {
             console.log('ℹ️ USECHAT: No initial messages found on agent or fetch returned empty/invalid.');
              // If chatOptions.initialMessages exist, set them now? Or leave empty?
@@ -369,7 +375,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   } | null>(null);
   
   // Custom append function that checks for commands or routes to agent
-  const append = useCallback(async (message: any) => { // Use any for now since we don't have the exact type
+  const append = useCallback(async (message: any) => { // TODO: Type compatibility issues between UIMessage and Message, using any as workaround
     // If using agent and connected, send message to agent via agentChat
     if (shouldUseAgent && agentConnection.isConnected && agentChat) {
       try {
@@ -383,10 +389,9 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
         return result;
       } catch (error) {
         console.error('❌ USECHAT: Failed to send message to agent:', error);
-        // Fall back to original append if sending to agent fails? Or just error?
-        // For now, let's call onError and *don't* fall back to originalAppend, as that goes to a different API
+        // Call onError and don't fall back to originalAppend as that goes to a different API
         chatOptions.onError?.(error instanceof Error ? error : new Error(String(error)));
-        // Return null or throw? Let's return null to match originalAppend's potential void return
+        // Return null to match originalAppend's potential void return
         return null;
       }
     }
@@ -712,11 +717,11 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
 
     try {
       console.log('📄 USECHAT: Fetching messages from agent via RPC call');
-      // Assuming agent.call('getMessages') returns compatible message format
-      const agentMsgs: any[] = await agent.call('getMessages');
-      // Map to UIMessage if necessary, or ensure compatibility
-      // For now, assume they are compatible enough or cast
-      return agentMsgs as UIMessage[];
+      // Use the proper Message type from the ai package
+      const agentMsgs: Message[] = await agent.call('getMessages');
+      // Cast to UIMessage[] - both types have compatible properties for our needs
+      // They have role, content, id and function_call properties in common
+      return agentMsgs as unknown as UIMessage[];
     } catch (error) {
       console.error('❌ USECHAT: Failed to fetch messages from agent via RPC:', error);
       return [];
