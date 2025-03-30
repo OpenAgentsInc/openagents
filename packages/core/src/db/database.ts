@@ -1,17 +1,12 @@
 import { createRxDatabase, addRxPlugin } from 'rxdb';
-import { RxDBQueryBuilderPlugin } from 'rxdb';
-import { RxDBMigrationPlugin } from 'rxdb';
-import { wrappedValidateAjvStorage } from 'rxdb';
-import { RxDBUpdatePlugin } from 'rxdb';
-import Dexie from 'dexie';
+import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
+import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 
 import { threadSchema, messageSchema, settingsSchema } from './schema';
 import { Database } from './types';
 
 // Add required plugins
 addRxPlugin(RxDBQueryBuilderPlugin);
-addRxPlugin(RxDBMigrationPlugin);
-addRxPlugin(RxDBUpdatePlugin);
 
 // Database instance (singleton)
 let dbInstance: Database | null = null;
@@ -26,22 +21,11 @@ export async function createDatabase(): Promise<Database> {
   }
 
   console.log('Creating RxDB database...');
-  
-  // Create a simple storage adapter using Dexie
-  const dexieStorage = {
-    name: 'dexie',
-    async createDb(name: string) {
-      const db = new Dexie(name);
-      return db;
-    }
-  };
-  
+
   // Create the database
   const db = await createRxDatabase<Database>({
     name: 'openagents',
-    storage: wrappedValidateAjvStorage({
-      storage: dexieStorage as any
-    })
+    storage: getRxStorageDexie()
   });
 
   // Add collections
@@ -70,10 +54,10 @@ export async function createDatabase(): Promise<Database> {
   });
 
   console.log('RxDB database created successfully');
-  
+
   // Store instance
   dbInstance = db;
-  
+
   return db;
 }
 

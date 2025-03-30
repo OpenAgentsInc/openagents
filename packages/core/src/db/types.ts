@@ -65,7 +65,9 @@ export interface DatabaseCollections {
 /**
  * RxDB database with our collections
  */
-export type Database = RxDatabase<DatabaseCollections>;
+export interface Database extends RxDatabase<DatabaseCollections> {
+  destroy: () => Promise<void>;
+}
 
 // Type to represent a deep readonly object (RxDB returns readonly objects)
 export type DeepReadonlyObject<T> = {
@@ -82,8 +84,8 @@ export function storedMessageToUIMessage(storedMessage: StoredMessage | DeepRead
     content: storedMessage.content,
     createdAt: new Date(storedMessage.createdAt),
     parts: Array.isArray(storedMessage.parts) ? [...storedMessage.parts] : [],
-    ...(storedMessage.attachments ? { 
-      experimental_attachments: Array.isArray(storedMessage.attachments) ? [...storedMessage.attachments] : [] 
+    ...(storedMessage.attachments ? {
+      experimental_attachments: Array.isArray(storedMessage.attachments) ? [...storedMessage.attachments] : []
     } : {})
   } as UIMessage;
 }
