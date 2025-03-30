@@ -424,57 +424,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     return `msg_${Math.random().toString(36).substring(2, 15)}`;
   };
   
-  // Store processed messages with command execution results
-  const [processedMessages, setProcessedMessages] = useState<UIMessage[]>([]);
-  
-  // Update processed messages whenever original messages change
-  useEffect(() => {
-    setProcessedMessages(prevProcessedMessages => {
-      // Careful update that preserves our processed messages with command outputs
-      return messages.map((newMsg: UIMessage) => {
-        // Check if we have this message in our processed messages
-        const existingMsg = prevProcessedMessages.find(m => m.id === newMsg.id);
-        
-        if (existingMsg) {
-          // If our existing message has a different content (e.g., with command results),
-          // keep that content instead of overwriting with the original
-          if (existingMsg.content !== newMsg.content && 
-              (existingMsg.content.includes('**Command Result**') || 
-               existingMsg.content.includes('**Command Error**'))) {
-            console.log(`🔄 USECHAT: Preserving command results in message: ${newMsg.id}`);
-            return existingMsg;
-          }
-        }
-        
-        // Otherwise use the new message
-        return newMsg;
-      });
-    });
-  }, [messages]); // Removed processedMessages from dependencies
-  
-  // Additional function to manually update a message with command results
-  const updateMessage = useCallback((messageId: string, newContent: string) => {
-    console.log(`🔄 USECHAT: Manual message update for ID: ${messageId}`);
-    
-    // Update our processed messages state 
-    setProcessedMessages(current => {
-      console.log('🔄 USECHAT: Updating message content:', newContent.substring(0, 50) + '...');
-      
-      // Create a new array with the updated message content
-      return current.map(msg => {
-        if (msg.id === messageId) {
-          console.log('🔄 USECHAT: Found message to update in state');
-          return { ...msg, content: newContent };
-        }
-        return msg;
-      });
-    });
-    
-    // Force another UI refresh by delaying a state update
-    setTimeout(() => {
-      setProcessedMessages(current => [...current]);
-    }, 100);
-  }, []);
+  // No longer storing processed messages with command execution results
+  // Command results will be integrated directly into vercelChat.messages state
   
   // Use a ref to store processed message IDs to persist across renders
   const processedMessageIds = useRef<Set<string>>(new Set());
@@ -482,26 +433,20 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   // Use a ref to track executed commands to prevent duplicate executions
   const executedCommands = useRef<Set<string>>(new Set());
   
-  // Process local commands in assistant messages
+  // Process local commands in assistant messages when using vercelChat (non-agent mode)
   useEffect(() => {
-    // Skip if command execution is disabled, no messages, or agent is active
+    // Skip if command execution is disabled or if agent is active
     // Using shouldUseAgent && agentConnection.isConnected instead of isAgentActive
-    if ((shouldUseAgent && agentConnection.isConnected) || !localCommandExecution || messages.length === 0) {
+    if ((shouldUseAgent && agentConnection.isConnected) || !localCommandExecution) {
+      // Reset refs if mode changes or local execution disabled
+      processedMessageIds.current.clear();
+      executedCommands.current.clear();
       return;
     }
-    
-    // Define a function to update message content
-    const updateMessageWithCommandResults = async (message: UIMessage, results: Array<{ command: string; result: string | { error: string } }>) => {
-      if (results.length === 0) return;
-      
-      console.log(`🔄 USECHAT: Updating message with command results`);
-      const updatedContent = replaceCommandTagsWithResults(message.content, results);
-      
-      if (updatedContent !== message.content) {
-        console.log(`✅ USECHAT: Content changed, updating message in state`);
-        updateMessage(message.id, updatedContent);
-      }
-    };
+
+    // Get current messages directly from vercelChat
+    const currentMessages = vercelChat.messages as UIMessage[];
+    if (currentMessages.length === 0) return;
     
     // Function to process a single message
     const processSingleMessage = async (message: UIMessage) => {
@@ -536,18 +481,9 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
           try {
             onCommandStart?.(command);
             
-            // Use agent or local command execution based on agent connection
-            let result;
-            if (shouldUseAgent && agentConnection.isConnected && agent) {
-              try {
-                result = await agent.call('executeCommand', [command]);
-              } catch (agentError) {
-                console.error('❌ USECHAT: Agent command execution failed:', agentError);
-                throw agentError;
-              }
-            } else {
-              result = await safeExecuteCommand(command, commandOptions);
-            }
+            // In this refactored version, we're only using local command execution
+            // The agent case is handled elsewhere
+            const result = await safeExecuteCommand(command, commandOptions);
             
             // Type assertion to handle unknown result from API
             const typedResult = result as { stdout: string; stderr: string; exitCode: number; } | { error: string; };
@@ -572,80 +508,61 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
         return;
       }
       
-      // Create a unique key for this update to prevent duplicate updates
-      const updateKey = `update-${message.id}`;
-      
-      // Check if we've already updated this message to prevent infinite loops
-      if (executedCommands.current.has(updateKey)) {
-        console.log(`⏺️ USECHAT: Message ${message.id} already updated with command results, skipping`);
-        return;
-      }
-      
-      // Mark as updated to prevent duplicate updates
-      executedCommands.current.add(updateKey);
-      
-      console.log(`🔥 USECHAT: Updating message ${message.id} with command results (first time)`);
+      console.log(`🔥 USECHAT: Updating message ${message.id} with command results`);
       
       // Get the updated content with command results
       const updatedContent = replaceCommandTagsWithResults(message.content, commandResults);
       
-      // COMPLETELY CHANGED APPROACH: Always create a new message with command results
-      // This ensures results are always visible even if tag replacement fails
-      const appendKey = `append-${message.id}`;
-      
-      if (!executedCommands.current.has(appendKey)) {
-        // Mark as appended to prevent duplicate appends
-        executedCommands.current.add(appendKey);
-        
-        console.log(`🚨 USECHAT: Creating new message with command results (reliable approach)`);
-        
-        // Format command results clearly in a new message without markdown headers
-        // Just the command and results - clean and simple
-        const resultContent = commandResults.map(({command, result}) => {
-            const resultText = typeof result === 'string' 
-              ? result 
-              : `Error: ${result.error}`;
+      // Direct replacement of message content in vercelChat.messages
+      if (updatedContent !== message.content) {
+        // Mark that we're updating this message to prevent loops
+        const updateKey = `update-${message.id}`;
+        if (!executedCommands.current.has(updateKey)) {
+          // Mark as updated to prevent duplicate updates
+          executedCommands.current.add(updateKey);
+          
+          console.log(`✅ USECHAT: Content changed, updating message directly in vercelChat state`);
+          
+          // Find the message in the current messages array by ID
+          const messageIndex = currentMessages.findIndex(msg => msg.id === message.id);
+          
+          if (messageIndex !== -1) {
+            // Create a new messages array with the updated message
+            const updatedMessages = [...currentMessages];
+            updatedMessages[messageIndex] = {
+              ...currentMessages[messageIndex],
+              content: updatedContent
+            };
             
-            return `**Command:** \`${command}\`\n\n\`\`\`\n${resultText}\n\`\`\``;
-          }).join("\n\n");
-        
-        // Insert a new message with just the command results
-        console.log(`🚀 USECHAT: Appending new message with command results (guaranteed)`);
-        
-        setTimeout(() => {
-          originalAppend({
-            role: 'assistant',
-            content: resultContent
-          });
-        }, 100);
-        
-        // Still try to update the original message as well
-        if (updatedContent !== message.content) {
-          console.log(`✅ USECHAT: Also updating original message with command results`);
-          updateMessage(message.id, updatedContent);
+            // Update the messages in vercelChat
+            console.log(`🔄 USECHAT: Setting updated messages in vercelChat`);
+            // Use a function to update messages to avoid type issues
+            vercelChat.setMessages((prevMessages) => {
+              // Create a new array based on the previous messages
+              return prevMessages.map((msg, idx) => {
+                // If this is the message we want to update
+                if (idx === messageIndex) {
+                  // Return a new message object with the updated content
+                  return {
+                    ...msg,
+                    content: updatedContent
+                  };
+                }
+                // Otherwise return the original message
+                return msg;
+              });
+            });
+          }
+        } else {
+          console.log(`⏺️ USECHAT: Already updated message ${message.id} with command results`);
         }
-      } else {
-        console.log(`⏺️ USECHAT: Already appended command results for message ${message.id}`);
-      }
-      
-      // Force a refresh of messages exactly once to ensure UI updates
-      const refreshKey = `refresh-${message.id}`;
-      
-      if (!executedCommands.current.has(refreshKey)) {
-        // Mark as refreshed to prevent multiple refreshes
-        executedCommands.current.add(refreshKey);
-        
-        setTimeout(() => {
-          console.log(`🔄 USECHAT: Forcing one-time message refresh for UI update`);
-          setProcessedMessages(prevMessages => [...prevMessages]);
-        }, 200);
       }
     };
     
     // Process all unprocessed assistant messages
     const processNewMessages = async () => {
-      // Get all assistant messages
-      const assistantMessages = messages.filter((m: UIMessage) => m.role === 'assistant');
+        // Get all assistant messages directly from vercelChat
+      const assistantMessages = currentMessages.filter((m: UIMessage) => m.role === 'assistant');
       
       // Find messages that haven't been processed yet
       const unprocessedMessages = assistantMessages.filter((msg: UIMessage) => !processedMessageIds.current.has(msg.id));
@@ -660,8 +577,8 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
     
     // Run the processing
     processNewMessages();
-  }, [messages, localCommandExecution, commandOptions, onCommandStart, onCommandComplete, updateMessage, 
-      shouldUseAgent, agentConnection.isConnected, agent, originalAppend]);
+  }, [localCommandExecution, commandOptions, onCommandStart, onCommandComplete,
+      shouldUseAgent, agentConnection.isConnected, agent, vercelChat.messages, vercelChat.setMessages]);
   
   // Command execution for agent (RPC call)
   const executeAgentCommand = useCallback(async (command: string) => {
@@ -759,7 +676,7 @@ export function useChat(options: UseChatWithCommandsOptions = {}): UseChatReturn
   // Prepare return value with proper typing
   const returnValue = {
     // Core chat properties from the active chat implementation
-    messages: isAgentActive ? agentMessages : processedMessages,
+    messages: activeChat.messages, // Simply use the active chat's messages directly
     isLoading: activeChat.isLoading,
     error: activeChat.error,
     input: activeChat.input,
