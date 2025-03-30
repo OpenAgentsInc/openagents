@@ -11,10 +11,10 @@ export default function HomePage() {
   return (
 
     <div className="font-mono flex flex-col h-full text-white">
-      <div className="mx-8 flex flex-row justify-between items-center p-2">
+      {/* <div className="mx-8 flex flex-row justify-between items-center p-2">
         Coder
         <Button variant="outline">Test</Button>
-      </div>
+      </div> */}
       <div>
         <Chat
           messages={messages}
