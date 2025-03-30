@@ -21,11 +21,11 @@ export default function ToggleTheme() {
 
 
   return (
-    <Button 
-      onClick={toggleDarkMode} 
+    <Button
+      onClick={toggleDarkMode}
       size="icon"
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className={isDark ? "bg-primary text-background" : ""}
+      className={"bg-transparent text-primary hover:bg-primary/5"}
     >
       {isDark ? <Sun size={16} /> : <Moon size={16} />}
     </Button>
