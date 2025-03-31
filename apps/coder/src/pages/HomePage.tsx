@@ -127,13 +127,14 @@ export default function HomePage() {
 
               <SidebarContent>
                 <SidebarGroup>
-                  <SidebarMenu label="Chat">
+                  <SidebarMenu>
                     <SidebarMenuItem>
                       <SidebarMenuButton
-                        Icon={MessageSquareIcon}
-                        label="New Chat"
                         onClick={handleCreateThread}
-                      />
+                      >
+                        <MessageSquareIcon />
+                        <span>New Chat</span>
+                      </SidebarMenuButton>
                     </SidebarMenuItem>
                   </SidebarMenu>
                   <ThreadList
@@ -145,14 +146,14 @@ export default function HomePage() {
                   />
                 </SidebarGroup>
                 
-                <SidebarGroup label="Settings">
+                <SidebarGroup>
                   <SidebarMenu>
                     <SidebarMenuItem>
                       <Link to="/settings/models">
-                        <SidebarMenuButton
-                          Icon={SettingsIcon}
-                          label="Models & API Keys"
-                        />
+                        <SidebarMenuButton>
+                          <SettingsIcon />
+                          <span>Models & API Keys</span>
+                        </SidebarMenuButton>
                       </Link>
                     </SidebarMenuItem>
                   </SidebarMenu>

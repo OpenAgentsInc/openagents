@@ -11,7 +11,7 @@ export { Button, buttonVariants } from "./button";
 export { Calendar } from "./calendar";
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./card";
 export { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from "./carousel";
-export { Chart } from "./chart";
+export { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "./chart";
 export { ChatMessage } from "./chat-message";
 export { Chat, ChatForm } from "./chat";
 export { Checkbox } from "./checkbox";
@@ -44,7 +44,7 @@ export { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./resizabl
 export { ScrollArea, ScrollBar } from "./scroll-area";
 export { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem, SelectSeparator } from "./select";
 export { Separator } from "./separator";
-export { Sheet, SheetPortal, SheetOverlay, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription } from "./sheet";
+export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription } from "./sheet";
 export { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarProvider, SidebarTrigger } from "./sidebar";
 export { Skeleton } from "./skeleton";
 export { Slider } from "./slider";

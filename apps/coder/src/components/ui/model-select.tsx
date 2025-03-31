@@ -49,7 +49,7 @@ export function ModelSelect({
           role="combobox"
           aria-expanded={open}
           className={cn(
-            "w-full justify-between overflow-hidden text-ellipsis whitespace-nowrap",
+            "w-full justify-between overflow-hidden text-ellipsis whitespace-nowrap font-mono",
             className
           )}
           disabled={disabled}
@@ -60,11 +60,11 @@ export function ModelSelect({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[300px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search models..." />
-          <CommandEmpty>No model found.</CommandEmpty>
-          <CommandGroup className="max-h-[300px] overflow-auto">
+      <PopoverContent className="w-[300px] p-0 font-mono" align="start">
+        <Command className="font-mono">
+          <CommandInput placeholder="Search models..." className="font-mono" />
+          <CommandEmpty className="font-mono">No model found.</CommandEmpty>
+          <CommandGroup className="max-h-[300px] overflow-auto font-mono">
             {filteredModels.map((model) => (
               <CommandItem
                 key={model.id}
@@ -73,8 +73,9 @@ export function ModelSelect({
                   onChange(model.id);
                   setOpen(false);
                 }}
+                className="font-mono"
               >
-                <div className="flex flex-col gap-1 truncate">
+                <div className="flex flex-col gap-1 truncate font-mono">
                   <div className="flex items-center gap-2">
                     <Check
                       className={cn(
@@ -82,15 +83,15 @@ export function ModelSelect({
                         value === model.id ? "opacity-100" : "opacity-0"
                       )}
                     />
-                    <span className="font-medium">{model.name}</span>
+                    <span className="font-medium font-mono">{model.name}</span>
                     {model.plan === "pro" && (
-                      <span className="ml-auto text-xs rounded bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5">
+                      <span className="ml-auto text-xs rounded bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 font-mono">
                         PRO
                       </span>
                     )}
                   </div>
                   {model.shortDescription && (
-                    <span className="text-xs text-muted-foreground pl-6">
+                    <span className="text-xs text-muted-foreground pl-6 font-mono">
                       {model.shortDescription}
                     </span>
                   )}
