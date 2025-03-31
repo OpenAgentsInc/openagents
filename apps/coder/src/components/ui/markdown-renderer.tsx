@@ -1,22 +1,56 @@
 import React, { Suspense } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-
 import { cn } from "@/utils/tailwind"
+import type { Components } from 'react-markdown'
+
 import { CopyButton } from "@/components/ui/copy-button"
 
-interface MarkdownRendererProps {
-  children: string
+type HTMLTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'a' | 'ul' | 'ol' | 'li' | 'blockquote' | 'hr' | 'table' | 'th' | 'td' | 'pre' | 'code';
+
+function withClass(Tag: HTMLTag, classes: string) {
+  return function MarkdownComponent({ node, ...props }: any) {
+    return React.createElement(Tag, {
+      ...props,
+      className: cn(classes, props.className)
+    });
+  };
 }
 
-export function MarkdownRenderer({ children }: MarkdownRendererProps) {
+const COMPONENTS: Components = {
+  h1: withClass('h1', 'mt-6 mb-4 text-2xl font-bold'),
+  h2: withClass('h2', 'mt-6 mb-4 text-xl font-bold'),
+  h3: withClass('h3', 'mt-6 mb-4 text-lg font-bold'),
+  h4: withClass('h4', 'mt-4 mb-2 text-base font-bold'),
+  h5: withClass('h5', 'mt-4 mb-2 text-sm font-bold'),
+  h6: withClass('h6', 'mt-4 mb-2 text-xs font-bold'),
+  p: withClass('p', 'mb-4 leading-7'),
+  a: withClass('a', 'text-primary underline underline-offset-4'),
+  ul: withClass('ul', 'mb-4 list-disc pl-8'),
+  ol: withClass('ol', 'mb-4 list-decimal pl-8'),
+  li: withClass('li', 'mt-2'),
+  blockquote: withClass('blockquote', 'mt-6 border-l-2 pl-6 italic'),
+  hr: withClass('hr', 'my-4 border-t'),
+  table: withClass('table', 'mb-4 w-full text-sm'),
+  th: withClass('th', 'border px-3 py-2 text-left font-bold'),
+  td: withClass('td', 'border px-3 py-2'),
+  pre: withClass('pre', 'mb-4 overflow-auto rounded-lg bg-muted p-4'),
+  code: withClass('code', 'rounded bg-muted px-1 py-0.5 font-mono text-sm'),
+};
+
+export interface MarkdownRendererProps {
+  children: string;
+  className?: string;
+}
+
+export function MarkdownRenderer({ children, className }: MarkdownRendererProps) {
   return (
-    <div className="space-y-3">
+    <div className={className}>
       <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
         {children}
       </Markdown>
     </div>
-  )
+  );
 }
 
 interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
@@ -135,61 +169,6 @@ function childrenTakeAllStringContents(element: any): string {
   }
 
   return ""
-}
-
-const COMPONENTS = {
-  h1: withClass("h1", "text-2xl font-semibold"),
-  h2: withClass("h2", "font-semibold text-xl"),
-  h3: withClass("h3", "font-semibold text-lg"),
-  h4: withClass("h4", "font-semibold text-base"),
-  h5: withClass("h5", "font-medium"),
-  strong: withClass("strong", "font-semibold"),
-  a: withClass("a", "text-primary underline underline-offset-2"),
-  blockquote: withClass("blockquote", "border-l-2 border-primary pl-4"),
-  code: ({ children, className, node, ...rest }: any) => {
-    const match = /language-(\w+)/.exec(className || "")
-    return match ? (
-      <CodeBlock className={className} language={match[1]} {...rest}>
-        {children}
-      </CodeBlock>
-    ) : (
-      <code
-        className={cn(
-          "font-mono [:not(pre)>&]:rounded-md [:not(pre)>&]:bg-background/50 [:not(pre)>&]:px-1 [:not(pre)>&]:py-0.5"
-        )}
-        {...rest}
-      >
-        {children}
-      </code>
-    )
-  },
-  pre: ({ children }: any) => children,
-  ol: withClass("ol", "list-decimal space-y-2 pl-6"),
-  ul: withClass("ul", "list-disc space-y-2 pl-6"),
-  li: withClass("li", "my-1.5"),
-  table: withClass(
-    "table",
-    "w-full border-collapse overflow-y-auto rounded-md border border-foreground/20"
-  ),
-  th: withClass(
-    "th",
-    "border border-foreground/20 px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right"
-  ),
-  td: withClass(
-    "td",
-    "border border-foreground/20 px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right"
-  ),
-  tr: withClass("tr", "m-0 border-t p-0 even:bg-muted"),
-  p: withClass("p", "whitespace-pre-wrap"),
-  hr: withClass("hr", "border-foreground/20"),
-}
-
-function withClass(Tag: keyof JSX.IntrinsicElements, classes: string) {
-  const Component = ({ node, ...props }: any) => (
-    <Tag className={classes} {...props} />
-  )
-  Component.displayName = Tag
-  return Component
 }
 
 export default MarkdownRenderer
