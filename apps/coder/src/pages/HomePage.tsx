@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
 import { usePersistentChat, Thread } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
@@ -22,6 +22,7 @@ import {
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
+
   // Use the persistence layer with the correct configuration
   const {
     messages,
@@ -36,8 +37,8 @@ export default function HomePage() {
     deleteThread,
     updateThread,
   } = usePersistentChat({
-    // Use the correct API endpoint that was working before
-    api: "https://chat.openagents.com",
+    // Use the FULL URL of the local HTTP server
+    api: `http://localhost:3001/api/chat`,
     // Configuration that we know works
     streamProtocol: 'data',
     body: {
@@ -46,14 +47,25 @@ export default function HomePage() {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
+      'X-Requested-With': 'XMLHttpRequest',
     },
     // Enable persistence
     persistenceEnabled: true,
     maxSteps: 10,
     // Event handlers
-    onResponse: (response) => {},
-    onFinish: (message) => {},
-    onThreadChange: (threadId: string) => {}
+    onResponse: (response) => {
+      console.log('Chat response received:', response);
+    },
+    onFinish: (message) => {
+      console.log('Chat finished with message:', message);
+    },
+    onThreadChange: (threadId: string) => {
+      console.log('Thread changed to:', threadId);
+    },
+    // Handle errors from the AI SDK hook itself
+    onError: (error) => {
+      console.error('Chat hook onError:', error);
+    }
   });
 
 
@@ -130,6 +142,9 @@ export default function HomePage() {
                         <path fillRule="evenodd" clipRule="evenodd" d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z" fill="currentColor" />
                       </svg>
                     </button>
+                    <div className="flex items-center ml-auto">
+                      {/* Status display removed */}
+                    </div>
                   </div>
                 </div>
 
