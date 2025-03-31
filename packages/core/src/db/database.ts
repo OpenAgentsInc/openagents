@@ -10,8 +10,12 @@ import {
 } from 'rxdb/plugins/core';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
 import { wrappedValidateZSchemaStorage } from 'rxdb/plugins/validate-z-schema';
+import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 import { Thread, StoredMessage, Settings, DatabaseCollections, Database } from './types';
 import { threadSchema, messageSchema, settingsSchema } from './schema';
+
+// Add required plugins
+addRxPlugin(RxDBQueryBuilderPlugin);
 
 // Initialize storage with validation
 let storage: RxStorage<any, any> = wrappedValidateZSchemaStorage({
@@ -85,7 +89,7 @@ export async function getDatabase(): Promise<Database> {
  */
 export async function cleanupDatabase() {
   if (dbInstance) {
-    await dbInstance.destroy();
+    await (dbInstance as any).destroy();
     dbInstance = null;
   }
 }
