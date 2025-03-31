@@ -21,8 +21,6 @@ import {
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
-  console.log("[HomePage] Rendering component");
-
   const {
     messages,
     input,
@@ -43,18 +41,6 @@ export default function HomePage() {
       console.log(`[HomePage] Thread changed to: ${threadId}`);
     }
   });
-
-  useEffect(() => {
-    console.log("[HomePage] Messages updated:", messages);
-  }, [messages]);
-
-  useEffect(() => {
-    console.log("[HomePage] Input state:", input);
-  }, [input]);
-
-  useEffect(() => {
-    console.log("[HomePage] Generation state:", isGenerating);
-  }, [isGenerating]);
 
   const handleCreateThread = useCallback(() => {
     createNewThread();
