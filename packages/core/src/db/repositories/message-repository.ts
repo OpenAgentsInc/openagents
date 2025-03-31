@@ -32,8 +32,27 @@ export class MessageRepository {
     }
 
     const storedMessage = uiMessageToStoredMessage(message, message.threadId);
-    const doc = await this.database.messages.insert(storedMessage);
-    return storedMessageToUIMessage(doc.toJSON() as StoredMessage);
+    
+    try {
+      // Try to insert the message
+      const doc = await this.database.messages.insert(storedMessage);
+      return storedMessageToUIMessage(doc.toJSON() as StoredMessage);
+    } catch (error: any) {
+      // If we get a conflict error, the document already exists
+      if (error.code === 'CONFLICT') {
+        console.log(`Message with ID ${message.id} already exists, skipping insert`);
+        // Get the existing message
+        const existingMessage = await this.database.messages.findOne(message.id).exec();
+        if (existingMessage) {
+          return storedMessageToUIMessage(existingMessage.toJSON() as StoredMessage);
+        } else {
+          throw error; // Shouldn't happen but just in case
+        }
+      } else {
+        // For any other error, just rethrow
+        throw error;
+      }
+    }
   }
 
   /**

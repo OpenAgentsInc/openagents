@@ -107,6 +107,7 @@ export function uiMessageToStoredMessage(message: UIMessage, threadId: string): 
     content: message.content,
     createdAt: message.createdAt?.getTime() || Date.now(),
     parts: message.parts?.map(part => ({ ...part })) || [],
-    attachments: message.experimental_attachments?.map(attachment => ({ ...attachment }))
+    // Always provide an empty array instead of null/undefined for attachments
+    attachments: message.experimental_attachments?.map(attachment => ({ ...attachment })) || []
   };
 }

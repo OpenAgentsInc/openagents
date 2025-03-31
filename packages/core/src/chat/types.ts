@@ -347,7 +347,8 @@ export function fromVercelMessage(message: VercelMessage): UIMessage {
     role: message.role,
     content: message.content,
     createdAt: new Date(),
-    parts: (message.parts || []) as UIPart[]
+    parts: (message.parts || []) as UIPart[],
+    experimental_attachments: []  // Always provide an empty array for attachments
   };
 }
 
