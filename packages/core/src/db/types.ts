@@ -68,7 +68,7 @@ export interface DatabaseCollections {
  * RxDB database with our collections
  */
 export interface Database extends RxDatabase<DatabaseCollections> {
-  destroy(): Promise<void>;
+  // destroy() is already provided by RxDatabase
 }
 
 /**
