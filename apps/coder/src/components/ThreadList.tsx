@@ -12,12 +12,12 @@ interface ThreadListProps {
   onRenameThread?: (threadId: string, title: string) => void;
 }
 
-export function ThreadList({ 
-  currentThreadId, 
+export function ThreadList({
+  currentThreadId,
   onSelectThread,
   onCreateThread,
   onDeleteThread,
-  onRenameThread 
+  onRenameThread
 }: ThreadListProps) {
   const { threads, isLoading, error } = useThreads({ refreshInterval: 5000 });
 
@@ -26,8 +26,8 @@ export function ThreadList({
       <div className="p-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium">Chats</h2>
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             variant="outline"
             onClick={onCreateThread}
             className="flex gap-1 items-center"
@@ -48,8 +48,8 @@ export function ThreadList({
       <div className="p-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-medium">Chats</h2>
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             variant="outline"
             onClick={onCreateThread}
             className="flex gap-1 items-center"
@@ -76,9 +76,9 @@ export function ThreadList({
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-medium">Chats</h2>
-        <Button 
-          size="sm" 
+        <h2 className="text-md font-medium">Chats</h2>
+        <Button
+          size="sm"
           variant="outline"
           onClick={onCreateThread}
           className="flex gap-1 items-center"
@@ -89,13 +89,13 @@ export function ThreadList({
       </div>
 
       {threads.length === 0 ? (
-        <div className="py-4 text-center text-muted-foreground">
+        <div className="py-4 text-center text-sm text-muted-foreground">
           No chats yet. Start a new conversation.
         </div>
       ) : (
         <ul className="space-y-2">
           {threads.map((thread: Thread) => (
-            <li 
+            <li
               key={thread.id}
               className={`
                 p-2 rounded-md cursor-pointer
@@ -111,7 +111,7 @@ export function ThreadList({
                   {formatDate(thread.updatedAt)}
                 </div>
               </div>
-              
+
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {onRenameThread && (
                   <Button
