@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
-import { usePersistentChat, Thread } from "@openagents/core";
+import { usePersistentChat, useSettings, models } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -19,9 +19,24 @@ import {
   SidebarGroup,
   SidebarInset
 } from "@/components/ui/sidebar";
+import { Link } from "@tanstack/react-router";
+import { ModelSelect } from "@/components/ui/model-select";
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
+  // Get settings including the default model
+  const { settings, isLoading: isLoadingSettings } = useSettings();
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
+
+  useEffect(() => {
+    // Set the default model from settings when loaded
+    if (settings?.defaultModel) {
+      setSelectedModelId(settings.defaultModel);
+    }
+  }, [settings]);
+
+  // Find the selected model
+  const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
 
   // Use the persistence layer with the correct configuration
   const {
@@ -42,7 +57,7 @@ export default function HomePage() {
     // Configuration that we know works
     streamProtocol: 'data',
     body: {
-      model: "claude-3-5-sonnet-20240620"
+      model: selectedModelId || "claude-3-5-sonnet-20240620"
     },
     headers: {
       'Content-Type': 'application/json',
@@ -85,6 +100,11 @@ export default function HomePage() {
     updateThread(threadId, title);
   }, [updateThread]);
 
+  // Handle model change
+  const handleModelChange = (modelId: string) => {
+    setSelectedModelId(modelId);
+  };
+
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex h-full w-full flex-col text-primary font-mono">
@@ -107,6 +127,15 @@ export default function HomePage() {
 
               <SidebarContent>
                 <SidebarGroup>
+                  <SidebarMenu label="Chat">
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        Icon={MessageSquareIcon}
+                        label="New Chat"
+                        onClick={handleCreateThread}
+                      />
+                    </SidebarMenuItem>
+                  </SidebarMenu>
                   <ThreadList
                     currentThreadId={currentThreadId ?? ''}
                     onSelectThread={handleSelectThread}
@@ -114,6 +143,19 @@ export default function HomePage() {
                     onRenameThread={handleRenameThread}
                     onCreateThread={handleCreateThread}
                   />
+                </SidebarGroup>
+                
+                <SidebarGroup label="Settings">
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <Link to="/settings/models">
+                        <SidebarMenuButton
+                          Icon={SettingsIcon}
+                          label="Models & API Keys"
+                        />
+                      </Link>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
                 </SidebarGroup>
               </SidebarContent>
 
@@ -130,18 +172,11 @@ export default function HomePage() {
               <div className="grid grid-rows-[auto_1fr_auto] h-screen">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
-                    <button
-                      aria-label="Model selector"
-                      type="button"
-                      className="select-none group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-sm hover:bg-muted overflow-hidden whitespace-nowrap"
-                    >
-                      <div>
-                        Claude 3.5 Sonnet
-                      </div>
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-md">
-                        <path fillRule="evenodd" clipRule="evenodd" d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z" fill="currentColor" />
-                      </svg>
-                    </button>
+                    <ModelSelect 
+                      value={selectedModelId}
+                      onChange={handleModelChange}
+                      className="w-[240px]"
+                    />
                     <div className="flex items-center ml-auto">
                       {/* Status display removed */}
                     </div>

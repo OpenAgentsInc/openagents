@@ -1,0 +1,260 @@
+import React, { useEffect, useState } from "react";
+import { useSettings, models } from "@openagents/core";
+import { ArrowLeft, Trash2, Plus, Eye, EyeOff } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Input,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui";
+import { ModelSelect } from "@/components/ui/model-select";
+
+// Group models by provider for better organization
+const providerGroups = models.reduce((acc, model) => {
+  const provider = model.provider;
+  if (!acc[provider]) {
+    acc[provider] = [];
+  }
+  acc[provider].push(model);
+  return acc;
+}, {} as Record<string, typeof models>);
+
+// Get unique provider names
+const providers = Object.keys(providerGroups);
+
+export default function ModelsPage() {
+  const { settings, isLoading, setApiKey, getApiKey, deleteApiKey, updateSettings } = useSettings();
+  const [defaultModelId, setDefaultModelId] = useState("");
+  const [currentProvider, setCurrentProvider] = useState(providers[0] || "");
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
+  
+  // Load settings when component mounts
+  useEffect(() => {
+    if (settings) {
+      setDefaultModelId(settings.defaultModel || models[0]?.id || "");
+      
+      // Load API keys for all providers
+      const loadApiKeys = async () => {
+        const keys: Record<string, string> = {};
+        for (const provider of providers) {
+          const key = await getApiKey(provider);
+          if (key) {
+            keys[provider] = key;
+          }
+        }
+        setApiKeys(keys);
+      };
+      
+      loadApiKeys();
+    }
+  }, [settings, getApiKey]);
+  
+  // Handle default model change
+  const handleDefaultModelChange = async (modelId: string) => {
+    setDefaultModelId(modelId);
+    await updateSettings({ defaultModel: modelId });
+  };
+  
+  // Handle API key changes
+  const handleApiKeyChange = (provider: string, value: string) => {
+    setKeyInputs(prev => ({ ...prev, [provider]: value }));
+  };
+  
+  // Save API key
+  const handleSaveApiKey = async (provider: string) => {
+    const key = keyInputs[provider];
+    if (key) {
+      await setApiKey(provider, key);
+      setApiKeys(prev => ({ ...prev, [provider]: key }));
+      setKeyInputs(prev => ({ ...prev, [provider]: "" }));
+    }
+  };
+  
+  // Delete API key
+  const handleDeleteApiKey = async (provider: string) => {
+    await deleteApiKey(provider);
+    setApiKeys(prev => {
+      const updated = { ...prev };
+      delete updated[provider];
+      return updated;
+    });
+  };
+  
+  // Toggle API key visibility
+  const toggleKeyVisibility = (provider: string) => {
+    setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
+  };
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p>Loading settings...</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="container py-6 space-y-6">
+      <div className="flex items-center">  
+        <Link to="/" className="mr-4">
+          <Button variant="ghost" size="icon">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-2xl font-bold">Model Settings</h1>
+      </div>
+      
+      {/* Default Model Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Default Model</CardTitle>
+          <CardDescription>
+            Choose the default AI model to use for new conversations
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ModelSelect 
+            value={defaultModelId} 
+            onChange={handleDefaultModelChange} 
+            placeholder="Select default model"
+          />
+        </CardContent>
+      </Card>
+      
+      {/* API Keys */}
+      <Card>
+        <CardHeader>
+          <CardTitle>API Keys</CardTitle>
+          <CardDescription>
+            Manage your API keys for different model providers
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Tabs value={currentProvider} onValueChange={setCurrentProvider}>
+            <TabsList className="grid" style={{ gridTemplateColumns: `repeat(${providers.length}, 1fr)` }}>
+              {providers.map(provider => (
+                <TabsTrigger key={provider} value={provider} className="capitalize">
+                  {provider}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            
+            {providers.map(provider => (
+              <TabsContent key={provider} value={provider} className="space-y-4">
+                {/* Provider Info */}
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium capitalize">{provider} Models</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {provider === "anthropic" && "Anthropic provides Claude models with exceptional reasoning capabilities."}
+                    {provider === "openrouter" && "OpenRouter provides access to many AI models from different providers."}
+                    {provider === "groq" && "Groq offers ultra-fast inference for various open models."}
+                  </p>
+                </div>
+                
+                {/* API Key Management */}
+                <div className="space-y-4">
+                  {apiKeys[provider] ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-2">
+                        <Input 
+                          type={showKeys[provider] ? "text" : "password"}
+                          value={apiKeys[provider]}
+                          readOnly
+                          className="font-mono"
+                        />
+                        <Button 
+                          variant="outline" 
+                          size="icon" 
+                          onClick={() => toggleKeyVisibility(provider)}
+                        >
+                          {showKeys[provider] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                        <Button 
+                          variant="destructive" 
+                          size="icon"
+                          onClick={() => handleDeleteApiKey(provider)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Alert>
+                      <AlertTitle>No API key set</AlertTitle>
+                      <AlertDescription>
+                        You haven't set an API key for {provider} yet. Add one below to use {provider} models.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      type="password"
+                      placeholder={`Enter your ${provider} API key`}
+                      value={keyInputs[provider] || ""}
+                      onChange={(e) => handleApiKeyChange(provider, e.target.value)}
+                      className="font-mono"
+                    />
+                    <Button onClick={() => handleSaveApiKey(provider)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Save Key
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Available Models */}
+                <div className="mt-6">
+                  <h4 className="text-sm font-medium mb-2">Available Models:</h4>
+                  <div className="space-y-2">
+                    {providerGroups[provider].map(model => (
+                      <div key={model.id} className="p-3 border rounded-md">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{model.name}</span>
+                          {model.plan === "pro" && (
+                            <span className="text-xs rounded bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5">
+                              PRO
+                            </span>
+                          )}
+                        </div>
+                        {model.shortDescription && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {model.shortDescription}
+                          </p>
+                        )}
+                        <div className="flex items-center text-xs text-muted-foreground mt-2 space-x-4">
+                          <span>Context: {(model.context_length / 1000).toFixed(0)}k tokens</span>
+                          {model.supportsTools !== undefined && (
+                            <span>
+                              {model.supportsTools ? "✓ Supports tools" : "✗ No tool support"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </CardContent>
+        <CardFooter className="text-xs text-muted-foreground">
+          Your API keys are stored securely in your browser's local database.
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}
