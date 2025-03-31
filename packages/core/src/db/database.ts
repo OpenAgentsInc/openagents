@@ -66,9 +66,6 @@ export async function createDatabase(): Promise<Database> {
     if (process.env.NODE_ENV === 'development') {
       const devModeModule = await import('rxdb/plugins/dev-mode');
       addRxPlugin(devModeModule.RxDBDevModePlugin);
-
-      const validateModule = await import('rxdb/plugins/validate-ajv');
-      storage = validateModule.wrappedValidateAjvStorage({ storage });
     }
 
     // Generate room ID if not exists
@@ -86,10 +83,7 @@ export async function createDatabase(): Promise<Database> {
     }>({
       name: 'openagents-' + RXDB_VERSION.replace(/\./g, '-') + '-' + roomHash.substring(0, 10),
       storage,
-      ignoreDuplicate: true,
-      options: {
-        validatorMaxLength: 10000
-      }
+      ignoreDuplicate: true
     });
 
     // Add collections
