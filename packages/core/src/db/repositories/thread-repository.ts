@@ -29,11 +29,12 @@ export class ThreadRepository {
       title: threadData.title || 'New Chat',
       createdAt: threadData.createdAt || currentTime,
       updatedAt: threadData.updatedAt || currentTime,
-      modelId: threadData.modelId,
-      systemPrompt: threadData.systemPrompt,
+      modelId: threadData.modelId || '',  // Use empty string instead of null/undefined
+      systemPrompt: threadData.systemPrompt || '',  // Use empty string instead of null/undefined
       metadata: threadData.metadata || {}
     };
     
+    console.log('Creating thread with data:', thread);
     await this.db!.threads.insert(thread);
     return thread;
   }
