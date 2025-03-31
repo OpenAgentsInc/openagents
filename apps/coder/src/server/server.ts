@@ -32,22 +32,15 @@ app.get('/api/ping', (c) => {
   return c.json({ message: 'pong' });
 });
 
-// Test CORS endpoint
-app.get('/api/test-cors', (c) => {
-  console.log('[Server] Received /api/test-cors request');
-  // No need to manually set CORS headers - the middleware handles it
-  return c.json({ success: true, message: 'CORS is working with Hono middleware!' });
-});
 
 // Main chat endpoint
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
 
-  // Manually set OpenRouter API key (you'll replace this with your key)
-  // In a real app, you'd get this from environment variables
-  const OPENROUTER_API_KEY = "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";
+  // Get OpenRouter API key from environment variables
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 
-  if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === "sk-or-your-key-here") {
+  if (!OPENROUTER_API_KEY) {
     console.error("❌ OPENROUTER_API_KEY is missing or invalid");
 
     // Return error as SSE
@@ -67,8 +60,7 @@ app.post('/api/chat', async (c) => {
 
   try {
     const body = await c.req.json();
-    console.log("[Server] Request body (preview):", JSON.stringify(body)?.substring(0, 300));
-
+    
     // Validate input messages
     let messages: Message[] = body.messages || [];
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -80,11 +72,9 @@ app.post('/api/chat', async (c) => {
       apiKey: OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1"
     });
-    console.log("✅ OpenRouter provider initialized");
 
     // Define model
     const MODEL = "anthropic/claude-3.5-sonnet";
-    console.log(`📝 Using model: ${MODEL}`);
 
     try {
       const streamResult = streamText({
@@ -117,28 +107,24 @@ app.post('/api/chat', async (c) => {
       c.header('Connection', 'keep-alive');
       c.header('X-Vercel-AI-Data-Stream', 'v1');
       // CORS headers are handled by the middleware
-      console.log("🔄 Preparing to stream response...");
 
       // Check streamResult validity
       if (!streamResult || typeof streamResult.toDataStream !== 'function') {
-        console.error("❌ Invalid streamResult object");
+        console.error("Invalid streamResult object");
         return c.json({ error: "Invalid stream result object" }, 500);
       }
 
       return stream(c, async (responseStream) => {
-        console.log("📬 Entered stream() callback");
         try {
           const sdkStream = streamResult.toDataStream();
-          console.log("🔄 Piping sdkStream from streamResult.toDataStream()...");
           await responseStream.pipe(sdkStream);
-          console.log("✅ Piping completed successfully");
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`💥 Error during stream handling: ${errorMessage}`);
+          console.error(`Error during stream handling: ${errorMessage}`);
           try {
             await responseStream.write(`data: 3:${JSON.stringify(`Stream processing failed: ${errorMessage}`)}\n\n`);
           } catch (writeError) {
-            console.error("‼️ Failed to write error message to stream");
+            console.error("Failed to write error message to stream");
           }
         }
       });

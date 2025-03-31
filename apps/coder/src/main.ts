@@ -63,11 +63,7 @@ app.whenReady()
 
     // Start the local Hono server using the Node adapter
     try {
-      console.log(`[Main Process] Attempting to start local API server on port ${LOCAL_API_PORT}...`);
-      
-      // Verify serverApp exists and has the required fetch method
-      console.log('[Main Process] ServerApp type:', typeof serverApp);
-      console.log('[Main Process] ServerApp keys:', Object.keys(serverApp));
+      console.log(`[Main Process] Starting local API server on port ${LOCAL_API_PORT}...`);
       
       if (!serverApp) {
         throw new Error('serverApp is undefined or null');
@@ -78,7 +74,6 @@ app.whenReady()
       }
       
       // Start the server with Hono's serve adapter
-      console.log('[Main Process] Initializing server with serve...');
       serverInstance = serve({
         fetch: serverApp.fetch, // Pass the fetch handler from our Hono app
         port: LOCAL_API_PORT,
@@ -86,35 +81,14 @@ app.whenReady()
         console.log(`[Main Process] ✅ Local API server listening on http://localhost:${info.port}`);
       });
       
-      console.log('[Main Process] Server instance created:', !!serverInstance);
-      
-      // Add more error handling
+      // Add error handling
       if (serverInstance && serverInstance.server) {
-        console.log('[Main Process] Adding error handlers to server...');
-        
         serverInstance.server.on('error', (error) => {
           console.error('[Main Process] Server error event:', error);
         });
-        
-        serverInstance.server.on('listening', () => {
-          console.log('[Main Process] Server is listening');
-        });
-      } else {
-        console.warn('[Main Process] Server instance created but server property is missing');
       }
     } catch (error) {
-      console.error('[Main Process] ❌ Failed to start local API server:', error);
-      console.error('[Main Process] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-      // Log important information for debugging
-      console.log('[Main Process] Node version:', process.versions.node);
-      console.log('[Main Process] Electron version:', process.versions.electron);
-      
-      // Try to log the serverApp state
-      try {
-        console.log('[Main Process] ServerApp JSON:', JSON.stringify(serverApp));
-      } catch (jsonError) {
-        console.error('[Main Process] Failed to stringify serverApp:', jsonError);
-      }
+      console.error('[Main Process] Failed to start local API server:', error);
     }
     
     // Create window and install extensions
@@ -124,22 +98,10 @@ app.whenReady()
 
 // Graceful shutdown
 app.on('will-quit', () => {
-  if (serverInstance) {
+  if (serverInstance && typeof serverInstance.close === 'function') {
     console.log('[Main Process] Closing local API server...');
-    
-    // Check if it's a server with a close method
-    if (typeof serverInstance.close === 'function') {
-      serverInstance.close(() => {
-        console.log('[Main Process] Local API server closed.');
-      });
-      // Don't set to null immediately as the callback might not fire
-    }
-    
-    // In case there are any open connections, force them to close after a timeout
-    setTimeout(() => {
-      console.log('[Main Process] Ensuring all server resources are released.');
-      serverInstance = null;
-    }, 1000);
+    serverInstance.close();
+    serverInstance = null;
   }
 });
 
