@@ -80,7 +80,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       'Accept': 'text/event-stream',
     },
     // Force the stream protocol to be data for compatibility
-    streamProtocol: 'data',
+    streamProtocol: 'data' as 'data',
 
     // Custom response handler
     onResponse: async (response: Response) => {
