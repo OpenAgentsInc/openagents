@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { usePersistentChat, Thread, UIMessage } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
@@ -21,6 +21,8 @@ import {
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
+  console.log("[HomePage] Rendering component");
+
   const {
     messages,
     input,
@@ -32,49 +34,76 @@ export default function HomePage() {
     switchThread,
     createNewThread,
     deleteThread,
-    updateThread
+    updateThread,
+    append
   } = usePersistentChat({
     api: "https://chat.openagents.com",
     maxSteps: 10,
     persistenceEnabled: true,
     onThreadChange: (threadId: string) => {
-      console.log(`Switched to thread: ${threadId}`);
+      console.log(`[HomePage] Thread changed to: ${threadId}`);
     }
   });
+
+  useEffect(() => {
+    console.log("[HomePage] Messages updated:", messages);
+  }, [messages]);
+
+  useEffect(() => {
+    console.log("[HomePage] Input state:", input);
+  }, [input]);
+
+  useEffect(() => {
+    console.log("[HomePage] Generation state:", isGenerating);
+  }, [isGenerating]);
 
   const [inputValue, setInputValue] = useState("");
 
   const handleLocalInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    console.log("[HomePage] Input changed:", e.target.value);
     setInputValue(e.target.value);
     handleInputChange(e);
   }, [handleInputChange]);
 
-  const handleLocalSubmit = useCallback((
-    event?: { preventDefault?: () => void },
-    options?: { experimental_attachments?: FileList }
-  ) => {
+  const handleLocalSubmit = useCallback((event?: { preventDefault?: () => void }, options?: { experimental_attachments?: FileList }) => {
+    console.log("[HomePage] Form submission started");
     if (event?.preventDefault) {
       event.preventDefault();
     }
-    if (inputValue.trim()) {
-      originalHandleSubmit({ target: { value: inputValue } } as any);
-      setInputValue("");
+
+    if (!inputValue.trim()) {
+      console.log("[HomePage] Empty input, skipping submission");
+      return;
     }
-  }, [originalHandleSubmit, inputValue]);
+
+    console.log("[HomePage] Submitting message:", inputValue);
+    append({
+      role: 'user',
+      content: inputValue,
+      id: crypto.randomUUID(),
+      createdAt: new Date(),
+      parts: []
+    });
+    setInputValue("");
+  }, [inputValue, append]);
 
   const handleCreateThread = useCallback(() => {
+    console.log("[HomePage] Creating new thread");
     createNewThread();
   }, [createNewThread]);
 
   const handleSelectThread = useCallback((threadId: string) => {
+    console.log("[HomePage] Selecting thread:", threadId);
     switchThread(threadId);
   }, [switchThread]);
 
   const handleDeleteThread = useCallback((threadId: string) => {
+    console.log("[HomePage] Deleting thread:", threadId);
     deleteThread(threadId);
   }, [deleteThread]);
 
   const handleRenameThread = useCallback((threadId: string, title: string) => {
+    console.log("[HomePage] Renaming thread:", threadId, "to:", title);
     updateThread(threadId, title);
   }, [updateThread]);
 
@@ -176,7 +205,6 @@ export default function HomePage() {
                           setFiles={setFiles}
                           stop={stop}
                           isGenerating={isGenerating}
-                          placeholder="Type a message..."
                         />
                       )}
                     </ChatForm>
