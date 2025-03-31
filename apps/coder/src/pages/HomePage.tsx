@@ -24,17 +24,17 @@ import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
   const [apiStatus, setApiStatus] = useState<string | null>(null);
-  
+
   // Function to test the local API
   const handleTestLocalApi = async () => {
     setApiStatus('Testing...');
     const success = await testLocalApi();
     setApiStatus(success ? 'Connected ✅' : 'Failed ❌');
-    
+
     // Reset status after 3 seconds
     setTimeout(() => setApiStatus(null), 3000);
   };
-  
+
   // Use the persistence layer with the correct configuration
   const {
     messages,
@@ -50,7 +50,7 @@ export default function HomePage() {
     updateThread,
   } = usePersistentChat({
     // Use the correct API endpoint that was working before
-    api: "https://chat.openagents.com",
+    api: "/api/chat",
     // Configuration that we know works
     streamProtocol: 'data',
     body: {
@@ -64,9 +64,9 @@ export default function HomePage() {
     persistenceEnabled: true,
     maxSteps: 10,
     // Event handlers
-    onResponse: (response) => {},
-    onFinish: (message) => {},
-    onThreadChange: (threadId: string) => {}
+    onResponse: (response) => { },
+    onFinish: (message) => { },
+    onThreadChange: (threadId: string) => { }
   });
 
 
