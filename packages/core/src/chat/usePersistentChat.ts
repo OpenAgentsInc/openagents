@@ -28,7 +28,10 @@ export interface UsePersistentChatReturn {
   error: Error | undefined;
   input: string;
   handleInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  handleSubmit: (
+    event?: { preventDefault?: () => void },
+    options?: { experimental_attachments?: FileList }
+  ) => void;
   stop: () => void;
   currentThreadId: string | undefined;
   switchThread: (threadId: string) => void;
@@ -114,10 +117,15 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     setMessages: setVercelMessages,
     isLoading: vercelChatState.isLoading,
     error: vercelChatState.error,
-    input: '',
-    handleInputChange: () => { },
-    handleSubmit: () => { },
-    stop: () => { },
+    input: vercelChatState.input,
+    handleInputChange: vercelChatState.handleInputChange,
+    handleSubmit: (event?: { preventDefault?: () => void }, options?: { experimental_attachments?: FileList }) => {
+      if (event?.preventDefault) {
+        event.preventDefault();
+      }
+      vercelChatState.handleSubmit(event, options);
+    },
+    stop: vercelChatState.stop,
     currentThreadId: undefined,
     switchThread: () => { },
     createNewThread: () => { },

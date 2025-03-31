@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from "react";
-import { usePersistentChat, Thread, UIMessage } from "@openagents/core";
+import React, { useCallback, useEffect } from "react";
+import { usePersistentChat, Thread } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -27,7 +27,7 @@ export default function HomePage() {
     messages,
     input,
     handleInputChange,
-    handleSubmit: originalHandleSubmit,
+    handleSubmit,
     isLoading: isGenerating,
     stop,
     currentThreadId,
@@ -35,7 +35,6 @@ export default function HomePage() {
     createNewThread,
     deleteThread,
     updateThread,
-    append
   } = usePersistentChat({
     api: "https://chat.openagents.com",
     maxSteps: 10,
@@ -57,57 +56,21 @@ export default function HomePage() {
     console.log("[HomePage] Generation state:", isGenerating);
   }, [isGenerating]);
 
-  const [inputValue, setInputValue] = useState("");
-
-  const handleLocalInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    console.log("[HomePage] Input changed:", e.target.value);
-    setInputValue(e.target.value);
-    handleInputChange(e);
-  }, [handleInputChange]);
-
-  const handleLocalSubmit = useCallback((event?: { preventDefault?: () => void }, options?: { experimental_attachments?: FileList }) => {
-    console.log("[HomePage] Form submission started");
-    if (event?.preventDefault) {
-      event.preventDefault();
-    }
-
-    if (!inputValue.trim()) {
-      console.log("[HomePage] Empty input, skipping submission");
-      return;
-    }
-
-    console.log("[HomePage] Submitting message:", inputValue);
-    append({
-      role: 'user',
-      content: inputValue,
-      id: crypto.randomUUID(),
-      createdAt: new Date(),
-      parts: []
-    });
-    setInputValue("");
-  }, [inputValue, append]);
-
   const handleCreateThread = useCallback(() => {
-    console.log("[HomePage] Creating new thread");
     createNewThread();
   }, [createNewThread]);
 
   const handleSelectThread = useCallback((threadId: string) => {
-    console.log("[HomePage] Selecting thread:", threadId);
     switchThread(threadId);
   }, [switchThread]);
 
   const handleDeleteThread = useCallback((threadId: string) => {
-    console.log("[HomePage] Deleting thread:", threadId);
     deleteThread(threadId);
   }, [deleteThread]);
 
   const handleRenameThread = useCallback((threadId: string, title: string) => {
-    console.log("[HomePage] Renaming thread:", threadId, "to:", title);
     updateThread(threadId, title);
   }, [updateThread]);
-
-  const [threads, setThreads] = useState<Thread[]>([]);
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -193,13 +156,13 @@ export default function HomePage() {
                   <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
                     <ChatForm
                       isPending={isGenerating}
-                      handleSubmit={handleLocalSubmit}
+                      handleSubmit={handleSubmit}
                       className="relative"
                     >
                       {({ files, setFiles }) => (
                         <MessageInput
-                          value={inputValue}
-                          onChange={handleLocalInputChange}
+                          value={input}
+                          onChange={handleInputChange}
                           allowAttachments
                           files={files}
                           setFiles={setFiles}
