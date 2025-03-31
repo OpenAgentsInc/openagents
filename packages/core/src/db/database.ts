@@ -304,50 +304,29 @@ export async function createDatabase(): Promise<Database> {
   } catch (error: unknown) {
     console.error('Failed to create RxDB database:', error);
     
-    // If we hit the collection limit, try to clean up and try again (with limits)
+    // If we encounter collection limit error, immediately use in-memory database
+    // This is more reliable than trying to clean up and retry
     if (
       error && 
       typeof error === 'object' && 
       'code' in error && 
-      error.code === 'COL23' && 
-      retryAttempts < MAX_RETRY_ATTEMPTS
+      error.code === 'COL23' 
     ) {
-      retryAttempts++;
-      console.log(`Cleanup attempt ${retryAttempts}/${MAX_RETRY_ATTEMPTS}`);
+      console.warn('RxDB collection limit reached - switching to in-memory database for better reliability');
       
-      // More aggressive cleanup
-      await cleanupAllDatabases();
+      // Run cleanup in the background (don't wait for it)
+      setTimeout(() => {
+        cleanupAllDatabases().catch(e => 
+          console.warn('Background cleanup error:', e)
+        );
+      }, 100);
       
-      // Force deletion of all RxDB databases
-      if (typeof window !== 'undefined' && window.indexedDB) {
-        try {
-          const dbs = await window.indexedDB.databases?.() || [];
-          for (const db of dbs) {
-            if (db.name && db.name.includes('rxdb')) {
-              await window.indexedDB.deleteDatabase(db.name);
-            }
-          }
-        } catch (err) {
-          console.warn('Error during force cleanup:', err);
-        }
-      }
-      
-      // Wait a bit before retrying to allow cleanup to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Try to create again with a new name after cleanup
-      return createDatabase();
-    }
-    
-    // Reset retry count and throw the error
-    retryAttempts = 0;
-    
-    // If we've exceeded retry attempts, return a fallback in-memory database
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'COL23') {
-      console.warn('Could not create persistent database after multiple attempts. Using in-memory fallback.');
-      // Return an in-memory mock database for fallback
+      // Return in-memory database immediately
       return createFallbackDatabase();
     }
+    
+    // Reset retry count
+    retryAttempts = 0;
     
     throw error;
   }
@@ -357,10 +336,23 @@ export async function createDatabase(): Promise<Database> {
  * Gets the database instance, creating it if it doesn't exist
  */
 export async function getDatabase(): Promise<Database> {
-  if (!dbInstance) {
-    return createDatabase();
+  try {
+    if (!dbInstance) {
+      return createDatabase();
+    }
+    return dbInstance;
+  } catch (error) {
+    console.error('Error getting database, falling back to in-memory:', error);
+    // Always return a database even if there's an error
+    return createFallbackDatabase();
   }
-  return dbInstance;
+}
+
+/**
+ * Check if we're using the in-memory fallback database
+ */
+export function isUsingFallbackDatabase(): boolean {
+  return dbInstance?.storage?.name === 'in-memory-fallback';
 }
 
 /**
@@ -427,55 +419,177 @@ async function cleanupAllDatabases() {
  * Creates a fallback in-memory database when persistent storage fails
  */
 function createFallbackDatabase(): Database {
+  console.info('Creating in-memory fallback database for better reliability');
+  
   // Create a simple in-memory mock of the database API
   const inMemoryDb: Database = {
-    threads: createInMemoryCollection(),
-    messages: createInMemoryCollection(),
-    settings: createInMemoryCollection(),
+    threads: createInMemoryCollection('threads'),
+    messages: createInMemoryCollection('messages'),
+    settings: createInMemoryCollection('settings'),
+    
+    // Add database-level methods
+    remove: async () => {
+      // No-op for in-memory DB
+      console.log('In-memory database "remove" called (no-op)');
+    },
+    destroy: async () => {
+      // No-op for in-memory DB
+      console.log('In-memory database "destroy" called (no-op)');
+    },
+    
+    // Indicate this is an in-memory database
+    storage: {
+      name: 'in-memory-fallback'
+    } as any
   } as unknown as Database;
   
+  // Store the in-memory DB as our singleton instance
   dbInstance = inMemoryDb;
+  console.info('In-memory fallback database created successfully');
   return inMemoryDb;
 }
 
 /**
  * Creates an in-memory collection with basic functionality
  */
-function createInMemoryCollection() {
+function createInMemoryCollection(collectionName: string) {
   const items: Record<string, any> = {};
+  let listeners: Array<(docs: any[]) => void> = [];
+  
+  // For logging
+  const logPrefix = `[InMemoryDB:${collectionName}]`;
   
   return {
-    find: () => ({
-      exec: async () => Object.values(items),
-      limit: () => ({ exec: async () => Object.values(items).slice(0, 10) })
+    name: collectionName,
+    
+    // Find documents
+    find: (selector?: any) => {
+      return {
+        sort: () => ({
+          limit: () => ({
+            exec: async () => {
+              const values = Object.values(items);
+              if (selector) {
+                // Very basic selector implementation
+                return values.filter(item => {
+                  for (const key in selector) {
+                    if (item[key] !== selector[key]) return false;
+                  }
+                  return true;
+                }).slice(0, 10);
+              }
+              return values.slice(0, 10);
+            }
+          }),
+          exec: async () => Object.values(items)
+        }),
+        limit: (limit = 10) => ({ 
+          exec: async () => Object.values(items).slice(0, limit) 
+        }),
+        exec: async () => {
+          if (selector) {
+            return Object.values(items).filter(item => {
+              for (const key in selector) {
+                if (item[key] !== selector[key]) return false;
+              }
+              return true;
+            });
+          }
+          return Object.values(items);
+        }
+      };
+    },
+    
+    // Find one document by ID
+    findOne: (idOrSelector: string | any) => ({
+      exec: async () => {
+        if (typeof idOrSelector === 'string') {
+          return items[idOrSelector] || null;
+        } else if (idOrSelector && typeof idOrSelector === 'object') {
+          const values = Object.values(items);
+          return values.find(item => {
+            for (const key in idOrSelector) {
+              if (item[key] !== idOrSelector[key]) return false;
+            }
+            return true;
+          }) || null;
+        }
+        return null;
+      }
     }),
-    findOne: (id: string) => ({
-      exec: async () => items[id] || null
-    }),
+    
+    // Insert a document
     insert: async (doc: any) => {
-      items[doc.id] = doc;
+      console.log(`${logPrefix} Inserting document:`, doc.id);
+      items[doc.id] = { ...doc };
+      notifyListeners();
       return doc;
     },
+    
+    // Insert multiple documents
     bulkInsert: async (docs: any[]) => {
+      console.log(`${logPrefix} Bulk inserting ${docs.length} documents`);
       for (const doc of docs) {
-        items[doc.id] = doc;
+        items[doc.id] = { ...doc };
       }
+      notifyListeners();
       return docs;
     },
+    
+    // Update a document
     update: async (query: any) => {
       const id = query.id || query._id;
       if (id && items[id]) {
-        Object.assign(items[id], query);
+        console.log(`${logPrefix} Updating document:`, id);
+        items[id] = { ...items[id], ...query };
+        notifyListeners();
       }
     },
-    remove: async () => {
-      // No-op for safety
+    
+    // Remove documents
+    remove: async (query?: any) => {
+      if (!query) {
+        console.log(`${logPrefix} Removing all documents`);
+        Object.keys(items).forEach(key => delete items[key]);
+      } else if (query.id) {
+        console.log(`${logPrefix} Removing document:`, query.id);
+        delete items[query.id];
+      }
+      notifyListeners();
     },
-    // Add minimal query builder support
-    where: () => ({
-      equals: () => ({
-        exec: async () => []
+    
+    // Query builder
+    where: (field: string) => ({
+      equals: (value: any) => ({
+        exec: async () => {
+          return Object.values(items).filter(item => item[field] === value);
+        }
+      }),
+      $eq: (value: any) => ({
+        exec: async () => {
+          return Object.values(items).filter(item => item[field] === value);
+        }
       })
-    })
+    }),
+    
+    // Subscribe to changes
+    $: {
+      subscribe: (fn: (docs: any[]) => void) => {
+        listeners.push(fn);
+        
+        // Return unsubscribe function
+        return {
+          unsubscribe: () => {
+            listeners = listeners.filter(l => l !== fn);
+          }
+        };
+      }
+    }
   };
+  
+  // Notify all listeners of changes
+  function notifyListeners() {
+    const allDocs = Object.values(items);
+    listeners.forEach(fn => fn(allDocs));
+  }
 }
