@@ -83,6 +83,7 @@ export class MessageRepository {
       .find()
       .where('threadId')
       .eq(threadId)
+      .sort({ createdAt: 'asc' })
       .exec();
 
     return messages.map(message => {

@@ -342,11 +342,14 @@ export function toVercelMessage(message: UIMessage): BaseMessage {
  * Convert Vercel Message to UIMessage
  */
 export function fromVercelMessage(message: VercelMessage): UIMessage {
+  // Create a timestamp preserving the original if provided, otherwise use current time
+  const timestamp = message.createdAt ? new Date(message.createdAt) : new Date();
+  
   return {
     id: message.id || uuidv4(),
     role: message.role,
     content: message.content,
-    createdAt: new Date(),
+    createdAt: timestamp,
     parts: (message.parts || []) as UIPart[],
     experimental_attachments: []  // Always provide an empty array for attachments
   };

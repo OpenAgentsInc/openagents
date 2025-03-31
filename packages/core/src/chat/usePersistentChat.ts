@@ -445,12 +445,13 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       return null;
     }
 
-    // Create a copy with the threadId explicitly set
+    // Create a copy with the threadId explicitly set and ensure createdAt is set
     const messageWithThread: UIMessage & { threadId: string } = {
       ...message,
-      threadId: currentThreadId
+      threadId: currentThreadId,
+      createdAt: message.createdAt || new Date()
     };
-    console.log('🔴 Created message with thread ID:', currentThreadId);
+    console.log('🔴 Created message with thread ID and timestamp:', currentThreadId, messageWithThread.createdAt);
 
     // Convert to Vercel format
     const vercelMessage = toVercelMessage(messageWithThread);
@@ -712,16 +713,21 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   }, [vercelChatState.messages]);
 
   // COMPLETELY BYPASS OUR STATE - use Vercel's messages directly
-  // Convert on the fly for the return value
+  // Convert on the fly for the return value and sort by createdAt
   const displayMessages = vercelChatState.messages.map(m => {
     const msg = fromVercelMessage(m);
     if (currentThreadId) {
       msg.threadId = currentThreadId;
     }
     return msg;
+  }).sort((a, b) => {
+    // Sort by createdAt timestamp
+    const timeA = a.createdAt?.getTime() || 0;
+    const timeB = b.createdAt?.getTime() || 0;
+    return timeA - timeB;
   });
 
-  console.log('🔵 Preparing to return', displayMessages.length, 'messages to UI');
+  console.log('🔵 Preparing to return', displayMessages.length, 'messages to UI sorted by timestamp');
   
   // Detailed logging of what we're returning to the UI
   if (displayMessages.length > 0) {

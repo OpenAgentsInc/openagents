@@ -85,12 +85,17 @@ export function storedMessageToUIMessage(storedMessage: StoredMessage | DeepRead
     ? storedMessage.attachments.map(attachment => ({ ...attachment }))
     : undefined;
 
+  // Ensure we have a valid Date object for createdAt
+  const createdAt = storedMessage.createdAt 
+    ? new Date(storedMessage.createdAt) 
+    : new Date();
+
   return {
     id: storedMessage.id || uuidv4(),
     role: storedMessage.role as 'user' | 'assistant' | 'system' | 'data',
     content: storedMessage.content,
     threadId: storedMessage.threadId,
-    createdAt: new Date(storedMessage.createdAt),
+    createdAt: createdAt,
     parts,
     ...(attachments ? { experimental_attachments: attachments } : {})
   };
