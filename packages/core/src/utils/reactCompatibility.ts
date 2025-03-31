@@ -1,6 +1,6 @@
 /**
  * React 19 compatibility utilities
- * 
+ *
  * This file provides utilities to fix React Native component compatibility issues
  * with React 19. In React 19, the ReactNode type definition changed which caused
  * type errors with React Native components.
@@ -9,11 +9,11 @@ import React, { ComponentType, ForwardRefExoticComponent, PropsWithoutRef, RefAt
 
 /**
  * React 19 compatibility declarations
- * 
+ *
  * This provides utility functions to make React Native components work with React 19's
  * updated ReactNode type definition. React 19 removed bigint from ReactNode and also
  * changed some type definitions which created compatibility issues with existing components.
- * 
+ *
  * This utility provides:
  * 1. createReactComponent - A function to create React 19 compatible components
  * 2. Pre-wrapped common React Native components
@@ -29,12 +29,12 @@ export const react19 = {
   compat: <P extends object>(Component: any): React.FC<P> => {
     return Component as unknown as React.FC<P>;
   },
-  
+
   // Wrapper for third-party icon libraries (lucide, simple-icons, etc.)
   icon: <P extends object>(Icon: any): React.FC<P> => {
     return Icon as unknown as React.FC<P>;
   },
-  
+
   // Wrapper for React Router components
   router: <P extends object>(Component: any): React.FC<P> => {
     return Component as unknown as React.FC<P>;
@@ -43,7 +43,7 @@ export const react19 = {
 
 /**
  * This function adds React 19 compatibility to React Native components
- * 
+ *
  * In React 19, the typing for ReactNode changed and it no longer accepts BigInt.
  * This creates type errors with React Native components that expect the old ReactNode type.
  */
@@ -54,9 +54,9 @@ export function createReactComponent<P = any>(
 }
 
 // Re-exports for components that need React 19 compatibility
-import { 
-  View as RNView, 
-  Text as RNText, 
+import {
+  View as RNView,
+  Text as RNText,
   TouchableOpacity as RNTouchableOpacity,
   SafeAreaView as RNSafeAreaView,
   ActivityIndicator as RNActivityIndicator,
@@ -91,7 +91,7 @@ export const SafeAreaView = createReactComponent(RNSafeAreaView);
 export const ActivityIndicator = createReactComponent(RNActivityIndicator);
 export const ScrollView = createReactComponent(RNScrollView);
 export const Button = createReactComponent(RNButton);
-export const TextInput = createReactComponent(RNTextInput); 
+export const TextInput = createReactComponent(RNTextInput);
 export const FlatList = createReactComponent(RNFlatList);
 export const AnimatedView = createReactComponent(Animated.View);
 export const KeyboardAvoidingView = createReactComponent(RNKeyboardAvoidingView);

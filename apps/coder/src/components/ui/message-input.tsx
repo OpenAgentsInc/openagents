@@ -171,9 +171,7 @@ export function MessageInput({
 
   useAutosizeTextArea({
     ref: textAreaRef,
-    maxHeight: 240,
-    borderWidth: 1,
-    dependencies: [props.value, showFileList],
+    value: props.value || ''
   })
 
   return (

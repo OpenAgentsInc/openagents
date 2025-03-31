@@ -3,9 +3,15 @@ import { useState, useEffect, useCallback } from 'react';
 // import { Client } from "@modelcontextprotocol/sdk/client/index"
 // import { type JSONRPCMessage } from './mcp/types';
 
+// Chat module exports
 export * from './chat/types'
-export * from './chat/useChat'
-export * from './chat/agent-connection'
+// export * from './chat/useChat'  // Removed
+export * from './chat/usePersistentChat'
+export * from './chat/useThreads'
+export * from './chat/useSettings'
+
+// Database module exports
+export * from './db'
 // Selectively re-export from MCP to avoid duplicate exports
 export type { Transport } from './mcp/transport'
 export * from './mcp/schema'
@@ -104,3 +110,6 @@ export function getCurrentUrl() {
   return currentUrl;
 }
 */
+
+// Export React compatibility utilities
+export * from './utils/reactCompatibility';

@@ -1,5 +1,5 @@
 // Chat components
-export * from './chat/Chat';
+// export * from './chat/Chat';  // Removed
 export * from './chat/MessageList';
 export * from './chat/MessageInput';
 export { ToolCall } from './chat/ToolCall';

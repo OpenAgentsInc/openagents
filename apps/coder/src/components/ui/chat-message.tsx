@@ -14,7 +14,7 @@ import {
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 
-type Animation = "none" | "fade" | null | undefined
+type Animation = "none" | "fade" | "scale" | null | undefined
 
 const chatBubbleVariants = cva(
   "group/message relative break-words rounded-lg p-3 text-sm",
@@ -27,6 +27,7 @@ const chatBubbleVariants = cva(
       animation: {
         none: "",
         fade: "duration-500 animate-in fade-in-0",
+        scale: "duration-500 animate-in fade-in-0 scale-in-95",
       },
     },
   }
@@ -93,7 +94,7 @@ export interface Message {
 
 export interface ChatMessageProps extends Message {
   showTimeStamp?: boolean
-  animation?: Animation
+  animation?: 'none' | 'fade' | 'scale'
   actions?: React.ReactNode
 }
 
@@ -102,7 +103,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   content,
   createdAt,
   showTimeStamp = false,
-  animation = "scale",
+  animation = 'scale',
   actions,
   experimental_attachments,
   toolInvocations,
