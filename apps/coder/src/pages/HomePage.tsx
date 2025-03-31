@@ -110,12 +110,12 @@ export default function HomePage() {
 
             <SidebarInset>
               <div className="grid grid-rows-[auto_1fr_auto] h-screen">
-                <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14 font-semibold">
+                <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <button
                       aria-label="Model selector"
                       type="button"
-                      className="select-none group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-sm hover:bg-muted font-semibold overflow-hidden whitespace-nowrap"
+                      className="select-none group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-sm hover:bg-muted overflow-hidden whitespace-nowrap"
                     >
                       <div>
                         Claude 3.5 Sonnet
