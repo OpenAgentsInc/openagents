@@ -108,15 +108,6 @@ export default function HomePage() {
 
               <SidebarContent>
                 <SidebarGroup>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton onClick={handleCreateThread}>
-                        <MessageSquareIcon className="mr-2" />
-                        <span>New Chat</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-
                   <ThreadList
                     currentThreadId={currentThreadId ?? ''}
                     onSelectThread={handleSelectThread}
