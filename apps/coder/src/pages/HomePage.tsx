@@ -113,11 +113,11 @@ export default function HomePage() {
             <Sidebar>
               <SidebarHeader className="border-y h-14 mt-[30px]">
                 <div className="flex items-center h-full justify-between px-3">
-                  <span className="flex items-center text-sm font-semibold">
-                    OpenAgents Coder
+                  <span className="flex items-center text-md font-semibold">
+                    Coder
                     <Badge
                       variant="outline"
-                      className="text-[10px] px-1 py-0 ml-1 mt-[1px]"
+                      className="text-[11px] px-[4px] py-[2px] ml-2 mt-[1px]"
                     >
                       v0.0.1
                     </Badge>
@@ -145,7 +145,7 @@ export default function HomePage() {
                     onCreateThread={handleCreateThread}
                   />
                 </SidebarGroup>
-                
+
                 <SidebarGroup>
                   <SidebarMenu>
                     <SidebarMenuItem>
@@ -173,7 +173,7 @@ export default function HomePage() {
               <div className="grid grid-rows-[auto_1fr_auto] h-screen">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
-                    <ModelSelect 
+                    <ModelSelect
                       value={selectedModelId}
                       onChange={handleModelChange}
                       className="w-[240px]"

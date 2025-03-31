@@ -101,14 +101,14 @@ export default function ModelsPage() {
   
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full font-mono">
         <p>Loading settings...</p>
       </div>
     );
   }
   
   return (
-    <div className="container py-6 space-y-6">
+    <div className="container py-6 space-y-6 font-mono">
       <div className="flex items-center">  
         <Link to="/" className="mr-4">
           <Button variant="ghost" size="icon">
@@ -119,7 +119,7 @@ export default function ModelsPage() {
       </div>
       
       {/* Default Model Selection */}
-      <Card>
+      <Card className="font-mono">
         <CardHeader>
           <CardTitle>Default Model</CardTitle>
           <CardDescription>
@@ -136,7 +136,7 @@ export default function ModelsPage() {
       </Card>
       
       {/* API Keys */}
-      <Card>
+      <Card className="font-mono">
         <CardHeader>
           <CardTitle>API Keys</CardTitle>
           <CardDescription>
@@ -145,9 +145,9 @@ export default function ModelsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Tabs value={currentProvider} onValueChange={setCurrentProvider}>
-            <TabsList className="grid" style={{ gridTemplateColumns: `repeat(${providers.length}, 1fr)` }}>
+            <TabsList className="grid font-mono" style={{ gridTemplateColumns: `repeat(${providers.length}, 1fr)` }}>
               {providers.map(provider => (
-                <TabsTrigger key={provider} value={provider} className="capitalize">
+                <TabsTrigger key={provider} value={provider} className="capitalize font-mono">
                   {provider}
                 </TabsTrigger>
               ))}
@@ -194,8 +194,8 @@ export default function ModelsPage() {
                     </div>
                   ) : (
                     <Alert>
-                      <AlertTitle>No API key set</AlertTitle>
-                      <AlertDescription>
+                      <AlertTitle className="font-mono">No API key set</AlertTitle>
+                      <AlertDescription className="font-mono">
                         You haven't set an API key for {provider} yet. Add one below to use {provider} models.
                       </AlertDescription>
                     </Alert>
@@ -221,7 +221,7 @@ export default function ModelsPage() {
                   <h4 className="text-sm font-medium mb-2">Available Models:</h4>
                   <div className="space-y-2">
                     {providerGroups[provider].map(model => (
-                      <div key={model.id} className="p-3 border rounded-md">
+                      <div key={model.id} className="p-3 border rounded-md font-mono">
                         <div className="flex items-center justify-between">
                           <span className="font-medium">{model.name}</span>
                           {model.plan === "pro" && (
