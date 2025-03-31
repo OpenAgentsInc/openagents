@@ -1,4 +1,4 @@
-# HTTP Server Solution for Electron-AI Integration with CORS Support
+# HTTP Server Solution for Electron-AI Integration with CORS Support (Two Approaches)
 
 ## Issue
 
@@ -21,14 +21,22 @@ This ensures that both the initial `fetch` request AND the subsequent `EventSour
 
 ## Implementation Details
 
-### Main Process Changes
+We tried two different approaches to solve this issue:
 
-1. **Pure Node.js HTTP Server**: Instead of using the Hono adapter, we implemented a native Node.js HTTP server for maximum control over the request/response cycle
-2. **Direct Request Handling**: Directly handle OPTIONS preflight requests and test endpoints in the HTTP server
-3. **Hono Integration**: Forward requests to the Hono app and properly handle both regular and streaming responses
-4. **Robust CORS Support**: Set CORS headers directly on the Node.js response objects to ensure they're present
-5. **Error Handling**: Improved error handling and logging for better debugging
-6. **Graceful Shutdown**: Added proper handling for server cleanup when the app closes
+### Approach 1: Native Node.js HTTP Server
+
+1. **Pure Node.js HTTP Server**: Implemented a native Node.js HTTP server for maximum control over the request/response cycle
+2. **Direct Request Handling**: Handled OPTIONS preflight requests and test endpoints in the HTTP server
+3. **Manual Hono Integration**: Forwarded requests to the Hono app and properly handled both regular and streaming responses
+4. **Robust CORS Support**: Set CORS headers directly on the Node.js response objects
+5. **Error Handling**: Added improved error handling and logging for better debugging
+
+### Approach 2: Hono Node Adapter with CORS Middleware
+
+1. **Hono Node Adapter**: Used `@hono/node-server` to run the Hono app directly
+2. **Built-in CORS Middleware**: Added Hono's CORS middleware (`hono/cors`) for simpler CORS handling
+3. **Error Handling**: Added additional error logging and validation
+4. **Graceful Shutdown**: Added proper handling for server cleanup when the app closes
 
 ### Renderer Changes
 
@@ -50,6 +58,14 @@ This ensures that both the initial `fetch` request AND the subsequent `EventSour
 - **Easier Debugging**: Network activity now shows up in the DevTools Network tab
 - **Reduced Complexity**: Removed a significant amount of complex code
 
+## Database Conflict Resolution
+
+During testing, we also discovered and fixed an issue with RxDB document conflicts:
+
+1. **Optimistic Locking**: Implemented retry mechanism in `ThreadRepository.updateThread`
+2. **Debouncing**: Added debouncing to timestamp updates to reduce concurrent write attempts
+3. **Graceful Error Handling**: Made the UI more resilient to database errors
+
 ## Testing
 
 To test these changes:
@@ -59,3 +75,4 @@ To test these changes:
 4. Verify that CORS preflight requests (OPTIONS) are handled correctly
 5. Verify that responses are correctly streamed and displayed in the UI
 6. Check the Network tab in DevTools to see both the POST request and EventSource connection
+7. Verify that no RxDB conflicts are occurring in the console

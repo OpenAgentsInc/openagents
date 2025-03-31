@@ -9,7 +9,7 @@ import {
 } from "electron-devtools-installer";
 // import { setupElectronCommandExecutor } from "@openagents/core";
 import { serverApp } from "./server";
-import { createServer } from "node:http"; // Use Node's native HTTP server
+import { serve } from '@hono/node-server'; // Import serve from Hono's adapter
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -61,127 +61,60 @@ app.whenReady()
   .then(async () => {
     console.log('[Main Process] App is ready.');
 
-    // Start the local HTTP server to handle requests
+    // Start the local Hono server using the Node adapter
     try {
       console.log(`[Main Process] Attempting to start local API server on port ${LOCAL_API_PORT}...`);
       
-      // Create a simple Node.js HTTP server
-      const httpServer = createServer(async (req, res) => {
-        console.log(`[Main Process] Received request: ${req.method} ${req.url}`);
-        
-        // Set CORS headers for all responses
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With');
-        res.setHeader('Access-Control-Max-Age', '86400');
-        
-        // Handle preflight OPTIONS requests
-        if (req.method === 'OPTIONS') {
-          console.log('[Main Process] Handling OPTIONS preflight request');
-          res.writeHead(204);
-          res.end();
-          return;
-        }
-        
-        // Test endpoint
-        if (req.url === '/api/test-cors' && req.method === 'GET') {
-          console.log('[Main Process] Handling /api/test-cors request');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, message: 'CORS is working!' }));
-          return;
-        }
-        
-        // Basic health check
-        if (req.url === '/api/ping' && req.method === 'GET') {
-          console.log('[Main Process] Handling /api/ping request');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ message: 'pong' }));
-          return;
-        }
-        
-        // Forward to Hono app for all other requests
-        try {
-          // Create a Request object from the Node.js request
-          const chunks: Buffer[] = [];
-          
-          // Collect the body if there is one
-          for await (const chunk of req) {
-            chunks.push(Buffer.from(chunk));
-          }
-          const bodyText = Buffer.concat(chunks).toString('utf-8');
-          
-          // Prepare headers
-          const headers = new Headers();
-          for (const [key, value] of Object.entries(req.headers)) {
-            if (value) headers.append(key, Array.isArray(value) ? value.join(', ') : value);
-          }
-          
-          // Create a Request object for Hono
-          const url = new URL(req.url || '/', `http://localhost:${LOCAL_API_PORT}`);
-          const request = new Request(url, {
-            method: req.method,
-            headers,
-            body: bodyText.length > 0 ? bodyText : undefined
-          });
-          
-          // Pass the request to Hono
-          console.log(`[Main Process] Forwarding to Hono: ${req.method} ${req.url}`);
-          const honoResponse = await serverApp.fetch(request);
-          
-          // Write the status and headers
-          res.writeHead(honoResponse.status, Object.fromEntries(honoResponse.headers.entries()));
-          
-          // Check if it's a streaming response
-          if (honoResponse.headers.get('content-type')?.includes('text/event-stream')) {
-            console.log('[Main Process] Handling stream response');
-            
-            // For streaming responses, pipe the Hono response body to the HTTP response
-            const reader = honoResponse.body?.getReader();
-            if (reader) {
-              try {
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  res.write(value);
-                }
-              } finally {
-                reader.releaseLock();
-                res.end();
-              }
-            } else {
-              res.end();
-            }
-          } else {
-            // For regular responses, just get the body and send it
-            const body = await honoResponse.text();
-            res.end(body);
-          }
-        } catch (error) {
-          console.error('[Main Process] Error forwarding to Hono:', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal Server Error' }));
-        }
+      // Verify serverApp exists and has the required fetch method
+      console.log('[Main Process] ServerApp type:', typeof serverApp);
+      console.log('[Main Process] ServerApp keys:', Object.keys(serverApp));
+      
+      if (!serverApp) {
+        throw new Error('serverApp is undefined or null');
+      }
+      
+      if (typeof serverApp.fetch !== 'function') {
+        throw new Error('serverApp.fetch is not a function');
+      }
+      
+      // Start the server with Hono's serve adapter
+      console.log('[Main Process] Initializing server with serve...');
+      serverInstance = serve({
+        fetch: serverApp.fetch, // Pass the fetch handler from our Hono app
+        port: LOCAL_API_PORT,
+      }, (info) => {
+        console.log(`[Main Process] ✅ Local API server listening on http://localhost:${info.port}`);
       });
       
-      // Start the server
-      httpServer.listen(LOCAL_API_PORT, () => {
-        console.log(`[Main Process] ✅ Local API server listening on http://localhost:${LOCAL_API_PORT}`);
-      });
+      console.log('[Main Process] Server instance created:', !!serverInstance);
       
-      // Store the server instance
-      serverInstance = httpServer;
-      
-      // Add error handler
-      httpServer.on('error', (error) => {
-        console.error('[Main Process] Server error:', error);
-      });
-      
+      // Add more error handling
+      if (serverInstance && serverInstance.server) {
+        console.log('[Main Process] Adding error handlers to server...');
+        
+        serverInstance.server.on('error', (error) => {
+          console.error('[Main Process] Server error event:', error);
+        });
+        
+        serverInstance.server.on('listening', () => {
+          console.log('[Main Process] Server is listening');
+        });
+      } else {
+        console.warn('[Main Process] Server instance created but server property is missing');
+      }
     } catch (error) {
       console.error('[Main Process] ❌ Failed to start local API server:', error);
       console.error('[Main Process] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       // Log important information for debugging
       console.log('[Main Process] Node version:', process.versions.node);
       console.log('[Main Process] Electron version:', process.versions.electron);
+      
+      // Try to log the serverApp state
+      try {
+        console.log('[Main Process] ServerApp JSON:', JSON.stringify(serverApp));
+      } catch (jsonError) {
+        console.error('[Main Process] Failed to stringify serverApp:', jsonError);
+      }
     }
     
     // Create window and install extensions

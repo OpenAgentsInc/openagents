@@ -1,6 +1,7 @@
 // apps/coder/src/server/server.ts
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
+import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
 import { streamText, type Message } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
@@ -15,29 +16,15 @@ const app = new Hono<{ Variables: Env }>();
 // Use logger middleware
 app.use('*', logger());
 
-// Simpler CORS middleware - set headers on all responses
-app.use('*', async (c, next) => {
-  // Set CORS headers for all responses
-  c.header('Access-Control-Allow-Origin', '*');
-  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  c.header('Access-Control-Allow-Headers', '*');
-  
-  // Handle preflight requests
-  if (c.req.method === 'OPTIONS') {
-    console.log('[Server] Handling OPTIONS preflight request');
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': '*',
-        'Access-Control-Max-Age': '86400',
-      },
-    });
-  }
-  
-  await next();
-});
+// Use Hono's CORS middleware
+app.use('*', cors({
+  origin: '*', // Allow requests from any origin
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+  maxAge: 86400,
+  // Log CORS operations
+  exposeHeaders: ['Content-Length', 'X-Vercel-AI-Data-Stream'],
+}));
 
 // Health check endpoint
 app.get('/api/ping', (c) => {
@@ -48,8 +35,8 @@ app.get('/api/ping', (c) => {
 // Test CORS endpoint
 app.get('/api/test-cors', (c) => {
   console.log('[Server] Received /api/test-cors request');
-  c.header('Access-Control-Allow-Origin', '*');
-  return c.json({ success: true, message: 'CORS is working!' });
+  // No need to manually set CORS headers - the middleware handles it
+  return c.json({ success: true, message: 'CORS is working with Hono middleware!' });
 });
 
 // Main chat endpoint
@@ -68,7 +55,7 @@ app.post('/api/chat', async (c) => {
     c.header('Cache-Control', 'no-cache');
     c.header('Connection', 'keep-alive');
     c.header('X-Vercel-AI-Data-Stream', 'v1');
-    c.header('Access-Control-Allow-Origin', '*');
+    // CORS headers are handled by the middleware
 
     return stream(c, async (responseStream) => {
       const errorMsg = "OpenRouter API Key not configured. You need to add your API key.";
@@ -129,8 +116,7 @@ app.post('/api/chat', async (c) => {
       c.header('Cache-Control', 'no-cache');
       c.header('Connection', 'keep-alive');
       c.header('X-Vercel-AI-Data-Stream', 'v1');
-      // Ensure CORS headers for the stream response
-      c.header('Access-Control-Allow-Origin', '*');
+      // CORS headers are handled by the middleware
       console.log("🔄 Preparing to stream response...");
 
       // Check streamResult validity

@@ -22,25 +22,6 @@ import {
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
-  const [testStatus, setTestStatus] = useState<string | null>(null);
-
-  // Function to test the CORS connection
-  useEffect(() => {
-    const testCors = async () => {
-      setTestStatus('Testing connection to local server...');
-      try {
-        const response = await fetch('http://localhost:3001/api/test-cors');
-        const data = await response.json();
-        setTestStatus(`Server test: ${JSON.stringify(data)}`);
-        console.log('CORS test successful:', data);
-      } catch (error) {
-        setTestStatus(`Error connecting to server: ${error instanceof Error ? error.message : String(error)}`);
-        console.error('CORS test failed:', error);
-      }
-    };
-
-    testCors();
-  }, []);
 
   // Use the persistence layer with the correct configuration
   const {
@@ -162,9 +143,7 @@ export default function HomePage() {
                       </svg>
                     </button>
                     <div className="flex items-center ml-auto">
-                      {testStatus && (
-                        <div className="text-xs p-1 bg-muted rounded-sm">{testStatus}</div>
-                      )}
+                      {/* Status display removed */}
                     </div>
                   </div>
                 </div>

@@ -255,29 +255,41 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     }
   }, [currentThreadId, dbInitialized, persistenceEnabled, vercelChatState]);
 
-  // Update thread's last updated timestamp when messages change
+  // Update thread's last updated timestamp when messages change, with debouncing
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    
     const updateThreadTimestamp = async () => {
       if (!persistenceEnabled || !dbInitialized || !currentThreadId || messages.length === 0) return;
 
       try {
         // Only update if there was an actual change to avoid unnecessary updates
         if (messagesRef.current.length !== messages.length) {
-          // Update the thread timestamp
+          // Update the thread timestamp with retry mechanism
           await threadRepository.updateThread(currentThreadId, {
             updatedAt: Date.now()
           });
+          console.log(`Successfully updated timestamp for thread ${currentThreadId}`);
         }
 
         messagesRef.current = messages;
       } catch (error) {
+        // Log but don't block the UI for timestamp updates
         console.error('Error updating thread timestamp:', error);
       }
     };
 
     if (currentThreadId) {
-      updateThreadTimestamp();
+      // Debounce the update to avoid too many conflicting writes
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        updateThreadTimestamp();
+      }, 100);
     }
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [messages, currentThreadId, dbInitialized, persistenceEnabled]);
 
   // This ref is declared earlier in the component
