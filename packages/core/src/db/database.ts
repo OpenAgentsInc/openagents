@@ -1,12 +1,19 @@
 import { createRxDatabase, addRxPlugin } from 'rxdb';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
+import { RxDBDevModePlugin } from 'rxdb/plugins/dev-mode';
+import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv';
 
 import { threadSchema, messageSchema, settingsSchema } from './schema';
 import { Database } from './types';
 
 // Add required plugins
 addRxPlugin(RxDBQueryBuilderPlugin);
+
+// Add dev mode plugin in development
+if (process.env.NODE_ENV === 'development') {
+  addRxPlugin(RxDBDevModePlugin);
+}
 
 // Database instance (singleton)
 let dbInstance: Database | null = null;
@@ -22,43 +29,36 @@ export async function createDatabase(): Promise<Database> {
 
   console.log('Creating RxDB database...');
 
-  // Create the database
-  const db = await createRxDatabase<Database>({
-    name: 'openagents',
-    storage: getRxStorageDexie()
-  });
+  try {
+    const db = await createRxDatabase<Database>({
+      name: 'openagents-hehe',
+      storage: wrappedValidateAjvStorage({
+        storage: getRxStorageDexie()
+      }),
+      multiInstance: false,
+      ignoreDuplicate: true
+    });
 
-  // Add collections
-  await db.addCollections({
-    threads: {
-      schema: threadSchema,
-      migrationStrategies: {
-        // Add migration strategies for future schema versions
-        // 1: (oldDoc) => { ... }
+    await db.addCollections({
+      threads: {
+        schema: threadSchema
+      },
+      messages: {
+        schema: messageSchema
+      },
+      settings: {
+        schema: settingsSchema
       }
-    },
-    messages: {
-      schema: messageSchema,
-      migrationStrategies: {
-        // Add migration strategies for future schema versions
-        // 1: (oldDoc) => { ... }
-      }
-    },
-    settings: {
-      schema: settingsSchema,
-      migrationStrategies: {
-        // Add migration strategies for future schema versions
-        // 1: (oldDoc) => { ... }
-      }
-    }
-  });
+    });
 
-  console.log('RxDB database created successfully');
+    console.log('RxDB database created successfully');
+    dbInstance = db;
+    return db;
 
-  // Store instance
-  dbInstance = db;
-
-  return db;
+  } catch (error) {
+    console.error('Failed to create RxDB database:', error);
+    throw error;
+  }
 }
 
 /**
@@ -72,12 +72,11 @@ export async function getDatabase(): Promise<Database> {
 }
 
 /**
- * Closes the database connection
+ * Cleanup database instance
  */
-export async function closeDatabase(): Promise<void> {
+export async function cleanupDatabase() {
   if (dbInstance) {
     await dbInstance.destroy();
     dbInstance = null;
-    console.log('Database connection closed');
   }
 }

@@ -10,17 +10,35 @@ export const threadSchema: RxJsonSchema<Thread> = {
   primaryKey: 'id',
   type: 'object',
   properties: {
-    id: { type: 'string' },
-    title: { type: 'string' },
-    createdAt: { type: 'number' },
-    updatedAt: { type: 'number' },
-    modelId: { 
-      type: 'string' 
+    id: {
+      type: 'string',
+      maxLength: 100
     },
-    systemPrompt: { 
-      type: 'string' 
+    title: {
+      type: 'string',
+      maxLength: 500
     },
-    metadata: { 
+    createdAt: {
+      type: 'number',
+      multipleOf: 1,
+      minimum: 0,
+      maximum: 9007199254740991 // Number.MAX_SAFE_INTEGER
+    },
+    updatedAt: {
+      type: 'number',
+      multipleOf: 1,
+      minimum: 0,
+      maximum: 9007199254740991 // Number.MAX_SAFE_INTEGER
+    },
+    modelId: {
+      type: 'string',
+      maxLength: 100
+    },
+    systemPrompt: {
+      type: 'string',
+      maxLength: 2000
+    },
+    metadata: {
       type: 'object',
       additionalProperties: true
     }
@@ -38,19 +56,36 @@ export const messageSchema: RxJsonSchema<StoredMessage> = {
   primaryKey: 'id',
   type: 'object',
   properties: {
-    id: { type: 'string' },
-    threadId: { type: 'string' },
-    role: { type: 'string' },
-    content: { type: 'string' },
-    createdAt: { type: 'number' },
-    parts: { 
+    id: {
+      type: 'string',
+      maxLength: 100
+    },
+    threadId: {
+      type: 'string',
+      maxLength: 100
+    },
+    role: {
+      type: 'string',
+      enum: ['user', 'assistant', 'system']
+    },
+    content: {
+      type: 'string',
+      maxLength: 100000
+    },
+    createdAt: {
+      type: 'number',
+      multipleOf: 1,
+      minimum: 0,
+      maximum: 9007199254740991 // Number.MAX_SAFE_INTEGER
+    },
+    parts: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: true
       }
     },
-    attachments: { 
+    attachments: {
       type: 'array',
       items: {
         type: 'object',
@@ -71,18 +106,23 @@ export const settingsSchema: RxJsonSchema<Settings> = {
   primaryKey: 'id',
   type: 'object',
   properties: {
-    id: { type: 'string' },
-    theme: { 
-      type: 'string' 
+    id: {
+      type: 'string',
+      maxLength: 100
     },
-    apiKeys: { 
+    theme: {
+      type: 'string',
+      enum: ['light', 'dark', 'system']
+    },
+    apiKeys: {
       type: 'object',
       additionalProperties: true
     },
-    defaultModel: { 
-      type: 'string' 
+    defaultModel: {
+      type: 'string',
+      maxLength: 100
     },
-    preferences: { 
+    preferences: {
       type: 'object',
       additionalProperties: true
     }
