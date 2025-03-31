@@ -257,7 +257,8 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
   // Update thread's last updated timestamp when messages change, with debouncing
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
+    // Create a timeout ID inside the effect so it's properly scoped
+    let timeoutId: NodeJS.Timeout | undefined;
     
     const updateThreadTimestamp = async () => {
       if (!persistenceEnabled || !dbInitialized || !currentThreadId || messages.length === 0) return;
@@ -281,14 +282,19 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
     if (currentThreadId) {
       // Debounce the update to avoid too many conflicting writes
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       timeoutId = setTimeout(() => {
         updateThreadTimestamp();
       }, 100);
     }
     
     return () => {
-      clearTimeout(timeoutId);
+      // Cleanup on unmount
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [messages, currentThreadId, dbInitialized, persistenceEnabled]);
 
