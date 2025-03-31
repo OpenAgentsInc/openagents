@@ -12,7 +12,12 @@
     "sourceMap": true,
     "moduleResolution": "bundler",
     "paths": {
-      "agents/*": ["../../node_modules/agents/dist/*"]
+      "agents": [
+        "../../node_modules/agents/dist"
+      ],
+      "agents/*": [
+        "../../node_modules/agents/dist/*"
+      ]
     },
     "jsx": "react-jsx",
     "strict": true,

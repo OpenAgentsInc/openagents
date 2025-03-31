@@ -1,16 +1,31 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { DayPicker } from "react-day-picker"
+import { react19 } from "@openagents/core"
 
 import { cn } from "@/utils/tailwind"
 import { buttonVariants } from "@/components/ui/button"
+
+interface IconProps extends React.ComponentProps<'svg'> {
+  className?: string;
+}
+
+const CompatChevronLeft: React.FC<IconProps> = ({ className, ...props }) => (
+  <ChevronLeft className={className} {...props} />
+);
+
+const CompatChevronRight: React.FC<IconProps> = ({ className, ...props }) => (
+  <ChevronRight className={className} {...props} />
+);
+
+export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
   ...props
-}: React.ComponentProps<typeof DayPicker>) {
+}: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -59,10 +74,10 @@ function Calendar({
       }}
       components={{
         IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("size-4", className)} {...props} />
+          <CompatChevronLeft className={cn("size-4", className)} {...props} />
         ),
         IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("size-4", className)} {...props} />
+          <CompatChevronRight className={cn("size-4", className)} {...props} />
         ),
       }}
       {...props}

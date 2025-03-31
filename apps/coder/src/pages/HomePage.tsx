@@ -1,10 +1,12 @@
-import React, { useState } from "react";
-import { useChat } from "@ai-sdk/react"
-import { MessageInput } from "@/components/ui/message-input"
-import { MessageList } from "@/components/ui/message-list"
-import { ChatForm } from "@/components/ui/chat"
-import ToggleTheme from "@/components/ToggleTheme"
-import { Badge } from "@/components/ui/badge"
+import React, { useCallback, useEffect } from "react";
+// Restored persistence with our wrapper
+import { usePersistentChat, Thread } from "@openagents/core";
+import { MessageInput } from "@/components/ui/message-input";
+import { MessageList } from "@/components/ui/message-list";
+import { Chat, ChatForm } from "@/components/ui/chat";
+import { ThreadList } from "@/components/ThreadList";
+import ToggleTheme from "@/components/ToggleTheme";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -16,14 +18,60 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarInset
-} from "@/components/ui/sidebar"
-import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react"
+} from "@/components/ui/sidebar";
+import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading: isGenerating, stop }
-    = useChat({ api: "https://chat.openagents.com", maxSteps: 10 })
+  // Use the persistence layer with the correct configuration
+  const {
+    messages,
+    input,
+    handleInputChange,
+    handleSubmit,
+    isLoading: isGenerating,
+    stop,
+    currentThreadId,
+    switchThread,
+    createNewThread,
+    deleteThread,
+    updateThread,
+  } = usePersistentChat({
+    // Use the correct API endpoint that was working before
+    api: "https://chat.openagents.com",
+    // Configuration that we know works
+    streamProtocol: 'data',
+    body: {
+      model: "claude-3-5-sonnet-20240620"
+    },
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    },
+    // Enable persistence
+    persistenceEnabled: true,
+    maxSteps: 10,
+    // Event handlers
+    onResponse: (response) => {},
+    onFinish: (message) => {},
+    onThreadChange: (threadId: string) => {}
+  });
 
-  const [files, setFiles] = useState<File[] | null>(null)
+
+  const handleCreateThread = useCallback(() => {
+    createNewThread();
+  }, [createNewThread]);
+
+  const handleSelectThread = useCallback((threadId: string) => {
+    switchThread(threadId);
+  }, [switchThread]);
+
+  const handleDeleteThread = useCallback((threadId: string) => {
+    deleteThread(threadId);
+  }, [deleteThread]);
+
+  const handleRenameThread = useCallback((threadId: string, title: string) => {
+    updateThread(threadId, title);
+  }, [updateThread]);
 
   return (
     <SidebarProvider defaultOpen={true}>
@@ -44,30 +92,19 @@ export default function HomePage() {
                   </span>
                 </div>
               </SidebarHeader>
+
               <SidebarContent>
                 <SidebarGroup>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton isActive={true} tooltip="Chat">
-                        <MessageSquareIcon className="mr-2" />
-                        <span>Chat</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton tooltip="Settings">
-                        <SettingsIcon className="mr-2" />
-                        <span>Settings</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    {/* <SidebarMenuItem>
-                      <SidebarMenuButton tooltip="Help">
-                        <HelpCircleIcon className="mr-2" />
-                        <span>Help</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem> */}
-                  </SidebarMenu>
+                  <ThreadList
+                    currentThreadId={currentThreadId ?? ''}
+                    onSelectThread={handleSelectThread}
+                    onDeleteThread={handleDeleteThread}
+                    onRenameThread={handleRenameThread}
+                    onCreateThread={handleCreateThread}
+                  />
                 </SidebarGroup>
               </SidebarContent>
+
               <SidebarFooter>
                 <div className="px-3 py-2">
                   <div className="text-xs text-muted-foreground">
@@ -76,14 +113,15 @@ export default function HomePage() {
                 </div>
               </SidebarFooter>
             </Sidebar>
+
             <SidebarInset>
               <div className="grid grid-rows-[auto_1fr_auto] h-screen">
-                <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14 font-semibold">
+                <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <button
                       aria-label="Model selector"
                       type="button"
-                      className="select-none group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-sm hover:bg-muted font-semibold overflow-hidden whitespace-nowrap"
+                      className="select-none group flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-sm hover:bg-muted overflow-hidden whitespace-nowrap"
                     >
                       <div>
                         Claude 3.5 Sonnet
@@ -98,6 +136,7 @@ export default function HomePage() {
                 <div className="overflow-y-auto">
                   <div className="h-full p-4">
                     <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+
                       <MessageList
                         messages={messages}
                         isTyping={isGenerating}
@@ -111,6 +150,7 @@ export default function HomePage() {
                     <ChatForm
                       isPending={isGenerating}
                       handleSubmit={handleSubmit}
+                      className="relative"
                     >
                       {({ files, setFiles }) => (
                         <MessageInput
@@ -135,5 +175,5 @@ export default function HomePage() {
         </div>
       </div>
     </SidebarProvider>
-  )
+  );
 }

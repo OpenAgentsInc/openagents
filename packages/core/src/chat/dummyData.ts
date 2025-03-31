@@ -1,25 +1,27 @@
 import { UIMessage } from './types';
 
-export const dummyMessages: UIMessage[] = [
+export const messages: UIMessage[] = [
   {
     id: 'sys-1',
     role: 'system',
-    content: 'I am an AI assistant that helps with coding tasks.',
+    content: 'You are a helpful AI assistant.',
+    createdAt: new Date(),
     parts: [
       {
         type: 'text',
-        text: 'I am an AI assistant that helps with coding tasks.'
+        text: 'You are a helpful AI assistant.'
       }
     ]
   },
   {
     id: 'usr-1',
     role: 'user',
-    content: 'Can you help me create a React component?',
+    content: 'Hello! Can you help me search through my codebase?',
+    createdAt: new Date(),
     parts: [
       {
         type: 'text',
-        text: 'Can you help me create a React component?'
+        text: 'Hello! Can you help me search through my codebase?'
       }
     ]
   },
@@ -27,6 +29,7 @@ export const dummyMessages: UIMessage[] = [
     id: 'ast-1',
     role: 'assistant',
     content: "I'll help you create a React component. First, let me search for some examples.",
+    createdAt: new Date(),
     parts: [
       {
         type: 'text',
@@ -50,6 +53,7 @@ export const dummyMessages: UIMessage[] = [
     id: 'ast-2',
     role: 'assistant',
     content: 'Here is a simple example of a React component:',
+    createdAt: new Date(),
     parts: [
       {
         type: 'reasoning',
@@ -97,6 +101,7 @@ export const Example = ({ title, description }: ExampleProps) => {
     id: 'usr-2',
     role: 'user',
     content: 'Can you add some styling to it?',
+    createdAt: new Date(),
     parts: [
       {
         type: 'text',
@@ -108,6 +113,7 @@ export const Example = ({ title, description }: ExampleProps) => {
     id: 'ast-3',
     role: 'assistant',
     content: "I'll add some CSS styling to make it look better.",
+    createdAt: new Date(),
     parts: [
       {
         type: 'text',
@@ -162,46 +168,48 @@ export const Example = ({ title, description }: ExampleProps) => {
 
 // Example of a message with file attachment
 export const messageWithAttachment: UIMessage = {
-  id: 'usr-file-1',
+  id: 'usr-3',
   role: 'user',
-  content: 'Here is the configuration file you requested:',
+  content: 'Here is a file I want to share.',
+  createdAt: new Date(),
   experimental_attachments: [
     {
-      name: 'config.json',
-      contentType: 'application/json',
-      url: 'data:application/json;base64,eyJuYW1lIjoiZXhhbXBsZSIsInZlcnNpb24iOiIxLjAuMCJ9'
+      name: 'example.txt',
+      contentType: 'text/plain',
+      url: 'https://example.com/file.txt'
     }
   ],
   parts: [
     {
       type: 'text',
-      text: 'Here is the configuration file you requested:'
+      text: 'Here is a file I want to share.'
     },
     {
       type: 'file',
-      mimeType: 'application/json',
-      data: 'eyJuYW1lIjoiZXhhbXBsZSIsInZlcnNpb24iOiIxLjAuMCJ9'
+      mimeType: 'text/plain',
+      data: 'Example file content'
     }
   ]
 };
 
 // Example of a message with source citation
 export const messageWithSource: UIMessage = {
-  id: 'ast-src-1',
+  id: 'ast-4',
   role: 'assistant',
-  content: 'According to the documentation...',
+  content: 'I found this information from a reliable source.',
+  createdAt: new Date(),
   parts: [
     {
       type: 'text',
-      text: 'According to the documentation...'
+      text: 'I found this information from a reliable source.'
     },
     {
       type: 'source',
       source: {
         sourceType: 'url',
-        id: 'doc-1',
-        url: 'https://example.com/docs',
-        title: 'API Documentation'
+        id: 'src-1',
+        url: 'https://example.com',
+        title: 'Example Source'
       }
     }
   ]
