@@ -74,7 +74,17 @@ function messageToUIMessage(message: Message | CreateMessage, threadId?: string)
 /**
  * Custom hook that extends Vercel's useChat with persistence capabilities
  */
+/**
+ * This hook extends Vercel's useChat with persistence capabilities.
+ * It handles saving and loading messages from a database.
+ */
 export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePersistentChatReturn {
+  console.log('usePersistentChat called with options:', JSON.stringify({
+    id: options.id,
+    persistenceEnabled: options.persistenceEnabled,
+    maxSteps: options.maxSteps,
+    api: options.api
+  }));
   const { persistenceEnabled = true, id: initialThreadId, onThreadChange } = options;
   const [currentThreadId, setCurrentThreadId] = useState<string | undefined>(initialThreadId);
   const [dbInitialized, setDbInitialized] = useState(false);
@@ -84,10 +94,29 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   // Add refs for tracking
   const savedMessageIdsRef = useRef<Set<string>>(new Set());
   
-  // Create a custom onFinish handler to save completed assistant messages
+  // Pass through all the original options to avoid breaking anything
   const customOptions = {
     ...options,
+    id: options.id,
+    maxSteps: options.maxSteps || 10,
+    experimental_onToolCall: options.experimental_onToolCall,
+    api: options.api,
+    body: options.body,
+    headers: options.headers,
+    
+    // This is important for ensuring we see messages immediately
+    onResponse: async (response: Response) => {
+      // Call the original onResponse if provided
+      if (options.onResponse) {
+        await options.onResponse(response);
+      }
+      
+      console.log('Server response received');
+    },
+    
     onFinish: async (message: Message, finishOptions: any) => {
+      console.log('onFinish called for message:', message.id, message.role);
+      
       // Call the original onFinish if provided
       if (options.onFinish) {
         options.onFinish(message, finishOptions);
@@ -98,15 +127,23 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         try {
           console.log('Saving completed assistant message to database');
           
-          // Convert to UIMessage format
-          const uiMessage = fromVercelMessage(message);
-          uiMessage.threadId = currentThreadId;
+          // Convert to UIMessage format with threadId guaranteed
+          const uiMessage: UIMessage & { threadId: string } = {
+            ...fromVercelMessage(message),
+            threadId: currentThreadId
+          };
           
           // Save the message
           await messageRepository.createMessage(uiMessage);
           
           // Mark as saved to prevent duplicates
           savedMessageIdsRef.current.add(message.id);
+          console.log(`Marked assistant message ${message.id} as saved`);
+          
+          // Update thread timestamp
+          await threadRepository.updateThread(currentThreadId, {
+            updatedAt: Date.now()
+          });
         } catch (error) {
           console.error('Error saving assistant message in onFinish:', error);
         }
@@ -206,6 +243,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       
       // Skip if we've already loaded messages for this thread
       if (loadedThreadsRef.current.has(currentThreadId)) {
+        console.log(`Thread ${currentThreadId} already loaded, skipping load`);
         return;
       }
       
@@ -214,15 +252,25 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         const threadMessages = await messageRepository.getMessagesByThreadId(currentThreadId);
         console.log('Loaded', threadMessages.length, 'messages from database');
         
+        // Mark all loaded messages as "saved" to prevent re-saving
+        threadMessages.forEach(msg => {
+          savedMessageIdsRef.current.add(msg.id);
+          console.log(`Marked message ${msg.id} (${msg.role}) as saved`);
+        });
+        
         // Mark this thread as loaded
         loadedThreadsRef.current.add(currentThreadId);
+        console.log(`Marked thread ${currentThreadId} as loaded`);
         
         if (threadMessages.length > 0) {
           // Update both local state and Vercel state
           messagesRef.current = threadMessages;
+          
+          // First update our local state
           setMessages(threadMessages);
           
-          // Convert to Vercel messages and update Vercel state
+          // Then update Vercel's state - but don't trigger our save mechanism
+          // This is a one-way update operation
           const vercelMessages = threadMessages.map(toVercelMessage);
           vercelChatState.setMessages(vercelMessages);
         }
@@ -273,37 +321,32 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         // Skip if no messages
         if (vercelMessages.length === 0) return;
 
-        const uiMessages = vercelMessages.map(message => {
-          // Convert to UIMessage format
-          const uiMessage = fromVercelMessage(message);
-          // Add thread ID
-          uiMessage.threadId = currentThreadId;
-          return uiMessage;
-        });
+        // Only save user messages here - assistant messages are saved by onFinish
+        // This prevents double saving of assistant messages
+        const userMessages = vercelMessages
+          .filter(msg => msg.role === 'user')
+          .map(message => {
+            // Convert to UIMessage format
+            const uiMessage = fromVercelMessage(message);
+            // Add thread ID
+            uiMessage.threadId = currentThreadId;
+            return uiMessage;
+          });
 
-        // Only save messages we haven't saved before
-        const newMessages = uiMessages.filter(uiMsg => 
+        const newUserMessages = userMessages.filter(uiMsg => 
           !savedMessageIdsRef.current.has(uiMsg.id)
         );
 
-        if (newMessages.length > 0) {
-          console.log('Saving', newMessages.length, 'new messages to database');
-          for (const message of newMessages) {
-            await messageRepository.createMessage({
-              ...message,
-              threadId: currentThreadId
-            });
+        if (newUserMessages.length > 0) {
+          console.log('Saving', newUserMessages.length, 'new user messages to database');
+          for (const message of newUserMessages) {
+            console.log(`Saving user message: ${message.id}`);
+            // The message already has threadId set above
+            await messageRepository.createMessage(message as UIMessage & { threadId: string });
             
             // Mark as saved
             savedMessageIdsRef.current.add(message.id);
           }
-        }
-
-        // Update our local state without triggering a re-fetch
-        messagesRef.current = uiMessages;
-        // Only set state if we have new messages
-        if (newMessages.length > 0) {
-          setMessages(uiMessages);
         }
       } catch (error) {
         console.error('Error saving messages:', error);
@@ -317,25 +360,29 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
   // Custom append function that saves messages to database
   const append = async (message: UIMessage): Promise<string | null | undefined> => {
-    // Assign thread ID to message if not present
-    if (!message.threadId && currentThreadId) {
-      message.threadId = currentThreadId;
+    // Ensure we have a threadId
+    if (!currentThreadId) {
+      console.error('Cannot append message: No current thread ID');
+      return null;
     }
 
+    // Create a copy with the threadId explicitly set
+    const messageWithThread: UIMessage & { threadId: string } = {
+      ...message,
+      threadId: currentThreadId
+    };
+
     // Convert to Vercel format
-    const vercelMessage = toVercelMessage(message);
+    const vercelMessage = toVercelMessage(messageWithThread);
     
     try {
       // First, save user message to database if it's a user message
-      if (persistenceEnabled && dbInitialized && currentThreadId && message.role === 'user') {
-        console.log('Saving user message to database:', message.content.substring(0, 50) + (message.content.length > 50 ? '...' : ''));
-        await messageRepository.createMessage({
-          ...message,
-          threadId: currentThreadId
-        });
+      if (persistenceEnabled && dbInitialized && messageWithThread.role === 'user') {
+        console.log('Saving user message to database:', messageWithThread.content.substring(0, 50) + (messageWithThread.content.length > 50 ? '...' : ''));
+        await messageRepository.createMessage(messageWithThread);
         
         // Mark this message as saved
-        savedMessageIdsRef.current.add(message.id);
+        savedMessageIdsRef.current.add(messageWithThread.id);
       }
 
       // Then, submit to Vercel AI SDK to get assistant response
@@ -369,24 +416,10 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     const vercelMessages = newMessages.map(toVercelMessage);
     vercelChatState.setMessages(vercelMessages);
     
-    // Save to database if persistence is enabled
-    if (persistenceEnabled && dbInitialized && currentThreadId) {
-      // Save each message
-      newMessages.forEach(async (message) => {
-        try {
-          if (!message.threadId) {
-            message.threadId = currentThreadId;
-          }
-          
-          await messageRepository.createMessage({
-            ...message,
-            threadId: currentThreadId
-          });
-        } catch (error) {
-          console.error('Error saving message during setMessages:', error);
-        }
-      });
-    }
+    // When explicitly setting messages, we'll save them all
+    // This is used mainly for loading saved messages, so we don't need to save again
+    // Just log what's happening
+    console.log(`setVercelMessages called with ${newMessages.length} messages - not saving to avoid duplication`);
   };
 
   // Custom handleSubmit function that adds thread ID
@@ -398,29 +431,19 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       event.preventDefault();
     }
     
-    // Prepare user message with thread ID for saving
-    if (persistenceEnabled && dbInitialized && currentThreadId && vercelChatState.input) {
-      const userMessage: UIMessage = {
-        id: uuidv4(),
-        role: 'user',
-        content: vercelChatState.input,
-        createdAt: new Date(),
-        threadId: currentThreadId,
-        parts: [{ type: 'text', text: vercelChatState.input }],
-        experimental_attachments: []  // Ensure attachments is always an array
-      };
-      
-      // Save user message before submitting
-      (async () => {
-        try {
-          await messageRepository.createMessage(userMessage);
-        } catch (error) {
-          console.error('Error saving user message during handleSubmit:', error);
-        }
-      })();
+    // We need to make sure we're seeing the user message immediately
+    // Let Vercel's state management handle displaying the message immediately
+    // Persistence will happen in the normal message flow
+    
+    // Get the current input to create a user message
+    const userInput = vercelChatState.input;
+    if (!userInput || !currentThreadId) {
+      // No input or thread, just call the original submit
+      vercelChatState.handleSubmit(event, options);
+      return;
     }
     
-    // Call original handleSubmit
+    // Call original handleSubmit to trigger the AI process
     vercelChatState.handleSubmit(event, options);
   };
 
@@ -544,8 +567,47 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     }
   };
 
+  // Don't wait for dirtyPersistenceState - ALWAYS convert Vercel's messages
+  useEffect(() => {
+    console.log('Vercel message state changed - now has', vercelChatState.messages.length, 'messages');
+    if (vercelChatState.messages.length > 0 && currentThreadId) {
+      // Convert them to our format for storage/persistence
+      const uiMessages = vercelChatState.messages.map(message => {
+        const uiMessage = fromVercelMessage(message);
+        // Ensure threadId is set
+        uiMessage.threadId = currentThreadId;
+        return uiMessage;
+      });
+      
+      // Update our state
+      setMessages(uiMessages);
+    }
+  }, [vercelChatState.messages, currentThreadId]); // Direct dependency on vercelChatState.messages
+  
+  // Add debugging to see what's happening with Vercel's message state
+  useEffect(() => {
+    console.log('Vercel messages changed:', JSON.stringify(vercelChatState.messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content.substring(0, 30) + (m.content.length > 30 ? '...' : '')
+    }))));
+  }, [vercelChatState.messages]);
+  
+  // COMPLETELY BYPASS OUR STATE - use Vercel's messages directly
+  // Convert on the fly for the return value
+  const displayMessages = vercelChatState.messages.map(m => {
+    const msg = fromVercelMessage(m);
+    if (currentThreadId) {
+      msg.threadId = currentThreadId;
+    }
+    return msg;
+  });
+  
+  console.log('Returning', displayMessages.length, 'messages to UI');
+  
   return {
-    messages,
+    // ALWAYS use Vercel's messages, converted to our format
+    messages: displayMessages,
     append,
     setMessages: setVercelMessages,
     isLoading: vercelChatState.isLoading,

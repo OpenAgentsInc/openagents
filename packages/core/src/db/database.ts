@@ -11,11 +11,13 @@ import {
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
 import { wrappedValidateZSchemaStorage } from 'rxdb/plugins/validate-z-schema';
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
+import { RxDBUpdatePlugin } from 'rxdb/plugins/update';
 import { Thread, StoredMessage, Settings, DatabaseCollections, Database } from './types';
 import { threadSchema, messageSchema, settingsSchema } from './schema';
 
 // Add required plugins
 addRxPlugin(RxDBQueryBuilderPlugin);
+addRxPlugin(RxDBUpdatePlugin);
 
 // Initialize storage with validation
 let storage: RxStorage<any, any> = wrappedValidateZSchemaStorage({
