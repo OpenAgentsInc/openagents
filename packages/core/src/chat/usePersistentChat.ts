@@ -6,9 +6,9 @@ import { getDatabase } from '../db/database';
 import { Thread } from '../db/types';
 import { UIMessage, toVercelMessage, fromVercelMessage } from './types';
 
-// Add version logging
-console.log('📌 AI SDK Version Check - Using @ai-sdk/react');
-console.log('📌 React Version Check:', React?.version || 'Not available');
+// Version information
+// AI SDK: @ai-sdk/react
+// React version: React?.version
 
 /**
  * Options for the usePersistentChat hook
@@ -51,13 +51,6 @@ export interface UsePersistentChatReturn {
  * It handles saving and loading messages from a database.
  */
 export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePersistentChatReturn {
-  console.log('🚨 usePersistentChat called with options:', JSON.stringify({
-    id: options.id,
-    persistenceEnabled: options.persistenceEnabled,
-    maxSteps: options.maxSteps,
-    api: options.api
-  }));
-  
   const { persistenceEnabled = true, id: initialThreadId, onThreadChange } = options;
   const [currentThreadId, setCurrentThreadId] = useState<string | undefined>(initialThreadId);
   const [dbInitialized, setDbInitialized] = useState(false);
@@ -89,136 +82,47 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     // Force the stream protocol to be data for compatibility
     streamProtocol: 'data',
 
-    // This is important for ensuring we see messages immediately
+    // Custom response handler
     onResponse: async (response: Response) => {
-      console.log('💡 Server response received with status:', response.status);
-      console.log('💡 Response headers:', JSON.stringify(Object.fromEntries([...response.headers.entries()])));
-      console.log('💡 URL requested:', response.url);
-      
       // Check if the response has an error status
       if (!response.ok) {
-        console.error('💡 SERVER ERROR: Response status indicates failure:', response.status);
-        console.error('💡 Status text:', response.statusText);
-      }
-      
-      // Clone the response to inspect its content without consuming it
-      try {
-        const clonedResponse = response.clone();
-        const contentType = clonedResponse.headers.get('content-type') || '';
-        
-        if (contentType.includes('text/event-stream')) {
-          console.log('💡 Response is an event stream - message streaming should be working');
-          console.log('💡 NOTE: If no assistant message appears, the server may not be sending events properly');
-          
-          // Try to read the first event to verify
-          const reader = clonedResponse.body?.getReader();
-          if (reader) {
-            try {
-              console.log('💡 Trying to read first chunk of event stream...');
-              const { value, done } = await reader.read();
-              if (done) {
-                console.log('💡 Stream is already closed');
-              } else {
-                const text = new TextDecoder().decode(value);
-                console.log('💡 First chunk of stream:', text.substring(0, 300) + '...');
-              }
-            } catch (streamError) {
-              console.error('💡 Error reading stream:', streamError);
-            } finally {
-              reader.releaseLock();
-            }
-          }
-        } else if (contentType.includes('application/json')) {
-          const jsonData = await clonedResponse.json();
-          console.log('💡 Response contains JSON data:', JSON.stringify(jsonData).substring(0, 200) + '...');
-        } else {
-          const text = await clonedResponse.text();
-          console.log('💡 Response text (first 200 chars):', text.substring(0, 200) + '...');
-        }
-      } catch (error) {
-        console.error('💡 Error inspecting response:', error);
+        // Handle error case
       }
       
       // Call the original onResponse if provided
       if (options.onResponse) {
-        console.log('💡 Calling original onResponse handler');
         await options.onResponse(response);
       }
-
-      console.log('💡 Server response processing completed');
-      
-      // CRITICAL DEBUG: Force adding an assistant message if none appears
-      setTimeout(() => {
-        if (vercelChatState.messages.filter(m => m.role === 'assistant').length === 0 && vercelChatState.isLoading) {
-          console.log('💡 WARNING: No assistant message received after 5 seconds. Server may not be responding correctly.');
-        }
-      }, 5000);
     },
 
     onFinish: async (message: Message, finishOptions: any) => {
-      console.log('🚨 onFinish called for message:', message.id, message.role);
-      console.log('🚨 Full message content:', message.content.substring(0, 100) + (message.content.length > 100 ? '...' : ''));
-      
-      // Inspect parts or other structured data if available
-      if (message.parts && message.parts.length > 0) {
-        console.log('🚨 Message has', message.parts.length, 'parts');
-        message.parts.forEach((part, idx) => {
-          console.log(`🚨 Part ${idx} type:`, (part as any).type || 'unknown');
-        });
-      } else {
-        console.log('🚨 Message has NO parts');
-      }
-
       // Call the original onFinish if provided
       if (options.onFinish) {
-        console.log('🚨 Calling original onFinish handler');
         options.onFinish(message, finishOptions);
       }
 
       // Save the completed assistant message to the database
       if (persistenceEnabled && dbInitialized && currentThreadId && message.role === 'assistant') {
         try {
-          console.log('🚨 Saving completed assistant message to database');
-
           // Convert to UIMessage format with threadId guaranteed
           const uiMessage: UIMessage & { threadId: string } = {
             ...fromVercelMessage(message),
             threadId: currentThreadId
           };
-          
-          console.log('🚨 Converted message:', JSON.stringify({
-            id: uiMessage.id,
-            role: uiMessage.role,
-            threadId: uiMessage.threadId,
-            contentPreview: uiMessage.content.substring(0, 50) + '...',
-            hasContentParts: uiMessage.parts && uiMessage.parts.length > 0
-          }));
 
           // Save the message
           const savedMessage = await messageRepository.createMessage(uiMessage);
-          console.log('🚨 Assistant message saved to database:', savedMessage.id);
 
           // Mark as saved to prevent duplicates
           savedMessageIdsRef.current.add(message.id);
-          console.log(`🚨 Marked assistant message ${message.id} as saved`);
 
           // Update thread timestamp
-          console.log('🚨 Updating thread timestamp for thread:', currentThreadId);
           await threadRepository.updateThread(currentThreadId, {
             updatedAt: Date.now()
           });
-          console.log('🚨 Thread timestamp updated successfully');
         } catch (error) {
-          console.error('❌ Error saving assistant message in onFinish:', error);
-          console.error('❌ Error details:', error instanceof Error ? error.message : String(error));
-          console.error('❌ Stack trace:', error instanceof Error && error.stack ? error.stack : 'No stack trace');
+          // Error handling for saving assistant message
         }
-      } else {
-        console.log('🚨 Skipping database save because:',
-          !persistenceEnabled ? 'persistence disabled' : 
-          !dbInitialized ? 'database not initialized' : 
-          !currentThreadId ? 'no current thread ID' : 
-          message.role !== 'assistant' ? `message role is ${message.role}` : 'unknown reason');
       }
     }
   };
@@ -229,13 +133,11 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   useEffect(() => {
     const initDb = async () => {
       try {
-        console.log('Initializing database for persistent chat');
         const db = await getDatabase();
         await messageRepository.initialize(db);
         setDbInitialized(true);
-        console.log('Database initialized successfully');
       } catch (error) {
-        console.error('Failed to initialize database:', error);
+        // Failed to initialize database
       }
     };
 
@@ -252,20 +154,20 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       try {
         // If no thread ID is provided, check if any threads exist
         if (!currentThreadId) {
-          console.log('No thread ID provided, checking for existing threads');
+          // No thread ID provided, check for existing threads
           const threads = await threadRepository.getAllThreads();
 
           if (threads.length > 0) {
             // Use the most recent thread
             const mostRecentThread = threads[0];
-            console.log('Using most recent thread:', mostRecentThread.id);
+            // Use the most recent thread
             setCurrentThreadId(mostRecentThread.id);
             if (onThreadChange) {
               onThreadChange(mostRecentThread.id);
             }
           } else {
             // Create a default thread
-            console.log('No threads found, creating a default thread');
+            // No threads found, create a default thread
             const newThread = await threadRepository.createThread({
               title: 'New Chat',
               createdAt: Date.now(),
@@ -283,7 +185,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
           // Check if the provided thread exists
           const thread = await threadRepository.getThreadById(currentThreadId);
           if (!thread) {
-            console.log('Thread not found, creating a new one with ID:', currentThreadId);
+            // Thread not found, create a new one with the specified ID
             await threadRepository.createThread({
               id: currentThreadId,
               title: 'New Chat',
@@ -315,24 +217,21 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
       // Skip if we've already loaded messages for this thread
       if (loadedThreadsRef.current.has(currentThreadId)) {
-        console.log(`Thread ${currentThreadId} already loaded, skipping load`);
+        // Thread already loaded, skip loading
         return;
       }
 
       try {
-        console.log('Loading messages for thread:', currentThreadId);
+        // Load messages for the current thread
         const threadMessages = await messageRepository.getMessagesByThreadId(currentThreadId);
-        console.log('Loaded', threadMessages.length, 'messages from database');
 
         // Mark all loaded messages as "saved" to prevent re-saving
         threadMessages.forEach(msg => {
           savedMessageIdsRef.current.add(msg.id);
-          console.log(`Marked message ${msg.id} (${msg.role}) as saved`);
         });
 
         // Mark this thread as loaded
         loadedThreadsRef.current.add(currentThreadId);
-        console.log(`Marked thread ${currentThreadId} as loaded`);
 
         if (threadMessages.length > 0) {
           // Update both local state and Vercel state
@@ -364,7 +263,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       try {
         // Only update if there was an actual change to avoid unnecessary updates
         if (messagesRef.current.length !== messages.length) {
-          console.log('Updating thread timestamp for thread:', currentThreadId);
+          // Update the thread timestamp
           await threadRepository.updateThread(currentThreadId, {
             updatedAt: Date.now()
           });
@@ -432,16 +331,8 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
   // Custom append function that saves messages to database
   const append = async (message: UIMessage): Promise<string | null | undefined> => {
-    console.log('🔴 append called with message:', JSON.stringify({
-      id: message.id,
-      role: message.role,
-      contentPreview: message.content.substring(0, 50) + '...',
-      hasContentParts: message.parts && message.parts.length > 0
-    }));
-    
     // Ensure we have a threadId
     if (!currentThreadId) {
-      console.error('🔴 Cannot append message: No current thread ID');
       return null;
     }
 
@@ -451,51 +342,35 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       threadId: currentThreadId,
       createdAt: message.createdAt || new Date()
     };
-    console.log('🔴 Created message with thread ID and timestamp:', currentThreadId, messageWithThread.createdAt);
 
     // Convert to Vercel format
     const vercelMessage = toVercelMessage(messageWithThread);
-    console.log('🔴 Converted to Vercel message format');
 
     try {
       // First, save user message to database if it's a user message
       if (persistenceEnabled && dbInitialized && messageWithThread.role === 'user') {
-        console.log('🔴 Saving user message to database:', messageWithThread.content.substring(0, 50) + (messageWithThread.content.length > 50 ? '...' : ''));
         const savedMessage = await messageRepository.createMessage(messageWithThread);
-        console.log('🔴 User message saved successfully with ID:', savedMessage.id);
 
         // Mark this message as saved
         savedMessageIdsRef.current.add(messageWithThread.id);
-        console.log('🔴 Marked message as saved in memory cache');
-      } else {
-        console.log('🔴 Skipping database save for non-user message or persistence disabled');
       }
 
       // Then, submit to Vercel AI SDK to get assistant response
-      console.log('🔴 Submitting message to Vercel AI SDK');
       const result = await vercelChatState.append(vercelMessage);
-      console.log('🔴 Result from Vercel AI SDK append:', result ? 
-        (typeof result === 'object' ? JSON.stringify(result) : result) : 'null');
 
       if (!result) {
-        console.log('🔴 No result from Vercel AI SDK');
         return null;
       }
 
       // Type guard to ensure result is an object with id
       if (result && typeof result === 'object' && 'id' in result) {
         const typedResult = result as { id: string };
-        console.log('🔴 Returning ID from object result:', typedResult.id);
         return typedResult.id;
       }
 
       // Handle string result case
-      console.log('🔴 Returning string result:', typeof result === 'string' ? result : 'undefined');
       return typeof result === 'string' ? result : undefined;
     } catch (error) {
-      console.error('❌ Error in append:', error);
-      console.error('❌ Error details:', error instanceof Error ? error.message : String(error));
-      console.error('❌ Stack trace:', error instanceof Error && error.stack ? error.stack : 'No stack trace');
       return null;
     }
   };
@@ -509,11 +384,6 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     // Convert to Vercel format and update Vercel state
     const vercelMessages = newMessages.map(toVercelMessage);
     vercelChatState.setMessages(vercelMessages);
-
-    // When explicitly setting messages, we'll save them all
-    // This is used mainly for loading saved messages, so we don't need to save again
-    // Just log what's happening
-    console.log(`setVercelMessages called with ${newMessages.length} messages - not saving to avoid duplication`);
   };
 
   // Custom handleSubmit function that adds thread ID
@@ -521,11 +391,8 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     event?: { preventDefault?: () => void },
     options?: { experimental_attachments?: FileList }
   ) => {
-    console.log('⚡ handleSubmit called', options ? 'with attachments' : 'without attachments');
-    
     if (event?.preventDefault) {
       event.preventDefault();
-      console.log('⚡ Prevented default event behavior');
     }
 
     // We need to make sure we're seeing the user message immediately
@@ -534,20 +401,15 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
     // Get the current input to create a user message
     const userInput = vercelChatState.input;
-    console.log('⚡ Current user input:', userInput);
-    console.log('⚡ Current thread ID:', currentThreadId);
     
     if (!userInput || !currentThreadId) {
-      console.log('⚡ No input or thread ID, calling original submit without modifications');
       // No input or thread, just call the original submit
       vercelChatState.handleSubmit(event, options);
       return;
     }
 
     // Call original handleSubmit to trigger the AI process
-    console.log('⚡ Calling Vercel handleSubmit with input:', userInput.substring(0, 50) + (userInput.length > 50 ? '...' : ''));
     vercelChatState.handleSubmit(event, options);
-    console.log('⚡ Vercel handleSubmit called successfully');
   };
 
   // Thread management functions
@@ -672,7 +534,6 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
   // Don't wait for dirtyPersistenceState - ALWAYS convert Vercel's messages
   useEffect(() => {
-    console.log('🔵 Vercel message state changed - now has', vercelChatState.messages.length, 'messages');
     if (vercelChatState.messages.length > 0 && currentThreadId) {
       // Convert them to our format for storage/persistence
       const uiMessages = vercelChatState.messages.map(message => {
@@ -681,36 +542,11 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         uiMessage.threadId = currentThreadId;
         return uiMessage;
       });
-
-      console.log('🔵 Converted', uiMessages.length, 'Vercel messages to UI format');
       
       // Update our state
       setMessages(uiMessages);
-      
-      // Log the current isLoading state to help debug streaming issues
-      console.log('🔵 Current loading state:', vercelChatState.isLoading ? 'LOADING' : 'NOT LOADING');
     }
   }, [vercelChatState.messages, currentThreadId]); // Direct dependency on vercelChatState.messages
-
-  // Add debugging to see what's happening with Vercel's message state
-  useEffect(() => {
-    console.log('🔵 Vercel messages changed:', JSON.stringify(vercelChatState.messages.map(m => ({
-      id: m.id,
-      role: m.role,
-      content: m.content.substring(0, 50) + (m.content.length > 50 ? '...' : '')
-    })), null, 2));
-    
-    // Log current assistant messages if any
-    const assistantMessages = vercelChatState.messages.filter(m => m.role === 'assistant');
-    if (assistantMessages.length > 0) {
-      console.log('🚀 FOUND ASSISTANT MESSAGES:', assistantMessages.length);
-      assistantMessages.forEach((msg, idx) => {
-        console.log(`🚀 Assistant message ${idx+1}:`, msg.id, msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''));
-      });
-    } else {
-      console.log('🚀 NO ASSISTANT MESSAGES FOUND YET');
-    }
-  }, [vercelChatState.messages]);
 
   // COMPLETELY BYPASS OUR STATE - use Vercel's messages directly
   // Convert on the fly for the return value and sort by createdAt
@@ -726,27 +562,6 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     const timeB = b.createdAt?.getTime() || 0;
     return timeA - timeB;
   });
-
-  console.log('🔵 Preparing to return', displayMessages.length, 'messages to UI sorted by timestamp');
-  
-  // Detailed logging of what we're returning to the UI
-  if (displayMessages.length > 0) {
-    console.log('🔵 Display messages:', JSON.stringify(displayMessages.map(m => ({
-      id: m.id,
-      role: m.role,
-      content: m.content.substring(0, 30) + (m.content.length > 30 ? '...' : '')
-    })), null, 2));
-    
-    // Log the isLoading state
-    console.log('🔵 Is streaming?', vercelChatState.isLoading ? 'YES - STREAMING IN PROGRESS' : 'NO - STREAMING COMPLETE');
-    
-    // Log streaming status
-    if (vercelChatState.isLoading) {
-      console.log('🔵 IMPORTANT: AI SDK is still streaming, messages should appear soon');
-    }
-  } else {
-    console.log('🔵 WARNING: No messages to display in the UI!');
-  }
 
   return {
     // ALWAYS use Vercel's messages, converted to our format

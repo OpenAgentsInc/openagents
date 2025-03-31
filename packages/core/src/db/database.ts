@@ -36,13 +36,18 @@ export async function createDatabase(): Promise<Database> {
     return dbInstance;
   }
 
-  console.log('Creating RxDB database...');
+  // Initialize RxDB database
 
   try {
     // Import dev mode plugins in development
     if (process.env.NODE_ENV === 'development') {
       const devModeModule = await import('rxdb/plugins/dev-mode');
       addRxPlugin(devModeModule.RxDBDevModePlugin);
+      
+      // Disable dev-mode warnings
+      if (devModeModule.disableWarnings) {
+        devModeModule.disableWarnings();
+      }
     }
 
     // Create database
@@ -66,7 +71,7 @@ export async function createDatabase(): Promise<Database> {
       }
     });
 
-    console.log('RxDB database created successfully');
+    // Database successfully created
     dbInstance = db;
     return db;
 

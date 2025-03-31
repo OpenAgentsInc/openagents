@@ -24,7 +24,6 @@ export function MessageList({
   isTyping = false,
   messageOptions,
 }: MessageListProps) {
-  console.log(messages)
   return (
     <div className="space-y-4 overflow-visible">
       {messages.map((message, index) => {
