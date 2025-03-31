@@ -42,13 +42,25 @@ export default function HomePage() {
     }
   });
 
-  const handleSubmit = useCallback((
+  const [inputValue, setInputValue] = useState("");
+
+  const handleLocalInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputValue(e.target.value);
+    handleInputChange(e);
+  }, [handleInputChange]);
+
+  const handleLocalSubmit = useCallback((
     event?: { preventDefault?: () => void },
     options?: { experimental_attachments?: FileList }
   ) => {
-    event?.preventDefault?.();
-    return originalHandleSubmit(event as any);
-  }, [originalHandleSubmit]);
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
+    if (inputValue.trim()) {
+      originalHandleSubmit({ target: { value: inputValue } } as any);
+      setInputValue("");
+    }
+  }, [originalHandleSubmit, inputValue]);
 
   const handleCreateThread = useCallback(() => {
     createNewThread();
@@ -152,17 +164,19 @@ export default function HomePage() {
                   <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
                     <ChatForm
                       isPending={isGenerating}
-                      handleSubmit={handleSubmit}
+                      handleSubmit={handleLocalSubmit}
+                      className="relative"
                     >
                       {({ files, setFiles }) => (
                         <MessageInput
-                          value={input}
-                          onChange={handleInputChange}
+                          value={inputValue}
+                          onChange={handleLocalInputChange}
                           allowAttachments
                           files={files}
                           setFiles={setFiles}
                           stop={stop}
                           isGenerating={isGenerating}
+                          placeholder="Type a message..."
                         />
                       )}
                     </ChatForm>
