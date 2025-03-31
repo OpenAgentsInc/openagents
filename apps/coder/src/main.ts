@@ -8,6 +8,7 @@ import {
   REACT_DEVELOPER_TOOLS,
 } from "electron-devtools-installer";
 // import { setupElectronCommandExecutor } from "@openagents/core";
+import { serverApp, handleFetch } from "./server";
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -51,6 +52,12 @@ async function installExtensions() {
 
 app.whenReady()
   .then(() => {
+    console.log('[Main Process] App is ready.');
+
+    // Initialize the Hono server IPC handler
+    handleFetch(serverApp);
+    console.log('[Main Process] Hono fetch handler initialized.');
+    
     // Create window and install extensions
     return createWindow();
   })

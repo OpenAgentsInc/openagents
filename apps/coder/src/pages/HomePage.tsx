@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
 import { usePersistentChat, Thread } from "@openagents/core";
+import { testLocalApi } from "../helpers/ipc/fetch/test-api";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -22,6 +23,18 @@ import {
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
+  const [apiStatus, setApiStatus] = useState<string | null>(null);
+  
+  // Function to test the local API
+  const handleTestLocalApi = async () => {
+    setApiStatus('Testing...');
+    const success = await testLocalApi();
+    setApiStatus(success ? 'Connected ✅' : 'Failed ❌');
+    
+    // Reset status after 3 seconds
+    setTimeout(() => setApiStatus(null), 3000);
+  };
+  
   // Use the persistence layer with the correct configuration
   const {
     messages,
@@ -130,6 +143,17 @@ export default function HomePage() {
                         <path fillRule="evenodd" clipRule="evenodd" d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z" fill="currentColor" />
                       </svg>
                     </button>
+                    <div className="flex items-center ml-auto">
+                      <button
+                        onClick={handleTestLocalApi}
+                        className="select-none flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        Test Local API
+                      </button>
+                      {apiStatus && (
+                        <span className="ml-2 text-xs">{apiStatus}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 

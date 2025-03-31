@@ -107,6 +107,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "embla-carousel-react": "^8.5.2",
     "framer-motion": "11",
+    "hono": "4.7.5",
     "i18next": "^24.2.3",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.485.0",
