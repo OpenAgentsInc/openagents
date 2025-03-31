@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect } from "react";
+// Restored persistence with our wrapper
 import { usePersistentChat, Thread } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
@@ -21,6 +22,7 @@ import {
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
+  // Use the persistence layer with the correct configuration
   const {
     messages,
     input,
@@ -34,13 +36,39 @@ export default function HomePage() {
     deleteThread,
     updateThread,
   } = usePersistentChat({
+    // Use the correct API endpoint that was working before
     api: "https://chat.openagents.com",
-    maxSteps: 10,
+    // Configuration that we know works
+    streamProtocol: 'data',
+    body: {
+      model: "claude-3-5-sonnet-20240620"
+    },
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    },
+    // Enable persistence
     persistenceEnabled: true,
+    maxSteps: 10,
+    // Logging for debug
+    onResponse: (response) => {
+      console.log("🧩 PERSISTENT - Response received:", response.status);
+    },
+    onFinish: (message) => {
+      console.log("🧩 PERSISTENT - Message finished:", message.id, message.role);
+    },
     onThreadChange: (threadId: string) => {
-      console.log(`[HomePage] Thread changed to: ${threadId}`);
+      console.log(`🧩 PERSISTENT - Thread changed to: ${threadId}`);
     }
   });
+
+  // Log messages whenever they change
+  useEffect(() => {
+    console.log("🧩 PERSISTENT - Messages updated:", messages.length);
+    messages.forEach(msg => {
+      console.log(`🧩 Message ${msg.id} (${msg.role}):`, msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''));
+    });
+  }, [messages]);
 
   const handleCreateThread = useCallback(() => {
     createNewThread();
@@ -130,6 +158,15 @@ export default function HomePage() {
                 <div className="overflow-y-auto">
                   <div className="h-full p-4">
                     <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+                      {/* Debug info */}
+                      <div className="p-2 mb-4 bg-yellow-100 dark:bg-yellow-900 rounded text-xs">
+                        <div className="font-bold">Debug Info:</div>
+                        <div>Messages: {messages.length}</div>
+                        <div>Is Loading: {isGenerating ? 'Yes' : 'No'}</div>
+                        <div>Thread ID: {currentThreadId}</div>
+                        <div>Current Messages: {JSON.stringify(messages.map(m => ({ id: m.id, role: m.role })))}</div>
+                      </div>
+
                       <MessageList
                         messages={messages}
                         isTyping={isGenerating}
