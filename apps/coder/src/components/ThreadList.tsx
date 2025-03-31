@@ -1,8 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useThreads, Thread } from '@openagents/core';
 import { Button } from './ui/button';
 import { Trash2, Edit, Plus } from 'lucide-react';
 import { format } from 'date-fns';
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogFooter 
+} from './ui/dialog';
+import { Input } from './ui/input';
 
 interface ThreadListProps {
   currentThreadId: string;
@@ -20,6 +28,9 @@ export function ThreadList({
   onRenameThread
 }: ThreadListProps) {
   const { threads, isLoading, error } = useThreads({ refreshInterval: 5000 });
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [threadToRename, setThreadToRename] = useState<Thread | null>(null);
+  const [newTitle, setNewTitle] = useState('');
 
   if (isLoading && threads.length === 0) {
     return (
@@ -108,7 +119,7 @@ export function ThreadList({
               <div className="flex-1 truncate">
                 <div className="font-medium truncate">{thread.title || 'Untitled'}</div>
                 <div className="text-xs text-muted-foreground">
-                  {formatDate(thread.updatedAt)}
+                  {formatDate(thread.createdAt)}
                 </div>
               </div>
 
@@ -120,10 +131,9 @@ export function ThreadList({
                     className="h-8 w-8"
                     onClick={(e) => {
                       e.stopPropagation();
-                      const newTitle = window.prompt('Enter new title:', thread.title);
-                      if (newTitle) {
-                        onRenameThread(thread.id, newTitle);
-                      }
+                      setThreadToRename(thread);
+                      setNewTitle(thread.title || '');
+                      setIsRenameDialogOpen(true);
                     }}
                   >
                     <Edit size={16} />
@@ -147,6 +157,48 @@ export function ThreadList({
           ))}
         </ul>
       )}
+
+      {/* Rename Dialog */}
+      <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename Chat</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Enter new title"
+              className="w-full"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && threadToRename && onRenameThread) {
+                  onRenameThread(threadToRename.id, newTitle);
+                  setIsRenameDialogOpen(false);
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsRenameDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (threadToRename && onRenameThread) {
+                  onRenameThread(threadToRename.id, newTitle);
+                  setIsRenameDialogOpen(false);
+                }
+              }}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -50,14 +50,14 @@ export class ThreadRepository {
   }
   
   /**
-   * Get all threads, sorted by updated time (newest first)
+   * Get all threads, sorted by creation time (newest first)
    */
   async getAllThreads(): Promise<Thread[]> {
     await this.initialize();
     
     const threads = await this.db!.threads
       .find()
-      .sort({ updatedAt: 'desc' })
+      .sort({ createdAt: 'desc' })
       .exec();
       
     return threads.map(thread => thread.toJSON());
@@ -110,7 +110,7 @@ export class ThreadRepository {
     
     return this.db!.threads
       .find()
-      .sort({ updatedAt: 'desc' });
+      .sort({ createdAt: 'desc' });
   }
 }
 
