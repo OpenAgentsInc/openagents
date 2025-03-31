@@ -15,6 +15,7 @@ import {
 } from 'rxdb/plugins/core';
 import { replicateWebRTC, getConnectionHandlerSimplePeer, SimplePeer } from 'rxdb/plugins/replication-webrtc';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
+import { wrappedValidateZSchemaStorage } from 'rxdb/plugins/validate-z-schema';
 
 // Types for our Todo collection
 export type TodoDocType = {
@@ -32,10 +33,42 @@ export type DatabaseCollections = {
 export type Database = RxDatabase<DatabaseCollections, any, any>;
 
 // Initialize storage
-let storage: RxStorage<any, any> = getRxStorageDexie();
+let storage: RxStorage<any, any> = wrappedValidateZSchemaStorage({
+  storage: getRxStorageDexie()
+});
 
 // Database instance (singleton)
 let dbInstance: Database | null = null;
+
+// Todo schema definition
+const todoSchema: RxJsonSchema<TodoDocType> = {
+  version: 0,
+  title: 'todo schema',
+  primaryKey: 'id',
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      maxLength: 100
+    },
+    name: {
+      type: 'string',
+      maxLength: 500
+    },
+    state: {
+      type: 'string',
+      enum: ['open', 'done']
+    },
+    lastChange: {
+      type: 'number',
+      multipleOf: 1,
+      minimum: 0,
+      maximum: 9007199254740991 // Number.MAX_SAFE_INTEGER
+    }
+  },
+  required: ['id', 'name', 'state', 'lastChange'],
+  indexes: ['lastChange']
+};
 
 // Conflict handler for replication
 const conflictHandler: RxConflictHandler<TodoDocType> = {
@@ -78,51 +111,19 @@ export async function createDatabase(): Promise<Database> {
     const roomHash = await defaultHashSha256(roomId);
 
     // Create database
-    const db = await createRxDatabase<{
-      todos: RxCollection<TodoDocType, {}>
-    }>({
-      name: 'openagents-' + RXDB_VERSION.replace(/\./g, '-') + '-' + roomHash.substring(0, 10),
+    const db = await createRxDatabase<DatabaseCollections>({
+      name: 'openagents',
       storage,
+      multiInstance: false,
       ignoreDuplicate: true
     });
 
-    // Add collections
+    // Create collections with schema validation
     await db.addCollections({
       todos: {
-        schema: {
-          version: 0,
-          primaryKey: 'id',
-          type: 'object',
-          properties: {
-            id: {
-              type: 'string',
-              maxLength: 20
-            },
-            name: {
-              type: 'string'
-            },
-            state: {
-              type: 'string',
-              enum: [
-                'open',
-                'done'
-              ],
-              maxLength: 10
-            },
-            lastChange: {
-              type: 'integer',
-              minimum: 0,
-              maximum: 2701307494132,
-              multipleOf: 1
-            }
-          },
-          required: ['id', 'name', 'state', 'lastChange'],
-          indexes: [
-            'state',
-            ['state', 'lastChange']
-          ],
-          additionalProperties: false
-        } as RxJsonSchema<TodoDocType>,
+        schema: todoSchema,
+        statics: {},
+        methods: {},
         conflictHandler
       }
     });
