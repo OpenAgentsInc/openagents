@@ -5,7 +5,6 @@ import { MaterialCommunityIcons } from "@expo/vector-icons"
 import { WalletNavigator } from "./WalletNavigator"
 import { useAppTheme } from "@/utils/useAppTheme"
 import { AgentEarningsScreen } from "@/screens/WalletScreen/AgentEarningsScreen"
-import { ChatScreen } from "@/screens/ChatScreen/ChatScreen"
 
 // Placeholder screen component
 const PlaceholderScreen = () => <View style={{ flex: 1 }} />
@@ -82,7 +81,7 @@ export const TabNavigator = () => {
     >
       <Tab.Screen
         name="Chat"
-        component={ChatScreen}
+        component={PlaceholderScreen}
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubble-outline" size={size} color={color} />

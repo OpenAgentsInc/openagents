@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 // Chat module exports
 export * from './chat/types'
-export * from './chat/useChat'
+// export * from './chat/useChat'  // Removed
 export * from './chat/agent-connection'
 export * from './chat/usePersistentChat'
 export * from './chat/useThreads'
