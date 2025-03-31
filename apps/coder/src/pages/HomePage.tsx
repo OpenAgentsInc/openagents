@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
 import { usePersistentChat, Thread } from "@openagents/core";
-import { testLocalApi } from "../helpers/ipc/fetch/test-api";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -23,183 +22,26 @@ import {
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
-  const [apiStatus, setApiStatus] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<string | null>(null);
 
-  // Function to test the local API
-  const handleTestLocalApi = async () => {
-    setApiStatus('Testing...');
-    setDebugInfo(null);
-    
-    // First check if window.electron exists
-    if (typeof window.electron === 'undefined') {
-      setApiStatus('Failed: window.electron undefined ❌');
-      setDebugInfo('Preload script not loading correctly');
-      return;
-    }
-    
-    // Check if testIpc exists
-    if (typeof window.electron.testIpc !== 'function') {
-      setApiStatus('Failed: testIpc missing ❌');
-      setDebugInfo('IPC bridge not set up correctly');
-      return;
-    }
-    
-    // Test basic IPC
-    try {
-      const ipcResult = await window.electron.testIpc();
-      if (ipcResult.success) {
-        setDebugInfo(`IPC working: ${ipcResult.message}`);
-      } else {
-        setDebugInfo(`IPC returned: ${JSON.stringify(ipcResult)}`);
+  // Function to test the CORS connection
+  useEffect(() => {
+    const testCors = async () => {
+      setTestStatus('Testing connection to local server...');
+      try {
+        const response = await fetch('http://localhost:3001/api/test-cors');
+        const data = await response.json();
+        setTestStatus(`Server test: ${JSON.stringify(data)}`);
+        console.log('CORS test successful:', data);
+      } catch (error) {
+        setTestStatus(`Error connecting to server: ${error instanceof Error ? error.message : String(error)}`);
+        console.error('CORS test failed:', error);
       }
-    } catch (error) {
-      setApiStatus('Failed: IPC error ❌');
-      setDebugInfo(`IPC error: ${error instanceof Error ? error.message : String(error)}`);
-      return;
-    }
-    
-    // Test fetch API
-    if (typeof window.electron.fetch !== 'function') {
-      setApiStatus('Failed: fetch missing ❌');
-      setDebugInfo('electron.fetch not available');
-      return;
-    }
-    
-    const success = await testLocalApi();
-    setApiStatus(success ? 'Connected ✅' : 'Failed ❌');
-    
-    // Don't reset status since it's helpful for debugging
-  };
+    };
 
-  // Define a custom fetch function that will use Electron IPC in Electron 
-  // and fall back to standard fetch in browser environments
-  const customFetch = useCallback(async (url: string | URL | Request, init?: RequestInit) => {
-    console.log('Custom fetch called with:', url);
-    
-    // For Request objects, we need to extract the URL
-    let urlStr: string;
-    if (url instanceof Request) {
-      urlStr = url.url;
-      console.log('URL extracted from Request:', urlStr);
-    } else if (url instanceof URL) {
-      urlStr = url.toString();
-    } else {
-      urlStr = url;
-    }
-    
-    try {
-      // If it's a relative URL and we're inside electron, handle it specially
-      if (typeof urlStr === 'string' && urlStr.startsWith('/') && typeof window !== 'undefined' && window.electron?.fetch) {
-        console.log('Handling relative URL with electron.fetch:', urlStr);
-        try {
-          // For relative URLs, pass them directly to electron.fetch which knows how to handle them
-          const response = await window.electron.fetch(urlStr, init);
-          console.log('electron.fetch response received:', response.status);
-          
-          // Verify response has text method
-          if (typeof response.text !== 'function') {
-            console.error('Response missing text method - creating new Response object');
-            
-            // Read the response body if possible
-            let bodyContent = '';
-            try {
-              if (response.body) {
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                const { value } = await reader.read();
-                bodyContent = decoder.decode(value);
-              } else if (typeof response.bodyUsed === 'boolean' && !response.bodyUsed) {
-                bodyContent = await (response as any).text?.() || '';
-              }
-            } catch (e) {
-              console.error('Error reading response body:', e);
-              // Use any available properties from the original response
-              bodyContent = response.body?.toString() || response.toString() || '';
-            }
-            
-            // Create a new Response with a Blob body
-            const bodyBlob = new Blob([bodyContent], { 
-              type: response.headers?.get('content-type') || 'text/plain' 
-            });
-            
-            return new Response(bodyBlob, {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers,
-            });
-          }
-          
-          return response;
-        } catch (error) {
-          console.error('electron.fetch error with relative URL:', error);
-          throw error;
-        }
-      }
-      
-      // Use electron.fetch if available (in Electron environment)
-      if (typeof window !== 'undefined' && window.electron?.fetch) {
-        console.log('Using electron.fetch for request');
-        try {
-          const response = await window.electron.fetch(url, init);
-          
-          // Verify response has text method
-          if (typeof response.text !== 'function') {
-            console.error('Response missing text method - creating new Response object');
-            
-            // Read the response body if possible
-            let bodyContent = '';
-            try {
-              if (response.body) {
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                const { value } = await reader.read();
-                bodyContent = decoder.decode(value);
-              } else if (typeof response.bodyUsed === 'boolean' && !response.bodyUsed) {
-                bodyContent = await (response as any).text?.() || '';
-              }
-            } catch (e) {
-              console.error('Error reading response body:', e);
-              // Use any available properties from the original response
-              bodyContent = response.body?.toString() || response.toString() || '';
-            }
-            
-            // Create a new Response with a Blob body
-            const bodyBlob = new Blob([bodyContent], { 
-              type: response.headers?.get('content-type') || 'text/plain' 
-            });
-            
-            return new Response(bodyBlob, {
-              status: response.status,
-              statusText: response.statusText,
-              headers: response.headers,
-            });
-          }
-          
-          return response;
-        } catch (error) {
-          console.error('electron.fetch error:', error);
-          // Fall back to standard fetch on error
-          console.log('Falling back to standard fetch after electron.fetch error');
-          return fetch(url, init);
-        }
-      } else {
-        // Fall back to standard fetch (in browser or if electron.fetch fails)
-        console.log('Falling back to standard fetch (electron.fetch not available)');
-        return fetch(url, init);
-      }
-    } catch (finalError) {
-      console.error('Fatal fetch error:', finalError);
-      // Create a synthetic response for fatal errors to avoid breaking the UI
-      return new Response(JSON.stringify({
-        error: finalError instanceof Error ? finalError.message : String(finalError)
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
+    testCors();
   }, []);
-  
+
   // Use the persistence layer with the correct configuration
   const {
     messages,
@@ -214,10 +56,8 @@ export default function HomePage() {
     deleteThread,
     updateThread,
   } = usePersistentChat({
-    // Use local API endpoint
-    api: "/api/chat",
-    // Pass our custom fetch function directly
-    fetch: customFetch,
+    // Use the FULL URL of the local HTTP server
+    api: `http://localhost:3001/api/chat`,
     // Configuration that we know works
     streamProtocol: 'data',
     body: {
@@ -226,23 +66,24 @@ export default function HomePage() {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
+      'X-Requested-With': 'XMLHttpRequest',
     },
     // Enable persistence
     persistenceEnabled: true,
     maxSteps: 10,
     // Event handlers
-    onResponse: (response) => { 
+    onResponse: (response) => {
       console.log('Chat response received:', response);
     },
-    onFinish: (message) => { 
+    onFinish: (message) => {
       console.log('Chat finished with message:', message);
     },
-    onThreadChange: (threadId: string) => { 
-      console.log('Thread changed to:', threadId); 
+    onThreadChange: (threadId: string) => {
+      console.log('Thread changed to:', threadId);
     },
-    // Handle errors
+    // Handle errors from the AI SDK hook itself
     onError: (error) => {
-      console.error('Chat error:', error);
+      console.error('Chat hook onError:', error);
     }
   });
 
@@ -321,17 +162,8 @@ export default function HomePage() {
                       </svg>
                     </button>
                     <div className="flex items-center ml-auto">
-                      <button
-                        onClick={handleTestLocalApi}
-                        className="select-none flex cursor-pointer items-center gap-1 rounded-lg py-1.5 px-3 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        Test Local API
-                      </button>
-                      {apiStatus && (
-                        <span className="ml-2 text-xs">{apiStatus}</span>
-                      )}
-                      {debugInfo && (
-                        <div className="ml-2 text-xs p-1 bg-muted rounded-sm">{debugInfo}</div>
+                      {testStatus && (
+                        <div className="text-xs p-1 bg-muted rounded-sm">{testStatus}</div>
                       )}
                     </div>
                   </div>

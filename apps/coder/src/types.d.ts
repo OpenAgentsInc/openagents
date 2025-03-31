@@ -44,15 +44,8 @@ interface CommandExecutionContext {
   ) => Promise<CommandResult>;
 }
 
-// Electron API for local services
-interface ElectronAPI {
-  fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-  testIpc: () => Promise<{ success: boolean; message: string }>;
-}
-
 declare interface Window {
   themeMode: ThemeModeContext;
   electronWindow: ElectronWindow;
   commandExecution: CommandExecutionContext;
-  electron: ElectronAPI;
 }
