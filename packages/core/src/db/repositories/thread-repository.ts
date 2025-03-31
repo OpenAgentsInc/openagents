@@ -64,9 +64,9 @@ export class ThreadRepository {
   }
   
   /**
-   * Update a thread
+   * Update a thread with retry mechanism for conflict resolution
    */
-  async updateThread(id: string, updates: Partial<Thread>): Promise<Thread | null> {
+  async updateThread(id: string, updates: Partial<Thread>, maxRetries = 3): Promise<Thread | null> {
     await this.initialize();
     
     // Always update the updatedAt timestamp
@@ -75,16 +75,37 @@ export class ThreadRepository {
       updatedAt: Date.now()
     };
     
-    const thread = await this.db!.threads.findOne(id).exec();
-    if (!thread) {
-      return null;
+    let retries = 0;
+    
+    while (retries < maxRetries) {
+      try {
+        // Get fresh version of the document
+        const thread = await this.db!.threads.findOne(id).exec();
+        if (!thread) {
+          return null;
+        }
+        
+        await thread.update({
+          $set: updatedThread
+        });
+        
+        return thread.toJSON();
+      } catch (error: any) {
+        // If it's a conflict error, wait briefly and retry
+        if (error.code === 'CONFLICT' && retries < maxRetries - 1) {
+          console.log(`Conflict detected on thread ${id}, retrying (${retries + 1}/${maxRetries})...`);
+          retries++;
+          // Add a small delay between retries
+          await new Promise(resolve => setTimeout(resolve, 50 * retries));
+        } else {
+          // For other errors or if we've reached max retries, throw the error
+          console.error(`Update thread error after ${retries} retries:`, error);
+          throw error;
+        }
+      }
     }
     
-    await thread.update({
-      $set: updatedThread
-    });
-    
-    return thread.toJSON();
+    throw new Error(`Failed to update thread ${id} after ${maxRetries} retries`);
   }
   
   /**
