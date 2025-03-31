@@ -31,6 +31,15 @@
     nanoid "^3.3.8"
     secure-json-parse "^2.7.0"
 
+"@ai-sdk/provider-utils@2.2.2":
+  version "2.2.2"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/provider-utils/-/provider-utils-2.2.2.tgz#f7f008482c0bef9d3a5e4f355073e565782698f3"
+  integrity sha512-DgjbBseR6e5oRcXOF0LH9owj3eKDfZNMdyHM8HBfcfQg0IVL2KqL1lK40pQynuI3/u72YM+vvbtAZ78PRj6jCA==
+  dependencies:
+    "@ai-sdk/provider" "1.1.0"
+    nanoid "^3.3.8"
+    secure-json-parse "^2.7.0"
+
 "@ai-sdk/provider@1.0.9":
   version "1.0.9"
   resolved "https://registry.yarnpkg.com/@ai-sdk/provider/-/provider-1.0.9.tgz#01c2e69df8258aed5b1fe08fba380133a645800f"
@@ -65,6 +74,16 @@
     swr "^2.2.5"
     throttleit "2.1.0"
 
+"@ai-sdk/react@1.2.4":
+  version "1.2.4"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/react/-/react-1.2.4.tgz#4521ed0f7e8da00b2f08cfa07062c7fc03d6f627"
+  integrity sha512-wI0o6nnGmubKFmzKus84LjxEap6gVnTFbwqtN66UEQqvd7yGMdBRXkcjba2+W1JhzBXtmxlaQKAlz54OrJt/jA==
+  dependencies:
+    "@ai-sdk/provider-utils" "2.2.2"
+    "@ai-sdk/ui-utils" "1.2.3"
+    swr "^2.2.5"
+    throttleit "2.1.0"
+
 "@ai-sdk/ui-utils@1.2.1":
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/@ai-sdk/ui-utils/-/ui-utils-1.2.1.tgz#5d3719ad19ce6f993cd1df6c0976f10c4352706e"
@@ -81,6 +100,15 @@
   dependencies:
     "@ai-sdk/provider" "1.1.0"
     "@ai-sdk/provider-utils" "2.2.1"
+    zod-to-json-schema "^3.24.1"
+
+"@ai-sdk/ui-utils@1.2.3":
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/ui-utils/-/ui-utils-1.2.3.tgz#54c4cf2840912e97326d648e039166ee409aeb8f"
+  integrity sha512-vUr+A344eEPeCZhBxuTE83On8bijQYdwbo1nfo9GvCPxfeCo5gy1XCl150je9XUe/WPw/Qvqe1OKjnijj30BBQ==
+  dependencies:
+    "@ai-sdk/provider" "1.1.0"
+    "@ai-sdk/provider-utils" "2.2.2"
     zod-to-json-schema "^3.24.1"
 
 "@ampproject/remapping@^2.2.0":
@@ -4750,6 +4778,11 @@
   dependencies:
     undici-types "~6.19.2"
 
+"@types/prop-types@*":
+  version "15.7.14"
+  resolved "https://registry.yarnpkg.com/@types/prop-types/-/prop-types-15.7.14.tgz#1433419d73b2a7ebfc6918dcefd2ec0d5cd698f2"
+  integrity sha512-gNMvNH49DJ7OJYv+KAKn0Xp45p8PLl6zo2YnvDIbTd4J6MER2BmWN49TG7n9LvkyihINxeKW8+3bfS2yDC9dzQ==
+
 "@types/qs@*":
   version "6.9.18"
   resolved "https://registry.yarnpkg.com/@types/qs/-/qs-6.9.18.tgz#877292caa91f7c1b213032b34626505b746624c2"
@@ -4782,11 +4815,19 @@
   dependencies:
     "@types/react" "*"
 
-"@types/react@*", "@types/react@19.0.0", "@types/react@~18.3.12":
+"@types/react@*", "@types/react@19.0.0":
   version "19.0.0"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-19.0.0.tgz#fbbb53ce223f4e2b750ad5dd09580b2c43522bbf"
   integrity sha512-MY3oPudxvMYyesqs/kW1Bh8y9VqSmf+tzqw3ae8a9DZW68pUe3zAdHeI1jc6iAysuRdACnVknHP8AhwD4/dxtg==
   dependencies:
+    csstype "^3.0.2"
+
+"@types/react@~18.3.12":
+  version "18.3.20"
+  resolved "https://registry.yarnpkg.com/@types/react/-/react-18.3.20.tgz#b0dccda9d2f1bc24d2a04b1d0cb5d0b9a3576ad3"
+  integrity sha512-IPaCZN7PShZK/3t6Q87pfTkRm6oLTd4vztyoj+cbHUF1g3FfVb2tFIL79uCRKEfv16AhqDMBywP2VW3KIZUvcg==
+  dependencies:
+    "@types/prop-types" "*"
     csstype "^3.0.2"
 
 "@types/responselike@^1.0.0":
@@ -5179,6 +5220,18 @@ ai@^4.2.2, ai@^4.2.5:
     "@ai-sdk/provider-utils" "2.2.1"
     "@ai-sdk/react" "1.2.3"
     "@ai-sdk/ui-utils" "1.2.2"
+    "@opentelemetry/api" "1.9.0"
+    jsondiffpatch "0.6.0"
+
+ai@^4.2.9:
+  version "4.2.9"
+  resolved "https://registry.yarnpkg.com/ai/-/ai-4.2.9.tgz#bcf7834d3099937b554cb3157aeaebef44e15a9e"
+  integrity sha512-VSlgZaf86+UsQr9XRnMbEWANyR5z+ugDm3+b0fLtpsM7TRC0rW37FPIREKM2nrutmvGXRfQ6mf6BPQYeR/6Jng==
+  dependencies:
+    "@ai-sdk/provider" "1.1.0"
+    "@ai-sdk/provider-utils" "2.2.2"
+    "@ai-sdk/react" "1.2.4"
+    "@ai-sdk/ui-utils" "1.2.3"
     "@opentelemetry/api" "1.9.0"
     jsondiffpatch "0.6.0"
 

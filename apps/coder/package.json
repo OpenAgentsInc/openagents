@@ -1,5 +1,8 @@
 {
   "name": "@openagents/coder",
+  "env": {
+    "OPENROUTER_API_KEY": "your-api-key-here"
+  },
   "productName": "electron-shadcn Template",
   "version": "0.0.1",
   "description": "Electron Forge with shadcn-ui (Vite + Typescript)",
@@ -68,6 +71,7 @@
     "@icons-pack/react-simple-icons": "^12.2.0",
     "@openagents/core": "*",
     "@openagents/ui": "*",
+    "@openrouter/ai-sdk-provider": "^0.4.5",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.6",
     "@radix-ui/react-aspect-ratio": "^1.1.2",
@@ -99,6 +103,7 @@
     "@tanstack/react-router": "^1.114.17",
     "@tanstack/router-devtools": "^1.114.21",
     "@vitejs/plugin-react": "^4.3.4",
+    "ai": "^4.2.9",
     "babel-plugin-react-compiler": "^19.0.0-beta-bafa41b-20250307",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

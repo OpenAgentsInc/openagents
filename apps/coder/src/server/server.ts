@@ -1,31 +1,135 @@
 // apps/coder/src/server/server.ts
 import { Hono } from 'hono';
-import { logger } from 'hono/logger'; // Optional but helpful for debugging
+import { logger } from 'hono/logger';
+import { stream } from 'hono/streaming';
+import { streamText, type Message } from "ai";
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
-// Define environment types if needed, otherwise use simple Hono<any>
-// type Env = { /* ... bindings ... */ };
-// const app = new Hono<Env>();
-const app = new Hono();
+// Define environment interface
+interface Env {
+    OPENROUTER_API_KEY?: string;
+}
 
-app.use('*', logger()); // Log all requests
+const app = new Hono<{ Variables: Env }>();
 
-// --- Define API Routes Here ---
+// Use logger middleware
+app.use('*', logger());
+
+// Health check endpoint
 app.get('/api/ping', (c) => {
     console.log('[Server] Received /api/ping request');
     return c.json({ message: 'pong' });
 });
 
-// Placeholder for chat route
+// Main chat endpoint
 app.post('/api/chat', async (c) => {
-    console.log('[Server] Received /api/chat request (placeholder)');
-    // TODO: Implement actual chat logic using ported MCP client
-    const body = await c.req.json();
-    console.log('[Server] Chat request body:', body);
-    // Simulate a streaming response for now if needed, or just a simple JSON response
-    return c.json({ reply: "Chat endpoint received message.", history: body.messages }, 200);
-    // Example streaming (requires Vercel AI SDK Hono adapter later):
-    // const stream = /* ... AI SDK stream ... */
-    // return streamToResponse(stream, c)
+    console.log('[Server] Received chat request');
+    
+    // Manually set OpenRouter API key (you'll replace this with your key)
+    // In a real app, you'd get this from environment variables
+    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "sk-or-your-key-here";
+    
+    if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === "sk-or-your-key-here") {
+        console.error("❌ OPENROUTER_API_KEY is missing or invalid");
+        
+        // Return error as SSE
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+        
+        return stream(c, async (responseStream) => {
+            const errorMsg = "OpenRouter API Key not configured. You need to add your API key.";
+            await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
+    }
+    
+    console.log("✅ OPENROUTER_API_KEY is present");
+    
+    try {
+        const body = await c.req.json();
+        console.log("[Server] Request body (preview):", JSON.stringify(body)?.substring(0, 300));
+        
+        // Validate input messages
+        let messages: Message[] = body.messages || [];
+        if (!Array.isArray(messages) || messages.length === 0) {
+            return c.json({ error: "No valid messages array provided" }, 400);
+        }
+        
+        // Create the OpenRouter client with API key
+        const openrouter = createOpenRouter({
+            apiKey: OPENROUTER_API_KEY,
+            baseURL: "https://openrouter.ai/api/v1"
+        });
+        console.log("✅ OpenRouter provider initialized");
+        
+        // Define model
+        const MODEL = "anthropic/claude-3.5-sonnet";
+        console.log(`📝 Using model: ${MODEL}`);
+        
+        try {
+            const streamResult = streamText({
+                model: openrouter(MODEL),
+                messages: messages,
+                temperature: 0.7,
+                
+                // Headers for OpenRouter
+                headers: {
+                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+                    'HTTP-Referer': 'https://openagents.com',
+                    'X-Title': 'OpenAgents Coder'
+                },
+                
+                // Standard callbacks
+                onError: (event: { error: unknown }) => {
+                    console.error("💥 streamText onError callback:",
+                        event.error instanceof Error
+                            ? `${event.error.message}\n${event.error.stack}`
+                            : String(event.error));
+                },
+                onFinish: (event) => { 
+                    console.log(`🏁 streamText onFinish. Event ID: ${event.id}`); 
+                }
+            });
+            
+            // Set up the SSE response
+            c.header('Content-Type', 'text/event-stream; charset=utf-8');
+            c.header('Cache-Control', 'no-cache');
+            c.header('Connection', 'keep-alive');
+            c.header('X-Vercel-AI-Data-Stream', 'v1');
+            console.log("🔄 Preparing to stream response...");
+            
+            // Check streamResult validity
+            if (!streamResult || typeof streamResult.toDataStream !== 'function') {
+                console.error("❌ Invalid streamResult object");
+                return c.json({ error: "Invalid stream result object" }, 500);
+            }
+            
+            return stream(c, async (responseStream) => {
+                console.log("📬 Entered stream() callback");
+                try {
+                    const sdkStream = streamResult.toDataStream();
+                    console.log("🔄 Piping sdkStream from streamResult.toDataStream()...");
+                    await responseStream.pipe(sdkStream);
+                    console.log("✅ Piping completed successfully");
+                } catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.error(`💥 Error during stream handling: ${errorMessage}`);
+                    try {
+                        await responseStream.write(`data: 3:${JSON.stringify(`Stream processing failed: ${errorMessage}`)}\n\n`);
+                    } catch (writeError) {
+                        console.error("‼️ Failed to write error message to stream");
+                    }
+                }
+            });
+        } catch (streamSetupError) {
+            console.error("🚨 streamText setup failed:", streamSetupError);
+            return c.json({ error: "Failed to initialize AI stream" }, 500);
+        }
+    } catch (error) {
+        console.error("💥 Chat endpoint error:", error);
+        return c.json({ error: "Failed to process chat request" }, 500);
+    }
 });
 
 // --- End API Routes ---

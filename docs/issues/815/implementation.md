@@ -1,5 +1,39 @@
 # Adding Local MCP Client Support to Coder App
 
+## Update: Actual Implementation with OpenRouter API
+
+After implementing the basic IPC bridge for local API connections, we've integrated the OpenRouter API service to provide the actual AI capabilities. This approach:
+
+1. Uses the same Vercel AI SDK and OpenRouter integration from the chatserver app
+2. Processes requests locally in the Electron app
+3. Communicates with OpenRouter for the AI model responses
+4. Streams the responses back through our IPC bridge
+
+This implementation requires an OpenRouter API key (to be added by the user) and uses Claude 3.5 Sonnet by default.
+
+## Update: Initial Implementation Issues
+
+During the initial implementation, we encountered issues with the Electron IPC communication in development mode. The Vite dev server was intercepting our fetch requests, preventing them from being processed by our IPC handlers. 
+
+The preload script output shows:
+```
+[Preload] Exposing fetch context through contextBridge
+[Preload] Existing electron API keys: []
+[Preload] Exposed electron.fetch
+[Preload] Calling test-ipc channel
+IPC error: Error invoking remote method 'test-ipc': Error: No handler registered for 'test-ipc'
+```
+
+This indicates that our IPC handlers in the main process are not being registered correctly. We implemented the following solution:
+
+1. Created a custom fetch function in the HomePage component that attempts to use window.electron.fetch and falls back to standard fetch if needed
+2. Passed this custom function directly to the usePersistentChat hook using the fetch parameter (rather than fetchFn)
+3. Continued using the local API endpoint ("/api/chat") with this custom fetch function to test the local implementation
+
+See the [dev-server-issue.md](./dev-server-issue.md) document for detailed analysis of the issue.
+
+# Original Documentation
+
 ## Issue Overview
 
 The Coder app was initially designed to rely on a remote API at `api.openagents.com` for its chat functionality. This implementation had several limitations:
