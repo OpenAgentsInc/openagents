@@ -40,6 +40,17 @@ let warningsDisabled = false;
 let retryAttempts = 0;
 const MAX_RETRY_ATTEMPTS = 3;
 
+// Add global RxDB interface for type safety
+declare global {
+  interface Window {
+    RxDB?: {
+      plugin?: {
+        disableWarnings?: () => void;
+      };
+    };
+  }
+}
+
 // Global beforeunload handler
 const handleBeforeUnload = () => {
   cleanupAllDatabases().catch(console.error);
@@ -55,51 +66,110 @@ async function clearExistingDatabases() {
   }
 
   try {
-    // Get all database names
+    // Force close any active connections
+    if (typeof indexedDB.databases === 'function') {
+      const connections = await indexedDB.databases();
+      if (connections && connections.length > 0) {
+        console.log(`Found ${connections.length} existing IndexedDB connections to clean up`);
+      }
+    }
+
+    // CRITICAL: In development, nuke ALL IndexedDB databases to ensure we start fresh
+    // This is more aggressive but prevents collection limit issues
+    if (process.env.NODE_ENV !== 'production') {
+      return new Promise((resolve) => {
+        // Get all database names (if available)
+        let dbNames: string[] = [];
+        
+        if (typeof indexedDB.databases === 'function') {
+          indexedDB.databases().then(dbs => {
+            dbNames = dbs.map(db => db.name || '').filter(Boolean);
+            deleteAllDatabases();
+          }).catch(() => {
+            // Fallback if databases() is unavailable
+            deleteAllDatabases();
+          });
+        } else {
+          // Fallback hardcoded pattern deletion
+          dbNames = [];
+          for (let i = 0; i < 20; i++) {
+            dbNames.push(`rxdb-dexie-openagents_dev_${i}`);
+            dbNames.push(`rxdb-dexie-openagents--${i}`);
+            dbNames.push(`rxdb-dexie-openagents_dev_static--${i}`);
+          }
+          deleteAllDatabases();
+        }
+
+        function deleteAllDatabases() {
+          // Handle empty database list with fallback patterns
+          if (dbNames.length === 0) {
+            const baseNames = ['rxdb-dexie-openagents', 'openagents_dev'];
+            
+            // Generate pattern-based database names (for RxDB)
+            for (const baseName of baseNames) {
+              dbNames.push(baseName);
+              dbNames.push(`rxdb-dexie-${baseName}`);
+              dbNames.push(`rxdb-dexie-${baseName}--0--_rxdb_internal`);
+              dbNames.push(`rxdb-dexie-${baseName}--0--threads`);
+              dbNames.push(`rxdb-dexie-${baseName}--0--messages`);
+              dbNames.push(`rxdb-dexie-${baseName}--0--settings`);
+            }
+          }
+
+          console.log(`Attempting to delete up to ${dbNames.length} IndexedDB databases`);
+          
+          // Use Promise.all to delete databases in parallel for speed
+          const deletePromises = dbNames.map(name => {
+            if (!name) return Promise.resolve();
+            
+            return new Promise<void>(resolve => {
+              try {
+                const request = indexedDB.deleteDatabase(name);
+                request.onsuccess = () => resolve();
+                request.onerror = () => resolve(); // Continue even on error
+                request.onblocked = () => {
+                  console.log(`Database ${name} deletion blocked, waiting...`);
+                  // Wait and resolve anyway
+                  setTimeout(resolve, 100);
+                };
+              } catch (err) {
+                resolve(); // Continue even on error
+              }
+            });
+          });
+          
+          // Wait for all deletions to complete
+          Promise.all(deletePromises).then(() => {
+            console.log('Database cleanup completed');
+            // Give the browser a moment to actually finish the deletions
+            setTimeout(resolve, 100);
+          });
+        }
+      });
+    }
+    
+    // In production, we're more careful - only delete databases we know about
     const dbNames: string[] = [];
     
-    // Use the databases() API if available (modern browsers)
     if (typeof window.indexedDB.databases === 'function') {
       const dbs = await window.indexedDB.databases() || [];
       
       for (const db of dbs) {
         if (db.name) {
-          // Match any RxDB or openagents database
-          if (db.name.includes('rxdb') || db.name.includes('openagents')) {
+          // Match only our specific databases
+          if (db.name.includes('openagents')) {
             dbNames.push(db.name);
           }
         }
       }
-    }
-    
-    // If we got no databases or the API isn't supported, try to infer the database names
-    if (dbNames.length === 0) {
-      // Add common RxDB database prefixes
-      dbNames.push('rxdb-dexie-openagents');
-      dbNames.push('rxdb-dexie-openagents_dev_static');
       
-      // Add possible collection suffixes
-      const suffixes = ['', '--0--_rxdb_internal', '--0--threads', '--0--messages', '--0--settings'];
-      
-      // Generate all combinations
-      const additionalNames: string[] = [];
-      for (const name of dbNames) {
-        for (const suffix of suffixes) {
-          additionalNames.push(`${name}${suffix}`);
+      // Delete databases
+      for (const dbName of dbNames) {
+        try {
+          await window.indexedDB.deleteDatabase(dbName);
+        } catch (err) {
+          // Suppress errors during cleanup
         }
-      }
-      
-      // Merge all possible names
-      dbNames.push(...additionalNames);
-    }
-
-    // Delete databases to prevent collection limit issues
-    console.log(`Attempting to delete ${dbNames.length} IndexedDB databases`);
-    for (const dbName of dbNames) {
-      try {
-        await window.indexedDB.deleteDatabase(dbName);
-      } catch (err) {
-        // Suppress errors during cleanup
       }
     }
   } catch (err) {
@@ -114,16 +184,40 @@ async function disableRxDBWarnings() {
   if (warningsDisabled) return;
   
   try {
-    // Try to load the dev-mode plugin and disable warnings
-    const devMode = await import('rxdb/plugins/dev-mode');
-    if (devMode.RxDBDevModePlugin) {
-      addRxPlugin(devMode.RxDBDevModePlugin);
-    }
+    // Dev-mode warnings in RxDB cannot be completely suppressed in development mode
+    // But we can at least try to reduce them
     
-    // Disable warnings if the function exists
-    if (typeof devMode.disableWarnings === 'function') {
-      devMode.disableWarnings();
-      warningsDisabled = true;
+    // First, add dev-mode plugin (this will be a no-op if already added)
+    // The dev-mode plugin must be added before other plugins
+    try {
+      // Method 1: Try dynamic import
+      const devMode = await import('rxdb/plugins/dev-mode');
+      
+      // Add plugin only once
+      if (devMode.RxDBDevModePlugin) {
+        addRxPlugin(devMode.RxDBDevModePlugin);
+      }
+      
+      // Call disableWarnings if it exists
+      if (typeof devMode.disableWarnings === 'function') {
+        devMode.disableWarnings();
+        console.log('RxDB warnings disabled successfully');
+        warningsDisabled = true;
+      }
+    } catch (importError) {
+      console.warn('Could not import RxDB dev-mode plugin:', importError);
+      
+      // Method 2: Try using global RxDB if available
+      if (
+        typeof window !== 'undefined' && 
+        window.RxDB && 
+        window.RxDB.plugin && 
+        window.RxDB.plugin.disableWarnings
+      ) {
+        window.RxDB.plugin.disableWarnings();
+        console.log('RxDB warnings disabled using global RxDB');
+        warningsDisabled = true;
+      }
     }
   } catch (e) {
     console.warn('Could not disable RxDB warnings:', e);
@@ -150,11 +244,12 @@ export async function createDatabase(): Promise<Database> {
       await clearExistingDatabases();
     }
     
-    // In dev mode, use a single static database name to prevent proliferation
+    // Always use unique names in development to prevent collection conflicts
     // In production, use a fixed name for persistence
+    const uniqueId = Date.now().toString(36) + Math.random().toString(36).substring(2);
     const dbName = process.env.NODE_ENV === 'production' 
       ? PROD_DB_NAME 
-      : 'openagents_dev_static';
+      : `openagents_dev_${uniqueId}`;
     
     // Store database name for cleanup
     createdDatabases.push(dbName);
