@@ -69,10 +69,17 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Delete a thread
   const deleteThread = useCallback(async (threadId: string): Promise<boolean> => {
     try {
+      // First optimistically update local state for immediate UI response
+      setThreads(currentThreads => currentThreads.filter(thread => thread.id !== threadId));
+      
+      // Then actually perform the deletion
       const result = await threadRepository.deleteThread(threadId);
       
-      // Refresh the threads list
+      // Refresh the threads list only after backend confirms success
       if (result) {
+        await loadThreads();
+      } else {
+        // If deletion failed, refresh to restore the thread in UI
         await loadThreads();
       }
       
@@ -80,6 +87,8 @@ export function useThreads(options: UseThreadsOptions = {}) {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       console.error('Error deleting thread:', error);
+      // On error, refresh to restore correct state
+      await loadThreads();
       return false;
     }
   }, [loadThreads]);
@@ -87,10 +96,23 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Update a thread
   const updateThread = useCallback(async (threadId: string, updates: Partial<Thread>): Promise<Thread | null> => {
     try {
+      // First optimistically update local state for immediate UI response
+      setThreads(currentThreads => 
+        currentThreads.map(thread => 
+          thread.id === threadId 
+            ? { ...thread, ...updates, updatedAt: Date.now() } 
+            : thread
+        )
+      );
+      
+      // Then actually perform the update
       const result = await threadRepository.updateThread(threadId, updates);
       
-      // Refresh the threads list
+      // Refresh the threads list only after backend confirms success
       if (result) {
+        await loadThreads();
+      } else {
+        // If update failed, refresh to restore the thread in UI
         await loadThreads();
       }
       
@@ -98,6 +120,8 @@ export function useThreads(options: UseThreadsOptions = {}) {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       console.error('Error updating thread:', error);
+      // On error, refresh to restore correct state
+      await loadThreads();
       return null;
     }
   }, [loadThreads]);

@@ -268,11 +268,16 @@ export default function HomePage() {
   }, [switchThread]);
 
   const handleDeleteThread = useCallback((threadId: string) => {
-    deleteThread(threadId);
+    // Call the delete function from usePersistentChat
+    deleteThread(threadId).catch(error => {
+      console.error('Failed to delete thread:', error);
+    });
   }, [deleteThread]);
 
   const handleRenameThread = useCallback((threadId: string, title: string) => {
-    updateThread(threadId, title);
+    updateThread(threadId, title).catch(error => {
+      console.error('Failed to rename thread:', error);
+    });
   }, [updateThread]);
 
   // Handle model change - this happens when user selects from dropdown

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useThreads, Thread } from '@openagents/core';
 import { Button } from './ui/button';
 import { X, Plus } from 'lucide-react';
@@ -38,8 +38,10 @@ export function ThreadList({
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [threadToRename, setThreadToRename] = useState<Thread | null>(null);
   const [newTitle, setNewTitle] = useState('');
+  // Local state to track threads to be removed for optimistic updates
+  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
 
-  // Group threads by time periods
+  // Group threads by time periods - filter out pending deletes for optimistic UI
   const groupedThreads = useMemo(() => {
     const now = new Date();
     const groups: ThreadGroup[] = [
@@ -48,7 +50,10 @@ export function ThreadList({
       { label: 'Older', threads: [] }
     ];
 
-    threads.forEach(thread => {
+    // Filter out threads that are pending deletion
+    const filteredThreads = threads.filter(thread => !pendingDeletes.has(thread.id));
+
+    filteredThreads.forEach(thread => {
       const threadDate = new Date(thread.createdAt);
 
       if (isWithinInterval(threadDate, { start: subDays(now, 7), end: now })) {
@@ -61,7 +66,7 @@ export function ThreadList({
     });
 
     return groups;
-  }, [threads]);
+  }, [threads, pendingDeletes]);
 
   if (isLoading && threads.length === 0) {
     return (
@@ -148,6 +153,9 @@ export function ThreadList({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (window.confirm('Are you sure you want to delete this chat?')) {
+                                  // Optimistic update - add to pending deletes first
+                                  setPendingDeletes(prev => new Set([...prev, thread.id]));
+                                  // Then call the actual delete function
                                   onDeleteThread(thread.id);
                                 }
                               }}
