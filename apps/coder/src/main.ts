@@ -11,6 +11,7 @@ import {
 import { serverApp } from "./server";
 import { serve } from '@hono/node-server'; // Import serve from Hono's adapter
 import { Server } from 'http';
+import { initMCPClients, cleanupMCPClients } from './server/mcp-clients';
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -74,6 +75,11 @@ app.whenReady()
         throw new Error('serverApp.fetch is not a function');
       }
 
+      // Initialize MCP clients before starting the server
+      console.log('[Main Process] Initializing MCP clients...');
+      await initMCPClients();
+      console.log('[Main Process] MCP clients initialized successfully');
+
       // Start the server with Hono's serve adapter
       serverInstance = serve({
         fetch: serverApp.fetch, // Pass the fetch handler from our Hono app
@@ -104,6 +110,10 @@ app.on('will-quit', () => {
     serverInstance.close();
     serverInstance = null;
   }
+  
+  // Clean up MCP clients
+  console.log('[Main Process] Cleaning up MCP clients...');
+  cleanupMCPClients();
 });
 
 //osX only

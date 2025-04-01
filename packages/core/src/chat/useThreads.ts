@@ -51,12 +51,15 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Create a new thread
   const createThread = useCallback(async (title?: string): Promise<Thread> => {
     try {
+      // Create the thread directly in the database without temporary thread
       const thread = await threadRepository.createThread({
         title: title || 'New Chat'
       });
       
-      // Refresh the threads list
-      await loadThreads();
+      // Update local state immediately for optimistic UI
+      setThreads(currentThreads => [thread, ...currentThreads]);
+      
+      // Skip the full loadThreads to avoid showing duplicates
       
       return thread;
     } catch (err) {
@@ -69,10 +72,17 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Delete a thread
   const deleteThread = useCallback(async (threadId: string): Promise<boolean> => {
     try {
+      // First optimistically update local state for immediate UI response
+      setThreads(currentThreads => currentThreads.filter(thread => thread.id !== threadId));
+      
+      // Then actually perform the deletion
       const result = await threadRepository.deleteThread(threadId);
       
-      // Refresh the threads list
+      // Refresh the threads list only after backend confirms success
       if (result) {
+        await loadThreads();
+      } else {
+        // If deletion failed, refresh to restore the thread in UI
         await loadThreads();
       }
       
@@ -80,6 +90,8 @@ export function useThreads(options: UseThreadsOptions = {}) {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       console.error('Error deleting thread:', error);
+      // On error, refresh to restore correct state
+      await loadThreads();
       return false;
     }
   }, [loadThreads]);
@@ -87,10 +99,23 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Update a thread
   const updateThread = useCallback(async (threadId: string, updates: Partial<Thread>): Promise<Thread | null> => {
     try {
+      // First optimistically update local state for immediate UI response
+      setThreads(currentThreads => 
+        currentThreads.map(thread => 
+          thread.id === threadId 
+            ? { ...thread, ...updates, updatedAt: Date.now() } 
+            : thread
+        )
+      );
+      
+      // Then actually perform the update
       const result = await threadRepository.updateThread(threadId, updates);
       
-      // Refresh the threads list
+      // Refresh the threads list only after backend confirms success
       if (result) {
+        await loadThreads();
+      } else {
+        // If update failed, refresh to restore the thread in UI
         await loadThreads();
       }
       
@@ -98,25 +123,55 @@ export function useThreads(options: UseThreadsOptions = {}) {
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       console.error('Error updating thread:', error);
+      // On error, refresh to restore correct state
+      await loadThreads();
       return null;
     }
   }, [loadThreads]);
   
-  // Initial load
+  // Initial load with isLoading state management
   useEffect(() => {
-    loadThreads();
-  }, [loadThreads]);
+    // Set loading state only if threads array is empty
+    if (threads.length === 0) {
+      setIsLoading(true);
+    }
+    
+    loadThreads().finally(() => {
+      // Clear loading state after load completes
+      setIsLoading(false);
+    });
+  }, [loadThreads, threads.length]);
   
-  // Set up auto-refresh if enabled
+  // Set up auto-refresh if enabled - don't show loading state for background refreshes
   useEffect(() => {
     if (refreshInterval > 0) {
       const intervalId = setInterval(() => {
-        loadThreads();
+        // Run the load without updating the loading state to prevent flashing
+        loadThreads().catch(err => {
+          console.error('Error in background refresh:', err);
+        });
       }, refreshInterval);
       
       return () => clearInterval(intervalId);
     }
   }, [refreshInterval, loadThreads]);
+  
+  // Set up a one-time refresh when a thread is created/deleted - without loading indicator
+  useEffect(() => {
+    const handleThreadChange = () => {
+      // Run the load without updating the loading state to prevent flashing
+      loadThreads().catch(err => {
+        console.error('Error in event-triggered refresh:', err);
+      });
+    };
+    
+    // Listen for thread changes
+    window.addEventListener('thread-changed', handleThreadChange);
+    
+    return () => {
+      window.removeEventListener('thread-changed', handleThreadChange);
+    };
+  }, [loadThreads]);
   
   return {
     threads,
