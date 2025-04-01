@@ -81,9 +81,6 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     // Force the stream protocol to be data for compatibility
     streamProtocol: 'data' as 'data',
 
-    // Pass through original handler if provided
-    experimental_onPartUpdated: options.experimental_onPartUpdated,
-
     // Custom response handler
     onResponse: async (response: Response) => {
       // Check if the response has an error status
@@ -108,10 +105,10 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         try {
           // Check if this message already exists in the database
           const existingMessage = await messageRepository.getMessageById(message.id);
-          
+
           // Get the most accurate message with all parts from Vercel state
           const latestMessage = vercelChatState.messages.find(m => m.id === message.id) || message;
-          
+
           if (existingMessage) {
             // Message exists - update it with new parts/content instead of creating
             await messageRepository.updateMessage(message.id, {
@@ -130,7 +127,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
               toolInvocations: latestMessage.toolInvocations,
               experimental_attachments: latestMessage.experimental_attachments || []
             };
-            
+
             await messageRepository.createMessage(uiMessage);
           }
 

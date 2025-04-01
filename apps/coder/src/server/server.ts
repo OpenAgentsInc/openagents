@@ -129,7 +129,7 @@ app.get('/api/mcp/shell/test', async (c) => {
   try {
     // Define allowed commands, falling back to a minimal set if not configured
     const allowCommands = process.env.ALLOW_COMMANDS || 'ls,cat,pwd,echo,grep';
-    
+
     // Create MCP client with stdio transport for shell MCP
     const transport = new StdioMCPTransport({
       command: 'npx',
@@ -223,14 +223,14 @@ app.post('/api/chat', async (c) => {
     console.error('[Server] Failed to initialize local GitHub MCP client:', localMcpError);
     // Continue execution - we'll still use remote MCP or LLM without tools
   }
-  
+
   // Try to initialize local Shell MCP client with stdio transport
   try {
     console.log('[Server] Initializing local Shell MCP client with stdio');
-    
+
     // Define allowed commands, falling back to a minimal set if not configured
     const allowCommands = process.env.ALLOW_COMMANDS || 'ls,cat,pwd,echo,grep,find,ps,wc';
-    
+
     const transportShell = new StdioMCPTransport({
       command: 'uvx',
       args: ['mcp-shell-server'],
@@ -297,13 +297,13 @@ app.post('/api/chat', async (c) => {
 
     // Get tools from the MCP clients
     let tools = {};
-    
+
     // Add GitHub tools if available
     if (localGithubMcpClient) {
       try {
         console.log('[Server] Fetching tools from local GitHub MCP client');
         const githubTools = await localGithubMcpClient.tools();
-        tools = {...tools, ...githubTools};
+        tools = { ...tools, ...githubTools };
         console.log('[Server] Successfully fetched tools from local GitHub MCP');
       } catch (toolError) {
         console.error('[Server] Error fetching tools from local GitHub MCP:', toolError);
@@ -312,19 +312,19 @@ app.post('/api/chat', async (c) => {
       try {
         console.log('[Server] Fetching tools from remote MCP client');
         const remoteTools = await remoteMcpClient.tools();
-        tools = {...tools, ...remoteTools};
+        tools = { ...tools, ...remoteTools };
         console.log('[Server] Successfully fetched tools from remote MCP');
       } catch (toolError) {
         console.error('[Server] Error fetching tools from remote MCP:', toolError);
       }
     }
-    
+
     // Add Shell tools if available
     if (localShellMcpClient) {
       try {
         console.log('[Server] Fetching tools from local Shell MCP client');
         const shellTools = await localShellMcpClient.tools();
-        tools = {...tools, ...shellTools};
+        tools = { ...tools, ...shellTools };
         console.log('[Server] Successfully fetched tools from local Shell MCP');
       } catch (toolError) {
         console.error('[Server] Error fetching tools from local Shell MCP:', toolError);
@@ -334,14 +334,14 @@ app.post('/api/chat', async (c) => {
     try {
       // Check for system prompt in request
       const systemPrompt = body.systemPrompt;
-      
+
       // If system prompt exists, prepend it to messages array
       if (systemPrompt && typeof systemPrompt === 'string' && systemPrompt.trim() !== '') {
         console.log('[Server] Using custom system prompt');
-        
+
         // Add system message at the beginning if it doesn't already exist
         const hasSystemMessage = messages.some(msg => msg.role === 'system');
-        
+
         if (!hasSystemMessage) {
           messages = [
             { role: 'system', content: systemPrompt },
@@ -385,7 +385,7 @@ app.post('/api/chat', async (c) => {
       } else {
         console.log('[Server] No MCP tools available, continuing without tools');
         // Remove tools if empty to avoid schema errors
-        delete streamOptions.tools;
+        streamOptions.tools = {};
       }
 
       const streamResult = streamText(streamOptions);
