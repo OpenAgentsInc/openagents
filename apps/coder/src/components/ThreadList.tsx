@@ -97,7 +97,7 @@ export function ThreadList({
                   <span key={thread.id} data-state="closed">
                     <li data-sidebar="menu-item" className="group/menu-item relative">
                       <a
-                        className={`group/link relative flex h-9 w-full items-center overflow-hidden rounded-lg px-2 py-1 text-sm outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring hover:focus-visible:bg-sidebar-accent ${thread.id === currentThreadId ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''
+                        className={`group/link relative flex h-9 w-full items-center overflow-hidden rounded-lg px-2 py-1 text-sm outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring hover:focus-visible:bg-sidebar-accent ${thread.id === currentThreadId ? 'bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md' : ''
                           }`}
                         title={thread.title || 'Untitled'}
                         onClick={() => {
