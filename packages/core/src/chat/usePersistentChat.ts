@@ -81,6 +81,9 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     // Force the stream protocol to be data for compatibility
     streamProtocol: 'data' as 'data',
 
+    // Pass through original handler if provided
+    experimental_onPartUpdated: options.experimental_onPartUpdated,
+
     // Custom response handler
     onResponse: async (response: Response) => {
       // Check if the response has an error status
@@ -103,74 +106,40 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       // Save the completed assistant message to the database
       if (persistenceEnabled && dbInitialized && currentThreadId && message.role === 'assistant') {
         try {
-          // console.log('🔴 onFinish called for assistant message:', {
-          //   id: message.id,
-          //   content: message.content.substring(0, 50)
-          // });
-
-          // Get all current messages and find the corresponding user message
-          const currentMessages = vercelChatState.messages;
-          // console.log('🔴 Current messages:', currentMessages.map(m => ({
-          //   id: m.id,
-          //   role: m.role,
-          //   timestamp: m.createdAt,
-          //   content: m.content.substring(0, 30)
-          // })));
-
-          // Find the last user message that doesn't have a corresponding assistant message
-          const userMessages = currentMessages.filter(m => m.role === 'user');
-          const assistantMessages = currentMessages.filter(m => m.role === 'assistant');
-
-          // Find the latest user message that doesn't have a paired assistant message
-          const unpairedUserMessage = userMessages.reverse().find(userMsg => {
-            const hasAssistantResponse = assistantMessages.some(assistantMsg => {
-              const userTime = userMsg.createdAt ? new Date(userMsg.createdAt).getTime() : 0;
-              const assistantTime = assistantMsg.createdAt ? new Date(assistantMsg.createdAt).getTime() : 0;
-              return assistantTime > userTime && assistantTime - userTime < 5000; // Within 5 seconds
+          // Check if this message already exists in the database
+          const existingMessage = await messageRepository.getMessageById(message.id);
+          
+          // Get the most accurate message with all parts from Vercel state
+          const latestMessage = vercelChatState.messages.find(m => m.id === message.id) || message;
+          
+          if (existingMessage) {
+            // Message exists - update it with new parts/content instead of creating
+            await messageRepository.updateMessage(message.id, {
+              content: latestMessage.content,
+              parts: latestMessage.parts
             });
-            return !hasAssistantResponse;
-          });
-
-          // Calculate a timestamp that ensures proper ordering with clear time difference
-          // Find the latest timestamp of all messages
-          const allTimestamps = currentMessages.map(m =>
-            m.createdAt ? new Date(m.createdAt).getTime() : 0
-          );
-
-          const latestTimestamp = Math.max(...allTimestamps, 0);
-
-          // Force at least a 500ms gap from the latest message
-          const forcedGap = 500; // half-second gap for assistant responses
-          const timestamp = new Date(Math.max(
-            Date.now(),
-            latestTimestamp + forcedGap
-          ));
-
-          // console.log('🔴 Setting assistant message timestamp with forced gap:', timestamp);
-
-          // Convert to UIMessage format with threadId guaranteed
-          const uiMessage: UIMessage & { threadId: string } = {
-            ...fromVercelMessage(message),
-            threadId: currentThreadId,
-            createdAt: timestamp
-          };
-
-          // Save the message
-          const savedMessage = await messageRepository.createMessage(uiMessage);
-          console.log('🔴 Saved assistant message:', {
-            id: savedMessage.id,
-            timestamp: timestamp
-          });
-
-          // Mark as saved to prevent duplicates
-          savedMessageIdsRef.current.add(message.id);
+          } else {
+            // Message doesn't exist yet - create it
+            const uiMessage: UIMessage & { threadId: string } = {
+              id: message.id,
+              role: message.role,
+              content: latestMessage.content,
+              createdAt: new Date(),
+              threadId: currentThreadId,
+              parts: latestMessage.parts || [],
+              toolInvocations: latestMessage.toolInvocations,
+              experimental_attachments: latestMessage.experimental_attachments || []
+            };
+            
+            await messageRepository.createMessage(uiMessage);
+          }
 
           // Update thread timestamp
           await threadRepository.updateThread(currentThreadId, {
             updatedAt: Date.now()
           });
         } catch (error) {
-          console.error('🔴 Error in onFinish:', error);
+          console.error('Error in onFinish:', error);
         }
       }
     }

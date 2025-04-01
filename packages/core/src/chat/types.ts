@@ -326,7 +326,11 @@ export interface UIMessage {
  * Convert UIMessage to Vercel Message
  */
 export function toVercelMessage(message: UIMessage): BaseMessage {
-  const parts = message.parts.filter(part =>
+  // Create a safe copy of parts array, defaulting to empty if missing
+  const partsArray = message.parts || [];
+  
+  // Filter out step-start parts which shouldn't be sent to Vercel
+  const parts = partsArray.filter(part =>
     part.type !== 'step-start'
   ) as BasePart[];
 
@@ -334,7 +338,10 @@ export function toVercelMessage(message: UIMessage): BaseMessage {
     id: message.id || uuidv4(),
     role: message.role,
     content: message.content,
-    parts
+    parts,
+    createdAt: message.createdAt,
+    experimental_attachments: message.experimental_attachments,
+    toolInvocations: message.toolInvocations
   };
 }
 
@@ -350,8 +357,9 @@ export function fromVercelMessage(message: VercelMessage): UIMessage {
     role: message.role,
     content: message.content,
     createdAt: timestamp,
-    parts: (message.parts || []) as UIPart[],
-    experimental_attachments: []  // Always provide an empty array for attachments
+    parts: message.parts || [],
+    toolInvocations: message.toolInvocations,
+    experimental_attachments: message.experimental_attachments || []
   };
 }
 

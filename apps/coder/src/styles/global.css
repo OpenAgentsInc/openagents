@@ -37,7 +37,7 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
-  --font-sans: Tomorrow, sans-serif;
+  --font-sans: "Berkeley Mono", monospace;
   --font-mono: "Berkeley Mono", monospace;
 
   --radius-lg: var(--radius);
@@ -203,7 +203,7 @@
     @apply bg-background;
     -webkit-app-region: drag;
   }
-  
+
   /* Commented out problematic fixes */
   button {
     @apply cursor-pointer;
@@ -272,7 +272,7 @@
     background-size: 100% 40px, 100% 40px, 100% 14px, 100% 14px;
     background-attachment: local, local, scroll, scroll;
   }
-  
+
   /* Only keep this single fix to prevent animation */
   [data-slot="sidebar-container"] {
     transition: none !important;
