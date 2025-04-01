@@ -36,7 +36,7 @@ const providerGroups = models.reduce((acc, model) => {
 const providers = Object.keys(providerGroups);
 
 export default function ModelsPage() {
-  const { settings, isLoading, setApiKey, getApiKey, deleteApiKey, updateSettings } = useSettings();
+  const { settings, isLoading, setApiKey, getApiKey, deleteApiKey, updateSettings, clearSettingsCache } = useSettings();
   const [defaultModelId, setDefaultModelId] = useState("");
   const [currentProvider, setCurrentProvider] = useState(providers[0] || "");
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -46,7 +46,21 @@ export default function ModelsPage() {
   // Load settings when component mounts
   useEffect(() => {
     if (settings) {
-      setDefaultModelId(settings.defaultModel || models[0]?.id || "");
+      console.log("ModelsPage: Loading settings, default model =", settings.defaultModel);
+      
+      // Verify the model exists in our list
+      let modelToUse = settings.defaultModel;
+      if (modelToUse) {
+        const modelExists = models.some(model => model.id === modelToUse);
+        if (!modelExists) {
+          console.warn(`Model ${modelToUse} not found in models list`);
+          modelToUse = models[0]?.id || "";
+        }
+      } else {
+        modelToUse = models[0]?.id || "";
+      }
+      
+      setDefaultModelId(modelToUse);
       
       // Load API keys for all providers
       const loadApiKeys = async () => {
@@ -66,8 +80,29 @@ export default function ModelsPage() {
   
   // Handle default model change
   const handleDefaultModelChange = async (modelId: string) => {
-    setDefaultModelId(modelId);
-    await updateSettings({ defaultModel: modelId });
+    try {
+      // Check if the model exists in the list
+      const modelExists = models.some(model => model.id === modelId);
+      if (!modelExists) {
+        console.error(`Model ${modelId} not found in models list`);
+        return;
+      }
+      
+      // Update UI immediately
+      setDefaultModelId(modelId);
+      
+      console.log(`Updating default model to: ${modelId}`);
+      
+      // Update settings in the database
+      await updateSettings({ defaultModel: modelId });
+      
+      // Clear the cache to ensure fresh settings on next load
+      await clearSettingsCache();
+      
+      console.log("Default model updated successfully and cache cleared");
+    } catch (error) {
+      console.error("Error updating default model:", error);
+    }
   };
   
   // Handle API key changes

@@ -108,6 +108,13 @@ export function useSettings() {
     loadSettings();
   }, [loadSettings]);
   
+  // Clear settings cache in repository
+  const clearSettingsCache = useCallback(() => {
+    settingsRepository.clearCache();
+    // Reload settings
+    return loadSettings();
+  }, [loadSettings]);
+
   return {
     settings,
     isLoading,
@@ -118,6 +125,7 @@ export function useSettings() {
     getApiKey,
     deleteApiKey,
     setPreference,
-    getPreference
+    getPreference,
+    clearSettingsCache
   };
 }
