@@ -47,6 +47,16 @@
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
 
+  /* Sidebar variables */
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
   @keyframes accordion-down {
     from {
       height: 0;
@@ -135,7 +145,7 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    
+
     /* Sidebar variables */
     --sidebar: 0 0% 100%;
     --sidebar-foreground: 240 10% 3.9%;
@@ -172,7 +182,7 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
-    
+
     /* Sidebar variables - true black background in dark mode */
     --sidebar: 0 0% 0%;
     --sidebar-foreground: 0 0% 98%;
@@ -219,8 +229,48 @@
     animation: typing-dot 1.4s linear infinite;
   }
 
-}
+  /* Small scrollbar styles */
+  .small-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-sidebar-border) transparent;
+  }
 
+  .small-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .small-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .small-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-sidebar-border);
+    border-radius: 3px;
+  }
+
+  /* Scroll shadow effect */
+  .scroll-shadow {
+    background:
+      linear-gradient(var(--color-sidebar) 30%, rgba(255, 255, 255, 0)),
+      linear-gradient(rgba(255, 255, 255, 0), var(--color-sidebar) 70%) 0 100%,
+      linear-gradient(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0)),
+      linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.15)) 0 100%;
+    background-repeat: no-repeat;
+    background-size: 100% 40px, 100% 40px, 100% 14px, 100% 14px;
+    background-attachment: local, local, scroll, scroll;
+  }
+
+  .dark .scroll-shadow {
+    background:
+      linear-gradient(var(--color-sidebar) 30%, rgba(0, 0, 0, 0)),
+      linear-gradient(rgba(0, 0, 0, 0), var(--color-sidebar) 70%) 0 100%,
+      linear-gradient(rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0)),
+      linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.1)) 0 100%;
+    background-repeat: no-repeat;
+    background-size: 100% 40px, 100% 40px, 100% 14px, 100% 14px;
+    background-attachment: local, local, scroll, scroll;
+  }
+}
 
 @theme inline {
   --color-sidebar: var(--sidebar);

@@ -40,7 +40,7 @@ export function ModelSelect({
 
   // Find the currently selected model
   const selectedModel = filteredModels.find((model) => model.id === value);
-  
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -84,11 +84,6 @@ export function ModelSelect({
                       )}
                     />
                     <span className="font-medium font-mono">{model.name}</span>
-                    {model.plan === "pro" && (
-                      <span className="ml-auto text-xs rounded bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 font-mono">
-                        PRO
-                      </span>
-                    )}
                   </div>
                   {model.shortDescription && (
                     <span className="text-xs text-muted-foreground pl-6 font-mono">

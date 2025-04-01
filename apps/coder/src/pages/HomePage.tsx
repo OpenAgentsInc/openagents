@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
 import { ModelSelect } from "@/components/ui/model-select";
-import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
+import { MessageSquareIcon, SettingsIcon, HelpCircleIcon, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function HomePage() {
   // Get settings including the default model
@@ -34,13 +35,57 @@ export default function HomePage() {
   const [selectedModelId, setSelectedModelId] = useState<string>("");
 
   useEffect(() => {
-    async function setupDefaultModel() {
+    async function setupModel() {
       try {
         // Only proceed when settings are loaded
         if (!settings) return;
 
-        // Check if we already have a selected model and it matches settings
-        // This prevents unnecessary reselection
+        // Look for a user-selected model first (highest priority)
+        let userSelectedModel = null;
+
+        // Check active localStorage model (selected by user in this or another tab)
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            const activeModel = window.localStorage.getItem('openagents_active_model');
+            if (activeModel && models.some(model => model.id === activeModel)) {
+              console.log(`Using active model from localStorage: ${activeModel}`);
+              userSelectedModel = activeModel;
+            }
+          }
+        } catch (storageError) {
+          console.warn("Error reading active model from localStorage:", storageError);
+        }
+
+        // If no localStorage model, check sessionStorage (selected in this tab only)
+        if (!userSelectedModel) {
+          try {
+            if (typeof window !== 'undefined' && window.sessionStorage) {
+              const currentModel = window.sessionStorage.getItem('openagents_current_model');
+              if (currentModel && models.some(model => model.id === currentModel)) {
+                console.log(`Using current model from sessionStorage: ${currentModel}`);
+                userSelectedModel = currentModel;
+              }
+            }
+          } catch (storageError) {
+            console.warn("Error reading from sessionStorage:", storageError);
+          }
+        }
+
+        // If user has manually selected a model, use it and skip default logic
+        if (userSelectedModel) {
+          // Skip if already selected
+          if (selectedModelId === userSelectedModel) {
+            console.log(`Model already selected (${selectedModelId})`);
+            return;
+          }
+
+          console.log(`Using user-selected model: ${userSelectedModel}`);
+          setSelectedModelId(userSelectedModel);
+          return;
+        }
+
+        // If no user selection, use default from settings (lower priority)
+        // Check if we already have a selected model and matches settings (to prevent unnecessary reselection)
         if (selectedModelId && selectedModelId === settings.defaultModel) {
           console.log(`Model already selected (${selectedModelId}) matches settings`);
           return;
@@ -56,7 +101,7 @@ export default function HomePage() {
             console.log(`Model ${settings.defaultModel} found, selecting it`);
             setSelectedModelId(settings.defaultModel);
 
-            // Store in sessionStorage for resilience across page reloads
+            // Also save to sessionStorage for resilience
             try {
               if (typeof window !== 'undefined' && window.sessionStorage) {
                 window.sessionStorage.setItem('openagents_current_model', settings.defaultModel);
@@ -72,31 +117,14 @@ export default function HomePage() {
               const fallbackModel = models[0].id;
               setSelectedModelId(fallbackModel);
 
-              // Try to recover from sessionStorage first if available
-              let recovered = false;
+              // Update the settings to use a valid model
+              console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
               try {
-                if (typeof window !== 'undefined' && window.sessionStorage) {
-                  const savedModel = window.sessionStorage.getItem('openagents_current_model');
-                  if (savedModel && models.some(model => model.id === savedModel)) {
-                    console.log(`Recovered model from sessionStorage: ${savedModel}`);
-                    setSelectedModelId(savedModel);
-                    recovered = true;
-                  }
-                }
-              } catch (storageError) {
-                console.warn("Error reading from sessionStorage:", storageError);
-              }
-
-              if (!recovered) {
-                // Update the settings to use a valid model (only if we couldn't recover)
-                console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
-                try {
-                  // Update the default model using the atomic update
-                  const result = await updateSettings({ defaultModel: fallbackModel });
-                  console.log("Settings auto-corrected:", result.defaultModel);
-                } catch (error) {
-                  console.error("Failed to auto-correct settings:", error);
-                }
+                // Update the default model
+                const result = await updateSettings({ defaultModel: fallbackModel });
+                console.log("Settings auto-corrected:", result.defaultModel);
+              } catch (error) {
+                console.error("Failed to auto-correct settings:", error);
               }
             }
           }
@@ -104,27 +132,13 @@ export default function HomePage() {
           // Default to first model if no default is set
           console.log("No default model in settings, using first model");
           if (models.length > 0) {
-            // Check sessionStorage first
-            let modelFromStorage = null;
-            try {
-              if (typeof window !== 'undefined' && window.sessionStorage) {
-                const savedModel = window.sessionStorage.getItem('openagents_current_model');
-                if (savedModel && models.some(model => model.id === savedModel)) {
-                  console.log(`Using model from sessionStorage: ${savedModel}`);
-                  modelFromStorage = savedModel;
-                }
-              }
-            } catch (storageError) {
-              console.warn("Error reading from sessionStorage:", storageError);
-            }
+            const firstModel = models[0].id;
+            setSelectedModelId(firstModel);
 
-            const modelToUse = modelFromStorage || models[0].id;
-            setSelectedModelId(modelToUse);
-
-            // Also save this as the default
-            console.log(`Setting model as default: ${modelToUse}`);
+            // Save this as the default
+            console.log(`Setting first model as default: ${firstModel}`);
             try {
-              await updateSettings({ defaultModel: modelToUse });
+              await updateSettings({ defaultModel: firstModel });
               console.log("Default model saved");
             } catch (error) {
               console.error("Failed to save default model:", error);
@@ -132,12 +146,12 @@ export default function HomePage() {
           }
         }
       } catch (error) {
-        console.error("Error setting up default model:", error);
+        console.error("Error setting up model:", error);
       }
     }
 
-    setupDefaultModel();
-  }, [settings, selectedModelId, clearSettingsCache, updateSettings]);
+    setupModel();
+  }, [settings, clearSettingsCache, updateSettings]);
 
   // Find the selected model
   const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
@@ -204,18 +218,29 @@ export default function HomePage() {
     updateThread(threadId, title);
   }, [updateThread]);
 
-  // Handle model change
+  // Handle model change - this happens when user selects from dropdown
   const handleModelChange = (modelId: string) => {
-    console.log(`Model changed to: ${modelId}`);
+    console.log(`Model changed via dropdown to: ${modelId}`);
+
+    // Set the model ID for current session
     setSelectedModelId(modelId);
 
-    // Save the selection to sessionStorage for resilience
+    // Save the selection to sessionStorage for persistence within this tab
     try {
       if (typeof window !== 'undefined' && window.sessionStorage) {
         window.sessionStorage.setItem('openagents_current_model', modelId);
       }
     } catch (storageError) {
       console.warn("Error storing model in sessionStorage:", storageError);
+    }
+
+    // Also save to localStorage for persistence across tabs (but not as default)
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('openagents_active_model', modelId);
+      }
+    } catch (localStorageError) {
+      console.warn("Error storing model in localStorage:", localStorageError);
     }
 
     // We don't update the default model here - this is just for the current session
@@ -239,40 +264,43 @@ export default function HomePage() {
                       v0.0.1
                     </Badge>
                   </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCreateThread}
+                    className="flex gap-1 items-center"
+                  >
+                    <Plus className="size-4" />
+                    <span>New</span>
+                  </Button>
                 </div>
               </SidebarHeader>
 
               <SidebarContent>
-                <SidebarGroup>
-                  <ThreadList
-                    currentThreadId={currentThreadId ?? ''}
-                    onSelectThread={handleSelectThread}
-                    onDeleteThread={handleDeleteThread}
-                    onRenameThread={handleRenameThread}
-                    onCreateThread={handleCreateThread}
-                  />
-                </SidebarGroup>
-
-                <SidebarGroup>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <Link to="/settings/models">
-                        <SidebarMenuButton>
-                          <SettingsIcon />
-                          <span>Models & API Keys</span>
-                        </SidebarMenuButton>
-                      </Link>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarGroup>
+                <ThreadList
+                  currentThreadId={currentThreadId ?? ''}
+                  onSelectThread={handleSelectThread}
+                  onDeleteThread={handleDeleteThread}
+                  onRenameThread={handleRenameThread}
+                  onCreateThread={handleCreateThread}
+                  onPinThread={(threadId) => {
+                    // TODO: Implement thread pinning functionality
+                    console.log('Pin thread:', threadId);
+                  }}
+                />
               </SidebarContent>
 
               <SidebarFooter>
-                <div className="px-3 py-2">
-                  <div className="text-xs text-muted-foreground">
-                    <ToggleTheme />
-                  </div>
-                </div>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <Link to="/settings/models">
+                      <SidebarMenuButton>
+                        <SettingsIcon />
+                        <span>Models & API Keys</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  </SidebarMenuItem>
+                </SidebarMenu>
               </SidebarFooter>
             </Sidebar>
 
