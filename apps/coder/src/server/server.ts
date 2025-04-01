@@ -122,7 +122,9 @@ app.post('/api/chat', async (c) => {
 
       return stream(c, async (responseStream) => {
         try {
-          const sdkStream = streamResult.toDataStream();
+          const sdkStream = streamResult.toDataStream({
+            sendReasoning: true
+          });
           await responseStream.pipe(sdkStream);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
