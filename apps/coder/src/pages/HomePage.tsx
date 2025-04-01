@@ -244,7 +244,7 @@ export default function HomePage() {
 
   // Handle model change - this happens when user selects from dropdown
   const handleModelChange = (modelId: string) => {
-    console.log(`Model changed via dropdown to: ${modelId}`);
+    // console.log(`Model changed via dropdown to: ${modelId}`);
 
     // Set the model ID for current session
     setSelectedModelId(modelId);
