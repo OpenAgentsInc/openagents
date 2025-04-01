@@ -68,7 +68,7 @@ export class SettingsRepository {
 
     // Set flag to indicate we're initializing settings
     this.settingsInitInProgress = true;
-    
+
     // Create a promise to handle concurrent calls
     this.settingsInitPromise = (async () => {
       try {
@@ -80,7 +80,7 @@ export class SettingsRepository {
             if (storedSettings) {
               try {
                 localSettings = JSON.parse(storedSettings);
-                console.log("Found backup settings in localStorage");
+                // console.log("Found backup settings in localStorage");
               } catch (parseError) {
                 console.warn("Error parsing localStorage settings:", parseError);
               }
@@ -101,13 +101,13 @@ export class SettingsRepository {
 
         if (settings) {
           const settingsData = settings.toJSON();
-          
+
           // Validate the default model - ensure it's a string
           if (settingsData.defaultModel && typeof settingsData.defaultModel !== 'string') {
             console.warn("Invalid defaultModel type, resetting to default");
             settingsData.defaultModel = 'qwen-qwq-32b'; // Known good model as fallback
           }
-          
+
           // Keep a backup of valid settings in localStorage
           try {
             if (typeof window !== 'undefined' && window.localStorage) {
@@ -116,7 +116,7 @@ export class SettingsRepository {
           } catch (backupError) {
             console.warn("Error backing up settings to localStorage:", backupError);
           }
-          
+
           this.cachedSettings = settingsData;
           return settingsData;
         }
@@ -129,7 +129,7 @@ export class SettingsRepository {
             if (localSettings.defaultModel && typeof localSettings.defaultModel !== 'string') {
               localSettings.defaultModel = 'qwen-qwq-32b';
             }
-            
+
             await this.db!.settings.insert(localSettings);
             this.cachedSettings = localSettings;
             return localSettings;
@@ -152,7 +152,7 @@ export class SettingsRepository {
           // Try to insert, but this might fail if another instance already inserted
           await this.db!.settings.insert(defaultSettings);
           this.cachedSettings = defaultSettings;
-          
+
           // Backup to localStorage
           try {
             if (typeof window !== 'undefined' && window.localStorage) {
@@ -161,22 +161,22 @@ export class SettingsRepository {
           } catch (backupError) {
             console.warn("Error backing up settings to localStorage:", backupError);
           }
-          
+
           return defaultSettings;
         } catch (error) {
           // If we get an error (likely a conflict error), try to fetch again
           console.log('Settings insert conflict, retrying fetch...');
-          
+
           // Add a small delay to let other operations complete
           await new Promise(resolve => setTimeout(resolve, 100));
-          
+
           // Try again after the delay
           try {
             const existingSettings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
             if (existingSettings) {
               const existingData = existingSettings.toJSON();
               this.cachedSettings = existingData;
-              
+
               // Backup to localStorage
               try {
                 if (typeof window !== 'undefined' && window.localStorage) {
@@ -185,20 +185,20 @@ export class SettingsRepository {
               } catch (backupError) {
                 console.warn("Error backing up settings to localStorage:", backupError);
               }
-              
+
               return existingData;
             }
           } catch (retryError) {
             console.error("Error on retry fetch:", retryError);
           }
-          
+
           // If we have localStorage settings, use those as a fallback
           if (localSettings && localSettings.id === GLOBAL_SETTINGS_ID) {
             console.log("Using localStorage settings as fallback after fetch errors");
             this.cachedSettings = localSettings;
             return localSettings;
           }
-          
+
           // Last resort - return in-memory defaults
           const lastResortDefaults = {
             id: GLOBAL_SETTINGS_ID,
@@ -229,7 +229,7 @@ export class SettingsRepository {
         this.settingsInitPromise = null;
       }
     })();
-    
+
     return this.settingsInitPromise;
   }
 
@@ -244,7 +244,7 @@ export class SettingsRepository {
       if (updates.defaultModel) {
         console.log(`Setting pending model update: ${updates.defaultModel}`);
         this._pendingModelUpdate = updates.defaultModel;
-        
+
         // Store the pending update in localStorage for persistence across page reloads
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
@@ -269,13 +269,13 @@ export class SettingsRepository {
       // Use a mutex approach with optimistic locking
       let retries = 0;
       const maxRetries = 5; // Increased retry count for better resilience
-      
+
       // Start a retry loop to handle potential conflicts
       while (retries < maxRetries) {
         try {
           // First get fresh settings - needed for the latest revision
           let currentDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
-          
+
           if (currentDoc) {
             // Document exists, use atomic update with the current revision
             try {
@@ -286,7 +286,7 @@ export class SettingsRepository {
               } catch (e) {
                 console.warn("Could not log schema:", e);
               }
-                
+
               // Check if the document has atomicUpdate method before using it
               if (typeof currentDoc.atomicUpdate === 'function') {
                 // Use the RxDB atomic update pattern WITHOUT touching the cache yet
@@ -302,24 +302,24 @@ export class SettingsRepository {
               } else {
                 // Fallback for when atomicUpdate is not available (missing plugin or older RxDB)
                 console.log("RxDB atomicUpdate not available, using regular update method");
-                
+
                 // Get the current revision and other required props
                 const currentRev = (currentDoc as any)._rev || '';
-                
+
                 // Create updated document with only allowed fields
                 const updatedDoc = {
                   ...currentDoc.toJSON(),
                   ...updates
                   // No debugging properties that would violate schema
                 };
-                
+
                 try {
                   console.log("Attempting update with schema-valid document");
                   // Try to update with the update method
                   await this.db!.settings.upsert(updatedDoc);
                 } catch (innerError) {
                   console.error("Regular update failed:", innerError);
-                  
+
                   // Last resort - try direct update using findOne().update() which is schema-safe
                   try {
                     console.log("Attempting direct PATCH update");
@@ -333,19 +333,19 @@ export class SettingsRepository {
                       if (updates.theme) updateData.theme = updates.theme;
                       if (updates.apiKeys) updateData.apiKeys = updates.apiKeys;
                       if (updates.preferences) updateData.preferences = updates.preferences;
-                      
+
                       await freshDoc.patch(updateData);
                       console.log("Patch update succeeded");
                     }
                   } catch (patchError) {
                     console.error("Patch update failed:", patchError);
-                    
+
                     // Very last resort - try to do a remove and recreate
                     try {
                       console.log("Attempting full recreation with clean document");
                       // Remove the old doc first
                       await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).remove();
-                      
+
                       // Create a fully schema-compliant document
                       const newDoc = {
                         id: GLOBAL_SETTINGS_ID,
@@ -354,7 +354,7 @@ export class SettingsRepository {
                         defaultModel: updates.defaultModel || 'qwen-qwq-32b',
                         preferences: updates.preferences || {}
                       };
-                      
+
                       // Add new doc
                       await this.db!.settings.insert(newDoc);
                     } catch (removeError) {
@@ -364,18 +364,18 @@ export class SettingsRepository {
                   }
                 }
               }
-              
+
               // After successful update, fetch the latest version
               // Use a small delay to ensure the update has propagated
               await new Promise(resolve => setTimeout(resolve, 30));
-              
+
               const freshDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
               if (freshDoc) {
                 const updatedSettings = freshDoc.toJSON();
-                
+
                 // Only after successful read do we update the cache
                 this.cachedSettings = updatedSettings;
-                
+
                 // Clear the pending model update since it was successful
                 if (updates.defaultModel && this._pendingModelUpdate === updates.defaultModel) {
                   this._pendingModelUpdate = null;
@@ -388,14 +388,14 @@ export class SettingsRepository {
                     console.warn("Error removing pending model from localStorage:", localStorageError);
                   }
                 }
-                
+
                 console.log("Settings successfully updated:", JSON.stringify(updates));
                 return updatedSettings;
               }
             } catch (updateError) {
               console.warn(`Update attempt ${retries + 1} failed:`, updateError);
               retries++;
-              
+
               // Add an increased delay between retries to avoid race conditions
               await new Promise(resolve => setTimeout(resolve, 100 * retries));
               continue; // Try again
@@ -410,10 +410,10 @@ export class SettingsRepository {
               preferences: {},
               ...updates
             };
-            
+
             try {
               await this.db!.settings.insert(defaultSettings);
-              
+
               // Double-check the document was inserted
               const checkDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
               if (checkDoc) {
@@ -432,7 +432,7 @@ export class SettingsRepository {
               // This likely means the document was created by another process
               console.warn(`Insert attempt ${retries + 1} failed:`, insertError);
               retries++;
-              
+
               // Add a delay between retries
               await new Promise(resolve => setTimeout(resolve, 100 * retries));
               continue; // Try again
@@ -441,17 +441,17 @@ export class SettingsRepository {
         } catch (dbError) {
           console.error(`Database operation failed on attempt ${retries + 1}:`, dbError);
           retries++;
-          
+
           // More substantial delay for DB errors
           await new Promise(resolve => setTimeout(resolve, 150 * retries));
           continue;
         }
       }
-      
+
       // If we've exhausted retries, use the recovery approach
       // But don't use the nuclear option since it's causing page refreshes
       console.warn("Exhausted retry attempts, using stable recovery method");
-        
+
       try {
         // Create a safe recovery document based on what we know
         // Only include schema-compliant fields
@@ -462,11 +462,11 @@ export class SettingsRepository {
           defaultModel: updates.defaultModel || 'qwen-qwq-32b',
           preferences: updates.preferences || {}
         };
-        
+
         // Update our cache with what we intended to save
         this.cachedSettings = recoverySettings;
         console.log("Settings recovery successful with in-memory update");
-        
+
         // Try one last time to read the actual data
         try {
           const lastDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
@@ -475,8 +475,8 @@ export class SettingsRepository {
             // Only update our cache if the defaultModel in the database
             // doesn't match what the user was trying to set
             if (updates.defaultModel && lastSettings.defaultModel !== updates.defaultModel) {
-              console.log("Database has defaultModel:", lastSettings.defaultModel, 
-                         "but user wanted:", updates.defaultModel);
+              console.log("Database has defaultModel:", lastSettings.defaultModel,
+                "but user wanted:", updates.defaultModel);
               // Keep our in-memory version with the user's preference
             } else {
               // Otherwise use what's in the database
@@ -486,7 +486,7 @@ export class SettingsRepository {
         } catch (finalReadError) {
           console.warn("Final read attempt failed, using recovery settings");
         }
-        
+
         return this.cachedSettings;
       } catch (finalCatchAllError) {
         // Absolute last resort - return a memory object
@@ -503,7 +503,7 @@ export class SettingsRepository {
       }
     } catch (error) {
       console.error('Fatal error updating settings:', error);
-      
+
       // If we have cached settings, merge with updates
       if (this.cachedSettings) {
         const mergedSettings = {
@@ -513,7 +513,7 @@ export class SettingsRepository {
         this.cachedSettings = mergedSettings;
         return mergedSettings;
       }
-      
+
       // Last resort fallback - return a new settings object with the updates
       const fallbackSettings = {
         id: GLOBAL_SETTINGS_ID,
@@ -523,7 +523,7 @@ export class SettingsRepository {
         preferences: {},
         ...updates
       };
-      
+
       // Update cache with fallback settings
       this.cachedSettings = fallbackSettings;
       return fallbackSettings;
@@ -622,15 +622,15 @@ export class SettingsRepository {
       }
     });
   }
-  
+
   /**
    * Reset settings to defaults
    */
   async resetSettings(): Promise<Settings> {
     await this.initialize();
-    
+
     console.log("Resetting settings to defaults");
-    
+
     try {
       // Try to remove existing settings
       // Use bulkWrite to remove any document corruption issues
@@ -645,7 +645,7 @@ export class SettingsRepository {
           console.log("Successfully removed settings via bulkWrite during reset");
         } catch (bulkError) {
           console.error("Error removing settings via bulkWrite:", bulkError);
-          
+
           // Try the normal approach
           let settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
           if (settings) {
@@ -657,10 +657,10 @@ export class SettingsRepository {
     } catch (removeError) {
       console.error("Error removing settings during reset:", removeError);
     }
-    
+
     // Clear cache
     this.cachedSettings = null;
-    
+
     // Create default settings
     const defaultSettings: Settings = {
       id: GLOBAL_SETTINGS_ID,
@@ -669,10 +669,10 @@ export class SettingsRepository {
       defaultModel: 'qwen-qwq-32b',
       preferences: {}
     };
-    
+
     // Wait for things to settle
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     try {
       await this.db!.settings.insert(defaultSettings);
       this.cachedSettings = defaultSettings;
@@ -685,12 +685,12 @@ export class SettingsRepository {
       return defaultSettings;
     }
   }
-  
+
   /**
    * Clear the settings cache - useful if we need to force a refresh
    */
   clearCache(): void {
-    console.log("Clearing settings cache");
+    // console.log("Clearing settings cache");
     this.cachedSettings = null;
   }
 }

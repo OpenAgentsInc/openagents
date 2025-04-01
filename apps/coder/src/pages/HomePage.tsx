@@ -48,7 +48,7 @@ export default function HomePage() {
           if (typeof window !== 'undefined' && window.localStorage) {
             const activeModel = window.localStorage.getItem('openagents_active_model');
             if (activeModel && models.some(model => model.id === activeModel)) {
-              console.log(`Using active model from localStorage: ${activeModel}`);
+              // console.log(`Using active model from localStorage: ${activeModel}`);
               userSelectedModel = activeModel;
             }
           }
@@ -79,7 +79,7 @@ export default function HomePage() {
             return;
           }
 
-          console.log(`Using user-selected model: ${userSelectedModel}`);
+          // console.log(`Using user-selected model: ${userSelectedModel}`);
           setSelectedModelId(userSelectedModel);
           return;
         }

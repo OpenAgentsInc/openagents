@@ -436,7 +436,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     try {
       const thread = await threadRepository.getThreadById(threadId);
       if (thread) {
-        console.log('Switching to thread:', threadId);
+        // console.log('Switching to thread:', threadId);
 
         // Clear messages in Vercel state
         vercelChatState.setMessages([]);
