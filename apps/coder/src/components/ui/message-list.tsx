@@ -24,9 +24,28 @@ export function MessageList({
   isTyping = false,
   messageOptions,
 }: MessageListProps) {
+  // Create ref for the messages container
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  
+  // Sort messages by timestamp - most recent last
+  const sortedMessages = React.useMemo(() => {
+    return [...messages].sort((a, b) => {
+      const aTime = new Date(a.timestamp).getTime();
+      const bTime = new Date(b.timestamp).getTime();
+      return aTime - bTime;
+    });
+  }, [messages]);
+  
+  // Scroll to bottom when messages change
+  React.useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [sortedMessages.length]);
+
   return (
     <div className="space-y-4 overflow-visible min-h-0">
-      {messages.map((message, index) => {
+      {sortedMessages.map((message, index) => {
         const additionalOptions =
           typeof messageOptions === "function"
             ? messageOptions(message as Message)
@@ -34,7 +53,7 @@ export function MessageList({
 
         return (
           <ChatMessage
-            key={index}
+            key={message.id || index}
             showTimeStamp={showTimeStamps}
             {...(message as Message)}
             {...additionalOptions}
@@ -42,6 +61,7 @@ export function MessageList({
         )
       })}
       {isTyping && <TypingIndicator />}
+      <div ref={messagesEndRef} />
     </div>
   )
 }
