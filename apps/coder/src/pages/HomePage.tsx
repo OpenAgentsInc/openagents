@@ -35,6 +35,9 @@ interface Settings {
 export default function HomePage() {
   // Get settings including the default model
   const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings } = useSettings();
+  
+  // Define state variables first
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
 
   // Force a refresh of settings when the component mounts
   useEffect(() => {
@@ -55,6 +58,13 @@ export default function HomePage() {
   
   // Add event listener for page visibility and focus to refresh settings
   useEffect(() => {
+    // Store the visibility handler to properly remove it
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleFocus();
+      }
+    };
+    
     // Function to refresh settings from database
     const handleFocus = () => {
       console.log("Page focused, refreshing settings");
@@ -89,16 +99,6 @@ export default function HomePage() {
     
     // Load settings on first mount
     handleFocus();
-
-    // Store the visibility handler to properly remove it
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        handleFocus();
-      }
-    };
-    
-    // Add the visibility handler
-    window.addEventListener('visibilitychange', handleVisibilityChange);
     
     // Cleanup event listeners
     return () => {
@@ -107,8 +107,7 @@ export default function HomePage() {
       window.removeEventListener('model-settings-changed', handleModelSettingsChanged);
     };
   }, [refreshSettings, selectedModelId]);
-  const [selectedModelId, setSelectedModelId] = useState<string>("");
-
+  
   useEffect(() => {
     async function setupModel() {
       try {
