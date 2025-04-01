@@ -151,7 +151,7 @@ app.post('/api/chat', async (c) => {
       } else {
         console.log('[Server] No MCP tools available, continuing without tools');
         // Remove tools if empty to avoid schema errors
-        delete streamOptions.tools;
+        streamOptions.tools = {};
       }
 
       const streamResult = streamText(streamOptions);
