@@ -15,7 +15,7 @@ export const models = [
   {
     provider: "openrouter",
     id: "deepseek/deepseek-chat-v3-0324:free",
-    name: "DeepSeek V3 0324 (Free, limited)",
+    name: "DeepSeek V3 0324 (free)",
     created: 1742824755,
     description: "DeepSeek V3, a 685B-parameter, mixture-of-experts model, is the latest iteration of the flagship chat model family from the DeepSeek team.",
     shortDescription: "Latest DeepSeek model featuring 685B parameters with mixture-of-experts architecture.",
@@ -64,27 +64,27 @@ export const models = [
   //   },
   // },
 
-  {
-    provider: "groq",
-    id: "qwen-qwq-32b",
-    name: "Qwen QWQ 32B",
-    created: 1731196800,
-    context_length: 128000,
-    plan: "free",
-    description: "QwQ is the reasoning model of the Qwen series. Compared with conventional instruction-tuned models, QwQ, which is capable of thinking and reasoning, can achieve significantly enhanced performance in downstream tasks, especially hard problems. QwQ-32B is the medium-sized reasoning model, which is capable of achieving competitive performance against state-of-the-art reasoning models, e.g., DeepSeek-R1, o1-mini.",
-    shortDescription: "A medium-sized reasoning model from the Qwen series that excels at complex problems through enhanced thinking capabilities.",
-    supportsTools: true, // Explicitly mark as supporting tools
-    "pricing": {
-      "prompt": "0",
-      "completion": "0",
-      "image": "0",
-      "request": "0",
-      "input_cache_read": "0",
-      "input_cache_write": "0",
-      "web_search": "0",
-      "internal_reasoning": "0"
-    },
-  },
+  // {
+  //   provider: "groq",
+  //   id: "qwen-qwq-32b",
+  //   name: "Qwen QWQ 32B",
+  //   created: 1731196800,
+  //   context_length: 128000,
+  //   plan: "free",
+  //   description: "QwQ is the reasoning model of the Qwen series. Compared with conventional instruction-tuned models, QwQ, which is capable of thinking and reasoning, can achieve significantly enhanced performance in downstream tasks, especially hard problems. QwQ-32B is the medium-sized reasoning model, which is capable of achieving competitive performance against state-of-the-art reasoning models, e.g., DeepSeek-R1, o1-mini.",
+  //   shortDescription: "A medium-sized reasoning model from the Qwen series that excels at complex problems through enhanced thinking capabilities.",
+  //   supportsTools: true, // Explicitly mark as supporting tools
+  //   "pricing": {
+  //     "prompt": "0",
+  //     "completion": "0",
+  //     "image": "0",
+  //     "request": "0",
+  //     "input_cache_read": "0",
+  //     "input_cache_write": "0",
+  //     "web_search": "0",
+  //     "internal_reasoning": "0"
+  //   },
+  // },
 
   {
     provider: "openrouter",
