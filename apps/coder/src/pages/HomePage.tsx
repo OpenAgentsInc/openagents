@@ -203,6 +203,7 @@ export default function HomePage() {
     // Enable persistence
     persistenceEnabled: true,
     maxSteps: 10,
+
     // Event handlers
     // onResponse: (response) => {
     //   console.log('Chat response received:', response);
@@ -218,8 +219,6 @@ export default function HomePage() {
       console.error('Chat hook onError:', error);
     }
   });
-
-  console.log(messages)
 
   const handleCreateThread = useCallback(async () => {
     try {
