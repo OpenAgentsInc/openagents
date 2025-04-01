@@ -72,7 +72,6 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       // Add any missing required parameters for the AI API
       debug: true,
       format: 'json',
-      model: 'claude-3-5-sonnet-20240620',
     },
     headers: {
       ...options.headers,
@@ -88,7 +87,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       if (!response.ok) {
         // Handle error case
       }
-      
+
       // Call the original onResponse if provided
       if (options.onResponse) {
         await options.onResponse(response);
@@ -259,7 +258,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   useEffect(() => {
     // Create a timeout ID inside the effect so it's properly scoped
     let timeoutId: NodeJS.Timeout | undefined;
-    
+
     const updateThreadTimestamp = async () => {
       if (!persistenceEnabled || !dbInitialized || !currentThreadId || messages.length === 0) return;
 
@@ -289,7 +288,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         updateThreadTimestamp();
       }, 100);
     }
-    
+
     return () => {
       // Cleanup on unmount
       if (timeoutId) {
@@ -419,7 +418,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
     // Get the current input to create a user message
     const userInput = vercelChatState.input;
-    
+
     if (!userInput || !currentThreadId) {
       // No input or thread, just call the original submit
       vercelChatState.handleSubmit(event, options);
@@ -560,7 +559,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         uiMessage.threadId = currentThreadId;
         return uiMessage;
       });
-      
+
       // Update our state
       setMessages(uiMessages);
     }

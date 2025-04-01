@@ -26,7 +26,7 @@ import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 export default function HomePage() {
   // Get settings including the default model
   const { settings, isLoading: isLoadingSettings, clearSettingsCache } = useSettings();
-  
+
   // Force a refresh of settings when the component mounts
   useEffect(() => {
     clearSettingsCache();
@@ -37,10 +37,10 @@ export default function HomePage() {
     // Set the default model from settings when loaded
     if (settings?.defaultModel) {
       console.log(`Loading default model from settings: ${settings.defaultModel}`);
-      
+
       // Check if the model exists in our models list
       const modelExists = models.some(model => model.id === settings.defaultModel);
-      
+
       if (modelExists) {
         setSelectedModelId(settings.defaultModel);
       } else {
@@ -62,6 +62,8 @@ export default function HomePage() {
   // Find the selected model
   const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
 
+  console.log("selectedModelId", selectedModelId);
+
   // Use the persistence layer with the correct configuration
   const {
     messages,
@@ -81,7 +83,7 @@ export default function HomePage() {
     // Configuration that we know works
     streamProtocol: 'data',
     body: {
-      model: selectedModelId || "claude-3-5-sonnet-20240620"
+      model: selectedModelId
     },
     headers: {
       'Content-Type': 'application/json',
@@ -124,11 +126,11 @@ export default function HomePage() {
     updateThread(threadId, title);
   }, [updateThread]);
 
-  // Handle model change 
+  // Handle model change
   const handleModelChange = (modelId: string) => {
     console.log(`Model changed to: ${modelId}`);
     setSelectedModelId(modelId);
-    
+
     // We don't update the default model here - this is just for the current session
     // Users need to go to settings to permanently change the default model
   };

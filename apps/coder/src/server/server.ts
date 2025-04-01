@@ -74,7 +74,13 @@ app.post('/api/chat', async (c) => {
     });
 
     // Define model
-    const MODEL = "anthropic/claude-3.5-sonnet";
+    const MODEL = body.model;
+
+    if (!MODEL) {
+      return c.json({ error: "No model provided" }, 400);
+    }
+
+    console.log("🔍 MODEL:", MODEL);
 
     try {
       const streamResult = streamText({

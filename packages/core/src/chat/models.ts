@@ -1,16 +1,16 @@
 export const models = [
   // Default model that matches the default in settings-repository.ts
-  {
-    provider: "anthropic",
-    id: "claude-3-5-sonnet-20240620",
-    name: "Claude 3.5 Sonnet (20240620)",
-    created: 1729555200,
-    description: "Default Claude 3.5 Sonnet model from June 2024 release",
-    shortDescription: "Default Claude 3.5 Sonnet model",
-    context_length: 200000,
-    plan: "free",
-    supportsTools: true,
-  },
+  // {
+  //   provider: "anthropic",
+  //   id: "claude-3-5-sonnet-20240620",
+  //   name: "Claude 3.5 Sonnet (20240620)",
+  //   created: 1729555200,
+  //   description: "Default Claude 3.5 Sonnet model from June 2024 release",
+  //   shortDescription: "Default Claude 3.5 Sonnet model",
+  //   context_length: 200000,
+  //   plan: "free",
+  //   supportsTools: true,
+  // },
 
   {
     provider: "openrouter",
