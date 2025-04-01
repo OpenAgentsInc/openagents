@@ -67,12 +67,6 @@ export default function PromptsPage() {
 
   return (
     <Card className="font-mono">
-      <CardHeader>
-        <CardTitle>Custom Prompts</CardTitle>
-        <CardDescription>
-          Configure custom prompt templates for different tasks
-        </CardDescription>
-      </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <h3 className="text-lg font-medium">System Prompt</h3>
@@ -111,8 +105,8 @@ export default function PromptsPage() {
           >
             {isSaving ? "Saving..." : "Save System Prompt"}
           </Button>
-          
-          <Button 
+
+          <Button
             onClick={() => {
               setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
               // Auto-save when reset is clicked
@@ -128,7 +122,7 @@ export default function PromptsPage() {
                     setTimeout(() => setSaveError(false), 3000);
                   });
               }, 100);
-            }} 
+            }}
             variant="outline"
             className="mt-4"
           >
