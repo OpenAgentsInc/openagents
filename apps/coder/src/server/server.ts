@@ -10,6 +10,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 // Define environment interface
 interface Env {
   OPENROUTER_API_KEY?: string;
+  ALLOW_COMMANDS?: string; // Shell commands whitelist for mcp-shell-server
 }
 
 const app = new Hono<{ Variables: Env }>();
@@ -121,6 +122,55 @@ app.get('/api/mcp/github/local/test', async (c) => {
   }
 });
 
+// Shell MCP connection test endpoint using stdio transport
+app.get('/api/mcp/shell/test', async (c) => {
+  console.log('[Server] Testing shell MCP connection');
+
+  try {
+    // Define allowed commands, falling back to a minimal set if not configured
+    const allowCommands = process.env.ALLOW_COMMANDS || 'ls,cat,pwd,echo,grep';
+    
+    // Create MCP client with stdio transport for shell MCP
+    const transport = new StdioMCPTransport({
+      command: 'npx',
+      args: ['-y', 'mcp-shell-server'],
+      env: {
+        // Configure allowed commands for security
+        ALLOW_COMMANDS: allowCommands
+      }
+    });
+
+    console.log('[Server] Created stdio transport for shell MCP');
+
+    // Try to connect to the local shell MCP server
+    const mcpClient = await experimental_createMCPClient({
+      transport
+    });
+
+    console.log('[Server] Successfully connected to shell MCP');
+    return c.json({
+      success: true,
+      message: 'Successfully connected to shell MCP',
+      clientInfo: {
+        connected: true,
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', 'mcp-shell-server'],
+        allowedCommands: allowCommands.split(',')
+      }
+    });
+  } catch (error) {
+    console.error('[Server] Failed to connect to shell MCP:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to connect to shell MCP',
+      error: error instanceof Error ? error.message : String(error)
+    }, 500);
+  } finally {
+    console.log('[Server] Shell MCP connection test complete');
+  }
+});
+
 
 // Main chat endpoint
 app.post('/api/chat', async (c) => {
@@ -133,7 +183,8 @@ app.post('/api/chat', async (c) => {
 
   // Initialize MCP clients for tools
   let remoteMcpClient;
-  let localMcpClient;
+  let localGithubMcpClient;
+  let localShellMcpClient;
 
   // Try to initialize remote MCP client
   try {
@@ -150,7 +201,7 @@ app.post('/api/chat', async (c) => {
     // Continue execution - we'll still use local MCP or LLM without tools
   }
 
-  // Try to initialize local MCP client with stdio transport
+  // Try to initialize local GitHub MCP client with stdio transport
   try {
     console.log('[Server] Initializing local GitHub MCP client with stdio');
 
@@ -163,18 +214,44 @@ app.post('/api/chat', async (c) => {
       }
     });
 
-    localMcpClient = await experimental_createMCPClient({
+    localGithubMcpClient = await experimental_createMCPClient({
       transport
     });
 
-    console.log('[Server] Local stdio MCP client initialized successfully');
+    console.log('[Server] Local GitHub stdio MCP client initialized successfully');
   } catch (localMcpError) {
-    console.error('[Server] Failed to initialize local MCP client:', localMcpError);
+    console.error('[Server] Failed to initialize local GitHub MCP client:', localMcpError);
     // Continue execution - we'll still use remote MCP or LLM without tools
+  }
+  
+  // Try to initialize local Shell MCP client with stdio transport
+  try {
+    console.log('[Server] Initializing local Shell MCP client with stdio');
+    
+    // Define allowed commands, falling back to a minimal set if not configured
+    const allowCommands = process.env.ALLOW_COMMANDS || 'ls,cat,pwd,echo,grep,find,ps,wc';
+    
+    const transportShell = new StdioMCPTransport({
+      command: 'uvx',
+      args: ['mcp-shell-server'],
+      env: {
+        // Configure allowed commands for security
+        ALLOW_COMMANDS: allowCommands
+      }
+    });
+
+    localShellMcpClient = await experimental_createMCPClient({
+      transport: transportShell
+    });
+
+    console.log('[Server] Local Shell stdio MCP client initialized successfully');
+  } catch (shellMcpError) {
+    console.error('[Server] Failed to initialize local Shell MCP client:', shellMcpError);
+    // Continue execution - we'll still use other MCP clients or LLM without tools
   }
 
   // Determine which MCP client to use (prefer local)
-  const mcpClient = localMcpClient || remoteMcpClient;
+  const mcpClient = localGithubMcpClient || remoteMcpClient;
 
   if (!OPENROUTER_API_KEY) {
     console.error("❌ OPENROUTER_API_KEY is missing or invalid");
@@ -218,16 +295,39 @@ app.post('/api/chat', async (c) => {
 
     console.log("🔍 MODEL:", MODEL);
 
-    // Get tools from the MCP client
+    // Get tools from the MCP clients
     let tools = {};
-    if (localMcpClient) {
+    
+    // Add GitHub tools if available
+    if (localGithubMcpClient) {
       try {
-        console.log('[Server] Fetching tools from local MCP client');
-        const localTools = await localMcpClient.tools();
-        tools = localTools;
-        console.log('[Server] Successfully fetched tools from local MCP');
+        console.log('[Server] Fetching tools from local GitHub MCP client');
+        const githubTools = await localGithubMcpClient.tools();
+        tools = {...tools, ...githubTools};
+        console.log('[Server] Successfully fetched tools from local GitHub MCP');
       } catch (toolError) {
-        console.error('[Server] Error fetching tools from local MCP:', toolError);
+        console.error('[Server] Error fetching tools from local GitHub MCP:', toolError);
+      }
+    } else if (remoteMcpClient) {
+      try {
+        console.log('[Server] Fetching tools from remote MCP client');
+        const remoteTools = await remoteMcpClient.tools();
+        tools = {...tools, ...remoteTools};
+        console.log('[Server] Successfully fetched tools from remote MCP');
+      } catch (toolError) {
+        console.error('[Server] Error fetching tools from remote MCP:', toolError);
+      }
+    }
+    
+    // Add Shell tools if available
+    if (localShellMcpClient) {
+      try {
+        console.log('[Server] Fetching tools from local Shell MCP client');
+        const shellTools = await localShellMcpClient.tools();
+        tools = {...tools, ...shellTools};
+        console.log('[Server] Successfully fetched tools from local Shell MCP');
+      } catch (toolError) {
+        console.error('[Server] Error fetching tools from local Shell MCP:', toolError);
       }
     }
 
@@ -310,7 +410,7 @@ app.post('/api/chat', async (c) => {
     return c.json({ error: "Failed to process chat request" }, 500);
   } finally {
     // Clean up resources
-    if (localMcpClient || remoteMcpClient) {
+    if (localGithubMcpClient || remoteMcpClient || localShellMcpClient) {
       console.log('[Server] Chat request completed, MCP resources will be cleaned up');
 
       // Note: The MCP clients will be automatically garbage collected
