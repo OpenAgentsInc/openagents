@@ -42,12 +42,12 @@ export default function ModelsPage() {
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
-  
+
   // Load settings when component mounts
   useEffect(() => {
     if (settings) {
       console.log("ModelsPage: Loading settings, default model =", settings.defaultModel);
-      
+
       // Verify the model exists in our list
       let modelToUse = settings.defaultModel;
       if (modelToUse) {
@@ -59,9 +59,9 @@ export default function ModelsPage() {
       } else {
         modelToUse = models[0]?.id || "";
       }
-      
+
       setDefaultModelId(modelToUse);
-      
+
       // Load API keys for all providers
       const loadApiKeys = async () => {
         const keys: Record<string, string> = {};
@@ -73,11 +73,11 @@ export default function ModelsPage() {
         }
         setApiKeys(keys);
       };
-      
+
       loadApiKeys();
     }
   }, [settings, getApiKey]);
-  
+
   // Handle default model change
   const handleDefaultModelChange = async (modelId: string) => {
     try {
@@ -87,21 +87,21 @@ export default function ModelsPage() {
         console.error(`Model ${modelId} not found in models list`);
         return;
       }
-      
+
       // Update UI immediately to give user feedback
       setDefaultModelId(modelId);
-      
+
       console.log(`Updating default model to: ${modelId}`);
-      
+
       // Simple approach - create a clean object with only the field we're updating
       const cleanUpdate = { defaultModel: modelId };
       const result = await updateSettings(cleanUpdate);
       console.log("Settings update result:", JSON.stringify(result));
-      
+
       // Verify the update by checking the returned result
       if (result.defaultModel !== modelId) {
         console.warn(`Update verification warning: expected ${modelId}, got ${result.defaultModel}`);
-        
+
         // Try once more but do not force page reload
         try {
           // Try again with a clearer approach
@@ -109,7 +109,7 @@ export default function ModelsPage() {
           // Create a clean object again for the second attempt
           const secondCleanUpdate = { defaultModel: modelId };
           const secondResult = await updateSettings(secondCleanUpdate);
-          
+
           if (secondResult.defaultModel === modelId) {
             console.log("Second update attempt succeeded");
           } else {
@@ -125,21 +125,21 @@ export default function ModelsPage() {
       }
     } catch (error) {
       console.error("Error updating default model:", error);
-      
+
       // Handle error without page reload
       // Just show an error message and keep the UI state
       alert("There was an error saving your model preference. The model will be used for this session only.");
-      
+
       // No reload, no localStorage.clear()
       // Just maintain the UI state with the selected model
     }
   };
-  
+
   // Handle API key changes
   const handleApiKeyChange = (provider: string, value: string) => {
     setKeyInputs(prev => ({ ...prev, [provider]: value }));
   };
-  
+
   // Save API key
   const handleSaveApiKey = async (provider: string) => {
     const key = keyInputs[provider];
@@ -149,7 +149,7 @@ export default function ModelsPage() {
       setKeyInputs(prev => ({ ...prev, [provider]: "" }));
     }
   };
-  
+
   // Delete API key
   const handleDeleteApiKey = async (provider: string) => {
     await deleteApiKey(provider);
@@ -159,12 +159,12 @@ export default function ModelsPage() {
       return updated;
     });
   };
-  
+
   // Toggle API key visibility
   const toggleKeyVisibility = (provider: string) => {
     setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
   };
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full font-mono">
@@ -172,19 +172,19 @@ export default function ModelsPage() {
       </div>
     );
   }
-  
+
   return (
     <ScrollArea className="h-screen w-full">
       <div className="container py-6 space-y-6 font-mono">
-        <div className="flex items-center">  
+        <div className="flex items-center">
           <Link to="/" className="mr-4">
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold">Model Settings</h1>
+          <h1 className="text-2xl font-bold">Settings</h1>
         </div>
-        
+
         {/* Default Model Selection */}
         <Card className="font-mono">
           <CardHeader>
@@ -195,12 +195,12 @@ export default function ModelsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <ModelSelect 
-                value={defaultModelId} 
-                onChange={handleDefaultModelChange} 
+              <ModelSelect
+                value={defaultModelId}
+                onChange={handleDefaultModelChange}
                 placeholder="Select default model"
               />
-              
+
               <div className="flex justify-end">
                 <Button
                   variant="destructive"
@@ -209,14 +209,14 @@ export default function ModelsPage() {
                     if (confirm("Reset all settings to default? This will clear your saved API keys.")) {
                       try {
                         const defaultSettings = await resetSettings();
-                        
+
                         if (defaultSettings) {
                           // Update UI to reflect new settings
                           setDefaultModelId(defaultSettings.defaultModel || 'qwen-qwq-32b');
                           setApiKeys({});
-                          
+
                           alert("Settings reset successfully.");
-                          
+
                           // Load API keys (there should be none after reset)
                           const loadApiKeys = async () => {
                             const keys: Record<string, string> = {};
@@ -228,7 +228,7 @@ export default function ModelsPage() {
                             }
                             setApiKeys(keys);
                           };
-                          
+
                           await loadApiKeys();
                         } else {
                           // Fallback if reset returns null
@@ -248,7 +248,7 @@ export default function ModelsPage() {
             </div>
           </CardContent>
         </Card>
-        
+
         {/* API Keys */}
         <Card className="font-mono">
           <CardHeader>
@@ -266,7 +266,7 @@ export default function ModelsPage() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              
+
               {providers.map(provider => (
                 <TabsContent key={provider} value={provider} className="space-y-4">
                   {/* Provider Info */}
@@ -278,27 +278,27 @@ export default function ModelsPage() {
                       {provider === "groq" && "Groq offers ultra-fast inference for various open models."}
                     </p>
                   </div>
-                  
+
                   {/* API Key Management */}
                   <div className="space-y-4">
                     {apiKeys[provider] ? (
                       <div className="space-y-4">
                         <div className="flex items-center space-x-2">
-                          <Input 
+                          <Input
                             type={showKeys[provider] ? "text" : "password"}
                             value={apiKeys[provider]}
                             readOnly
                             className="font-mono"
                           />
-                          <Button 
-                            variant="outline" 
-                            size="icon" 
+                          <Button
+                            variant="outline"
+                            size="icon"
                             onClick={() => toggleKeyVisibility(provider)}
                           >
                             {showKeys[provider] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </Button>
-                          <Button 
-                            variant="destructive" 
+                          <Button
+                            variant="destructive"
                             size="icon"
                             onClick={() => handleDeleteApiKey(provider)}
                           >
@@ -314,7 +314,7 @@ export default function ModelsPage() {
                         </AlertDescription>
                       </Alert>
                     )}
-                    
+
                     <div className="flex items-center space-x-2">
                       <Input
                         type="password"
@@ -329,7 +329,7 @@ export default function ModelsPage() {
                       </Button>
                     </div>
                   </div>
-                  
+
                   {/* Available Models */}
                   <div className="mt-6">
                     <h4 className="text-sm font-medium mb-2">Available Models:</h4>

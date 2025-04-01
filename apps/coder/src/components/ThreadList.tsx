@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useThreads, Thread } from '@openagents/core';
 import { Button } from './ui/button';
-import { Pin, X, Plus } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { format, subDays, isWithinInterval, startOfDay } from 'date-fns';
 import {
   Dialog,
@@ -18,7 +18,7 @@ interface ThreadListProps {
   onCreateThread: () => void;
   onDeleteThread: (threadId: string) => void;
   onRenameThread?: (threadId: string, title: string) => void;
-  onPinThread?: (threadId: string) => void;
+  // onPinThread?: (threadId: string) => void;
 }
 
 interface ThreadGroup {
@@ -32,7 +32,7 @@ export function ThreadList({
   onCreateThread,
   onDeleteThread,
   onRenameThread,
-  onPinThread
+  // onPinThread
 }: ThreadListProps) {
   const { threads, isLoading, error } = useThreads({ refreshInterval: 5000 });
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
@@ -120,8 +120,8 @@ export function ThreadList({
                               }}
                             />
                           </div>
-                          <div className="pointer-events-auto absolute -right-1 bottom-0 top-0 z-50 flex translate-x-full items-center justify-end text-muted-foreground transition-transform group-hover/link:translate-x-0 group-hover/link:bg-sidebar-accent">
-                            <div className="pointer-events-none absolute bottom-0 right-[100%] top-0 h-12 w-8 bg-gradient-to-l from-sidebar-accent to-transparent opacity-0 group-hover/link:opacity-100" />
+                          <div className="pointer-events-auto flex items-center justify-end text-muted-foreground opacity-0 group-hover/link:opacity-100 transition-opacity">
+                            {/* Commented out pin button
                             {onPinThread && (
                               <button
                                 className="rounded-md p-1.5 hover:bg-muted/40"
@@ -135,6 +135,7 @@ export function ThreadList({
                                 <Pin className="size-4" />
                               </button>
                             )}
+                            */}
                             <button
                               className="rounded-md p-1.5 hover:bg-destructive/50 hover:text-destructive-foreground"
                               tabIndex={-1}

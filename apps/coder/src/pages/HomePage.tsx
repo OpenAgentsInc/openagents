@@ -283,10 +283,6 @@ export default function HomePage() {
                   onDeleteThread={handleDeleteThread}
                   onRenameThread={handleRenameThread}
                   onCreateThread={handleCreateThread}
-                  onPinThread={(threadId) => {
-                    // TODO: Implement thread pinning functionality
-                    console.log('Pin thread:', threadId);
-                  }}
                 />
               </SidebarContent>
 
@@ -296,7 +292,7 @@ export default function HomePage() {
                     <Link to="/settings/models">
                       <SidebarMenuButton>
                         <SettingsIcon />
-                        <span>Models & API Keys</span>
+                        <span>Settings</span>
                       </SidebarMenuButton>
                     </Link>
                   </SidebarMenuItem>
