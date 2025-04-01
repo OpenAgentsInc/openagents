@@ -24,7 +24,7 @@ const COMPONENTS: Components = {
   h4: withClass('h4', 'mt-4 mb-2 text-base font-bold'),
   h5: withClass('h5', 'mt-4 mb-2 text-sm font-bold'),
   h6: withClass('h6', 'mt-4 mb-2 text-xs font-bold'),
-  p: withClass('p', 'mb-4 leading-7'),
+  p: withClass('p', 'leading-6'),
   a: withClass('a', 'text-primary underline underline-offset-4'),
   ul: withClass('ul', 'mb-4 list-disc pl-8'),
   ol: withClass('ol', 'mb-4 list-decimal pl-8'),
