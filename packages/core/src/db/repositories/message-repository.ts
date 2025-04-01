@@ -49,15 +49,18 @@ export class MessageRepository {
       if (latestMessage.length > 0) {
         const latestTimestamp = latestMessage[0].createdAt;
         
-        // ALWAYS increment timestamp by at least 100ms to ensure visible differences
+        // ALWAYS increment timestamp by at least 500ms to ensure visible differences
         // This enforces a minimum gap between messages
-        const minimumTimestampIncrement = 100; // 100ms gap between messages
+        const minimumTimestampIncrement = 500; // 500ms gap between messages
         
         // Calculate the appropriate timestamp - either current time or forced increment
         const currentTime = message.createdAt.getTime();
+        // Add role factor to ensure user/assistant messages can't have the same timestamp
+        const roleFactor = message.role === 'user' ? 0 : 250; // 250ms offset for assistant messages
+        
         const nextValidTimestamp = Math.max(
-          currentTime,
-          latestTimestamp + minimumTimestampIncrement
+          currentTime + roleFactor,
+          latestTimestamp + minimumTimestampIncrement + roleFactor
         );
         
         // Always set a new timestamp with the calculated value

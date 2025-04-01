@@ -327,7 +327,7 @@ export default function HomePage() {
 
                       <MessageList
                         messages={(() => {
-                          // BRUTE FORCE FIX - Aggressively correct identical timestamps
+                          // BRUTE FORCE FIX - Aggressively correct identical timestamps - Remains as backup in case database fixes still have issues
                           
                           // First, identify if we have timestamp collisions
                           const timestampCounts = {};
