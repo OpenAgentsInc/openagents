@@ -25,6 +25,16 @@ export const SettingsRoute = createRoute({
   component: SettingsLayout,
 });
 
+// Settings default route (redirects to models)
+export const SettingsIndexRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/",
+  component: () => {
+    window.location.href = '/settings/models';
+    return null;
+  }
+});
+
 // Settings child routes
 export const ModelsSettingsRoute = createRoute({
   getParentRoute: () => SettingsRoute,
@@ -42,6 +52,7 @@ export const PromptsSettingsRoute = createRoute({
 export const rootTree = RootRoute.addChildren([
   HomeRoute,
   SettingsRoute.addChildren([
+    SettingsIndexRoute,
     ModelsSettingsRoute,
     PromptsSettingsRoute
   ])
