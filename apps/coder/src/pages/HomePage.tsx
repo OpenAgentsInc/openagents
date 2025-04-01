@@ -470,8 +470,8 @@ export default function HomePage() {
                           value={input}
                           onChange={handleInputChange}
                           allowAttachments={false}
-                          files={files}
-                          setFiles={setFiles}
+                          // files={files}
+                          // setFiles={setFiles}
                           stop={stop}
                           isGenerating={isGenerating}
                         />
