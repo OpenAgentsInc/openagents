@@ -1,39 +1,17 @@
-interface Model {
-  author?: "anthropic" | "deepseek" | "openai" | "google"
-  created: number
-  description: string
-  id: string
-  name: string
-  plan: "free" | "pro"
-  provider: "openrouter" | "anthropic" | "ollama"
-  shortDescription?: string
-  supportsTools?: boolean
-  tokenizer?: string
-  pricing: {
-    prompt: string
-    completion: string
-    image: string
-    request: string
-    input_cache_read: string
-    input_cache_write: string
-    web_search: string
-    internal_reasoning: string
-  }
-  top_provider: {
-    context_length: number
-    max_completion_tokens: number
-    is_moderated: boolean
-  }
-  architecture: {
-    modality: "text->text" | "text+image->text"
-    tokenizer: string
-    instruct_type: string | null
-  }
-  per_request_limits: null
-  context_length: number
-}
+export const models = [
+  // Default model that matches the default in settings-repository.ts
+  // {
+  //   provider: "anthropic",
+  //   id: "claude-3-5-sonnet-20240620",
+  //   name: "Claude 3.5 Sonnet (20240620)",
+  //   created: 1729555200,
+  //   description: "Default Claude 3.5 Sonnet model from June 2024 release",
+  //   shortDescription: "Default Claude 3.5 Sonnet model",
+  //   context_length: 200000,
+  //   plan: "free",
+  //   supportsTools: true,
+  // },
 
-export const MODELS: Model[] = [
   {
     provider: "openrouter",
     id: "deepseek/deepseek-chat-v3-0324:free",
@@ -66,6 +44,47 @@ export const MODELS: Model[] = [
     },
     "per_request_limits": null
   },
+
+  // {
+  //   provider: "groq",
+  //   id: "llama-3.3-70b-versatile",
+  //   name: "Llama 3.3 70B",
+  //   created: 1731196800,
+  //   context_length: 128000,
+  //   plan: "free",
+  //   "pricing": {
+  //     "prompt": "0",
+  //     "completion": "0",
+  //     "image": "0",
+  //     "request": "0",
+  //     "input_cache_read": "0",
+  //     "input_cache_write": "0",
+  //     "web_search": "0",
+  //     "internal_reasoning": "0"
+  //   },
+  // },
+
+  // {
+  //   provider: "groq",
+  //   id: "qwen-qwq-32b",
+  //   name: "Qwen QWQ 32B",
+  //   created: 1731196800,
+  //   context_length: 128000,
+  //   plan: "free",
+  //   description: "QwQ is the reasoning model of the Qwen series. Compared with conventional instruction-tuned models, QwQ, which is capable of thinking and reasoning, can achieve significantly enhanced performance in downstream tasks, especially hard problems. QwQ-32B is the medium-sized reasoning model, which is capable of achieving competitive performance against state-of-the-art reasoning models, e.g., DeepSeek-R1, o1-mini.",
+  //   shortDescription: "A medium-sized reasoning model from the Qwen series that excels at complex problems through enhanced thinking capabilities.",
+  //   supportsTools: true, // Explicitly mark as supporting tools
+  //   "pricing": {
+  //     "prompt": "0",
+  //     "completion": "0",
+  //     "image": "0",
+  //     "request": "0",
+  //     "input_cache_read": "0",
+  //     "input_cache_write": "0",
+  //     "web_search": "0",
+  //     "internal_reasoning": "0"
+  //   },
+  // },
 
   {
     provider: "openrouter",

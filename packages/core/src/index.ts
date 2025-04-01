@@ -9,7 +9,7 @@ export * from './chat/types'
 export * from './chat/usePersistentChat'
 export * from './chat/useThreads'
 export * from './chat/useSettings'
-export { models } from './chat/models'
+export { MODELS } from './chat/MODELS'
 export * from './chat/constants'
 // Database module exports
 export * from './db'

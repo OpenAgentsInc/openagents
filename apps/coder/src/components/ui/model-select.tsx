@@ -1,5 +1,5 @@
 import React from "react";
-import { models } from "@openagents/core";
+import { MODELS } from "@openagents/core";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/utils/tailwind";
 import {
@@ -35,8 +35,8 @@ export function ModelSelect({
 
   // Filter models based on plan if needed
   const filteredModels = showFreePlanOnly
-    ? models.filter((model) => model.plan === "free")
-    : models;
+    ? MODELS.filter((model) => model.plan === "free")
+    : MODELS;
 
   // Find the currently selected model
   const selectedModel = filteredModels.find((model) => model.id === value);
