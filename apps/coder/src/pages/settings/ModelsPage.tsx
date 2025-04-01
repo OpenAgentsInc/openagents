@@ -422,10 +422,10 @@ export default function ModelsPage() {
                               )}
                             </Button>
                           </TableCell>
-                          <TableCell className="capitalize">
+                          <TableCell>
                             {model.author}
                           </TableCell>
-                          <TableCell className="capitalize">
+                          <TableCell>
                             {model.provider}
                           </TableCell>
                           <TableCell>
@@ -516,7 +516,7 @@ export default function ModelsPage() {
               <Tabs value={currentProvider} onValueChange={setCurrentProvider}>
                 <TabsList className="grid font-mono" style={{ gridTemplateColumns: `repeat(${providers.length}, 1fr)` }}>
                   {providers.map(provider => (
-                    <TabsTrigger key={provider} value={provider} className="capitalize font-mono">
+                    <TabsTrigger key={provider} value={provider} className="font-mono">
                       {provider}
                     </TabsTrigger>
                   ))}
@@ -526,7 +526,7 @@ export default function ModelsPage() {
                   <TabsContent key={provider} value={provider} className="space-y-4">
                     {/* Provider Info */}
                     <div className="space-y-2">
-                      <h3 className="text-lg font-medium capitalize">{provider} Models</h3>
+                      <h3 className="text-lg font-medium">{provider} Models</h3>
                       <p className="text-sm text-muted-foreground">
                         {provider === "anthropic" && "Anthropic provides Claude models with exceptional reasoning capabilities."}
                         {provider === "openrouter" && "OpenRouter provides access to many AI models from different providers."}
