@@ -34,14 +34,15 @@ app.post('/api/chat', async (c) => {
   // Get OpenRouter API key from environment variables
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 
-  // Initialize MCP client for tools
+  // Initialize MCP clients for tools
   let localMcpClient;
+  let shellMcpClient;
 
   // Initialize local MCP client with stdio transport
   try {
     console.log('[Server] Initializing local GitHub MCP client with stdio');
 
-    const transport = new StdioMCPTransport({
+    const githubTransport = new StdioMCPTransport({
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-github'],
       env: {
@@ -51,13 +52,33 @@ app.post('/api/chat', async (c) => {
     });
 
     localMcpClient = await experimental_createMCPClient({
-      transport
+      transport: githubTransport
     });
 
     console.log('[Server] Local stdio MCP client initialized successfully');
   } catch (localMcpError) {
     console.error('[Server] Failed to initialize local MCP client:', localMcpError);
-    // Continue execution - we'll still use LLM without tools
+  }
+
+  // Initialize shell MCP client
+  try {
+    console.log('[Server] Initializing shell MCP client with stdio');
+
+    const shellTransport = new StdioMCPTransport({
+      command: 'uvx',
+      args: ['mcp-shell-server'],
+      env: {
+        ALLOW_COMMANDS: 'ls,cat,pwd,grep,wc,touch,find'
+      }
+    });
+
+    shellMcpClient = await experimental_createMCPClient({
+      transport: shellTransport
+    });
+
+    console.log('[Server] Shell MCP client initialized successfully');
+  } catch (shellMcpError) {
+    console.error('[Server] Failed to initialize shell MCP client:', shellMcpError);
   }
 
   if (!OPENROUTER_API_KEY) {
@@ -102,16 +123,25 @@ app.post('/api/chat', async (c) => {
 
     console.log("🔍 MODEL:", MODEL);
 
-    // Get tools from the MCP client
+    // Get tools from the MCP clients
     let tools = {};
-    if (localMcpClient) {
+    if (localMcpClient || shellMcpClient) {
       try {
-        console.log('[Server] Fetching tools from local MCP client');
-        const localTools = await localMcpClient.tools();
-        tools = localTools;
-        console.log('[Server] Successfully fetched tools from local MCP');
+        console.log('[Server] Fetching tools from MCP clients');
+
+        if (localMcpClient) {
+          const githubTools = await localMcpClient.tools();
+          tools = { ...tools, ...githubTools };
+          console.log('[Server] Successfully fetched GitHub MCP tools');
+        }
+
+        if (shellMcpClient) {
+          const shellTools = await shellMcpClient.tools();
+          tools = { ...tools, ...shellTools };
+          console.log('[Server] Successfully fetched Shell MCP tools');
+        }
       } catch (toolError) {
-        console.error('[Server] Error fetching tools from local MCP:', toolError);
+        console.error('[Server] Error fetching tools from MCP clients:', toolError);
       }
     }
 
@@ -194,10 +224,10 @@ app.post('/api/chat', async (c) => {
     return c.json({ error: "Failed to process chat request" }, 500);
   } finally {
     // Clean up resources
-    if (localMcpClient) {
+    if (localMcpClient || shellMcpClient) {
       console.log('[Server] Chat request completed, MCP resources will be cleaned up');
-      // Note: The MCP client will be automatically garbage collected
-      // For stdio transports, the process will be terminated when the client is garbage collected
+      // Note: The MCP clients will be automatically garbage collected
+      // For stdio transports, the processes will be terminated when the clients are garbage collected
     }
   }
 });
