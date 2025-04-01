@@ -269,7 +269,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
           await threadRepository.updateThread(currentThreadId, {
             updatedAt: Date.now()
           });
-          console.log(`Successfully updated timestamp for thread ${currentThreadId}`);
+          // console.log(`Successfully updated timestamp for thread ${currentThreadId}`);
         }
 
         messagesRef.current = messages;
@@ -326,7 +326,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         );
 
         if (newUserMessages.length > 0) {
-          console.log('Saving', newUserMessages.length, 'new user messages to database');
+          // console.log('Saving', newUserMessages.length, 'new user messages to database');
           for (const message of newUserMessages) {
             console.log(`Saving user message: ${message.id}`);
             // The message already has threadId set above

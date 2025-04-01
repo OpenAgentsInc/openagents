@@ -7,7 +7,7 @@ import { Thread, ThreadDocument, Database } from '../types';
  */
 export class ThreadRepository {
   private db: Database | null = null;
-  
+
   /**
    * Initialize the repository with a database connection
    */
@@ -16,14 +16,14 @@ export class ThreadRepository {
       this.db = await getDatabase();
     }
   }
-  
+
   /**
    * Create a new thread
    */
   async createThread(threadData: Partial<Thread>): Promise<Thread> {
     try {
       await this.initialize();
-      
+
       const currentTime = Date.now();
       const thread: Thread = {
         id: threadData.id || uuidv4(),
@@ -34,9 +34,9 @@ export class ThreadRepository {
         systemPrompt: threadData.systemPrompt || '',  // Use empty string instead of null/undefined
         metadata: threadData.metadata || {}
       };
-      
+
       try {
-        console.log('Creating thread with data:', thread);
+        // console.log('Creating thread with data:', thread);
         await this.db!.threads.insert(thread);
         return thread;
       } catch (error) {
@@ -56,29 +56,29 @@ export class ThreadRepository {
       return threadData as Thread;
     }
   }
-  
+
   /**
    * Get a thread by ID
    */
   async getThreadById(id: string): Promise<Thread | null> {
     await this.initialize();
-    
+
     const thread = await this.db!.threads.findOne(id).exec();
     return thread ? thread.toJSON() : null;
   }
-  
+
   /**
    * Get all threads, sorted by creation time (newest first)
    */
   async getAllThreads(): Promise<Thread[]> {
     try {
       await this.initialize();
-      
+
       const threads = await this.db!.threads
         .find()
         .sort({ createdAt: 'desc' })
         .exec();
-        
+
       return threads.map(thread => thread.toJSON());
     } catch (error) {
       console.error('Error fetching all threads:', error);
@@ -86,21 +86,21 @@ export class ThreadRepository {
       return [];
     }
   }
-  
+
   /**
    * Update a thread with retry mechanism for conflict resolution
    */
   async updateThread(id: string, updates: Partial<Thread>, maxRetries = 3): Promise<Thread | null> {
     await this.initialize();
-    
+
     // Always update the updatedAt timestamp
     const updatedThread = {
       ...updates,
       updatedAt: Date.now()
     };
-    
+
     let retries = 0;
-    
+
     while (retries < maxRetries) {
       try {
         // Get fresh version of the document
@@ -108,11 +108,11 @@ export class ThreadRepository {
         if (!thread) {
           return null;
         }
-        
+
         await thread.update({
           $set: updatedThread
         });
-        
+
         return thread.toJSON();
       } catch (error: any) {
         // If it's a conflict error, wait briefly and retry
@@ -128,31 +128,31 @@ export class ThreadRepository {
         }
       }
     }
-    
+
     throw new Error(`Failed to update thread ${id} after ${maxRetries} retries`);
   }
-  
+
   /**
    * Delete a thread
    */
   async deleteThread(id: string): Promise<boolean> {
     await this.initialize();
-    
+
     const thread = await this.db!.threads.findOne(id).exec();
     if (!thread) {
       return false;
     }
-    
+
     await thread.remove();
     return true;
   }
-  
+
   /**
    * Get reactive query for threads
    */
   async getThreadsQuery() {
     await this.initialize();
-    
+
     return this.db!.threads
       .find()
       .sort({ createdAt: 'desc' });

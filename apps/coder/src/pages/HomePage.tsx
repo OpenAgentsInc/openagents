@@ -186,15 +186,15 @@ export default function HomePage() {
     persistenceEnabled: true,
     maxSteps: 10,
     // Event handlers
-    onResponse: (response) => {
-      console.log('Chat response received:', response);
-    },
-    onFinish: (message) => {
-      console.log('Chat finished with message:', message);
-    },
-    onThreadChange: (threadId: string) => {
-      console.log('Thread changed to:', threadId);
-    },
+    // onResponse: (response) => {
+    //   console.log('Chat response received:', response);
+    // },
+    // onFinish: (message) => {
+    //   console.log('Chat finished with message:', message);
+    // },
+    // onThreadChange: (threadId: string) => {
+    //   console.log('Thread changed to:', threadId);
+    // },
     // Handle errors from the AI SDK hook itself
     onError: (error) => {
       console.error('Chat hook onError:', error);
