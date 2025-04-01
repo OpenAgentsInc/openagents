@@ -75,7 +75,7 @@ export default function HomePage() {
         if (userSelectedModel) {
           // Skip if already selected
           if (selectedModelId === userSelectedModel) {
-            console.log(`Model already selected (${selectedModelId})`);
+            // console.log(`Model already selected (${selectedModelId})`);
             return;
           }
 
@@ -87,7 +87,7 @@ export default function HomePage() {
         // If no user selection, use default from settings (lower priority)
         // Check if we already have a selected model and matches settings (to prevent unnecessary reselection)
         if (selectedModelId && selectedModelId === settings.defaultModel) {
-          console.log(`Model already selected (${selectedModelId}) matches settings`);
+          // console.log(`Model already selected (${selectedModelId}) matches settings`);
           return;
         }
 
@@ -293,13 +293,14 @@ export default function HomePage() {
 
               <SidebarFooter>
                 <SidebarMenu>
-                  <SidebarMenuItem>
+                  <SidebarMenuItem className="flex justify-between items-center">
                     <Link to="/settings/models">
                       <SidebarMenuButton>
                         <SettingsIcon />
                         <span>Settings</span>
                       </SidebarMenuButton>
                     </Link>
+                    <ToggleTheme />
                   </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarFooter>
