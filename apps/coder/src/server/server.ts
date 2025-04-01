@@ -232,8 +232,8 @@ app.post('/api/chat', async (c) => {
     const allowCommands = process.env.ALLOW_COMMANDS || 'ls,cat,pwd,echo,grep,find,ps,wc';
     
     const transportShell = new StdioMCPTransport({
-      command: 'npx',
-      args: ['-y', 'mcp-shell-server'],
+      command: 'uvx',
+      args: ['mcp-shell-server'],
       env: {
         // Configure allowed commands for security
         ALLOW_COMMANDS: allowCommands
