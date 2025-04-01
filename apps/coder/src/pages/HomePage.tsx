@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
-import { usePersistentChat, useSettings, models, DEFAULT_SYSTEM_PROMPT } from "@openagents/core";
+import { usePersistentChat, useSettings, MODELS, DEFAULT_SYSTEM_PROMPT } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -65,7 +65,7 @@ export default function HomePage() {
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
             const activeModel = window.localStorage.getItem('openagents_active_model');
-            if (activeModel && models.some(model => model.id === activeModel)) {
+            if (activeModel && MODELS.some(model => model.id === activeModel)) {
               // console.log(`Using active model from localStorage: ${activeModel}`);
               userSelectedModel = activeModel;
             }
@@ -79,7 +79,7 @@ export default function HomePage() {
           try {
             if (typeof window !== 'undefined' && window.sessionStorage) {
               const currentModel = window.sessionStorage.getItem('openagents_current_model');
-              if (currentModel && models.some(model => model.id === currentModel)) {
+              if (currentModel && MODELS.some(model => model.id === currentModel)) {
                 console.log(`Using current model from sessionStorage: ${currentModel}`);
                 userSelectedModel = currentModel;
               }
@@ -113,7 +113,7 @@ export default function HomePage() {
           console.log(`Loading default model from settings: ${settings.defaultModel}`);
 
           // Check if the model exists in our models list
-          const modelExists = models.some(model => model.id === settings.defaultModel);
+          const modelExists = MODELS.some(model => model.id === settings.defaultModel);
 
           if (modelExists) {
             console.log(`Model ${settings.defaultModel} found, selecting it`);
@@ -131,8 +131,8 @@ export default function HomePage() {
             // If model doesn't exist, default to first model AND update settings
             console.warn(`Model ${settings.defaultModel} not found in models list, using fallback`);
 
-            if (models.length > 0) {
-              const fallbackModel = models[0].id;
+            if (MODELS.length > 0) {
+              const fallbackModel = MODELS[0].id;
               setSelectedModelId(fallbackModel);
 
               // Update the settings to use a valid model
@@ -149,8 +149,8 @@ export default function HomePage() {
         } else {
           // Default to first model if no default is set
           console.log("No default model in settings, using first model");
-          if (models.length > 0) {
-            const firstModel = models[0].id;
+          if (MODELS.length > 0) {
+            const firstModel = MODELS[0].id;
             setSelectedModelId(firstModel);
 
             // Save this as the default
@@ -172,7 +172,7 @@ export default function HomePage() {
   }, [settings, clearSettingsCache, updateSettings]);
 
   // Find the selected model
-  const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
+  // const selectedModel = MODELS.find(model => model.id === selectedModelId) || models[0];
 
   // Load the system prompt from preferences
   const [systemPrompt, setSystemPrompt] = useState<string>("");
