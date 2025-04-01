@@ -65,8 +65,13 @@ app.post('/api/chat', async (c) => {
     console.log('[Server] Initializing shell MCP client with stdio');
 
     const shellTransport = new StdioMCPTransport({
-      command: 'uvx',
-      args: ['mcp-shell-server'],
+      command: 'uv',
+      args: [
+        '--directory',
+        '.',
+        'run',
+        'mcp-shell-server'
+      ],
       env: {
         ALLOW_COMMANDS: 'ls,cat,pwd,grep,wc,touch,find'
       }
