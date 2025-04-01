@@ -65,6 +65,7 @@ export function ModelSelect({
                 onSelect={() => {
                   onChange(model.id);
                   setOpen(false);
+                  window.dispatchEvent(new Event('focus-chat-input'));
                 }}
                 className="font-mono"
               >
