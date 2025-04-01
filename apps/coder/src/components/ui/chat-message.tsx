@@ -27,8 +27,8 @@ const chatBubbleVariants = cva(
       },
       animation: {
         none: "",
-        fade: "duration-500 animate-in fade-in-0",
-        scale: "duration-500 animate-in fade-in-0 scale-in-95",
+        fade: "",
+        scale: "duration-500 scale-in-95",
       },
     },
   }
@@ -194,8 +194,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
           <time
             dateTime={createdAt.toISOString()}
             className={cn(
-              "mt-1 block px-1 text-xs opacity-50",
-              animation !== "none" && "duration-500 animate-in fade-in-0"
+              "mt-1 block px-1 text-xs opacity-50"
             )}
           >
             {formattedTime}
@@ -229,8 +228,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
               <time
                 dateTime={createdAt.toISOString()}
                 className={cn(
-                  "mt-1 block px-1 text-xs opacity-50",
-                  animation !== "none" && "duration-500 animate-in fade-in-0"
+                  "mt-1 block px-1 text-xs opacity-50"
                 )}
               >
                 {formattedTime}
@@ -271,8 +269,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         <time
           dateTime={createdAt.toISOString()}
           className={cn(
-            "mt-1 block px-1 text-xs opacity-50",
-            animation !== "none" && "duration-500 animate-in fade-in-0"
+            "mt-1 block px-1 text-xs opacity-50"
           )}
         >
           {formattedTime}
