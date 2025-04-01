@@ -103,19 +103,19 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       // Save the completed assistant message to the database
       if (persistenceEnabled && dbInitialized && currentThreadId && message.role === 'assistant') {
         try {
-          console.log('🔴 onFinish called for assistant message:', {
-            id: message.id,
-            content: message.content.substring(0, 50)
-          });
+          // console.log('🔴 onFinish called for assistant message:', {
+          //   id: message.id,
+          //   content: message.content.substring(0, 50)
+          // });
 
           // Get all current messages and find the corresponding user message
           const currentMessages = vercelChatState.messages;
-          console.log('🔴 Current messages:', currentMessages.map(m => ({
-            id: m.id,
-            role: m.role,
-            timestamp: m.createdAt,
-            content: m.content.substring(0, 30)
-          })));
+          // console.log('🔴 Current messages:', currentMessages.map(m => ({
+          //   id: m.id,
+          //   role: m.role,
+          //   timestamp: m.createdAt,
+          //   content: m.content.substring(0, 30)
+          // })));
 
           // Find the last user message that doesn't have a corresponding assistant message
           const userMessages = currentMessages.filter(m => m.role === 'user');
