@@ -101,6 +101,10 @@ export async function createDatabase(): Promise<Database> {
             // Migrate from version 0 to 1 - keep document as is
             1: function (oldDoc) {
               return oldDoc;
+            },
+            // Version 2 - no changes needed for threads, just keep the document
+            2: function (oldDoc) {
+              return oldDoc;
             }
           }
         },
@@ -109,6 +113,10 @@ export async function createDatabase(): Promise<Database> {
           migrationStrategies: {
             // Migrate from version 0 to 1 - keep document as is
             1: function (oldDoc) {
+              return oldDoc;
+            },
+            // Version 2 - no changes needed for messages, just keep the document
+            2: function (oldDoc) {
               return oldDoc;
             }
           }
@@ -119,6 +127,21 @@ export async function createDatabase(): Promise<Database> {
             // Migrate from version 0 to 1 - keep document as is
             1: function (oldDoc) {
               return oldDoc;
+            },
+            // Migrate from version 1 to 2 - add the new fields
+            2: function (oldDoc) {
+              return {
+                ...oldDoc,
+                // Add the new fields with sensible defaults
+                selectedModelId: oldDoc.defaultModel || 'anthropic/claude-3.7-sonnet',
+                visibleModelIds: [
+                  'anthropic/claude-3.7-sonnet',
+                  'anthropic/claude-3.5-sonnet',
+                  'openai/gpt-4o-mini', 
+                  'openai/gpt-4o-2024-11-20',
+                  'google/gemini-2.0-flash-001'
+                ]
+              };
             }
           }
         }
