@@ -1,5 +1,6 @@
 import { getDatabase } from '../database';
 import { Settings, Database } from '../types';
+import { RxDocument } from 'rxdb';
 
 // Global settings ID
 const GLOBAL_SETTINGS_ID = 'global';
@@ -73,13 +74,13 @@ export class SettingsRepository {
     this.settingsInitPromise = (async () => {
       try {
         // Check if there's persisted settings in localStorage as a backup
-        let localSettings = null;
+        let localSettings: Settings | null = null;
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
             const storedSettings = window.localStorage.getItem('openagents_settings_backup');
             if (storedSettings) {
               try {
-                localSettings = JSON.parse(storedSettings);
+                localSettings = JSON.parse(storedSettings) as Settings;
                 // console.log("Found backup settings in localStorage");
               } catch (parseError) {
                 console.warn("Error parsing localStorage settings:", parseError);
@@ -91,7 +92,7 @@ export class SettingsRepository {
         }
 
         // Try to find existing settings
-        let settings = null;
+        let settings: RxDocument<Settings, {}> | null = null;
         try {
           settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
         } catch (findError) {
@@ -100,12 +101,12 @@ export class SettingsRepository {
         }
 
         if (settings) {
-          const settingsData = settings.toJSON();
+          let settingsData = settings.toJSON();
 
           // Validate the default model - ensure it's a string
           if (settingsData.defaultModel && typeof settingsData.defaultModel !== 'string') {
             console.warn("Invalid defaultModel type, resetting to default");
-            settingsData.defaultModel = 'qwen-qwq-32b'; // Known good model as fallback
+            settingsData = { ...settingsData, defaultModel: 'qwen-qwq-32b' }; // Create new object with fallback model
           }
 
           // Keep a backup of valid settings in localStorage

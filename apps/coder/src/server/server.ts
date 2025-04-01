@@ -78,7 +78,7 @@ app.get('/api/mcp/github/test', async (c) => {
 // Local GitHub MCP connection test endpoint using stdio transport
 app.get('/api/mcp/github/local/test', async (c) => {
   console.log('[Server] Testing local GitHub MCP connection');
-  
+
   try {
     // Create MCP client with stdio transport for local GitHub MCP
     const transport = new StdioMCPTransport({
@@ -90,17 +90,17 @@ app.get('/api/mcp/github/local/test', async (c) => {
         GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN || '<TOKEN_REQUIRED>'
       }
     });
-    
+
     console.log('[Server] Created stdio transport for local GitHub MCP');
-    
+
     // Try to connect to the local MCP server
     const mcpClient = await experimental_createMCPClient({
       transport
     });
-    
+
     console.log('[Server] Successfully connected to local GitHub MCP');
-    return c.json({ 
-      success: true, 
+    return c.json({
+      success: true,
       message: 'Successfully connected to local GitHub MCP',
       clientInfo: {
         connected: true,
@@ -111,8 +111,8 @@ app.get('/api/mcp/github/local/test', async (c) => {
     });
   } catch (error) {
     console.error('[Server] Failed to connect to local GitHub MCP:', error);
-    return c.json({ 
-      success: false, 
+    return c.json({
+      success: false,
       message: 'Failed to connect to local GitHub MCP',
       error: error instanceof Error ? error.message : String(error)
     }, 500);
@@ -134,7 +134,7 @@ app.post('/api/chat', async (c) => {
   // Initialize MCP clients for tools
   let remoteMcpClient;
   let localMcpClient;
-  
+
   // Try to initialize remote MCP client
   try {
     console.log('[Server] Initializing remote GitHub MCP client');
@@ -149,11 +149,11 @@ app.post('/api/chat', async (c) => {
     console.error('[Server] Failed to initialize remote MCP client:', remoteMcpError);
     // Continue execution - we'll still use local MCP or LLM without tools
   }
-  
+
   // Try to initialize local MCP client with stdio transport
   try {
     console.log('[Server] Initializing local GitHub MCP client with stdio');
-    
+
     const transport = new StdioMCPTransport({
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-github'],
@@ -162,17 +162,17 @@ app.post('/api/chat', async (c) => {
         GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN || '<TOKEN_REQUIRED>'
       }
     });
-    
+
     localMcpClient = await experimental_createMCPClient({
       transport
     });
-    
+
     console.log('[Server] Local stdio MCP client initialized successfully');
   } catch (localMcpError) {
     console.error('[Server] Failed to initialize local MCP client:', localMcpError);
     // Continue execution - we'll still use remote MCP or LLM without tools
   }
-  
+
   // Determine which MCP client to use (prefer local)
   const mcpClient = localMcpClient || remoteMcpClient;
 
@@ -253,7 +253,7 @@ app.post('/api/chat', async (c) => {
               ? `${event.error.message}\n${event.error.stack}`
               : String(event.error));
         },
-        onFinish: (event) => {
+        onFinish: (event: { detail: { fromButton: boolean } }) => {
           console.log(`🏁 streamText onFinish completed`);
         }
       };
@@ -309,7 +309,7 @@ app.post('/api/chat', async (c) => {
     // Clean up resources
     if (localMcpClient || remoteMcpClient) {
       console.log('[Server] Chat request completed, MCP resources will be cleaned up');
-      
+
       // Note: The MCP clients will be automatically garbage collected
       // For stdio transports, the process will be terminated when the client is garbage collected
     }

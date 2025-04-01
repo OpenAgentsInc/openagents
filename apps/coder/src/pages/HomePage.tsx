@@ -23,14 +23,12 @@ import { Link } from "@tanstack/react-router";
 import { ModelSelect } from "@/components/ui/model-select";
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Message as UIMessage, type MessagePart } from "@/components/ui/chat-message";
+import { Message, type UIPart, type UIMessage } from "@openagents/core";
 
 interface Settings {
   defaultModel: string;
   // Add other settings properties as needed
 }
-
-type Message = UIMessage;
 
 export default function HomePage() {
   // Get settings including the default model
@@ -358,7 +356,14 @@ export default function HomePage() {
 
                           // First, identify if we have timestamp collisions
                           const timestampCounts: Record<number, number> = {};
-                          messages.forEach(msg => {
+                          const messagesWithParts: UIMessage[] = messages.map(msg => ({
+                            ...msg,
+                            parts: msg.parts || [{
+                              type: 'text' as const,
+                              text: msg.content
+                            }]
+                          }));
+                          messagesWithParts.forEach(msg => {
                             const timestamp = msg.createdAt?.getTime() || 0;
                             timestampCounts[timestamp] = (timestampCounts[timestamp] || 0) + 1;
                           });
@@ -366,17 +371,15 @@ export default function HomePage() {
                           const hasCollisions = Object.values(timestampCounts).some(count => count > 1);
 
                           // If no collisions, return messages as-is
-                          if (!hasCollisions) return messages;
-
-                          // console.log("FORCING TIMESTAMP CORRECTION ON UI SIDE");
+                          if (!hasCollisions) return messagesWithParts;
 
                           // First organize by role to keep conversation flow
-                          const userMessages: Message[] = [];
-                          const assistantMessages: Message[] = [];
+                          const userMessages: UIMessage[] = [];
+                          const assistantMessages: UIMessage[] = [];
 
-                          messages.forEach(msg => {
-                            if (msg.role === 'user') userMessages.push({ ...msg });
-                            else assistantMessages.push({ ...msg });
+                          messagesWithParts.forEach(msg => {
+                            if (msg.role === 'user') userMessages.push(msg);
+                            else assistantMessages.push(msg);
                           });
 
                           // Pair user messages with assistant responses
