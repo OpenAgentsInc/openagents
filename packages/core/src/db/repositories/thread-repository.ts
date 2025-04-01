@@ -21,22 +21,40 @@ export class ThreadRepository {
    * Create a new thread
    */
   async createThread(threadData: Partial<Thread>): Promise<Thread> {
-    await this.initialize();
-    
-    const currentTime = Date.now();
-    const thread: Thread = {
-      id: threadData.id || uuidv4(),
-      title: threadData.title || 'New Chat',
-      createdAt: threadData.createdAt || currentTime,
-      updatedAt: threadData.updatedAt || currentTime,
-      modelId: threadData.modelId || '',  // Use empty string instead of null/undefined
-      systemPrompt: threadData.systemPrompt || '',  // Use empty string instead of null/undefined
-      metadata: threadData.metadata || {}
-    };
-    
-    console.log('Creating thread with data:', thread);
-    await this.db!.threads.insert(thread);
-    return thread;
+    try {
+      await this.initialize();
+      
+      const currentTime = Date.now();
+      const thread: Thread = {
+        id: threadData.id || uuidv4(),
+        title: threadData.title || 'New Chat',
+        createdAt: threadData.createdAt || currentTime,
+        updatedAt: threadData.updatedAt || currentTime,
+        modelId: threadData.modelId || '',  // Use empty string instead of null/undefined
+        systemPrompt: threadData.systemPrompt || '',  // Use empty string instead of null/undefined
+        metadata: threadData.metadata || {}
+      };
+      
+      try {
+        console.log('Creating thread with data:', thread);
+        await this.db!.threads.insert(thread);
+        return thread;
+      } catch (error) {
+        // If insert fails but we have an ID, try to fetch existing thread
+        if (thread.id) {
+          const existingThread = await this.db!.threads.findOne(thread.id).exec();
+          if (existingThread) {
+            return existingThread.toJSON();
+          }
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error creating thread:', error);
+      // If database operation fails, still return the in-memory thread
+      // so the application can continue to function
+      return threadData as Thread;
+    }
   }
   
   /**
@@ -53,14 +71,20 @@ export class ThreadRepository {
    * Get all threads, sorted by creation time (newest first)
    */
   async getAllThreads(): Promise<Thread[]> {
-    await this.initialize();
-    
-    const threads = await this.db!.threads
-      .find()
-      .sort({ createdAt: 'desc' })
-      .exec();
+    try {
+      await this.initialize();
       
-    return threads.map(thread => thread.toJSON());
+      const threads = await this.db!.threads
+        .find()
+        .sort({ createdAt: 'desc' })
+        .exec();
+        
+      return threads.map(thread => thread.toJSON());
+    } catch (error) {
+      console.error('Error fetching all threads:', error);
+      // Return empty array as fallback so UI doesn't break
+      return [];
+    }
   }
   
   /**

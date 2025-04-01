@@ -27,6 +27,9 @@ const storage = wrappedValidateZSchemaStorage({
 // Database instance (singleton)
 let dbInstance: Database | null = null;
 
+// Database name constants
+const PROD_DB_NAME = 'openagents';
+
 /**
  * Creates and initializes the RxDB database with all collections
  */
@@ -48,9 +51,15 @@ export async function createDatabase(): Promise<Database> {
       }
     }
 
+    // Use unique database name in development to avoid collection limit issues
+    // Use fixed name in production for persistence
+    const dbName = process.env.NODE_ENV === 'production' 
+      ? PROD_DB_NAME 
+      : `openagents_${Date.now().toString(36)}`;
+
     // Create database
     const db = await createRxDatabase<DatabaseCollections>({
-      name: 'openagents',
+      name: dbName,
       storage,
       multiInstance: false,
       ignoreDuplicate: true
@@ -76,10 +85,8 @@ export async function createDatabase(): Promise<Database> {
   } catch (error) {
     console.error('Failed to create RxDB database:', error);
     
-    // If this is a collection limit error, log it but don't try to auto-recover
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'COL23') {
-      console.warn('RxDB collection limit reached - please refresh the page to reset connections');
-    }
+    // Clear the instance on error
+    dbInstance = null;
     
     throw error;
   }
