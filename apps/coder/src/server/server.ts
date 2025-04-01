@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
-import { streamText, type Message, experimental_createMCPClient, type StreamTextOnFinishCallback } from "ai";
+import { streamText, type Message, experimental_createMCPClient } from "ai";
 import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
@@ -27,22 +27,134 @@ app.use('*', cors({
   exposeHeaders: ['Content-Length', 'X-Vercel-AI-Data-Stream'],
 }));
 
+// Health check endpoint
+app.get('/api/ping', (c) => {
+  console.log('[Server] Received /api/ping request');
+  return c.json({ message: 'pong' });
+});
+
+// Remote GitHub MCP connection test endpoint
+app.get('/api/mcp/github/test', async (c) => {
+  console.log('[Server] Testing remote GitHub MCP connection');
+
+  const GITHUB_MCP_URL = "https://mcp-github.openagents.com/sse";
+
+  try {
+    // Create MCP client with SSE transport for GitHub MCP
+    const mcpClient = await experimental_createMCPClient({
+      transport: {
+        type: 'sse',
+        url: GITHUB_MCP_URL,
+      },
+    });
+
+    // Test the connection - don't try to access internal properties
+    // The fact that we can create the client without errors is sufficient
+    // for testing the connection
+
+    console.log('[Server] Successfully connected to remote GitHub MCP');
+    return c.json({
+      success: true,
+      message: 'Successfully connected to remote GitHub MCP',
+      clientInfo: {
+        connected: true,
+        url: GITHUB_MCP_URL
+      }
+    });
+  } catch (error) {
+    console.error('[Server] Failed to connect to remote GitHub MCP:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to connect to remote GitHub MCP',
+      error: error instanceof Error ? error.message : String(error)
+    }, 500);
+  } finally {
+    // No explicit cleanup needed - the client will be garbage collected
+    // The MCP client in AI SDK handles its own cleanup
+    console.log('[Server] Remote MCP connection test complete');
+  }
+});
+
+// Local GitHub MCP connection test endpoint using stdio transport
+app.get('/api/mcp/github/local/test', async (c) => {
+  console.log('[Server] Testing local GitHub MCP connection');
+
+  try {
+    // Create MCP client with stdio transport for local GitHub MCP
+    const transport = new StdioMCPTransport({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-github'],
+      env: {
+        // Note: For testing we're not providing a real token
+        // In production, this should be a valid GitHub token
+        GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN || '<TOKEN_REQUIRED>'
+      }
+    });
+
+    console.log('[Server] Created stdio transport for local GitHub MCP');
+
+    // Try to connect to the local MCP server
+    const mcpClient = await experimental_createMCPClient({
+      transport
+    });
+
+    console.log('[Server] Successfully connected to local GitHub MCP');
+    return c.json({
+      success: true,
+      message: 'Successfully connected to local GitHub MCP',
+      clientInfo: {
+        connected: true,
+        transport: 'stdio',
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-github']
+      }
+    });
+  } catch (error) {
+    console.error('[Server] Failed to connect to local GitHub MCP:', error);
+    return c.json({
+      success: false,
+      message: 'Failed to connect to local GitHub MCP',
+      error: error instanceof Error ? error.message : String(error)
+    }, 500);
+  } finally {
+    console.log('[Server] Local MCP connection test complete');
+  }
+});
+
+
 // Main chat endpoint
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
 
   // Get OpenRouter API key from environment variables
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+  // GitHub MCP URL
+  const GITHUB_MCP_URL = "https://mcp-github.openagents.com/sse";
 
   // Initialize MCP clients for tools
+  let remoteMcpClient;
   let localMcpClient;
-  let shellMcpClient;
 
-  // Initialize local MCP client with stdio transport
+  // Try to initialize remote MCP client
+  try {
+    console.log('[Server] Initializing remote GitHub MCP client');
+    remoteMcpClient = await experimental_createMCPClient({
+      transport: {
+        type: 'sse',
+        url: GITHUB_MCP_URL,
+      },
+    });
+    console.log('[Server] Remote MCP client initialized successfully');
+  } catch (remoteMcpError) {
+    console.error('[Server] Failed to initialize remote MCP client:', remoteMcpError);
+    // Continue execution - we'll still use local MCP or LLM without tools
+  }
+
+  // Try to initialize local MCP client with stdio transport
   try {
     console.log('[Server] Initializing local GitHub MCP client with stdio');
 
-    const githubTransport = new StdioMCPTransport({
+    const transport = new StdioMCPTransport({
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-github'],
       env: {
@@ -52,39 +164,17 @@ app.post('/api/chat', async (c) => {
     });
 
     localMcpClient = await experimental_createMCPClient({
-      transport: githubTransport
+      transport
     });
 
     console.log('[Server] Local stdio MCP client initialized successfully');
   } catch (localMcpError) {
     console.error('[Server] Failed to initialize local MCP client:', localMcpError);
+    // Continue execution - we'll still use remote MCP or LLM without tools
   }
 
-  // Initialize shell MCP client
-  try {
-    console.log('[Server] Initializing shell MCP client with stdio');
-
-    const shellTransport = new StdioMCPTransport({
-      command: 'uv',
-      args: [
-        '--directory',
-        '.',
-        'run',
-        'mcp-shell-server'
-      ],
-      env: {
-        ALLOW_COMMANDS: 'ls,cat,pwd,grep,wc,touch,find'
-      }
-    });
-
-    shellMcpClient = await experimental_createMCPClient({
-      transport: shellTransport
-    });
-
-    console.log('[Server] Shell MCP client initialized successfully');
-  } catch (shellMcpError) {
-    console.error('[Server] Failed to initialize shell MCP client:', shellMcpError);
-  }
+  // Determine which MCP client to use (prefer local)
+  const mcpClient = localMcpClient || remoteMcpClient;
 
   if (!OPENROUTER_API_KEY) {
     console.error("❌ OPENROUTER_API_KEY is missing or invalid");
@@ -128,25 +218,16 @@ app.post('/api/chat', async (c) => {
 
     console.log("🔍 MODEL:", MODEL);
 
-    // Get tools from the MCP clients
+    // Get tools from the MCP client
     let tools = {};
-    if (localMcpClient || shellMcpClient) {
+    if (localMcpClient) {
       try {
-        console.log('[Server] Fetching tools from MCP clients');
-
-        if (localMcpClient) {
-          const githubTools = await localMcpClient.tools();
-          tools = { ...tools, ...githubTools };
-          console.log('[Server] Successfully fetched GitHub MCP tools');
-        }
-
-        if (shellMcpClient) {
-          const shellTools = await shellMcpClient.tools();
-          tools = { ...tools, ...shellTools };
-          console.log('[Server] Successfully fetched Shell MCP tools');
-        }
+        console.log('[Server] Fetching tools from local MCP client');
+        const localTools = await localMcpClient.tools();
+        tools = localTools;
+        console.log('[Server] Successfully fetched tools from local MCP');
       } catch (toolError) {
-        console.error('[Server] Error fetching tools from MCP clients:', toolError);
+        console.error('[Server] Error fetching tools from local MCP:', toolError);
       }
     }
 
@@ -175,7 +256,7 @@ app.post('/api/chat', async (c) => {
               ? `${event.error.message}\n${event.error.stack}`
               : String(event.error));
         },
-        onFinish: (event: Parameters<StreamTextOnFinishCallback<{}>>[0]) => {
+        onFinish: (event: { detail: { fromButton: boolean } }) => {
           console.log(`🏁 streamText onFinish completed`);
         }
       };
@@ -186,7 +267,7 @@ app.post('/api/chat', async (c) => {
       } else {
         console.log('[Server] No MCP tools available, continuing without tools');
         // Remove tools if empty to avoid schema errors
-        streamOptions.tools = {};
+        delete streamOptions.tools;
       }
 
       const streamResult = streamText(streamOptions);
@@ -229,10 +310,11 @@ app.post('/api/chat', async (c) => {
     return c.json({ error: "Failed to process chat request" }, 500);
   } finally {
     // Clean up resources
-    if (localMcpClient || shellMcpClient) {
+    if (localMcpClient || remoteMcpClient) {
       console.log('[Server] Chat request completed, MCP resources will be cleaned up');
+
       // Note: The MCP clients will be automatically garbage collected
-      // For stdio transports, the processes will be terminated when the clients are garbage collected
+      // For stdio transports, the process will be terminated when the client is garbage collected
     }
   }
 });
