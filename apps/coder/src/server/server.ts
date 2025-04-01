@@ -233,9 +233,12 @@ app.post('/api/chat', async (c) => {
 
     try {
       // Configure stream options with MCP tools if available
-      const streamOptions: any = {
+      const streamOptions = {
         model: openrouter(MODEL),
         messages: messages,
+
+        toolCallStreaming: true,
+
         temperature: 0.7,
         tools, // Add MCP tools to the request
 
