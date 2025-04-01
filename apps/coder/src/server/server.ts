@@ -332,6 +332,24 @@ app.post('/api/chat', async (c) => {
     }
 
     try {
+      // Check for system prompt in request
+      const systemPrompt = body.systemPrompt;
+      
+      // If system prompt exists, prepend it to messages array
+      if (systemPrompt && typeof systemPrompt === 'string' && systemPrompt.trim() !== '') {
+        console.log('[Server] Using custom system prompt');
+        
+        // Add system message at the beginning if it doesn't already exist
+        const hasSystemMessage = messages.some(msg => msg.role === 'system');
+        
+        if (!hasSystemMessage) {
+          messages = [
+            { role: 'system', content: systemPrompt },
+            ...messages
+          ];
+        }
+      }
+
       // Configure stream options with MCP tools if available
       const streamOptions = {
         model: openrouter(MODEL),

@@ -1,7 +1,9 @@
 import { createRoute } from "@tanstack/react-router";
 import { RootRoute } from "./__root";
 import HomePage from "../pages/HomePage";
+import SettingsLayout from "../pages/settings/SettingsLayout";
 import ModelsPage from "../pages/settings/ModelsPage";
+import PromptsPage from "../pages/settings/PromptsPage";
 
 // TODO: Steps to add a new route:
 // 1. Create a new page component in the '../pages/' directory (e.g., NewPage.tsx)
@@ -16,10 +18,42 @@ export const HomeRoute = createRoute({
   component: HomePage,
 });
 
-export const ModelsSettingsRoute = createRoute({
+// Settings parent route
+export const SettingsRoute = createRoute({
   getParentRoute: () => RootRoute,
-  path: "/settings/models",
+  path: "/settings",
+  component: SettingsLayout,
+});
+
+// Settings default route (redirects to models)
+export const SettingsIndexRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/",
+  component: () => {
+    window.location.href = '/settings/models';
+    return null;
+  }
+});
+
+// Settings child routes
+export const ModelsSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/models",
   component: ModelsPage,
 });
 
-export const rootTree = RootRoute.addChildren([HomeRoute, ModelsSettingsRoute]);
+export const PromptsSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/prompts",
+  component: PromptsPage,
+});
+
+// Add all routes to the route tree
+export const rootTree = RootRoute.addChildren([
+  HomeRoute,
+  SettingsRoute.addChildren([
+    SettingsIndexRoute,
+    ModelsSettingsRoute,
+    PromptsSettingsRoute
+  ])
+]);

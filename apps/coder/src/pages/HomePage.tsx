@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
-import { usePersistentChat, useSettings, models } from "@openagents/core";
+import { usePersistentChat, useSettings, models, DEFAULT_SYSTEM_PROMPT } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -174,6 +174,31 @@ export default function HomePage() {
   // Find the selected model
   const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
 
+  // Load the system prompt from preferences
+  const [systemPrompt, setSystemPrompt] = useState<string>("");
+  
+  // Load system prompt from settings when component mounts
+  useEffect(() => {
+    const loadSystemPrompt = async () => {
+      try {
+        if (!settings) return;
+        
+        // Use getPreference method from settingsRepository directly
+        // since we need to get this value before rendering
+        const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+        const savedPrompt = await settingsRepository.getPreference("defaultSystemPrompt", DEFAULT_SYSTEM_PROMPT);
+        setSystemPrompt(savedPrompt);
+        console.log("Loaded system prompt:", savedPrompt === DEFAULT_SYSTEM_PROMPT ? "Using default prompt" : "Custom prompt loaded");
+      } catch (error) {
+        console.error("Error loading system prompt:", error);
+        // Fall back to default prompt on error
+        setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+      }
+    };
+
+    loadSystemPrompt();
+  }, [settings]);
+
   // Use the persistence layer with the correct configuration
   const {
     messages,
@@ -193,7 +218,9 @@ export default function HomePage() {
     // Configuration that we know works
     streamProtocol: 'data',
     body: {
-      model: selectedModelId
+      model: selectedModelId,
+      // Include system prompt if it's not empty
+      ...(systemPrompt ? { systemPrompt } : {})
     },
     headers: {
       'Content-Type': 'application/json',

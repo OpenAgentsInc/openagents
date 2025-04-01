@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSettings, models } from "@openagents/core";
-import { ArrowLeft, Trash2, Plus, Eye, EyeOff } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { Trash2, Plus, Eye, EyeOff } from "lucide-react";
 import {
   Button,
   Card,
@@ -19,7 +18,6 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ModelSelect } from "@/components/ui/model-select";
 
 // Group models by provider for better organization
@@ -179,18 +177,8 @@ export default function ModelsPage() {
   }
 
   return (
-    <ScrollArea className="h-screen w-full">
-      <div className="container py-6 space-y-6 font-mono">
-        <div className="flex items-center">
-          <Link to="/" className="mr-4">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold">Settings</h1>
-        </div>
-
-        {/* Default Model Selection */}
+    <>
+      {/* Default Model Selection */}
         <Card className="font-mono">
           <CardHeader>
             <CardTitle>Default Model</CardTitle>
@@ -374,7 +362,6 @@ export default function ModelsPage() {
             Your API keys are stored securely in your browser's local database.
           </CardFooter>
         </Card>
-      </div>
-    </ScrollArea>
+    </>
   );
 }
