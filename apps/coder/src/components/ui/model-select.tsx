@@ -1,5 +1,5 @@
-import React from "react";
-import { MODELS } from "@openagents/core";
+import React, { useState, useEffect } from "react";
+import { MODELS, useSettings } from "@openagents/core";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/utils/tailwind";
 import {
@@ -29,7 +29,23 @@ export function ModelSelect({
   className,
   disabled = false,
 }: ModelSelectProps) {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useState(false);
+  const [visibleModels, setVisibleModels] = useState<typeof MODELS>([]);
+  const { settings } = useSettings();
+
+  // Filter models based on visibility settings
+  useEffect(() => {
+    if (settings && settings.visibleModelIds && settings.visibleModelIds.length > 0) {
+      // Filter MODELS to only include those in visibleModelIds
+      const filteredModels = MODELS.filter(model => 
+        settings.visibleModelIds!.includes(model.id)
+      );
+      setVisibleModels(filteredModels);
+    } else {
+      // Fall back to all models if no visibility settings are found
+      setVisibleModels(MODELS);
+    }
+  }, [settings]);
 
   // Find the currently selected model
   const selectedModel = MODELS.find((model) => model.id === value);
@@ -58,7 +74,7 @@ export function ModelSelect({
           <CommandInput placeholder="Search models..." className="font-mono" />
           <CommandEmpty className="font-mono">No model found.</CommandEmpty>
           <CommandGroup className="max-h-[300px] overflow-auto font-mono">
-            {MODELS.map((model) => (
+            {visibleModels.map((model) => (
               <CommandItem
                 key={model.id}
                 value={model.id}

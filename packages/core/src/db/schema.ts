@@ -126,6 +126,17 @@ export const settingsSchema: RxJsonSchema<Settings> = {
       type: 'string',
       maxLength: 100
     },
+    selectedModelId: {
+      type: 'string',
+      maxLength: 100
+    },
+    visibleModelIds: {
+      type: 'array',
+      items: {
+        type: 'string',
+        maxLength: 100
+      }
+    },
     preferences: {
       type: 'object',
       additionalProperties: true

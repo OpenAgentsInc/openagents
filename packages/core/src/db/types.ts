@@ -46,7 +46,9 @@ export interface Settings {
   id: string;
   theme?: string;
   apiKeys?: Record<string, string>;
-  defaultModel?: string;
+  defaultModel?: string; // Kept for backward compatibility
+  selectedModelId?: string; // New field replacing defaultModel
+  visibleModelIds?: string[]; // Array of model IDs that should be visible in the dropdown
   preferences?: Record<string, any>;
 }
 

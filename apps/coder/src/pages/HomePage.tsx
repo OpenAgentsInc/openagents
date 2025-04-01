@@ -26,7 +26,9 @@ import { Button } from "@/components/ui/button";
 import { Message, type UIPart, type UIMessage } from "@openagents/core";
 
 interface Settings {
-  defaultModel: string;
+  defaultModel?: string;
+  selectedModelId?: string;
+  visibleModelIds?: string[];
   // Add other settings properties as needed
 }
 
@@ -102,34 +104,37 @@ export default function HomePage() {
           return;
         }
 
-        // If no user selection, use default from settings (lower priority)
-        // Check if we already have a selected model and matches settings (to prevent unnecessary reselection)
-        if (selectedModelId && selectedModelId === settings.defaultModel) {
+        // If no user selection, use selected model from settings (lower priority)
+        // First get the model ID from settings, preferring selectedModelId but falling back to defaultModel
+        const settingsModelId = settings.selectedModelId || settings.defaultModel;
+        
+        // Check if we already have a selected model that matches settings (to prevent unnecessary reselection)
+        if (selectedModelId && selectedModelId === settingsModelId) {
           // console.log(`Model already selected (${selectedModelId}) matches settings`);
           return;
         }
 
-        if (settings.defaultModel) {
-          console.log(`Loading default model from settings: ${settings.defaultModel}`);
+        if (settingsModelId) {
+          console.log(`Loading model from settings: ${settingsModelId}`);
 
           // Check if the model exists in our models list
-          const modelExists = MODELS.some(model => model.id === settings.defaultModel);
+          const modelExists = MODELS.some(model => model.id === settingsModelId);
 
           if (modelExists) {
-            console.log(`Model ${settings.defaultModel} found, selecting it`);
-            setSelectedModelId(settings.defaultModel);
+            console.log(`Model ${settingsModelId} found, selecting it`);
+            setSelectedModelId(settingsModelId);
 
             // Also save to sessionStorage for resilience
             try {
               if (typeof window !== 'undefined' && window.sessionStorage) {
-                window.sessionStorage.setItem('openagents_current_model', settings.defaultModel);
+                window.sessionStorage.setItem('openagents_current_model', settingsModelId);
               }
             } catch (storageError) {
               console.warn("Error storing model in sessionStorage:", storageError);
             }
           } else {
             // If model doesn't exist, default to first model AND update settings
-            console.warn(`Model ${settings.defaultModel} not found in models list, using fallback`);
+            console.warn(`Model ${settingsModelId} not found in models list, using fallback`);
 
             if (MODELS.length > 0) {
               const fallbackModel = MODELS[0].id;
@@ -138,9 +143,12 @@ export default function HomePage() {
               // Update the settings to use a valid model
               console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
               try {
-                // Update the default model
-                const result = await updateSettings({ defaultModel: fallbackModel }) as Settings;
-                console.log("Settings auto-corrected:", result.defaultModel);
+                // Update both fields for compatibility
+                const result = await updateSettings({ 
+                  defaultModel: fallbackModel,
+                  selectedModelId: fallbackModel
+                }) as Settings;
+                console.log("Settings auto-corrected:", result.selectedModelId || result.defaultModel);
               } catch (error) {
                 console.error("Failed to auto-correct settings:", error);
               }
@@ -148,18 +156,21 @@ export default function HomePage() {
           }
         } else {
           // Default to first model if no default is set
-          console.log("No default model in settings, using first model");
+          console.log("No model selected in settings, using first model");
           if (MODELS.length > 0) {
             const firstModel = MODELS[0].id;
             setSelectedModelId(firstModel);
 
-            // Save this as the default
-            console.log(`Setting first model as default: ${firstModel}`);
+            // Save this as the selected model
+            console.log(`Setting first model as selected model: ${firstModel}`);
             try {
-              await updateSettings({ defaultModel: firstModel });
-              console.log("Default model saved");
+              await updateSettings({ 
+                defaultModel: firstModel, // For backward compatibility
+                selectedModelId: firstModel 
+              });
+              console.log("Selected model saved");
             } catch (error) {
-              console.error("Failed to save default model:", error);
+              console.error("Failed to save selected model:", error);
             }
           }
         }
