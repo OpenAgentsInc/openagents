@@ -34,7 +34,7 @@ interface Settings {
 
 export default function HomePage() {
   // Get settings including the default model
-  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings } = useSettings();
+  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings, selectModel } = useSettings();
   
   // Define state variables first
   const [selectedModelId, setSelectedModelId] = useState<string>("");
@@ -56,6 +56,9 @@ export default function HomePage() {
     })();
   }, [clearSettingsCache]);
   
+  // Use a ref to track the last applied model ID to prevent loops
+  const lastAppliedModelRef = React.useRef<string | null>(null);
+  
   // Add event listener for page visibility and focus to refresh settings
   useEffect(() => {
     // Store the visibility handler to properly remove it
@@ -70,11 +73,16 @@ export default function HomePage() {
       console.log("Page focused, refreshing settings");
       refreshSettings().then(updatedSettings => {
         if (updatedSettings && updatedSettings.selectedModelId) {
-          console.log(`Refreshed settings with model: ${updatedSettings.selectedModelId}`);
-          // Update the model if it's different from the current one
-          if (selectedModelId !== updatedSettings.selectedModelId) {
-            console.log(`Updating model from ${selectedModelId} to ${updatedSettings.selectedModelId}`);
-            setSelectedModelId(updatedSettings.selectedModelId);
+          const newModelId = updatedSettings.selectedModelId;
+          console.log(`Refreshed settings with model: ${newModelId}`);
+          
+          // Check if this model update is new (not just the one we applied)
+          // and also different from what's currently selected
+          if (selectedModelId !== newModelId && lastAppliedModelRef.current !== newModelId) {
+            console.log(`Updating model from ${selectedModelId} to ${newModelId}`);
+            // Update our ref to track this change
+            lastAppliedModelRef.current = newModelId;
+            setSelectedModelId(newModelId);
           }
         }
       });
@@ -84,8 +92,15 @@ export default function HomePage() {
     const handleModelSettingsChanged = (event: any) => {
       console.log("Received model-settings-changed event", event.detail);
       if (event.detail && event.detail.selectedModelId) {
-        console.log(`Setting model from event: ${event.detail.selectedModelId}`);
-        setSelectedModelId(event.detail.selectedModelId);
+        const newModelId = event.detail.selectedModelId;
+        console.log(`Setting model from event: ${newModelId}`);
+        
+        // Track that we're about to apply this model ID to prevent loops
+        lastAppliedModelRef.current = newModelId;
+        
+        if (selectedModelId !== newModelId) {
+          setSelectedModelId(newModelId);
+        }
       } else {
         // If no details provided, just refresh settings
         handleFocus();
@@ -106,7 +121,9 @@ export default function HomePage() {
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('model-settings-changed', handleModelSettingsChanged);
     };
-  }, [refreshSettings, selectedModelId]);
+    
+    // Only depend on refreshSettings to avoid re-running the effect when selectedModelId changes
+  }, [refreshSettings]);
   
   useEffect(() => {
     async function setupModel() {
@@ -359,8 +376,11 @@ export default function HomePage() {
 
   // Handle model change - this happens when user selects from dropdown
   const handleModelChange = (modelId: string) => {
-    // console.log(`Model changed via dropdown to: ${modelId}`);
+    console.log(`Model changed via dropdown to: ${modelId}`);
 
+    // Track that we're about to apply this model to prevent loops
+    lastAppliedModelRef.current = modelId;
+    
     // Set the model ID for current session
     setSelectedModelId(modelId);
 
@@ -382,8 +402,10 @@ export default function HomePage() {
       console.warn("Error storing model in localStorage:", localStorageError);
     }
 
-    // We don't update the default model here - this is just for the current session
-    // Users need to go to settings to permanently change the default model
+    // Also update the settings to persist this selection
+    selectModel(modelId).catch(error => {
+      console.error("Failed to update settings with selected model:", error);
+    });
   };
 
   return (
