@@ -27,27 +27,9 @@ export function MessageList({
   // Create ref for the messages container
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   
-  // Sort messages by timestamp - most recent last
-  // If timestamps are the same, maintain original order
-  const sortedMessages = React.useMemo(() => {
-    // Create array of [message, originalIndex] pairs
-    const messagesWithIndex = messages.map((message, index) => [message, index]);
-    
-    return messagesWithIndex
-      .sort(([a, aIndex], [b, bIndex]) => {
-        const aTime = new Date(a.timestamp).getTime();
-        const bTime = new Date(b.timestamp).getTime();
-        
-        // First sort by timestamp
-        if (aTime !== bTime) {
-          return aTime - bTime;
-        }
-        
-        // If timestamps are equal, preserve original order
-        return aIndex - bIndex;
-      })
-      .map(([message]) => message);
-  }, [messages]);
+  // Use the messages directly without sorting again - let parent component control sort
+  // This prevents double sorting which could cause issues
+  const sortedMessages = React.useMemo(() => messages, [messages]);
   
   // Scroll to bottom when messages change
   React.useEffect(() => {

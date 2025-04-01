@@ -24,11 +24,49 @@ export class MessageRepository {
   }
 
   /**
-   * Create a new message
+   * Create a new message with precise timestamp handling
    */
   async createMessage(message: UIMessage & { threadId: string }): Promise<UIMessage> {
     if (!this.database) {
       throw new Error('Database not initialized');
+    }
+
+    // Ensure the message has a unique timestamp if not already set
+    if (!message.createdAt) {
+      message.createdAt = new Date();
+    }
+
+    // Get the latest message timestamp to ensure proper ordering
+    try {
+      const latestMessage = await this.database.messages
+        .find()
+        .where('threadId')
+        .eq(message.threadId)
+        .sort({ createdAt: 'desc' })
+        .limit(1)
+        .exec();
+
+      if (latestMessage.length > 0) {
+        const latestTimestamp = latestMessage[0].createdAt;
+        
+        // ALWAYS increment timestamp by at least 100ms to ensure visible differences
+        // This enforces a minimum gap between messages
+        const minimumTimestampIncrement = 100; // 100ms gap between messages
+        
+        // Calculate the appropriate timestamp - either current time or forced increment
+        const currentTime = message.createdAt.getTime();
+        const nextValidTimestamp = Math.max(
+          currentTime,
+          latestTimestamp + minimumTimestampIncrement
+        );
+        
+        // Always set a new timestamp with the calculated value
+        message.createdAt = new Date(nextValidTimestamp);
+        console.log(`Set timestamp for message ${message.id} to: ${message.createdAt}`);
+      }
+    } catch (err) {
+      console.error('Error checking latest timestamp:', err);
+      // Continue with creation even if timestamp check fails
     }
 
     const storedMessage = uiMessageToStoredMessage(message, message.threadId);
@@ -73,6 +111,7 @@ export class MessageRepository {
 
   /**
    * Get all messages for a thread, sorted by creation time
+   * Ensures proper timestamps for UI rendering
    */
   async getMessagesByThreadId(threadId: string): Promise<UIMessage[]> {
     if (!this.database) {
@@ -86,9 +125,100 @@ export class MessageRepository {
       .sort({ createdAt: 'asc' })
       .exec();
 
-    return messages.map(message => {
-      return storedMessageToUIMessage(message.toJSON() as StoredMessage);
+    // First convert all messages to UIMessages
+    const uiMessages = messages.map(message => 
+      storedMessageToUIMessage(message.toJSON() as StoredMessage)
+    );
+    
+    // Now fix any timestamp issues to ensure proper ordering when rehydrating from DB
+    // If more than one message has the exact same timestamp, fix them
+    const fixedMessages = this.fixMessageTimestamps(uiMessages);
+    
+    return fixedMessages;
+  }
+  
+  /**
+   * Fixes timestamps for messages loaded from database
+   * Ensures chronological separation between messages
+   */
+  fixMessageTimestamps(messages: UIMessage[]): UIMessage[] {
+    // If no messages or just one message, no need to fix
+    if (messages.length <= 1) {
+      return messages;
+    }
+    
+    // Group messages by timestamp
+    const messagesByTimestamp: Record<number, UIMessage[]> = {};
+    
+    // First identify if we have any timestamp collisions
+    let hasCollisions = false;
+    
+    messages.forEach(message => {
+      const timestamp = message.createdAt?.getTime() || 0;
+      if (!messagesByTimestamp[timestamp]) {
+        messagesByTimestamp[timestamp] = [];
+      }
+      messagesByTimestamp[timestamp].push(message);
+      
+      // If we have more than one message with the same timestamp, we have collisions
+      if (messagesByTimestamp[timestamp].length > 1) {
+        hasCollisions = true;
+      }
     });
+    
+    // If no collisions, return the original messages
+    if (!hasCollisions) {
+      return messages;
+    }
+    
+    console.log("Fixing timestamp collisions for rehydrated messages");
+    
+    // Sort messages by timestamp (ascending)
+    const sortedMessages = [...messages].sort((a, b) => {
+      const timeA = a.createdAt?.getTime() || 0;
+      const timeB = b.createdAt?.getTime() || 0;
+      return timeA - timeB;
+    });
+    
+    // Now fix collisions by incrementing timestamps
+    // Start with the earliest timestamp
+    let lastTimestamp = sortedMessages[0].createdAt?.getTime() || 0;
+    const fixedMessages = sortedMessages.map((message, index) => {
+      if (index === 0) return message; // Keep the first message's timestamp
+      
+      const currentTimestamp = message.createdAt?.getTime() || 0;
+      const timeGap = 500; // 500ms between messages for clear separation
+      
+      // If this message has the same timestamp as previous, or less than minimum gap
+      if (currentTimestamp <= lastTimestamp + timeGap) {
+        // Create new timestamp with proper gap
+        const newTimestamp = lastTimestamp + timeGap;
+        
+        // Basic order - user messages come before assistant if same timestamp
+        const roleFactor = message.role === 'user' ? 0 : 250;
+        
+        // Create a new date with the adjusted timestamp
+        const newDate = new Date(newTimestamp + roleFactor);
+        
+        // Clone the message with the new timestamp
+        const fixedMessage = {
+          ...message,
+          createdAt: newDate
+        };
+        
+        // Update lastTimestamp to this new one
+        lastTimestamp = newTimestamp + roleFactor;
+        
+        console.log(`Fixed timestamp for message ${message.id} from ${message.createdAt} to ${newDate}`);
+        return fixedMessage;
+      }
+      
+      // This message already has a good timestamp gap, keep it
+      lastTimestamp = currentTimestamp;
+      return message;
+    });
+    
+    return fixedMessages;
   }
 
   /**

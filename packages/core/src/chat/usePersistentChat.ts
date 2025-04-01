@@ -131,11 +131,22 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
             return !hasAssistantResponse;
           });
 
-          const timestamp = unpairedUserMessage?.createdAt
-            ? new Date(new Date(unpairedUserMessage.createdAt).getTime() + 1)
-            : new Date(Math.max(...currentMessages.map(m => m.createdAt ? new Date(m.createdAt).getTime() : 0)) + 1);
-
-          console.log('🔴 Setting assistant message timestamp to:', timestamp);
+          // Calculate a timestamp that ensures proper ordering with clear time difference
+          // Find the latest timestamp of all messages
+          const allTimestamps = currentMessages.map(m => 
+            m.createdAt ? new Date(m.createdAt).getTime() : 0
+          );
+          
+          const latestTimestamp = Math.max(...allTimestamps, 0);
+          
+          // Force at least a 500ms gap from the latest message
+          const forcedGap = 500; // half-second gap for assistant responses
+          const timestamp = new Date(Math.max(
+            Date.now(),
+            latestTimestamp + forcedGap
+          ));
+          
+          console.log('🔴 Setting assistant message timestamp with forced gap:', timestamp);
 
           // Convert to UIMessage format with threadId guaranteed
           const uiMessage: UIMessage & { threadId: string } = {
@@ -399,18 +410,31 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       timestamp: message.createdAt
     });
 
-    // Get the latest message timestamp from existing messages
-    const existingMessages = vercelChatState.messages;
-    const latestTimestamp = existingMessages.length > 0
-      ? Math.max(...existingMessages.map(m => m.createdAt ? new Date(m.createdAt).getTime() : 0))
-      : 0;
-
-    // Create a copy with the threadId explicitly set and ensure createdAt is after latest message
+    // Calculate appropriate timestamp with forced minimum gap
+    // Get all messages and their timestamps
+    const allMessages = vercelChatState.messages;
+    const allTimestamps = allMessages.map(m => 
+      m.createdAt ? new Date(m.createdAt).getTime() : 0
+    );
+    
+    // Find latest timestamp
+    const latestTimestamp = allTimestamps.length ? Math.max(...allTimestamps) : 0;
+    
+    // Ensure at least 300ms between messages
+    const minimumGap = 300; 
+    const newTimestamp = new Date(Math.max(
+      Date.now(),
+      latestTimestamp + minimumGap
+    ));
+    
+    console.log('🔵 Using calculated timestamp with gap:', newTimestamp);
+    
+    // Create a copy with the threadId explicitly set
     const messageWithThread: UIMessage & { threadId: string } = {
       ...message,
       threadId: currentThreadId,
-      // Set timestamp after the latest message or use current time if no messages
-      createdAt: new Date(Math.max(latestTimestamp + 1, Date.now()))
+      // Use the calculated timestamp
+      createdAt: newTimestamp
     };
 
     console.log('🔵 Created message with timestamp:', messageWithThread.createdAt);
@@ -642,11 +666,24 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     content: m.content.substring(0, 30)
   })));
 
-  // Sort messages by timestamp and maintain order
-  const sortedMessages = displayMessages.sort((a, b) => {
+  // Sort messages with multiple fallbacks for identical timestamps
+  const sortedMessages = displayMessages.slice().sort((a, b) => {
+    // Primary sort: by timestamp
     const timeA = a.createdAt?.getTime() || 0;
     const timeB = b.createdAt?.getTime() || 0;
-    return timeA - timeB; // Ascending order - older messages first
+    
+    if (timeA !== timeB) {
+      return timeA - timeB; // Ascending order - older messages first
+    }
+    
+    // Secondary sort: by conversation flow (user messages come before assistant responses)
+    if (a.role !== b.role) {
+      // User messages should come before assistant messages when timestamps are equal
+      return a.role === 'user' ? -1 : 1;
+    }
+    
+    // Tertiary sort: by ID to ensure complete stability
+    return a.id.localeCompare(b.id);
   });
 
   // Log the messages after sorting

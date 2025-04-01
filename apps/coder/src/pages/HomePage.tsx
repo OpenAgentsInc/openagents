@@ -326,7 +326,57 @@ export default function HomePage() {
                     <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
 
                       <MessageList
-                        messages={messages}
+                        messages={(() => {
+                          // BRUTE FORCE FIX - Aggressively correct identical timestamps
+                          
+                          // First, identify if we have timestamp collisions
+                          const timestampCounts = {};
+                          messages.forEach(msg => {
+                            const timestamp = msg.createdAt?.getTime() || 0;
+                            timestampCounts[timestamp] = (timestampCounts[timestamp] || 0) + 1;
+                          });
+                          
+                          const hasCollisions = Object.values(timestampCounts).some(count => count > 1);
+                          
+                          // If no collisions, return messages as-is
+                          if (!hasCollisions) return messages;
+                          
+                          console.log("FORCING TIMESTAMP CORRECTION ON UI SIDE");
+                          
+                          // First organize by role to keep conversation flow
+                          const userMessages = [];
+                          const assistantMessages = [];
+                          
+                          messages.forEach(msg => {
+                            if (msg.role === 'user') userMessages.push({...msg});
+                            else assistantMessages.push({...msg});
+                          });
+                          
+                          // Pair user messages with assistant responses
+                          const correctedMessages = [];
+                          let baseTime = Date.now() - (messages.length * 10000); // Start 10 seconds ago per message
+                          
+                          // If we have more user messages than assistant or vice versa, we need to handle that
+                          const maxLength = Math.max(userMessages.length, assistantMessages.length);
+                          
+                          for (let i = 0; i < maxLength; i++) {
+                            if (i < userMessages.length) {
+                              const userMsg = userMessages[i];
+                              userMsg.createdAt = new Date(baseTime);
+                              correctedMessages.push(userMsg);
+                              baseTime += 2000; // 2 second gap
+                            }
+                            
+                            if (i < assistantMessages.length) {
+                              const assistantMsg = assistantMessages[i];
+                              assistantMsg.createdAt = new Date(baseTime);
+                              correctedMessages.push(assistantMsg);
+                              baseTime += 3000; // 3 second gap
+                            }
+                          }
+                          
+                          return correctedMessages;
+                        })()}
                         isTyping={isGenerating}
                       />
                     </div>
