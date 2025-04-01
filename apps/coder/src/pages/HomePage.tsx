@@ -176,13 +176,13 @@ export default function HomePage() {
 
   // Load the system prompt from preferences
   const [systemPrompt, setSystemPrompt] = useState<string>("");
-  
+
   // Load system prompt from settings when component mounts
   useEffect(() => {
     const loadSystemPrompt = async () => {
       try {
         if (!settings) return;
-        
+
         // Use getPreference method from settingsRepository directly
         // since we need to get this value before rendering
         const { settingsRepository } = await import('@openagents/core/src/db/repositories');
@@ -249,22 +249,22 @@ export default function HomePage() {
 
   // State to force ThreadList rerender when creating a new thread
   const [threadListKey, setThreadListKey] = useState(Date.now());
-  
+
   const handleCreateThread = useCallback(async () => {
     try {
       // First update the key to force an immediate re-render of ThreadList
       setThreadListKey(Date.now());
-      
+
       const thread = await createNewThread();
 
       // Dispatch a custom event to focus the input
       window.dispatchEvent(
         new CustomEvent('new-chat', { detail: { fromButton: true, threadId: thread.id } })
       );
-      
+
       // Force another update after thread creation
       setThreadListKey(Date.now());
-      
+
       return thread;
     } catch (error) {
       console.error("Failed to create new thread:", error);
@@ -469,7 +469,7 @@ export default function HomePage() {
                         <MessageInput
                           value={input}
                           onChange={handleInputChange}
-                          allowAttachments
+                          allowAttachments={false}
                           files={files}
                           setFiles={setFiles}
                           stop={stop}

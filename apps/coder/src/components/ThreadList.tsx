@@ -76,12 +76,13 @@ export function ThreadList({
     return groups;
   }, [threads, pendingDeletes]);
 
+  // Only show loading state on initial load when no threads are available
+  // Don't show loading state during refreshes to prevent UI flashing
   if (isLoading && threads.length === 0) {
     return (
       <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
-        <div className="py-4 text-center text-muted-foreground">
-          Loading...
-        </div>
+        {/* Empty space with no visible loading text to prevent layout shifts */}
+        <div className="py-4"></div>
       </div>
     );
   }

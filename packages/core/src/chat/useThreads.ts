@@ -129,26 +129,40 @@ export function useThreads(options: UseThreadsOptions = {}) {
     }
   }, [loadThreads]);
   
-  // Initial load
+  // Initial load with isLoading state management
   useEffect(() => {
-    loadThreads();
-  }, [loadThreads]);
+    // Set loading state only if threads array is empty
+    if (threads.length === 0) {
+      setIsLoading(true);
+    }
+    
+    loadThreads().finally(() => {
+      // Clear loading state after load completes
+      setIsLoading(false);
+    });
+  }, [loadThreads, threads.length]);
   
-  // Set up auto-refresh if enabled 
+  // Set up auto-refresh if enabled - don't show loading state for background refreshes
   useEffect(() => {
     if (refreshInterval > 0) {
       const intervalId = setInterval(() => {
-        loadThreads();
+        // Run the load without updating the loading state to prevent flashing
+        loadThreads().catch(err => {
+          console.error('Error in background refresh:', err);
+        });
       }, refreshInterval);
       
       return () => clearInterval(intervalId);
     }
   }, [refreshInterval, loadThreads]);
   
-  // Set up a one-time refresh when a thread is created/deleted
+  // Set up a one-time refresh when a thread is created/deleted - without loading indicator
   useEffect(() => {
     const handleThreadChange = () => {
-      loadThreads();
+      // Run the load without updating the loading state to prevent flashing
+      loadThreads().catch(err => {
+        console.error('Error in event-triggered refresh:', err);
+      });
     };
     
     // Listen for thread changes
