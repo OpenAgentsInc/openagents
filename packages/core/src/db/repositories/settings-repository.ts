@@ -119,11 +119,29 @@ export class SettingsRepository {
       
       // If we have changes, return the updated settings
       if (hasChanges) {
+        console.log("Returning settings with pending updates applied");
         return toMutableSettings(updatedSettings);
       }
       
       // Otherwise return cached settings as-is
+      console.log("Returning cached settings");
       return toMutableSettings(this.cachedSettings!);
+    }
+    
+    // Always try to fetch from database first before using localStorage backups
+    await this.initialize();
+    
+    try {
+      // Try fetching directly from database
+      const settingsDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+      if (settingsDoc) {
+        const settings = settingsDoc.toJSON();
+        console.log("Found settings in database:", settings.selectedModelId || settings.defaultModel);
+        this.cachedSettings = toMutableSettings(settings);
+        return toMutableSettings(settings);
+      }
+    } catch (e) {
+      console.warn("Error fetching settings from database:", e);
     }
 
     await this.initialize();

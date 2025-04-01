@@ -156,6 +156,18 @@ export default function ModelsPage() {
       if (visibleModelIds.indexOf(modelId) === -1) {
         handleToggleModelVisibility(modelId);
       }
+      
+      // Dispatch a custom event to notify that model settings have changed
+      // This will trigger the HomePage to refresh its settings
+      try {
+        const event = new CustomEvent('model-settings-changed', { 
+          detail: { selectedModelId: modelId } 
+        });
+        window.dispatchEvent(event);
+        console.log("Dispatched model-settings-changed event");
+      } catch (eventError) {
+        console.warn("Error dispatching model-settings-changed event:", eventError);
+      }
     } catch (error) {
       console.error("Error selecting model:", error);
       alert("There was an error selecting this model. The model will be used for this session only.");

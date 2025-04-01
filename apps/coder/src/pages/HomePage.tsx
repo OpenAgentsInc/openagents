@@ -34,7 +34,7 @@ interface Settings {
 
 export default function HomePage() {
   // Get settings including the default model
-  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings } = useSettings();
+  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings } = useSettings();
 
   // Force a refresh of settings when the component mounts
   useEffect(() => {
@@ -52,6 +52,61 @@ export default function HomePage() {
       }
     })();
   }, [clearSettingsCache]);
+  
+  // Add event listener for page visibility and focus to refresh settings
+  useEffect(() => {
+    // Function to refresh settings from database
+    const handleFocus = () => {
+      console.log("Page focused, refreshing settings");
+      refreshSettings().then(updatedSettings => {
+        if (updatedSettings && updatedSettings.selectedModelId) {
+          console.log(`Refreshed settings with model: ${updatedSettings.selectedModelId}`);
+          // Update the model if it's different from the current one
+          if (selectedModelId !== updatedSettings.selectedModelId) {
+            console.log(`Updating model from ${selectedModelId} to ${updatedSettings.selectedModelId}`);
+            setSelectedModelId(updatedSettings.selectedModelId);
+          }
+        }
+      });
+    };
+    
+    // Handle custom event from settings page
+    const handleModelSettingsChanged = (event: any) => {
+      console.log("Received model-settings-changed event", event.detail);
+      if (event.detail && event.detail.selectedModelId) {
+        console.log(`Setting model from event: ${event.detail.selectedModelId}`);
+        setSelectedModelId(event.detail.selectedModelId);
+      } else {
+        // If no details provided, just refresh settings
+        handleFocus();
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('model-settings-changed', handleModelSettingsChanged);
+    
+    // Load settings on first mount
+    handleFocus();
+
+    // Store the visibility handler to properly remove it
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleFocus();
+      }
+    };
+    
+    // Add the visibility handler
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Cleanup event listeners
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('model-settings-changed', handleModelSettingsChanged);
+    };
+  }, [refreshSettings, selectedModelId]);
   const [selectedModelId, setSelectedModelId] = useState<string>("");
 
   useEffect(() => {
