@@ -1,11 +1,15 @@
 import { RxJsonSchema } from 'rxdb';
 import { Thread, StoredMessage, Settings } from './types';
 
+// Increment this when making schema changes
+// This allows RxDB to handle migrations properly
+const SCHEMA_VERSION = 1;
+
 /**
  * Thread collection schema
  */
 export const threadSchema: RxJsonSchema<Thread> = {
-  version: 0,
+  version: SCHEMA_VERSION,
   title: 'thread schema',
   primaryKey: 'id',
   type: 'object',
@@ -51,7 +55,7 @@ export const threadSchema: RxJsonSchema<Thread> = {
  * Message collection schema
  */
 export const messageSchema: RxJsonSchema<StoredMessage> = {
-  version: 0,
+  version: SCHEMA_VERSION,
   title: 'message schema',
   primaryKey: 'id',
   type: 'object',
@@ -101,7 +105,7 @@ export const messageSchema: RxJsonSchema<StoredMessage> = {
  * Settings collection schema
  */
 export const settingsSchema: RxJsonSchema<Settings> = {
-  version: 0,
+  version: SCHEMA_VERSION,
   title: 'settings schema',
   primaryKey: 'id',
   type: 'object',

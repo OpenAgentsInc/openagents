@@ -12,12 +12,14 @@ import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
 import { wrappedValidateZSchemaStorage } from 'rxdb/plugins/validate-z-schema';
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 import { RxDBUpdatePlugin } from 'rxdb/plugins/update';
+import { RxDBMigrationSchemaPlugin } from 'rxdb/plugins/migration-schema';
 import { Thread, StoredMessage, Settings, DatabaseCollections, Database } from './types';
 import { threadSchema, messageSchema, settingsSchema } from './schema';
 
 // Add required plugins
 addRxPlugin(RxDBQueryBuilderPlugin);
 addRxPlugin(RxDBUpdatePlugin);
+addRxPlugin(RxDBMigrationSchemaPlugin);
 
 // Initialize storage with validation
 const storage = wrappedValidateZSchemaStorage({
@@ -27,12 +29,13 @@ const storage = wrappedValidateZSchemaStorage({
 // Database instance (singleton)
 let dbInstance: Database | null = null;
 
-// Database name constants - add version to force clean database on schema change
-const PROD_DB_NAME = 'openagents_v3'; // Incremented version number to force clean database
+// Using consistent database names to maintain data between version changes
+// RxDB supports schema migrations, so we don't need to change the name for each schema change
+const PROD_DB_NAME = 'openagents_prod'; 
 
 // Store a static database name for development to prevent double-init issues with strict mode
 // Using a reproducible name helps with development and prevents creating multiple databases
-let DEV_DB_NAME = 'openagents_dev_v3'; // Incremented version number to force clean database
+let DEV_DB_NAME = 'openagents_dev';
 
 // Track database creation attempts to handle Strict Mode double-mounting
 let dbCreationInProgress = false;
@@ -91,16 +94,34 @@ export async function createDatabase(): Promise<Database> {
         }
       });
 
-      // Create collections with schema validation
+      // Create collections with schema validation and migrations
       await db.addCollections({
         threads: {
-          schema: threadSchema
+          schema: threadSchema,
+          migrationStrategies: {
+            // Migrate from version 0 to 1 - keep document as is
+            1: function(oldDoc) {
+              return oldDoc;
+            }
+          }
         },
         messages: {
-          schema: messageSchema
+          schema: messageSchema,
+          migrationStrategies: {
+            // Migrate from version 0 to 1 - keep document as is
+            1: function(oldDoc) {
+              return oldDoc;
+            }
+          }
         },
         settings: {
-          schema: settingsSchema
+          schema: settingsSchema,
+          migrationStrategies: {
+            // Migrate from version 0 to 1 - keep document as is
+            1: function(oldDoc) {
+              return oldDoc;
+            }
+          }
         }
       });
 
@@ -139,8 +160,9 @@ export async function createDatabase(): Promise<Database> {
  */
 export async function getDatabase(): Promise<Database> {
   try {
-    // For schema changes that require wiping out data, uncomment this line:
-    await cleanupDatabase(); // Force cleanup on each app start
+    // REMOVED: Force cleanup on each app start
+    // Only uncomment this line when you need to wipe the database for schema changes:
+    // await cleanupDatabase();
     
     if (!dbInstance) {
       return createDatabase();
