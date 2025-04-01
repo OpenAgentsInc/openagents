@@ -3,7 +3,7 @@ import { Thread, StoredMessage, Settings } from './types';
 
 // Increment this when making schema changes
 // This allows RxDB to handle migrations properly
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Thread collection schema
