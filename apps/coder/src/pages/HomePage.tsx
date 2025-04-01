@@ -25,7 +25,7 @@ import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 
 export default function HomePage() {
   // Get settings including the default model
-  const { settings, isLoading: isLoadingSettings, clearSettingsCache } = useSettings();
+  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings } = useSettings();
 
   // Force a refresh of settings when the component mounts
   useEffect(() => {
@@ -34,30 +34,110 @@ export default function HomePage() {
   const [selectedModelId, setSelectedModelId] = useState<string>("");
 
   useEffect(() => {
-    // Set the default model from settings when loaded
-    if (settings?.defaultModel) {
-      console.log(`Loading default model from settings: ${settings.defaultModel}`);
+    async function setupDefaultModel() {
+      try {
+        // Only proceed when settings are loaded
+        if (!settings) return;
 
-      // Check if the model exists in our models list
-      const modelExists = models.some(model => model.id === settings.defaultModel);
-
-      if (modelExists) {
-        setSelectedModelId(settings.defaultModel);
-      } else {
-        // If model doesn't exist, default to first model
-        console.warn(`Model ${settings.defaultModel} not found in models list`);
-        if (models.length > 0) {
-          setSelectedModelId(models[0].id);
+        // Check if we already have a selected model and it matches settings
+        // This prevents unnecessary reselection
+        if (selectedModelId && selectedModelId === settings.defaultModel) {
+          console.log(`Model already selected (${selectedModelId}) matches settings`);
+          return;
         }
-      }
-    } else {
-      // Default to first model if no default is set
-      console.log("No default model in settings, using first model");
-      if (models.length > 0) {
-        setSelectedModelId(models[0].id);
+
+        if (settings.defaultModel) {
+          console.log(`Loading default model from settings: ${settings.defaultModel}`);
+
+          // Check if the model exists in our models list
+          const modelExists = models.some(model => model.id === settings.defaultModel);
+
+          if (modelExists) {
+            console.log(`Model ${settings.defaultModel} found, selecting it`);
+            setSelectedModelId(settings.defaultModel);
+
+            // Store in sessionStorage for resilience across page reloads
+            try {
+              if (typeof window !== 'undefined' && window.sessionStorage) {
+                window.sessionStorage.setItem('openagents_current_model', settings.defaultModel);
+              }
+            } catch (storageError) {
+              console.warn("Error storing model in sessionStorage:", storageError);
+            }
+          } else {
+            // If model doesn't exist, default to first model AND update settings
+            console.warn(`Model ${settings.defaultModel} not found in models list, using fallback`);
+
+            if (models.length > 0) {
+              const fallbackModel = models[0].id;
+              setSelectedModelId(fallbackModel);
+
+              // Try to recover from sessionStorage first if available
+              let recovered = false;
+              try {
+                if (typeof window !== 'undefined' && window.sessionStorage) {
+                  const savedModel = window.sessionStorage.getItem('openagents_current_model');
+                  if (savedModel && models.some(model => model.id === savedModel)) {
+                    console.log(`Recovered model from sessionStorage: ${savedModel}`);
+                    setSelectedModelId(savedModel);
+                    recovered = true;
+                  }
+                }
+              } catch (storageError) {
+                console.warn("Error reading from sessionStorage:", storageError);
+              }
+
+              if (!recovered) {
+                // Update the settings to use a valid model (only if we couldn't recover)
+                console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
+                try {
+                  // Update the default model using the atomic update
+                  const result = await updateSettings({ defaultModel: fallbackModel });
+                  console.log("Settings auto-corrected:", result.defaultModel);
+                } catch (error) {
+                  console.error("Failed to auto-correct settings:", error);
+                }
+              }
+            }
+          }
+        } else {
+          // Default to first model if no default is set
+          console.log("No default model in settings, using first model");
+          if (models.length > 0) {
+            // Check sessionStorage first
+            let modelFromStorage = null;
+            try {
+              if (typeof window !== 'undefined' && window.sessionStorage) {
+                const savedModel = window.sessionStorage.getItem('openagents_current_model');
+                if (savedModel && models.some(model => model.id === savedModel)) {
+                  console.log(`Using model from sessionStorage: ${savedModel}`);
+                  modelFromStorage = savedModel;
+                }
+              }
+            } catch (storageError) {
+              console.warn("Error reading from sessionStorage:", storageError);
+            }
+
+            const modelToUse = modelFromStorage || models[0].id;
+            setSelectedModelId(modelToUse);
+
+            // Also save this as the default
+            console.log(`Setting model as default: ${modelToUse}`);
+            try {
+              await updateSettings({ defaultModel: modelToUse });
+              console.log("Default model saved");
+            } catch (error) {
+              console.error("Failed to save default model:", error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error setting up default model:", error);
       }
     }
-  }, [settings]);
+
+    setupDefaultModel();
+  }, [settings, selectedModelId, clearSettingsCache, updateSettings]);
 
   // Find the selected model
   const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
@@ -129,6 +209,15 @@ export default function HomePage() {
     console.log(`Model changed to: ${modelId}`);
     setSelectedModelId(modelId);
 
+    // Save the selection to sessionStorage for resilience
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        window.sessionStorage.setItem('openagents_current_model', modelId);
+      }
+    } catch (storageError) {
+      console.warn("Error storing model in sessionStorage:", storageError);
+    }
+
     // We don't update the default model here - this is just for the current session
     // Users need to go to settings to permanently change the default model
   };
@@ -155,16 +244,6 @@ export default function HomePage() {
 
               <SidebarContent>
                 <SidebarGroup>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={handleCreateThread}
-                      >
-                        <MessageSquareIcon />
-                        <span>New Chat</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
                   <ThreadList
                     currentThreadId={currentThreadId ?? ''}
                     onSelectThread={handleSelectThread}

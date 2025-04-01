@@ -31,7 +31,8 @@ let dbInstance: Database | null = null;
 const PROD_DB_NAME = 'openagents';
 
 // Store a static database name for development to prevent double-init issues with strict mode
-let DEV_DB_NAME = `openagents_${Date.now().toString(36)}`;
+// Using a reproducible name helps with development and prevents creating multiple databases
+let DEV_DB_NAME = 'openagents_dev';
 
 // Track database creation attempts to handle Strict Mode double-mounting
 let dbCreationInProgress = false;
@@ -74,12 +75,20 @@ export async function createDatabase(): Promise<Database> {
         ? PROD_DB_NAME
         : DEV_DB_NAME;
 
-      // Create database
+      // Create database with more resilient options
       const db = await createRxDatabase<DatabaseCollections>({
         name: dbName,
         storage,
-        multiInstance: false,
-        ignoreDuplicate: true
+        multiInstance: false, // Single instance mode for better reliability
+        ignoreDuplicate: true, // Ignore duplicate db creation for strict mode
+        allowMultipleInstances: true, // Allow reopening closed instances
+        eventReduce: true, // Reduce event load
+        cleanupPolicy: {
+          // Automatically clean up old revisions to prevent storage issues
+          minimumCollectionAge: 1000 * 60 * 60 * 24, // 1 day
+          minimumDeletedTime: 1000 * 60 * 60 * 24, // 1 day
+          runEach: 1000 * 60 * 60 // every hour
+        }
       });
 
       // Create collections with schema validation
@@ -150,24 +159,51 @@ export async function cleanupDatabase() {
       if (typeof (dbInstance as any).destroy === 'function') {
         await (dbInstance as any).destroy();
       }
+      
+      // Also try to remove database by name
+      if (typeof (dbInstance as any).name === 'string' && typeof window !== 'undefined' && window.indexedDB) {
+        try {
+          const dbName = (dbInstance as any).name;
+          console.log(`Explicitly removing database: ${dbName}`);
+          window.indexedDB.deleteDatabase(dbName);
+        } catch (nameErr) {
+          console.warn('Error removing database by name:', nameErr);
+        }
+      }
     } catch (err) {
       console.warn('Error during database cleanup:', err);
     }
     dbInstance = null;
   }
 
-  // Also clean up any indexedDB databases if we're in collection limit trouble
-  if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined' && window.indexedDB) {
+  // Clean up all matching indexedDB databases
+  if (typeof window !== 'undefined' && window.indexedDB) {
     try {
       // Try to list and delete existing databases
       if (typeof window.indexedDB.databases === 'function') {
         const dbs = await window.indexedDB.databases() || [];
+        console.log(`Found ${dbs.length} IndexedDB databases, checking for openagents databases`);
         for (const db of dbs) {
           if (db.name && db.name.includes('openagents')) {
+            console.log(`Removing database: ${db.name}`);
             await window.indexedDB.deleteDatabase(db.name);
           }
         }
+      } else {
+        // Safari and some browsers don't support databases() method
+        // Try to delete the known database names we use
+        console.log('IndexedDB.databases() not supported, trying known database names');
+        await window.indexedDB.deleteDatabase(PROD_DB_NAME);
+        await window.indexedDB.deleteDatabase(DEV_DB_NAME);
+        
+        // Also try timestamp-based names that might have been created
+        for (let i = 0; i < 5; i++) {
+          const legacyName = `openagents_${Date.now().toString(36)}_cleanup${i}`;
+          await window.indexedDB.deleteDatabase(legacyName);
+        }
       }
+      
+      console.log('Database cleanup completed');
     } catch (err) {
       console.warn('Error cleaning up IndexedDB:', err);
     }

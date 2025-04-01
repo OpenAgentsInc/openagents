@@ -3,12 +3,12 @@ import { useThreads, Thread } from '@openagents/core';
 import { Button } from './ui/button';
 import { Trash2, Edit, Plus } from 'lucide-react';
 import { format } from 'date-fns';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogFooter 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
 } from './ui/dialog';
 import { Input } from './ui/input';
 
@@ -118,9 +118,6 @@ export function ThreadList({
             >
               <div className="flex-1 truncate">
                 <div className="font-medium truncate">{thread.title || 'Untitled'}</div>
-                <div className="text-xs text-muted-foreground">
-                  {formatDate(thread.createdAt)}
-                </div>
               </div>
 
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -180,8 +177,8 @@ export function ThreadList({
             />
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setIsRenameDialogOpen(false)}
             >
               Cancel

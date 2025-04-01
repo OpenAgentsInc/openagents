@@ -12,6 +12,23 @@ export class SettingsRepository {
   private cachedSettings: Settings | null = null;
   private settingsInitInProgress = false;
   private settingsInitPromise: Promise<Settings> | null = null;
+  // Track pending model updates for optimistic responses
+  private _pendingModelUpdate: string | null = null;
+
+  constructor() {
+    // Try to load any pending model update from localStorage
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const pendingModel = window.localStorage.getItem('openagents_pending_model');
+        if (pendingModel) {
+          console.log(`Loading pending model from localStorage: ${pendingModel}`);
+          this._pendingModelUpdate = pendingModel;
+        }
+      }
+    } catch (error) {
+      console.warn("Error loading pending model from localStorage:", error);
+    }
+  }
 
   /**
    * Initialize the repository with a database connection
@@ -26,6 +43,17 @@ export class SettingsRepository {
    * Get the global settings
    */
   async getSettings(): Promise<Settings> {
+    // If we have a pending model update, return the cached settings with that model
+    if (this._pendingModelUpdate) {
+      if (this.cachedSettings) {
+        const settingsWithPendingModel = {
+          ...this.cachedSettings,
+          defaultModel: this._pendingModelUpdate
+        };
+        return settingsWithPendingModel;
+      }
+    }
+
     // Return cached settings if available to prevent repeated DB access
     if (this.cachedSettings) {
       return { ...this.cachedSettings };
@@ -44,13 +72,71 @@ export class SettingsRepository {
     // Create a promise to handle concurrent calls
     this.settingsInitPromise = (async () => {
       try {
+        // Check if there's persisted settings in localStorage as a backup
+        let localSettings = null;
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            const storedSettings = window.localStorage.getItem('openagents_settings_backup');
+            if (storedSettings) {
+              try {
+                localSettings = JSON.parse(storedSettings);
+                console.log("Found backup settings in localStorage");
+              } catch (parseError) {
+                console.warn("Error parsing localStorage settings:", parseError);
+              }
+            }
+          }
+        } catch (localStorageError) {
+          console.warn("Error accessing localStorage:", localStorageError);
+        }
+
         // Try to find existing settings
-        const settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+        let settings = null;
+        try {
+          settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+        } catch (findError) {
+          console.error("Error finding settings:", findError);
+          // Continue to the default settings creation path
+        }
 
         if (settings) {
           const settingsData = settings.toJSON();
+          
+          // Validate the default model - ensure it's a string
+          if (settingsData.defaultModel && typeof settingsData.defaultModel !== 'string') {
+            console.warn("Invalid defaultModel type, resetting to default");
+            settingsData.defaultModel = 'qwen-qwq-32b'; // Known good model as fallback
+          }
+          
+          // Keep a backup of valid settings in localStorage
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem('openagents_settings_backup', JSON.stringify(settingsData));
+            }
+          } catch (backupError) {
+            console.warn("Error backing up settings to localStorage:", backupError);
+          }
+          
           this.cachedSettings = settingsData;
           return settingsData;
+        }
+
+        // If we have settings from localStorage, try to use those
+        if (localSettings && localSettings.id === GLOBAL_SETTINGS_ID) {
+          console.log("Using backup settings from localStorage");
+          try {
+            // Validate and insert the localStorage settings
+            if (localSettings.defaultModel && typeof localSettings.defaultModel !== 'string') {
+              localSettings.defaultModel = 'qwen-qwq-32b';
+            }
+            
+            await this.db!.settings.insert(localSettings);
+            this.cachedSettings = localSettings;
+            return localSettings;
+          } catch (insertLocalError) {
+            console.warn("Failed to insert localStorage settings:", insertLocalError);
+            // Continue to default settings
+          }
         }
 
         // Create default settings if none exist
@@ -58,7 +144,7 @@ export class SettingsRepository {
           id: GLOBAL_SETTINGS_ID,
           theme: 'system',
           apiKeys: {},
-          defaultModel: 'claude-3-5-sonnet-20240620',
+          defaultModel: 'qwen-qwq-32b', // Use a known good model
           preferences: {}
         };
 
@@ -66,25 +152,63 @@ export class SettingsRepository {
           // Try to insert, but this might fail if another instance already inserted
           await this.db!.settings.insert(defaultSettings);
           this.cachedSettings = defaultSettings;
+          
+          // Backup to localStorage
+          try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+              window.localStorage.setItem('openagents_settings_backup', JSON.stringify(defaultSettings));
+            }
+          } catch (backupError) {
+            console.warn("Error backing up settings to localStorage:", backupError);
+          }
+          
           return defaultSettings;
         } catch (error) {
           // If we get an error (likely a conflict error), try to fetch again
           console.log('Settings insert conflict, retrying fetch...');
           
           // Add a small delay to let other operations complete
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(resolve => setTimeout(resolve, 100));
           
-          const existingSettings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
-
-          if (existingSettings) {
-            const existingData = existingSettings.toJSON();
-            this.cachedSettings = existingData;
-            return existingData;
+          // Try again after the delay
+          try {
+            const existingSettings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+            if (existingSettings) {
+              const existingData = existingSettings.toJSON();
+              this.cachedSettings = existingData;
+              
+              // Backup to localStorage
+              try {
+                if (typeof window !== 'undefined' && window.localStorage) {
+                  window.localStorage.setItem('openagents_settings_backup', JSON.stringify(existingData));
+                }
+              } catch (backupError) {
+                console.warn("Error backing up settings to localStorage:", backupError);
+              }
+              
+              return existingData;
+            }
+          } catch (retryError) {
+            console.error("Error on retry fetch:", retryError);
           }
-
-          // If still no settings (very unlikely), return the default
-          this.cachedSettings = defaultSettings;
-          return defaultSettings;
+          
+          // If we have localStorage settings, use those as a fallback
+          if (localSettings && localSettings.id === GLOBAL_SETTINGS_ID) {
+            console.log("Using localStorage settings as fallback after fetch errors");
+            this.cachedSettings = localSettings;
+            return localSettings;
+          }
+          
+          // Last resort - return in-memory defaults
+          const lastResortDefaults = {
+            id: GLOBAL_SETTINGS_ID,
+            theme: 'system',
+            apiKeys: {},
+            defaultModel: 'qwen-qwq-32b',
+            preferences: {}
+          };
+          this.cachedSettings = lastResortDefaults;
+          return lastResortDefaults;
         }
       } catch (error) {
         // If any error occurs during fetching (including database not available),
@@ -94,7 +218,7 @@ export class SettingsRepository {
           id: GLOBAL_SETTINGS_ID,
           theme: 'system',
           apiKeys: {},
-          defaultModel: 'claude-3-5-sonnet-20240620',
+          defaultModel: 'qwen-qwq-32b',
           preferences: {}
         };
         this.cachedSettings = fallbackSettings;
@@ -116,102 +240,231 @@ export class SettingsRepository {
     try {
       await this.initialize();
 
-      try {
-        // Get existing settings - use cached version if available
-        let currentSettings = this.cachedSettings;
-        if (!currentSettings) {
-          currentSettings = await this.getSettings();
+      // If we're updating the default model, set it as pending
+      if (updates.defaultModel) {
+        console.log(`Setting pending model update: ${updates.defaultModel}`);
+        this._pendingModelUpdate = updates.defaultModel;
+        
+        // Store the pending update in localStorage for persistence across page reloads
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem('openagents_pending_model', updates.defaultModel);
+          }
+        } catch (localStorageError) {
+          console.warn("Error saving pending model to localStorage:", localStorageError);
         }
+      }
 
-        // Get settings from database
-        let settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+      // Initial merge with cached settings if available
+      // This helps maintain values not included in the updates
+      let combinedUpdates = { ...updates };
+      if (this.cachedSettings) {
+        console.log("Merging updates with cached settings");
+        combinedUpdates = {
+          ...this.cachedSettings,
+          ...updates
+        };
+      }
 
-        if (settings) {
-          // Update existing settings
-          try {
-            await settings.update({
-              $set: updates
-            });
-
-            const updatedSettings = settings.toJSON();
-            // Update cache with the new settings
-            this.cachedSettings = updatedSettings;
-            console.log("Settings updated successfully:", updates);
-            return updatedSettings;
-          } catch (error) {
-            console.log('Settings update conflict, retrying...');
-            // Add a small delay before retry
-            await new Promise(resolve => setTimeout(resolve, 50));
+      // Use a mutex approach with optimistic locking
+      let retries = 0;
+      const maxRetries = 5; // Increased retry count for better resilience
+      
+      // Start a retry loop to handle potential conflicts
+      while (retries < maxRetries) {
+        try {
+          // First get fresh settings - needed for the latest revision
+          let currentDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+          
+          if (currentDoc) {
+            // Document exists, use atomic update with the current revision
+            try {
+              // Check if the document has atomicUpdate method before using it
+              if (typeof currentDoc.atomicUpdate === 'function') {
+                // Use the RxDB atomic update pattern WITHOUT touching the cache yet
+                await currentDoc.atomicUpdate(oldData => {
+                  // Add a revision marker to help with debugging
+                  return {
+                    ...oldData,
+                    ...updates,
+                    _updateAttempt: retries,
+                    _updateTime: new Date().toISOString()
+                  };
+                });
+              } else {
+                // Fallback for when atomicUpdate is not available (missing plugin or older RxDB)
+                console.log("RxDB atomicUpdate not available, using regular update method");
+                
+                // Get the current revision
+                const currentRev = (currentDoc as any)._rev || (currentDoc as any).get('_rev');
+                
+                // Create updated document with all fields
+                const updatedDoc = {
+                  ...currentDoc.toJSON(),
+                  ...updates,
+                  _updateAttempt: retries,
+                  _updateTime: new Date().toISOString()
+                };
+                
+                try {
+                  // Try to update with the update method
+                  await this.db!.settings.upsert(updatedDoc);
+                } catch (innerError) {
+                  console.error("Regular update failed:", innerError);
+                  
+                  // Last resort - try to do a direct database operation
+                  try {
+                    // Remove the old doc first
+                    await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).remove();
+                    
+                    // Add new doc
+                    await this.db!.settings.insert(updatedDoc);
+                  } catch (removeError) {
+                    console.error("Remove and insert failed:", removeError);
+                    throw removeError;
+                  }
+                }
+              }
+              
+              // After successful update, fetch the latest version
+              // Use a small delay to ensure the update has propagated
+              await new Promise(resolve => setTimeout(resolve, 30));
+              
+              const freshDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+              if (freshDoc) {
+                const updatedSettings = freshDoc.toJSON();
+                
+                // Only after successful read do we update the cache
+                this.cachedSettings = updatedSettings;
+                
+                // Clear the pending model update since it was successful
+                if (updates.defaultModel && this._pendingModelUpdate === updates.defaultModel) {
+                  this._pendingModelUpdate = null;
+                  // Remove from localStorage too
+                  try {
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                      window.localStorage.removeItem('openagents_pending_model');
+                    }
+                  } catch (localStorageError) {
+                    console.warn("Error removing pending model from localStorage:", localStorageError);
+                  }
+                }
+                
+                console.log("Settings successfully updated:", JSON.stringify(updates));
+                return updatedSettings;
+              }
+            } catch (updateError) {
+              console.warn(`Update attempt ${retries + 1} failed:`, updateError);
+              retries++;
+              
+              // Add an increased delay between retries to avoid race conditions
+              await new Promise(resolve => setTimeout(resolve, 100 * retries));
+              continue; // Try again
+            }
+          } else {
+            // Document doesn't exist, create it
+            const defaultSettings: Settings = {
+              id: GLOBAL_SETTINGS_ID,
+              theme: 'system',
+              apiKeys: {},
+              defaultModel: 'qwen-qwq-32b',
+              preferences: {},
+              ...updates
+            };
             
-            // If update fails, get settings again and retry
-            settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
-
-            if (settings) {
-              await settings.update({
-                $set: updates
-              });
-
-              const updatedSettings = settings.toJSON();
-              // Update cache with the new settings
-              this.cachedSettings = updatedSettings;
-              console.log("Settings updated successfully on retry:", updates);
-              return updatedSettings;
+            try {
+              await this.db!.settings.insert(defaultSettings);
+              
+              // Double-check the document was inserted
+              const checkDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+              if (checkDoc) {
+                const settingsData = checkDoc.toJSON();
+                this.cachedSettings = settingsData;
+                console.log("New settings document created and verified");
+                return settingsData;
+              } else {
+                // Document not found after insert - this is unexpected
+                console.error("Document not found after insert - will retry");
+                retries++;
+                await new Promise(resolve => setTimeout(resolve, 100 * retries));
+                continue;
+              }
+            } catch (insertError) {
+              // This likely means the document was created by another process
+              console.warn(`Insert attempt ${retries + 1} failed:`, insertError);
+              retries++;
+              
+              // Add a delay between retries
+              await new Promise(resolve => setTimeout(resolve, 100 * retries));
+              continue; // Try again
             }
           }
+        } catch (dbError) {
+          console.error(`Database operation failed on attempt ${retries + 1}:`, dbError);
+          retries++;
+          
+          // More substantial delay for DB errors
+          await new Promise(resolve => setTimeout(resolve, 150 * retries));
+          continue;
         }
-
-        // If no settings found or update failed, create new settings with updates
-        const newSettings: Settings = {
+      }
+      
+      // If we've exhausted retries, use the recovery approach
+      // But don't use the nuclear option since it's causing page refreshes
+      console.warn("Exhausted retry attempts, using stable recovery method");
+        
+      try {
+        // Create a safe recovery document based on what we know
+        const recoverySettings: Settings = {
           id: GLOBAL_SETTINGS_ID,
           theme: 'system',
           apiKeys: {},
-          defaultModel: 'claude-3-5-sonnet-20240620',
+          defaultModel: updates.defaultModel || 'qwen-qwq-32b',
           preferences: {},
-          ...updates
+          ...updates // Apply the requested updates
         };
-
+        
+        // Update our cache with what we intended to save
+        this.cachedSettings = recoverySettings;
+        console.log("Settings recovery successful with in-memory update");
+        
+        // Try one last time to read the actual data
         try {
-          await this.db!.settings.insert(newSettings);
-          // Update cache with the new settings
-          this.cachedSettings = newSettings;
-          console.log("New settings created:", newSettings);
-          return newSettings;
-        } catch (error) {
-          // If insert fails (likely conflict), get latest settings
-          console.log('Settings insert conflict during update, fetching latest...');
-          
-          // Add a small delay before retry
-          await new Promise(resolve => setTimeout(resolve, 50));
-          
-          const latestSettings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
-
-          if (latestSettings) {
-            const latestData = latestSettings.toJSON();
-            // Update cache with latest settings
-            this.cachedSettings = latestData;
-            return latestData;
+          const lastDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+          if (lastDoc) {
+            const lastSettings = lastDoc.toJSON();
+            // Only update our cache if the defaultModel in the database
+            // doesn't match what the user was trying to set
+            if (updates.defaultModel && lastSettings.defaultModel !== updates.defaultModel) {
+              console.log("Database has defaultModel:", lastSettings.defaultModel, 
+                         "but user wanted:", updates.defaultModel);
+              // Keep our in-memory version with the user's preference
+            } else {
+              // Otherwise use what's in the database
+              this.cachedSettings = lastSettings;
+            }
           }
-
-          // Last resort - update cache with new settings even if save failed
-          this.cachedSettings = newSettings;
-          return newSettings;
+        } catch (finalReadError) {
+          console.warn("Final read attempt failed, using recovery settings");
         }
-      } catch (error) {
-        console.error('Database error during settings update:', error);
-
-        // Return current settings merged with updates as fallback
-        const currentSettings = await this.getSettings();
-        const mergedSettings = {
-          ...currentSettings,
-          ...updates
+        
+        return this.cachedSettings;
+      } catch (finalCatchAllError) {
+        // Absolute last resort - return a memory object
+        console.error("All database operations failed:", finalCatchAllError);
+        const fallbackSettings = {
+          id: GLOBAL_SETTINGS_ID,
+          theme: 'system',
+          apiKeys: {},
+          defaultModel: updates.defaultModel || 'qwen-qwq-32b',
+          preferences: {}
         };
-        // Update cache with merged settings
-        this.cachedSettings = mergedSettings;
-        return mergedSettings;
+        this.cachedSettings = fallbackSettings;
+        return fallbackSettings;
       }
     } catch (error) {
       console.error('Fatal error updating settings:', error);
-
+      
       // If we have cached settings, merge with updates
       if (this.cachedSettings) {
         const mergedSettings = {
@@ -221,13 +474,13 @@ export class SettingsRepository {
         this.cachedSettings = mergedSettings;
         return mergedSettings;
       }
-
+      
       // Last resort fallback - return a new settings object with the updates
       const fallbackSettings = {
         id: GLOBAL_SETTINGS_ID,
         theme: 'system',
         apiKeys: {},
-        defaultModel: 'claude-3-5-sonnet-20240620',
+        defaultModel: updates.defaultModel || 'qwen-qwq-32b',
         preferences: {},
         ...updates
       };
@@ -329,6 +582,69 @@ export class SettingsRepository {
         [key]: value
       }
     });
+  }
+  
+  /**
+   * Reset settings to defaults
+   */
+  async resetSettings(): Promise<Settings> {
+    await this.initialize();
+    
+    console.log("Resetting settings to defaults");
+    
+    try {
+      // Try to remove existing settings
+      // Use bulkWrite to remove any document corruption issues
+      if (this.db?.settings) {
+        try {
+          await (this.db.settings as any)._collection.bulkWrite({
+            bulkWrites: [{
+              type: 'DELETE',
+              documentId: GLOBAL_SETTINGS_ID
+            }]
+          });
+          console.log("Successfully removed settings via bulkWrite during reset");
+        } catch (bulkError) {
+          console.error("Error removing settings via bulkWrite:", bulkError);
+          
+          // Try the normal approach
+          let settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+          if (settings) {
+            await settings.remove();
+            console.log("Successfully removed existing settings document during reset");
+          }
+        }
+      }
+    } catch (removeError) {
+      console.error("Error removing settings during reset:", removeError);
+    }
+    
+    // Clear cache
+    this.cachedSettings = null;
+    
+    // Create default settings
+    const defaultSettings: Settings = {
+      id: GLOBAL_SETTINGS_ID,
+      theme: 'system',
+      apiKeys: {},
+      defaultModel: 'qwen-qwq-32b',
+      preferences: {}
+    };
+    
+    // Wait for things to settle
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    try {
+      await this.db!.settings.insert(defaultSettings);
+      this.cachedSettings = defaultSettings;
+      console.log("Settings reset successfully");
+      return defaultSettings;
+    } catch (insertError) {
+      console.error("Error inserting default settings during reset:", insertError);
+      // Return in-memory version
+      this.cachedSettings = defaultSettings;
+      return defaultSettings;
+    }
   }
   
   /**

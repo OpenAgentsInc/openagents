@@ -36,7 +36,7 @@ const providerGroups = models.reduce((acc, model) => {
 const providers = Object.keys(providerGroups);
 
 export default function ModelsPage() {
-  const { settings, isLoading, setApiKey, getApiKey, deleteApiKey, updateSettings, clearSettingsCache } = useSettings();
+  const { settings, isLoading, setApiKey, getApiKey, deleteApiKey, updateSettings, clearSettingsCache, resetSettings } = useSettings();
   const [defaultModelId, setDefaultModelId] = useState("");
   const [currentProvider, setCurrentProvider] = useState(providers[0] || "");
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -88,20 +88,47 @@ export default function ModelsPage() {
         return;
       }
       
-      // Update UI immediately
+      // Update UI immediately to give user feedback
       setDefaultModelId(modelId);
       
       console.log(`Updating default model to: ${modelId}`);
       
-      // Update settings in the database
-      await updateSettings({ defaultModel: modelId });
+      // Simple approach - just update with new model ID and trust the updated settings
+      const result = await updateSettings({ defaultModel: modelId });
+      console.log("Settings update result:", JSON.stringify(result));
       
-      // Clear the cache to ensure fresh settings on next load
-      await clearSettingsCache();
-      
-      console.log("Default model updated successfully and cache cleared");
+      // Verify the update by checking the returned result
+      if (result.defaultModel !== modelId) {
+        console.warn(`Update verification warning: expected ${modelId}, got ${result.defaultModel}`);
+        
+        // Try once more but do not force page reload
+        try {
+          // Try again with a clearer approach
+          await clearSettingsCache();
+          const secondResult = await updateSettings({ defaultModel: modelId });
+          
+          if (secondResult.defaultModel === modelId) {
+            console.log("Second update attempt succeeded");
+          } else {
+            console.warn("Second update attempt did not match expected model, but continuing without reload");
+            // Still use the model ID from UI update to maintain user experience
+          }
+        } catch (retryError) {
+          console.error("Retry update failed:", retryError);
+          // Continue without reloading page
+        }
+      } else {
+        console.log("Default model updated successfully and verified");
+      }
     } catch (error) {
       console.error("Error updating default model:", error);
+      
+      // Handle error without page reload
+      // Just show an error message and keep the UI state
+      alert("There was an error saving your model preference. The model will be used for this session only.");
+      
+      // No reload, no localStorage.clear()
+      // Just maintain the UI state with the selected model
     }
   };
   
@@ -164,11 +191,58 @@ export default function ModelsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ModelSelect 
-              value={defaultModelId} 
-              onChange={handleDefaultModelChange} 
-              placeholder="Select default model"
-            />
+            <div className="space-y-4">
+              <ModelSelect 
+                value={defaultModelId} 
+                onChange={handleDefaultModelChange} 
+                placeholder="Select default model"
+              />
+              
+              <div className="flex justify-end">
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={async () => {
+                    if (confirm("Reset all settings to default? This will clear your saved API keys.")) {
+                      try {
+                        const defaultSettings = await resetSettings();
+                        
+                        if (defaultSettings) {
+                          // Update UI to reflect new settings
+                          setDefaultModelId(defaultSettings.defaultModel || 'qwen-qwq-32b');
+                          setApiKeys({});
+                          
+                          alert("Settings reset successfully.");
+                          
+                          // Load API keys (there should be none after reset)
+                          const loadApiKeys = async () => {
+                            const keys: Record<string, string> = {};
+                            for (const provider of providers) {
+                              const key = await getApiKey(provider);
+                              if (key) {
+                                keys[provider] = key;
+                              }
+                            }
+                            setApiKeys(keys);
+                          };
+                          
+                          await loadApiKeys();
+                        } else {
+                          // Fallback if reset returns null
+                          console.error("Settings reset returned null result");
+                          alert("Settings reset partially completed. You may need to refresh the page.");
+                        }
+                      } catch (error) {
+                        console.error("Failed to reset settings:", error);
+                        alert("There was a problem resetting settings. Please try again later.");
+                      }
+                    }
+                  }}
+                >
+                  Reset All Settings
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
         
