@@ -21,7 +21,7 @@ The core of our solution is using a combination of techniques to handle React's 
    // Track database creation attempts to handle Strict Mode double-mounting
    let dbCreationInProgress = false;
    let dbCreationPromise: Promise<Database> | null = null;
-   
+
    // In createDatabase function:
    if (dbCreationInProgress && dbCreationPromise) {
      return dbCreationPromise;
@@ -49,10 +49,10 @@ If we still hit the collection limit, we have built-in recovery:
 // If we hit the collection limit, try to clean up and regenerate the database name
 if (error && typeof error === 'object' && 'code' in error && error.code === 'COL23') {
   console.warn('RxDB collection limit reached - generating new database name');
-  
+
   // Generate a new database name for the next attempt
   DEV_DB_NAME = `openagents_${Date.now().toString(36)}_${Math.random().toString(36).substring(2)}`;
-  
+
   // Clear the instance on error
   await cleanupDatabase();
   dbInstance = null;
@@ -96,15 +96,15 @@ export async function createDatabase(): Promise<Database> {
   if (dbInstance) {
     return dbInstance;
   }
-  
+
   // If database creation is already in progress, return the promise to prevent double creation
   if (dbCreationInProgress && dbCreationPromise) {
     return dbCreationPromise;
   }
-  
+
   // Set flag to indicate we're creating the database
   dbCreationInProgress = true;
-  
+
   // Create a promise to handle concurrent calls
   dbCreationPromise = (async () => {
     try {
@@ -115,7 +115,7 @@ export async function createDatabase(): Promise<Database> {
       dbCreationPromise = null;
     }
   })();
-  
+
   return dbCreationPromise;
 }
 ```
@@ -126,7 +126,7 @@ export async function createDatabase(): Promise<Database> {
 async getSettings(): Promise<Settings> {
   try {
     await this.initialize();
-    
+
     // Database operations...
   } catch (error) {
     // Fall back to default settings
@@ -135,7 +135,7 @@ async getSettings(): Promise<Settings> {
       id: 'global',
       theme: 'system',
       apiKeys: {},
-      defaultModel: 'claude-3-sonnet-20240229',
+      defaultModel: 'claude-3-5-sonnet-20240620',
       preferences: {}
     };
   }

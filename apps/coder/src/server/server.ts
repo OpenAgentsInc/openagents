@@ -60,7 +60,7 @@ app.post('/api/chat', async (c) => {
 
   try {
     const body = await c.req.json();
-    
+
     // Validate input messages
     let messages: Message[] = body.messages || [];
     if (!Array.isArray(messages) || messages.length === 0) {
