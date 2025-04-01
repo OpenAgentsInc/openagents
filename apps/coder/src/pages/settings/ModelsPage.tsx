@@ -93,8 +93,9 @@ export default function ModelsPage() {
       
       console.log(`Updating default model to: ${modelId}`);
       
-      // Simple approach - just update with new model ID and trust the updated settings
-      const result = await updateSettings({ defaultModel: modelId });
+      // Simple approach - create a clean object with only the field we're updating
+      const cleanUpdate = { defaultModel: modelId };
+      const result = await updateSettings(cleanUpdate);
       console.log("Settings update result:", JSON.stringify(result));
       
       // Verify the update by checking the returned result
@@ -105,7 +106,9 @@ export default function ModelsPage() {
         try {
           // Try again with a clearer approach
           await clearSettingsCache();
-          const secondResult = await updateSettings({ defaultModel: modelId });
+          // Create a clean object again for the second attempt
+          const secondCleanUpdate = { defaultModel: modelId };
+          const secondResult = await updateSettings(secondCleanUpdate);
           
           if (secondResult.defaultModel === modelId) {
             console.log("Second update attempt succeeded");

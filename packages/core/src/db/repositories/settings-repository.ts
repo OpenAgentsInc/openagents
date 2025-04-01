@@ -279,49 +279,88 @@ export class SettingsRepository {
           if (currentDoc) {
             // Document exists, use atomic update with the current revision
             try {
+              // Log the schema to help diagnose issues
+              try {
+                const collection = this.db!.settings;
+                console.log("Settings schema:", collection.schema.jsonSchema);
+              } catch (e) {
+                console.warn("Could not log schema:", e);
+              }
+                
               // Check if the document has atomicUpdate method before using it
               if (typeof currentDoc.atomicUpdate === 'function') {
                 // Use the RxDB atomic update pattern WITHOUT touching the cache yet
+                console.log("Using atomic update with only schema fields:", Object.keys(updates));
                 await currentDoc.atomicUpdate(oldData => {
-                  // Add a revision marker to help with debugging
+                  // Only include schema-valid properties
                   return {
                     ...oldData,
-                    ...updates,
-                    _updateAttempt: retries,
-                    _updateTime: new Date().toISOString()
+                    ...updates
+                    // No debugging properties that would violate schema
                   };
                 });
               } else {
                 // Fallback for when atomicUpdate is not available (missing plugin or older RxDB)
                 console.log("RxDB atomicUpdate not available, using regular update method");
                 
-                // Get the current revision
-                const currentRev = (currentDoc as any)._rev || (currentDoc as any).get('_rev');
+                // Get the current revision and other required props
+                const currentRev = (currentDoc as any)._rev || '';
                 
-                // Create updated document with all fields
+                // Create updated document with only allowed fields
                 const updatedDoc = {
                   ...currentDoc.toJSON(),
-                  ...updates,
-                  _updateAttempt: retries,
-                  _updateTime: new Date().toISOString()
+                  ...updates
+                  // No debugging properties that would violate schema
                 };
                 
                 try {
+                  console.log("Attempting update with schema-valid document");
                   // Try to update with the update method
                   await this.db!.settings.upsert(updatedDoc);
                 } catch (innerError) {
                   console.error("Regular update failed:", innerError);
                   
-                  // Last resort - try to do a direct database operation
+                  // Last resort - try direct update using findOne().update() which is schema-safe
                   try {
-                    // Remove the old doc first
-                    await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).remove();
+                    console.log("Attempting direct PATCH update");
+                    // Get the document again to ensure we have the latest
+                    const freshDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+                    if (freshDoc) {
+                      // Use patch() method which should respect schema
+                      const updateData: any = {};
+                      // Only include properties that are in the schema
+                      if (updates.defaultModel) updateData.defaultModel = updates.defaultModel;
+                      if (updates.theme) updateData.theme = updates.theme;
+                      if (updates.apiKeys) updateData.apiKeys = updates.apiKeys;
+                      if (updates.preferences) updateData.preferences = updates.preferences;
+                      
+                      await freshDoc.patch(updateData);
+                      console.log("Patch update succeeded");
+                    }
+                  } catch (patchError) {
+                    console.error("Patch update failed:", patchError);
                     
-                    // Add new doc
-                    await this.db!.settings.insert(updatedDoc);
-                  } catch (removeError) {
-                    console.error("Remove and insert failed:", removeError);
-                    throw removeError;
+                    // Very last resort - try to do a remove and recreate
+                    try {
+                      console.log("Attempting full recreation with clean document");
+                      // Remove the old doc first
+                      await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).remove();
+                      
+                      // Create a fully schema-compliant document
+                      const newDoc = {
+                        id: GLOBAL_SETTINGS_ID,
+                        theme: updates.theme || 'system',
+                        apiKeys: updates.apiKeys || {},
+                        defaultModel: updates.defaultModel || 'qwen-qwq-32b',
+                        preferences: updates.preferences || {}
+                      };
+                      
+                      // Add new doc
+                      await this.db!.settings.insert(newDoc);
+                    } catch (removeError) {
+                      console.error("Remove and insert failed:", removeError);
+                      throw removeError;
+                    }
                   }
                 }
               }
@@ -415,13 +454,13 @@ export class SettingsRepository {
         
       try {
         // Create a safe recovery document based on what we know
+        // Only include schema-compliant fields
         const recoverySettings: Settings = {
           id: GLOBAL_SETTINGS_ID,
-          theme: 'system',
-          apiKeys: {},
+          theme: updates.theme || 'system',
+          apiKeys: updates.apiKeys || {},
           defaultModel: updates.defaultModel || 'qwen-qwq-32b',
-          preferences: {},
-          ...updates // Apply the requested updates
+          preferences: updates.preferences || {}
         };
         
         // Update our cache with what we intended to save
