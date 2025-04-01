@@ -204,7 +204,7 @@ export default function HomePage() {
 
   const handleCreateThread = useCallback(() => {
     createNewThread();
-    
+
     // Dispatch a custom event to focus the input
     window.dispatchEvent(
       new CustomEvent('new-chat', { detail: { fromButton: true } })
@@ -306,7 +306,7 @@ export default function HomePage() {
             </Sidebar>
 
             <SidebarInset>
-              <div className="grid grid-rows-[auto_1fr_auto] h-screen">
+              <div className="pt-[30px] grid grid-rows-[auto_1fr_auto] h-screen">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <ModelSelect
