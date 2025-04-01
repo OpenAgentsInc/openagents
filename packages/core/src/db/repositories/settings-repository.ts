@@ -1,5 +1,6 @@
 import { getDatabase } from '../database';
 import { Settings, Database } from '../types';
+import { RxDocument } from 'rxdb';
 
 // Global settings ID
 const GLOBAL_SETTINGS_ID = 'global';
@@ -73,13 +74,13 @@ export class SettingsRepository {
     this.settingsInitPromise = (async () => {
       try {
         // Check if there's persisted settings in localStorage as a backup
-        let localSettings = null;
+        let localSettings: Settings | null = null;
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
             const storedSettings = window.localStorage.getItem('openagents_settings_backup');
             if (storedSettings) {
               try {
-                localSettings = JSON.parse(storedSettings);
+                localSettings = JSON.parse(storedSettings) as Settings;
                 // console.log("Found backup settings in localStorage");
               } catch (parseError) {
                 console.warn("Error parsing localStorage settings:", parseError);
@@ -91,7 +92,7 @@ export class SettingsRepository {
         }
 
         // Try to find existing settings
-        let settings = null;
+        let settings: RxDocument<Settings, {}> | null = null;
         try {
           settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
         } catch (findError) {
@@ -100,12 +101,12 @@ export class SettingsRepository {
         }
 
         if (settings) {
-          const settingsData = settings.toJSON();
+          let settingsData = settings.toJSON();
 
           // Validate the default model - ensure it's a string
           if (settingsData.defaultModel && typeof settingsData.defaultModel !== 'string') {
             console.warn("Invalid defaultModel type, resetting to default");
-            settingsData.defaultModel = 'qwen-qwq-32b'; // Known good model as fallback
+            settingsData = { ...settingsData, defaultModel: 'qwen-qwq-32b' }; // Create new object with fallback model
           }
 
           // Keep a backup of valid settings in localStorage
@@ -277,7 +278,7 @@ export class SettingsRepository {
           let currentDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
 
           if (currentDoc) {
-            // Document exists, use atomic update with the current revision
+            // Document exists, use patch with the current revision
             try {
               // Log the schema to help diagnose issues
               try {
@@ -287,110 +288,18 @@ export class SettingsRepository {
                 console.warn("Could not log schema:", e);
               }
 
-              // Check if the document has atomicUpdate method before using it
-              if (typeof currentDoc.atomicUpdate === 'function') {
-                // Use the RxDB atomic update pattern WITHOUT touching the cache yet
-                console.log("Using atomic update with only schema fields:", Object.keys(updates));
-                await currentDoc.atomicUpdate(oldData => {
-                  // Only include schema-valid properties
-                  return {
-                    ...oldData,
-                    ...updates
-                    // No debugging properties that would violate schema
-                  };
-                });
-              } else {
-                // Fallback for when atomicUpdate is not available (missing plugin or older RxDB)
-                console.log("RxDB atomicUpdate not available, using regular update method");
+              // Use patch instead of atomicUpdate
+              console.log("Using patch with only schema fields:", Object.keys(updates));
+              await currentDoc.patch({
+                ...updates
+              });
 
-                // Get the current revision and other required props
-                const currentRev = (currentDoc as any)._rev || '';
-
-                // Create updated document with only allowed fields
-                const updatedDoc = {
-                  ...currentDoc.toJSON(),
-                  ...updates
-                  // No debugging properties that would violate schema
-                };
-
-                try {
-                  console.log("Attempting update with schema-valid document");
-                  // Try to update with the update method
-                  await this.db!.settings.upsert(updatedDoc);
-                } catch (innerError) {
-                  console.error("Regular update failed:", innerError);
-
-                  // Last resort - try direct update using findOne().update() which is schema-safe
-                  try {
-                    console.log("Attempting direct PATCH update");
-                    // Get the document again to ensure we have the latest
-                    const freshDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
-                    if (freshDoc) {
-                      // Use patch() method which should respect schema
-                      const updateData: any = {};
-                      // Only include properties that are in the schema
-                      if (updates.defaultModel) updateData.defaultModel = updates.defaultModel;
-                      if (updates.theme) updateData.theme = updates.theme;
-                      if (updates.apiKeys) updateData.apiKeys = updates.apiKeys;
-                      if (updates.preferences) updateData.preferences = updates.preferences;
-
-                      await freshDoc.patch(updateData);
-                      console.log("Patch update succeeded");
-                    }
-                  } catch (patchError) {
-                    console.error("Patch update failed:", patchError);
-
-                    // Very last resort - try to do a remove and recreate
-                    try {
-                      console.log("Attempting full recreation with clean document");
-                      // Remove the old doc first
-                      await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).remove();
-
-                      // Create a fully schema-compliant document
-                      const newDoc = {
-                        id: GLOBAL_SETTINGS_ID,
-                        theme: updates.theme || 'system',
-                        apiKeys: updates.apiKeys || {},
-                        defaultModel: updates.defaultModel || 'qwen-qwq-32b',
-                        preferences: updates.preferences || {}
-                      };
-
-                      // Add new doc
-                      await this.db!.settings.insert(newDoc);
-                    } catch (removeError) {
-                      console.error("Remove and insert failed:", removeError);
-                      throw removeError;
-                    }
-                  }
-                }
-              }
-
-              // After successful update, fetch the latest version
-              // Use a small delay to ensure the update has propagated
-              await new Promise(resolve => setTimeout(resolve, 30));
-
-              const freshDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
-              if (freshDoc) {
-                const updatedSettings = freshDoc.toJSON();
-
-                // Only after successful read do we update the cache
-                this.cachedSettings = updatedSettings;
-
-                // Clear the pending model update since it was successful
-                if (updates.defaultModel && this._pendingModelUpdate === updates.defaultModel) {
-                  this._pendingModelUpdate = null;
-                  // Remove from localStorage too
-                  try {
-                    if (typeof window !== 'undefined' && window.localStorage) {
-                      window.localStorage.removeItem('openagents_pending_model');
-                    }
-                  } catch (localStorageError) {
-                    console.warn("Error removing pending model from localStorage:", localStorageError);
-                  }
-                }
-
-                console.log("Settings successfully updated:", JSON.stringify(updates));
-                return updatedSettings;
+              // Fetch the updated document
+              const updatedDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
+              if (updatedDoc) {
+                const updatedData = updatedDoc.toJSON();
+                this.cachedSettings = updatedData;
+                return updatedData;
               }
             } catch (updateError) {
               console.warn(`Update attempt ${retries + 1} failed:`, updateError);

@@ -35,6 +35,11 @@ const providerGroups = models.reduce((acc, model) => {
 // Get unique provider names
 const providers = Object.keys(providerGroups);
 
+interface Settings {
+  defaultModel: string;
+  // Add other settings properties as needed
+}
+
 export default function ModelsPage() {
   const { settings, isLoading, setApiKey, getApiKey, deleteApiKey, updateSettings, clearSettingsCache, resetSettings } = useSettings();
   const [defaultModelId, setDefaultModelId] = useState("");
@@ -95,7 +100,7 @@ export default function ModelsPage() {
 
       // Simple approach - create a clean object with only the field we're updating
       const cleanUpdate = { defaultModel: modelId };
-      const result = await updateSettings(cleanUpdate);
+      const result = await updateSettings(cleanUpdate) as Settings;
       console.log("Settings update result:", JSON.stringify(result));
 
       // Verify the update by checking the returned result
@@ -108,7 +113,7 @@ export default function ModelsPage() {
           await clearSettingsCache();
           // Create a clean object again for the second attempt
           const secondCleanUpdate = { defaultModel: modelId };
-          const secondResult = await updateSettings(secondCleanUpdate);
+          const secondResult = await updateSettings(secondCleanUpdate) as Settings;
 
           if (secondResult.defaultModel === modelId) {
             console.log("Second update attempt succeeded");

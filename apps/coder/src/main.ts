@@ -10,6 +10,7 @@ import {
 // import { setupElectronCommandExecutor } from "@openagents/core";
 import { serverApp } from "./server";
 import { serve } from '@hono/node-server'; // Import serve from Hono's adapter
+import { Server } from 'http';
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
@@ -64,15 +65,15 @@ app.whenReady()
     // Start the local Hono server using the Node adapter
     try {
       console.log(`[Main Process] Starting local API server on port ${LOCAL_API_PORT}...`);
-      
+
       if (!serverApp) {
         throw new Error('serverApp is undefined or null');
       }
-      
+
       if (typeof serverApp.fetch !== 'function') {
         throw new Error('serverApp.fetch is not a function');
       }
-      
+
       // Start the server with Hono's serve adapter
       serverInstance = serve({
         fetch: serverApp.fetch, // Pass the fetch handler from our Hono app
@@ -80,17 +81,17 @@ app.whenReady()
       }, (info) => {
         console.log(`[Main Process] ✅ Local API server listening on http://localhost:${info.port}`);
       });
-      
+
       // Add error handling
-      if (serverInstance && serverInstance.server) {
-        serverInstance.server.on('error', (error) => {
+      if (serverInstance) {
+        serverInstance.on('error', (error: Error) => {
           console.error('[Main Process] Server error event:', error);
         });
       }
     } catch (error) {
       console.error('[Main Process] Failed to start local API server:', error);
     }
-    
+
     // Create window and install extensions
     return createWindow();
   })

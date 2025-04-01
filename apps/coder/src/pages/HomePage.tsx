@@ -23,6 +23,12 @@ import { Link } from "@tanstack/react-router";
 import { ModelSelect } from "@/components/ui/model-select";
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Message, type UIPart, type UIMessage } from "@openagents/core";
+
+interface Settings {
+  defaultModel: string;
+  // Add other settings properties as needed
+}
 
 export default function HomePage() {
   // Get settings including the default model
@@ -133,7 +139,7 @@ export default function HomePage() {
               console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
               try {
                 // Update the default model
-                const result = await updateSettings({ defaultModel: fallbackModel });
+                const result = await updateSettings({ defaultModel: fallbackModel }) as Settings;
                 console.log("Settings auto-corrected:", result.defaultModel);
               } catch (error) {
                 console.error("Failed to auto-correct settings:", error);
@@ -349,8 +355,15 @@ export default function HomePage() {
                           // BRUTE FORCE FIX - Aggressively correct identical timestamps - Remains as backup in case database fixes still have issues
 
                           // First, identify if we have timestamp collisions
-                          const timestampCounts = {};
-                          messages.forEach(msg => {
+                          const timestampCounts: Record<number, number> = {};
+                          const messagesWithParts: UIMessage[] = messages.map(msg => ({
+                            ...msg,
+                            parts: msg.parts || [{
+                              type: 'text' as const,
+                              text: msg.content
+                            }]
+                          }));
+                          messagesWithParts.forEach(msg => {
                             const timestamp = msg.createdAt?.getTime() || 0;
                             timestampCounts[timestamp] = (timestampCounts[timestamp] || 0) + 1;
                           });
@@ -358,17 +371,15 @@ export default function HomePage() {
                           const hasCollisions = Object.values(timestampCounts).some(count => count > 1);
 
                           // If no collisions, return messages as-is
-                          if (!hasCollisions) return messages;
-
-                          // console.log("FORCING TIMESTAMP CORRECTION ON UI SIDE");
+                          if (!hasCollisions) return messagesWithParts;
 
                           // First organize by role to keep conversation flow
-                          const userMessages = [];
-                          const assistantMessages = [];
+                          const userMessages: UIMessage[] = [];
+                          const assistantMessages: UIMessage[] = [];
 
-                          messages.forEach(msg => {
-                            if (msg.role === 'user') userMessages.push({ ...msg });
-                            else assistantMessages.push({ ...msg });
+                          messagesWithParts.forEach(msg => {
+                            if (msg.role === 'user') userMessages.push(msg);
+                            else assistantMessages.push(msg);
                           });
 
                           // Pair user messages with assistant responses
