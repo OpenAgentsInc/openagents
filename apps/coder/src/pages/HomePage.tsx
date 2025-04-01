@@ -219,6 +219,7 @@ export default function HomePage() {
     }
   });
 
+  console.log(messages)
 
   const handleCreateThread = useCallback(async () => {
     try {
