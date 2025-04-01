@@ -108,6 +108,25 @@ export function useSettings() {
     loadSettings();
   }, [loadSettings]);
   
+  // Clear settings cache in repository
+  const clearSettingsCache = useCallback(() => {
+    settingsRepository.clearCache();
+    // Reload settings
+    return loadSettings();
+  }, [loadSettings]);
+  
+  // Reset settings to defaults
+  const resetSettings = useCallback(async () => {
+    try {
+      const result = await settingsRepository.resetSettings();
+      await loadSettings(); // Reload after reset
+      return result;
+    } catch (err) {
+      console.error('Error resetting settings:', err);
+      return null;
+    }
+  }, [loadSettings]);
+
   return {
     settings,
     isLoading,
@@ -118,6 +137,8 @@ export function useSettings() {
     getApiKey,
     deleteApiKey,
     setPreference,
-    getPreference
+    getPreference,
+    clearSettingsCache,
+    resetSettings
   };
 }

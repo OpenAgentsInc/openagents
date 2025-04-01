@@ -6,6 +6,7 @@ import { omit } from "remeda"
 import { cn } from "@/utils/tailwind"
 import { useAudioRecording } from "@/hooks/use-audio-recording"
 import { useAutosizeTextArea } from "@/hooks/use-autosize-textarea"
+import { useFocusInput } from "@/hooks/use-focus-input"
 import { AudioVisualizer } from "@/components/ui/audio-visualizer"
 import { Button } from "@/components/ui/button"
 import { FilePreview } from "@/components/ui/file-preview"
@@ -165,6 +166,9 @@ export function MessageInput({
       setTextAreaHeight(textAreaRef.current.offsetHeight)
     }
   }, [props.value])
+
+  // Use the focus hook - textAreaRef is correctly typed for this hook
+  useFocusInput(textAreaRef as React.RefObject<HTMLTextAreaElement>)
 
   const showFileList =
     props.allowAttachments && props.files && props.files.length > 0
