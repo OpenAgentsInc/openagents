@@ -254,7 +254,7 @@ export default function HomePage() {
 
   return (
     <SidebarProvider defaultOpen={true}>
-      <div className="flex h-full w-full flex-col text-primary font-mono">
+      <div className="flex h-[calc(100vh-30px)] w-full flex-col text-primary font-mono">
         <div className="relative flex h-full w-full flex-1 overflow-hidden z-0">
           <div className="relative flex h-full w-full flex-row overflow-hidden">
             <Sidebar>
@@ -306,7 +306,7 @@ export default function HomePage() {
             </Sidebar>
 
             <SidebarInset>
-              <div className="pt-[30px] grid grid-rows-[auto_1fr_auto] h-screen">
+              <div className="grid grid-rows-[auto_1fr_auto] h-[calc(100vh-30px)]">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <ModelSelect

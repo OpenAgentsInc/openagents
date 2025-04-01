@@ -5,6 +5,7 @@ interface UseFocusInputOptions {
 }
 
 export function useFocusInput(inputRef: RefObject<HTMLTextAreaElement>, options: UseFocusInputOptions = {}) {
+  // return null
   useEffect(() => {
     // Enhanced focus function with multiple attempts
     const forceInputFocus = () => {
@@ -13,27 +14,17 @@ export function useFocusInput(inputRef: RefObject<HTMLTextAreaElement>, options:
       // Immediate focus
       inputRef.current.focus()
 
-      // Schedule multiple additional focus attempts with increasing delays
-      const delays = [10, 50, 100, 200, 300, 500, 800]
-
-      delays.forEach(delay => {
-        setTimeout(() => {
-          if (inputRef.current) {
-            inputRef.current.focus()
-
-            // Try to ensure it's visible
-            try {
-              inputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            } catch (_) {
-              // Silent fail
-            }
-          }
-        }, delay)
-      })
+      // Just one delayed focus attempt to ensure it works after layout stabilizes
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus()
+        }
+      }, 100)
     }
 
     // Focus the input when the component initially mounts
-    forceInputFocus()
+    // Use a small delay to ensure DOM is settled
+    setTimeout(() => forceInputFocus(), 50)
 
     // Handle new chat events
     const handleNewChatEvent = (event: CustomEvent) => {
