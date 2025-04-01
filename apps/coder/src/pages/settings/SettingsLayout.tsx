@@ -10,7 +10,7 @@ import { useDarkMode } from "@/hooks/use-dark-mode";
 const OutletCompat = react19.router(Outlet);
 
 export default function SettingsLayout() {
-  const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { isDark, toggleDarkMode } = useDarkMode();
 
   // Use the proper Tanstack Router location hook
   const location = useLocation();
@@ -46,8 +46,8 @@ export default function SettingsLayout() {
               onClick={toggleDarkMode}
               className="relative size-8 hover:bg-muted/40 hover:text-foreground"
             >
-              <Moon className={`absolute size-4 transition-all duration-200 ${isDarkMode ? 'rotate-0 scale-100' : '-rotate-90 scale-0'}`} />
-              <Sun className={`absolute size-4 transition-all duration-200 ${isDarkMode ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`} />
+              <Moon className={`absolute size-4 transition-all duration-200 ${isDark ? 'rotate-0 scale-100' : '-rotate-90 scale-0'}`} />
+              <Sun className={`absolute size-4 transition-all duration-200 ${isDark ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`} />
               <span className="sr-only">Toggle theme</span>
             </Button>
           </div>

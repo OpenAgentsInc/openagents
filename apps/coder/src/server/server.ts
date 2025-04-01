@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
-import { streamText, type Message, experimental_createMCPClient } from "ai";
+import { streamText, type Message, experimental_createMCPClient, type StreamTextOnFinishCallback } from "ai";
 import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
@@ -344,7 +344,7 @@ app.post('/api/chat', async (c) => {
 
         if (!hasSystemMessage) {
           messages = [
-            { role: 'system', content: systemPrompt },
+            { role: 'system', content: systemPrompt, id: `system-${Date.now()}` },
             ...messages
           ];
         }
@@ -374,7 +374,7 @@ app.post('/api/chat', async (c) => {
               ? `${event.error.message}\n${event.error.stack}`
               : String(event.error));
         },
-        onFinish: (event: { detail: { fromButton: boolean } }) => {
+        onFinish: (event: Parameters<StreamTextOnFinishCallback<{}>>[0]) => {
           console.log(`🏁 streamText onFinish completed`);
         }
       };
