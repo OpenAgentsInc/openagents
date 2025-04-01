@@ -20,7 +20,6 @@ interface ModelSelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
-  showFreePlanOnly?: boolean;
 }
 
 export function ModelSelect({
@@ -29,17 +28,11 @@ export function ModelSelect({
   placeholder = "Select a model",
   className,
   disabled = false,
-  showFreePlanOnly = false,
 }: ModelSelectProps) {
   const [open, setOpen] = React.useState(false);
 
-  // Filter models based on plan if needed
-  const filteredModels = showFreePlanOnly
-    ? MODELS.filter((model) => model.plan === "free")
-    : MODELS;
-
   // Find the currently selected model
-  const selectedModel = filteredModels.find((model) => model.id === value);
+  const selectedModel = MODELS.find((model) => model.id === value);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -65,7 +58,7 @@ export function ModelSelect({
           <CommandInput placeholder="Search models..." className="font-mono" />
           <CommandEmpty className="font-mono">No model found.</CommandEmpty>
           <CommandGroup className="max-h-[300px] overflow-auto font-mono">
-            {filteredModels.map((model) => (
+            {MODELS.map((model) => (
               <CommandItem
                 key={model.id}
                 value={model.id}
@@ -85,11 +78,6 @@ export function ModelSelect({
                     />
                     <span className="font-medium font-mono">{model.name}</span>
                   </div>
-                  {model.shortDescription && (
-                    <span className="text-xs text-muted-foreground pl-6 font-mono">
-                      {model.shortDescription}
-                    </span>
-                  )}
                 </div>
               </CommandItem>
             ))}
