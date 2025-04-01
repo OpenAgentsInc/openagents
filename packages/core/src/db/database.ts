@@ -45,15 +45,15 @@ export async function createDatabase(): Promise<Database> {
   if (dbInstance) {
     return dbInstance;
   }
-  
+
   // If database creation is already in progress, return the promise to prevent double creation
   if (dbCreationInProgress && dbCreationPromise) {
     return dbCreationPromise;
   }
-  
+
   // Set flag to indicate we're creating the database
   dbCreationInProgress = true;
-  
+
   // Create a promise to handle concurrent calls
   dbCreationPromise = (async () => {
     try {
@@ -61,7 +61,7 @@ export async function createDatabase(): Promise<Database> {
       if (process.env.NODE_ENV === 'development') {
         const devModeModule = await import('rxdb/plugins/dev-mode');
         addRxPlugin(devModeModule.RxDBDevModePlugin);
-        
+
         // Disable dev-mode warnings
         if (devModeModule.disableWarnings) {
           devModeModule.disableWarnings();
@@ -70,8 +70,8 @@ export async function createDatabase(): Promise<Database> {
 
       // Use a static database name per session in development to handle Strict Mode
       // Use fixed name in production for persistence
-      const dbName = process.env.NODE_ENV === 'production' 
-        ? PROD_DB_NAME 
+      const dbName = process.env.NODE_ENV === 'production'
+        ? PROD_DB_NAME
         : DEV_DB_NAME;
 
       // Create database
@@ -101,19 +101,19 @@ export async function createDatabase(): Promise<Database> {
 
     } catch (error) {
       console.error('Failed to create RxDB database:', error);
-      
+
       // If we hit the collection limit, try to clean up and regenerate the database name
       if (error && typeof error === 'object' && 'code' in error && error.code === 'COL23') {
         console.warn('RxDB collection limit reached - generating new database name');
-        
+
         // Generate a new database name for the next attempt
         DEV_DB_NAME = `openagents_${Date.now().toString(36)}_${Math.random().toString(36).substring(2)}`;
-        
+
         // Clear the instance on error
         await cleanupDatabase();
         dbInstance = null;
       }
-      
+
       throw error;
     } finally {
       // Clear the creation flags regardless of outcome
@@ -121,7 +121,7 @@ export async function createDatabase(): Promise<Database> {
       dbCreationPromise = null;
     }
   })();
-  
+
   return dbCreationPromise;
 }
 
@@ -155,7 +155,7 @@ export async function cleanupDatabase() {
     }
     dbInstance = null;
   }
-  
+
   // Also clean up any indexedDB databases if we're in collection limit trouble
   if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined' && window.indexedDB) {
     try {
