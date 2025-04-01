@@ -146,7 +146,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
             latestTimestamp + forcedGap
           ));
 
-          console.log('🔴 Setting assistant message timestamp with forced gap:', timestamp);
+          // console.log('🔴 Setting assistant message timestamp with forced gap:', timestamp);
 
           // Convert to UIMessage format with threadId guaranteed
           const uiMessage: UIMessage & { threadId: string } = {
