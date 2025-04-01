@@ -31,7 +31,7 @@ let dbInstance: Database | null = null;
 
 // Using consistent database names to maintain data between version changes
 // RxDB supports schema migrations, so we don't need to change the name for each schema change
-const PROD_DB_NAME = 'openagents_prod'; 
+const PROD_DB_NAME = 'openagents_prod';
 
 // Store a static database name for development to prevent double-init issues with strict mode
 // Using a reproducible name helps with development and prevents creating multiple databases
@@ -84,7 +84,6 @@ export async function createDatabase(): Promise<Database> {
         storage,
         multiInstance: false, // Single instance mode for better reliability
         ignoreDuplicate: true, // Ignore duplicate db creation for strict mode
-        allowMultipleInstances: true, // Allow reopening closed instances
         eventReduce: true, // Reduce event load
         cleanupPolicy: {
           // Automatically clean up old revisions to prevent storage issues
@@ -100,7 +99,7 @@ export async function createDatabase(): Promise<Database> {
           schema: threadSchema,
           migrationStrategies: {
             // Migrate from version 0 to 1 - keep document as is
-            1: function(oldDoc) {
+            1: function (oldDoc) {
               return oldDoc;
             }
           }
@@ -109,7 +108,7 @@ export async function createDatabase(): Promise<Database> {
           schema: messageSchema,
           migrationStrategies: {
             // Migrate from version 0 to 1 - keep document as is
-            1: function(oldDoc) {
+            1: function (oldDoc) {
               return oldDoc;
             }
           }
@@ -118,7 +117,7 @@ export async function createDatabase(): Promise<Database> {
           schema: settingsSchema,
           migrationStrategies: {
             // Migrate from version 0 to 1 - keep document as is
-            1: function(oldDoc) {
+            1: function (oldDoc) {
               return oldDoc;
             }
           }
@@ -163,7 +162,7 @@ export async function getDatabase(): Promise<Database> {
     // REMOVED: Force cleanup on each app start
     // Only uncomment this line when you need to wipe the database for schema changes:
     // await cleanupDatabase();
-    
+
     if (!dbInstance) {
       return createDatabase();
     }
@@ -184,7 +183,7 @@ export async function cleanupDatabase() {
       if (typeof (dbInstance as any).destroy === 'function') {
         await (dbInstance as any).destroy();
       }
-      
+
       // Also try to remove database by name
       if (typeof (dbInstance as any).name === 'string' && typeof window !== 'undefined' && window.indexedDB) {
         try {
@@ -220,20 +219,20 @@ export async function cleanupDatabase() {
         console.log('IndexedDB.databases() not supported, trying known database names');
         await window.indexedDB.deleteDatabase(PROD_DB_NAME);
         await window.indexedDB.deleteDatabase(DEV_DB_NAME);
-        
+
         // Also try timestamp-based names that might have been created
         for (let i = 0; i < 5; i++) {
           const legacyName = `openagents_${Date.now().toString(36)}_cleanup${i}`;
           await window.indexedDB.deleteDatabase(legacyName);
         }
-        
+
         // Also clean up older versions
         await window.indexedDB.deleteDatabase('openagents');
         await window.indexedDB.deleteDatabase('openagents_dev');
         await window.indexedDB.deleteDatabase('openagents_v2');
         await window.indexedDB.deleteDatabase('openagents_dev_v2');
       }
-      
+
       console.log('Database cleanup completed');
     } catch (err) {
       console.warn('Error cleaning up IndexedDB:', err);
