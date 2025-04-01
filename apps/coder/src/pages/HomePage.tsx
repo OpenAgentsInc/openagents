@@ -250,7 +250,7 @@ export default function HomePage() {
   // State to force ThreadList rerender when creating a new thread
   const [threadListKey, setThreadListKey] = useState(Date.now());
 
-  const handleCreateThread = useCallback(async () => {
+  const handleCreateThread = useCallback(async (): Promise<void> => {
     try {
       // First update the key to force an immediate re-render of ThreadList
       setThreadListKey(Date.now());
@@ -265,7 +265,7 @@ export default function HomePage() {
       // Force another update after thread creation
       setThreadListKey(Date.now());
 
-      return thread;
+      // No return value (void) to match the expected type signature
     } catch (error) {
       console.error("Failed to create new thread:", error);
       // Create a fallback thread in UI only
