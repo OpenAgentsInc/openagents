@@ -62,8 +62,6 @@ export default function HomePage() {
   // Find the selected model
   const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
 
-  console.log("selectedModelId", selectedModelId);
-
   // Use the persistence layer with the correct configuration
   const {
     messages,
