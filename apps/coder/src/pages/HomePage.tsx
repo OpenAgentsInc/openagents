@@ -306,7 +306,7 @@ export default function HomePage() {
             </Sidebar>
 
             <SidebarInset>
-              <div className="grid grid-rows-[auto_1fr_auto] h-[calc(100vh-30px)]">
+              <div className="grid grid-rows-[auto_minmax(0,1fr)_auto] h-[calc(100vh-30px)]">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <ModelSelect
@@ -321,7 +321,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="overflow-y-auto">
-                  <div className="h-full p-4 pt-8 mt-4">
+                  <div className="min-h-0 p-4 pt-8">
                     <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
 
                       <MessageList
