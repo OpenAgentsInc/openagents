@@ -60,7 +60,7 @@ app.post('/api/chat', async (c) => {
 
   try {
     const body = await c.req.json();
-    
+
     // Validate input messages
     let messages: Message[] = body.messages || [];
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -74,7 +74,13 @@ app.post('/api/chat', async (c) => {
     });
 
     // Define model
-    const MODEL = "anthropic/claude-3.5-sonnet";
+    const MODEL = body.model;
+
+    if (!MODEL) {
+      return c.json({ error: "No model provided" }, 400);
+    }
+
+    console.log("🔍 MODEL:", MODEL);
 
     try {
       const streamResult = streamText({
@@ -116,7 +122,9 @@ app.post('/api/chat', async (c) => {
 
       return stream(c, async (responseStream) => {
         try {
-          const sdkStream = streamResult.toDataStream();
+          const sdkStream = streamResult.toDataStream({
+            sendReasoning: true
+          });
           await responseStream.pipe(sdkStream);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);

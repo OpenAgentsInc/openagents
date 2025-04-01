@@ -72,7 +72,6 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       // Add any missing required parameters for the AI API
       debug: true,
       format: 'json',
-      model: 'claude-3-5-sonnet-20240620',
     },
     headers: {
       ...options.headers,
@@ -88,7 +87,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       if (!response.ok) {
         // Handle error case
       }
-      
+
       // Call the original onResponse if provided
       if (options.onResponse) {
         await options.onResponse(response);
@@ -104,14 +103,64 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       // Save the completed assistant message to the database
       if (persistenceEnabled && dbInitialized && currentThreadId && message.role === 'assistant') {
         try {
+          // console.log('🔴 onFinish called for assistant message:', {
+          //   id: message.id,
+          //   content: message.content.substring(0, 50)
+          // });
+
+          // Get all current messages and find the corresponding user message
+          const currentMessages = vercelChatState.messages;
+          // console.log('🔴 Current messages:', currentMessages.map(m => ({
+          //   id: m.id,
+          //   role: m.role,
+          //   timestamp: m.createdAt,
+          //   content: m.content.substring(0, 30)
+          // })));
+
+          // Find the last user message that doesn't have a corresponding assistant message
+          const userMessages = currentMessages.filter(m => m.role === 'user');
+          const assistantMessages = currentMessages.filter(m => m.role === 'assistant');
+
+          // Find the latest user message that doesn't have a paired assistant message
+          const unpairedUserMessage = userMessages.reverse().find(userMsg => {
+            const hasAssistantResponse = assistantMessages.some(assistantMsg => {
+              const userTime = userMsg.createdAt ? new Date(userMsg.createdAt).getTime() : 0;
+              const assistantTime = assistantMsg.createdAt ? new Date(assistantMsg.createdAt).getTime() : 0;
+              return assistantTime > userTime && assistantTime - userTime < 5000; // Within 5 seconds
+            });
+            return !hasAssistantResponse;
+          });
+
+          // Calculate a timestamp that ensures proper ordering with clear time difference
+          // Find the latest timestamp of all messages
+          const allTimestamps = currentMessages.map(m =>
+            m.createdAt ? new Date(m.createdAt).getTime() : 0
+          );
+
+          const latestTimestamp = Math.max(...allTimestamps, 0);
+
+          // Force at least a 500ms gap from the latest message
+          const forcedGap = 500; // half-second gap for assistant responses
+          const timestamp = new Date(Math.max(
+            Date.now(),
+            latestTimestamp + forcedGap
+          ));
+
+          // console.log('🔴 Setting assistant message timestamp with forced gap:', timestamp);
+
           // Convert to UIMessage format with threadId guaranteed
           const uiMessage: UIMessage & { threadId: string } = {
             ...fromVercelMessage(message),
-            threadId: currentThreadId
+            threadId: currentThreadId,
+            createdAt: timestamp
           };
 
           // Save the message
           const savedMessage = await messageRepository.createMessage(uiMessage);
+          console.log('🔴 Saved assistant message:', {
+            id: savedMessage.id,
+            timestamp: timestamp
+          });
 
           // Mark as saved to prevent duplicates
           savedMessageIdsRef.current.add(message.id);
@@ -121,7 +170,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
             updatedAt: Date.now()
           });
         } catch (error) {
-          // Error handling for saving assistant message
+          console.error('🔴 Error in onFinish:', error);
         }
       }
     }
@@ -257,8 +306,9 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
   // Update thread's last updated timestamp when messages change, with debouncing
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    
+    // Create a timeout ID inside the effect so it's properly scoped
+    let timeoutId: NodeJS.Timeout | undefined;
+
     const updateThreadTimestamp = async () => {
       if (!persistenceEnabled || !dbInitialized || !currentThreadId || messages.length === 0) return;
 
@@ -269,7 +319,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
           await threadRepository.updateThread(currentThreadId, {
             updatedAt: Date.now()
           });
-          console.log(`Successfully updated timestamp for thread ${currentThreadId}`);
+          // console.log(`Successfully updated timestamp for thread ${currentThreadId}`);
         }
 
         messagesRef.current = messages;
@@ -281,14 +331,19 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
     if (currentThreadId) {
       // Debounce the update to avoid too many conflicting writes
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       timeoutId = setTimeout(() => {
         updateThreadTimestamp();
       }, 100);
     }
-    
+
     return () => {
-      clearTimeout(timeoutId);
+      // Cleanup on unmount
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
   }, [messages, currentThreadId, dbInitialized, persistenceEnabled]);
 
@@ -321,7 +376,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         );
 
         if (newUserMessages.length > 0) {
-          console.log('Saving', newUserMessages.length, 'new user messages to database');
+          // console.log('Saving', newUserMessages.length, 'new user messages to database');
           for (const message of newUserMessages) {
             console.log(`Saving user message: ${message.id}`);
             // The message already has threadId set above
@@ -348,12 +403,41 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       return null;
     }
 
-    // Create a copy with the threadId explicitly set and ensure createdAt is set
+    console.log('🔵 Append called with message:', {
+      id: message.id,
+      role: message.role,
+      content: message.content.substring(0, 50),
+      timestamp: message.createdAt
+    });
+
+    // Calculate appropriate timestamp with forced minimum gap
+    // Get all messages and their timestamps
+    const allMessages = vercelChatState.messages;
+    const allTimestamps = allMessages.map(m =>
+      m.createdAt ? new Date(m.createdAt).getTime() : 0
+    );
+
+    // Find latest timestamp
+    const latestTimestamp = allTimestamps.length ? Math.max(...allTimestamps) : 0;
+
+    // Ensure at least 300ms between messages
+    const minimumGap = 300;
+    const newTimestamp = new Date(Math.max(
+      Date.now(),
+      latestTimestamp + minimumGap
+    ));
+
+    console.log('🔵 Using calculated timestamp with gap:', newTimestamp);
+
+    // Create a copy with the threadId explicitly set
     const messageWithThread: UIMessage & { threadId: string } = {
       ...message,
       threadId: currentThreadId,
-      createdAt: message.createdAt || new Date()
+      // Use the calculated timestamp
+      createdAt: newTimestamp
     };
+
+    console.log('🔵 Created message with timestamp:', messageWithThread.createdAt);
 
     // Convert to Vercel format
     const vercelMessage = toVercelMessage(messageWithThread);
@@ -362,6 +446,10 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       // First, save user message to database if it's a user message
       if (persistenceEnabled && dbInitialized && messageWithThread.role === 'user') {
         const savedMessage = await messageRepository.createMessage(messageWithThread);
+        console.log('🔵 Saved user message to DB:', {
+          id: savedMessage.id,
+          timestamp: messageWithThread.createdAt
+        });
 
         // Mark this message as saved
         savedMessageIdsRef.current.add(messageWithThread.id);
@@ -399,12 +487,27 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   };
 
   // Custom handleSubmit function that adds thread ID
-  const handleSubmit = (
+  const handleSubmit = async (
     event?: { preventDefault?: () => void },
     options?: { experimental_attachments?: FileList }
   ) => {
     if (event?.preventDefault) {
       event.preventDefault();
+    }
+
+    // Ensure database is initialized
+    if (persistenceEnabled && !dbInitialized) {
+      try {
+        console.log("Database not initialized yet, attempting initialization now...");
+        const db = await getDatabase();
+        await messageRepository.initialize(db);
+        await threadRepository.initialize(db);
+        setDbInitialized(true);
+        console.log("Database initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        // Continue even if database fails - will use in-memory state
+      }
     }
 
     // We need to make sure we're seeing the user message immediately
@@ -413,11 +516,22 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
     // Get the current input to create a user message
     const userInput = vercelChatState.input;
-    
+
     if (!userInput || !currentThreadId) {
       // No input or thread, just call the original submit
       vercelChatState.handleSubmit(event, options);
       return;
+    }
+
+    // Ensure we have a thread to save messages to
+    if (persistenceEnabled && !currentThreadId) {
+      try {
+        // Create a default thread if needed
+        const thread = await createNewThread("New Chat");
+        // Don't wait for thread creation to submit the message
+      } catch (error) {
+        console.error("Failed to create thread:", error);
+      }
     }
 
     // Call original handleSubmit to trigger the AI process
@@ -426,12 +540,27 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
   // Thread management functions
   const switchThread = async (threadId: string) => {
-    if (!persistenceEnabled || !dbInitialized) return;
+    if (!persistenceEnabled) return;
+
+    // Try to initialize database if not already done
+    if (!dbInitialized) {
+      try {
+        console.log("Database not initialized yet, attempting initialization now...");
+        const db = await getDatabase();
+        await messageRepository.initialize(db);
+        await threadRepository.initialize(db);
+        setDbInitialized(true);
+        console.log("Database initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        return; // Don't throw here, just return
+      }
+    }
 
     try {
       const thread = await threadRepository.getThreadById(threadId);
       if (thread) {
-        console.log('Switching to thread:', threadId);
+        // console.log('Switching to thread:', threadId);
 
         // Clear messages in Vercel state
         vercelChatState.setMessages([]);
@@ -459,8 +588,23 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   };
 
   const createNewThread = async (title?: string): Promise<Thread> => {
-    if (!persistenceEnabled || !dbInitialized) {
-      throw new Error('Database not initialized or persistence disabled');
+    if (!persistenceEnabled) {
+      throw new Error('Persistence disabled');
+    }
+
+    // Try to initialize database if not already done
+    if (!dbInitialized) {
+      try {
+        console.log("Database not initialized yet, attempting initialization now...");
+        const db = await getDatabase();
+        await messageRepository.initialize(db);
+        await threadRepository.initialize(db);
+        setDbInitialized(true);
+        console.log("Database initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        throw new Error('Database initialization failed');
+      }
     }
 
     try {
@@ -554,7 +698,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         uiMessage.threadId = currentThreadId;
         return uiMessage;
       });
-      
+
       // Update our state
       setMessages(uiMessages);
     }
@@ -568,16 +712,47 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       msg.threadId = currentThreadId;
     }
     return msg;
-  }).sort((a, b) => {
-    // Sort by createdAt timestamp
+  });
+
+  // Log the messages before sorting
+  // console.log('🔵 Messages before sorting:', displayMessages.map(m => ({
+  //   id: m.id,
+  //   role: m.role,
+  //   timestamp: m.createdAt,
+  //   content: m.content.substring(0, 30)
+  // })));
+
+  // Sort messages with multiple fallbacks for identical timestamps
+  const sortedMessages = displayMessages.slice().sort((a, b) => {
+    // Primary sort: by timestamp
     const timeA = a.createdAt?.getTime() || 0;
     const timeB = b.createdAt?.getTime() || 0;
-    return timeA - timeB;
+
+    if (timeA !== timeB) {
+      return timeA - timeB; // Ascending order - older messages first
+    }
+
+    // Secondary sort: by conversation flow (user messages come before assistant responses)
+    if (a.role !== b.role) {
+      // User messages should come before assistant messages when timestamps are equal
+      return a.role === 'user' ? -1 : 1;
+    }
+
+    // Tertiary sort: by ID to ensure complete stability
+    return a.id.localeCompare(b.id);
   });
+
+  // Log the messages after sorting
+  // console.log('🔵 Messages after sorting:', sortedMessages.map(m => ({
+  //   id: m.id,
+  //   role: m.role,
+  //   timestamp: m.createdAt,
+  //   content: m.content.substring(0, 30)
+  // })));
 
   return {
     // ALWAYS use Vercel's messages, converted to our format
-    messages: displayMessages,
+    messages: sortedMessages,
     append,
     setMessages: setVercelMessages,
     isLoading: vercelChatState.isLoading,

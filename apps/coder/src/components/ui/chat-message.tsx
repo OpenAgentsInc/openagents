@@ -249,14 +249,16 @@ const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
         onOpenChange={setIsOpen}
         className="group w-full overflow-hidden rounded-lg border bg-muted/50"
       >
-        <div className="flex items-center p-2">
-          <CollapsibleTrigger asChild>
-            <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-              <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
-              <span>Thinking</span>
-            </button>
-          </CollapsibleTrigger>
-        </div>
+        <CollapsibleTrigger asChild>
+          <button className="w-full">
+            <div className="flex items-center p-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
+                <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                <span>Thinking</span>
+              </div>
+            </div>
+          </button>
+        </CollapsibleTrigger>
         <CollapsibleContent forceMount>
           <motion.div
             initial={false}

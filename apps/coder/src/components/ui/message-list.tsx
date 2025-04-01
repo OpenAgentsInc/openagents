@@ -24,9 +24,23 @@ export function MessageList({
   isTyping = false,
   messageOptions,
 }: MessageListProps) {
+  // Create ref for the messages container
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  
+  // Use the messages directly without sorting again - let parent component control sort
+  // This prevents double sorting which could cause issues
+  const sortedMessages = React.useMemo(() => messages, [messages]);
+  
+  // Scroll to bottom when messages change
+  React.useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [sortedMessages.length]);
+
   return (
-    <div className="space-y-4 overflow-visible">
-      {messages.map((message, index) => {
+    <div className="space-y-4 overflow-visible min-h-0">
+      {sortedMessages.map((message, index) => {
         const additionalOptions =
           typeof messageOptions === "function"
             ? messageOptions(message as Message)
@@ -34,7 +48,7 @@ export function MessageList({
 
         return (
           <ChatMessage
-            key={index}
+            key={message.id || index}
             showTimeStamp={showTimeStamps}
             {...(message as Message)}
             {...additionalOptions}
@@ -42,6 +56,7 @@ export function MessageList({
         )
       })}
       {isTyping && <TypingIndicator />}
+      <div ref={messagesEndRef} />
     </div>
   )
 }

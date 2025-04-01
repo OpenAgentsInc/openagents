@@ -9,7 +9,7 @@ export * from './chat/types'
 export * from './chat/usePersistentChat'
 export * from './chat/useThreads'
 export * from './chat/useSettings'
-
+export { models } from './chat/models'
 // Database module exports
 export * from './db'
 // Selectively re-export from MCP to avoid duplicate exports
