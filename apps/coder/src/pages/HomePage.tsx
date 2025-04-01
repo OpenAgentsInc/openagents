@@ -176,13 +176,13 @@ export default function HomePage() {
 
   // Load the system prompt from preferences
   const [systemPrompt, setSystemPrompt] = useState<string>("");
-  
+
   // Load system prompt from settings when component mounts
   useEffect(() => {
     const loadSystemPrompt = async () => {
       try {
         if (!settings) return;
-        
+
         // Use getPreference method from settingsRepository directly
         // since we need to get this value before rendering
         const { settingsRepository } = await import('@openagents/core/src/db/repositories');
@@ -247,19 +247,31 @@ export default function HomePage() {
     }
   });
 
-  const handleCreateThread = useCallback(async () => {
+  // State to force ThreadList rerender when creating a new thread
+  const [threadListKey, setThreadListKey] = useState(Date.now());
+
+  const handleCreateThread = useCallback(async (): Promise<void> => {
     try {
-      await createNewThread();
+      // First update the key to force an immediate re-render of ThreadList
+      setThreadListKey(Date.now());
+
+      const thread = await createNewThread();
 
       // Dispatch a custom event to focus the input
       window.dispatchEvent(
-        new CustomEvent('new-chat', { detail: { fromButton: true } })
+        new CustomEvent('new-chat', { detail: { fromButton: true, threadId: thread.id } })
       );
+
+      // Force another update after thread creation
+      setThreadListKey(Date.now());
+
+      // No return value (void) to match the expected type signature
     } catch (error) {
       console.error("Failed to create new thread:", error);
       // Create a fallback thread in UI only
       // This can happen if DB fails to initialize
       alert("Could not create a new thread. Database may be initializing. Please try again.");
+      throw error;
     }
   }, [createNewThread]);
 
@@ -268,11 +280,16 @@ export default function HomePage() {
   }, [switchThread]);
 
   const handleDeleteThread = useCallback((threadId: string) => {
-    deleteThread(threadId);
+    // Call the delete function from usePersistentChat
+    deleteThread(threadId).catch(error => {
+      console.error('Failed to delete thread:', error);
+    });
   }, [deleteThread]);
 
   const handleRenameThread = useCallback((threadId: string, title: string) => {
-    updateThread(threadId, title);
+    updateThread(threadId, title).catch(error => {
+      console.error('Failed to rename thread:', error);
+    });
   }, [updateThread]);
 
   // Handle model change - this happens when user selects from dropdown
@@ -335,6 +352,7 @@ export default function HomePage() {
 
               <SidebarContent>
                 <ThreadList
+                  key={`thread-list-${threadListKey}`} /* Force re-render on new thread */
                   currentThreadId={currentThreadId ?? ''}
                   onSelectThread={handleSelectThread}
                   onDeleteThread={handleDeleteThread}
@@ -451,9 +469,9 @@ export default function HomePage() {
                         <MessageInput
                           value={input}
                           onChange={handleInputChange}
-                          allowAttachments
-                          files={files}
-                          setFiles={setFiles}
+                          allowAttachments={false}
+                          // files={files}
+                          // setFiles={setFiles}
                           stop={stop}
                           isGenerating={isGenerating}
                         />

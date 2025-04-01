@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useThreads, Thread } from '@openagents/core';
 import { Button } from './ui/button';
 import { X, Plus } from 'lucide-react';
@@ -15,7 +15,7 @@ import { Input } from './ui/input';
 interface ThreadListProps {
   currentThreadId: string;
   onSelectThread: (threadId: string) => void;
-  onCreateThread: () => void;
+  onCreateThread: () => Promise<void>; // Changed to Promise for optimistic updates
   onDeleteThread: (threadId: string) => void;
   onRenameThread?: (threadId: string, title: string) => void;
   // onPinThread?: (threadId: string) => void;
@@ -34,12 +34,22 @@ export function ThreadList({
   onRenameThread,
   // onPinThread
 }: ThreadListProps) {
-  const { threads, isLoading, error } = useThreads({ refreshInterval: 5000 });
+  // Use a very short refresh interval for immediate updates
+  const { threads, isLoading, error, refresh } = useThreads({ refreshInterval: 300 });
+
+  // Immediately refresh when component mounts or is forced to re-render
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [threadToRename, setThreadToRename] = useState<Thread | null>(null);
   const [newTitle, setNewTitle] = useState('');
+  // Local state to track threads to be removed for optimistic updates
+  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
+  // We don't need optimistic threads since we're handling that in the database layer now
+  // This keeps the UI simpler and avoids duplicate entries
 
-  // Group threads by time periods
+  // Group threads by time periods - filter out pending deletes for optimistic UI
   const groupedThreads = useMemo(() => {
     const now = new Date();
     const groups: ThreadGroup[] = [
@@ -48,7 +58,10 @@ export function ThreadList({
       { label: 'Older', threads: [] }
     ];
 
-    threads.forEach(thread => {
+    // Filter out threads that are pending deletion
+    const filteredThreads = threads.filter(thread => !pendingDeletes.has(thread.id));
+
+    filteredThreads.forEach(thread => {
       const threadDate = new Date(thread.createdAt);
 
       if (isWithinInterval(threadDate, { start: subDays(now, 7), end: now })) {
@@ -61,14 +74,15 @@ export function ThreadList({
     });
 
     return groups;
-  }, [threads]);
+  }, [threads, pendingDeletes]);
 
+  // Only show loading state on initial load when no threads are available
+  // Don't show loading state during refreshes to prevent UI flashing
   if (isLoading && threads.length === 0) {
     return (
       <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
-        <div className="py-4 text-center text-muted-foreground">
-          Loading...
-        </div>
+        {/* Empty space with no visible loading text to prevent layout shifts */}
+        <div className="py-4"></div>
       </div>
     );
   }
@@ -148,6 +162,9 @@ export function ThreadList({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (window.confirm('Are you sure you want to delete this chat?')) {
+                                  // Optimistic update - add to pending deletes first
+                                  setPendingDeletes(prev => new Set([...prev, thread.id]));
+                                  // Then call the actual delete function
                                   onDeleteThread(thread.id);
                                 }
                               }}

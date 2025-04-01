@@ -58,23 +58,30 @@ function getToolParameters(invocation: ToolInvocation) {
 
 // Helper function to extract repo info from tool invocation
 function getRepoInfo(invocation: ToolInvocation) {
-  const args = invocation.args || {};
+  // Get parameters based on invocation state
+  const params = invocation.state === "result"
+    ? (invocation.result?.input || invocation.result?.parameters || invocation.result?.args || invocation.args)
+    : invocation.state === "call"
+      ? invocation.args
+      : undefined;
+
+  if (!params) return null;
 
   // Handle grep tool's different parameter names
-  if ('repoOwner' in args && 'repoName' in args) {
+  if ('repoOwner' in params && 'repoName' in params) {
     return {
-      owner: args.repoOwner as string,
-      repo: args.repoName as string,
-      branch: 'branch' in args ? args.branch as string : undefined
+      owner: params.repoOwner as string,
+      repo: params.repoName as string,
+      branch: 'branch' in params ? params.branch as string : undefined
     };
   }
 
   // Handle standard GitHub tool parameter names
-  if ('owner' in args && 'repo' in args) {
+  if ('owner' in params && 'repo' in params) {
     return {
-      owner: args.owner as string,
-      repo: args.repo as string,
-      branch: 'branch' in args ? args.branch as string : undefined
+      owner: params.owner as string,
+      repo: params.repo as string,
+      branch: 'branch' in params ? params.branch as string : undefined
     };
   }
 
