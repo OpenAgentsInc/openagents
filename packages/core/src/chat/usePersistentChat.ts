@@ -133,19 +133,19 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
           // Calculate a timestamp that ensures proper ordering with clear time difference
           // Find the latest timestamp of all messages
-          const allTimestamps = currentMessages.map(m => 
+          const allTimestamps = currentMessages.map(m =>
             m.createdAt ? new Date(m.createdAt).getTime() : 0
           );
-          
+
           const latestTimestamp = Math.max(...allTimestamps, 0);
-          
+
           // Force at least a 500ms gap from the latest message
           const forcedGap = 500; // half-second gap for assistant responses
           const timestamp = new Date(Math.max(
             Date.now(),
             latestTimestamp + forcedGap
           ));
-          
+
           console.log('🔴 Setting assistant message timestamp with forced gap:', timestamp);
 
           // Convert to UIMessage format with threadId guaranteed
@@ -413,22 +413,22 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     // Calculate appropriate timestamp with forced minimum gap
     // Get all messages and their timestamps
     const allMessages = vercelChatState.messages;
-    const allTimestamps = allMessages.map(m => 
+    const allTimestamps = allMessages.map(m =>
       m.createdAt ? new Date(m.createdAt).getTime() : 0
     );
-    
+
     // Find latest timestamp
     const latestTimestamp = allTimestamps.length ? Math.max(...allTimestamps) : 0;
-    
+
     // Ensure at least 300ms between messages
-    const minimumGap = 300; 
+    const minimumGap = 300;
     const newTimestamp = new Date(Math.max(
       Date.now(),
       latestTimestamp + minimumGap
     ));
-    
+
     console.log('🔵 Using calculated timestamp with gap:', newTimestamp);
-    
+
     // Create a copy with the threadId explicitly set
     const messageWithThread: UIMessage & { threadId: string } = {
       ...message,
@@ -487,12 +487,27 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   };
 
   // Custom handleSubmit function that adds thread ID
-  const handleSubmit = (
+  const handleSubmit = async (
     event?: { preventDefault?: () => void },
     options?: { experimental_attachments?: FileList }
   ) => {
     if (event?.preventDefault) {
       event.preventDefault();
+    }
+
+    // Ensure database is initialized
+    if (persistenceEnabled && !dbInitialized) {
+      try {
+        console.log("Database not initialized yet, attempting initialization now...");
+        const db = await getDatabase();
+        await messageRepository.initialize(db);
+        await threadRepository.initialize(db);
+        setDbInitialized(true);
+        console.log("Database initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        // Continue even if database fails - will use in-memory state
+      }
     }
 
     // We need to make sure we're seeing the user message immediately
@@ -508,13 +523,39 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       return;
     }
 
+    // Ensure we have a thread to save messages to
+    if (persistenceEnabled && !currentThreadId) {
+      try {
+        // Create a default thread if needed
+        const thread = await createNewThread("New Chat");
+        // Don't wait for thread creation to submit the message
+      } catch (error) {
+        console.error("Failed to create thread:", error);
+      }
+    }
+
     // Call original handleSubmit to trigger the AI process
     vercelChatState.handleSubmit(event, options);
   };
 
   // Thread management functions
   const switchThread = async (threadId: string) => {
-    if (!persistenceEnabled || !dbInitialized) return;
+    if (!persistenceEnabled) return;
+
+    // Try to initialize database if not already done
+    if (!dbInitialized) {
+      try {
+        console.log("Database not initialized yet, attempting initialization now...");
+        const db = await getDatabase();
+        await messageRepository.initialize(db);
+        await threadRepository.initialize(db);
+        setDbInitialized(true);
+        console.log("Database initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        return; // Don't throw here, just return
+      }
+    }
 
     try {
       const thread = await threadRepository.getThreadById(threadId);
@@ -547,8 +588,23 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   };
 
   const createNewThread = async (title?: string): Promise<Thread> => {
-    if (!persistenceEnabled || !dbInitialized) {
-      throw new Error('Database not initialized or persistence disabled');
+    if (!persistenceEnabled) {
+      throw new Error('Persistence disabled');
+    }
+
+    // Try to initialize database if not already done
+    if (!dbInitialized) {
+      try {
+        console.log("Database not initialized yet, attempting initialization now...");
+        const db = await getDatabase();
+        await messageRepository.initialize(db);
+        await threadRepository.initialize(db);
+        setDbInitialized(true);
+        console.log("Database initialized successfully");
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        throw new Error('Database initialization failed');
+      }
     }
 
     try {
@@ -659,40 +715,40 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   });
 
   // Log the messages before sorting
-  console.log('🔵 Messages before sorting:', displayMessages.map(m => ({
-    id: m.id,
-    role: m.role,
-    timestamp: m.createdAt,
-    content: m.content.substring(0, 30)
-  })));
+  // console.log('🔵 Messages before sorting:', displayMessages.map(m => ({
+  //   id: m.id,
+  //   role: m.role,
+  //   timestamp: m.createdAt,
+  //   content: m.content.substring(0, 30)
+  // })));
 
   // Sort messages with multiple fallbacks for identical timestamps
   const sortedMessages = displayMessages.slice().sort((a, b) => {
     // Primary sort: by timestamp
     const timeA = a.createdAt?.getTime() || 0;
     const timeB = b.createdAt?.getTime() || 0;
-    
+
     if (timeA !== timeB) {
       return timeA - timeB; // Ascending order - older messages first
     }
-    
+
     // Secondary sort: by conversation flow (user messages come before assistant responses)
     if (a.role !== b.role) {
       // User messages should come before assistant messages when timestamps are equal
       return a.role === 'user' ? -1 : 1;
     }
-    
+
     // Tertiary sort: by ID to ensure complete stability
     return a.id.localeCompare(b.id);
   });
 
   // Log the messages after sorting
-  console.log('🔵 Messages after sorting:', sortedMessages.map(m => ({
-    id: m.id,
-    role: m.role,
-    timestamp: m.createdAt,
-    content: m.content.substring(0, 30)
-  })));
+  // console.log('🔵 Messages after sorting:', sortedMessages.map(m => ({
+  //   id: m.id,
+  //   role: m.role,
+  //   timestamp: m.createdAt,
+  //   content: m.content.substring(0, 30)
+  // })));
 
   return {
     // ALWAYS use Vercel's messages, converted to our format

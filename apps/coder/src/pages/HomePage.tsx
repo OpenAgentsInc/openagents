@@ -31,6 +31,18 @@ export default function HomePage() {
   // Force a refresh of settings when the component mounts
   useEffect(() => {
     clearSettingsCache();
+    
+    // Initialize database early
+    (async () => {
+      try {
+        // Import directly here to avoid circular dependencies
+        const db = await import('@openagents/core/src/db/database');
+        await db.getDatabase();
+        console.log("Database initialized on startup");
+      } catch (error) {
+        console.error("Failed to initialize database on startup:", error);
+      }
+    })();
   }, [clearSettingsCache]);
   const [selectedModelId, setSelectedModelId] = useState<string>("");
 
@@ -202,13 +214,20 @@ export default function HomePage() {
   });
 
 
-  const handleCreateThread = useCallback(() => {
-    createNewThread();
-
-    // Dispatch a custom event to focus the input
-    window.dispatchEvent(
-      new CustomEvent('new-chat', { detail: { fromButton: true } })
-    );
+  const handleCreateThread = useCallback(async () => {
+    try {
+      await createNewThread();
+      
+      // Dispatch a custom event to focus the input
+      window.dispatchEvent(
+        new CustomEvent('new-chat', { detail: { fromButton: true } })
+      );
+    } catch (error) {
+      console.error("Failed to create new thread:", error);
+      // Create a fallback thread in UI only
+      // This can happen if DB fails to initialize
+      alert("Could not create a new thread. Database may be initializing. Please try again.");
+    }
   }, [createNewThread]);
 
   const handleSelectThread = useCallback((threadId: string) => {

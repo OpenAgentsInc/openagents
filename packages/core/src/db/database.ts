@@ -28,11 +28,11 @@ const storage = wrappedValidateZSchemaStorage({
 let dbInstance: Database | null = null;
 
 // Database name constants - add version to force clean database on schema change
-const PROD_DB_NAME = 'openagents_v2'; // Incremented version number to force clean database
+const PROD_DB_NAME = 'openagents_v3'; // Incremented version number to force clean database
 
 // Store a static database name for development to prevent double-init issues with strict mode
 // Using a reproducible name helps with development and prevents creating multiple databases
-let DEV_DB_NAME = 'openagents_dev_v2'; // Incremented version number to force clean database
+let DEV_DB_NAME = 'openagents_dev_v3'; // Incremented version number to force clean database
 
 // Track database creation attempts to handle Strict Mode double-mounting
 let dbCreationInProgress = false;
@@ -208,6 +208,8 @@ export async function cleanupDatabase() {
         // Also clean up older versions
         await window.indexedDB.deleteDatabase('openagents');
         await window.indexedDB.deleteDatabase('openagents_dev');
+        await window.indexedDB.deleteDatabase('openagents_v2');
+        await window.indexedDB.deleteDatabase('openagents_dev_v2');
       }
       
       console.log('Database cleanup completed');

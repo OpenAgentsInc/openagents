@@ -186,7 +186,7 @@ export default function ModelsPage() {
         </div>
 
         {/* Default Model Selection */}
-        {/* <Card className="font-mono">
+        <Card className="font-mono">
           <CardHeader>
             <CardTitle>Default Model</CardTitle>
             <CardDescription>
@@ -247,7 +247,7 @@ export default function ModelsPage() {
               </div>
             </div>
           </CardContent>
-        </Card> */}
+        </Card>
 
         {/* API Keys */}
         <Card className="font-mono">

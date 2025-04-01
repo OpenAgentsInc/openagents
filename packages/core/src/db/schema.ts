@@ -20,13 +20,13 @@ export const threadSchema: RxJsonSchema<Thread> = {
     },
     createdAt: {
       type: 'number',
-      // Removed multipleOf constraint to allow millisecond precision
+      multipleOf: 0.001, // Allow millisecond precision (0.001 = 1ms)
       minimum: 0,
       maximum: 9007199254740991 // Number.MAX_SAFE_INTEGER
     },
     updatedAt: {
       type: 'number',
-      // Removed multipleOf constraint to allow millisecond precision
+      multipleOf: 0.001, // Allow millisecond precision (0.001 = 1ms)
       minimum: 0,
       maximum: 9007199254740991 // Number.MAX_SAFE_INTEGER
     },
@@ -74,7 +74,7 @@ export const messageSchema: RxJsonSchema<StoredMessage> = {
     },
     createdAt: {
       type: 'number',
-      // Removed multipleOf constraint to allow millisecond precision
+      multipleOf: 0.001, // Allow millisecond precision (0.001 = 1ms)
       minimum: 0,
       maximum: 9007199254740991 // Number.MAX_SAFE_INTEGER
     },

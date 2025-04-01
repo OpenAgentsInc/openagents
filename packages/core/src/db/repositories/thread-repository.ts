@@ -10,10 +10,15 @@ export class ThreadRepository {
 
   /**
    * Initialize the repository with a database connection
+   * Can optionally accept a database instance to avoid multiple initializations
    */
-  async initialize(): Promise<void> {
+  async initialize(database?: Database): Promise<void> {
     if (!this.db) {
-      this.db = await getDatabase();
+      if (database) {
+        this.db = database;
+      } else {
+        this.db = await getDatabase();
+      }
     }
   }
 
