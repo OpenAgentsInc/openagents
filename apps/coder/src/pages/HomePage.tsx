@@ -204,6 +204,11 @@ export default function HomePage() {
 
   const handleCreateThread = useCallback(() => {
     createNewThread();
+    
+    // Dispatch a custom event to focus the input
+    window.dispatchEvent(
+      new CustomEvent('new-chat', { detail: { fromButton: true } })
+    );
   }, [createNewThread]);
 
   const handleSelectThread = useCallback((threadId: string) => {
@@ -316,7 +321,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="overflow-y-auto">
-                  <div className="h-full p-4">
+                  <div className="h-full p-4 pt-8 mt-4">
                     <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
 
                       <MessageList
@@ -346,9 +351,7 @@ export default function HomePage() {
                         />
                       )}
                     </ChatForm>
-                    <div className="mt-2 text-center text-xs text-muted-foreground">
-                      <div>Coder will make mistakes. Commit to git regularly.</div>
-                    </div>
+                    {/* Removed the disclaimer text */}
                   </div>
                 </div>
               </div>

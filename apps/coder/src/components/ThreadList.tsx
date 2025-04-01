@@ -100,7 +100,11 @@ export function ThreadList({
                         className={`group/link relative flex h-9 w-full items-center overflow-hidden rounded-lg px-2 py-1 text-sm outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring hover:focus-visible:bg-sidebar-accent ${thread.id === currentThreadId ? 'bg-sidebar-accent text-sidebar-accent-foreground' : ''
                           }`}
                         title={thread.title || 'Untitled'}
-                        onClick={() => onSelectThread(thread.id)}
+                        onClick={() => {
+                          onSelectThread(thread.id);
+                          // Dispatch focus event when thread is selected
+                          window.dispatchEvent(new Event('focus-chat-input'));
+                        }}
                       >
                         <div className="relative flex w-full items-center">
                           <div className="relative w-full">
@@ -117,6 +121,8 @@ export function ThreadList({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onSelectThread(thread.id);
+                                // Dispatch focus event when thread is selected via the input
+                                window.dispatchEvent(new Event('focus-chat-input'));
                               }}
                             />
                           </div>
