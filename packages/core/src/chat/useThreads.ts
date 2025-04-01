@@ -51,12 +51,15 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Create a new thread
   const createThread = useCallback(async (title?: string): Promise<Thread> => {
     try {
+      // Create the thread directly in the database without temporary thread
       const thread = await threadRepository.createThread({
         title: title || 'New Chat'
       });
       
-      // Refresh the threads list
-      await loadThreads();
+      // Update local state immediately for optimistic UI
+      setThreads(currentThreads => [thread, ...currentThreads]);
+      
+      // Skip the full loadThreads to avoid showing duplicates
       
       return thread;
     } catch (err) {
@@ -131,7 +134,7 @@ export function useThreads(options: UseThreadsOptions = {}) {
     loadThreads();
   }, [loadThreads]);
   
-  // Set up auto-refresh if enabled
+  // Set up auto-refresh if enabled 
   useEffect(() => {
     if (refreshInterval > 0) {
       const intervalId = setInterval(() => {
@@ -141,6 +144,20 @@ export function useThreads(options: UseThreadsOptions = {}) {
       return () => clearInterval(intervalId);
     }
   }, [refreshInterval, loadThreads]);
+  
+  // Set up a one-time refresh when a thread is created/deleted
+  useEffect(() => {
+    const handleThreadChange = () => {
+      loadThreads();
+    };
+    
+    // Listen for thread changes
+    window.addEventListener('thread-changed', handleThreadChange);
+    
+    return () => {
+      window.removeEventListener('thread-changed', handleThreadChange);
+    };
+  }, [loadThreads]);
   
   return {
     threads,

@@ -247,19 +247,31 @@ export default function HomePage() {
     }
   });
 
+  // State to force ThreadList rerender when creating a new thread
+  const [threadListKey, setThreadListKey] = useState(Date.now());
+  
   const handleCreateThread = useCallback(async () => {
     try {
-      await createNewThread();
+      // First update the key to force an immediate re-render of ThreadList
+      setThreadListKey(Date.now());
+      
+      const thread = await createNewThread();
 
       // Dispatch a custom event to focus the input
       window.dispatchEvent(
-        new CustomEvent('new-chat', { detail: { fromButton: true } })
+        new CustomEvent('new-chat', { detail: { fromButton: true, threadId: thread.id } })
       );
+      
+      // Force another update after thread creation
+      setThreadListKey(Date.now());
+      
+      return thread;
     } catch (error) {
       console.error("Failed to create new thread:", error);
       // Create a fallback thread in UI only
       // This can happen if DB fails to initialize
       alert("Could not create a new thread. Database may be initializing. Please try again.");
+      throw error;
     }
   }, [createNewThread]);
 
@@ -340,6 +352,7 @@ export default function HomePage() {
 
               <SidebarContent>
                 <ThreadList
+                  key={`thread-list-${threadListKey}`} /* Force re-render on new thread */
                   currentThreadId={currentThreadId ?? ''}
                   onSelectThread={handleSelectThread}
                   onDeleteThread={handleDeleteThread}

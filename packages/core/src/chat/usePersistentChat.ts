@@ -574,6 +574,12 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     }
 
     try {
+      // Clear messages for the new thread right away
+      vercelChatState.setMessages([]);
+      setMessages([]);
+      messagesRef.current = [];
+      
+      // Create the actual thread in the database
       const thread = await threadRepository.createThread({
         title: title || 'New Chat',
         createdAt: Date.now(),
@@ -582,18 +588,18 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         systemPrompt: '',
         metadata: {}
       });
+      
+      // Dispatch a custom event to notify all components that a thread was created
+      window.dispatchEvent(new CustomEvent('thread-changed', { 
+        detail: { action: 'create', threadId: thread.id }
+      }));
 
       console.log('Created new thread:', thread.id);
-
-      // Clear messages
-      vercelChatState.setMessages([]);
-      setMessages([]);
-      messagesRef.current = [];
 
       // For a new thread, we should definitely clear all cached statuses
       loadedThreadsRef.current.delete(thread.id);
 
-      // Switch to the new thread
+      // Now switch to the actual thread ID from the database
       setCurrentThreadId(thread.id);
       if (onThreadChange) {
         onThreadChange(thread.id);
@@ -614,25 +620,34 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     try {
       console.log('Deleting thread:', threadId);
 
-      // Delete messages first
+      // If the current thread is being deleted, switch to another thread first
+      // This provides a better user experience because the UI updates immediately
+      if (threadId === currentThreadId) {
+        // Get all threads except the one being deleted
+        const allThreads = await threadRepository.getAllThreads();
+        const remainingThreads = allThreads.filter(t => t.id !== threadId);
+        
+        if (remainingThreads.length > 0) {
+          // Switch to the most recent thread first
+          await switchThread(remainingThreads[0].id);
+        } else {
+          // Create a new thread first if no threads will be left
+          const newThread = await createNewThread();
+          await switchThread(newThread.id);
+        }
+      }
+      
+      // Delete messages
       await messageRepository.deleteMessagesByThreadId(threadId);
 
       // Then delete the thread
       const result = await threadRepository.deleteThread(threadId);
-
-      // If the current thread was deleted, switch to another thread
-      if (result && threadId === currentThreadId) {
-        const threads = await threadRepository.getAllThreads();
-        if (threads.length > 0) {
-          // Switch to the most recent thread
-          switchThread(threads[0].id);
-        } else {
-          // Create a new thread if no threads left
-          const newThread = await createNewThread();
-          switchThread(newThread.id);
-        }
-      }
-
+      
+      // Dispatch a custom event to notify all components that a thread was deleted
+      window.dispatchEvent(new CustomEvent('thread-changed', { 
+        detail: { action: 'delete', threadId: threadId }
+      }));
+      
       return result;
     } catch (error) {
       console.error('Error deleting thread:', error);

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useThreads, Thread } from '@openagents/core';
 import { Button } from './ui/button';
 import { X, Plus } from 'lucide-react';
@@ -15,7 +15,7 @@ import { Input } from './ui/input';
 interface ThreadListProps {
   currentThreadId: string;
   onSelectThread: (threadId: string) => void;
-  onCreateThread: () => void;
+  onCreateThread: () => Promise<void>; // Changed to Promise for optimistic updates
   onDeleteThread: (threadId: string) => void;
   onRenameThread?: (threadId: string, title: string) => void;
   // onPinThread?: (threadId: string) => void;
@@ -34,12 +34,20 @@ export function ThreadList({
   onRenameThread,
   // onPinThread
 }: ThreadListProps) {
-  const { threads, isLoading, error } = useThreads({ refreshInterval: 5000 });
+  // Use a very short refresh interval for immediate updates
+  const { threads, isLoading, error, refresh } = useThreads({ refreshInterval: 300 });
+
+  // Immediately refresh when component mounts or is forced to re-render
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [threadToRename, setThreadToRename] = useState<Thread | null>(null);
   const [newTitle, setNewTitle] = useState('');
   // Local state to track threads to be removed for optimistic updates
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
+  // We don't need optimistic threads since we're handling that in the database layer now
+  // This keeps the UI simpler and avoids duplicate entries
 
   // Group threads by time periods - filter out pending deletes for optimistic UI
   const groupedThreads = useMemo(() => {
