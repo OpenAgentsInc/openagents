@@ -23,6 +23,14 @@ import { Link } from "@tanstack/react-router";
 import { ModelSelect } from "@/components/ui/model-select";
 import { MessageSquareIcon, SettingsIcon, HelpCircleIcon, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Message as UIMessage, type MessagePart } from "@/components/ui/chat-message";
+
+interface Settings {
+  defaultModel: string;
+  // Add other settings properties as needed
+}
+
+type Message = UIMessage;
 
 export default function HomePage() {
   // Get settings including the default model
@@ -133,7 +141,7 @@ export default function HomePage() {
               console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
               try {
                 // Update the default model
-                const result = await updateSettings({ defaultModel: fallbackModel });
+                const result = await updateSettings({ defaultModel: fallbackModel }) as Settings;
                 console.log("Settings auto-corrected:", result.defaultModel);
               } catch (error) {
                 console.error("Failed to auto-correct settings:", error);
@@ -349,7 +357,7 @@ export default function HomePage() {
                           // BRUTE FORCE FIX - Aggressively correct identical timestamps - Remains as backup in case database fixes still have issues
 
                           // First, identify if we have timestamp collisions
-                          const timestampCounts = {};
+                          const timestampCounts: Record<number, number> = {};
                           messages.forEach(msg => {
                             const timestamp = msg.createdAt?.getTime() || 0;
                             timestampCounts[timestamp] = (timestampCounts[timestamp] || 0) + 1;
@@ -363,8 +371,8 @@ export default function HomePage() {
                           // console.log("FORCING TIMESTAMP CORRECTION ON UI SIDE");
 
                           // First organize by role to keep conversation flow
-                          const userMessages = [];
-                          const assistantMessages = [];
+                          const userMessages: Message[] = [];
+                          const assistantMessages: Message[] = [];
 
                           messages.forEach(msg => {
                             if (msg.role === 'user') userMessages.push({ ...msg });
