@@ -2,12 +2,24 @@
 declare module '@expo/vector-icons' {
   import * as React from 'react';
 
-  export interface IoniconsProps {
-    name: any; // Allow any string as name
+  // Common props interface
+  interface IconBaseProps {
     size?: number;
     color?: string;
     style?: React.CSSProperties;
   }
 
+  // Ionicons props interface
+  export interface IoniconsProps extends IconBaseProps {
+    name: string;
+  }
+
+  // MaterialCommunityIcons props interface
+  export interface MaterialCommunityIconsProps extends IconBaseProps {
+    name: string;
+  }
+
+  // Component type definitions as React FCs
   export const Ionicons: React.FC<IoniconsProps>;
+  export const MaterialCommunityIcons: React.FC<MaterialCommunityIconsProps>;
 }

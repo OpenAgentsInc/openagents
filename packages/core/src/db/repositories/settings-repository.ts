@@ -227,7 +227,7 @@ export class SettingsRepository {
 
         // Create default settings if none exist
         // Get the model IDs from the MODELS array to set reasonable defaults
-        const visibleModelIds = [];
+        const visibleModelIds: string[] = [];
         try {
           // Try to access top 5 models
           // We can't import dynamically here to avoid TypeScript errors
@@ -238,9 +238,11 @@ export class SettingsRepository {
             'openai/gpt-4o-mini',
             'openai/gpt-4o-2024-11-20',
             'google/gemini-2.0-flash-001'
-          ];
+          ] as string[];
           // Use our fixed set of default models
-          visibleModelIds.push(...defaultModelIds);
+          for (const id of defaultModelIds) {
+            visibleModelIds.push(id);
+          }
         } catch (e) {
           console.warn("Could not load MODELS for default visibleModelIds", e);
         }
@@ -734,7 +736,7 @@ export class SettingsRepository {
     this.cachedSettings = null;
 
     // Get default visible model IDs
-    const visibleModelIds = [];
+    const visibleModelIds: string[] = [];
     try {
       // Use fixed default models instead of dynamic import
       const defaultModelIds = [
@@ -743,9 +745,11 @@ export class SettingsRepository {
         'openai/gpt-4o-mini',
         'openai/gpt-4o-2024-11-20',
         'google/gemini-2.0-flash-001'
-      ];
+      ] as string[];
       // Use our fixed set of default models
-      visibleModelIds.push(...defaultModelIds);
+      for (const id of defaultModelIds) {
+        visibleModelIds.push(id);
+      }
     } catch (e) {
       console.warn("Could not load MODELS for default visibleModelIds during reset", e);
     }
