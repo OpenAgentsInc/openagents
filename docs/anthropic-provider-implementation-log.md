@@ -67,6 +67,17 @@ Manual testing verified:
 - This allows users to easily make all models visible in the selector with one click
 - Particularly useful for ensuring newly added models like the Anthropic Claude models appear in the selector
 - Implemented as a simple action that gets all model IDs and updates the visibility settings
+- Uses Sonner toast notifications instead of alerts for a better user experience
+
+### Model Detection Fixes
+- Fixed an issue where Anthropic Claude models were being incorrectly routed to LMStudio
+- Added proper detection of Anthropic models in the ModelSelect component by checking for `claude-` prefix
+- Updated dynamic model creation to correctly set provider to 'anthropic' for Claude models
+- Added dedicated localStorage key for Anthropic models for improved persistence
+- Fixed Anthropic version header conflicts by removing duplicate headers
+- Added validation to prevent routing Claude models to LMStudio
+- Improved logging to better diagnose incorrect model routing
+- Skipped unnecessary LMStudio checks for Anthropic models to prevent errors
 
 ## Conclusion
 

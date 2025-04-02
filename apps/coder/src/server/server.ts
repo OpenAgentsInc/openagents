@@ -144,10 +144,7 @@ app.post('/api/chat', async (c) => {
     // Create the Anthropic client with API key
     const anthropicClient = createAnthropic({
       apiKey: ANTHROPIC_API_KEY,
-      // Optional: Add any custom headers if needed
-      headers: {
-        'Anthropic-Version': '2023-06-01'
-      }
+      // Do not set Anthropic-Version header here, it will be included in the fetch request
     });
 
     // Define model
@@ -247,6 +244,23 @@ app.post('/api/chat', async (c) => {
       let headers = {};
 
       if (provider === "lmstudio") {
+        // Add extra validation to catch any potential mix-ups
+        if (MODEL.startsWith('claude-')) {
+          console.error(`[Server] ERROR: Attempting to use Claude model ${MODEL} with LMStudio provider! This is incorrect and will fail.`);
+          console.error(`[Server] Rejecting this request to prevent incorrect routing.`);
+          
+          // Return error as SSE
+          c.header('Content-Type', 'text/event-stream; charset=utf-8');
+          c.header('Cache-Control', 'no-cache');
+          c.header('Connection', 'keep-alive');
+          c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+          return stream(c, async (responseStream) => {
+            const errorMsg = "Invalid provider configuration: Claude models must use the Anthropic provider, not LMStudio. Please select a different model or fix the provider settings.";
+            await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+          });
+        }
+        
         console.log(`[Server] Using LMStudio provider`);
 
         // Get the LMStudio URL from request if provided, otherwise use default
@@ -303,7 +317,13 @@ app.post('/api/chat', async (c) => {
           'X-Title': 'OpenAgents Coder'
         };
       } else if (provider === "anthropic") {
-        console.log(`[Server] Using Anthropic provider`);
+        console.log(`[Server] Using Anthropic provider for model: ${MODEL}`);
+        
+        // Check if the model ID starts with claude- to confirm it's an Anthropic direct model
+        if (!MODEL.startsWith('claude-')) {
+          console.warn(`[Server] Warning: Model ${MODEL} is set to use the Anthropic provider but doesn't start with 'claude-'`);
+        }
+        
         // Check if API key is present
         if (!ANTHROPIC_API_KEY) {
           // Return error as SSE
@@ -318,9 +338,13 @@ app.post('/api/chat', async (c) => {
           });
         }
         
+        // Add detailed logging
+        console.log(`[Server] Creating Anthropic request for model: ${MODEL} with API key length: ${ANTHROPIC_API_KEY.length}`);
+        
         // For Anthropic models, use the Anthropic provider
         model = anthropicClient(MODEL);
-        // Set Anthropic specific headers if needed
+        
+        // Set Anthropic specific headers - only version, the apiKey will be added by the client
         headers = {
           'Anthropic-Version': '2023-06-01'
         };

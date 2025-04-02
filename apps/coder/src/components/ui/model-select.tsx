@@ -280,7 +280,15 @@ export const ModelSelect = React.memo(function ModelSelect({
       // Focus only on LMStudio for now, skipping Ollama
       // const ollamaModels = await checkOllamaModels();
       const ollamaModels: string[] = []; // Empty for now to focus on LMStudio
-      const lmStudioAvailable = await checkLMStudioModels();
+
+      // Skip LMStudio check for pure Anthropic models to avoid unnecessary API calls
+      const isAnthropicModel = value && value.startsWith("claude-");
+      if (isAnthropicModel) {
+        console.log(`Skipping LMStudio availability check for Anthropic model: ${value}`);
+      }
+
+      // Only check LMStudio if this isn't an Anthropic model
+      const lmStudioAvailable = isAnthropicModel ? false : await checkLMStudioModels();
 
       // Add availability for dynamic LMStudio models
       // These are always available since they were just discovered
@@ -497,7 +505,8 @@ export const ModelSelect = React.memo(function ModelSelect({
       const dynamicSelectedModel = {
         id: value,
         name: formattedName,
-        provider: value.includes("gemma") || value.toLowerCase().includes("llama") ? 'lmstudio' as const : 'unknown' as any,
+        provider: value.startsWith("claude-") ? 'anthropic' as const :
+          (value.includes("gemma") || value.toLowerCase().includes("llama")) ? 'lmstudio' as const : 'unknown' as any,
         author: 'unknown' as any,
         created: Date.now(),
         description: `${formattedName} model`,
@@ -537,7 +546,8 @@ export const ModelSelect = React.memo(function ModelSelect({
       const temporaryModel = {
         id: value,
         name: formattedName,
-        provider: value.includes("gemma") ? 'lmstudio' as const : 'unknown' as any,
+        provider: value.startsWith("claude-") ? 'anthropic' as const :
+          value.includes("gemma") ? 'lmstudio' as const : 'unknown' as any,
         author: 'unknown' as any,
         created: Date.now(),
         description: `${formattedName} model`,
@@ -579,7 +589,8 @@ export const ModelSelect = React.memo(function ModelSelect({
       return {
         id: value,
         name: formattedName,
-        provider: value.includes("gemma") ? 'lmstudio' : 'unknown',
+        provider: value.startsWith("claude-") ? 'anthropic' :
+          value.includes("gemma") ? 'lmstudio' : 'unknown',
         author: 'unknown' as any,
         created: Date.now(),
         description: `${formattedName} model`,

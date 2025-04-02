@@ -66,7 +66,7 @@ export class SettingsRepository {
           try {
             const visibleIds = JSON.parse(pendingVisibility);
             if (Array.isArray(visibleIds)) {
-              console.log(`Loading pending visibility from localStorage: ${visibleIds.length} models`);
+              // console.log(`Loading pending visibility from localStorage: ${visibleIds.length} models`);
               this._pendingVisibilityUpdates = visibleIds;
             }
           } catch (e) {
@@ -135,7 +135,7 @@ export class SettingsRepository {
       const settingsDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
       if (settingsDoc) {
         const settings = settingsDoc.toJSON();
-        console.log("Found settings in database:", settings.selectedModelId || settings.defaultModel);
+        // console.log("Found settings in database:", settings.selectedModelId || settings.defaultModel);
         this.cachedSettings = toMutableSettings(settings);
         return toMutableSettings(settings);
       }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSettings, MODELS } from "@openagents/core";
+import { toast } from "sonner";
 import { 
   Eye, 
   EyeOff, 
@@ -394,13 +395,21 @@ export default function ModelsPage() {
                   });
                   
                   if (result) {
-                    alert("All models are now visible in the selector.");
+                    // Use Sonner toast instead of alert
+                    toast.success("All models are now visible in the selector", {
+                      description: "You should now be able to see all available models including Anthropic models.",
+                      duration: 4000
+                    });
                   } else {
                     throw new Error("Failed to update settings");
                   }
                 } catch (error) {
                   console.error("Failed to show all models:", error);
-                  alert("There was a problem showing all models. Please try again later.");
+                  // Use Sonner toast for error
+                  toast.error("Failed to show all models", {
+                    description: "There was a problem updating model visibility settings. Please try again.",
+                    duration: 5000
+                  });
                 }
               }}
             >
@@ -424,15 +433,25 @@ export default function ModelsPage() {
                         setVisibleModelIds(MODELS.map(model => model.id));
                       }
 
-                      alert("Model settings reset successfully.");
+                      // Use Sonner toast
+                      toast.success("Model settings reset successfully", {
+                        description: "Your model visibility and selection preferences have been reset to default values.",
+                        duration: 4000
+                      });
                     } else {
                       // Fallback if reset returns null
                       console.error("Settings reset returned null result");
-                      alert("Settings reset partially completed. You may need to refresh the page.");
+                      toast.warning("Settings reset partially completed", {
+                        description: "Some settings may not have been reset correctly. You may need to refresh the page.",
+                        duration: 5000
+                      });
                     }
                   } catch (error) {
                     console.error("Failed to reset settings:", error);
-                    alert("There was a problem resetting settings. Please try again later.");
+                    toast.error("Failed to reset settings", {
+                      description: "There was a problem resetting your model settings. Please try again later.",
+                      duration: 5000
+                    });
                   }
                 }
               }}
