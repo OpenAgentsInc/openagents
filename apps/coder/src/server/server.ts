@@ -46,7 +46,7 @@ app.post('/api/chat', async (c) => {
   const customOllama = createOllama({
     baseURL: OLLAMA_BASE_URL,
   });
-  
+
   // Log configuration
   console.log(`[Server] OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}`);
 
@@ -90,7 +90,7 @@ app.post('/api/chat', async (c) => {
     const provider = modelInfo.provider;
 
     console.log(`🔍 MODEL: ${MODEL}, PROVIDER: ${provider}`);
-    
+
     // Check if we need OpenRouter
     if (provider === "openrouter" && !OPENROUTER_API_KEY) {
       // Return error as SSE
@@ -98,7 +98,7 @@ app.post('/api/chat', async (c) => {
       c.header('Cache-Control', 'no-cache');
       c.header('Connection', 'keep-alive');
       c.header('X-Vercel-AI-Data-Stream', 'v1');
-      
+
       return stream(c, async (responseStream) => {
         const errorMsg = "OpenRouter API Key not configured. You need to add your API key to use OpenRouter models.";
         await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
@@ -137,12 +137,12 @@ app.post('/api/chat', async (c) => {
         console.log(`[Server] Using Ollama provider with base URL: ${OLLAMA_BASE_URL}`);
         // For Ollama models, we need to extract the model name without version
         // Ollama API expects just the model name without version specifiers
-        const ollamaModelName = MODEL.split(":")[0];
+        const ollamaModelName = MODEL //.split(":")[0];
         console.log(`[Server] Using Ollama model: ${ollamaModelName} (from ${MODEL})`);
-        
+
         // Log availability information
         logOllamaModelAvailability(OLLAMA_BASE_URL, ollamaModelName);
-        
+
         // For Ollama models, use the Ollama provider
         model = customOllama(ollamaModelName);
       } else if (provider === "openrouter") {
@@ -172,11 +172,11 @@ app.post('/api/chat', async (c) => {
         messages,
         toolCallStreaming: modelSupportsTools,
         temperature: 0.7,
-        
+
         // Only include tools if the model supports them and we're not using Ollama
         // Temporarily disable tools for Ollama as it might be causing issues
         ...((modelSupportsTools && Object.keys(tools).length > 0 && provider !== "ollama") ? { tools } : {}),
-        
+
         // Include headers if present
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
 
@@ -186,7 +186,7 @@ app.post('/api/chat', async (c) => {
             event.error instanceof Error
               ? `${event.error.message}\n${event.error.stack}`
               : String(event.error));
-          
+
           // Additional debugging for Ollama-specific errors
           if (provider === "ollama") {
             console.error("Ollama error details:", JSON.stringify(event.error, null, 2));
@@ -256,10 +256,10 @@ app.post('/api/chat', async (c) => {
 // This can be enhanced to actually make an API call to verify
 const logOllamaModelAvailability = (baseUrl: string, modelName: string) => {
   console.log(`[Server] Ollama model check - baseUrl: ${baseUrl}, model: ${modelName}`);
-  console.log(`[Server] If experiencing issues with Ollama, check that:`);
-  console.log(`[Server]   1. Ollama server is running (run 'ollama serve')`);
-  console.log(`[Server]   2. The model is available (run 'ollama list')`);
-  console.log(`[Server]   3. If needed, pull the model with: 'ollama pull ${modelName}'`);
+  // console.log(`[Server] If experiencing issues with Ollama, check that:`);
+  // console.log(`[Server]   1. Ollama server is running (run 'ollama serve')`);
+  // console.log(`[Server]   2. The model is available (run 'ollama list')`);
+  // console.log(`[Server]   3. If needed, pull the model with: 'ollama pull ${modelName}'`);
 };
 
 // --- End API Routes ---
