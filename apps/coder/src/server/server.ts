@@ -3,15 +3,22 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
-import { streamText, type Message, experimental_createMCPClient, type StreamTextOnFinishCallback } from "ai";
-import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
+import { streamText, tool, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { initMCPClients, getMCPClients } from './mcp-clients';
+import { ollama, createOllama } from 'ollama-ai-provider';
+import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { z } from 'zod';
+import { promisify } from 'util';
+import { exec as execCallback } from 'child_process';
+
+const exec = promisify(execCallback);
 
 // Define environment interface
 interface Env {
   OPENROUTER_API_KEY?: string;
+  OLLAMA_BASE_URL?: string;
   ALLOW_COMMANDS?: string; // Shell commands whitelist for mcp-shell-server
 }
 
@@ -30,141 +37,32 @@ app.use('*', cors({
   exposeHeaders: ['Content-Length', 'X-Vercel-AI-Data-Stream'],
 }));
 
-// Health check endpoint
-app.get('/api/ping', (c) => {
-  console.log('[Server] Received /api/ping request');
-  return c.json({ message: 'pong' });
-});
-
-// Remote GitHub MCP connection test endpoint
-app.get('/api/mcp/github/test', async (c) => {
-  console.log('[Server] Testing remote GitHub MCP connection');
-
-  const GITHUB_MCP_URL = "https://mcp-github.openagents.com/sse";
-  const { remoteMcpClient } = getMCPClients();
-
-  try {
-    if (!remoteMcpClient) {
-      throw new Error('Remote MCP client not initialized');
-    }
-
-    console.log('[Server] Successfully connected to remote GitHub MCP');
-    return c.json({
-      success: true,
-      message: 'Successfully connected to remote GitHub MCP',
-      clientInfo: {
-        connected: true,
-        url: GITHUB_MCP_URL
-      }
-    });
-  } catch (error) {
-    console.error('[Server] Failed to connect to remote GitHub MCP:', error);
-    return c.json({
-      success: false,
-      message: 'Failed to connect to remote GitHub MCP',
-      error: error instanceof Error ? error.message : String(error)
-    }, 500);
-  } finally {
-    console.log('[Server] Remote MCP connection test complete');
-  }
-});
-
-// Local GitHub MCP connection test endpoint using stdio transport
-app.get('/api/mcp/github/local/test', async (c) => {
-  console.log('[Server] Testing local GitHub MCP connection');
-  const { localGithubMcpClient } = getMCPClients();
-
-  try {
-    if (!localGithubMcpClient) {
-      throw new Error('Local GitHub MCP client not initialized');
-    }
-
-    console.log('[Server] Successfully connected to local GitHub MCP');
-    return c.json({
-      success: true,
-      message: 'Successfully connected to local GitHub MCP',
-      clientInfo: {
-        connected: true,
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-github']
-      }
-    });
-  } catch (error) {
-    console.error('[Server] Failed to connect to local GitHub MCP:', error);
-    return c.json({
-      success: false,
-      message: 'Failed to connect to local GitHub MCP',
-      error: error instanceof Error ? error.message : String(error)
-    }, 500);
-  } finally {
-    console.log('[Server] Local MCP connection test complete');
-  }
-});
-
-// Shell MCP connection test endpoint using stdio transport
-app.get('/api/mcp/shell/test', async (c) => {
-  console.log('[Server] Testing shell MCP connection');
-  const { localShellMcpClient } = getMCPClients();
-  const allowCommands = process.env.ALLOW_COMMANDS || 'ls,cat,pwd,echo,grep';
-
-  try {
-    if (!localShellMcpClient) {
-      throw new Error('Local Shell MCP client not initialized');
-    }
-
-    console.log('[Server] Successfully connected to shell MCP');
-    return c.json({
-      success: true,
-      message: 'Successfully connected to shell MCP',
-      clientInfo: {
-        connected: true,
-        transport: 'stdio',
-        command: 'uvx',
-        args: ['mcp-shell-server'],
-        allowedCommands: allowCommands.split(',')
-      }
-    });
-  } catch (error) {
-    console.error('[Server] Failed to connect to shell MCP:', error);
-    return c.json({
-      success: false,
-      message: 'Failed to connect to shell MCP',
-      error: error instanceof Error ? error.message : String(error)
-    }, 500);
-  } finally {
-    console.log('[Server] Shell MCP connection test complete');
-  }
-});
-
-
 // Main chat endpoint
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
 
-  // Get OpenRouter API key from environment variables
+  // Get environment variables
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
 
   // Get the globally initialized MCP clients
   const { allTools: tools } = getMCPClients();
 
+  // Create the Ollama client with custom base URL if specified
+  const customOllama = createOllama({
+    baseURL: OLLAMA_BASE_URL,
+    simulateStreaming: true
+  });
+
+  // Log configuration
+  console.log(`[Server] OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}`);
+
+  // For OpenRouter provider models, we need to check if API key is present
   if (!OPENROUTER_API_KEY) {
-    console.error("❌ OPENROUTER_API_KEY is missing or invalid");
-
-    // Return error as SSE
-    c.header('Content-Type', 'text/event-stream; charset=utf-8');
-    c.header('Cache-Control', 'no-cache');
-    c.header('Connection', 'keep-alive');
-    c.header('X-Vercel-AI-Data-Stream', 'v1');
-    // CORS headers are handled by the middleware
-
-    return stream(c, async (responseStream) => {
-      const errorMsg = "OpenRouter API Key not configured. You need to add your API key.";
-      await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
-    });
+    console.warn("⚠️ OPENROUTER_API_KEY is missing - OpenRouter models will not be available");
+  } else {
+    console.log("✅ OPENROUTER_API_KEY is present - OpenRouter models are available");
   }
-
-  console.log("✅ OPENROUTER_API_KEY is present");
 
   try {
     const body = await c.req.json();
@@ -188,7 +86,31 @@ app.post('/api/chat', async (c) => {
       return c.json({ error: "No model provided" }, 400);
     }
 
-    console.log("🔍 MODEL:", MODEL);
+    // Find model info in MODELS
+    const modelInfo = MODELS.find(m => m.id === MODEL);
+
+    if (!modelInfo) {
+      return c.json({ error: `Model ${MODEL} not found in the MODELS array` }, 400);
+    }
+
+    // Get provider from model info
+    const provider = modelInfo.provider;
+
+    console.log(`🔍 MODEL: ${MODEL}, PROVIDER: ${provider}`);
+
+    // Check if we need OpenRouter
+    if (provider === "openrouter" && !OPENROUTER_API_KEY) {
+      // Return error as SSE
+      c.header('Content-Type', 'text/event-stream; charset=utf-8');
+      c.header('Cache-Control', 'no-cache');
+      c.header('Connection', 'keep-alive');
+      c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+      return stream(c, async (responseStream) => {
+        const errorMsg = "OpenRouter API Key not configured. You need to add your API key to use OpenRouter models.";
+        await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+      });
+    }
 
     try {
       // Check for system prompt in request
@@ -209,29 +131,121 @@ app.post('/api/chat', async (c) => {
         }
       }
 
-      // Check if the model supports tools using the model ID
-      const modelInfo = MODELS.find(m => m.id === MODEL);
-      const modelSupportsTools = modelInfo?.supportsTools ?? false;
-      
+      // Check if the model supports tools
+      const modelSupportsTools = modelInfo.supportsTools ?? false;
+
       console.log(`[Server] Model ${MODEL} ${modelSupportsTools ? 'supports' : 'does not support'} tools`);
-      
-      // Configure stream options with MCP tools if available and if the model supports tools
-      const streamOptions = {
-        model: openrouter(MODEL),
-        messages: messages,
 
-        toolCallStreaming: modelSupportsTools,
+      // Determine which provider to use based on model info
+      let model;
+      let headers = {};
 
-        temperature: 0.7,
-        // Only include tools if the model supports them
-        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
+      if (provider === "lmstudio") {
+        console.log(`[Server] Using LMStudio provider`);
 
-        // Headers for OpenRouter
-        headers: {
+        const lmstudio = createOpenAICompatible({
+          name: 'lmstudio',
+          baseURL: "http://192.168.1.189:1234/v1",
+          // baseURL: 'http://localhost:1234/v1',
+        });
+
+        model = lmstudio(MODEL);
+      } else if (provider === "ollama") {
+        console.log(`[Server] Using Ollama provider with base URL: ${OLLAMA_BASE_URL}`);
+        // For Ollama models, we need to extract the model name without version
+        // Ollama API expects just the model name without version specifiers
+        const ollamaModelName = MODEL //.split(":")[0];
+        console.log(`[Server] Using Ollama model: ${ollamaModelName} (from ${MODEL})`);
+
+        // Log availability information
+        logOllamaModelAvailability(OLLAMA_BASE_URL, ollamaModelName);
+
+        // For Ollama models, use the Ollama provider
+        model = customOllama(ollamaModelName);
+      } else if (provider === "openrouter") {
+        console.log(`[Server] Using OpenRouter provider`);
+        // For OpenRouter models, use the OpenRouter provider
+        model = openrouter(MODEL);
+        // Set OpenRouter specific headers
+        headers = {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'HTTP-Referer': 'https://openagents.com',
           'X-Title': 'OpenAgents Coder'
-        },
+        };
+      } else {
+        console.log(`[Server] Using default provider: OpenRouter`);
+        // Default to OpenRouter for unspecified providers
+        model = openrouter(MODEL);
+        headers = {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://openagents.com',
+          'X-Title': 'OpenAgents Coder'
+        };
+      }
+
+      // console.log("tools:", tools)
+
+      // If model context length is less than 10000, dont return history, just for messages use the most recent user message
+      if (modelInfo.context_length < 10000) {
+        messages = [messages[messages.length - 1]];
+      }
+
+      // Configure stream options with MCP tools if available and if the model supports tools
+      const streamOptions = {
+        model,
+        messages,
+        // Combine shell_command tool with MCP tools when supported
+        ...(modelSupportsTools && Object.keys(tools).length > 0 ? {
+          tools: {
+            shell_command: tool({
+              parameters: z.object({
+                command: z.string().describe("The shell command to execute")
+              }),
+              description: "Execute a shell command",
+              execute: async (args) => {
+                console.log("Running command:", args.command);
+
+                try {
+                  // Set maxBuffer to 5MB and add timeout
+                  const result = await exec(args.command, {
+                    maxBuffer: 5 * 1024 * 1024, // 5MB buffer
+                    timeout: 30000 // 30 second timeout
+                  });
+
+                  // Truncate output if too long (limit to ~100KB to ensure it fits in context)
+                  const maxOutputLength = 100 * 1024; // 100KB
+                  let output = result.stdout;
+                  if (output.length > maxOutputLength) {
+                    output = output.slice(0, maxOutputLength) + "\n... [Output truncated due to length]";
+                  }
+
+                  return "Executed command: " + args.command + "\n\n" + output;
+                } catch (error: any) {
+                  if (error?.code === 'ENOBUFS' || error?.message?.includes('maxBuffer')) {
+                    return "Command output was too large. Please modify the command to produce less output.";
+                  }
+                  throw error;
+                }
+              }
+            }),
+            ...tools
+          }
+        } : {}),
+        toolCallStreaming: modelSupportsTools,
+        temperature: 0.7,
+
+        // Only include tools if the model supports them and we're not using Ollama
+        // Temporarily disable tools for Ollama as it might be causing issues
+        // ...((modelSupportsTools && Object.keys(tools).length > 0 && provider !== "ollama") ? { tools } : {}),
+
+        // Now we'll try with tools
+        // ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
+
+        // For now we want to try with only 1 tool
+        // ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools: { "shell_execute": tools["shell_execute"] } } : {}),
+
+        // Include headers if present
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
 
         // Standard callbacks
         onError: (event: { error: unknown }) => {
@@ -239,6 +253,13 @@ app.post('/api/chat', async (c) => {
             event.error instanceof Error
               ? `${event.error.message}\n${event.error.stack}`
               : String(event.error));
+
+          // Additional debugging for Ollama-specific errors
+          if (provider === "ollama") {
+            console.error("Ollama error details:", JSON.stringify(event.error, null, 2));
+            console.error("Please check if the Ollama server is running and the model is available.");
+            console.error("You can pull the model with: ollama pull " + MODEL.split(":")[0]);
+          }
         },
         onFinish: (event: Parameters<StreamTextOnFinishCallback<{}>>[0]) => {
           console.log(`🏁 streamText onFinish completed`);
@@ -297,6 +318,16 @@ app.post('/api/chat', async (c) => {
     console.log('[Server] Chat request completed');
   }
 });
+
+// Utility function to check if Ollama is available and the model exists
+// This can be enhanced to actually make an API call to verify
+const logOllamaModelAvailability = (baseUrl: string, modelName: string) => {
+  console.log(`[Server] Ollama model check - baseUrl: ${baseUrl}, model: ${modelName}`);
+  // console.log(`[Server] If experiencing issues with Ollama, check that:`);
+  // console.log(`[Server]   1. Ollama server is running (run 'ollama serve')`);
+  // console.log(`[Server]   2. The model is available (run 'ollama list')`);
+  // console.log(`[Server]   3. If needed, pull the model with: 'ollama pull ${modelName}'`);
+};
 
 // --- End API Routes ---
 

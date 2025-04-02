@@ -157,7 +157,7 @@ export function ToolCall({ toolInvocations }: ToolCallProps) {
             )
           case "result":
 
-            if (invocation.result.__cancelled === true) {
+            if (invocation.result?.__cancelled === true) {
               return (
                 <Card key={index} className="bg-card text-card-foreground shadow-sm text-xs my-1 p-1 gap-1 w-full overflow-hidden">
                   <CardHeader className="p-2 pb-0">

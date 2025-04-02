@@ -1,14 +1,14 @@
 interface Model {
-  author: "anthropic" | "deepseek" | "openai" | "google" | "mistralai"
+  author: "anthropic" | "cohere" | "deepseek" | "openai" | "google" | "meta" | "mistralai" | "qwen"
   created: number
   description: string
   id: string
   name: string
-  provider: "openrouter" | "anthropic" | "ollama"
+  provider: "openrouter" | "anthropic" | "ollama" | "lmstudio"
   shortDescription?: string
   supportsTools?: boolean
   tokenizer?: string
-  pricing: {
+  pricing?: {
     prompt: string
     completion: string
     image: string
@@ -18,21 +18,87 @@ interface Model {
     web_search: string
     internal_reasoning: string
   }
-  top_provider: {
+  top_provider?: {
     context_length: number
     max_completion_tokens: number
     is_moderated: boolean
   }
-  architecture: {
+  architecture?: {
     modality: "text->text" | "text+image->text"
     tokenizer: string
     instruct_type: string | null
   }
-  per_request_limits: null
+  per_request_limits?: null
   context_length: number
 }
 
 export const MODELS: Model[] = [
+  {
+    author: 'qwen',
+    provider: 'lmstudio',
+    id: 'qwen2.5-14b-instruct',
+    context_length: 131000,
+    created: 1721088000,
+    description: "Qwen2.5 14B Instruct is a powerful instruction-tuned language model with 14.7B parameters. It excels in coding, mathematics, instruction following, and long-text generation. The model supports 29+ languages including Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, and more. It features a 131K token context length with 8K token generation capability, and uses advanced architecture components like RoPE, SwiGLU, RMSNorm, and GQA attention.",
+    name: "Qwen 2.5 14B Instruct",
+    shortDescription: "14.7B parameter multilingual model with 131K context window, optimized for coding, math, and structured outputs across 29+ languages.",
+    supportsTools: true,
+  },
+  {
+    author: "qwen",
+    provider: "lmstudio",
+    id: "qwen2-7b-instruct",
+    context_length: 8192,
+    created: 1721088000,
+    description: "Qwen2 7B is a transformer-based model that excels in language understanding, multilingual capabilities, coding, mathematics, and reasoning.",
+    name: "Qwen 2 7B Instruct",
+    shortDescription: "Qwen 2 7B Instruct is a large language model with 7B parameters.",
+    supportsTools: true,
+  },
+  {
+    author: "meta",
+    provider: "ollama",
+    id: "llama3.2",
+    name: "Llama 3.2",
+    created: 1742824755,
+    description: "Llama 3.2 is a large language model with 12B parameters.",
+    shortDescription: "Llama 3.2 is a large language model with 12B parameters.",
+    context_length: 20000,
+    supportsTools: true,
+  },
+  {
+    author: "cohere",
+    provider: "ollama",
+    id: "command-r7b",
+    name: "Command R7B",
+    created: 1742824755,
+    description: "The smallest model in Cohere's R series delivers top-tier speed, efficiency, and quality to build powerful AI applications on commodity GPUs and edge devices.",
+    shortDescription: "Smallest model in Cohere's R series, delivering top-tier speed, efficiency, and quality.",
+    context_length: 128000,
+    supportsTools: true,
+  },
+  {
+    author: "google",
+    provider: "ollama",
+    id: "gemma3",
+    name: "Gemma 3 4B",
+    created: 1742824755,
+    description: "Gemma 3 4B is a large language model with 4B parameters.",
+    shortDescription: "Gemma 3 4B is a large language model with 4B parameters.",
+    context_length: 128000,
+    supportsTools: false,
+  },
+  {
+    author: "google",
+    provider: "ollama",
+    id: "gemma3:12b",
+    name: "Gemma 3 12B",
+    created: 1742824755,
+    description: "Gemma 3 12B is a large language model with 12B parameters.",
+    shortDescription: "Gemma 3 12B is a large language model with 12B parameters.",
+    context_length: 128000,
+    supportsTools: false,
+  },
   {
     author: "deepseek",
     provider: "openrouter",
