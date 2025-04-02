@@ -3,12 +3,13 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
-import { streamText, type Message, type StreamTextOnFinishCallback } from "ai";
+import { streamText, tool, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ollama, createOllama } from 'ollama-ai-provider';
 import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { z } from 'zod';
 
 // Define environment interface
 interface Env {
@@ -184,8 +185,20 @@ app.post('/api/chat', async (c) => {
         model,
         messages: [{
           role: "user",
-          content: "What is the capital of the moon?"
+          content: "What tools do you have?"
         }],
+        tools: [
+          tool({
+            parameters: z.object({
+              command: z.string().describe("The shell command to execute")
+            }),
+            description: "Execute a shell command",
+            execute: async (args) => {
+              // Implementation will be handled elsewhere
+              return null;
+            }
+          })
+        ],
         toolCallStreaming: modelSupportsTools,
         temperature: 0.7,
 
