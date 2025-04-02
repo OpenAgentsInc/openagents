@@ -1,5 +1,8 @@
 # Changelog: Settings Layout Redesign
 
+## Bug Fixes
+- Fixed issue with missing Lucide icon export by replacing the non-existent `Prompt` icon with `MessageSquare`
+
 ## Changes
 - **UI Improvement**: Refactored the settings layout to match the main chat interface layout
 - **Navigation**: Changed horizontal tabs to vertical sidebar navigation for better consistency

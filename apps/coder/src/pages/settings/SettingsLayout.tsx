@@ -4,7 +4,7 @@ import {
   ArrowLeft, 
   Settings, 
   Sliders, 
-  Prompt, 
+  MessageSquare, 
   Server, 
   Database,
   Home 
@@ -82,7 +82,7 @@ export default function SettingsLayout() {
                       <SidebarMenuButton 
                         isActive={currentPath.includes("/prompts")}
                       >
-                        <Prompt className="h-4 w-4" />
+                        <MessageSquare className="h-4 w-4" />
                         <span>Prompts</span>
                       </SidebarMenuButton>
                     </Link>

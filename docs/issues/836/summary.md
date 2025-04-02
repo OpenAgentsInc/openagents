@@ -1,5 +1,10 @@
 # Summary of Work Completed for Issue #836
 
+## Fixes Applied
+1. Fixed an issue with missing Lucide icon export:
+   - Replaced the non-existent `Prompt` icon with `MessageSquare` icon for the Prompts section
+   - Updated all related references in the component
+
 ## Original Problem
 The settings layout was inconsistent with the main chat interface:
 - Used horizontal tabs instead of a sidebar
