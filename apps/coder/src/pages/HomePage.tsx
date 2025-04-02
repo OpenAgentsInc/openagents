@@ -293,14 +293,14 @@ export default function HomePage() {
       const { settingsRepository } = await import('@openagents/core/src/db/repositories');
       const providers = ['openrouter', 'anthropic', 'openai', 'google', 'ollama', 'lmstudio'];
       const keys: Record<string, string> = {};
-      
+
       for (const provider of providers) {
         const key = await settingsRepository.getApiKey(provider);
         if (key) {
           keys[provider] = key;
         }
       }
-      
+
       // Also load LMStudio URL from settings and add it to the keys object
       try {
         const lmStudioUrlPreference = await settingsRepository.getPreference("lmstudioUrl", "http://localhost:1234");
@@ -308,14 +308,14 @@ export default function HomePage() {
           // Add the URL to the apiKeys object to be sent to the server
           keys['lmstudioUrl'] = lmStudioUrlPreference;
           console.log(`Loaded LMStudio URL from settings: ${lmStudioUrlPreference}`);
-          
+
           // Debug what keys object looks like after adding the URL
           console.log("Final apiKeys object:", JSON.stringify(keys));
         }
       } catch (error) {
         console.warn("Error loading LMStudio URL from settings:", error);
       }
-      
+
       console.log(`Loaded API keys and settings for providers: ${Object.keys(keys).join(', ')}`);
       setApiKeys(keys);
     } catch (error) {
@@ -324,21 +324,21 @@ export default function HomePage() {
   }, [settings]);
 
   // Now let's define both API key handling and LMStudio availability checking
-  
+
   // Load API keys from settings when component mounts and listen for API key changes
   useEffect(() => {
     // Load API keys initially
     loadApiKeys();
-    
+
     // Handle API key changes from settings page
     const handleApiKeyChange = () => {
       console.log("API key changed, refreshing keys");
       loadApiKeys();
     };
-    
+
     // Add event listener for API key changes
     window.addEventListener('api-key-changed', handleApiKeyChange);
-    
+
     // Cleanup event listener
     return () => {
       window.removeEventListener('api-key-changed', handleApiKeyChange);
@@ -402,7 +402,7 @@ export default function HomePage() {
     onError: (error) => {
       // Log the complete error for debugging
       console.error('Chat hook onError:', error);
-      
+
       // IMMEDIATE DEBUG - Show the raw error in the console
       console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
       console.log(error);
@@ -412,41 +412,41 @@ export default function HomePage() {
         console.log("%c ERROR STACK:", "background: red; color: white");
         console.log(error.stack);
       }
-      
+
       // CRITICAL: Don't use append in onError because it can trigger another error and cause infinite loops
       // Instead, use direct state manipulation which is safe and won't trigger API calls
-      
+
       // Skip error handling for errors coming from append() itself to break the loop
-      if (error instanceof Error && error.message && 
-         (error.message.includes('append error') || 
+      if (error instanceof Error && error.message &&
+        (error.message.includes('append error') ||
           error.stack?.includes('append'))) {
         console.warn("Skipping recursive error handling to prevent infinite loop");
         return;
       }
-      
+
       // Get user-friendly error message using utility function
       // FINAL APPROACH: Just use the raw error message
       // For context overflow errors or TypeValidationError, show the exact message
       let userFriendlyError = "";
-      
+
       console.log("HANDLING ERROR:", error);
-      
+
       if (error instanceof Error) {
         // IMMEDIATE FIX FOR "An error occurred" useless error message
         if (error.message === "An error occurred." || error.message === "An error occurred") {
           console.log("CLIENT: INTERCEPTED GENERIC ERROR MESSAGE - USING MANUAL OVERRIDE");
-          
+
           // HARDCODED FOR IMMEDIATE FIX - this will match what the server sends
           userFriendlyError = "Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens, which is not enough. Try to load the model with a larger context length, or provide a shorter input";
-          
+
           console.log("CLIENT: USING HARDCODED CONTEXT OVERFLOW ERROR:", userFriendlyError);
         }
         // Special case for AI_TypeValidationError with context overflow
-        else if (error.message.includes('AI_TypeValidationError') && 
-            (error.message.includes('context the overflows') || error.message.includes('context length of only'))) {
-          
+        else if (error.message.includes('AI_TypeValidationError') &&
+          (error.message.includes('context the overflows') || error.message.includes('context length of only'))) {
+
           console.log("DETECTED TYPE VALIDATION ERROR WITH CONTEXT OVERFLOW");
-          
+
           // Extract from quotes the actual error message
           const matches = error.message.match(/Type validation failed: Value: "([^"]+)"/);
           if (matches && matches[1]) {
@@ -456,7 +456,7 @@ export default function HomePage() {
             // If we can't extract it, just use the raw message
             userFriendlyError = error.message;
           }
-        } 
+        }
         // Any context overflow error (non-TypeValidation)
         else if (error.message.includes('context the overflows') || error.message.includes('context length of only')) {
           userFriendlyError = error.message;
@@ -473,27 +473,27 @@ export default function HomePage() {
         // For non-Error objects, convert to string
         userFriendlyError = String(error);
       }
-      
+
       try {
         // FINAL FIX - For context overflow errors, show the exact raw message - WITHOUT ANY PREFIX
         let errorContent;
-        
+
         console.log("FORMATTING CLIENT-SIDE ERROR:", userFriendlyError);
-        
+
         // Check for context overflow errors - IMPORTANT: No prefix for these!
         if (userFriendlyError && (
-            userFriendlyError.includes('context the overflows') || 
-            userFriendlyError.includes('Trying to keep the first') || 
-            userFriendlyError.includes('context length of only')
-           )) {
+          userFriendlyError.includes('context the overflows') ||
+          userFriendlyError.includes('Trying to keep the first') ||
+          userFriendlyError.includes('context length of only')
+        )) {
           // CRITICAL: Do not add any prefixes to context overflow errors
           console.log("USING RAW CONTEXT OVERFLOW ERROR FROM SERVER:", userFriendlyError);
           errorContent = userFriendlyError;
-        } 
+        }
         // For TypeValidationError with context overflow, extract the message
         else if (userFriendlyError && userFriendlyError.includes('AI_TypeValidationError') &&
-                (userFriendlyError.includes('context the overflows') || 
-                 userFriendlyError.includes('context length of only'))) {
+          (userFriendlyError.includes('context the overflows') ||
+            userFriendlyError.includes('context length of only'))) {
           // Extract the part inside quotes if possible
           const match = userFriendlyError.match(/Value: "([^"]+)"/);
           if (match && match[1]) {
@@ -511,7 +511,7 @@ export default function HomePage() {
           // Normal error formatting with prefix
           errorContent = `⚠️ Error: ${userFriendlyError}`;
         }
-        
+
         // Create a new error message
         const errorSystemMessage = {
           id: `error-${Date.now()}`,
@@ -520,16 +520,16 @@ export default function HomePage() {
           createdAt: new Date(),
           threadId: currentThreadId,
         };
-        
+
         // We need to be very careful here - directly add the message to avoid errors
         // in a safer way that handles potential issues with messages not being an array
         if (Array.isArray(messages)) {
           // Check if the last message is already an error to avoid duplicates
           const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-          const isLastMessageError = lastMessage && 
-            (lastMessage.content?.includes('⚠️ Error') || 
-            (lastMessage.role === 'system' && lastMessage.content?.includes('Error')));
-          
+          const isLastMessageError = lastMessage &&
+            (lastMessage.content?.includes('⚠️ Error') ||
+              (lastMessage.role === 'system' && lastMessage.content?.includes('Error')));
+
           if (!isLastMessageError) {
             // If messages is an array and the last message isn't an error, add the new error
             const updatedMessages = [...messages, errorSystemMessage];
@@ -540,7 +540,7 @@ export default function HomePage() {
           console.warn("Messages was not an array when trying to add error message");
           setMessages([errorSystemMessage]);
         }
-        
+
       } catch (err) {
         // Last resort - if we get an error trying to show an error, just log it
         console.error("Critical error in error handler:", err);
@@ -596,23 +596,23 @@ export default function HomePage() {
   // Check if the current model is available (has API key if needed)
   const [isModelAvailable, setIsModelAvailable] = useState(true);
   const [modelWarning, setModelWarning] = useState<string | null>(null);
-  
+
   // We'll define a mutable ref to hold the availability check function
   const availabilityCheckRef = React.useRef<(() => Promise<void>) | null>(null);
-  
+
   // Function to check model availability - extracted to be reusable
   const checkCurrentModelAvailability = useCallback(async () => {
     try {
       if (!selectedModelId) return;
-      
+
       console.log("Checking availability for model:", selectedModelId);
-      
+
       const selectedModel = MODELS.find(model => model.id === selectedModelId);
       if (!selectedModel) return;
-      
+
       let isAvailable = true;
       let warning = null;
-      
+
       // Function to check if Ollama is running and get available models
       const checkOllamaModels = async (): Promise<string[]> => {
         try {
@@ -626,13 +626,13 @@ export default function HomePage() {
         }
         return [];
       };
-      
+
       // Function to check if LMStudio is running - use proxy to avoid CORS issues
       const checkLMStudioAvailable = async (): Promise<boolean> => {
         try {
           // We'll use a stored preference value via settings hook
           let savedLMStudioUrl = "http://localhost:1234";
-          
+
           try {
             // Use the existing settings hook to get the preference
             if (settings) {
@@ -642,7 +642,7 @@ export default function HomePage() {
                 savedLMStudioUrl = lmstudioUrlFromApiKeys;
               }
             }
-            
+
             // If not found in settings object, try to load it directly
             if (!savedLMStudioUrl || savedLMStudioUrl === "http://localhost:1234") {
               const storedPref = localStorage.getItem("openagents_lmstudio_url");
@@ -653,13 +653,13 @@ export default function HomePage() {
           } catch (e) {
             console.warn("Error getting LMStudio URL from settings, using default:", e);
           }
-          
+
           console.log("Using LMStudio URL from settings:", savedLMStudioUrl);
-          
+
           // Use our server proxy to avoid CORS issues
           const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${savedLMStudioUrl}/v1/models`)}`;
           console.log("Checking LMStudio via proxy:", proxyUrl);
-          
+
           const response = await fetch(proxyUrl);
           console.log("LMStudio check response:", response.status, response.ok);
           return response.ok;
@@ -668,7 +668,7 @@ export default function HomePage() {
           return false;
         }
       };
-      
+
       // Check based on provider
       if (selectedModel.provider === 'openrouter') {
         const key = await getApiKey('openrouter');
@@ -676,7 +676,7 @@ export default function HomePage() {
         if (!key) {
           warning = "OpenRouter API key required. Add it in Settings > API Keys.";
         }
-      } 
+      }
       else if (selectedModel.provider === 'anthropic') {
         const key = await getApiKey('anthropic');
         isAvailable = !!key;
@@ -701,11 +701,11 @@ export default function HomePage() {
       else if (selectedModel.provider === 'ollama') {
         const ollamaModels = await checkOllamaModels();
         const modelName = selectedModel.id.split('/')[1];
-        
-        isAvailable = ollamaModels.length > 0 && ollamaModels.some(m => 
+
+        isAvailable = ollamaModels.length > 0 && ollamaModels.some(m =>
           m === modelName || m.startsWith(`${modelName}:`)
         );
-        
+
         if (!isAvailable) {
           if (ollamaModels.length === 0) {
             warning = "Ollama server not running. Configure Ollama in Settings > Local Models.";
@@ -720,7 +720,7 @@ export default function HomePage() {
           warning = "LMStudio not running or unreachable.";
         }
       }
-      
+
       console.log(`Model ${selectedModel.id} availability:`, isAvailable);
       setIsModelAvailable(isAvailable);
       setModelWarning(warning);
@@ -730,7 +730,7 @@ export default function HomePage() {
       setModelWarning(null);
     }
   }, [selectedModelId, getApiKey, settings]);
-  
+
   // Save the function to a ref so we can access it before initialization
   useEffect(() => {
     // Save the current availability check function to the ref
@@ -745,18 +745,18 @@ export default function HomePage() {
         availabilityCheckRef.current();
       }
     };
-    
+
     // Listen for URL changes
     window.addEventListener('lmstudio-url-changed', handleLMStudioUrlChange);
-    
+
     // Also listen for the api-key-changed event as it's also triggered when URL changes
     window.addEventListener('api-key-changed', handleLMStudioUrlChange);
-    
+
     // Initial check
     if (availabilityCheckRef.current) {
       availabilityCheckRef.current();
     }
-    
+
     return () => {
       window.removeEventListener('lmstudio-url-changed', handleLMStudioUrlChange);
       window.removeEventListener('api-key-changed', handleLMStudioUrlChange);
@@ -788,7 +788,7 @@ export default function HomePage() {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('openagents_active_model', modelId);
         console.log("Saved model to localStorage:", modelId);
-        
+
         // If it's an LMStudio model (like gemma), store it in a special key as well
         // This helps with restoring LMStudio models specifically
         if (modelId.includes('gemma') || modelId.toLowerCase().includes('llama')) {
@@ -804,10 +804,10 @@ export default function HomePage() {
     selectModel(modelId).catch(error => {
       console.error("Failed to update settings with selected model:", error);
     });
-    
+
     // Dispatch an event to update model availability
-    window.dispatchEvent(new CustomEvent('model-selected', { 
-      detail: { modelId } 
+    window.dispatchEvent(new CustomEvent('model-selected', {
+      detail: { modelId }
     }));
   };
 
@@ -859,7 +859,7 @@ export default function HomePage() {
             </Sidebar>
 
             <SidebarInset>
-              <div className="mt-[30px] grid grid-rows-[auto_minmax(0,1fr)_auto] h-[calc(100vh-30px)]">
+              <div className="grid grid-rows-[auto_minmax(0,1fr)_auto] h-[calc(100vh-30px)]">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="flex items-center gap-2 overflow-hidden">
                     <ModelSelect
@@ -959,7 +959,7 @@ export default function HomePage() {
                         </div>
                       </div>
                     )}
-                    
+
                     <ChatForm
                       isPending={isGenerating}
                       handleSubmit={(e) => {
