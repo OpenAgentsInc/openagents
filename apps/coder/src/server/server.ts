@@ -5,12 +5,14 @@ import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
 import { streamText, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { ollama, createOllama } from 'ollama-ai-provider';
 import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
 
 // Define environment interface
 interface Env {
   OPENROUTER_API_KEY?: string;
+  OLLAMA_BASE_URL?: string;
   ALLOW_COMMANDS?: string; // Shell commands whitelist for mcp-shell-server
 }
 
@@ -33,29 +35,27 @@ app.use('*', cors({
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
 
-  // Get OpenRouter API key from environment variables
+  // Get environment variables
   const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
 
   // Get the globally initialized MCP clients
   const { allTools: tools } = getMCPClients();
 
+  // Create the Ollama client with custom base URL if specified
+  const customOllama = createOllama({
+    baseURL: OLLAMA_BASE_URL,
+  });
+  
+  // Log configuration
+  console.log(`[Server] OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}`);
+
+  // For OpenRouter provider models, we need to check if API key is present
   if (!OPENROUTER_API_KEY) {
-    console.error("❌ OPENROUTER_API_KEY is missing or invalid");
-
-    // Return error as SSE
-    c.header('Content-Type', 'text/event-stream; charset=utf-8');
-    c.header('Cache-Control', 'no-cache');
-    c.header('Connection', 'keep-alive');
-    c.header('X-Vercel-AI-Data-Stream', 'v1');
-    // CORS headers are handled by the middleware
-
-    return stream(c, async (responseStream) => {
-      const errorMsg = "OpenRouter API Key not configured. You need to add your API key.";
-      await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
-    });
+    console.warn("⚠️ OPENROUTER_API_KEY is missing - OpenRouter models will not be available");
+  } else {
+    console.log("✅ OPENROUTER_API_KEY is present - OpenRouter models are available");
   }
-
-  console.log("✅ OPENROUTER_API_KEY is present");
 
   try {
     const body = await c.req.json();
@@ -79,7 +79,31 @@ app.post('/api/chat', async (c) => {
       return c.json({ error: "No model provided" }, 400);
     }
 
-    console.log("🔍 MODEL:", MODEL);
+    // Find model info in MODELS
+    const modelInfo = MODELS.find(m => m.id === MODEL);
+
+    if (!modelInfo) {
+      return c.json({ error: `Model ${MODEL} not found in the MODELS array` }, 400);
+    }
+
+    // Get provider from model info
+    const provider = modelInfo.provider;
+
+    console.log(`🔍 MODEL: ${MODEL}, PROVIDER: ${provider}`);
+    
+    // Check if we need OpenRouter
+    if (provider === "openrouter" && !OPENROUTER_API_KEY) {
+      // Return error as SSE
+      c.header('Content-Type', 'text/event-stream; charset=utf-8');
+      c.header('Cache-Control', 'no-cache');
+      c.header('Connection', 'keep-alive');
+      c.header('X-Vercel-AI-Data-Stream', 'v1');
+      
+      return stream(c, async (responseStream) => {
+        const errorMsg = "OpenRouter API Key not configured. You need to add your API key to use OpenRouter models.";
+        await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+      });
+    }
 
     try {
       // Check for system prompt in request
@@ -100,29 +124,52 @@ app.post('/api/chat', async (c) => {
         }
       }
 
-      // Check if the model supports tools using the model ID
-      const modelInfo = MODELS.find(m => m.id === MODEL);
-      const modelSupportsTools = modelInfo?.supportsTools ?? false;
+      // Check if the model supports tools
+      const modelSupportsTools = modelInfo.supportsTools ?? false;
 
       console.log(`[Server] Model ${MODEL} ${modelSupportsTools ? 'supports' : 'does not support'} tools`);
 
-      // Configure stream options with MCP tools if available and if the model supports tools
-      const streamOptions = {
-        model: openrouter(MODEL),
-        messages: messages,
+      // Determine which provider to use based on model info
+      let model;
+      let headers = {};
 
-        toolCallStreaming: modelSupportsTools,
-
-        temperature: 0.7,
-        // Only include tools if the model supports them
-        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
-
-        // Headers for OpenRouter
-        headers: {
+      if (provider === "ollama") {
+        console.log(`[Server] Using Ollama provider with base URL: ${OLLAMA_BASE_URL}`);
+        // For Ollama models, use the Ollama provider
+        model = customOllama(MODEL);
+      } else if (provider === "openrouter") {
+        console.log(`[Server] Using OpenRouter provider`);
+        // For OpenRouter models, use the OpenRouter provider
+        model = openrouter(MODEL);
+        // Set OpenRouter specific headers
+        headers = {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'HTTP-Referer': 'https://openagents.com',
           'X-Title': 'OpenAgents Coder'
-        },
+        };
+      } else {
+        console.log(`[Server] Using default provider: OpenRouter`);
+        // Default to OpenRouter for unspecified providers
+        model = openrouter(MODEL);
+        headers = {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://openagents.com',
+          'X-Title': 'OpenAgents Coder'
+        };
+      }
+
+      // Configure stream options with MCP tools if available and if the model supports tools
+      const streamOptions = {
+        model,
+        messages,
+        toolCallStreaming: modelSupportsTools,
+        temperature: 0.7,
+        
+        // Only include tools if the model supports them
+        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
+        
+        // Include headers if present
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
 
         // Standard callbacks
         onError: (event: { error: unknown }) => {
