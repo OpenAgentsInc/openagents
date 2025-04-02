@@ -12,6 +12,14 @@
   resolved "https://registry.yarnpkg.com/@adobe/css-tools/-/css-tools-4.4.2.tgz#c836b1bd81e6d62cd6cdf3ee4948bcdce8ea79c8"
   integrity sha512-baYZExFpsdkBNuvGKTKWCwKH57HRZLVtycZS05WTQNVOiXVSeAki3nU35zlRbToeMW8aHlJfyS+1C4BOv27q0A==
 
+"@ai-sdk/openai-compatible@^0.2.4":
+  version "0.2.4"
+  resolved "https://registry.yarnpkg.com/@ai-sdk/openai-compatible/-/openai-compatible-0.2.4.tgz#4673a5b8f298feb6578eba31cfbe64ab8746a9b8"
+  integrity sha512-hLQnBn5e69rUXvXW+9SOkiL+S4yQX62hjtlX3zKXBI/3VnfOTcGKMamK51GoQB7uQCN1h7l9orvWqWpuQXxzRg==
+  dependencies:
+    "@ai-sdk/provider" "1.1.0"
+    "@ai-sdk/provider-utils" "2.2.3"
+
 "@ai-sdk/provider-utils@2.1.10":
   version "2.1.10"
   resolved "https://registry.yarnpkg.com/@ai-sdk/provider-utils/-/provider-utils-2.1.10.tgz#dfd671ccda12e321b58f347b6cbbdd982d139359"
@@ -40,7 +48,7 @@
     nanoid "^3.3.8"
     secure-json-parse "^2.7.0"
 
-"@ai-sdk/provider-utils@^2.0.0":
+"@ai-sdk/provider-utils@2.2.3", "@ai-sdk/provider-utils@^2.0.0":
   version "2.2.3"
   resolved "https://registry.yarnpkg.com/@ai-sdk/provider-utils/-/provider-utils-2.2.3.tgz#e94f58537bbed7f90a1ed94f8cd353b79e3ab65c"
   integrity sha512-o3fWTzkxzI5Af7U7y794MZkYNEsxbjLam2nxyoUZSScqkacb7vZ3EYHLh21+xCcSSzEC161C7pZAGHtC0hTUMw==
@@ -4799,6 +4807,11 @@
   dependencies:
     undici-types "~6.19.2"
 
+"@types/prop-types@*":
+  version "15.7.14"
+  resolved "https://registry.yarnpkg.com/@types/prop-types/-/prop-types-15.7.14.tgz#1433419d73b2a7ebfc6918dcefd2ec0d5cd698f2"
+  integrity sha512-gNMvNH49DJ7OJYv+KAKn0Xp45p8PLl6zo2YnvDIbTd4J6MER2BmWN49TG7n9LvkyihINxeKW8+3bfS2yDC9dzQ==
+
 "@types/qs@*":
   version "6.9.18"
   resolved "https://registry.yarnpkg.com/@types/qs/-/qs-6.9.18.tgz#877292caa91f7c1b213032b34626505b746624c2"
@@ -4831,11 +4844,19 @@
   dependencies:
     "@types/react" "*"
 
-"@types/react@*", "@types/react@19.0.0", "@types/react@~18.3.12":
+"@types/react@*", "@types/react@19.0.0":
   version "19.0.0"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-19.0.0.tgz#fbbb53ce223f4e2b750ad5dd09580b2c43522bbf"
   integrity sha512-MY3oPudxvMYyesqs/kW1Bh8y9VqSmf+tzqw3ae8a9DZW68pUe3zAdHeI1jc6iAysuRdACnVknHP8AhwD4/dxtg==
   dependencies:
+    csstype "^3.0.2"
+
+"@types/react@~18.3.12":
+  version "18.3.20"
+  resolved "https://registry.yarnpkg.com/@types/react/-/react-18.3.20.tgz#b0dccda9d2f1bc24d2a04b1d0cb5d0b9a3576ad3"
+  integrity sha512-IPaCZN7PShZK/3t6Q87pfTkRm6oLTd4vztyoj+cbHUF1g3FfVb2tFIL79uCRKEfv16AhqDMBywP2VW3KIZUvcg==
+  dependencies:
+    "@types/prop-types" "*"
     csstype "^3.0.2"
 
 "@types/responselike@^1.0.0":
