@@ -30,114 +30,6 @@ app.use('*', cors({
   exposeHeaders: ['Content-Length', 'X-Vercel-AI-Data-Stream'],
 }));
 
-// Health check endpoint
-app.get('/api/ping', (c) => {
-  console.log('[Server] Received /api/ping request');
-  return c.json({ message: 'pong' });
-});
-
-// Remote GitHub MCP connection test endpoint
-app.get('/api/mcp/github/test', async (c) => {
-  console.log('[Server] Testing remote GitHub MCP connection');
-
-  const GITHUB_MCP_URL = "https://mcp-github.openagents.com/sse";
-  const { remoteMcpClient } = getMCPClients();
-
-  try {
-    if (!remoteMcpClient) {
-      throw new Error('Remote MCP client not initialized');
-    }
-
-    console.log('[Server] Successfully connected to remote GitHub MCP');
-    return c.json({
-      success: true,
-      message: 'Successfully connected to remote GitHub MCP',
-      clientInfo: {
-        connected: true,
-        url: GITHUB_MCP_URL
-      }
-    });
-  } catch (error) {
-    console.error('[Server] Failed to connect to remote GitHub MCP:', error);
-    return c.json({
-      success: false,
-      message: 'Failed to connect to remote GitHub MCP',
-      error: error instanceof Error ? error.message : String(error)
-    }, 500);
-  } finally {
-    console.log('[Server] Remote MCP connection test complete');
-  }
-});
-
-// Local GitHub MCP connection test endpoint using stdio transport
-app.get('/api/mcp/github/local/test', async (c) => {
-  console.log('[Server] Testing local GitHub MCP connection');
-  const { localGithubMcpClient } = getMCPClients();
-
-  try {
-    if (!localGithubMcpClient) {
-      throw new Error('Local GitHub MCP client not initialized');
-    }
-
-    console.log('[Server] Successfully connected to local GitHub MCP');
-    return c.json({
-      success: true,
-      message: 'Successfully connected to local GitHub MCP',
-      clientInfo: {
-        connected: true,
-        transport: 'stdio',
-        command: 'npx',
-        args: ['-y', '@modelcontextprotocol/server-github']
-      }
-    });
-  } catch (error) {
-    console.error('[Server] Failed to connect to local GitHub MCP:', error);
-    return c.json({
-      success: false,
-      message: 'Failed to connect to local GitHub MCP',
-      error: error instanceof Error ? error.message : String(error)
-    }, 500);
-  } finally {
-    console.log('[Server] Local MCP connection test complete');
-  }
-});
-
-// Shell MCP connection test endpoint using stdio transport
-app.get('/api/mcp/shell/test', async (c) => {
-  console.log('[Server] Testing shell MCP connection');
-  const { localShellMcpClient } = getMCPClients();
-  const allowCommands = process.env.ALLOW_COMMANDS || 'ls,cat,pwd,echo,grep';
-
-  try {
-    if (!localShellMcpClient) {
-      throw new Error('Local Shell MCP client not initialized');
-    }
-
-    console.log('[Server] Successfully connected to shell MCP');
-    return c.json({
-      success: true,
-      message: 'Successfully connected to shell MCP',
-      clientInfo: {
-        connected: true,
-        transport: 'stdio',
-        command: 'uvx',
-        args: ['mcp-shell-server'],
-        allowedCommands: allowCommands.split(',')
-      }
-    });
-  } catch (error) {
-    console.error('[Server] Failed to connect to shell MCP:', error);
-    return c.json({
-      success: false,
-      message: 'Failed to connect to shell MCP',
-      error: error instanceof Error ? error.message : String(error)
-    }, 500);
-  } finally {
-    console.log('[Server] Shell MCP connection test complete');
-  }
-});
-
-
 // Main chat endpoint
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
@@ -212,9 +104,9 @@ app.post('/api/chat', async (c) => {
       // Check if the model supports tools using the model ID
       const modelInfo = MODELS.find(m => m.id === MODEL);
       const modelSupportsTools = modelInfo?.supportsTools ?? false;
-      
+
       console.log(`[Server] Model ${MODEL} ${modelSupportsTools ? 'supports' : 'does not support'} tools`);
-      
+
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model: openrouter(MODEL),
