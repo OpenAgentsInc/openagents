@@ -1,7 +1,6 @@
 import { getDatabase } from '../database';
 import { Settings, Database } from '../types';
 import { RxDocument } from 'rxdb';
-import { DeepReadonlyObject } from '../../types';
 
 // Global settings ID
 const GLOBAL_SETTINGS_ID = 'global';
@@ -23,7 +22,7 @@ function toMutableSettings(settings: any): Settings {
       preferences: {}
     };
   }
-  
+
   // Create a mutable copy with explicit handling for arrays
   const result: Settings = {
     id: settings.id,
@@ -35,7 +34,7 @@ function toMutableSettings(settings: any): Settings {
     visibleModelIds: settings.visibleModelIds ? [...settings.visibleModelIds] : [],
     preferences: settings.preferences ? { ...settings.preferences } : {}
   };
-  
+
   return result;
 }
 
@@ -61,7 +60,7 @@ export class SettingsRepository {
           console.log(`Loading pending model from localStorage: ${pendingModel}`);
           this._pendingModelUpdate = pendingModel;
         }
-        
+
         const pendingVisibility = window.localStorage.getItem('openagents_pending_visibility');
         if (pendingVisibility) {
           try {
@@ -97,7 +96,7 @@ export class SettingsRepository {
     if (this.cachedSettings) {
       let updatedSettings = { ...this.cachedSettings };
       let hasChanges = false;
-      
+
       // Apply pending model update if available
       if (this._pendingModelUpdate) {
         updatedSettings = {
@@ -107,7 +106,7 @@ export class SettingsRepository {
         };
         hasChanges = true;
       }
-      
+
       // Apply pending visibility updates if available
       if (this._pendingVisibilityUpdates) {
         updatedSettings = {
@@ -116,21 +115,21 @@ export class SettingsRepository {
         };
         hasChanges = true;
       }
-      
+
       // If we have changes, return the updated settings
       if (hasChanges) {
         console.log("Returning settings with pending updates applied");
         return toMutableSettings(updatedSettings);
       }
-      
+
       // Otherwise return cached settings as-is
       console.log("Returning cached settings");
       return toMutableSettings(this.cachedSettings!);
     }
-    
+
     // Always try to fetch from database first before using localStorage backups
     await this.initialize();
-    
+
     try {
       // Try fetching directly from database
       const settingsDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
@@ -246,10 +245,10 @@ export class SettingsRepository {
         } catch (e) {
           console.warn("Could not load MODELS for default visibleModelIds", e);
         }
-        
+
         // Default selected model (previously defaultModel)
         const defaultSelectedModel = 'anthropic/claude-3.7-sonnet';
-        
+
         const defaultSettings: Settings = {
           id: GLOBAL_SETTINGS_ID,
           theme: 'system',
@@ -359,7 +358,7 @@ export class SettingsRepository {
         if (modelId) {
           console.log(`Setting pending model update: ${modelId}`);
           this._pendingModelUpdate = modelId;
-          
+
           // If updates only contains defaultModel, also update selectedModelId for new schema
           if (updates.defaultModel && !updates.selectedModelId) {
             updates = {
@@ -367,7 +366,7 @@ export class SettingsRepository {
               selectedModelId: updates.defaultModel
             };
           }
-          
+
           // If updates only contains selectedModelId, also update defaultModel for backward compatibility
           if (updates.selectedModelId && !updates.defaultModel) {
             updates = {
@@ -386,12 +385,12 @@ export class SettingsRepository {
           }
         }
       }
-      
+
       // Handle model visibility updates
       if (updates.visibleModelIds) {
         console.log(`Setting pending visibility update: ${updates.visibleModelIds.length} models`);
         this._pendingVisibilityUpdates = updates.visibleModelIds;
-        
+
         // Store the pending update in localStorage for persistence across page reloads
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
@@ -448,12 +447,12 @@ export class SettingsRepository {
                 this.cachedSettings = mutableData;
                 return mutableData;
               }
-              
+
               // If for some reason we can't find the document after update, use the cached settings
               if (this.cachedSettings) {
                 return toMutableSettings(this.cachedSettings);
               }
-              
+
               // Last resort - create a default settings object
               const fallbackSettings: Settings = {
                 id: GLOBAL_SETTINGS_ID,
@@ -464,7 +463,7 @@ export class SettingsRepository {
                 visibleModelIds: updates.visibleModelIds || [],
                 preferences: {}
               };
-              
+
               return fallbackSettings;
             } catch (updateError) {
               console.warn(`Update attempt ${retries + 1} failed:`, updateError);
@@ -753,10 +752,10 @@ export class SettingsRepository {
     } catch (e) {
       console.warn("Could not load MODELS for default visibleModelIds during reset", e);
     }
-    
+
     // Default selected model
     const defaultSelectedModel = 'anthropic/claude-3.7-sonnet';
-    
+
     // Create default settings
     const defaultSettings: Settings = {
       id: GLOBAL_SETTINGS_ID,
@@ -791,7 +790,7 @@ export class SettingsRepository {
     // console.log("Clearing settings cache");
     this.cachedSettings = null;
   }
-  
+
   /**
    * Select a model as the active model
    * This replaces the old defaultModel concept
@@ -818,7 +817,7 @@ export class SettingsRepository {
       };
     }
   }
-  
+
   /**
    * Show a model in the selector
    */
@@ -826,17 +825,17 @@ export class SettingsRepository {
     console.log(`Showing model: ${modelId}`);
     const settings = await this.getSettings();
     const visibleModelIds = settings.visibleModelIds || [];
-    
+
     // Only add if not already visible
     if (!visibleModelIds.includes(modelId)) {
       return this.updateSettings({
         visibleModelIds: [...visibleModelIds, modelId]
       });
     }
-    
+
     return toMutableSettings(settings);
   }
-  
+
   /**
    * Hide a model from the selector
    */
@@ -844,31 +843,31 @@ export class SettingsRepository {
     console.log(`Hiding model: ${modelId}`);
     const settings = await this.getSettings();
     const visibleModelIds = settings.visibleModelIds || [];
-    
+
     // Only remove if visible
     if (visibleModelIds.includes(modelId)) {
       return this.updateSettings({
         visibleModelIds: visibleModelIds.filter(id => id !== modelId)
       });
     }
-    
+
     return toMutableSettings(settings);
   }
-  
+
   /**
    * Toggle a model's visibility
    */
   async toggleModelVisibility(modelId: string): Promise<Settings> {
     const settings = await this.getSettings();
     const visibleModelIds = settings.visibleModelIds || [];
-    
+
     if (visibleModelIds.includes(modelId)) {
       return this.hideModel(modelId);
     } else {
       return this.showModel(modelId);
     }
   }
-  
+
   /**
    * Get currently visible model IDs
    */
@@ -876,8 +875,8 @@ export class SettingsRepository {
     try {
       const settings = await this.getSettings();
       if (settings && settings.visibleModelIds) {
-        return Array.isArray(settings.visibleModelIds) 
-          ? [...settings.visibleModelIds] 
+        return Array.isArray(settings.visibleModelIds)
+          ? [...settings.visibleModelIds]
           : [];
       }
       return [];
