@@ -374,8 +374,39 @@ export default function ModelsPage() {
             </Table>
           </div>
           
-          {/* Reset button */}
-          <div className="flex justify-end">
+          {/* Action buttons */}
+          <div className="flex justify-end space-x-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  // Show all models
+                  const allModelIds = MODELS.map(model => model.id);
+                  console.log("Making all models visible:", allModelIds.length);
+                  
+                  // Update local state
+                  setVisibleModelIds(allModelIds);
+                  
+                  // Update settings
+                  const result = await updateSettings({
+                    visibleModelIds: allModelIds
+                  });
+                  
+                  if (result) {
+                    alert("All models are now visible in the selector.");
+                  } else {
+                    throw new Error("Failed to update settings");
+                  }
+                } catch (error) {
+                  console.error("Failed to show all models:", error);
+                  alert("There was a problem showing all models. Please try again later.");
+                }
+              }}
+            >
+              Show All Models
+            </Button>
+            
             <Button
               variant="destructive"
               size="sm"

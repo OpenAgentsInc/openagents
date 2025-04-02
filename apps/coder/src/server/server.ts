@@ -6,6 +6,7 @@ import { stream } from 'hono/streaming';
 import { streamText, tool, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ollama, createOllama } from 'ollama-ai-provider';
+import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
 import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -19,6 +20,7 @@ const exec = promisify(execCallback);
 // Define environment interface
 interface Env {
   OPENROUTER_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
   OLLAMA_BASE_URL?: string;
   ALLOW_COMMANDS?: string; // Shell commands whitelist for mcp-shell-server
 }
@@ -101,6 +103,7 @@ app.post('/api/chat', async (c) => {
 
     // Use API keys from request if available, fall back to environment variables
     const OPENROUTER_API_KEY = requestApiKeys.openrouter || process.env.OPENROUTER_API_KEY || "";
+    const ANTHROPIC_API_KEY = requestApiKeys.anthropic || process.env.ANTHROPIC_API_KEY || "";
     const OLLAMA_BASE_URL = requestApiKeys.ollama || requestApiKeys.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
 
     // Create the Ollama client with custom base URL if specified
@@ -118,6 +121,13 @@ app.post('/api/chat', async (c) => {
     } else {
       console.log("✅ OPENROUTER_API_KEY is present - OpenRouter models are available");
     }
+    
+    // For Anthropic provider models, check if API key is present
+    if (!ANTHROPIC_API_KEY) {
+      console.warn("⚠️ ANTHROPIC_API_KEY is missing - Anthropic Claude models will not be available");
+    } else {
+      console.log("✅ ANTHROPIC_API_KEY is present - Anthropic Claude models are available");
+    }
 
     // Validate input messages
     let messages: Message[] = body.messages || [];
@@ -129,6 +139,15 @@ app.post('/api/chat', async (c) => {
     const openrouter = createOpenRouter({
       apiKey: OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1"
+    });
+    
+    // Create the Anthropic client with API key
+    const anthropicClient = createAnthropic({
+      apiKey: ANTHROPIC_API_KEY,
+      // Optional: Add any custom headers if needed
+      headers: {
+        'Anthropic-Version': '2023-06-01'
+      }
     });
 
     // Define model
@@ -282,6 +301,28 @@ app.post('/api/chat', async (c) => {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'HTTP-Referer': 'https://openagents.com',
           'X-Title': 'OpenAgents Coder'
+        };
+      } else if (provider === "anthropic") {
+        console.log(`[Server] Using Anthropic provider`);
+        // Check if API key is present
+        if (!ANTHROPIC_API_KEY) {
+          // Return error as SSE
+          c.header('Content-Type', 'text/event-stream; charset=utf-8');
+          c.header('Cache-Control', 'no-cache');
+          c.header('Connection', 'keep-alive');
+          c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+          return stream(c, async (responseStream) => {
+            const errorMsg = "Anthropic API Key not configured. Please add your API key in the Settings > API Keys tab to use Claude models.";
+            await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+          });
+        }
+        
+        // For Anthropic models, use the Anthropic provider
+        model = anthropicClient(MODEL);
+        // Set Anthropic specific headers if needed
+        headers = {
+          'Anthropic-Version': '2023-06-01'
         };
       } else {
         console.log(`[Server] Using default provider: OpenRouter`);
