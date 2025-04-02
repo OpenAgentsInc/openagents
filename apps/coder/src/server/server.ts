@@ -10,6 +10,10 @@ import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
+import { promisify } from 'util';
+import { exec as execCallback } from 'child_process';
+
+const exec = promisify(execCallback);
 
 // Define environment interface
 interface Env {
@@ -197,8 +201,13 @@ app.post('/api/chat', async (c) => {
             description: "Execute a shell command",
             execute: async (args) => {
               // Implementation will be handled elsewhere
-              console.log("Placeholder for shell command execution", args);
-              return "Shell command executed (placeholder";
+              console.log("Running command:", args.command);
+
+              // run the command
+              const result = await exec(args.command);
+              console.log("Command result:", result);
+
+              return "Executed command: " + args.command + "\n\n" + result.stdout;
             }
           })
         },
