@@ -1,10 +1,10 @@
 interface Model {
-  author: "anthropic" | "cohere" | "deepseek" | "openai" | "google" | "meta" | "mistralai"
+  author: "anthropic" | "cohere" | "deepseek" | "openai" | "google" | "meta" | "mistralai" | "qwen"
   created: number
   description: string
   id: string
   name: string
-  provider: "openrouter" | "anthropic" | "ollama"
+  provider: "openrouter" | "anthropic" | "ollama" | "lmstudio"
   shortDescription?: string
   supportsTools?: boolean
   tokenizer?: string
@@ -33,6 +33,17 @@ interface Model {
 }
 
 export const MODELS: Model[] = [
+  {
+    author: "qwen",
+    provider: "lmstudio",
+    id: "qwen2-7b-instruct",
+    context_length: 8192,
+    created: 1721088000,
+    description: "Qwen2 7B is a transformer-based model that excels in language understanding, multilingual capabilities, coding, mathematics, and reasoning.",
+    name: "Qwen 2 7B Instruct",
+    shortDescription: "Qwen 2 7B Instruct is a large language model with 7B parameters.",
+    supportsTools: true,
+  },
   {
     author: "meta",
     provider: "ollama",
