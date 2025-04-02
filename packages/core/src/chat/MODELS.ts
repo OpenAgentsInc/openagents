@@ -1,5 +1,5 @@
 interface Model {
-  author: "anthropic" | "cohere" | "deepseek" | "openai" | "google" | "mistralai"
+  author: "anthropic" | "cohere" | "deepseek" | "openai" | "google" | "meta" | "mistralai"
   created: number
   description: string
   id: string
@@ -34,6 +34,17 @@ interface Model {
 
 export const MODELS: Model[] = [
   {
+    author: "meta",
+    provider: "ollama",
+    id: "llama3.2",
+    name: "Llama 3.2",
+    created: 1742824755,
+    description: "Llama 3.2 is a large language model with 12B parameters.",
+    shortDescription: "Llama 3.2 is a large language model with 12B parameters.",
+    context_length: 20000,
+    supportsTools: true,
+  },
+  {
     author: "cohere",
     provider: "ollama",
     id: "command-r7b",
@@ -42,7 +53,7 @@ export const MODELS: Model[] = [
     description: "The smallest model in Cohere's R series delivers top-tier speed, efficiency, and quality to build powerful AI applications on commodity GPUs and edge devices.",
     shortDescription: "Smallest model in Cohere's R series, delivering top-tier speed, efficiency, and quality.",
     context_length: 128000,
-    supportsTools: true,
+    supportsTools: false,
   },
   {
     author: "google",

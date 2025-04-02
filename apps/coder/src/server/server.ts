@@ -166,6 +166,8 @@ app.post('/api/chat', async (c) => {
         };
       }
 
+      console.log("tools:", tools)
+
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model,
@@ -178,7 +180,10 @@ app.post('/api/chat', async (c) => {
         // ...((modelSupportsTools && Object.keys(tools).length > 0 && provider !== "ollama") ? { tools } : {}),
 
         // Now we'll try with tools
-        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
+        // ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
+
+        // For now we want to try with only 1 tool
+        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools: { "shell_execute": tools["shell_execute"] } } : {}),
 
         // Include headers if present
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
