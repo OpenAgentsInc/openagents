@@ -53,7 +53,7 @@ export const MODELS: Model[] = [
     description: "The smallest model in Cohere's R series delivers top-tier speed, efficiency, and quality to build powerful AI applications on commodity GPUs and edge devices.",
     shortDescription: "Smallest model in Cohere's R series, delivering top-tier speed, efficiency, and quality.",
     context_length: 128000,
-    supportsTools: false,
+    supportsTools: true,
   },
   {
     author: "google",
