@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { MODELS, useSettings } from "@openagents/core";
 import { Check, ChevronDown, AlertCircle } from "lucide-react";
 import { cn } from "@/utils/tailwind";
@@ -36,12 +36,14 @@ export const ModelSelect = React.memo(function ModelSelect({
   const [modelMessages, setModelMessages] = useState<Record<string, string>>({});
   const { settings, getApiKey } = useSettings();
 
-  // Check API key availability and model availability for local models
-  useEffect(() => {
-    async function checkApiKeysAndLocalModels() {
-      const availability: Record<string, boolean> = {};
-      const messages: Record<string, string> = {};
-      
+  // Function to check availability (extracted for reuse)
+  const checkAvailability = useCallback(async () => {
+    console.log("Checking model availability in ModelSelect");
+    const availability: Record<string, boolean> = {};
+    const messages: Record<string, string> = {};
+
+    try {
+
       // Function to check if Ollama is running and get available models
       const checkOllamaModels = async (): Promise<string[]> => {
         try {
@@ -55,30 +57,44 @@ export const ModelSelect = React.memo(function ModelSelect({
         }
         return [];
       };
-      
+
       // Function to check if LMStudio is running and get available models - using proxy to avoid CORS issues
       const checkLMStudioModels = async (): Promise<boolean> => {
         try {
+          // Get the stored LMStudio URL from localStorage or fall back to default
+          let lmStudioUrl = "http://localhost:1234";
+
+          try {
+            // First try to get from localStorage (faster than waiting for DB)
+            const storedUrl = localStorage.getItem("openagents_lmstudio_url");
+            if (storedUrl) {
+              lmStudioUrl = storedUrl;
+              console.log("Using LMStudio URL from localStorage:", lmStudioUrl);
+            }
+          } catch (e) {
+            console.warn("Error reading LMStudio URL from localStorage:", e);
+          }
+
           // Use our server-side proxy to avoid CORS issues
-          const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent("http://localhost:1234/v1/models")}`;
+          const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${lmStudioUrl}/v1/models`)}`;
           console.log("Checking LMStudio via proxy:", proxyUrl);
-          
+
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-          
+
           const response = await fetch(proxyUrl, {
             method: 'GET',
             headers: { 'Accept': 'application/json' },
             signal: controller.signal
           });
-          
+
           clearTimeout(timeoutId);
           console.log("LMStudio proxy response status:", response.status, "ok:", response.ok);
-        
+
           if (response.ok) {
             const data = await response.json();
             console.log("LMStudio models data:", data);
-            
+
             // Handle different response formats
             if (data) {
               if (data.data && Array.isArray(data.data) && data.data.length > 0) {
@@ -96,34 +112,34 @@ export const ModelSelect = React.memo(function ModelSelect({
                 return true;
               }
             }
-            
+
             // If we didn't find any recognizable model data, but the server responded successfully
             console.log("LMStudio server responded but no model data found. Considering it running anyway");
             return true;
           }
-          
+
           return false; // Response was not OK
-          
+
         } catch (error) {
           console.warn("Failed to connect to LMStudio API via proxy:", error);
-          
+
           if (error instanceof DOMException && error.name === 'AbortError') {
             console.error("LMStudio connection timed out");
           }
-          
+
           return false;
         }
       };
-      
+
       // Focus only on LMStudio for now, skipping Ollama
       // const ollamaModels = await checkOllamaModels();
       const ollamaModels: string[] = []; // Empty for now to focus on LMStudio
       const lmStudioAvailable = await checkLMStudioModels();
-      
+
       for (const model of MODELS) {
         // Default to available
         availability[model.id] = true;
-        
+
         // Check based on provider
         if (model.provider === 'openrouter') {
           const key = await getApiKey('openrouter');
@@ -131,7 +147,7 @@ export const ModelSelect = React.memo(function ModelSelect({
           if (!key) {
             messages[model.id] = "OpenRouter API key required. Add it in Settings > API Keys.";
           }
-        } 
+        }
         else if (model.provider === 'anthropic') {
           const key = await getApiKey('anthropic');
           availability[model.id] = !!key;
@@ -165,19 +181,45 @@ export const ModelSelect = React.memo(function ModelSelect({
           }
         }
       }
-      
+      return { availability, messages };
+    } catch (error) {
+      console.error("Error checking model availability:", error);
+      return { availability: {}, messages: {} };
+    }
+  }, [getApiKey, settings]);
+
+  // Check API key availability and model availability for local models
+  useEffect(() => {
+    async function updateAvailability() {
+      const { availability, messages } = await checkAvailability();
       setModelAvailability(availability);
       setModelMessages(messages);
     }
-    
-    checkApiKeysAndLocalModels();
-  }, [getApiKey, settings]);
+
+    // Initial check
+    updateAvailability();
+
+    // Also listen for URL changes
+    const handleLmStudioUrlChange = () => {
+      console.log("LMStudio URL changed, updating model availability in ModelSelect");
+      updateAvailability();
+    };
+
+    // Listen for both regular API key changes and specific LMStudio URL changes
+    window.addEventListener('api-key-changed', handleLmStudioUrlChange);
+    window.addEventListener('lmstudio-url-changed', handleLmStudioUrlChange);
+
+    return () => {
+      window.removeEventListener('api-key-changed', handleLmStudioUrlChange);
+      window.removeEventListener('lmstudio-url-changed', handleLmStudioUrlChange);
+    };
+  }, [checkAvailability]);
 
   // Filter models based on visibility settings - create memoized value outside the effect
   const filteredModels = useMemo(() => {
     if (settings && settings.visibleModelIds && settings.visibleModelIds.length > 0) {
       // Filter MODELS to only include those in visibleModelIds
-      return MODELS.filter(model => 
+      return MODELS.filter(model =>
         settings.visibleModelIds!.includes(model.id)
       );
     } else {
@@ -185,24 +227,24 @@ export const ModelSelect = React.memo(function ModelSelect({
       return MODELS;
     }
   }, [settings]);
-  
+
   // Update visible models only when filtered models change
   useEffect(() => {
     setVisibleModels(filteredModels);
   }, [filteredModels]);
 
   // Find the currently selected model with useMemo
-  const selectedModel = useMemo(() => 
-    MODELS.find((model) => model.id === value), 
+  const selectedModel = useMemo(() =>
+    MODELS.find((model) => model.id === value),
     [value]
   );
-  
+
   // Check if the selected model is available
   const isSelectedModelAvailable = useMemo(() => {
     if (!selectedModel) return true;
     return modelAvailability[selectedModel.id] !== false;
   }, [selectedModel, modelAvailability]);
-  
+
   // Get warning message for the selected model
   const selectedModelWarning = useMemo(() => {
     if (!selectedModel) return null;
@@ -227,7 +269,7 @@ export const ModelSelect = React.memo(function ModelSelect({
             <span className="overflow-hidden text-ellipsis">
               {selectedModel ? selectedModel.name : placeholder}
             </span>
-            
+
             {!isSelectedModelAvailable && selectedModelWarning && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -252,7 +294,7 @@ export const ModelSelect = React.memo(function ModelSelect({
               const isSelected = value === model.id;
               const isAvailable = modelAvailability[model.id] !== false;
               const warningMessage = modelMessages[model.id];
-              
+
               return (
                 <CommandItem
                   key={model.id}
@@ -279,7 +321,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                         <span className="h-4 w-4" />
                       )}
                       <span className="font-medium font-mono">{model.name}</span>
-                      
+
                       {!isAvailable && warningMessage && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -292,7 +334,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground pl-6">
-                      {model.provider} {model.supportsTools ? "• Tools" : ""} • {Math.round(model.context_length/1000)}k ctx
+                      {model.provider} {model.supportsTools ? "• Tools" : ""} • {Math.round(model.context_length / 1000)}k ctx
                     </div>
                   </div>
                 </CommandItem>

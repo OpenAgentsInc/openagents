@@ -373,6 +373,17 @@ Common issues and solutions:
 - Verify that both servers can communicate with each other
 - Restart both servers if the issue persists
 
+### URL Changes Not Reflected in UI
+
+**Problem**: Changed LMStudio URL in settings but model availability doesn't update
+**Solution**:
+- Check browser console for any errors in the event listeners
+- Verify that both `api-key-changed` and `lmstudio-url-changed` events are being dispatched
+- Ensure localStorage is being updated with the new URL
+- Check if settings repository is correctly saving and retrieving the URL
+- If individual components are not updating, try a full page refresh as a last resort
+- Verify that there are no network issues connecting to the new URL
+
 ## Future Improvements
 
 Planned enhancements for the local model integration:
@@ -387,6 +398,45 @@ Planned enhancements for the local model integration:
 8. **Restore Ollama Support**: Re-implement and improve Ollama integration
 9. **Automatic Discovery**: Detect local model servers on the network automatically
 10. **Health Monitoring**: Add endpoint to monitor LMStudio health and model status
+
+## URL Configuration and Real-Time Updates
+
+The application includes a robust system for configuring and updating the LMStudio server URL across all components:
+
+### Storage Mechanism
+
+The LMStudio URL is stored in three places to ensure persistence and availability:
+
+1. **Database Storage**: Primary storage using the settings repository
+2. **LocalStorage**: Used as a fast-access cache and fallback mechanism
+3. **In-Memory State**: Stored in React component state for immediate use
+
+This multi-tiered approach ensures that:
+- URLs persist between sessions
+- Changes propagate immediately without requiring a page refresh
+- Connection status updates in real-time across all components
+
+### Event-Based Communication
+
+When the URL is updated in the Settings page, the application uses custom events to notify all components:
+
+```typescript
+// Dispatching events when URL changes
+window.dispatchEvent(new CustomEvent('api-key-changed'));
+window.dispatchEvent(new CustomEvent('lmstudio-url-changed'));
+```
+
+Components like ModelSelect and HomePage listen for these events and update their state accordingly:
+
+```typescript
+// Listening for URL changes
+window.addEventListener('lmstudio-url-changed', handleUrlChange);
+```
+
+This event-based architecture ensures that changing the URL in settings:
+1. Immediately updates the model availability in the model selection dropdown
+2. Updates the connection status in the chat interface
+3. Uses the new URL for all subsequent API requests
 
 ## LMStudio Configuration Best Practices
 
