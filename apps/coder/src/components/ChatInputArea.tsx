@@ -3,20 +3,21 @@ import { ChatForm } from '@/components/ui/chat';
 import { MessageInput } from '@/components/ui/message-input';
 import { ModelWarningBanner } from './ModelWarningBanner';
 import { useModelContext } from '@/providers/ModelProvider';
-import { useStableInput } from '@/providers/StableInputProvider';
+import { useIsolatedInput } from '@/providers/IsolatedInputProvider';
 
 export const ChatInputArea = memo(function ChatInputArea() {
   const { isModelAvailable } = useModelContext();
   
-  // Now use the completely isolated stable input provider
+  // Now use the completely isolated input provider
   // This completely disconnects this component from the streaming context
+  // and prevents sidebar rerenders
   const { 
     input, 
     handleInputChange, 
     handleSubmit,
     stop,
     isGenerating 
-  } = useStableInput();
+  } = useIsolatedInput();
   
   // Memoize the onChange handler to prevent recreation on every render
   const handleOnChange = useCallback((e: string | React.ChangeEvent<HTMLTextAreaElement>) => {

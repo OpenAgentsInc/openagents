@@ -274,13 +274,124 @@ This document logs the specific performance optimizations made to fix rerenderin
    });
    ```
 
+## 4. Input Editing Causing Sidebar Rerenders
+
+### Problem
+- Every time a user types in the MessageInput component, the sidebar would rerender
+- Even with existing StableInputProvider, edits in the input field would cause rerenders
+- This was causing performance degradation and a poor user experience
+
+### Solution
+1. Created a completely isolated input provider architecture:
+   ```tsx
+   // IsolatedInputProvider.tsx
+   export const IsolatedInputProvider: React.FC<IsolatedInputProviderProps> = ({
+     inputRef,
+     handleInputChangeRef,
+     handleSubmitRef,
+     stopRef,
+     isGeneratingRef,
+     children
+   }) => {
+     // Complete isolation: maintain internal state
+     const [input, setInput] = useState(inputRef.current);
+     const [isGenerating, setIsGenerating] = useState(isGeneratingRef.current);
+   
+     // Sync with source of truth when it changes (but only from outside edits, not our own)
+     useEffect(() => {
+       // Create a function to sync state from the outside references
+       const syncState = () => {
+         setInput(inputRef.current);
+         setIsGenerating(isGeneratingRef.current);
+       };
+   
+       // Set up an interval to check for external changes
+       const intervalId = setInterval(syncState, 200);
+   
+       // Clean up the interval on unmount
+       return () => clearInterval(intervalId);
+     }, []);
+   
+     // Create completely isolated handlers
+     const handleInputChange = useCallback((value: string) => {
+       // Update our internal state
+       setInput(value);
+       
+       // Propagate to the real handler
+       handleInputChangeRef.current(value);
+     }, []);
+     
+     // More handlers...
+   };
+   ```
+
+2. Created a special wrapper component that captures handlers just once on mount:
+   ```tsx
+   const IsolatedInputWrapper = memo(function IsolatedInputWrapper({
+     children
+   }) {
+     // Get the input context only once on mount and store in refs
+     const { input, handleInputChange, handleSubmit, stop, isGenerating } = useInputContext();
+     
+     // Store everything in refs to prevent any updates from props
+     const inputRef = useRef(input);
+     const handleInputChangeRef = useRef(handleInputChange);
+     // More refs...
+     
+     // Update refs when values change but don't rerender
+     useEffect(() => {
+       inputRef.current = input;
+       handleInputChangeRef.current = handleInputChange;
+       // Update more refs...
+     }, [input, handleInputChange, handleSubmit, stop, isGenerating]);
+     
+     return (
+       <IsolatedInputProvider
+         inputRef={inputRef}
+         handleInputChangeRef={handleInputChangeRef}
+         // More refs...
+       >
+         {children}
+       </IsolatedInputProvider>
+     );
+   });
+   ```
+
+3. Updated the main component to use the isolated wrapper:
+   ```tsx
+   // In MainLayout.tsx
+   <IsolatedInputWrapper>
+     <ChatInputArea />
+   </IsolatedInputWrapper>
+   ```
+
+4. Modified ChatInputArea to use the isolated context:
+   ```tsx
+   export const ChatInputArea = memo(function ChatInputArea() {
+     const { isModelAvailable } = useModelContext();
+     
+     // Now use the completely isolated input provider
+     const { 
+       input, 
+       handleInputChange, 
+       handleSubmit,
+       stop,
+       isGenerating 
+     } = useIsolatedInput();
+     
+     // Rest of component...
+   });
+   ```
+
 ## Key Patterns Used
 
-1. **Context Isolation**: Creating specialized providers for different UI sections
+1. **Complete Context Isolation**: Creating specialized providers for different UI sections that never cause cross-talk
 2. **Ref-Based Handler Stabilization**: Storing handlers in refs with stable wrapper functions 
 3. **Component Memoization**: Using React.memo consistently for all components
 4. **Custom UI Components**: Replacing complex third-party components with simpler, optimized versions
 5. **JSX Memoization**: Pre-computing JSX for complex or dynamically generated content
+6. **State Independence**: Maintaining separate but synchronized state for inputs
+7. **Mount-Only Context Capture**: Getting context values only once on mount and using refs afterward
 
 ## Results
 

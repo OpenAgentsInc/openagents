@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useRef, useEffect } from 'react';
 import {
   SidebarProvider,
   Sidebar,
@@ -22,6 +22,46 @@ import { useThreadContext, useMessageContext, useInputContext } from '@/provider
 import { StreamingMessageProvider } from '@/providers/StreamingMessageProvider';
 import { StableInputProvider } from '@/providers/StableInputProvider';
 import { StableHeaderProvider } from '@/providers/StableHeaderProvider';
+import { IsolatedInputProvider } from '@/providers/IsolatedInputProvider';
+
+// Special component that completely isolates the input area
+// It gets the input handlers only once on mount and never rerenders
+const IsolatedInputWrapper = memo(function IsolatedInputWrapper({
+  children
+}: {
+  children: React.ReactNode
+}) {
+  // Get the input context only once on mount and store in refs
+  const { input, handleInputChange, handleSubmit, stop, isGenerating } = useInputContext();
+  
+  // Store everything in refs to prevent any updates from props
+  const inputRef = useRef(input);
+  const handleInputChangeRef = useRef(handleInputChange);
+  const handleSubmitRef = useRef(handleSubmit);
+  const stopRef = useRef(stop);
+  const isGeneratingRef = useRef(isGenerating);
+  
+  // Update refs when values change but don't rerender
+  useEffect(() => {
+    inputRef.current = input;
+    handleInputChangeRef.current = handleInputChange;
+    handleSubmitRef.current = handleSubmit;
+    stopRef.current = stop;
+    isGeneratingRef.current = isGenerating;
+  }, [input, handleInputChange, handleSubmit, stop, isGenerating]);
+  
+  return (
+    <IsolatedInputProvider
+      inputRef={inputRef}
+      handleInputChangeRef={handleInputChangeRef}
+      handleSubmitRef={handleSubmitRef}
+      stopRef={stopRef}
+      isGeneratingRef={isGeneratingRef}
+    >
+      {children}
+    </IsolatedInputProvider>
+  );
+});
 
 export const MainLayout = memo(function MainLayout() {
   // Use thread context instead of the full chat state
@@ -38,7 +78,7 @@ export const MainLayout = memo(function MainLayout() {
   // Get message data for streaming provider
   const { messages, isGenerating } = useMessageContext();
   
-  // Get input data for stable input provider
+  // Get input data for stable input provider - still needed for other parts
   const inputContext = useInputContext();
   
   return (
@@ -90,15 +130,10 @@ export const MainLayout = memo(function MainLayout() {
                   <MessageArea />
                 </StreamingMessageProvider>
                 
-                {/* Now wrap the ChatInputArea with a dedicated input provider */}
-                <StableInputProvider 
-                  input={inputContext.input} 
-                  handleInputChange={inputContext.handleInputChange}
-                  handleSubmit={inputContext.handleSubmit}
-                  stop={inputContext.stop}
-                  isGenerating={isGenerating}>
+                {/* Create the most isolated possible input area */}
+                <IsolatedInputWrapper>
                   <ChatInputArea />
-                </StableInputProvider>
+                </IsolatedInputWrapper>
               </div>
             </SidebarInset>
           </div>
