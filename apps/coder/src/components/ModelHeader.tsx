@@ -20,18 +20,19 @@ const SlidersHorizontalIcon = react19.icon<IconProps>(SlidersHorizontal);
 
 export const ModelHeader = memo(function ModelHeader() {
   const { selectedModelId, handleModelChange } = useModelContext();
-  
+
   return (
     <div className="flex items-center justify-between w-full overflow-hidden">
-      <ModelSelect
+      <div></div>
+      {/* <ModelSelect
         value={selectedModelId}
         onChange={handleModelChange}
         className="w-[240px]"
-      />
+      /> */}
       <div className="flex items-center gap-2">
         <Link to="/settings/models">
-          <Button 
-            size="icon" 
+          <Button
+            size="icon"
             className="flex items-center justify-center h-8 w-8 bg-transparent text-primary hover:bg-primary/5">
             <SlidersHorizontalIcon size={20} />
           </Button>
