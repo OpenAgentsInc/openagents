@@ -18,7 +18,9 @@ import { ModelHeader } from '@/components/ModelHeader';
 import { ThreadList } from '@/components/ThreadList';
 import { MessageArea } from '@/components/MessageArea';
 import { ChatInputArea } from '@/components/ChatInputArea';
-import { useThreadContext } from '@/providers/ChatStateProvider';
+import { useThreadContext, useMessageContext, useInputContext } from '@/providers/ChatStateProvider';
+import { StreamingMessageProvider } from '@/providers/StreamingMessageProvider';
+import { StableInputProvider } from '@/providers/StableInputProvider';
 
 export const MainLayout = memo(function MainLayout() {
   // Use thread context instead of the full chat state
@@ -31,6 +33,12 @@ export const MainLayout = memo(function MainLayout() {
     handleRenameThread,
     threadListKey
   } = useThreadContext();
+  
+  // Get message data for streaming provider
+  const { messages, isGenerating } = useMessageContext();
+  
+  // Get input data for stable input provider
+  const inputContext = useInputContext();
   
   return (
     <SidebarProvider defaultOpen={true}>
@@ -74,8 +82,20 @@ export const MainLayout = memo(function MainLayout() {
                   <ModelHeader />
                 </div>
 
-                <MessageArea />
-                <ChatInputArea />
+                {/* Wrap just the MessageArea in the streaming provider */}
+                <StreamingMessageProvider messages={messages} isGenerating={isGenerating}>
+                  <MessageArea />
+                </StreamingMessageProvider>
+                
+                {/* Now wrap the ChatInputArea with a dedicated input provider */}
+                <StableInputProvider 
+                  input={inputContext.input} 
+                  handleInputChange={inputContext.handleInputChange}
+                  handleSubmit={inputContext.handleSubmit}
+                  stop={inputContext.stop}
+                  isGenerating={isGenerating}>
+                  <ChatInputArea />
+                </StableInputProvider>
               </div>
             </SidebarInset>
           </div>

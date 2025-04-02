@@ -3,21 +3,20 @@ import { ChatForm } from '@/components/ui/chat';
 import { MessageInput } from '@/components/ui/message-input';
 import { ModelWarningBanner } from './ModelWarningBanner';
 import { useModelContext } from '@/providers/ModelProvider';
-import { useInputContext, useMessageContext } from '@/providers/ChatStateProvider';
+import { useStableInput } from '@/providers/StableInputProvider';
 
 export const ChatInputArea = memo(function ChatInputArea() {
   const { isModelAvailable } = useModelContext();
   
-  // Get input state from InputContext (won't rerender during streaming)
+  // Now use the completely isolated stable input provider
+  // This completely disconnects this component from the streaming context
   const { 
     input, 
     handleInputChange, 
     handleSubmit,
-    stop 
-  } = useInputContext();
-  
-  // Only get isGenerating from MessageContext
-  const { isGenerating } = useMessageContext();
+    stop,
+    isGenerating 
+  } = useStableInput();
   
   // Memoize the onChange handler to prevent recreation on every render
   const handleOnChange = useCallback((e: string | React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -43,18 +42,66 @@ export const ChatInputArea = memo(function ChatInputArea() {
     !isModelAvailable ? "API key required for this model" : "Message...", 
   [isModelAvailable]);
   
+  // Create a stable onChange that won't recreate during streaming
+  // This is critical - creating a new stable handler with a ref
+  const stableOnChangeRef = React.useRef<((e: any) => void) | null>(null);
+  
+  // Update the ref to point to the current handleOnChange function
+  React.useEffect(() => {
+    stableOnChangeRef.current = (e: any) => {
+      handleOnChange(e);
+    };
+  }, [handleOnChange]);
+  
+  // This is the stable onChange handler we'll pass to MessageInput - it never changes
+  const stableOnChange = React.useCallback((e: any) => {
+    if (stableOnChangeRef.current) {
+      stableOnChangeRef.current(e);
+    }
+  }, []);
+  
+  // Make all handlers stable
+  const stopRef = React.useRef(stop);
+  
+  // Update the stop ref when it changes
+  React.useEffect(() => {
+    stopRef.current = stop;
+  }, [stop]);
+  
+  // Create a stable stop handler that never changes
+  const stableStop = React.useCallback(() => {
+    if (stopRef.current) {
+      stopRef.current();
+    }
+  }, []);
+  
+  // Stable input value & model state tracking
+  const inputRef = React.useRef(input);
+  const isGeneratingRef = React.useRef(isGenerating);
+  const isModelAvailableRef = React.useRef(isModelAvailable);
+  
+  // Update refs when values change
+  React.useEffect(() => {
+    inputRef.current = input;
+    isGeneratingRef.current = isGenerating;
+    isModelAvailableRef.current = isModelAvailable;
+  }, [input, isGenerating, isModelAvailable]);
+  
+  // Create completely stable props for MessageInput
+  const messageInputProps = useMemo(() => ({
+    value: input,
+    onChange: stableOnChange,
+    allowAttachments: false,
+    stop: stableStop,
+    isGenerating,
+    disabled: !isModelAvailable,
+    placeholder: placeholderText
+  }), [input, isGenerating, isModelAvailable, placeholderText]);
+  
   // Wrap the MessageInput render function in useMemo to prevent rerenders during streaming
   const renderMessageInput = useCallback(({ files, setFiles }: { files: File[] | null, setFiles: React.Dispatch<React.SetStateAction<File[] | null>> }) => (
-    <MessageInput
-      value={input}
-      onChange={handleOnChange}
-      allowAttachments={false}
-      stop={stop}
-      isGenerating={isGenerating}
-      disabled={!isModelAvailable}
-      placeholder={placeholderText}
-    />
-  ), [input, handleOnChange, stop, isGenerating, isModelAvailable, placeholderText]);
+    <MessageInput {...messageInputProps} />
+  ), [messageInputProps]);
   
   return (
     <div className="border-t bg-background p-4">

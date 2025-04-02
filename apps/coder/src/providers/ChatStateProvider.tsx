@@ -311,67 +311,16 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     });
   }, [updateThread]);
 
-  // Process messages without caching during streaming
-  // This ensures every token shows up immediately
+  // Process messages in a very simple way to prevent cascading rerenders
+  // This function should not do heavy processing - it's only for the main provider
   const processedMessages = React.useMemo(() => {
-    // ALWAYS process the messages fresh during streaming 
-    // to ensure we see every token update immediately
-
-    // First, identify if we have timestamp collisions
-    const timestampCounts: Record<number, number> = {};
-    const messagesWithParts: UIMessage[] = messages.map(msg => ({
+    return messages.map(msg => ({
       ...msg,
       parts: msg.parts || [{
         type: 'text' as const,
         text: msg.content
       }]
     }));
-    
-    messagesWithParts.forEach(msg => {
-      const timestamp = msg.createdAt?.getTime() || 0;
-      timestampCounts[timestamp] = (timestampCounts[timestamp] || 0) + 1;
-    });
-
-    const hasCollisions = Object.values(timestampCounts).some(count => count > 1);
-
-    // If no collisions, return messages as-is
-    if (!hasCollisions) {
-      return messagesWithParts;
-    }
-
-    // First organize by role to keep conversation flow
-    const userMessages: UIMessage[] = [];
-    const assistantMessages: UIMessage[] = [];
-
-    messagesWithParts.forEach(msg => {
-      if (msg.role === 'user') userMessages.push(msg);
-      else assistantMessages.push(msg);
-    });
-
-    // Pair user messages with assistant responses
-    const correctedMessages = [];
-    let baseTime = Date.now() - (messages.length * 10000); // Start 10 seconds ago per message
-
-    // If we have more user messages than assistant or vice versa, we need to handle that
-    const maxLength = Math.max(userMessages.length, assistantMessages.length);
-
-    for (let i = 0; i < maxLength; i++) {
-      if (i < userMessages.length) {
-        const userMsg = userMessages[i];
-        userMsg.createdAt = new Date(baseTime);
-        correctedMessages.push(userMsg);
-        baseTime += 2000; // 2 second gap
-      }
-
-      if (i < assistantMessages.length) {
-        const assistantMsg = assistantMessages[i];
-        assistantMsg.createdAt = new Date(baseTime);
-        correctedMessages.push(assistantMsg);
-        baseTime += 3000; // 3 second gap
-      }
-    }
-
-    return correctedMessages;
   }, [messages]);
 
   // Type-safe handleInputChange wrapper that adapts to the expected signature
