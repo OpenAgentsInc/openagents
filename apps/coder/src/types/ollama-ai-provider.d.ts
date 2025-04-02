@@ -4,6 +4,7 @@ declare module 'ollama-ai-provider' {
   export interface OllamaProviderOptions {
     baseURL?: string;
     headers?: Record<string, string>;
+    simulateStreaming?: boolean;
   }
 
   export function ollama(modelId: string): AIProvider;

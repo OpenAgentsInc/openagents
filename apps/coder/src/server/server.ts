@@ -45,6 +45,7 @@ app.post('/api/chat', async (c) => {
   // Create the Ollama client with custom base URL if specified
   const customOllama = createOllama({
     baseURL: OLLAMA_BASE_URL,
+    simulateStreaming: true
   });
 
   // Log configuration
