@@ -230,7 +230,7 @@ app.post('/api/chat', async (c) => {
     }
 
     console.log(`🔍 MODEL: ${MODEL}, PROVIDER: ${provider}`);
-    
+
     // Check if a valid provider was found
     if (!provider) {
       console.error(`[Server] ERROR: No valid provider determined for model ${MODEL}`);
@@ -385,7 +385,7 @@ app.post('/api/chat', async (c) => {
       } else {
         // No longer default to any provider - if we get here, it's an error
         console.error(`[Server] ERROR: Unrecognized provider: ${provider} for model ${MODEL}`);
-        
+
         // Return error as SSE
         c.header('Content-Type', 'text/event-stream; charset=utf-8');
         c.header('Cache-Control', 'no-cache');
@@ -517,11 +517,11 @@ app.post('/api/chat', async (c) => {
 
       // CRITICAL SAFEGUARD - Add final check to prevent improper provider routing
       console.log(`⚠️ CRITICAL SAFEGUARD CHECK: MODEL: ${MODEL}, PROVIDER: ${provider}`);
-      
+
       // Prevent Claude models from being routed anywhere except Anthropic
       if (MODEL.startsWith('claude-') && provider !== 'anthropic') {
         console.error(`[Server] CRITICAL ERROR: Claude model ${MODEL} is being routed to non-Anthropic provider: ${provider}`);
-        
+
         c.header('Content-Type', 'text/event-stream; charset=utf-8');
         c.header('Cache-Control', 'no-cache');
         c.header('Connection', 'keep-alive');
@@ -532,12 +532,12 @@ app.post('/api/chat', async (c) => {
           await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
         });
       }
-      
+
       // Prevent non-LMStudio models from going to LMStudio
-      if (provider === 'lmstudio' && !MODEL.includes('gemma') && !MODEL.toLowerCase().includes('llama') && 
-          !MODEL.includes('mistral') && !MODEL.includes('qwen')) {
+      if (provider === 'lmstudio' && !MODEL.includes('gemma') && !MODEL.toLowerCase().includes('llama') &&
+        !MODEL.includes('mistral') && !MODEL.includes('qwen')) {
         console.error(`[Server] CRITICAL ERROR: Inappropriate model ${MODEL} is being routed to LMStudio`);
-        
+
         c.header('Content-Type', 'text/event-stream; charset=utf-8');
         c.header('Cache-Control', 'no-cache');
         c.header('Connection', 'keep-alive');
@@ -548,11 +548,11 @@ app.post('/api/chat', async (c) => {
           await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
         });
       }
-      
+
       // Prevent models with a slash from going to non-OpenRouter
       if (MODEL.includes('/') && provider !== 'openrouter') {
         console.error(`[Server] CRITICAL ERROR: OpenRouter-style model ${MODEL} is being routed to non-OpenRouter provider: ${provider}`);
-        
+
         c.header('Content-Type', 'text/event-stream; charset=utf-8');
         c.header('Cache-Control', 'no-cache');
         c.header('Connection', 'keep-alive');
@@ -588,17 +588,17 @@ app.post('/api/chat', async (c) => {
           // OVERRIDE: Add a client-side abort controller to prevent fallback
           const abortController = new AbortController();
           const abortSignal = abortController.signal;
-          
+
           // Set a timeout to detect if we're stuck or failing
           const timeoutId = setTimeout(() => {
             console.log("⚠️ Stream processing timeout - preventing LMStudio fallback");
             abortController.abort();
           }, 10000); // 10 second timeout
-          
+
           // Process stream using reader
           const reader = sdkStream.getReader();
           let hasReceivedData = false;
-          
+
           try {
             while (!abortSignal.aborted) {
               const { done, value } = await reader.read();
@@ -636,7 +636,7 @@ app.post('/api/chat', async (c) => {
           } catch (streamError) {
             console.error("STREAM PROCESSING ERROR:", streamError);
             // Instead of letting the error propagate up, handle it right here with a custom message
-            
+
             // Custom error message based on provider
             let errorMessage;
             if (provider === 'openrouter') {
@@ -648,7 +648,7 @@ app.post('/api/chat', async (c) => {
             } else {
               errorMessage = `API Error: Could not access model "${MODEL}" with provider "${provider}". Please check your configuration and try again.`;
             }
-            
+
             // Send custom error message to client
             const errorData = {
               id: `error-${Date.now()}`,
@@ -663,10 +663,10 @@ app.post('/api/chat', async (c) => {
               ],
               created: Date.now()
             };
-            
+
             await responseStream.write(`data: ${JSON.stringify(errorData)}\n\n`);
             await responseStream.write("data: [DONE]\n\n");
-            
+
             // Interrupt processing here - don't let the error bubble up
             // This prevents any fallback behavior
             return;
@@ -691,15 +691,15 @@ app.post('/api/chat', async (c) => {
             console.error(`Error cause: ${errorDetails}`);
           }
           console.error("==========================================");
-          
+
           // CRITICAL OVERRIDE: Handle the error here with a provider-specific message
           console.error("🚨 CRITICAL: Intercepting outer error - preventing fallback");
-          
+
           // Don't continue to further error handling that might cause a fallback
           try {
             // Custom error message based on provider
             let errorContent = `Error with ${provider} provider for model "${MODEL}": ${errorMessage.substring(0, 100)}...`;
-                    
+
             // Format the error response
             const errorData = {
               id: `error-${Date.now()}`,
@@ -714,18 +714,18 @@ app.post('/api/chat', async (c) => {
               ],
               created: Date.now()
             };
-            
+
             // Send the error and terminate the stream
             await responseStream.write(`data: ${JSON.stringify(errorData)}\n\n`);
             await responseStream.write("data: [DONE]\n\n");
-            
+
             return; // Critical: Return immediately to prevent further processing
           } catch (writeError) {
             console.error("Failed to write clean error, but still preventing fallback:", writeError);
             // Still prevent further processing
             return;
           }
-          
+
           // We've completely replaced this error handling code with our custom implementation above
           // All the old code is effectively cut off by the return statements
           // This completely prevents any potential fallback behavior to LMStudio or other providers
@@ -757,6 +757,11 @@ const logOllamaModelAvailability = (baseUrl: string, modelName: string) => {
 
 // Proxy endpoint for LMStudio API requests
 app.get('/api/proxy/lmstudio/models', async (c) => {
+  console.log("Skipping LMStudio proxy request");
+  return new Response(JSON.stringify({
+    message: "Skipping LMStudio proxy request",
+  }), { status: 200 });
+
   try {
     const url = c.req.query('url') || 'http://localhost:1234/v1/models';
 
