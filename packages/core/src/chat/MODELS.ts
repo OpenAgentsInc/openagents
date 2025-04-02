@@ -1,5 +1,5 @@
 interface Model {
-  author: "anthropic" | "deepseek" | "openai" | "google" | "mistralai"
+  author: "anthropic" | "cohere" | "deepseek" | "openai" | "google" | "mistralai"
   created: number
   description: string
   id: string
@@ -34,6 +34,28 @@ interface Model {
 
 export const MODELS: Model[] = [
   {
+    author: "cohere",
+    provider: "ollama",
+    id: "command-r7b",
+    name: "Command R7B",
+    created: 1742824755,
+    description: "The smallest model in Cohere's R series delivers top-tier speed, efficiency, and quality to build powerful AI applications on commodity GPUs and edge devices.",
+    shortDescription: "Smallest model in Cohere's R series, delivering top-tier speed, efficiency, and quality.",
+    context_length: 128000,
+    supportsTools: true,
+  },
+  {
+    author: "google",
+    provider: "ollama",
+    id: "gemma3",
+    name: "Gemma 3 4B",
+    created: 1742824755,
+    description: "Gemma 3 4B is a large language model with 4B parameters.",
+    shortDescription: "Gemma 3 4B is a large language model with 4B parameters.",
+    context_length: 128000,
+    supportsTools: false,
+  },
+  {
     author: "google",
     provider: "ollama",
     id: "gemma3:12b",
@@ -42,7 +64,7 @@ export const MODELS: Model[] = [
     description: "Gemma 3 12B is a large language model with 12B parameters.",
     shortDescription: "Gemma 3 12B is a large language model with 12B parameters.",
     context_length: 128000,
-    supportsTools: true,
+    supportsTools: false,
   },
   {
     author: "deepseek",

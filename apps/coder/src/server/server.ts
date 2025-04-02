@@ -175,7 +175,10 @@ app.post('/api/chat', async (c) => {
 
         // Only include tools if the model supports them and we're not using Ollama
         // Temporarily disable tools for Ollama as it might be causing issues
-        ...((modelSupportsTools && Object.keys(tools).length > 0 && provider !== "ollama") ? { tools } : {}),
+        // ...((modelSupportsTools && Object.keys(tools).length > 0 && provider !== "ollama") ? { tools } : {}),
+
+        // Now we'll try with tools
+        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
 
         // Include headers if present
         ...(Object.keys(headers).length > 0 ? { headers } : {}),
