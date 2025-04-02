@@ -41,7 +41,7 @@ export const ChatInputArea = memo(function ChatInputArea() {
 
   // Memoize the placeholder value
   const placeholderText = useMemo(() =>
-    !isModelAvailable ? "API key required for this model" : "Message...",
+    !isModelAvailable ? "API key required for this model" : "Ask Coder",
     [isModelAvailable]);
 
   // Create a stable onChange that won't recreate during streaming

@@ -41,7 +41,7 @@ type MessageInputProps =
   | MessageInputWithAttachmentsProps
 
 export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputProps>(({
-  placeholder = "Message...",
+  placeholder = "Ask Coder",
   className,
   onKeyDown: onKeyDownProp,
   submitOnEnter = true,
@@ -290,7 +290,7 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="relative flex w-full flex-col items-stretch gap-2 rounded-t-xl border-x border-t bg-background px-3 sm:px-4 pt-3 sm:pt-4 pb-2 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]">
+      <div className="relative flex w-full flex-col items-stretch gap-2 border-x border-t bg-background px-3 sm:px-4 pt-3 sm:pt-4 pb-2 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]">
         <div className="flex flex-grow flex-col">
           <textarea
             aria-label="Write your prompt here"
