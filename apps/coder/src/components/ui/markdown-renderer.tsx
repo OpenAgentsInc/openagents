@@ -10,6 +10,15 @@ type HTMLTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'a' | 'ul' | 'ol'
 
 function withClass(Tag: HTMLTag, classes: string) {
   return function MarkdownComponent({ node, ...props }: any) {
+    // Special handling for links to open in new tab
+    if (Tag === 'a') {
+      return React.createElement(Tag, {
+        ...props,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        className: cn(classes, props.className)
+      });
+    }
     return React.createElement(Tag, {
       ...props,
       className: cn(classes, props.className)
