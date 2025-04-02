@@ -53,14 +53,10 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
   enableInterrupt = true,
   transcribeAudio,
   allowAttachments,
+  value,
+  onChange,
   ...props
 }: MessageInputProps, ref) => {
-  const {
-    value,
-    onChange,
-    ...restProps
-  } = props;
-
   const files = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).files : null;
   const setFiles = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).setFiles : null;
 
@@ -248,11 +244,6 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
     addFiles(files);
   }, [addFiles]);
 
-  // Memoize sending disabled state
-  const isSendDisabled = useMemo(() =>
-    value === "" || isGenerating,
-    [value, isGenerating]);
-
   // Memoize textarea props to avoid spread recreation
   const textareaProps = useMemo(() => {
     if (allowAttachments) {
@@ -283,6 +274,17 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
     );
   }, [allowAttachments, files, handleFileRemove]);
 
+  // Add logging for value changes
+  useEffect(() => {
+    console.log('MessageInput value:', value);
+    console.log('MessageInput valueRef:', valueRef.current);
+  }, [value]);
+
+  // Add logging for isGenerating changes
+  useEffect(() => {
+    console.log('MessageInput isGenerating:', isGenerating);
+  }, [isGenerating]);
+
   return (
     <div
       className="relative flex w-full flex-col"
@@ -297,6 +299,8 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
             autoFocus
             placeholder={placeholder}
             ref={textAreaRef}
+            value={value}
+            onChange={onChange}
             onPaste={onPaste}
             onKeyDown={onKeyDown}
             onFocus={(e) => {
@@ -323,19 +327,6 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
                 <ToolSelection />
               </div>*/}
             </div>
-
-            {allowAttachments && (
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                className="inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:bg-neutral-800/40 rounded-md text-xs h-[44px] w-[44px] gap-2 px-2 py-1.5 text-muted-foreground hover:text-neutral-300 touch-manipulation flex-shrink-0"
-                aria-label="Attach a file"
-                onClick={handleAttachClick}
-              >
-                <Paperclip className="h-5 w-5" />
-              </Button>
-            )}
           </div>
         </div>
       </div>
@@ -393,7 +384,13 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
             size="icon"
             className="h-8 w-8 transition-opacity"
             aria-label="Send message"
-            disabled={isSendDisabled}
+            disabled={value.trim() === "" || isGenerating}
+            onClick={() => {
+              console.log('Submit button clicked');
+              console.log('Value:', value);
+              console.log('isGenerating:', isGenerating);
+              console.log('Disabled:', value.trim() === "" || isGenerating);
+            }}
           >
             <ArrowUp className="h-5 w-5" />
           </Button>

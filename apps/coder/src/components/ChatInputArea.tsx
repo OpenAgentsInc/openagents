@@ -90,25 +90,33 @@ export const ChatInputArea = memo(function ChatInputArea() {
   }, [input, isGenerating, isModelAvailable]);
 
   // Create completely stable props for MessageInput
-  const messageInputProps = useMemo(() => ({
-    value: input,
-    onChange: stableOnChange,
-    allowAttachments: true,
-    files: null,
-    setFiles: () => { },
-    stop: stableStop,
-    isGenerating,
-    disabled: !isModelAvailable,
-    placeholder: placeholderText,
-    selectedModelId,
-    handleModelChange,
-    isModelAvailable
-  }), [input, isGenerating, isModelAvailable, placeholderText, selectedModelId, handleModelChange]);
+  const messageInputProps = useMemo(() => {
+    console.log('Creating messageInputProps:');
+    console.log('- input:', input);
+    console.log('- isGenerating:', isGenerating);
+    console.log('- isModelAvailable:', isModelAvailable);
+
+    return {
+      value: input,
+      onChange: stableOnChange,
+      allowAttachments: false,
+      files: null,
+      setFiles: () => { },
+      stop: stableStop,
+      isGenerating,
+      disabled: !isModelAvailable,
+      placeholder: placeholderText,
+      selectedModelId,
+      handleModelChange,
+      isModelAvailable
+    };
+  }, [input, isGenerating, isModelAvailable, placeholderText, selectedModelId, handleModelChange, stableOnChange, stableStop]);
 
   // Wrap the MessageInput render function in useMemo to prevent rerenders during streaming
-  const renderMessageInput = useCallback(({ files, setFiles }: { files: File[] | null, setFiles: React.Dispatch<React.SetStateAction<File[] | null>> }) => (
-    <MessageInput {...messageInputProps} />
-  ), [messageInputProps]);
+  const renderMessageInput = useCallback(({ files, setFiles }: { files: File[] | null, setFiles: React.Dispatch<React.SetStateAction<File[] | null>> }) => {
+    console.log('Rendering MessageInput with props:', messageInputProps);
+    return <MessageInput {...messageInputProps} />;
+  }, [messageInputProps]);
 
   return (
     <div className="">
