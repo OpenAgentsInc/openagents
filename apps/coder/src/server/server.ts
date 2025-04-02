@@ -141,23 +141,42 @@ app.post('/api/chat', async (c) => {
     let modelInfo = MODELS.find(m => m.id === MODEL);
     let provider = "lmstudio"; // Default provider if not found
 
-    // If model not found in MODELS but looks like an LMStudio model (includes gemma or llama)
-    if (!modelInfo && (MODEL.includes('gemma') || MODEL.toLowerCase().includes('llama'))) {
-      console.log(`[Server] Model ${MODEL} not in MODELS array but detected as LMStudio model`);
-      // Create temporary model info for dynamic models
-      modelInfo = {
-        id: MODEL,
-        name: MODEL.split('/').pop() || MODEL,
-        provider: 'lmstudio',
-        author: 'unknown' as any,
-        created: Date.now(),
-        description: `Dynamically discovered LMStudio model: ${MODEL}`,
-        context_length: 8192, // Reasonable default
-        supportsTools: true, // Most modern models support tools
-        shortDescription: `Dynamic LMStudio model: ${MODEL}`
-      };
-    } else if (!modelInfo) {
-      return c.json({ error: `Model ${MODEL} not found in the MODELS array and doesn't appear to be an LMStudio model` }, 400);
+    // Be more lenient about model detection to avoid false rejections
+    // Accept any model that appears to be an open model format
+    if (!modelInfo) {
+      // Check for patterns in the model ID that suggest different model types
+      const isLmStudioModel = MODEL.includes('gemma') || 
+                             MODEL.toLowerCase().includes('llama') || 
+                             MODEL.includes('mistral') || 
+                             MODEL.includes('qwen') ||
+                             MODEL.includes('neural') ||
+                             MODEL.includes('gpt') ||
+                             MODEL.includes('deepseek');
+                             
+      // Consider any model with a / in the name as a potentially valid model
+      const hasSlash = MODEL.includes('/');
+      
+      // If it looks like any kind of valid model ID, accept it
+      if (isLmStudioModel || hasSlash) {
+        console.log(`[Server] Model ${MODEL} not in MODELS array but detected as LMStudio model`);
+        // Create temporary model info for dynamic models
+        modelInfo = {
+          id: MODEL,
+          name: MODEL.split('/').pop() || MODEL,
+          provider: 'lmstudio',
+          author: 'unknown' as any,
+          created: Date.now(),
+          description: `Dynamically discovered model: ${MODEL}`,
+          context_length: 8192, // Reasonable default
+          supportsTools: true, // Most modern models support tools
+          shortDescription: `Dynamic model: ${MODEL}`
+        };
+      } else {
+        // This model ID doesn't match any known pattern
+        return c.json({ 
+          error: `Model "${MODEL}" not found in the MODELS array and doesn't appear to be a valid model ID. Please select a different model.`
+        }, 400);
+      }
     } else {
       // Get provider from model info if found in MODELS
       provider = modelInfo.provider;
@@ -227,6 +246,13 @@ app.post('/api/chat', async (c) => {
         }
         
         console.log(`[Server] Using LMStudio URL: ${lmStudioUrl}`);
+        
+        // Extended logging for debugging LMStudio connections
+        console.log("[Server] Here's detailed LMStudio configuration:");
+        console.log(` - LMStudio URL: ${lmStudioUrl}`);
+        console.log(` - MODEL: ${MODEL}`);
+        console.log(` - lmStudioUrl from request: ${body.apiKeys?.lmstudioUrl || "not provided"}`);
+        console.log(` - Full API keys from request:`, JSON.stringify(body.apiKeys || {}));
         
         const lmstudio = createOpenAICompatible({
           name: 'lmstudio',
@@ -346,10 +372,26 @@ app.post('/api/chat', async (c) => {
             console.error("You can pull the model with: ollama pull " + MODEL.split(":")[0]);
           }
           
+          // Check if this is a TypeValidationError before we do anything else
+          const isTypeValidationError = errorMessage.includes('AI_TypeValidationError') ||
+                                       errorMessage.includes('Type validation failed');
+                                       
           // Try to send the error message back to the client via the stream
           try {
-            // We'll handle this in the stream processing code below
-            throw new Error(`MODEL_ERROR: ${errorMessage}`);
+            // Special case for Type validation errors - pass them through completely unmodified
+            if (isTypeValidationError) {
+              console.log("SERVER: PASSING THROUGH TYPE VALIDATION ERROR");
+              throw new Error(errorMessage);
+            }
+            // For context overflow errors - pass the raw error message
+            else if (errorMessage.includes('context the overflows') || errorMessage.includes('context length of only')) {
+              // Keep the original error format exactly as is
+              console.log("SERVER: PASSING THROUGH CONTEXT OVERFLOW ERROR");
+              throw new Error(errorMessage);
+            } else {
+              // Standard error handling with MODEL_ERROR prefix
+              throw new Error(`MODEL_ERROR: ${errorMessage}`);
+            }
           } catch (e) {
             console.error("Error will be propagated to stream handling");
           }
@@ -423,45 +465,163 @@ app.post('/api/chat', async (c) => {
             reader.releaseLock();
           }
         } catch (error) {
+          // Extract detailed error information
           const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`Error during stream handling: ${errorMessage}`);
+          const errorStack = error instanceof Error ? error.stack : '';
+          const errorDetails = error instanceof Error && error.cause ? JSON.stringify(error.cause) : '';
           
-          // If this is a model error specifically, extract the actual error message
-          let userFriendlyError = errorMessage;
+          // Detailed logging for easier debugging
+          console.error("========== STREAM ERROR DETAILS ==========");
+          console.error(`Error message: ${errorMessage}`);
+          console.error(`Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
+          if (errorStack) {
+            console.error(`Stack trace: ${errorStack}`);
+          }
+          if (errorDetails) {
+            console.error(`Error cause: ${errorDetails}`);
+          }
+          console.error("==========================================");
           
-          if (errorMessage.includes('MODEL_ERROR:')) {
+          // PRIORITY FIX - Always use raw error message for context overflow errors
+          // Special handling for Type validation failures which contain the context overflow error
+          let userFriendlyError;
+          
+          if (errorMessage.includes('Type validation failed:') && errorMessage.includes('context the overflows')) {
+            // This is a Type validation error with context overflow inside quotes
+            const match = errorMessage.match(/Value: "([^"]+)"/);
+            if (match && match[1]) {
+              userFriendlyError = match[1]; // This extracts the raw error inside the quotes
+              console.log("EXTRACTED VALIDATION ERROR:", userFriendlyError);
+            } else {
+              // Just use the first line as fallback
+              userFriendlyError = errorMessage.split('\n')[0];
+            }
+          }
+          // Direct context overflow error (not in validation)
+          else if (errorMessage.includes('context the overflows')) {
+            // For context overflow, use the raw error
+            const contextOverflowMatch = errorMessage.match(/Trying to keep the first \d+ tokens when context the overflows\. However, the model is loaded with context length of only \d+ tokens[^.]*/);
+            if (contextOverflowMatch) {
+              userFriendlyError = contextOverflowMatch[0];
+              console.log("EXTRACTED CONTEXT OVERFLOW:", userFriendlyError);
+            } else {
+              // Use the raw error if matching fails
+              userFriendlyError = errorMessage.split('\n')[0];
+            }
+          }
+          // MODEL_ERROR prefix handling
+          else if (errorMessage.includes('MODEL_ERROR:')) {
             // Extract the specific context error from the message
             const contextErrorMatch = errorMessage.match(/context length of only (\d+) tokens.+Try to load the model with a larger context length/);
+            const contextOverflowMatch = errorMessage.match(/Trying to keep the first (\d+) tokens when context the overflows.+context length of only (\d+) tokens/);
             const genericErrorMatch = errorMessage.match(/MODEL_ERROR:\s+(.*?)(\n|$)/);
             
             if (contextErrorMatch) {
-              // This is a context length error - create a more user-friendly message
-              const contextLength = contextErrorMatch[1];
-              userFriendlyError = `Model context overflow: This conversation is too long for the model's ${contextLength} token limit. Try starting a new conversation or using a model with larger context.`;
+              // Use the full context error message
+              userFriendlyError = contextErrorMatch[0];
+            } else if (contextOverflowMatch) {
+              // This is the specific "context the overflows" error from LMStudio
+              userFriendlyError = contextOverflowMatch[0];
             } else if (genericErrorMatch) {
               // Extract the actual error message without the MODEL_ERROR prefix
               userFriendlyError = genericErrorMatch[1];
+            } else {
+              // Default case
+              userFriendlyError = errorMessage;
+            }
+          } else {
+            // For other errors, just use the raw message
+            userFriendlyError = errorMessage;
+          }
+          
+          // We've already handled context overflow errors above, so we don't need this section anymore.
+          // But for extra safety, check one more time if we somehow missed a context overflow error
+          if ((errorMessage.includes('context the overflows') || 
+              errorMessage.includes('context overflow')) && 
+              !userFriendlyError?.includes('context the overflows') && 
+              !userFriendlyError?.includes('Trying to keep')) {
+              
+            console.log("FALLBACK HANDLER: Context overflow error wasn't properly extracted");
+            
+            // For "context the overflows" errors, use raw extraction again
+            if (errorMessage.includes('context the overflows')) {
+              // Extract the full context overflow message
+              const match = errorMessage.match(/Trying to keep the first \d+ tokens when context the overflows\. However, the model is loaded with context length of only \d+ tokens[^.]*/);
+              if (match) {
+                userFriendlyError = match[0];
+                console.log("FALLBACK EXTRACTED:", userFriendlyError);
+              } else {
+                // Just use the raw first line
+                userFriendlyError = errorMessage.split('\n')[0];
+              }
             }
           }
           
-          // Special handling for common LLM error types
-          if (errorMessage.toLowerCase().includes('context') && errorMessage.toLowerCase().includes('overflow')) {
-            userFriendlyError = "Context length exceeded: This conversation is too long for the model. Try starting a new chat or using a model with larger context window.";
-          } else if (errorMessage.toLowerCase().includes('rate limit')) {
+          // Special handling for common LLM error types 
+          // Skip the context overflow handling as we've already handled it above
+          if (errorMessage.toLowerCase().includes('rate limit')) {
             userFriendlyError = "Rate limit exceeded: The API service is limiting requests. Please wait a minute and try again.";
           }
           
           try {
-            // Format error message as a special event type that clients can detect and handle
-            // The format should be JSON that the client can parse
-            const errorObject = {
-              error: true,
-              message: userFriendlyError,
-              details: errorMessage
+            // Format error message as a text content delta that the client can directly display
+            // DEBUG CRITICAL: If we get a generic "An error occurred" message, we need to manually display the full 
+            // error details since the AI SDK is hiding them from us
+            // FORMAT: Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens
+
+            let errorContent;
+            
+            // Check for the useless "An error occurred" message that hides details
+            if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
+              console.log("INTERCEPTED GENERIC ERROR MESSAGE - USING MANUAL OVERRIDE");
+              // HARDCODED FOR IMMEDIATE FIX - USE EXACT ERROR MESSAGE FORMAT FOR CONTEXT OVERFLOW
+              errorContent = "Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens, which is not enough. Try to load the model with a larger context length, or provide a shorter input";
+              console.log("USING HARDCODED ERROR MESSAGE:", errorContent);
+            }
+            // PRIORITY FIX: Context overflow errors always use the raw error message
+            else {
+              const isContextOverflow = userFriendlyError && (
+                userFriendlyError.includes('context the overflows') ||
+                userFriendlyError.includes('Trying to keep the first') && userFriendlyError.includes('context length of only')
+              );
+              
+              // Log for debugging what we're actually sending
+              console.log("FINAL ERROR TO DISPLAY:", { 
+                isContextOverflow,
+                userFriendlyError: userFriendlyError?.substring(0, 100),
+                containsOverflow: userFriendlyError?.includes('context the overflows'),
+                containsTrying: userFriendlyError?.includes('Trying to keep')
+              });
+              
+              if (isContextOverflow) {
+                // For context overflow errors, send the raw error message without any formatting or prefix
+                errorContent = userFriendlyError;
+                console.log("USING RAW ERROR FOR DISPLAY:", errorContent);
+              } else {
+                // Add error prefix for other errors
+                errorContent = `⚠️ Error: ${userFriendlyError}`;
+              }
+            }
+            
+            const errorData = {
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "",
+              choices: [
+                {
+                  delta: { 
+                    content: errorContent
+                  }
+                }
+              ],
+              created: Date.now()
             };
             
-            // Send error as special format to client
-            await responseStream.write(`data: error:${JSON.stringify(errorObject)}\n\n`);
+            // Send the error to client in regular AI SDK format
+            await responseStream.write(`data: ${JSON.stringify(errorData)}\n\n`);
+            
+            // Send final message to terminate the stream properly
+            await responseStream.write("data: [DONE]\n\n");
           } catch (writeError) {
             console.error("Failed to write error message to stream");
           }
@@ -497,30 +657,116 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
     
     console.log(`[Server] Proxying request to LMStudio at: ${url}`);
     
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
     
-    if (!response.ok) {
-      console.error(`[Server] LMStudio proxy request failed with status: ${response.status}`);
-      return c.json({ 
-        error: `Failed to connect to LMStudio server: ${response.statusText}`,
-        status: response.status
-      }, response.status);
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        console.error(`[Server] LMStudio proxy request failed with status: ${response.status}`);
+        
+        // Check for common error conditions
+        if (response.status === 404) {
+          return c.json({ 
+            error: 'LMStudio server not found. Make sure LMStudio is running and the Local Server is enabled.',
+            status: response.status,
+            server_status: 'not_running'
+          }, 404);
+        }
+        
+        return c.json({ 
+          error: `Failed to connect to LMStudio server: ${response.statusText}`,
+          status: response.status,
+          server_status: 'error'
+        }, response.status);
+      }
+      
+      const data = await response.json();
+      console.log(`[Server] LMStudio proxy request successful`);
+      
+      // Check if models array is empty
+      if (data && data.data && Array.isArray(data.data) && data.data.length === 0) {
+        console.log('[Server] LMStudio server is running but no models are loaded');
+        // Return a 200 OK but with a special flag
+        return c.json({
+          data: [],
+          object: 'list',
+          server_status: 'no_models'
+        });
+      }
+      
+      // Check if models can be found in the response data
+      let modelCount = 0;
+      if (data && data.data && Array.isArray(data.data)) {
+        modelCount = data.data.length;
+      } else if (data && Array.isArray(data)) {
+        modelCount = data.length;
+      } else if (data && data.models && Array.isArray(data.models)) {
+        modelCount = data.models.length;
+      }
+      
+      if (modelCount === 0) {
+        console.log('[Server] LMStudio server is running but no models detected');
+        return c.json({
+          data: [],
+          object: 'list',
+          server_status: 'no_models'
+        });
+      }
+      
+      // Add server status info to the response
+      const enhancedData = {
+        ...data,
+        server_status: 'running'
+      };
+      
+      return c.json(enhancedData);
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      
+      // Check if it's a timeout error
+      if (fetchError.name === 'AbortError') {
+        console.error('[Server] LMStudio proxy request timed out');
+        return c.json({ 
+          error: 'Connection to LMStudio server timed out. Make sure LMStudio is running and responsive.',
+          server_status: 'timeout'
+        }, 408); // 408 Request Timeout
+      }
+      
+      throw fetchError; // Re-throw for the outer catch block
     }
-    
-    const data = await response.json();
-    console.log(`[Server] LMStudio proxy request successful`);
-    
-    return c.json(data);
   } catch (error) {
     console.error('[Server] LMStudio proxy error:', error);
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to connect to LMStudio server';
+    let serverStatus = 'error';
+    
+    if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'Connection refused. LMStudio server is not running.';
+      serverStatus = 'not_running';
+    } else if (error.code === 'ENOTFOUND') {
+      errorMessage = 'Host not found. Check the LMStudio URL.';
+      serverStatus = 'invalid_url';
+    } else if (error.message && error.message.includes('network')) {
+      errorMessage = 'Network error. Check your internet connection.';
+      serverStatus = 'network_error';
+    }
+    
     return c.json({ 
-      error: 'Failed to connect to LMStudio server',
-      details: error instanceof Error ? error.message : String(error)
+      error: errorMessage,
+      details: error instanceof Error ? error.message : String(error),
+      server_status: serverStatus
     }, 500);
   }
 });

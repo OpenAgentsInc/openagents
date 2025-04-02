@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo } from "react"
+import React, { Suspense, useMemo, useRef, useEffect } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/utils/tailwind"
@@ -61,15 +61,81 @@ export interface MarkdownRendererProps {
 const REMARK_PLUGINS = [remarkGfm];
 
 // Memoize the entire MarkdownRenderer component
+// Create a specialized component for incremental rendering of streamed markdown content
+// This uses a different approach since memoization doesn't help with streaming content
+export const StreamedMarkdownRenderer = ({ 
+  children, 
+  className 
+}: MarkdownRendererProps) => {
+  // Only parse the markdown when it REALLY changes - not on every character
+  // Store the last rendered content to compare with the new one
+  const lastContentRef = useRef<string>(children);
+  // Store the last rendered DOM to avoid recreating it
+  const lastRenderedRef = useRef<React.ReactNode>(null);
+  
+  // Calculate if this is a significant update (not just a few characters)
+  // Only re-parse markdown on significant updates to reduce CPU usage
+  const shouldUpdate = useMemo(() => {
+    // Always parse on first render
+    if (!lastRenderedRef.current) return true;
+    
+    // If content length is very similar, this is likely just a streaming update
+    // Only re-parse if we've received a substantial amount of new content
+    // (for example, 10+ new characters, or a new paragraph)
+    const lastLength = lastContentRef.current.length;
+    const newLength = children.length;
+    
+    // Parse on big chunks or if content has decreased (rare, but possible)
+    const lengthDifference = Math.abs(newLength - lastLength);
+    return lengthDifference > 20 || newLength < lastLength || children.includes("```") || children.includes("\n\n");
+  }, [children]);
+  
+  // Update the rendered content only when necessary
+  useEffect(() => {
+    if (shouldUpdate) {
+      lastContentRef.current = children;
+      lastRenderedRef.current = (
+        <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
+          {children}
+        </Markdown>
+      );
+    }
+  }, [children, shouldUpdate]);
+  
+  // Initial render - we need something right away
+  if (!lastRenderedRef.current) {
+    lastContentRef.current = children;
+    lastRenderedRef.current = (
+      <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
+        {children}
+      </Markdown>
+    );
+  }
+  
+  return (
+    <div className={className}>
+      {lastRenderedRef.current}
+    </div>
+  );
+};
+
+// Keep the original memoized version for non-streaming content
 export const MarkdownRenderer = React.memo(function MarkdownRenderer({ 
   children, 
   className 
 }: MarkdownRendererProps) {
-  return (
-    <div className={className}>
+  // For regular (non-streaming) content, use our existing memoized approach
+  const memoizedContent = useMemo(() => {
+    return (
       <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
         {children}
       </Markdown>
+    );
+  }, [children]);
+  
+  return (
+    <div className={className}>
+      {memoizedContent}
     </div>
   );
 });
@@ -87,21 +153,36 @@ const HighlightedPre = React.memo(
       return <pre {...props}>{children}</pre>
     }
 
-    const { tokens } = await codeToTokens(children, {
-      lang: language as keyof typeof bundledLanguages,
-      defaultColor: false,
-      themes: {
-        light: "github-light",
-        dark: "github-dark",
-      },
-    })
+    // Cache key that combines code content and language
+    const cacheKey = `${language}:${children}`;
+    
+    // Use a ref to store the cached tokens to avoid re-tokenizing the same code
+    const tokenCache = React.useRef<{[key: string]: any}>({});
+    
+    let tokens;
+    if (tokenCache.current[cacheKey]) {
+      // Use cached tokens
+      tokens = tokenCache.current[cacheKey];
+    } else {
+      // Generate new tokens and cache them
+      const result = await codeToTokens(children, {
+        lang: language as keyof typeof bundledLanguages,
+        defaultColor: false,
+        themes: {
+          light: "github-light",
+          dark: "github-dark",
+        },
+      });
+      tokens = result.tokens;
+      tokenCache.current[cacheKey] = tokens;
+    }
 
     return (
       <pre {...props}>
         <code>
           {tokens.map((line, lineIndex) => (
-            <>
-              <span key={lineIndex}>
+            <React.Fragment key={lineIndex}>
+              <span>
                 {line.map((token, tokenIndex) => {
                   const style =
                     typeof token.htmlStyle === "string"
@@ -120,7 +201,7 @@ const HighlightedPre = React.memo(
                 })}
               </span>
               {lineIndex !== tokens.length - 1 && "\n"}
-            </>
+            </React.Fragment>
           ))}
         </code>
       </pre>
@@ -135,16 +216,19 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   language: string
 }
 
-const CodeBlock = ({
+const CodeBlock = React.memo(({
   children,
   className,
   language,
   ...restProps
 }: CodeBlockProps) => {
-  const code =
+  // Memoize the code extraction which can be expensive for large code blocks
+  const code = useMemo(() => 
     typeof children === "string"
       ? children
-      : childrenTakeAllStringContents(children)
+      : childrenTakeAllStringContents(children),
+    [children]
+  );
 
   const preClass = cn(
     "overflow-x-scroll rounded-md border bg-background/50 p-4 font-mono text-sm [scrollbar-width:none]",
@@ -170,7 +254,7 @@ const CodeBlock = ({
       </div>
     </div>
   )
-}
+});
 
 function childrenTakeAllStringContents(element: any): string {
   if (typeof element === "string") {

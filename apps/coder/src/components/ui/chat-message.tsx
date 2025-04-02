@@ -12,7 +12,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { FilePreview } from "@/components/ui/file-preview"
-import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
+import { MarkdownRenderer, StreamedMarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { ToolCall } from "@/components/ui/tool-call"
 
 type Animation = "none" | "fade" | "scale" | null | undefined
@@ -163,6 +163,7 @@ export const ChatMessage = React.memo(function ChatMessage({
   toolInvocations,
   parts,
 }: ChatMessageProps) {
+  // Memoize file processing to prevent unnecessary processing on re-renders
   const files = useMemo(() => {
     return experimental_attachments?.map((attachment) => {
       const dataArray = dataUrlToUint8Array(attachment.url)
@@ -171,8 +172,9 @@ export const ChatMessage = React.memo(function ChatMessage({
     })
   }, [experimental_attachments])
 
-  const isUser = role === "user"
-  const isSystem = role === "system"
+  // Memoize these values to prevent recalculations
+  const isUser = useMemo(() => role === "user", [role])
+  const isSystem = useMemo(() => role === "system", [role])
 
   // Memoize the formatted time to avoid recalculations
   const formattedTime = useMemo(() => {
@@ -181,13 +183,42 @@ export const ChatMessage = React.memo(function ChatMessage({
       minute: "2-digit",
     })
   }, [createdAt])
+  
+  // Use StreamedMarkdownRenderer for assistant messages (which are likely streaming)
+  // and regular MarkdownRenderer for user/system messages (which are not streaming)
+  const messageContent = useMemo(() => {
+    // Assistant messages use the streamed renderer for better performance with incremental updates
+    return role === 'assistant' 
+      ? <StreamedMarkdownRenderer>{content}</StreamedMarkdownRenderer>
+      : <MarkdownRenderer>{content}</MarkdownRenderer>;
+  }, [content, role])
 
   if (isSystem) {
     // System messages (like errors) use a special style
+    // Log to console first for debugging
+    console.log("SYSTEM MESSAGE CONTENT:", content);
+
+    // For context overflow errors, show content directly (without markdown processing)
+    // Also check for the special hardcoded error
+    const isContextOverflowError = content.includes('context the overflows') || 
+                                   content.includes('context length of only') ||
+                                   content.includes('Trying to keep the first');
+    
+    console.log("RENDERING SYSTEM MESSAGE:", {
+      content,
+      isContextOverflowError,
+      hasOverflows: content.includes('context the overflows'),
+      hasTrying: content.includes('Trying to keep the first')
+    });
+    
     return (
       <div className="flex flex-col items-center w-full">
         <div className={cn(chatBubbleVariants({ isUser: false, isSystem: true, animation }))}>
-          <MarkdownRenderer>{content}</MarkdownRenderer>
+          {isContextOverflowError ? (
+            <div className="whitespace-pre-wrap font-mono text-sm p-1">{content}</div>
+          ) : (
+            messageContent
+          )}
         </div>
 
         {showTimeStamp && createdAt ? (
@@ -216,7 +247,7 @@ export const ChatMessage = React.memo(function ChatMessage({
         ) : null}
 
         <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
-          <MarkdownRenderer>{content}</MarkdownRenderer>
+          {messageContent}
         </div>
 
         {showTimeStamp && createdAt ? (
@@ -234,49 +265,59 @@ export const ChatMessage = React.memo(function ChatMessage({
   }
 
   if (parts && parts.length > 0) {
-    return parts.map((part, index) => {
-      if (part.type === "text") {
-        return (
-          <div
-            className={cn(
-              "flex flex-col",
-              isUser ? "items-end" : "items-start"
-            )}
-            key={`text-${index}`}
-          >
-            <div className={cn(chatBubbleVariants({ isUser, animation }))}>
-              <MarkdownRenderer>{part.text}</MarkdownRenderer>
-              {actions ? (
-                <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
-                  {actions}
-                </div>
+    // Use useMemo to memoize the mapped parts
+    const renderedParts = useMemo(() => {
+      return parts.map((part, index) => {
+        if (part.type === "text") {
+          // Use StreamedMarkdownRenderer for assistant messages which are likely streaming
+          const partContent = role === 'assistant'
+            ? <StreamedMarkdownRenderer>{part.text}</StreamedMarkdownRenderer>
+            : <MarkdownRenderer>{part.text}</MarkdownRenderer>;
+          
+          return (
+            <div
+              className={cn(
+                "flex flex-col",
+                isUser ? "items-end" : "items-start"
+              )}
+              key={`text-${index}`}
+            >
+              <div className={cn(chatBubbleVariants({ isUser, animation }))}>
+                {partContent}
+                {actions ? (
+                  <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
+                    {actions}
+                  </div>
+                ) : null}
+              </div>
+
+              {showTimeStamp && createdAt ? (
+                <time
+                  dateTime={createdAt.toISOString()}
+                  className={cn(
+                    "mt-1 block px-1 text-xs opacity-50"
+                  )}
+                >
+                  {formattedTime}
+                </time>
               ) : null}
             </div>
-
-            {showTimeStamp && createdAt ? (
-              <time
-                dateTime={createdAt.toISOString()}
-                className={cn(
-                  "mt-1 block px-1 text-xs opacity-50"
-                )}
-              >
-                {formattedTime}
-              </time>
-            ) : null}
-          </div>
-        )
-      } else if (part.type === "reasoning") {
-        return <ReasoningBlock key={`reasoning-${index}`} part={part} />
-      } else if (part.type === "tool-invocation") {
-        return (
-          <ToolCall
-            key={`tool-${index}`}
-            toolInvocations={[part.toolInvocation]}
-          />
-        )
-      }
-      return null
-    })
+          );
+        } else if (part.type === "reasoning") {
+          return <ReasoningBlock key={`reasoning-${index}`} part={part} />;
+        } else if (part.type === "tool-invocation") {
+          return (
+            <ToolCall
+              key={`tool-${index}`}
+              toolInvocations={[part.toolInvocation]}
+            />
+          );
+        }
+        return null;
+      });
+    }, [parts, isUser, animation, actions, showTimeStamp, createdAt, formattedTime]);
+    
+    return renderedParts;
   }
 
   if (toolInvocations && toolInvocations.length > 0) {
@@ -286,7 +327,7 @@ export const ChatMessage = React.memo(function ChatMessage({
   return (
     <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
       <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
-        <MarkdownRenderer>{content}</MarkdownRenderer>
+        {messageContent}
         {actions ? (
           <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
             {actions}

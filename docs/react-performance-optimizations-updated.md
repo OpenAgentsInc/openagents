@@ -22,6 +22,11 @@ The `markdown-renderer.tsx` component was optimized in several ways:
 - Extracted the `remarkPlugins` array into a constant to avoid recreating it on each render
 - Memoized the entire `MarkdownRenderer` component with `React.memo`
 - Restructured component to pass the `Tag` prop more efficiently
+- **NEW**: Added a `StreamedMarkdownRenderer` component specifically designed for streaming content that:
+  - Uses refs to store previously rendered content
+  - Only re-parses markdown when significant changes are detected (not on every tiny streaming update)
+  - Throttles markdown rendering based on content length changes to maintain high UI responsiveness
+  - Optimizes the rendering path to avoid expensive re-parsing of the entire content on each keystroke
 
 Before:
 ```tsx
@@ -53,6 +58,10 @@ The `chat-message.tsx` component received multiple optimizations:
 - Added `React.memo` to prevent unnecessary re-renders of the entire component
 - Memoized the formatted time calculation using `useMemo` to avoid recomputation
 - Ensured proper component structure to avoid unintended recreation of functions
+- **NEW**: Added conditional rendering logic to use:
+  - `StreamedMarkdownRenderer` for assistant messages that are receiving streamed content
+  - Regular `MarkdownRenderer` for user and system messages that render once with complete content
+- **NEW**: Applied the same streaming optimization to message parts when rendering complex messages
 
 ```tsx
 // Memoize the entire ChatMessage component
@@ -128,6 +137,7 @@ The performance optimizations should significantly reduce render counts and proc
 3. Further investigate the "other time" (201ms) to identify potential non-React performance issues
 4. Profile with browser tools to identify potential DOM manipulation bottlenecks
 5. Fix the API key management to improve user experience and security
+6. **NEW**: Monitor the effectiveness of the streamed markdown renderer implementation to ensure it resolves the 1 FPS issue
 
 ## Implementation Notes
 

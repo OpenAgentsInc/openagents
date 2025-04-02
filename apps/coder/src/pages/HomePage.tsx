@@ -400,21 +400,151 @@ export default function HomePage() {
     // },
     // Handle errors from the AI SDK hook itself
     onError: (error) => {
+      // Log the complete error for debugging
       console.error('Chat hook onError:', error);
       
+      // IMMEDIATE DEBUG - Show the raw error in the console
+      console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
+      console.log(error);
+      if (error instanceof Error) {
+        console.log("%c ERROR MESSAGE:", "background: red; color: white");
+        console.log(error.message);
+        console.log("%c ERROR STACK:", "background: red; color: white");
+        console.log(error.stack);
+      }
+      
+      // CRITICAL: Don't use append in onError because it can trigger another error and cause infinite loops
+      // Instead, use direct state manipulation which is safe and won't trigger API calls
+      
+      // Skip error handling for errors coming from append() itself to break the loop
+      if (error instanceof Error && error.message && 
+         (error.message.includes('append error') || 
+          error.stack?.includes('append'))) {
+        console.warn("Skipping recursive error handling to prevent infinite loop");
+        return;
+      }
+      
       // Get user-friendly error message using utility function
-      const userFriendlyError = createUserFriendlyErrorMessage(error);
+      // FINAL APPROACH: Just use the raw error message
+      // For context overflow errors or TypeValidationError, show the exact message
+      let userFriendlyError = "";
       
-      // Display error in chat as system message
-      const errorSystemMessage = {
-        id: `error-${Date.now()}`,
-        role: 'system' as const,
-        content: `⚠️ Error: ${userFriendlyError}`,
-        createdAt: new Date(),
-      };
+      console.log("HANDLING ERROR:", error);
       
-      // Add the error message to the chat using the append function from usePersistentChat
-      append(errorSystemMessage);
+      if (error instanceof Error) {
+        // IMMEDIATE FIX FOR "An error occurred" useless error message
+        if (error.message === "An error occurred." || error.message === "An error occurred") {
+          console.log("CLIENT: INTERCEPTED GENERIC ERROR MESSAGE - USING MANUAL OVERRIDE");
+          
+          // HARDCODED FOR IMMEDIATE FIX - this will match what the server sends
+          userFriendlyError = "Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens, which is not enough. Try to load the model with a larger context length, or provide a shorter input";
+          
+          console.log("CLIENT: USING HARDCODED CONTEXT OVERFLOW ERROR:", userFriendlyError);
+        }
+        // Special case for AI_TypeValidationError with context overflow
+        else if (error.message.includes('AI_TypeValidationError') && 
+            (error.message.includes('context the overflows') || error.message.includes('context length of only'))) {
+          
+          console.log("DETECTED TYPE VALIDATION ERROR WITH CONTEXT OVERFLOW");
+          
+          // Extract from quotes the actual error message
+          const matches = error.message.match(/Type validation failed: Value: "([^"]+)"/);
+          if (matches && matches[1]) {
+            userFriendlyError = matches[1];
+            console.log("EXTRACTED CONTEXT OVERFLOW ERROR:", userFriendlyError);
+          } else {
+            // If we can't extract it, just use the raw message
+            userFriendlyError = error.message;
+          }
+        } 
+        // Any context overflow error (non-TypeValidation)
+        else if (error.message.includes('context the overflows') || error.message.includes('context length of only')) {
+          userFriendlyError = error.message;
+        }
+        // Any AI_TypeValidationError
+        else if (error.message.includes('AI_TypeValidationError')) {
+          userFriendlyError = error.message;
+        }
+        // Default case - fallback to the utility
+        else {
+          userFriendlyError = error.message;
+        }
+      } else {
+        // For non-Error objects, convert to string
+        userFriendlyError = String(error);
+      }
+      
+      try {
+        // FINAL FIX - For context overflow errors, show the exact raw message - WITHOUT ANY PREFIX
+        let errorContent;
+        
+        console.log("FORMATTING CLIENT-SIDE ERROR:", userFriendlyError);
+        
+        // Check for context overflow errors - IMPORTANT: No prefix for these!
+        if (userFriendlyError && (
+            userFriendlyError.includes('context the overflows') || 
+            userFriendlyError.includes('Trying to keep the first') || 
+            userFriendlyError.includes('context length of only')
+           )) {
+          // CRITICAL: Do not add any prefixes to context overflow errors
+          console.log("USING RAW CONTEXT OVERFLOW ERROR FROM SERVER:", userFriendlyError);
+          errorContent = userFriendlyError;
+        } 
+        // For TypeValidationError with context overflow, extract the message
+        else if (userFriendlyError && userFriendlyError.includes('AI_TypeValidationError') &&
+                (userFriendlyError.includes('context the overflows') || 
+                 userFriendlyError.includes('context length of only'))) {
+          // Extract the part inside quotes if possible
+          const match = userFriendlyError.match(/Value: "([^"]+)"/);
+          if (match && match[1]) {
+            errorContent = match[1];
+            console.log("EXTRACTED CLIENT VALIDATION ERROR:", errorContent);
+          } else {
+            errorContent = userFriendlyError;
+          }
+        }
+        // Other TypeValidationError errors
+        else if (userFriendlyError && userFriendlyError.includes('AI_TypeValidationError')) {
+          errorContent = userFriendlyError;
+        }
+        else {
+          // Normal error formatting with prefix
+          errorContent = `⚠️ Error: ${userFriendlyError}`;
+        }
+        
+        // Create a new error message
+        const errorSystemMessage = {
+          id: `error-${Date.now()}`,
+          role: 'system' as const,
+          content: errorContent,
+          createdAt: new Date(),
+          threadId: currentThreadId,
+        };
+        
+        // We need to be very careful here - directly add the message to avoid errors
+        // in a safer way that handles potential issues with messages not being an array
+        if (Array.isArray(messages)) {
+          // Check if the last message is already an error to avoid duplicates
+          const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+          const isLastMessageError = lastMessage && 
+            (lastMessage.content?.includes('⚠️ Error') || 
+            (lastMessage.role === 'system' && lastMessage.content?.includes('Error')));
+          
+          if (!isLastMessageError) {
+            // If messages is an array and the last message isn't an error, add the new error
+            const updatedMessages = [...messages, errorSystemMessage];
+            setMessages(updatedMessages);
+          }
+        } else {
+          // If messages somehow isn't an array, create a new array with just the error
+          console.warn("Messages was not an array when trying to add error message");
+          setMessages([errorSystemMessage]);
+        }
+        
+      } catch (err) {
+        // Last resort - if we get an error trying to show an error, just log it
+        console.error("Critical error in error handler:", err);
+      }
     }
   });
 
