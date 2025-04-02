@@ -194,39 +194,43 @@ app.post('/api/chat', async (c) => {
       const streamOptions = {
         model,
         messages,
-        tools: {
-          shell_command: tool({
-            parameters: z.object({
-              command: z.string().describe("The shell command to execute")
-            }),
-            description: "Execute a shell command",
-            execute: async (args) => {
-              console.log("Running command:", args.command);
+        // Combine shell_command tool with MCP tools when supported
+        ...(modelSupportsTools && Object.keys(tools).length > 0 ? {
+          tools: {
+            shell_command: tool({
+              parameters: z.object({
+                command: z.string().describe("The shell command to execute")
+              }),
+              description: "Execute a shell command",
+              execute: async (args) => {
+                console.log("Running command:", args.command);
 
-              try {
-                // Set maxBuffer to 5MB and add timeout
-                const result = await exec(args.command, {
-                  maxBuffer: 5 * 1024 * 1024, // 5MB buffer
-                  timeout: 30000 // 30 second timeout
-                });
+                try {
+                  // Set maxBuffer to 5MB and add timeout
+                  const result = await exec(args.command, {
+                    maxBuffer: 5 * 1024 * 1024, // 5MB buffer
+                    timeout: 30000 // 30 second timeout
+                  });
 
-                // Truncate output if too long (limit to ~100KB to ensure it fits in context)
-                const maxOutputLength = 100 * 1024; // 100KB
-                let output = result.stdout;
-                if (output.length > maxOutputLength) {
-                  output = output.slice(0, maxOutputLength) + "\n... [Output truncated due to length]";
+                  // Truncate output if too long (limit to ~100KB to ensure it fits in context)
+                  const maxOutputLength = 100 * 1024; // 100KB
+                  let output = result.stdout;
+                  if (output.length > maxOutputLength) {
+                    output = output.slice(0, maxOutputLength) + "\n... [Output truncated due to length]";
+                  }
+
+                  return "Executed command: " + args.command + "\n\n" + output;
+                } catch (error: any) {
+                  if (error?.code === 'ENOBUFS' || error?.message?.includes('maxBuffer')) {
+                    return "Command output was too large. Please modify the command to produce less output.";
+                  }
+                  throw error;
                 }
-
-                return "Executed command: " + args.command + "\n\n" + output;
-              } catch (error: any) {
-                if (error?.code === 'ENOBUFS' || error?.message?.includes('maxBuffer')) {
-                  return "Command output was too large. Please modify the command to produce less output.";
-                }
-                throw error;
               }
-            }
-          })
-        },
+            }),
+            ...tools
+          }
+        } : {}),
         toolCallStreaming: modelSupportsTools,
         temperature: 0.7,
 
