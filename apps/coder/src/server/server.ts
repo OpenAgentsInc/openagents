@@ -95,6 +95,9 @@ app.post('/api/chat', async (c) => {
     // Extract API keys from request if provided
     const requestApiKeys = body.apiKeys || {};
     
+    // Debug the incoming request API keys
+    console.log("[Server] Received API keys from request:", JSON.stringify(requestApiKeys));
+    
     // Use API keys from request if available, fall back to environment variables
     const OPENROUTER_API_KEY = requestApiKeys.openrouter || process.env.OPENROUTER_API_KEY || "";
     const OLLAMA_BASE_URL = requestApiKeys.ollama || requestApiKeys.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
@@ -193,6 +196,9 @@ app.post('/api/chat', async (c) => {
 
         // Get the LMStudio URL from request if provided, otherwise use default
         let lmStudioUrl = body.apiKeys?.lmstudioUrl || "http://localhost:1234";
+        
+        // Debug what we're receiving in the request
+        console.log(`[Server] Request body.apiKeys:`, JSON.stringify(body.apiKeys));
         
         // Make sure the URL doesn't already have /v1 (avoid double /v1/v1)
         if (!lmStudioUrl.endsWith('/v1')) {

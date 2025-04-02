@@ -222,10 +222,24 @@ export default function LocalModelsPage() {
                     try {
                       const { settingsRepository } = await import('@openagents/core/src/db/repositories');
                       await settingsRepository.setPreference("lmstudioUrl", e.target.value);
+                      
+                      // Verify the URL was saved correctly
+                      const savedUrl = await settingsRepository.getPreference("lmstudioUrl");
                       console.log("Saved LMStudio URL to settings:", e.target.value);
+                      console.log("Verified saved URL in settings:", savedUrl);
+                      
+                      // Also save to localStorage as backup
+                      try {
+                        localStorage.setItem("openagents_lmstudio_url", e.target.value);
+                      } catch (err) {
+                        console.warn("Failed to save LMStudio URL to localStorage:", err);
+                      }
                       
                       // Notify other components that settings have changed
                       window.dispatchEvent(new CustomEvent('api-key-changed'));
+                      
+                      // Also dispatch an event to force model availability check
+                      window.dispatchEvent(new CustomEvent('lmstudio-url-changed'));
                     } catch (error) {
                       console.error("Failed to save LMStudio URL to settings:", error);
                     }
@@ -236,7 +250,35 @@ export default function LocalModelsPage() {
               <Button 
                 onClick={() => {
                   console.log("Connect button clicked for LMStudio");
-                  checkLmStudioStatus();
+                  
+                  // Save the current URL to settings and notify other components
+                  (async () => {
+                    try {
+                      const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+                      await settingsRepository.setPreference("lmstudioUrl", lmStudioUrl);
+                      console.log("URL saved on Connect click:", lmStudioUrl);
+                      
+                      // Also save to localStorage as backup
+                      try {
+                        localStorage.setItem("openagents_lmstudio_url", lmStudioUrl);
+                      } catch (err) {
+                        console.warn("Failed to save LMStudio URL to localStorage:", err);
+                      }
+                      
+                      // Force a settings update in other components
+                      window.dispatchEvent(new CustomEvent('api-key-changed'));
+                      
+                      // Also dispatch an event to force model availability check
+                      window.dispatchEvent(new CustomEvent('lmstudio-url-changed'));
+                    } catch (error) {
+                      console.error("Failed to save URL on connect:", error);
+                    }
+                  })();
+                  
+                  // Check the status after a brief delay to allow settings to propagate
+                  setTimeout(() => {
+                    checkLmStudioStatus();
+                  }, 100);
                 }}
                 disabled={refreshing}
               >

@@ -308,6 +308,9 @@ export default function HomePage() {
           // Add the URL to the apiKeys object to be sent to the server
           keys['lmstudioUrl'] = lmStudioUrlPreference;
           console.log(`Loaded LMStudio URL from settings: ${lmStudioUrlPreference}`);
+          
+          // Debug what keys object looks like after adding the URL
+          console.log("Final apiKeys object:", JSON.stringify(keys));
         }
       } catch (error) {
         console.warn("Error loading LMStudio URL from settings:", error);
@@ -320,6 +323,8 @@ export default function HomePage() {
     }
   }, [settings]);
 
+  // Now let's define both API key handling and LMStudio availability checking
+  
   // Load API keys from settings when component mounts and listen for API key changes
   useEffect(() => {
     // Load API keys initially
@@ -338,7 +343,7 @@ export default function HomePage() {
     return () => {
       window.removeEventListener('api-key-changed', handleApiKeyChange);
     };
-  }, [loadApiKeys, settings]);
+  }, [loadApiKeys]);
 
   // Use the persistence layer with the correct configuration
   const {
@@ -363,7 +368,14 @@ export default function HomePage() {
       // Include system prompt if it's not empty
       ...(systemPrompt ? { systemPrompt } : {}),
       // Include API keys from settings
-      apiKeys: Object.keys(apiKeys).length > 0 ? apiKeys : undefined
+      apiKeys: Object.keys(apiKeys).length > 0 ? apiKeys : undefined,
+    },
+    // Log the request payload for debugging
+    onRequest: (request) => {
+      console.log('Chat request body:', JSON.stringify({
+        model: selectedModelId,
+        apiKeys: Object.keys(apiKeys).length > 0 ? apiKeys : undefined,
+      }, null, 2));
     },
     headers: {
       'Content-Type': 'application/json',
@@ -438,110 +450,172 @@ export default function HomePage() {
   // Check if the current model is available (has API key if needed)
   const [isModelAvailable, setIsModelAvailable] = useState(true);
   const [modelWarning, setModelWarning] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function checkCurrentModelAvailability() {
-      try {
-        if (!selectedModelId) return;
-        
-        const selectedModel = MODELS.find(model => model.id === selectedModelId);
-        if (!selectedModel) return;
-        
-        let isAvailable = true;
-        let warning = null;
-        
-        // Function to check if Ollama is running and get available models
-        const checkOllamaModels = async (): Promise<string[]> => {
-          try {
-            const response = await fetch("http://localhost:11434/api/tags");
-            if (response.ok) {
-              const data = await response.json();
-              return data.models.map((model: any) => model.name);
-            }
-          } catch (error) {
-            console.warn("Failed to connect to Ollama API:", error);
+  
+  // We'll define a mutable ref to hold the availability check function
+  const availabilityCheckRef = React.useRef<(() => Promise<void>) | null>(null);
+  
+  // Function to check model availability - extracted to be reusable
+  const checkCurrentModelAvailability = useCallback(async () => {
+    try {
+      if (!selectedModelId) return;
+      
+      console.log("Checking availability for model:", selectedModelId);
+      
+      const selectedModel = MODELS.find(model => model.id === selectedModelId);
+      if (!selectedModel) return;
+      
+      let isAvailable = true;
+      let warning = null;
+      
+      // Function to check if Ollama is running and get available models
+      const checkOllamaModels = async (): Promise<string[]> => {
+        try {
+          const response = await fetch("http://localhost:11434/api/tags");
+          if (response.ok) {
+            const data = await response.json();
+            return data.models.map((model: any) => model.name);
           }
-          return [];
-        };
-        
-        // Function to check if LMStudio is running - use proxy to avoid CORS issues
-        const checkLMStudioAvailable = async (): Promise<boolean> => {
+        } catch (error) {
+          console.warn("Failed to connect to Ollama API:", error);
+        }
+        return [];
+      };
+      
+      // Function to check if LMStudio is running - use proxy to avoid CORS issues
+      const checkLMStudioAvailable = async (): Promise<boolean> => {
+        try {
+          // We'll use a stored preference value via settings hook
+          let savedLMStudioUrl = "http://localhost:1234";
+          
           try {
-            // Use our server proxy to avoid CORS issues
-            const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent("http://localhost:1234/v1/models")}`;
-            console.log("Checking LMStudio via proxy:", proxyUrl);
+            // Use the existing settings hook to get the preference
+            if (settings) {
+              // Use API to get the LMStudio URL - we can call getApiKey with a special case
+              const lmstudioUrlFromApiKeys = await getApiKey('lmstudioUrl');
+              if (lmstudioUrlFromApiKeys) {
+                savedLMStudioUrl = lmstudioUrlFromApiKeys;
+              }
+            }
             
-            const response = await fetch(proxyUrl);
-            return response.ok;
-          } catch (error) {
-            console.warn("Failed to connect to LMStudio API via proxy:", error);
-            return false;
-          }
-        };
-        
-        // Check based on provider
-        if (selectedModel.provider === 'openrouter') {
-          const key = await getApiKey('openrouter');
-          isAvailable = !!key;
-          if (!key) {
-            warning = "OpenRouter API key required. Add it in Settings > API Keys.";
-          }
-        } 
-        else if (selectedModel.provider === 'anthropic') {
-          const key = await getApiKey('anthropic');
-          isAvailable = !!key;
-          if (!key) {
-            warning = "Anthropic API key required. Add it in Settings > API Keys.";
-          }
-        }
-        else if (selectedModel.provider === 'openai') {
-          const key = await getApiKey('openai');
-          isAvailable = !!key;
-          if (!key) {
-            warning = "OpenAI API key required. Add it in Settings > API Keys.";
-          }
-        }
-        else if (selectedModel.provider === 'google') {
-          const key = await getApiKey('google');
-          isAvailable = !!key;
-          if (!key) {
-            warning = "Google API key required. Add it in Settings > API Keys.";
-          }
-        }
-        else if (selectedModel.provider === 'ollama') {
-          const ollamaModels = await checkOllamaModels();
-          const modelName = selectedModel.id.split('/')[1];
-          
-          isAvailable = ollamaModels.length > 0 && ollamaModels.some(m => 
-            m === modelName || m.startsWith(`${modelName}:`)
-          );
-          
-          if (!isAvailable) {
-            if (ollamaModels.length === 0) {
-              warning = "Ollama server not running. Configure Ollama in Settings > Local Models.";
-            } else {
-              warning = `Model '${modelName}' not available. Run 'ollama pull ${modelName}'`;
+            // If not found in settings object, try to load it directly
+            if (!savedLMStudioUrl || savedLMStudioUrl === "http://localhost:1234") {
+              const storedPref = localStorage.getItem("openagents_lmstudio_url");
+              if (storedPref) {
+                savedLMStudioUrl = storedPref;
+              }
             }
+          } catch (e) {
+            console.warn("Error getting LMStudio URL from settings, using default:", e);
           }
+          
+          console.log("Using LMStudio URL from settings:", savedLMStudioUrl);
+          
+          // Use our server proxy to avoid CORS issues
+          const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${savedLMStudioUrl}/v1/models`)}`;
+          console.log("Checking LMStudio via proxy:", proxyUrl);
+          
+          const response = await fetch(proxyUrl);
+          console.log("LMStudio check response:", response.status, response.ok);
+          return response.ok;
+        } catch (error) {
+          console.warn("Failed to connect to LMStudio API via proxy:", error);
+          return false;
         }
-        else if (selectedModel.provider === 'lmstudio') {
-          isAvailable = await checkLMStudioAvailable();
-          if (!isAvailable) {
-            warning = "LMStudio not running or unreachable.";
-          }
+      };
+      
+      // Check based on provider
+      if (selectedModel.provider === 'openrouter') {
+        const key = await getApiKey('openrouter');
+        isAvailable = !!key;
+        if (!key) {
+          warning = "OpenRouter API key required. Add it in Settings > API Keys.";
         }
-        
-        setIsModelAvailable(isAvailable);
-        setModelWarning(warning);
-      } catch (error) {
-        console.error("Error checking model availability:", error);
-        setIsModelAvailable(true);
-        setModelWarning(null);
+      } 
+      else if (selectedModel.provider === 'anthropic') {
+        const key = await getApiKey('anthropic');
+        isAvailable = !!key;
+        if (!key) {
+          warning = "Anthropic API key required. Add it in Settings > API Keys.";
+        }
       }
+      else if (selectedModel.provider === 'openai') {
+        const key = await getApiKey('openai');
+        isAvailable = !!key;
+        if (!key) {
+          warning = "OpenAI API key required. Add it in Settings > API Keys.";
+        }
+      }
+      else if (selectedModel.provider === 'google') {
+        const key = await getApiKey('google');
+        isAvailable = !!key;
+        if (!key) {
+          warning = "Google API key required. Add it in Settings > API Keys.";
+        }
+      }
+      else if (selectedModel.provider === 'ollama') {
+        const ollamaModels = await checkOllamaModels();
+        const modelName = selectedModel.id.split('/')[1];
+        
+        isAvailable = ollamaModels.length > 0 && ollamaModels.some(m => 
+          m === modelName || m.startsWith(`${modelName}:`)
+        );
+        
+        if (!isAvailable) {
+          if (ollamaModels.length === 0) {
+            warning = "Ollama server not running. Configure Ollama in Settings > Local Models.";
+          } else {
+            warning = `Model '${modelName}' not available. Run 'ollama pull ${modelName}'`;
+          }
+        }
+      }
+      else if (selectedModel.provider === 'lmstudio') {
+        isAvailable = await checkLMStudioAvailable();
+        if (!isAvailable) {
+          warning = "LMStudio not running or unreachable.";
+        }
+      }
+      
+      console.log(`Model ${selectedModel.id} availability:`, isAvailable);
+      setIsModelAvailable(isAvailable);
+      setModelWarning(warning);
+    } catch (error) {
+      console.error("Error checking model availability:", error);
+      setIsModelAvailable(true);
+      setModelWarning(null);
+    }
+  }, [selectedModelId, getApiKey, settings]);
+  
+  // Save the function to a ref so we can access it before initialization
+  useEffect(() => {
+    // Save the current availability check function to the ref
+    availabilityCheckRef.current = checkCurrentModelAvailability;
+  }, [checkCurrentModelAvailability]);
+
+  // Add listener for LMStudio URL changes
+  useEffect(() => {
+    const handleLMStudioUrlChange = () => {
+      console.log("LMStudio URL changed, rechecking model availability");
+      if (availabilityCheckRef.current) {
+        availabilityCheckRef.current();
+      }
+    };
+    
+    // Listen for URL changes
+    window.addEventListener('lmstudio-url-changed', handleLMStudioUrlChange);
+    
+    // Also listen for the api-key-changed event as it's also triggered when URL changes
+    window.addEventListener('api-key-changed', handleLMStudioUrlChange);
+    
+    // Initial check
+    if (availabilityCheckRef.current) {
+      availabilityCheckRef.current();
     }
     
-    checkCurrentModelAvailability();
-  }, [selectedModelId, getApiKey]);
+    return () => {
+      window.removeEventListener('lmstudio-url-changed', handleLMStudioUrlChange);
+      window.removeEventListener('api-key-changed', handleLMStudioUrlChange);
+    };
+  }, []);
 
   // Handle model change - this happens when user selects from dropdown
   const handleModelChange = (modelId: string) => {
