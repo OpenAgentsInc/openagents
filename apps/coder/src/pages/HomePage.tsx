@@ -271,7 +271,7 @@ export default function HomePage() {
         const { settingsRepository } = await import('@openagents/core/src/db/repositories');
         const savedPrompt = await settingsRepository.getPreference("defaultSystemPrompt", DEFAULT_SYSTEM_PROMPT);
         setSystemPrompt(savedPrompt);
-        console.log("Loaded system prompt:", savedPrompt === DEFAULT_SYSTEM_PROMPT ? "Using default prompt" : "Custom prompt loaded");
+        // console.log("Loaded system prompt:", savedPrompt === DEFAULT_SYSTEM_PROMPT ? "Using default prompt" : "Custom prompt loaded");
       } catch (error) {
         console.error("Error loading system prompt:", error);
         // Fall back to default prompt on error
@@ -310,7 +310,7 @@ export default function HomePage() {
           console.log(`Loaded LMStudio URL from settings: ${lmStudioUrlPreference}`);
 
           // Debug what keys object looks like after adding the URL
-          console.log("Final apiKeys object:", JSON.stringify(keys));
+          // console.log("Final apiKeys object:", JSON.stringify(keys));
         }
       } catch (error) {
         console.warn("Error loading LMStudio URL from settings:", error);

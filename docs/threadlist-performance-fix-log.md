@@ -4,7 +4,7 @@ This log tracks the implementation of the ThreadList performance optimizations t
 
 ## Overview
 
-The ThreadList component in Coder was rerendering approximately every 300ms, causing performance issues. Additionally, when deleting chats with similar names, it was difficult to tell which one was being deleted. The fix involves performance optimizations and adding a visual feedback animation when deleting threads.
+The ThreadList component in Coder was rerendering approximately every 300ms, causing performance issues. Furthermore, even after reducing the refresh interval, the component was still rerendering too frequently (every 1-2 seconds) without actual changes. Additionally, when deleting chats with similar names, it was difficult to tell which one was being deleted. The fix involves performance optimizations, deep comparison to prevent unnecessary rerenders, and adding visual feedback animation for deleting threads.
 
 ## Implementation Steps
 
@@ -74,7 +74,32 @@ The solution fully preserves the fast-delete-threads functionality by:
 4. **Retaining user preferences**: The confirmation dialog preference is still respected
 5. **Maintaining delayed deletion**: The actual deletion is still delayed to allow for undo
 
-### Step 5: Add visual deletion feedback
+### Step 5: Fix the useThreads hook to prevent unnecessary rerenders
+
+Identified the root cause of continued rerenders: even though we increased the refresh interval, the `useThreads` hook was updating state on every refresh interval regardless of whether there were actual changes.
+
+The updated implementation:
+
+1. Added a deep comparison function `areThreadListsEqual` to:
+   - Compare thread lists by checking each thread's ID, title, updatedAt, modelId, and systemPrompt 
+   - Only trigger state updates when actual changes are detected
+
+2. Added safeguards to prevent memory leaks and state updates after unmount:
+   - Added an `isMountedRef` to track component mount status
+   - Check mount status before updating state
+   - Properly clean up in the useEffect's return function
+
+3. Fixed dependency issues in useCallback:
+   - Improved dependency arrays to prevent unnecessary recreations of callbacks
+   - Ensured proper state tracking between refreshes
+
+4. Fixed optimistic updates to maintain consistent references:
+   - Updated `lastThreadsRef` when making optimistic updates
+   - Ensured all optimistic updates use a single pattern
+
+These changes ensure that state only updates when threads actually change, preventing unnecessary rerenders while maintaining reactivity to real changes.
+
+### Step 6: Add visual deletion feedback
 
 Added visual feedback for thread deletion:
 
@@ -103,10 +128,14 @@ Added visual feedback for thread deletion:
 
 The ThreadList component should now only re-render when:
 - A new thread is created or deleted
-- The user preference for thread deletion confirmation changes
-- Every 3 seconds for the regular refresh (vs. every 0.3 seconds before)
+- The user preference for thread deletion confirmation changes 
+- The actual list of threads in the database changes (not on every refresh interval)
 
-This should dramatically improve performance and reduce unnecessary renders.
+The optimizations apply at two levels:
+1. **Component level**: Using React.memo and optimized state management
+2. **Data level**: Using deep comparison to prevent state updates when thread data hasn't changed
+
+The component maintains the 3-second refresh interval but will not trigger rerenders unless the thread data actually changes, providing a significant performance improvement.
 
 ### Visual Improvements
 
