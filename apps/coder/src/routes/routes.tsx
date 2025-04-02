@@ -3,6 +3,7 @@ import { RootRoute } from "./__root";
 import HomePage from "../pages/HomePage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
 import ModelsPage from "../pages/settings/ModelsPage";
+import LocalModelsPage from "../pages/settings/LocalModelsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
 import PreferencesPage from "../pages/settings/PreferencesPage";
 
@@ -43,6 +44,12 @@ export const ModelsSettingsRoute = createRoute({
   component: ModelsPage,
 });
 
+export const LocalModelsSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/local-models",
+  component: LocalModelsPage,
+});
+
 export const PromptsSettingsRoute = createRoute({
   getParentRoute: () => SettingsRoute,
   path: "/prompts",
@@ -61,6 +68,7 @@ export const rootTree = RootRoute.addChildren([
   SettingsRoute.addChildren([
     SettingsIndexRoute,
     ModelsSettingsRoute,
+    LocalModelsSettingsRoute,
     PromptsSettingsRoute,
     PreferencesSettingsRoute
   ])

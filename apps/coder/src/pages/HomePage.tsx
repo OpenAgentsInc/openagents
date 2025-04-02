@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
 import { ModelSelect } from "@/components/ui/model-select";
-import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
+import { MessageSquareIcon, SettingsIcon, HelpCircleIcon, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Message, type UIPart, type UIMessage } from "@openagents/core";
 
@@ -35,7 +35,7 @@ interface Settings {
 
 export default function HomePage() {
   // Get settings including the default model
-  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings, selectModel } = useSettings();
+  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings, selectModel, getApiKey } = useSettings();
 
   // Define state variables first
   const [selectedModelId, setSelectedModelId] = useState<string>("");
@@ -423,6 +423,110 @@ export default function HomePage() {
     });
   }, [updateThread]);
 
+  // Check if the current model is available (has API key if needed)
+  const [isModelAvailable, setIsModelAvailable] = useState(true);
+  const [modelWarning, setModelWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function checkCurrentModelAvailability() {
+      try {
+        if (!selectedModelId) return;
+        
+        const selectedModel = MODELS.find(model => model.id === selectedModelId);
+        if (!selectedModel) return;
+        
+        let isAvailable = true;
+        let warning = null;
+        
+        // Function to check if Ollama is running and get available models
+        const checkOllamaModels = async (): Promise<string[]> => {
+          try {
+            const response = await fetch("http://localhost:11434/api/tags");
+            if (response.ok) {
+              const data = await response.json();
+              return data.models.map((model: any) => model.name);
+            }
+          } catch (error) {
+            console.warn("Failed to connect to Ollama API:", error);
+          }
+          return [];
+        };
+        
+        // Function to check if LMStudio is running
+        const checkLMStudioAvailable = async (): Promise<boolean> => {
+          try {
+            const response = await fetch("http://localhost:1234/v1/models");
+            return response.ok;
+          } catch (error) {
+            console.warn("Failed to connect to LMStudio API:", error);
+            return false;
+          }
+        };
+        
+        // Check based on provider
+        if (selectedModel.provider === 'openrouter') {
+          const key = await getApiKey('openrouter');
+          isAvailable = !!key;
+          if (!key) {
+            warning = "OpenRouter API key required. Add it in Settings > API Keys.";
+          }
+        } 
+        else if (selectedModel.provider === 'anthropic') {
+          const key = await getApiKey('anthropic');
+          isAvailable = !!key;
+          if (!key) {
+            warning = "Anthropic API key required. Add it in Settings > API Keys.";
+          }
+        }
+        else if (selectedModel.provider === 'openai') {
+          const key = await getApiKey('openai');
+          isAvailable = !!key;
+          if (!key) {
+            warning = "OpenAI API key required. Add it in Settings > API Keys.";
+          }
+        }
+        else if (selectedModel.provider === 'google') {
+          const key = await getApiKey('google');
+          isAvailable = !!key;
+          if (!key) {
+            warning = "Google API key required. Add it in Settings > API Keys.";
+          }
+        }
+        else if (selectedModel.provider === 'ollama') {
+          const ollamaModels = await checkOllamaModels();
+          const modelName = selectedModel.id.split('/')[1];
+          
+          isAvailable = ollamaModels.length > 0 && ollamaModels.some(m => 
+            m === modelName || m.startsWith(`${modelName}:`)
+          );
+          
+          if (!isAvailable) {
+            if (ollamaModels.length === 0) {
+              warning = "Ollama server not running. Configure Ollama in Settings > Local Models.";
+            } else {
+              warning = `Model '${modelName}' not available. Run 'ollama pull ${modelName}'`;
+            }
+          }
+        }
+        else if (selectedModel.provider === 'lmstudio') {
+          isAvailable = await checkLMStudioAvailable();
+          if (!isAvailable) {
+            warning = "LMStudio not running or unreachable.";
+          }
+        }
+        
+        setIsModelAvailable(isAvailable);
+        setModelWarning(warning);
+      } catch (error) {
+        console.error("Error checking model availability:", error);
+        setIsModelAvailable(true);
+        setModelWarning(null);
+      }
+    }
+    
+    checkCurrentModelAvailability();
+  }, [selectedModelId, getApiKey]);
+
   // Handle model change - this happens when user selects from dropdown
   const handleModelChange = (modelId: string) => {
     console.log(`Model changed via dropdown to: ${modelId}`);
@@ -588,9 +692,34 @@ export default function HomePage() {
 
                 <div className="border-t bg-background p-4">
                   <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+                    {!isModelAvailable && modelWarning && (
+                      <div className="mb-2 p-2 text-sm text-yellow-600 dark:text-yellow-400 border border-yellow-400 rounded-md bg-yellow-50 dark:bg-yellow-900/20">
+                        <div className="flex items-center">
+                          <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+                          <span>{modelWarning}</span>
+                        </div>
+                        <div className="mt-1 ml-6">
+                          {selectedModelId && MODELS.find(m => m.id === selectedModelId)?.provider === 'ollama' ? (
+                            <Link to="/settings/local-models" className="underline">Configure Ollama</Link>
+                          ) : modelWarning?.includes("LMStudio") ? (
+                            <Link to="/settings/local-models" className="underline">Configure LMStudio</Link>
+                          ) : (
+                            <Link to="/settings/models" className="underline">Add API Key</Link>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
                     <ChatForm
                       isPending={isGenerating}
-                      handleSubmit={handleSubmit}
+                      handleSubmit={(e) => {
+                        // Prevent submission if model is unavailable
+                        if (!isModelAvailable) {
+                          e.preventDefault();
+                          return;
+                        }
+                        handleSubmit(e);
+                      }}
                       className="relative"
                     >
                       {({ files, setFiles }) => (
@@ -602,6 +731,8 @@ export default function HomePage() {
                           // setFiles={setFiles}
                           stop={stop}
                           isGenerating={isGenerating}
+                          disabled={!isModelAvailable}
+                          placeholder={!isModelAvailable ? "API key required for this model" : "Message..."}
                         />
                       )}
                     </ChatForm>

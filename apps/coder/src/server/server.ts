@@ -410,6 +410,41 @@ const logOllamaModelAvailability = (baseUrl: string, modelName: string) => {
   // console.log(`[Server]   3. If needed, pull the model with: 'ollama pull ${modelName}'`);
 };
 
+// Proxy endpoint for LMStudio API requests
+app.get('/api/proxy/lmstudio/models', async (c) => {
+  try {
+    const url = c.req.query('url') || 'http://localhost:1234/v1/models';
+    
+    console.log(`[Server] Proxying request to LMStudio at: ${url}`);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error(`[Server] LMStudio proxy request failed with status: ${response.status}`);
+      return c.json({ 
+        error: `Failed to connect to LMStudio server: ${response.statusText}`,
+        status: response.status
+      }, response.status);
+    }
+    
+    const data = await response.json();
+    console.log(`[Server] LMStudio proxy request successful`);
+    
+    return c.json(data);
+  } catch (error) {
+    console.error('[Server] LMStudio proxy error:', error);
+    return c.json({ 
+      error: 'Failed to connect to LMStudio server',
+      details: error instanceof Error ? error.message : String(error)
+    }, 500);
+  }
+});
+
 // --- End API Routes ---
 
 export default app;
