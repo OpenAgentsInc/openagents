@@ -7,6 +7,7 @@ import { Chat, ChatForm } from "@/components/ui/chat";
 import { ThreadList } from "@/components/ThreadList";
 import ToggleTheme from "@/components/ToggleTheme";
 import { Badge } from "@/components/ui/badge";
+import { NewChatIcon } from "@/components/NewChatIcon";
 import {
   Sidebar,
   SidebarContent,
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Link } from "@tanstack/react-router";
 import { ModelSelect } from "@/components/ui/model-select";
-import { MessageSquareIcon, SettingsIcon, HelpCircleIcon, Plus } from "lucide-react";
+import { MessageSquareIcon, SettingsIcon, HelpCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Message, type UIPart, type UIMessage } from "@openagents/core";
 
@@ -35,7 +36,7 @@ interface Settings {
 export default function HomePage() {
   // Get settings including the default model
   const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings, selectModel } = useSettings();
-  
+
   // Define state variables first
   const [selectedModelId, setSelectedModelId] = useState<string>("");
 
@@ -55,10 +56,10 @@ export default function HomePage() {
       }
     })();
   }, [clearSettingsCache]);
-  
+
   // Use a ref to track the last applied model ID to prevent loops
   const lastAppliedModelRef = React.useRef<string | null>(null);
-  
+
   // Add event listener for page visibility and focus to refresh settings
   useEffect(() => {
     // Store the visibility handler to properly remove it
@@ -67,7 +68,7 @@ export default function HomePage() {
         handleFocus();
       }
     };
-    
+
     // Function to refresh settings from database
     const handleFocus = () => {
       console.log("Page focused, refreshing settings");
@@ -75,7 +76,7 @@ export default function HomePage() {
         if (updatedSettings && updatedSettings.selectedModelId) {
           const newModelId = updatedSettings.selectedModelId;
           console.log(`Refreshed settings with model: ${newModelId}`);
-          
+
           // Check if this model update is new (not just the one we applied)
           // and also different from what's currently selected
           if (selectedModelId !== newModelId && lastAppliedModelRef.current !== newModelId) {
@@ -87,17 +88,17 @@ export default function HomePage() {
         }
       });
     };
-    
+
     // Handle custom event from settings page
     const handleModelSettingsChanged = (event: any) => {
       console.log("Received model-settings-changed event", event.detail);
       if (event.detail && event.detail.selectedModelId) {
         const newModelId = event.detail.selectedModelId;
         console.log(`Setting model from event: ${newModelId}`);
-        
+
         // Track that we're about to apply this model ID to prevent loops
         lastAppliedModelRef.current = newModelId;
-        
+
         if (selectedModelId !== newModelId) {
           setSelectedModelId(newModelId);
         }
@@ -111,20 +112,20 @@ export default function HomePage() {
     window.addEventListener('focus', handleFocus);
     window.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('model-settings-changed', handleModelSettingsChanged);
-    
+
     // Load settings on first mount
     handleFocus();
-    
+
     // Cleanup event listeners
     return () => {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('model-settings-changed', handleModelSettingsChanged);
     };
-    
+
     // Only depend on refreshSettings to avoid re-running the effect when selectedModelId changes
   }, [refreshSettings]);
-  
+
   useEffect(() => {
     async function setupModel() {
       try {
@@ -178,7 +179,7 @@ export default function HomePage() {
         // If no user selection, use selected model from settings (lower priority)
         // First get the model ID from settings, preferring selectedModelId but falling back to defaultModel
         const settingsModelId = settings.selectedModelId || settings.defaultModel;
-        
+
         // Check if we already have a selected model that matches settings (to prevent unnecessary reselection)
         if (selectedModelId && selectedModelId === settingsModelId) {
           // console.log(`Model already selected (${selectedModelId}) matches settings`);
@@ -215,7 +216,7 @@ export default function HomePage() {
               console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
               try {
                 // Update both fields for compatibility
-                const result = await updateSettings({ 
+                const result = await updateSettings({
                   defaultModel: fallbackModel,
                   selectedModelId: fallbackModel
                 }) as Settings;
@@ -235,9 +236,9 @@ export default function HomePage() {
             // Save this as the selected model
             console.log(`Setting first model as selected model: ${firstModel}`);
             try {
-              await updateSettings({ 
+              await updateSettings({
                 defaultModel: firstModel, // For backward compatibility
-                selectedModelId: firstModel 
+                selectedModelId: firstModel
               });
               console.log("Selected model saved");
             } catch (error) {
@@ -380,7 +381,7 @@ export default function HomePage() {
 
     // Track that we're about to apply this model to prevent loops
     lastAppliedModelRef.current = modelId;
-    
+
     // Set the model ID for current session
     setSelectedModelId(modelId);
 
@@ -425,15 +426,7 @@ export default function HomePage() {
                       v0.0.1
                     </Badge>
                   </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleCreateThread}
-                    className="flex gap-1 items-center"
-                  >
-                    <Plus className="size-4" />
-                    <span>New</span>
-                  </Button>
+                  <NewChatIcon onClick={handleCreateThread} />
                 </div>
               </SidebarHeader>
 
