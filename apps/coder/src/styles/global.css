@@ -231,6 +231,19 @@
     animation: typing-dot 1.4s linear infinite;
   }
 
+  @keyframes delete-flash {
+    0%, 100% {
+      background-color: hsl(var(--destructive) / 0.2);
+    }
+    50% {
+      background-color: hsl(var(--destructive) / 0.5);
+    }
+  }
+
+  .animate-delete-flash {
+    animation: delete-flash 0.8s ease-in-out infinite;
+  }
+
   /* Small scrollbar styles */
   .small-scrollbar {
     scrollbar-width: thin;

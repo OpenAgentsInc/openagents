@@ -45,6 +45,9 @@ export const ThreadList = React.memo(function ThreadList({
   // State to store the confirmation preference
   const [confirmThreadDeletion, setConfirmThreadDeletion] = useState(true);
   
+  // Track threads that are in the process of being deleted (for visual feedback)
+  const [deletingThreadIds, setDeletingThreadIds] = useState<Set<string>>(new Set());
+  
   // Use the custom thread deletion hook
   const { pendingDeletes, handleDeleteWithToast } = useThreadDeletion({
     threads,
@@ -99,12 +102,35 @@ export const ThreadList = React.memo(function ThreadList({
   const handleDeleteClick = useCallback((e: React.MouseEvent, threadId: string, threadTitle: string) => {
     e.stopPropagation();
     
+    const performDelete = () => {
+      // Set the thread as deleting for visual feedback
+      setDeletingThreadIds(prev => {
+        const newSet = new Set(prev);
+        newSet.add(threadId);
+        return newSet;
+      });
+      
+      // Call the toast handler after a small delay to ensure animation is visible
+      setTimeout(() => {
+        handleDeleteWithToast(threadId, threadTitle);
+        
+        // Remove from deleting set after a delay (to allow animation to be seen)
+        setTimeout(() => {
+          setDeletingThreadIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(threadId);
+            return newSet;
+          });
+        }, 500);
+      }, 100);
+    };
+    
     if (confirmThreadDeletion) {
       if (window.confirm('Are you sure you want to delete this chat?')) {
-        handleDeleteWithToast(threadId, threadTitle);
+        performDelete();
       }
     } else {
-      handleDeleteWithToast(threadId, threadTitle);
+      performDelete();
     }
   }, [confirmThreadDeletion, handleDeleteWithToast]);
 
@@ -143,6 +169,7 @@ export const ThreadList = React.memo(function ThreadList({
           selectedThreadId={currentThreadId}
           onSelectThread={onSelectThread}
           onDeleteThread={handleDeleteClick}
+          deletingThreadIds={deletingThreadIds}
         />
       ))}
 

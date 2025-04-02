@@ -8,6 +8,7 @@ interface ThreadGroupProps {
   selectedThreadId: string;
   onSelectThread: (threadId: string) => void;
   onDeleteThread: (e: React.MouseEvent, threadId: string, threadTitle: string) => void;
+  deletingThreadIds?: Set<string>; // New prop to track threads being deleted
 }
 
 export const ThreadGroup = React.memo(function ThreadGroup({
@@ -15,7 +16,8 @@ export const ThreadGroup = React.memo(function ThreadGroup({
   threads,
   selectedThreadId,
   onSelectThread,
-  onDeleteThread
+  onDeleteThread,
+  deletingThreadIds = new Set()
 }: ThreadGroupProps) {
   if (threads.length === 0) {
     return null;
@@ -36,6 +38,7 @@ export const ThreadGroup = React.memo(function ThreadGroup({
               isSelected={thread.id === selectedThreadId}
               onSelect={onSelectThread}
               onDelete={onDeleteThread}
+              isDeleting={deletingThreadIds.has(thread.id)}
             />
           ))}
         </ul>

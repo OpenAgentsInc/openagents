@@ -1,10 +1,10 @@
 # ThreadList Performance Fix Implementation Log
 
-This log tracks the implementation of the ThreadList performance optimizations to fix excessive rerendering.
+This log tracks the implementation of the ThreadList performance optimizations to fix excessive rerendering and adding visual deletion feedback.
 
 ## Overview
 
-The ThreadList component in Coder was rerendering approximately every 300ms, causing performance issues. The fix involves several optimizations while preserving the fast-delete functionality with undo capabilities.
+The ThreadList component in Coder was rerendering approximately every 300ms, causing performance issues. Additionally, when deleting chats with similar names, it was difficult to tell which one was being deleted. The fix involves performance optimizations and adding a visual feedback animation when deleting threads.
 
 ## Implementation Steps
 
@@ -74,7 +74,32 @@ The solution fully preserves the fast-delete-threads functionality by:
 4. **Retaining user preferences**: The confirmation dialog preference is still respected
 5. **Maintaining delayed deletion**: The actual deletion is still delayed to allow for undo
 
-## Expected Result
+### Step 5: Add visual deletion feedback
+
+Added visual feedback for thread deletion:
+
+1. Added a CSS animation for deletion in `/apps/coder/src/styles/global.css`:
+   - Created `@keyframes delete-flash` that alternates between light and bright destructive colors
+   - Added `.animate-delete-flash` class that applies the animation
+
+2. Updated `ThreadItem.tsx` component to:
+   - Accept an `isDeleting` prop to track deletion state
+   - Apply red background flash animation to threads being deleted
+   - Apply destructive text color during deletion
+
+3. Updated `ThreadGroup.tsx` to:
+   - Accept a `deletingThreadIds` Set to track which threads are being deleted
+   - Pass the deletion state to each ThreadItem
+
+4. Updated the main `ThreadList.tsx` to:
+   - Track deleting threads with a new `deletingThreadIds` state
+   - Update the delete handler to set threads as deleting before actual deletion
+   - Add small delays to ensure the animation is visible
+   - Pass the deleting threads state to each ThreadGroup
+
+## Expected Results
+
+### Performance Improvements
 
 The ThreadList component should now only re-render when:
 - A new thread is created or deleted
@@ -82,3 +107,12 @@ The ThreadList component should now only re-render when:
 - Every 3 seconds for the regular refresh (vs. every 0.3 seconds before)
 
 This should dramatically improve performance and reduce unnecessary renders.
+
+### Visual Improvements
+
+When a thread is deleted:
+1. The thread item will flash with a red background animation
+2. The text will appear in the destructive color
+3. This animation will be visible briefly before the thread is removed from the UI
+
+This makes it much clearer which thread is being deleted, especially when multiple threads have similar or identical names.
