@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Card, 
-  CardHeader, 
-  CardTitle, 
-  CardDescription, 
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
   CardContent,
   Button,
   Input,
@@ -20,20 +20,20 @@ export default function LocalModelsPage() {
   const [lmStudioUrl, setLmStudioUrl] = useState("http://localhost:1234");
   const [refreshing, setRefreshing] = useState(false);
   const [lmStudioError, setLmStudioError] = useState<string | null>(null);
-  
+
   // Load the saved URL from settings on initial load
   useEffect(() => {
     async function loadSavedUrl() {
       try {
         const { settingsRepository } = await import('@openagents/core/src/db/repositories');
-        const savedUrl = await settingsRepository.getPreference("lmstudioUrl", "http://localhost:1234");
+        const savedUrl = await settingsRepository.getPreference<string>("lmstudioUrl", "http://localhost:1234");
         console.log("Loaded LMStudio URL from settings:", savedUrl);
         setLmStudioUrl(savedUrl);
       } catch (error) {
         console.error("Failed to load LMStudio URL from settings:", error);
       }
     }
-    
+
     loadSavedUrl();
   }, []);
 
@@ -46,18 +46,18 @@ export default function LocalModelsPage() {
       setLmStudioError(null);
       setLmStudioStatus('checking');
       console.log(`Checking LMStudio status at: ${lmStudioUrl}/v1/models`);
-      
+
       // Add a timeout to the fetch to prevent hanging
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         controller.abort();
         setLmStudioError("Connection timed out. Is LMStudio running?");
       }, 5000);
-      
+
       // Use our server proxy to avoid CORS issues
       const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${lmStudioUrl}/v1/models`)}`;
       console.log("Using proxy URL:", proxyUrl);
-      
+
       const response = await fetch(proxyUrl, {
         method: 'GET',
         headers: {
@@ -65,22 +65,22 @@ export default function LocalModelsPage() {
         },
         signal: controller.signal
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       // Log the full response for debugging
       console.log("LMStudio response status:", response.status);
       console.log("LMStudio response OK:", response.ok);
-      
+
       if (response.ok) {
         const data = await response.json();
         console.log("LMStudio models:", data);
-        
+
         // Extract model names from the response - handle various response formats
         let modelNames: string[] = [];
-        
+
         console.log("Raw LMStudio model data:", JSON.stringify(data, null, 2));
-        
+
         if (data && data.data && Array.isArray(data.data)) {
           // Standard OpenAI format
           console.log("Found standard OpenAI format model data");
@@ -103,26 +103,26 @@ export default function LocalModelsPage() {
           } else {
             // Last resort: try to get any string properties from the object
             const possibleModels = Object.entries(data)
-              .filter(([key, value]) => typeof value === 'string' && 
+              .filter(([key, value]) => typeof value === 'string' &&
                 ['id', 'name', 'model'].includes(key.toLowerCase()))
-              .map(([_, value]) => value);
-              
+              .map(([_, value]) => value as string);
+
             if (possibleModels.length > 0) {
               modelNames = possibleModels;
             }
           }
         }
-        
+
         console.log("Extracted model names:", modelNames);
-        
+
         setLmStudioModels(modelNames);
         setLmStudioStatus('running');
       } else {
         let errorMessage = `Server responded with status ${response.status}`;
-        
+
         // Make a copy of the response for reading the body, as we can only read it once
         const clonedResponse = response.clone();
-        
+
         try {
           const errorData = await clonedResponse.json();
           console.log("LMStudio error response:", errorData);
@@ -136,13 +136,13 @@ export default function LocalModelsPage() {
           console.error("Error parsing error response as JSON:", e);
           errorMessage = "Failed to connect to LMStudio server";
         }
-        
+
         setLmStudioError(errorMessage);
         setLmStudioStatus('not-running');
       }
     } catch (error: any) {
       console.error("Error checking LMStudio status:", error);
-      
+
       // Set a more helpful error message
       if (error.name === 'AbortError') {
         setLmStudioError("Connection timed out. Is LMStudio running?");
@@ -153,7 +153,7 @@ export default function LocalModelsPage() {
       } else {
         setLmStudioError(error.message || "Unknown error connecting to LMStudio");
       }
-      
+
       setLmStudioStatus('not-running');
     }
   };
@@ -176,7 +176,7 @@ export default function LocalModelsPage() {
             </CardDescription>
           </div>
         </CardHeader>
-        
+
         <CardContent className="space-y-4">
           {/* Connection Status */}
           <div className="space-y-2">
@@ -191,10 +191,10 @@ export default function LocalModelsPage() {
               )}
               <div>
                 <span>
-                  {lmStudioStatus === 'checking' 
-                    ? 'Checking LMStudio...' 
-                    : lmStudioStatus === 'running' 
-                      ? 'LMStudio is running' 
+                  {lmStudioStatus === 'checking'
+                    ? 'Checking LMStudio...'
+                    : lmStudioStatus === 'running'
+                      ? 'LMStudio is running'
                       : 'LMStudio is not running'
                   }
                 </span>
@@ -216,28 +216,28 @@ export default function LocalModelsPage() {
                 onChange={(e) => {
                   // Update the state
                   setLmStudioUrl(e.target.value);
-                  
+
                   // Save the URL to settings when it changes
                   (async () => {
                     try {
                       const { settingsRepository } = await import('@openagents/core/src/db/repositories');
                       await settingsRepository.setPreference("lmstudioUrl", e.target.value);
-                      
+
                       // Verify the URL was saved correctly
-                      const savedUrl = await settingsRepository.getPreference("lmstudioUrl");
+                      const savedUrl = await settingsRepository.getPreference<string>("lmstudioUrl", "http://localhost:1234");
                       console.log("Saved LMStudio URL to settings:", e.target.value);
                       console.log("Verified saved URL in settings:", savedUrl);
-                      
+
                       // Also save to localStorage as backup
                       try {
                         localStorage.setItem("openagents_lmstudio_url", e.target.value);
                       } catch (err) {
                         console.warn("Failed to save LMStudio URL to localStorage:", err);
                       }
-                      
+
                       // Notify other components that settings have changed
                       window.dispatchEvent(new CustomEvent('api-key-changed'));
-                      
+
                       // Also dispatch an event to force model availability check
                       window.dispatchEvent(new CustomEvent('lmstudio-url-changed'));
                     } catch (error) {
@@ -247,34 +247,34 @@ export default function LocalModelsPage() {
                 }}
                 placeholder="http://localhost:1234"
               />
-              <Button 
+              <Button
                 onClick={() => {
                   console.log("Connect button clicked for LMStudio");
-                  
+
                   // Save the current URL to settings and notify other components
                   (async () => {
                     try {
                       const { settingsRepository } = await import('@openagents/core/src/db/repositories');
                       await settingsRepository.setPreference("lmstudioUrl", lmStudioUrl);
                       console.log("URL saved on Connect click:", lmStudioUrl);
-                      
+
                       // Also save to localStorage as backup
                       try {
                         localStorage.setItem("openagents_lmstudio_url", lmStudioUrl);
                       } catch (err) {
                         console.warn("Failed to save LMStudio URL to localStorage:", err);
                       }
-                      
+
                       // Force a settings update in other components
                       window.dispatchEvent(new CustomEvent('api-key-changed'));
-                      
+
                       // Also dispatch an event to force model availability check
                       window.dispatchEvent(new CustomEvent('lmstudio-url-changed'));
                     } catch (error) {
                       console.error("Failed to save URL on connect:", error);
                     }
                   })();
-                  
+
                   // Check the status after a brief delay to allow settings to propagate
                   setTimeout(() => {
                     checkLmStudioStatus();

@@ -15,6 +15,20 @@ import {
   PopoverTrigger,
 } from "@/components/ui";
 
+type ModelProvider = 'openrouter' | 'anthropic' | 'openai' | 'google' | 'ollama' | 'lmstudio';
+
+interface Model {
+  id: string;
+  name: string;
+  provider: ModelProvider;
+  author: string;
+  created: number;
+  description: string;
+  context_length: number;
+  supportsTools: boolean;
+  shortDescription: string;
+}
+
 interface ModelSelectProps {
   value: string;
   onChange: (value: string) => void;
@@ -134,7 +148,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                       .replace(/-/g, ' ')
                       .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space between camelCase
                       .split(' ')
-                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
                       .join(' ');
 
                     return {
@@ -170,7 +184,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                       .replace(/-/g, ' ')
                       .replace(/([a-z])([A-Z])/g, '$1 $2')
                       .split(' ')
-                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
                       .join(' ');
 
                     return {
@@ -205,7 +219,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                       .replace(/-/g, ' ')
                       .replace(/([a-z])([A-Z])/g, '$1 $2')
                       .split(' ')
-                      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
                       .join(' ');
 
                     return {
@@ -274,55 +288,64 @@ export const ModelSelect = React.memo(function ModelSelect({
         availability[model.id] = true;
       }
 
+      // Check based on provider
       for (const model of MODELS) {
         // Default to available
         availability[model.id] = true;
 
         // Check based on provider
-        if (model.provider === 'openrouter') {
-          const key = await getApiKey('openrouter');
-          availability[model.id] = !!key;
-          if (!key) {
-            messages[model.id] = "OpenRouter API key required. Add it in Settings > API Keys.";
-          }
-        }
-        else if (model.provider === 'anthropic') {
-          const key = await getApiKey('anthropic');
-          availability[model.id] = !!key;
-          if (!key) {
-            messages[model.id] = "Anthropic API key required. Add it in Settings > API Keys.";
-          }
-        }
-        else if (model.provider === 'openai') {
-          const key = await getApiKey('openai');
-          availability[model.id] = !!key;
-          if (!key) {
-            messages[model.id] = "OpenAI API key required. Add it in Settings > API Keys.";
-          }
-        }
-        else if (model.provider === 'google') {
-          const key = await getApiKey('google');
-          availability[model.id] = !!key;
-          if (!key) {
-            messages[model.id] = "Google API key required. Add it in Settings > API Keys.";
-          }
-        }
-        else if (model.provider === 'ollama') {
-          // Temporarily disable all Ollama models to focus on LMStudio
-          availability[model.id] = false;
-          messages[model.id] = "Ollama support temporarily disabled";
-        }
-        else if (model.provider === 'lmstudio') {
-          // Only show static LMStudio models if we don't have dynamic ones
-          if (dynamicLmStudioModels.length > 0) {
-            // Hide static models when we have dynamic ones
-            availability[model.id] = false;
-            messages[model.id] = "Using dynamically discovered LMStudio models instead.";
-          } else {
-            availability[model.id] = lmStudioAvailable;
-            if (!lmStudioAvailable) {
-              messages[model.id] = "LMStudio not running or unreachable.";
+        switch (model.provider as ModelProvider) {
+          case 'openrouter': {
+            const key = await getApiKey('openrouter');
+            availability[model.id] = !!key;
+            if (!key) {
+              messages[model.id] = "OpenRouter API key required. Add it in Settings > API Keys.";
             }
+            break;
+          }
+          case 'anthropic': {
+            const key = await getApiKey('anthropic');
+            availability[model.id] = !!key;
+            if (!key) {
+              messages[model.id] = "Anthropic API key required. Add it in Settings > API Keys.";
+            }
+            break;
+          }
+          case 'openai': {
+            const key = await getApiKey('openai');
+            availability[model.id] = !!key;
+            if (!key) {
+              messages[model.id] = "OpenAI API key required. Add it in Settings > API Keys.";
+            }
+            break;
+          }
+          case 'google': {
+            const key = await getApiKey('google');
+            availability[model.id] = !!key;
+            if (!key) {
+              messages[model.id] = "Google API key required. Add it in Settings > API Keys.";
+            }
+            break;
+          }
+          case 'ollama': {
+            // Temporarily disable all Ollama models to focus on LMStudio
+            availability[model.id] = false;
+            messages[model.id] = "Ollama support temporarily disabled";
+            break;
+          }
+          case 'lmstudio': {
+            // Only show static LMStudio models if we don't have dynamic ones
+            if (dynamicLmStudioModels.length > 0) {
+              // Hide static models when we have dynamic ones
+              availability[model.id] = false;
+              messages[model.id] = "Using dynamically discovered LMStudio models instead.";
+            } else {
+              availability[model.id] = lmStudioAvailable;
+              if (!lmStudioAvailable) {
+                messages[model.id] = "LMStudio not running or unreachable.";
+              }
+            }
+            break;
           }
         }
       }
@@ -387,7 +410,7 @@ export const ModelSelect = React.memo(function ModelSelect({
           .replace(/-/g, ' ')
           .replace(/([a-z])([A-Z])/g, '$1 $2')
           .split(' ')
-          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
           .join(' ');
 
         const newModel = {
@@ -467,7 +490,7 @@ export const ModelSelect = React.memo(function ModelSelect({
         .replace(/-/g, ' ')
         .replace(/([a-z])([A-Z])/g, '$1 $2')
         .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 
       // Create a temporary model entry to represent the selected model
@@ -508,7 +531,7 @@ export const ModelSelect = React.memo(function ModelSelect({
         .replace(/-/g, ' ')
         .replace(/([a-z])([A-Z])/g, '$1 $2')
         .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 
       const temporaryModel = {
@@ -550,7 +573,7 @@ export const ModelSelect = React.memo(function ModelSelect({
         .replace(/-/g, ' ')
         .replace(/([a-z])([A-Z])/g, '$1 $2')
         .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 
       return {

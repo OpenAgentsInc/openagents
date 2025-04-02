@@ -36,27 +36,33 @@ type MessageInputProps =
   | MessageInputWithoutAttachmentProps
   | MessageInputWithAttachmentsProps
 
-export const MessageInput = React.memo(function MessageInput({
-  placeholder = "Ask Coder",
-  className,
-  onKeyDown: onKeyDownProp,
-  submitOnEnter = true,
-  stop,
-  isGenerating,
-  enableInterrupt = true,
-  transcribeAudio,
-  ...props
-}: MessageInputProps) {
-  const [isDragging, setIsDragging] = useState(false)
-  const [showInterruptPrompt, setShowInterruptPrompt] = useState(false)
+export const MessageInput = React.memo(function MessageInput(props: MessageInputProps) {
+  const {
+    placeholder = "Ask Coder",
+    className,
+    onKeyDown: onKeyDownProp,
+    submitOnEnter = true,
+    stop,
+    isGenerating,
+    enableInterrupt = true,
+    transcribeAudio,
+    allowAttachments,
+    ...restProps
+  } = props;
+
+  const files = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).files : null;
+  const setFiles = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).setFiles : null;
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [showInterruptPrompt, setShowInterruptPrompt] = useState(false);
 
   // Store the onChange handler in a ref to avoid creating functions
-  const onChangeRef = useRef(props.onChange);
+  const onChangeRef = useRef(restProps.onChange);
 
   // Update the ref when props.onChange changes
   useEffect(() => {
-    onChangeRef.current = props.onChange;
-  }, [props.onChange]);
+    onChangeRef.current = restProps.onChange;
+  }, [restProps.onChange]);
 
   // Memoize the speech callbacks
   const onTranscriptionComplete = useCallback((text: string) => {
@@ -77,20 +83,18 @@ export const MessageInput = React.memo(function MessageInput({
   })
 
   // Store the value and allowAttachments in refs to avoid recreating functions
-  const valueRef = useRef(props.value);
-  const filesRef = useRef(props.allowAttachments ? props.files : null);
-  const allowAttachmentsRef = useRef(props.allowAttachments);
-  const setFilesRef = useRef(props.allowAttachments ? props.setFiles : null);
+  const valueRef = useRef(restProps.value);
+  const filesRef = useRef(files);
+  const allowAttachmentsRef = useRef(allowAttachments);
+  const setFilesRef = useRef(setFiles);
 
   // Update refs when props change
   useEffect(() => {
-    valueRef.current = props.value;
-    if (props.allowAttachments) {
-      filesRef.current = props.files;
-      setFilesRef.current = props.setFiles;
-    }
-    allowAttachmentsRef.current = props.allowAttachments;
-  }, [props.value, props.files, props.allowAttachments, props.allowAttachments ? props.setFiles : null]);
+    valueRef.current = restProps.value;
+    filesRef.current = files;
+    setFilesRef.current = setFiles;
+    allowAttachmentsRef.current = allowAttachments;
+  }, [restProps.value, files, allowAttachments, setFiles]);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -104,15 +108,15 @@ export const MessageInput = React.memo(function MessageInput({
 
     setFilesRef.current((currentFiles) => {
       if (currentFiles === null) {
-        return files
+        return files;
       }
 
       if (files === null) {
-        return currentFiles
+        return currentFiles;
       }
 
-      return [...currentFiles, ...files]
-    })
+      return [...currentFiles, ...files];
+    });
   }, []);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -194,33 +198,33 @@ export const MessageInput = React.memo(function MessageInput({
     if (textAreaRef.current) {
       setTextAreaHeight(textAreaRef.current.offsetHeight)
     }
-  }, [props.value])
+  }, [restProps.value])
 
   // Use the focus hook - textAreaRef is correctly typed for this hook
   useFocusInput(textAreaRef as React.RefObject<HTMLTextAreaElement>)
 
   // Memoize this computation
   const showFileList = useMemo(() =>
-    props.allowAttachments && props.files && props.files.length > 0,
-    [props.allowAttachments, props.files]);
+    allowAttachments && files && files.length > 0,
+    [allowAttachments, files]);
 
   // Auto-size the textarea
   useAutosizeTextArea({
     ref: textAreaRef,
-    value: props.value || ''
+    value: restProps.value || ''
   })
 
   // File removal handler - memoized to avoid recreation
   const handleFileRemove = useCallback((file: File) => {
-    if (!props.allowAttachments || !props.setFiles) return;
+    if (!allowAttachmentsRef.current || !setFilesRef.current) return;
 
-    props.setFiles((files) => {
+    setFilesRef.current((files) => {
       if (!files) return null;
 
       const filtered = Array.from(files).filter(f => f !== file);
       return filtered.length === 0 ? null : filtered;
     });
-  }, [props.allowAttachments, props.setFiles]);
+  }, []);
 
   // Close interrupt prompt handler
   const closeInterruptPrompt = useCallback(() => {
@@ -235,25 +239,26 @@ export const MessageInput = React.memo(function MessageInput({
 
   // Memoize sending disabled state
   const isSendDisabled = useMemo(() =>
-    props.value === "" || isGenerating,
-    [props.value, isGenerating]);
+    restProps.value === "" || isGenerating,
+    [restProps.value, isGenerating]);
 
   // Memoize textarea props to avoid spread recreation
   const textareaProps = useMemo(() => {
-    if (props.allowAttachments) {
-      return omit(props, ["allowAttachments", "files", "setFiles"]);
+    const propsToOmit = ['allowAttachments', 'files', 'setFiles'] as const;
+    if (allowAttachments) {
+      return omit(restProps as any, propsToOmit);
     } else {
-      return omit(props, ["allowAttachments"]);
+      return omit(restProps as any, ['allowAttachments'] as const);
     }
-  }, [props]);
+  }, [allowAttachments, restProps]);
 
   // Memoize rendered files
   const renderedFiles = useMemo(() => {
-    if (!props.allowAttachments || !props.files) return null;
+    if (!allowAttachments || !files) return null;
 
     return (
       <AnimatePresence mode="popLayout">
-        {props.files.map((file) => (
+        {files.map((file) => (
           <FilePreview
             key={file.name + String(file.lastModified)}
             file={file}
@@ -262,7 +267,7 @@ export const MessageInput = React.memo(function MessageInput({
         ))}
       </AnimatePresence>
     );
-  }, [props.allowAttachments, props.files, handleFileRemove]);
+  }, [allowAttachments, files, handleFileRemove]);
 
   return (
     <div
@@ -300,7 +305,7 @@ export const MessageInput = React.memo(function MessageInput({
             {...textareaProps}
           />
 
-          {props.allowAttachments && (
+          {allowAttachments && (
             <div className="absolute inset-x-3 bottom-0 z-20 overflow-x-scroll py-3">
               <div className="flex space-x-3">
                 {renderedFiles}
@@ -311,7 +316,7 @@ export const MessageInput = React.memo(function MessageInput({
       </div>
 
       <div className="absolute right-3 top-3 z-20 flex gap-2">
-        {props.allowAttachments && (
+        {allowAttachments && (
           <Button
             type="button"
             size="icon"
@@ -358,7 +363,7 @@ export const MessageInput = React.memo(function MessageInput({
         )}
       </div>
 
-      {props.allowAttachments && <FileUploadOverlay isDragging={isDragging} />}
+      {allowAttachments && <FileUploadOverlay isDragging={isDragging} />}
 
       <RecordingControls
         isRecording={isRecording}

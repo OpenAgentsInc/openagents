@@ -1,15 +1,15 @@
 import React, { createContext, useContext, useMemo, useRef, useCallback, useEffect, useState } from 'react';
 
 // Input state context isolated from the rest of the app
-type IsolatedInputContextType = {
+interface InputContextType {
   input: string;
-  handleInputChange: (value: string) => void;
-  handleSubmit: (event?: { preventDefault?: () => void }, options?: any) => void;
+  handleInputChange: (e: any) => void;
+  handleSubmit: (e: any) => void;
   stop: () => void;
   isGenerating: boolean;
-};
+}
 
-const IsolatedInputContext = createContext<IsolatedInputContextType | null>(null);
+const IsolatedInputContext = createContext<InputContextType | null>(null);
 
 export const useIsolatedInput = () => {
   const context = useContext(IsolatedInputContext);
@@ -59,15 +59,15 @@ export const IsolatedInputProvider: React.FC<IsolatedInputProviderProps> = ({
   const handleInputChange = useCallback((value: string) => {
     // Update our internal state
     setInput(value);
-    
+
     // Propagate to the real handler
     handleInputChangeRef.current(value);
   }, []);
-  
+
   const handleSubmit = useCallback((event?: { preventDefault?: () => void }, options?: any) => {
     handleSubmitRef.current(event, options);
   }, []);
-  
+
   const stop = useCallback(() => {
     stopRef.current();
   }, []);

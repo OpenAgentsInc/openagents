@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { MODELS, useSettings } from '@openagents/core';
 
+type ModelProvider = 'anthropic' | 'openai' | 'google' | 'ollama' | 'lmstudio' | 'openrouter';
+
+interface SelectedModel {
+  id: string;
+  provider: ModelProvider;
+}
+
 type ModelContextType = {
   selectedModelId: string;
   setSelectedModelId: (id: string) => void;
@@ -18,18 +25,18 @@ export const useModelContext = () => {
   return context;
 };
 
-export const ModelProvider: React.FC<{children: React.ReactNode}> = ({children}) => {
+export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { settings, clearSettingsCache, updateSettings, refresh: refreshSettings, selectModel, getApiKey } = useSettings();
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [isModelAvailable, setIsModelAvailable] = useState(true);
   const [modelWarning, setModelWarning] = useState<string | null>(null);
-  
+
   // Use a ref to track the last applied model ID to prevent loops
   const lastAppliedModelRef = useRef<string | null>(null);
-  
+
   // We'll define a mutable ref to hold the availability check function
   const availabilityCheckRef = useRef<(() => Promise<void>) | null>(null);
-  
+
   // Add event listener for page visibility and focus to refresh settings
   useEffect(() => {
     // Store the visibility handler to properly remove it
@@ -229,7 +236,7 @@ export const ModelProvider: React.FC<{children: React.ReactNode}> = ({children})
 
       console.log("Checking availability for model:", selectedModelId);
 
-      const selectedModel = MODELS.find(model => model.id === selectedModelId);
+      const selectedModel = MODELS.find(m => m.id === selectedModelId) as SelectedModel;
       if (!selectedModel) return;
 
       let isAvailable = true;
@@ -432,7 +439,7 @@ export const ModelProvider: React.FC<{children: React.ReactNode}> = ({children})
       detail: { modelId }
     }));
   }, [selectModel]);
-  
+
   return (
     <ModelContext.Provider value={{
       selectedModelId,

@@ -28,6 +28,7 @@ type InputContextType = {
   handleInputChange: (value: string) => void;
   handleSubmit: (event?: { preventDefault?: () => void } | undefined, options?: { experimental_attachments?: FileList | undefined } | undefined) => void;
   stop: () => void;
+  isGenerating: boolean;
 };
 
 // Create the separate contexts
@@ -76,7 +77,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 }) => {
   const { selectedModelId } = useModelContext();
   const { apiKeys } = useApiKeyContext();
-  
+
   // State to force ThreadList rerender when creating a new thread
   const [threadListKey, setThreadListKey] = useState(Date.now());
 
@@ -108,7 +109,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       apiKeys: Object.keys(apiKeys).length > 0 ? apiKeys : undefined,
     },
     // Log the request payload for debugging without onRequest
-    
+
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
@@ -268,7 +269,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       }
     }
   });
-  
+
   const handleCreateThread = useCallback(async (): Promise<void> => {
     try {
       // First update the key to force an immediate re-render of ThreadList
@@ -329,7 +330,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     const syntheticEvent = {
       target: { value }
     } as React.ChangeEvent<HTMLTextAreaElement>;
-    
+
     handleInputChange(syntheticEvent);
   };
 
@@ -355,8 +356,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     input,
     handleInputChange: typeSafeHandleInputChange,
     handleSubmit,
-    stop
-  }), [input, typeSafeHandleInputChange, handleSubmit, stop]);
+    stop,
+    isGenerating
+  }), [input, typeSafeHandleInputChange, handleSubmit, stop, isGenerating]);
 
   // Combined legacy context for backward compatibility
   const legacyContextValue = useMemo(() => ({

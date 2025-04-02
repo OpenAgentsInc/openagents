@@ -63,9 +63,9 @@ const REMARK_PLUGINS = [remarkGfm];
 // Memoize the entire MarkdownRenderer component
 // Create a specialized component for streaming content
 // Simpler implementation that always shows the current content
-export const StreamedMarkdownRenderer = ({ 
-  children, 
-  className 
+export const StreamedMarkdownRenderer = ({
+  children,
+  className
 }: MarkdownRendererProps) => {
   // Just render the current content directly - no caching or optimization
   // This ensures tokens always show up immediately
@@ -79,9 +79,9 @@ export const StreamedMarkdownRenderer = ({
 };
 
 // Keep the original memoized version for non-streaming content
-export const MarkdownRenderer = React.memo(function MarkdownRenderer({ 
-  children, 
-  className 
+export const MarkdownRenderer = React.memo(function MarkdownRenderer({
+  children,
+  className
 }: MarkdownRendererProps) {
   // For regular (non-streaming) content, use our existing memoized approach
   const memoizedContent = useMemo(() => {
@@ -91,7 +91,7 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
       </Markdown>
     );
   }, [children]);
-  
+
   return (
     <div className={className}>
       {memoizedContent}
@@ -114,10 +114,10 @@ const HighlightedPre = React.memo(
 
     // Cache key that combines code content and language
     const cacheKey = `${language}:${children}`;
-    
+
     // Use a ref to store the cached tokens to avoid re-tokenizing the same code
-    const tokenCache = React.useRef<{[key: string]: any}>({});
-    
+    const tokenCache = React.useRef<{ [key: string]: any }>({});
+
     let tokens;
     if (tokenCache.current[cacheKey]) {
       // Use cached tokens
@@ -139,10 +139,13 @@ const HighlightedPre = React.memo(
     return (
       <pre {...props}>
         <code>
-          {tokens.map((line, lineIndex) => (
-            <React.Fragment key={lineIndex}>
-              <span>
-                {line.map((token, tokenIndex) => {
+          {tokens.map((line: Array<any>, lineIndex: number) => (
+            <div key={lineIndex} className="table-row">
+              <div className="table-cell pr-4 text-right text-muted-foreground">
+                {lineIndex + 1}
+              </div>
+              <div className="table-cell">
+                {line.map((token: any, tokenIndex: number) => {
                   const style =
                     typeof token.htmlStyle === "string"
                       ? undefined
@@ -158,9 +161,8 @@ const HighlightedPre = React.memo(
                     </span>
                   )
                 })}
-              </span>
-              {lineIndex !== tokens.length - 1 && "\n"}
-            </React.Fragment>
+              </div>
+            </div>
           ))}
         </code>
       </pre>
@@ -182,7 +184,7 @@ const CodeBlock = React.memo(({
   ...restProps
 }: CodeBlockProps) => {
   // Memoize the code extraction which can be expensive for large code blocks
-  const code = useMemo(() => 
+  const code = useMemo(() =>
     typeof children === "string"
       ? children
       : childrenTakeAllStringContents(children),
