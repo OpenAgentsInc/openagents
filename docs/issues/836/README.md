@@ -11,6 +11,9 @@ This change redesigns the settings layout to match the main chat interface, prov
 
 ## Files Changed in Codebase
 - `/apps/coder/src/pages/settings/SettingsLayout.tsx` - Refactored to use sidebar layout
+- `/apps/coder/src/pages/settings/ModelsPage.tsx` - Removed API Keys functionality
+- `/apps/coder/src/pages/settings/ApiKeysPage.tsx` - New page for API key management
+- `/apps/coder/src/routes/routes.tsx` - Added new route for API Keys
 
 ## How to Test
 Follow the testing steps in `testing.md` to verify all functionality works correctly with the new layout.

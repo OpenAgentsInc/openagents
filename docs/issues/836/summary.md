@@ -1,5 +1,12 @@
 # Summary of Work Completed for Issue #836
 
+## Additional Enhancements
+1. Separated API Keys to their own dedicated page:
+   - Created a new ApiKeysPage component
+   - Added a separate navigation item for API Keys
+   - Updated the ModelsPage to focus only on model selection and visibility
+   - Changed default settings route to point to API Keys for better organization
+
 ## Fixes Applied
 1. Fixed an issue with missing Lucide icon export:
    - Replaced the non-existent `Prompt` icon with `MessageSquare` icon for the Prompts section

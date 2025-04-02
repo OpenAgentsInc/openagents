@@ -3,6 +3,7 @@ import { RootRoute } from "./__root";
 import HomePage from "../pages/HomePage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
 import ModelsPage from "../pages/settings/ModelsPage";
+import ApiKeysPage from "../pages/settings/ApiKeysPage";
 import LocalModelsPage from "../pages/settings/LocalModelsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
 import PreferencesPage from "../pages/settings/PreferencesPage";
@@ -27,12 +28,12 @@ export const SettingsRoute = createRoute({
   component: SettingsLayout,
 });
 
-// Settings default route (redirects to models)
+// Settings default route (redirects to api-keys)
 export const SettingsIndexRoute = createRoute({
   getParentRoute: () => SettingsRoute,
   path: "/",
   component: () => {
-    window.location.href = '/settings/models';
+    window.location.href = '/settings/api-keys';
     return null;
   }
 });
@@ -62,12 +63,19 @@ export const PreferencesSettingsRoute = createRoute({
   component: PreferencesPage,
 });
 
+export const ApiKeysSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/api-keys",
+  component: ApiKeysPage,
+});
+
 // Add all routes to the route tree
 export const rootTree = RootRoute.addChildren([
   HomeRoute,
   SettingsRoute.addChildren([
     SettingsIndexRoute,
     ModelsSettingsRoute,
+    ApiKeysSettingsRoute,
     LocalModelsSettingsRoute,
     PromptsSettingsRoute,
     PreferencesSettingsRoute

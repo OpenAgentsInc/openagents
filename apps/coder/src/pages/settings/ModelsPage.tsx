@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useSettings, MODELS } from "@openagents/core";
 import { 
-  Trash2, 
-  Plus, 
   Eye, 
   EyeOff, 
   Check, 
   CheckCircle2,
-  CircleSlash, 
   Search, 
   ArrowUpDown
 } from "lucide-react";
@@ -16,17 +13,9 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
   Input,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  Alert,
-  AlertDescription,
-  AlertTitle,
   Table,
   TableBody,
   TableCaption,
@@ -59,9 +48,6 @@ export default function ModelsPage() {
   const { 
     settings, 
     isLoading, 
-    setApiKey, 
-    getApiKey, 
-    deleteApiKey, 
     updateSettings, 
     clearSettingsCache, 
     resetSettings,
@@ -73,13 +59,6 @@ export default function ModelsPage() {
   // Model state
   const [selectedModelId, setSelectedModelId] = useState("");
   const [visibleModelIds, setVisibleModelIds] = useState<string[]>([]);
-  const [currentTab, setCurrentTab] = useState("grid"); // "grid" or "api"
-  const [currentProvider, setCurrentProvider] = useState(providers[0] || "");
-  
-  // API keys state
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
-  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
-  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
   
   // Filter and sort state for model grid
   const [filterQuery, setFilterQuery] = useState("");
@@ -112,22 +91,8 @@ export default function ModelsPage() {
         // If no visible models are set, use default (all models)
         setVisibleModelIds(MODELS.map(model => model.id));
       }
-
-      // Load API keys for all providers
-      const loadApiKeys = async () => {
-        const keys: Record<string, string> = {};
-        for (const provider of providers) {
-          const key = await getApiKey(provider);
-          if (key) {
-            keys[provider] = key;
-          }
-        }
-        setApiKeys(keys);
-      };
-
-      loadApiKeys();
     }
-  }, [settings, getApiKey]);
+  }, [settings]);
 
   // Handle model selection (replacement for "default model")
   const handleModelSelection = async (modelId: string) => {
@@ -220,11 +185,6 @@ export default function ModelsPage() {
       }
     }
   };
-
-  // Handle API key changes
-  const handleApiKeyChange = (provider: string, value: string) => {
-    setKeyInputs(prev => ({ ...prev, [provider]: value }));
-  };
   
   // Handle sort header click
   const handleSortClick = (field: string) => {
@@ -285,51 +245,6 @@ export default function ModelsPage() {
     return filteredModels;
   };
 
-  // Save API key
-  const handleSaveApiKey = async (provider: string) => {
-    const key = keyInputs[provider];
-    if (key) {
-      await setApiKey(provider, key);
-      setApiKeys(prev => ({ ...prev, [provider]: key }));
-      setKeyInputs(prev => ({ ...prev, [provider]: "" }));
-      
-      // Dispatch event to notify about API key change
-      try {
-        window.dispatchEvent(new CustomEvent('api-key-changed', { 
-          detail: { provider }
-        }));
-        console.log(`Dispatched api-key-changed event for ${provider}`);
-      } catch (eventError) {
-        console.warn("Error dispatching api-key-changed event:", eventError);
-      }
-    }
-  };
-
-  // Delete API key
-  const handleDeleteApiKey = async (provider: string) => {
-    await deleteApiKey(provider);
-    setApiKeys(prev => {
-      const updated = { ...prev };
-      delete updated[provider];
-      return updated;
-    });
-    
-    // Dispatch event to notify about API key deletion
-    try {
-      window.dispatchEvent(new CustomEvent('api-key-changed', { 
-        detail: { provider, deleted: true }
-      }));
-      console.log(`Dispatched api-key-changed event for ${provider} (deleted)`);
-    } catch (eventError) {
-      console.warn("Error dispatching api-key-changed event:", eventError);
-    }
-  };
-
-  // Toggle API key visibility
-  const toggleKeyVisibility = (provider: string) => {
-    setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full font-mono">
@@ -339,281 +254,163 @@ export default function ModelsPage() {
   }
 
   return (
-    <>
-      <Tabs defaultValue="grid" value={currentTab} onValueChange={setCurrentTab}>
-        <TabsList className="grid grid-cols-2 mb-4">
-          <TabsTrigger value="grid">Models</TabsTrigger>
-          <TabsTrigger value="api">API Keys</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="grid" className="space-y-4">
-          {/* Model Grid */}
-          <Card className="font-mono">
-            <CardHeader>
-              <CardTitle>Model Grid</CardTitle>
-              <CardDescription>
-                Select and manage your AI models. Toggle visibility to show/hide models in the dropdown.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* Search and filter */}
-                <div className="flex items-center space-x-2 mb-4">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search models..."
-                    value={filterQuery}
-                    onChange={(e) => setFilterQuery(e.target.value)}
-                    className="max-w-sm"
-                  />
-                </div>
-                
-                {/* Model Table */}
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[50px]">Select</TableHead>
-                        <TableHead className="w-[50px]">Show</TableHead>
-                        <TableHead className="w-[100px]" onClick={() => handleSortClick('author')}>
-                          <div className="flex items-center">
-                            Author
-                            {sortField === 'author' && (
-                              <ArrowUpDown className="ml-2 h-4 w-4" />
-                            )}
-                          </div>
-                        </TableHead>
-                        <TableHead onClick={() => handleSortClick('provider')}>
-                          <div className="flex items-center">
-                            Provider
-                            {sortField === 'provider' && (
-                              <ArrowUpDown className="ml-2 h-4 w-4" />
-                            )}
-                          </div>
-                        </TableHead>
-                        <TableHead className="min-w-[150px]" onClick={() => handleSortClick('name')}>
-                          <div className="flex items-center">
-                            Name
-                            {sortField === 'name' && (
-                              <ArrowUpDown className="ml-2 h-4 w-4" />
-                            )}
-                          </div>
-                        </TableHead>
-                        <TableHead onClick={() => handleSortClick('id')}>
-                          <div className="flex items-center">
-                            ID
-                            {sortField === 'id' && (
-                              <ArrowUpDown className="ml-2 h-4 w-4" />
-                            )}
-                          </div>
-                        </TableHead>
-                        <TableHead className="hidden md:table-cell">Description</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {getFilteredAndSortedModels().map((model) => (
-                        <TableRow key={model.id}>
-                          <TableCell>
-                            <Button
-                              variant={selectedModelId === model.id ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleModelSelection(model.id)}
-                              title={selectedModelId === model.id ? "Selected" : "Select this model"}
-                            >
-                              {selectedModelId === model.id ? (
-                                <CheckCircle2 className="h-4 w-4" />
-                              ) : (
-                                <Check className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleModelVisibility(model.id)}
-                              disabled={model.id === selectedModelId}
-                              title={visibleModelIds.includes(model.id) ? "Hide this model" : "Show this model"}
-                            >
-                              {visibleModelIds.includes(model.id) ? (
-                                <Eye className="h-4 w-4" />
-                              ) : (
-                                <EyeOff className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </TableCell>
-                          <TableCell>
-                            {model.author}
-                          </TableCell>
-                          <TableCell>
-                            {model.provider}
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium">{model.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {model.supportsTools ? "Supports tools" : "No tools"} | {(model.context_length / 1000).toFixed(0)}k ctx
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">
-                            {model.id}
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <div className="text-sm line-clamp-2">
-                              {model.shortDescription || "No description available."}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                
-                {/* Reset button */}
-                <div className="flex justify-end">
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={async () => {
-                      if (confirm("Reset all settings to default? This will clear your saved API keys and model preferences.")) {
-                        try {
-                          const defaultSettings = await resetSettings();
-
-                          if (defaultSettings) {
-                            // Update UI to reflect new settings
-                            setSelectedModelId(defaultSettings.selectedModelId || defaultSettings.defaultModel || '');
-                            if (defaultSettings.visibleModelIds) {
-                              setVisibleModelIds(defaultSettings.visibleModelIds);
-                            } else {
-                              setVisibleModelIds(MODELS.map(model => model.id));
-                            }
-                            setApiKeys({});
-
-                            alert("Settings reset successfully.");
-
-                            // Load API keys (there should be none after reset)
-                            const loadApiKeys = async () => {
-                              const keys: Record<string, string> = {};
-                              for (const provider of providers) {
-                                const key = await getApiKey(provider);
-                                if (key) {
-                                  keys[provider] = key;
-                                }
-                              }
-                              setApiKeys(keys);
-                            };
-
-                            await loadApiKeys();
-                          } else {
-                            // Fallback if reset returns null
-                            console.error("Settings reset returned null result");
-                            alert("Settings reset partially completed. You may need to refresh the page.");
-                          }
-                        } catch (error) {
-                          console.error("Failed to reset settings:", error);
-                          alert("There was a problem resetting settings. Please try again later.");
-                        }
-                      }
-                    }}
-                  >
-                    Reset All Settings
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="api" className="space-y-4">
-          {/* API Keys Management */}
-          <Card className="font-mono">
-            <CardHeader>
-              <CardTitle>API Keys</CardTitle>
-              <CardDescription>
-                Manage your API keys for different model providers
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Tabs value={currentProvider} onValueChange={setCurrentProvider}>
-                <TabsList className="grid font-mono" style={{ gridTemplateColumns: `repeat(${providers.length}, 1fr)` }}>
-                  {providers.map(provider => (
-                    <TabsTrigger key={provider} value={provider} className="font-mono">
-                      {provider}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-
-                {providers.map(provider => (
-                  <TabsContent key={provider} value={provider} className="space-y-4">
-                    {/* Provider Info */}
-                    <div className="space-y-2">
-                      <h3 className="text-lg font-medium">{provider} Models</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {provider === "anthropic" && "Anthropic provides Claude models with exceptional reasoning capabilities."}
-                        {provider === "openrouter" && "OpenRouter provides access to many AI models from different providers."}
-                        {provider === "groq" && "Groq offers ultra-fast inference for various open models."}
-                      </p>
-                    </div>
-
-                    {/* API Key Management */}
-                    <div className="space-y-4">
-                      {apiKeys[provider] ? (
-                        <div className="space-y-4">
-                          <div className="flex items-center space-x-2">
-                            <Input
-                              type={showKeys[provider] ? "text" : "password"}
-                              value={apiKeys[provider]}
-                              readOnly
-                              className="font-mono"
-                            />
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => toggleKeyVisibility(provider)}
-                            >
-                              {showKeys[provider] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="icon"
-                              onClick={() => handleDeleteApiKey(provider)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <Alert>
-                          <AlertTitle className="font-mono">No API key set</AlertTitle>
-                          <AlertDescription className="font-mono">
-                            You haven't set an API key for {provider} yet. Add one below to use {provider} models.
-                          </AlertDescription>
-                        </Alert>
+    <Card className="font-mono">
+      <CardHeader>
+        <CardTitle>Model Configuration</CardTitle>
+        <CardDescription>
+          Select and manage your AI models. Toggle visibility to show/hide models in the dropdown.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {/* Search and filter */}
+          <div className="flex items-center space-x-2 mb-4">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search models..."
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              className="max-w-sm"
+            />
+          </div>
+          
+          {/* Model Table */}
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[50px]">Select</TableHead>
+                  <TableHead className="w-[50px]">Show</TableHead>
+                  <TableHead className="w-[100px]" onClick={() => handleSortClick('author')}>
+                    <div className="flex items-center">
+                      Author
+                      {sortField === 'author' && (
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
                       )}
-
-                      <div className="flex items-center space-x-2">
-                        <Input
-                          type="password"
-                          placeholder={`Enter your ${provider} API key`}
-                          value={keyInputs[provider] || ""}
-                          onChange={(e) => handleApiKeyChange(provider, e.target.value)}
-                          className="font-mono"
-                        />
-                        <Button onClick={() => handleSaveApiKey(provider)}>
-                          <Plus className="h-4 w-4 mr-2" />
-                          Save Key
-                        </Button>
-                      </div>
                     </div>
-                  </TabsContent>
+                  </TableHead>
+                  <TableHead onClick={() => handleSortClick('provider')}>
+                    <div className="flex items-center">
+                      Provider
+                      {sortField === 'provider' && (
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead className="min-w-[150px]" onClick={() => handleSortClick('name')}>
+                    <div className="flex items-center">
+                      Name
+                      {sortField === 'name' && (
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead onClick={() => handleSortClick('id')}>
+                    <div className="flex items-center">
+                      ID
+                      {sortField === 'id' && (
+                        <ArrowUpDown className="ml-2 h-4 w-4" />
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead className="hidden md:table-cell">Description</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {getFilteredAndSortedModels().map((model) => (
+                  <TableRow key={model.id}>
+                    <TableCell>
+                      <Button
+                        variant={selectedModelId === model.id ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleModelSelection(model.id)}
+                        title={selectedModelId === model.id ? "Selected" : "Select this model"}
+                      >
+                        {selectedModelId === model.id ? (
+                          <CheckCircle2 className="h-4 w-4" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleModelVisibility(model.id)}
+                        disabled={model.id === selectedModelId}
+                        title={visibleModelIds.includes(model.id) ? "Hide this model" : "Show this model"}
+                      >
+                        {visibleModelIds.includes(model.id) ? (
+                          <Eye className="h-4 w-4" />
+                        ) : (
+                          <EyeOff className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      {model.author}
+                    </TableCell>
+                    <TableCell>
+                      {model.provider}
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{model.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {model.supportsTools ? "Supports tools" : "No tools"} | {(model.context_length / 1000).toFixed(0)}k ctx
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {model.id}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="text-sm line-clamp-2">
+                        {model.shortDescription || "No description available."}
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </Tabs>
-            </CardContent>
-            <CardFooter className="text-xs text-muted-foreground">
-              Your API keys are stored securely in your browser's local database.
-            </CardFooter>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </>
+              </TableBody>
+            </Table>
+          </div>
+          
+          {/* Reset button */}
+          <div className="flex justify-end">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={async () => {
+                if (confirm("Reset all model settings to default? This will reset your model preferences but will not affect your API keys.")) {
+                  try {
+                    const defaultSettings = await resetSettings();
+
+                    if (defaultSettings) {
+                      // Update UI to reflect new settings
+                      setSelectedModelId(defaultSettings.selectedModelId || defaultSettings.defaultModel || '');
+                      if (defaultSettings.visibleModelIds) {
+                        setVisibleModelIds(defaultSettings.visibleModelIds);
+                      } else {
+                        setVisibleModelIds(MODELS.map(model => model.id));
+                      }
+
+                      alert("Model settings reset successfully.");
+                    } else {
+                      // Fallback if reset returns null
+                      console.error("Settings reset returned null result");
+                      alert("Settings reset partially completed. You may need to refresh the page.");
+                    }
+                  } catch (error) {
+                    console.error("Failed to reset settings:", error);
+                    alert("There was a problem resetting settings. Please try again later.");
+                  }
+                }
+              }}
+            >
+              Reset Model Settings
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

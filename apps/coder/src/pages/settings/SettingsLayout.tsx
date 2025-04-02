@@ -7,7 +7,8 @@ import {
   MessageSquare, 
   Server, 
   Database,
-  Home 
+  Home,
+  KeyRound
 } from "lucide-react";
 import { 
   SidebarProvider,
@@ -61,7 +62,18 @@ export default function SettingsLayout() {
                         isActive={currentPath.includes("/models") && !currentPath.includes("/local-models")}
                       >
                         <Database className="h-4 w-4" />
-                        <span>API Models</span>
+                        <span>Models</span>
+                      </SidebarMenuButton>
+                    </Link>
+                  </SidebarMenuItem>
+                  
+                  <SidebarMenuItem>
+                    <Link to="/settings/api-keys">
+                      <SidebarMenuButton 
+                        isActive={currentPath.includes("/api-keys")}
+                      >
+                        <KeyRound className="h-4 w-4" />
+                        <span>API Keys</span>
                       </SidebarMenuButton>
                     </Link>
                   </SidebarMenuItem>
@@ -121,7 +133,8 @@ export default function SettingsLayout() {
               <div className="grid grid-rows-[auto_minmax(0,1fr)] h-[calc(100vh-30px)]">
                 <div className="border-y bg-background p-3 flex items-center justify-between z-10 h-14">
                   <div className="text-lg font-semibold">
-                    {currentPath.includes("/models") && !currentPath.includes("/local-models") && "API Models"}
+                    {currentPath.includes("/models") && !currentPath.includes("/local-models") && "Models"}
+                    {currentPath.includes("/api-keys") && "API Keys"}
                     {currentPath.includes("/local-models") && "Local Models"}
                     {currentPath.includes("/prompts") && "Prompts"}
                     {currentPath.includes("/preferences") && "Preferences"}
