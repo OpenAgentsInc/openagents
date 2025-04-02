@@ -154,7 +154,71 @@ export const StableThreadProvider = ({
 3. Create context values with minimal dependencies
 4. Structure component tree for maximum isolation
 
-### 4. COMPONENT LEVEL OPTIMIZATION TECHNIQUES
+### 4. CUSTOM UI COMPONENT REPLACEMENTS
+
+**Problem**: Third-party UI component libraries (like Radix UI) often use complex abstractions that cause excessive rerenders during streaming.
+
+**Solution**: Replace problematic UI components with simpler, custom implementations:
+
+```tsx
+// WRONG: Using a complex third-party tooltip that rerenders frequently
+<Tooltip>
+  <TooltipTrigger asChild>
+    <button onPointerMove={/* Causes rerenders */}>
+      <SomeIcon />
+    </button>
+  </TooltipTrigger>
+  <TooltipContent>Tooltip Text</TooltipContent>
+</Tooltip>
+
+// RIGHT: Custom lightweight tooltip implementation
+const StableTooltip = memo(function StableTooltip({
+  children,
+  tooltipText,
+}: {
+  children: React.ReactNode;
+  tooltipText: string;
+}) {
+  const [isVisible, setIsVisible] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Create stable handlers with useCallback
+  const showTooltip = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => setIsVisible(true), 250);
+  }, []);
+  
+  const hideTooltip = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setIsVisible(false);
+  }, []);
+  
+  return (
+    <div className="relative" onMouseEnter={showTooltip} onMouseLeave={hideTooltip}>
+      {children}
+      {isVisible && (
+        <div className="tooltip-content">{tooltipText}</div>
+      )}
+    </div>
+  );
+});
+
+// Usage
+<StableTooltip tooltipText="New Chat">
+  <button onClick={stableClickHandler}>
+    <StableIcon />
+  </button>
+</StableTooltip>
+```
+
+**Implementation**:
+1. Identify third-party components causing excessive rerenders
+2. Create simple custom versions that don't rerender during streaming
+3. Use memoization for all parts of the replacement component
+4. Apply ref-based handler stabilization for all event handlers
+5. Use minimal state and optimized rendering logic
+
+### 5. COMPONENT LEVEL OPTIMIZATION TECHNIQUES
 
 **Problem**: Individual components re-render too frequently based on prop changes.
 
@@ -220,12 +284,14 @@ export const ThreadItem = React.memo(function ThreadItem({
 - Input component re-rendering on every token (60+ times per second)
 - UI responsiveness degraded to 1-5 FPS during streaming
 - Thread list renders causing entire app to stutter
+- Tooltip components (SlotClone) rerendering 750+ times during streaming
 
 ### After Optimization
 - ThreadItems render only when selection changes
 - Input never re-renders during streaming
 - UI maintains 60 FPS even during high-frequency updates
 - Components render only when their specific state changes
+- Custom tooltip components render only on mouse events, not during streaming
 
 ## APPLYING THESE PATTERNS IN YOUR PROJECTS
 

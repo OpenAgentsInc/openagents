@@ -21,6 +21,7 @@ import { ChatInputArea } from '@/components/ChatInputArea';
 import { useThreadContext, useMessageContext, useInputContext } from '@/providers/ChatStateProvider';
 import { StreamingMessageProvider } from '@/providers/StreamingMessageProvider';
 import { StableInputProvider } from '@/providers/StableInputProvider';
+import { StableHeaderProvider } from '@/providers/StableHeaderProvider';
 
 export const MainLayout = memo(function MainLayout() {
   // Use thread context instead of the full chat state
@@ -47,7 +48,9 @@ export const MainLayout = memo(function MainLayout() {
           <div className="mt-[30px] relative flex h-full w-full flex-row overflow-hidden">
             <Sidebar>
               <SidebarHeader className="border-y h-14 mt-[30px]">
-                <AppHeader onCreateThread={handleCreateThread} />
+                <StableHeaderProvider onCreateThread={handleCreateThread}>
+                  <AppHeader />
+                </StableHeaderProvider>
               </SidebarHeader>
 
               <SidebarContent>
