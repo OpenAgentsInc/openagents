@@ -191,10 +191,23 @@ app.post('/api/chat', async (c) => {
       if (provider === "lmstudio") {
         console.log(`[Server] Using LMStudio provider`);
 
+        // Get the LMStudio URL from request if provided, otherwise use default
+        let lmStudioUrl = body.apiKeys?.lmstudioUrl || "http://localhost:1234";
+        
+        // Make sure the URL doesn't already have /v1 (avoid double /v1/v1)
+        if (!lmStudioUrl.endsWith('/v1')) {
+          // Check if we need to add a slash before v1
+          if (!lmStudioUrl.endsWith('/')) {
+            lmStudioUrl += '/';
+          }
+          lmStudioUrl += 'v1';
+        }
+        
+        console.log(`[Server] Using LMStudio URL: ${lmStudioUrl}`);
+        
         const lmstudio = createOpenAICompatible({
           name: 'lmstudio',
-          baseURL: "http://192.168.1.189:1234/v1",
-          // baseURL: 'http://localhost:1234/v1',
+          baseURL: lmStudioUrl,
         });
 
         model = lmstudio(MODEL);

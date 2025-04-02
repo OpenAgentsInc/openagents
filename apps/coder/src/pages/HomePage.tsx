@@ -301,7 +301,19 @@ export default function HomePage() {
         }
       }
       
-      console.log(`Loaded API keys for providers: ${Object.keys(keys).join(', ')}`);
+      // Also load LMStudio URL from settings and add it to the keys object
+      try {
+        const lmStudioUrlPreference = await settingsRepository.getPreference("lmstudioUrl", "http://localhost:1234");
+        if (lmStudioUrlPreference) {
+          // Add the URL to the apiKeys object to be sent to the server
+          keys['lmstudioUrl'] = lmStudioUrlPreference;
+          console.log(`Loaded LMStudio URL from settings: ${lmStudioUrlPreference}`);
+        }
+      } catch (error) {
+        console.warn("Error loading LMStudio URL from settings:", error);
+      }
+      
+      console.log(`Loaded API keys and settings for providers: ${Object.keys(keys).join(', ')}`);
       setApiKeys(keys);
     } catch (error) {
       console.error("Error loading API keys:", error);
@@ -342,8 +354,8 @@ export default function HomePage() {
     deleteThread,
     updateThread,
   } = usePersistentChat({
-    // Use the FULL URL of the local HTTP server
-    api: `http://localhost:3001/api/chat`,
+    // Use relative URL to work with any port (will be proxied if needed)
+    api: `/api/chat`,
     // Configuration that we know works
     streamProtocol: 'data',
     body: {

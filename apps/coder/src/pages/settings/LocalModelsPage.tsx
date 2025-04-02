@@ -20,6 +20,22 @@ export default function LocalModelsPage() {
   const [lmStudioUrl, setLmStudioUrl] = useState("http://localhost:1234");
   const [refreshing, setRefreshing] = useState(false);
   const [lmStudioError, setLmStudioError] = useState<string | null>(null);
+  
+  // Load the saved URL from settings on initial load
+  useEffect(() => {
+    async function loadSavedUrl() {
+      try {
+        const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+        const savedUrl = await settingsRepository.getPreference("lmstudioUrl", "http://localhost:1234");
+        console.log("Loaded LMStudio URL from settings:", savedUrl);
+        setLmStudioUrl(savedUrl);
+      } catch (error) {
+        console.error("Failed to load LMStudio URL from settings:", error);
+      }
+    }
+    
+    loadSavedUrl();
+  }, []);
 
   // Removed Ollama status check function
 
@@ -142,12 +158,7 @@ export default function LocalModelsPage() {
     }
   };
 
-  // Handle refresh button click
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await checkLmStudioStatus();
-    setRefreshing(false);
-  };
+  // No longer need a separate refresh function since we use the Connect button
 
   // Check status on component mount
   useEffect(() => {
@@ -164,14 +175,6 @@ export default function LocalModelsPage() {
               Configure your local LMStudio models
             </CardDescription>
           </div>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </Button>
         </CardHeader>
         
         <CardContent className="space-y-4">
@@ -210,7 +213,24 @@ export default function LocalModelsPage() {
             <div className="flex gap-2">
               <Input
                 value={lmStudioUrl}
-                onChange={(e) => setLmStudioUrl(e.target.value)}
+                onChange={(e) => {
+                  // Update the state
+                  setLmStudioUrl(e.target.value);
+                  
+                  // Save the URL to settings when it changes
+                  (async () => {
+                    try {
+                      const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+                      await settingsRepository.setPreference("lmstudioUrl", e.target.value);
+                      console.log("Saved LMStudio URL to settings:", e.target.value);
+                      
+                      // Notify other components that settings have changed
+                      window.dispatchEvent(new CustomEvent('api-key-changed'));
+                    } catch (error) {
+                      console.error("Failed to save LMStudio URL to settings:", error);
+                    }
+                  })();
+                }}
                 placeholder="http://localhost:1234"
               />
               <Button 
@@ -246,20 +266,22 @@ export default function LocalModelsPage() {
             )}
           </div>
 
-          {/* Installation Guide */}
-          <Alert>
-            <Terminal className="h-4 w-4" />
-            <AlertTitle>Installation Guide</AlertTitle>
-            <AlertDescription>
-              <p className="mb-2">To use LMStudio, follow these steps:</p>
-              <ol className="list-decimal pl-4 space-y-1 text-sm">
-                <li>Download LMStudio from <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">lmstudio.ai</a></li>
-                <li>Install and start LMStudio</li>
-                <li>In LMStudio, go to the "Local Server" tab and click "Start server"</li>
-                <li>Download models in LMStudio and add them to your local inference server</li>
-              </ol>
-            </AlertDescription>
-          </Alert>
+          {/* Installation Guide - Only show when LMStudio is not running */}
+          {lmStudioStatus !== 'running' && (
+            <Alert>
+              <Terminal className="h-4 w-4" />
+              <AlertTitle>Installation Guide</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">To use LMStudio, follow these steps:</p>
+                <ol className="list-decimal pl-4 space-y-1 text-sm">
+                  <li>Download LMStudio from <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">lmstudio.ai</a></li>
+                  <li>Install and start LMStudio</li>
+                  <li>In LMStudio, go to the "Local Server" tab and click "Start server"</li>
+                  <li>Download models in LMStudio and add them to your local inference server</li>
+                </ol>
+              </AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
     </>
