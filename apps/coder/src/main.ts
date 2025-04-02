@@ -60,8 +60,8 @@ function createAppMenu() {
     {
       label: 'File',
       submenu: [
-        process.platform === 'darwin' 
-          ? { role: 'close' } 
+        process.platform === 'darwin'
+          ? { role: 'close' }
           : { role: 'quit' }
       ]
     },
@@ -122,7 +122,7 @@ function createAppMenu() {
 
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");
-  
+
   // Determine icon path based on development or production mode and platform
   let iconPath;
   if (inDevelopment) {
@@ -147,7 +147,7 @@ function createWindow() {
       iconPath = path.join(process.resourcesPath, 'images', 'icon.png');
     }
   }
-  
+
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 950,
@@ -209,14 +209,16 @@ function createTray() {
 
   tray = new Tray(iconPath);
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open Coder', click: () => {
-      const windows = BrowserWindow.getAllWindows();
-      if (windows.length > 0) {
-        windows[0].show();
-      } else {
-        createWindow();
+    {
+      label: 'Open Coder', click: () => {
+        const windows = BrowserWindow.getAllWindows();
+        if (windows.length > 0) {
+          windows[0].show();
+        } else {
+          createWindow();
+        }
       }
-    }},
+    },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
   ]);
@@ -236,17 +238,16 @@ if (app.isReady()) {
 app.whenReady()
   .then(async () => {
     console.log('[Main Process] App is ready.');
-    
+
     // Create application menu
     createAppMenu();
-    
+
     // On macOS, set the dock icon explicitly and configure dock menu
     if (process.platform === 'darwin') {
       // For macOS dock, PNG actually works better than ICNS for dynamic updates
       const iconPath = path.join(inDevelopment ? process.cwd() : process.resourcesPath, 'src', 'images', 'icon.png');
-      console.log(`Setting dock icon to: ${iconPath}`);
       app.dock.setIcon(iconPath);
-      
+
       // Set up a dock menu
       const dockMenu = Menu.buildFromTemplate([
         {
@@ -294,7 +295,7 @@ app.whenReady()
 
     // Create tray
     createTray();
-    
+
     // Create window and install extensions
     return createWindow();
   })
@@ -307,13 +308,13 @@ app.on('will-quit', () => {
     serverInstance.close();
     serverInstance = null;
   }
-  
+
   // Clean up tray
   if (tray) {
     tray.destroy();
     tray = null;
   }
-  
+
   // Clean up MCP clients
   console.log('[Main Process] Cleaning up MCP clients...');
   cleanupMCPClients();
