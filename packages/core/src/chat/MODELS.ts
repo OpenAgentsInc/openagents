@@ -35,7 +35,7 @@ interface Model {
 export const MODELS: Model[] = [
   // Anthropic Claude models
   {
-    id: "claude-3-7-sonnet",
+    id: "claude-3-7-sonnet-20250219",
     name: "Claude 3.7 Sonnet (Anthropic)",
     provider: "anthropic",
     author: "anthropic",
@@ -46,7 +46,7 @@ export const MODELS: Model[] = [
     shortDescription: "Balanced performance Claude model"
   },
   {
-    id: "claude-3-5-sonnet",
+    id: "claude-3-5-sonnet-20240620",
     name: "Claude 3.5 Sonnet (Anthropic)",
     provider: "anthropic",
     author: "anthropic",
@@ -55,28 +55,6 @@ export const MODELS: Model[] = [
     context_length: 200000,
     supportsTools: true,
     shortDescription: "Versatile Claude model"
-  },
-  {
-    id: "claude-3-opus",
-    name: "Claude 3 Opus (Anthropic)",
-    provider: "anthropic",
-    author: "anthropic",
-    created: 1709596800000, // 2024-03-04
-    description: "Anthropic's Claude 3 Opus model - most powerful reasoning",
-    context_length: 200000,
-    supportsTools: true,
-    shortDescription: "Most powerful Claude model"
-  },
-  {
-    id: "claude-3-haiku",
-    name: "Claude 3 Haiku (Anthropic)",
-    provider: "anthropic",
-    author: "anthropic",
-    created: 1709596800000, // 2024-03-04
-    description: "Anthropic's Claude 3 Haiku model - fastest responses",
-    context_length: 200000,
-    supportsTools: true,
-    shortDescription: "Fast, economical Claude model"
   },
   {
     author: 'qwen',
