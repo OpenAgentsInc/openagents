@@ -3,9 +3,9 @@
   "env": {
     "OPENROUTER_API_KEY": "your-api-key-here"
   },
-  "productName": "electron-shadcn Template",
+  "productName": "Coder",
   "version": "0.0.1",
-  "description": "Electron Forge with shadcn-ui (Vite + Typescript)",
+  "description": "OpenAgents Coder - AI coding assistant",
   "main": ".vite/build/main.js",
   "private": true,
   "license": "AGPL-3.0-or-later",

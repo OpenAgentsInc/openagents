@@ -61,5 +61,13 @@ export default defineConfig({
       usePolling: true,
       interval: 500,
     },
+    proxy: {
+      // Proxy API requests to the Hono server running on port 3001
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 });

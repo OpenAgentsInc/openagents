@@ -1,4 +1,4 @@
-import React, { Suspense } from "react"
+import React, { Suspense, useMemo, useRef, useEffect } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/utils/tailwind"
@@ -8,21 +8,26 @@ import { CopyButton } from "@/components/ui/copy-button"
 
 type HTMLTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'a' | 'ul' | 'ol' | 'li' | 'blockquote' | 'hr' | 'table' | 'th' | 'td' | 'pre' | 'code';
 
-function withClass(Tag: HTMLTag, classes: string) {
-  return function MarkdownComponent({ node, ...props }: any) {
-    // Special handling for links to open in new tab
-    if (Tag === 'a') {
-      return React.createElement(Tag, {
-        ...props,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        className: cn(classes, props.className)
-      });
-    }
+// Use React.memo on the component to prevent unnecessary renders
+const MarkdownComponent = React.memo(function MemoizedComponent({ node, Tag, classes, ...props }: any) {
+  // Special handling for links to open in new tab
+  if (Tag === 'a') {
     return React.createElement(Tag, {
       ...props,
+      target: '_blank',
+      rel: 'noopener noreferrer',
       className: cn(classes, props.className)
     });
+  }
+  return React.createElement(Tag, {
+    ...props,
+    className: cn(classes, props.className)
+  });
+});
+
+function withClass(Tag: HTMLTag, classes: string) {
+  return function WithClassWrapper({ node, ...props }: any) {
+    return <MarkdownComponent Tag={Tag} classes={classes} node={node} {...props} />;
   };
 }
 
@@ -52,15 +57,47 @@ export interface MarkdownRendererProps {
   className?: string;
 }
 
-export function MarkdownRenderer({ children, className }: MarkdownRendererProps) {
+// Memoize the remarkPlugins array
+const REMARK_PLUGINS = [remarkGfm];
+
+// Memoize the entire MarkdownRenderer component
+// Create a specialized component for streaming content
+// Simpler implementation that always shows the current content
+export const StreamedMarkdownRenderer = ({
+  children,
+  className
+}: MarkdownRendererProps) => {
+  // Just render the current content directly - no caching or optimization
+  // This ensures tokens always show up immediately
   return (
     <div className={className}>
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
         {children}
       </Markdown>
     </div>
   );
-}
+};
+
+// Keep the original memoized version for non-streaming content
+export const MarkdownRenderer = React.memo(function MarkdownRenderer({
+  children,
+  className
+}: MarkdownRendererProps) {
+  // For regular (non-streaming) content, use our existing memoized approach
+  const memoizedContent = useMemo(() => {
+    return (
+      <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
+        {children}
+      </Markdown>
+    );
+  }, [children]);
+
+  return (
+    <div className={className}>
+      {memoizedContent}
+    </div>
+  );
+});
 
 interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
   children: string
@@ -75,22 +112,40 @@ const HighlightedPre = React.memo(
       return <pre {...props}>{children}</pre>
     }
 
-    const { tokens } = await codeToTokens(children, {
-      lang: language as keyof typeof bundledLanguages,
-      defaultColor: false,
-      themes: {
-        light: "github-light",
-        dark: "github-dark",
-      },
-    })
+    // Cache key that combines code content and language
+    const cacheKey = `${language}:${children}`;
+
+    // Use a ref to store the cached tokens to avoid re-tokenizing the same code
+    const tokenCache = React.useRef<{ [key: string]: any }>({});
+
+    let tokens;
+    if (tokenCache.current[cacheKey]) {
+      // Use cached tokens
+      tokens = tokenCache.current[cacheKey];
+    } else {
+      // Generate new tokens and cache them
+      const result = await codeToTokens(children, {
+        lang: language as keyof typeof bundledLanguages,
+        defaultColor: false,
+        themes: {
+          light: "github-light",
+          dark: "github-dark",
+        },
+      });
+      tokens = result.tokens;
+      tokenCache.current[cacheKey] = tokens;
+    }
 
     return (
       <pre {...props}>
         <code>
-          {tokens.map((line, lineIndex) => (
-            <>
-              <span key={lineIndex}>
-                {line.map((token, tokenIndex) => {
+          {tokens.map((line: Array<any>, lineIndex: number) => (
+            <div key={lineIndex} className="table-row">
+              <div className="table-cell pr-4 text-right text-muted-foreground">
+                {lineIndex + 1}
+              </div>
+              <div className="table-cell">
+                {line.map((token: any, tokenIndex: number) => {
                   const style =
                     typeof token.htmlStyle === "string"
                       ? undefined
@@ -106,9 +161,8 @@ const HighlightedPre = React.memo(
                     </span>
                   )
                 })}
-              </span>
-              {lineIndex !== tokens.length - 1 && "\n"}
-            </>
+              </div>
+            </div>
           ))}
         </code>
       </pre>
@@ -123,16 +177,19 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   language: string
 }
 
-const CodeBlock = ({
+const CodeBlock = React.memo(({
   children,
   className,
   language,
   ...restProps
 }: CodeBlockProps) => {
-  const code =
+  // Memoize the code extraction which can be expensive for large code blocks
+  const code = useMemo(() =>
     typeof children === "string"
       ? children
-      : childrenTakeAllStringContents(children)
+      : childrenTakeAllStringContents(children),
+    [children]
+  );
 
   const preClass = cn(
     "overflow-x-scroll rounded-md border bg-background/50 p-4 font-mono text-sm [scrollbar-width:none]",
@@ -158,7 +215,7 @@ const CodeBlock = ({
       </div>
     </div>
   )
-}
+});
 
 function childrenTakeAllStringContents(element: any): string {
   if (typeof element === "string") {

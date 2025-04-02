@@ -29,7 +29,7 @@ export { InputOTP, InputOTPGroup, InputOTPSlot } from "./input-otp";
 export { Input } from "./input";
 export { InterruptPrompt } from "./interrupt-prompt";
 export { Label } from "./label";
-export { MarkdownRenderer } from "./markdown-renderer";
+export { MarkdownRenderer, StreamedMarkdownRenderer } from "./markdown-renderer";
 export { Menubar, MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, MenubarSeparator, MenubarLabel, MenubarCheckboxItem, MenubarRadioItem, MenubarRadioGroup, MenubarPortal, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarGroup, MenubarShortcut } from "./menubar";
 export { MessageInput } from "./message-input";
 export { MessageList } from "./message-list";
