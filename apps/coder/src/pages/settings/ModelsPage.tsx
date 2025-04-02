@@ -292,6 +292,16 @@ export default function ModelsPage() {
       await setApiKey(provider, key);
       setApiKeys(prev => ({ ...prev, [provider]: key }));
       setKeyInputs(prev => ({ ...prev, [provider]: "" }));
+      
+      // Dispatch event to notify about API key change
+      try {
+        window.dispatchEvent(new CustomEvent('api-key-changed', { 
+          detail: { provider }
+        }));
+        console.log(`Dispatched api-key-changed event for ${provider}`);
+      } catch (eventError) {
+        console.warn("Error dispatching api-key-changed event:", eventError);
+      }
     }
   };
 
@@ -303,6 +313,16 @@ export default function ModelsPage() {
       delete updated[provider];
       return updated;
     });
+    
+    // Dispatch event to notify about API key deletion
+    try {
+      window.dispatchEvent(new CustomEvent('api-key-changed', { 
+        detail: { provider, deleted: true }
+      }));
+      console.log(`Dispatched api-key-changed event for ${provider} (deleted)`);
+    } catch (eventError) {
+      console.warn("Error dispatching api-key-changed event:", eventError);
+    }
   };
 
   // Toggle API key visibility

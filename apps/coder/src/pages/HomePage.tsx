@@ -282,6 +282,52 @@ export default function HomePage() {
     loadSystemPrompt();
   }, [settings]);
 
+  // Get API keys from settings
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+
+  // Load API keys from settings
+  const loadApiKeys = useCallback(async () => {
+    try {
+      if (!settings) return;
+
+      const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+      const providers = ['openrouter', 'anthropic', 'openai', 'google', 'ollama', 'lmstudio'];
+      const keys: Record<string, string> = {};
+      
+      for (const provider of providers) {
+        const key = await settingsRepository.getApiKey(provider);
+        if (key) {
+          keys[provider] = key;
+        }
+      }
+      
+      console.log(`Loaded API keys for providers: ${Object.keys(keys).join(', ')}`);
+      setApiKeys(keys);
+    } catch (error) {
+      console.error("Error loading API keys:", error);
+    }
+  }, [settings]);
+
+  // Load API keys from settings when component mounts and listen for API key changes
+  useEffect(() => {
+    // Load API keys initially
+    loadApiKeys();
+    
+    // Handle API key changes from settings page
+    const handleApiKeyChange = () => {
+      console.log("API key changed, refreshing keys");
+      loadApiKeys();
+    };
+    
+    // Add event listener for API key changes
+    window.addEventListener('api-key-changed', handleApiKeyChange);
+    
+    // Cleanup event listener
+    return () => {
+      window.removeEventListener('api-key-changed', handleApiKeyChange);
+    };
+  }, [loadApiKeys, settings]);
+
   // Use the persistence layer with the correct configuration
   const {
     messages,
@@ -303,7 +349,9 @@ export default function HomePage() {
     body: {
       model: selectedModelId,
       // Include system prompt if it's not empty
-      ...(systemPrompt ? { systemPrompt } : {})
+      ...(systemPrompt ? { systemPrompt } : {}),
+      // Include API keys from settings
+      apiKeys: Object.keys(apiKeys).length > 0 ? apiKeys : undefined
     },
     headers: {
       'Content-Type': 'application/json',

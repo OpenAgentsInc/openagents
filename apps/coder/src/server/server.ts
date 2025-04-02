@@ -86,31 +86,34 @@ function createToolCallValidator() {
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
 
-  // Get environment variables
-  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
-
   // Get the globally initialized MCP clients
   const { allTools: tools } = getMCPClients();
 
-  // Create the Ollama client with custom base URL if specified
-  const customOllama = createOllama({
-    baseURL: OLLAMA_BASE_URL,
-    simulateStreaming: true
-  });
-
-  // Log configuration
-  console.log(`[Server] OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}`);
-
-  // For OpenRouter provider models, we need to check if API key is present
-  if (!OPENROUTER_API_KEY) {
-    console.warn("⚠️ OPENROUTER_API_KEY is missing - OpenRouter models will not be available");
-  } else {
-    console.log("✅ OPENROUTER_API_KEY is present - OpenRouter models are available");
-  }
-
   try {
     const body = await c.req.json();
+
+    // Extract API keys from request if provided
+    const requestApiKeys = body.apiKeys || {};
+    
+    // Use API keys from request if available, fall back to environment variables
+    const OPENROUTER_API_KEY = requestApiKeys.openrouter || process.env.OPENROUTER_API_KEY || "";
+    const OLLAMA_BASE_URL = requestApiKeys.ollama || requestApiKeys.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
+
+    // Create the Ollama client with custom base URL if specified
+    const customOllama = createOllama({
+      baseURL: OLLAMA_BASE_URL,
+      simulateStreaming: true
+    });
+
+    // Log configuration
+    console.log(`[Server] OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}`);
+
+    // For OpenRouter provider models, we need to check if API key is present
+    if (!OPENROUTER_API_KEY) {
+      console.warn("⚠️ OPENROUTER_API_KEY is missing - OpenRouter models will not be available");
+    } else {
+      console.log("✅ OPENROUTER_API_KEY is present - OpenRouter models are available");
+    }
 
     // Validate input messages
     let messages: Message[] = body.messages || [];
@@ -152,7 +155,7 @@ app.post('/api/chat', async (c) => {
       c.header('X-Vercel-AI-Data-Stream', 'v1');
 
       return stream(c, async (responseStream) => {
-        const errorMsg = "OpenRouter API Key not configured. You need to add your API key to use OpenRouter models.";
+        const errorMsg = "OpenRouter API Key not configured. Please add your API key in the Settings > API Keys tab to use OpenRouter models.";
         await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
       });
     }
