@@ -2,10 +2,17 @@
 
 ## Additional Enhancements
 1. Separated API Keys to their own dedicated page:
-   - Created a new ApiKeysPage component
+   - Created a new ApiKeysPage component with a simplified UI
    - Added a separate navigation item for API Keys
    - Updated the ModelsPage to focus only on model selection and visibility
    - Changed default settings route to point to API Keys for better organization
+   - Simplified provider management by focusing on just Anthropic and OpenRouter
+   - Displayed all providers on a single page without tabs for easier access
+
+2. Added active route indicator to sidebar navigation:
+   - Added a visual indicator (vertical bar) that matches the one used in ThreadList
+   - Applied to all settings navigation items and the Home button
+   - Makes the currently active page visually prominent
 
 ## Fixes Applied
 1. Fixed an issue with missing Lucide icon export:

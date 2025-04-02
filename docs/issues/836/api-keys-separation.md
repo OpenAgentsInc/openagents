@@ -3,6 +3,11 @@
 ## Summary
 As part of the settings layout redesign, API Keys management has been separated from the Models page and given its own dedicated page. This change improves organization and makes it easier for users to find and manage their API keys.
 
+## Updates to the API Keys Page
+- Simplified the UI by removing tabs and displaying all providers on a single page
+- Focused on the two primary providers: Anthropic and OpenRouter (removed Groq)
+- Added separators between different provider sections for better visual organization
+
 ## Changes Made
 
 1. Created a new `ApiKeysPage.tsx` component:

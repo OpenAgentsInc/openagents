@@ -17,13 +17,10 @@ import {
   CardTitle,
   CardFooter,
   Input,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
   Alert,
   AlertDescription,
-  AlertTitle
+  AlertTitle,
+  Separator,
 } from "@/components/ui";
 
 export default function ApiKeysPage() {
@@ -33,14 +30,13 @@ export default function ApiKeysPage() {
     deleteApiKey,
   } = useSettings();
   
-  // Get provider names from imported models or hardcode the main ones
-  const providers = ["anthropic", "openrouter", "groq"];
+  // Only include Anthropic and OpenRouter
+  const providers = ["anthropic", "openrouter"];
   
   // API keys state
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
-  const [currentProvider, setCurrentProvider] = useState(providers[0] || "");
   const [isLoading, setIsLoading] = useState(true);
 
   // Load API keys when component mounts
@@ -116,6 +112,23 @@ export default function ApiKeysPage() {
     setShowKeys(prev => ({ ...prev, [provider]: !prev[provider] }));
   };
 
+  // Get provider display name
+  const getProviderDisplayName = (provider: string) => {
+    return provider.charAt(0).toUpperCase() + provider.slice(1);
+  };
+
+  // Get provider description
+  const getProviderDescription = (provider: string) => {
+    switch (provider) {
+      case "anthropic":
+        return "Anthropic provides Claude models with exceptional reasoning capabilities.";
+      case "openrouter":
+        return "OpenRouter provides access to many AI models from different providers.";
+      default:
+        return "";
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full font-mono">
@@ -135,81 +148,74 @@ export default function ApiKeysPage() {
           Manage your API keys for different model providers
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <Tabs value={currentProvider} onValueChange={setCurrentProvider}>
-          <TabsList className="grid font-mono" style={{ gridTemplateColumns: `repeat(${providers.length}, 1fr)` }}>
-            {providers.map(provider => (
-              <TabsTrigger key={provider} value={provider} className="font-mono">
-                {provider}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+      <CardContent className="space-y-6">
+        {providers.map((provider, index) => (
+          <div key={provider} className="space-y-4">
+            {/* Provider header */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium">{getProviderDisplayName(provider)} API</h3>
+              <p className="text-sm text-muted-foreground">
+                {getProviderDescription(provider)}
+              </p>
+            </div>
 
-          {providers.map(provider => (
-            <TabsContent key={provider} value={provider} className="space-y-4">
-              {/* Provider Info */}
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium">{provider.charAt(0).toUpperCase() + provider.slice(1)} API</h3>
-                <p className="text-sm text-muted-foreground">
-                  {provider === "anthropic" && "Anthropic provides Claude models with exceptional reasoning capabilities."}
-                  {provider === "openrouter" && "OpenRouter provides access to many AI models from different providers."}
-                  {provider === "groq" && "Groq offers ultra-fast inference for various open models."}
-                </p>
-              </div>
-
-              {/* API Key Management */}
-              <div className="space-y-4">
-                {apiKeys[provider] ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type={showKeys[provider] ? "text" : "password"}
-                        value={apiKeys[provider]}
-                        readOnly
-                        className="font-mono"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => toggleKeyVisibility(provider)}
-                      >
-                        {showKeys[provider] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => handleDeleteApiKey(provider)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+            {/* API Key Management */}
+            <div className="space-y-4">
+              {apiKeys[provider] ? (
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      type={showKeys[provider] ? "text" : "password"}
+                      value={apiKeys[provider]}
+                      readOnly
+                      className="font-mono"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => toggleKeyVisibility(provider)}
+                    >
+                      {showKeys[provider] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      onClick={() => handleDeleteApiKey(provider)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                ) : (
-                  <Alert>
-                    <AlertTitle className="font-mono">No API key set</AlertTitle>
-                    <AlertDescription className="font-mono">
-                      You haven't set an API key for {provider} yet. Add one below to use {provider} models.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex items-center space-x-2">
-                  <Input
-                    type="password"
-                    placeholder={`Enter your ${provider} API key`}
-                    value={keyInputs[provider] || ""}
-                    onChange={(e) => handleApiKeyChange(provider, e.target.value)}
-                    className="font-mono"
-                  />
-                  <Button onClick={() => handleSaveApiKey(provider)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Save Key
-                  </Button>
                 </div>
+              ) : (
+                <Alert>
+                  <AlertTitle className="font-mono">No API key set</AlertTitle>
+                  <AlertDescription className="font-mono">
+                    You haven't set an API key for {provider} yet. Add one below to use {provider} models.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex items-center space-x-2">
+                <Input
+                  type="password"
+                  placeholder={`Enter your ${provider} API key`}
+                  value={keyInputs[provider] || ""}
+                  onChange={(e) => handleApiKeyChange(provider, e.target.value)}
+                  className="font-mono"
+                />
+                <Button onClick={() => handleSaveApiKey(provider)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Save Key
+                </Button>
               </div>
-            </TabsContent>
-          ))}
-        </Tabs>
+            </div>
+
+            {/* Add separator between providers, except after the last one */}
+            {index < providers.length - 1 && (
+              <Separator className="my-4" />
+            )}
+          </div>
+        ))}
       </CardContent>
       <CardFooter className="flex flex-col space-y-4 text-xs text-muted-foreground">
         <div className="w-full flex items-center">

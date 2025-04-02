@@ -10,6 +10,8 @@
 - **Visual Design**: Updated the settings pages to share the same visual structure as the main application
 - **UX Improvement**: Added icons to each settings navigation item for better visual recognition
 - **Organization**: Separated API Keys into a dedicated page for better organization and security focus
+- **Simplification**: Simplified API Keys page to focus on Anthropic and OpenRouter without using tabs
+- **Visual Consistency**: Added active route indicator to match the one in ThreadList for better visual feedback
 - **Default Navigation**: Changed default settings route to point to API Keys page
 
 ## Files Changed

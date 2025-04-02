@@ -60,6 +60,8 @@ export default function SettingsLayout() {
                     <Link to="/settings/models">
                       <SidebarMenuButton 
                         isActive={currentPath.includes("/models") && !currentPath.includes("/local-models")}
+                        className={currentPath.includes("/models") && !currentPath.includes("/local-models") ? 
+                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
                       >
                         <Database className="h-4 w-4" />
                         <span>Models</span>
@@ -71,6 +73,8 @@ export default function SettingsLayout() {
                     <Link to="/settings/api-keys">
                       <SidebarMenuButton 
                         isActive={currentPath.includes("/api-keys")}
+                        className={currentPath.includes("/api-keys") ? 
+                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
                       >
                         <KeyRound className="h-4 w-4" />
                         <span>API Keys</span>
@@ -82,6 +86,8 @@ export default function SettingsLayout() {
                     <Link to="/settings/local-models">
                       <SidebarMenuButton 
                         isActive={currentPath.includes("/local-models")}
+                        className={currentPath.includes("/local-models") ? 
+                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
                       >
                         <Server className="h-4 w-4" />
                         <span>Local Models</span>
@@ -93,6 +99,8 @@ export default function SettingsLayout() {
                     <Link to="/settings/prompts">
                       <SidebarMenuButton 
                         isActive={currentPath.includes("/prompts")}
+                        className={currentPath.includes("/prompts") ? 
+                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
                       >
                         <MessageSquare className="h-4 w-4" />
                         <span>Prompts</span>
@@ -104,6 +112,8 @@ export default function SettingsLayout() {
                     <Link to="/settings/preferences">
                       <SidebarMenuButton 
                         isActive={currentPath.includes("/preferences")}
+                        className={currentPath.includes("/preferences") ? 
+                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
                       >
                         <Sliders className="h-4 w-4" />
                         <span>Preferences</span>
@@ -117,7 +127,11 @@ export default function SettingsLayout() {
                 <SidebarMenu>
                   <SidebarMenuItem className="flex justify-between items-center">
                     <Link to="/">
-                      <SidebarMenuButton>
+                      <SidebarMenuButton
+                        isActive={currentPath === "/"}
+                        className={currentPath === "/" ? 
+                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                      >
                         <Home className="h-4 w-4" />
                         <span>Home</span>
                       </SidebarMenuButton>
