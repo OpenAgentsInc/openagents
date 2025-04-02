@@ -1,5 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useThreads, Thread, useSettings } from '@openagents/core';
+import { useThreads, Thread, useSettings, UIMessage } from '@openagents/core';
+import { messageRepository, threadRepository } from '@openagents/core/src/db/repositories';
+import { getDatabase } from '@openagents/core/src/db/database';
+import { v4 as uuidv4 } from 'uuid';
 import { Button } from './ui/button';
 import { X, Plus } from 'lucide-react';
 import { format, subDays, isWithinInterval, startOfDay } from 'date-fns';
@@ -36,7 +39,7 @@ export function ThreadList({
   // onPinThread
 }: ThreadListProps) {
   // Use a very short refresh interval for immediate updates
-  const { threads, isLoading, error, refresh, deleteThread } = useThreads({ refreshInterval: 300 });
+  const { threads, isLoading, error, refresh, deleteThread, createThread, updateThread } = useThreads({ refreshInterval: 300 });
   const { settings, getPreference } = useSettings();
 
   // Immediately refresh when component mounts or is forced to re-render
@@ -176,9 +179,48 @@ export function ThreadList({
                                 e.stopPropagation();
                                 
                                 // Function to handle thread deletion
-                                const handleDeleteWithToast = (threadId: string, threadTitle: string) => {
+                                const handleDeleteWithToast = async (threadId: string, threadTitle: string) => {
+                                  // Cache the original thread details for recovery
+                                  const deletedThread = threads.find(t => t.id === threadId);
+                                  if (!deletedThread) {
+                                    console.error("Could not find thread for deletion:", threadId);
+                                    return;
+                                  }
+                                  
+                                  // Save a copy of the thread data
+                                  const threadData = {
+                                    id: deletedThread.id,
+                                    title: deletedThread.title,
+                                    createdAt: deletedThread.createdAt,
+                                    updatedAt: deletedThread.updatedAt,
+                                    modelId: deletedThread.modelId,
+                                    systemPrompt: deletedThread.systemPrompt
+                                  };
+                                  
+                                  // Also cache all messages from this thread
+                                  let cachedMessages: UIMessage[] = [];
+                                  try {
+                                    // Initialize message repository if needed
+                                    try {
+                                      const db = await getDatabase();
+                                      await messageRepository.initialize(db);
+                                    } catch (initError) {
+                                      console.error("Error initializing database for message caching:", initError);
+                                    }
+                                    
+                                    // Fetch and cache all messages from this thread
+                                    cachedMessages = await messageRepository.getMessagesByThreadId(threadId);
+                                    console.log(`Cached ${cachedMessages.length} messages for potential thread restoration`);
+                                  } catch (fetchError) {
+                                    console.error("Error caching messages before deletion:", fetchError);
+                                  }
+                                  
                                   // Optimistic update - add to pending deletes first
                                   setPendingDeletes(prev => new Set([...prev, threadId]));
+                                  
+                                  // Delay actual deletion to allow for undo
+                                  let deleteTimeoutId: NodeJS.Timeout;
+                                  let undoClicked = false;
                                   
                                   // Show toast with undo option
                                   toast.info(
@@ -187,23 +229,105 @@ export function ThreadList({
                                       description: `"${threadTitle || 'Untitled'}" was deleted.`,
                                       action: {
                                         label: "Undo",
-                                        onClick: () => {
-                                          // Remove from pending deletes
+                                        onClick: async () => {
+                                          // Mark that undo was clicked to prevent deletion
+                                          undoClicked = true;
+                                          
+                                          // Clear the deletion timeout if it's still pending
+                                          if (deleteTimeoutId) {
+                                            clearTimeout(deleteTimeoutId);
+                                          }
+                                          
+                                          // Remove from pending deletes to show in UI
                                           setPendingDeletes(prev => {
                                             const newSet = new Set([...prev]);
                                             newSet.delete(threadId);
                                             return newSet;
                                           });
-                                          // Refresh to restore the thread in UI
-                                          refresh();
+                                          
+                                          try {
+                                            // Check if thread still exists or has been deleted
+                                            const existingThreads = await refresh();
+                                            const threadExists = existingThreads.some(t => t.id === threadId);
+                                            
+                                            if (!threadExists) {
+                                              // Thread was deleted, need to recreate it
+                                              console.log("Thread was already deleted, recreating with data:", threadData);
+                                              
+                                              // Initialize repositories
+                                              try {
+                                                const db = await getDatabase();
+                                                await threadRepository.initialize(db);
+                                                await messageRepository.initialize(db);
+                                              } catch (initError) {
+                                                console.error("Error initializing database for thread restoration:", initError);
+                                              }
+                                              
+                                              // Recreate the thread with the SAME ID to ensure message consistency
+                                              try {
+                                                // Create thread with exact same ID and properties
+                                                await threadRepository.createThread({
+                                                  id: threadData.id,
+                                                  title: threadData.title,
+                                                  createdAt: threadData.createdAt,
+                                                  updatedAt: threadData.updatedAt,
+                                                  modelId: threadData.modelId,
+                                                  systemPrompt: threadData.systemPrompt
+                                                });
+                                                
+                                                // Restore all messages if we have them cached
+                                                if (cachedMessages.length > 0) {
+                                                  console.log(`Restoring ${cachedMessages.length} messages to thread ${threadData.id}`);
+                                                  
+                                                  // Reinsert messages one by one
+                                                  for (const message of cachedMessages) {
+                                                    try {
+                                                      await messageRepository.createMessage({
+                                                        ...message,
+                                                        threadId: threadData.id
+                                                      });
+                                                    } catch (msgError) {
+                                                      console.error(`Error restoring message ${message.id}:`, msgError);
+                                                    }
+                                                  }
+                                                }
+                                                
+                                                // Switch to the restored thread
+                                                onSelectThread(threadData.id);
+                                                toast.success(`Chat "${threadData.title || 'Untitled'}" restored completely`);
+                                              } catch (createError) {
+                                                console.error("Error recreating thread:", createError);
+                                                
+                                                // Fallback: create a new thread if exact recreation fails
+                                                const newThread = await createThread(threadData.title);
+                                                onSelectThread(newThread.id);
+                                                toast.warning("Chat restored with a new ID (messages could not be recovered)");
+                                              }
+                                            } else {
+                                              // Thread still exists, just switch to it
+                                              onSelectThread(threadId);
+                                              toast.success("Operation canceled");
+                                            }
+                                            
+                                            // Final refresh to update UI
+                                            refresh();
+                                          } catch (error) {
+                                            console.error("Failed to restore thread:", error);
+                                            toast.error("Failed to restore chat");
+                                          }
                                         }
                                       },
                                       duration: 5000
                                     }
                                   );
                                   
-                                  // Then call the actual delete function
-                                  onDeleteThread(threadId);
+                                  // Delay the actual deletion to allow for undo
+                                  deleteTimeoutId = setTimeout(() => {
+                                    if (!undoClicked) {
+                                      // Only delete if undo wasn't clicked
+                                      onDeleteThread(threadId);
+                                    }
+                                  }, 300);
                                 };
                                 
                                 if (confirmThreadDeletion) {
