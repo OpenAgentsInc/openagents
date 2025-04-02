@@ -180,25 +180,28 @@ app.post('/api/chat', async (c) => {
 
       console.log("tools:", tools)
 
+      // If model context length is less than 10000, dont return history, just for messages use the most recent user message
+      if (modelInfo.context_length < 10000) {
+        messages = [messages[messages.length - 1]];
+      }
+
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model,
-        messages: [{
-          role: "user",
-          content: "What tools do you have?"
-        }],
-        tools: [
-          tool({
+        messages,
+        tools: {
+          shell_command: tool({
             parameters: z.object({
               command: z.string().describe("The shell command to execute")
             }),
             description: "Execute a shell command",
             execute: async (args) => {
               // Implementation will be handled elsewhere
-              return null;
+              console.log("Placeholder for shell command execution", args);
+              return "Shell command executed (placeholder";
             }
           })
-        ],
+        },
         toolCallStreaming: modelSupportsTools,
         temperature: 0.7,
 
