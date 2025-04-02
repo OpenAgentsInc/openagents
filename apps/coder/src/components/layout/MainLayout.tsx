@@ -80,7 +80,7 @@ export const MainLayout = memo(function MainLayout() {
         <div className="relative flex h-full w-full flex-1 overflow-hidden z-0">
           <div className="mt-[30px] relative flex h-full w-full flex-row overflow-hidden">
             <Sidebar>
-              <SidebarHeader className="border-y h-14 mt-[30px]">
+              <SidebarHeader className="border-t h-[120px] mt-4">
                 <StableHeaderProvider onCreateThread={handleCreateThread}>
                   <AppHeader />
                 </StableHeaderProvider>
