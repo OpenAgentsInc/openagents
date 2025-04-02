@@ -9,10 +9,15 @@ const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 const config = {
   packagerConfig: {
     asar: true,
+    extraResource: ['src/images'],
+    icon: 'src/images/icon', // Base name without extension
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      iconUrl: 'https://raw.githubusercontent.com/openagents/coder/main/src/images/icon.ico',
+      setupIcon: 'src/images/icon.ico'
+    }),
     new MakerZIP({}, ["darwin"]),
     new MakerRpm({}),
     new MakerDeb({}),
