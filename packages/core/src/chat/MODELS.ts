@@ -36,7 +36,7 @@ export const MODELS: Model[] = [
   // Anthropic Claude models
   {
     id: "claude-3-7-sonnet-20250219",
-    name: "Claude 3.7 Sonnet (Anthropic)",
+    name: "Claude 3.7 Sonnet",
     provider: "anthropic",
     author: "anthropic",
     created: 1740422110, // 2024-02-24
@@ -47,7 +47,7 @@ export const MODELS: Model[] = [
   },
   {
     id: "claude-3-5-sonnet-20241022",
-    name: "Claude 3.5 Sonnet (New)",
+    name: "Claude 3.5 Sonnet",
     provider: "anthropic",
     author: "anthropic",
     created: 1698019200, // 2024-10-22

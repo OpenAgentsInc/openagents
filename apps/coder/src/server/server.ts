@@ -585,12 +585,30 @@ app.post('/api/chat', async (c) => {
             sendReasoning: true
           });
 
+          // OVERRIDE: Add a client-side abort controller to prevent fallback
+          const abortController = new AbortController();
+          const abortSignal = abortController.signal;
+          
+          // Set a timeout to detect if we're stuck or failing
+          const timeoutId = setTimeout(() => {
+            console.log("⚠️ Stream processing timeout - preventing LMStudio fallback");
+            abortController.abort();
+          }, 10000); // 10 second timeout
+          
           // Process stream using reader
           const reader = sdkStream.getReader();
+          let hasReceivedData = false;
+          
           try {
-            while (true) {
+            while (!abortSignal.aborted) {
               const { done, value } = await reader.read();
               if (done) break;
+
+              // We've successfully received data, clear the timeout
+              if (!hasReceivedData) {
+                hasReceivedData = true;
+                clearTimeout(timeoutId);
+              }
 
               // Convert Uint8Array to string
               const chunk = new TextDecoder().decode(value);
@@ -615,7 +633,45 @@ app.post('/api/chat', async (c) => {
                 await responseStream.write(chunk);
               }
             }
+          } catch (streamError) {
+            console.error("STREAM PROCESSING ERROR:", streamError);
+            // Instead of letting the error propagate up, handle it right here with a custom message
+            
+            // Custom error message based on provider
+            let errorMessage;
+            if (provider === 'openrouter') {
+              errorMessage = `OpenRouter API Error: Could not access model "${MODEL}". This model might not exist, you may lack permission, or the service may be experiencing issues.`;
+            } else if (provider === 'anthropic') {
+              errorMessage = `Anthropic API Error: Could not process request for "${MODEL}". Please check your API key and try again later.`;
+            } else if (provider === 'lmstudio') {
+              errorMessage = `LMStudio Error: Could not communicate with local server for model "${MODEL}". Make sure LMStudio is running with the server enabled.`;
+            } else {
+              errorMessage = `API Error: Could not access model "${MODEL}" with provider "${provider}". Please check your configuration and try again.`;
+            }
+            
+            // Send custom error message to client
+            const errorData = {
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "",
+              choices: [
+                {
+                  delta: {
+                    content: errorMessage
+                  }
+                }
+              ],
+              created: Date.now()
+            };
+            
+            await responseStream.write(`data: ${JSON.stringify(errorData)}\n\n`);
+            await responseStream.write("data: [DONE]\n\n");
+            
+            // Interrupt processing here - don't let the error bubble up
+            // This prevents any fallback behavior
+            return;
           } finally {
+            clearTimeout(timeoutId);
             reader.releaseLock();
           }
         } catch (error) {
@@ -635,142 +691,16 @@ app.post('/api/chat', async (c) => {
             console.error(`Error cause: ${errorDetails}`);
           }
           console.error("==========================================");
-
-          // PRIORITY FIX - Always use raw error message for context overflow errors
-          // Special handling for Type validation failures which contain the context overflow error
-          let userFriendlyError;
-
-          if (errorMessage.includes('Type validation failed:') && errorMessage.includes('context the overflows')) {
-            // This is a Type validation error with context overflow inside quotes
-            const match = errorMessage.match(/Value: "([^"]+)"/);
-            if (match && match[1]) {
-              userFriendlyError = match[1]; // This extracts the raw error inside the quotes
-              console.log("EXTRACTED VALIDATION ERROR:", userFriendlyError);
-            } else {
-              // Just use the first line as fallback
-              userFriendlyError = errorMessage.split('\n')[0];
-            }
-          }
-          // Direct context overflow error (not in validation)
-          else if (errorMessage.includes('context the overflows')) {
-            // For context overflow, use the raw error
-            const contextOverflowMatch = errorMessage.match(/Trying to keep the first \d+ tokens when context the overflows\. However, the model is loaded with context length of only \d+ tokens[^.]*/);
-            if (contextOverflowMatch) {
-              userFriendlyError = contextOverflowMatch[0];
-              console.log("EXTRACTED CONTEXT OVERFLOW:", userFriendlyError);
-            } else {
-              // Use the raw error if matching fails
-              userFriendlyError = errorMessage.split('\n')[0];
-            }
-          }
-          // MODEL_ERROR prefix handling
-          else if (errorMessage.includes('MODEL_ERROR:')) {
-            // Extract the specific context error from the message
-            const contextErrorMatch = errorMessage.match(/context length of only (\d+) tokens.+Try to load the model with a larger context length/);
-            const contextOverflowMatch = errorMessage.match(/Trying to keep the first (\d+) tokens when context the overflows.+context length of only (\d+) tokens/);
-            const genericErrorMatch = errorMessage.match(/MODEL_ERROR:\s+(.*?)(\n|$)/);
-
-            if (contextErrorMatch) {
-              // Use the full context error message
-              userFriendlyError = contextErrorMatch[0];
-            } else if (contextOverflowMatch) {
-              // This is the specific "context the overflows" error from LMStudio
-              userFriendlyError = contextOverflowMatch[0];
-            } else if (genericErrorMatch) {
-              // Extract the actual error message without the MODEL_ERROR prefix
-              userFriendlyError = genericErrorMatch[1];
-            } else {
-              // Default case
-              userFriendlyError = errorMessage;
-            }
-          } else {
-            // For other errors, just use the raw message
-            userFriendlyError = errorMessage;
-          }
-
-          // We've already handled context overflow errors above, so we don't need this section anymore.
-          // But for extra safety, check one more time if we somehow missed a context overflow error
-          if ((errorMessage.includes('context the overflows') ||
-            errorMessage.includes('context overflow')) &&
-            !userFriendlyError?.includes('context the overflows') &&
-            !userFriendlyError?.includes('Trying to keep')) {
-
-            console.log("FALLBACK HANDLER: Context overflow error wasn't properly extracted");
-
-            // For "context the overflows" errors, use raw extraction again
-            if (errorMessage.includes('context the overflows')) {
-              // Extract the full context overflow message
-              const match = errorMessage.match(/Trying to keep the first \d+ tokens when context the overflows\. However, the model is loaded with context length of only \d+ tokens[^.]*/);
-              if (match) {
-                userFriendlyError = match[0];
-                console.log("FALLBACK EXTRACTED:", userFriendlyError);
-              } else {
-                // Just use the raw first line
-                userFriendlyError = errorMessage.split('\n')[0];
-              }
-            }
-          }
-
-          // Special handling for common LLM error types
-          // Skip the context overflow handling as we've already handled it above
-          if (errorMessage.toLowerCase().includes('rate limit')) {
-            userFriendlyError = "Rate limit exceeded: The API service is limiting requests. Please wait a minute and try again.";
-          }
-
+          
+          // CRITICAL OVERRIDE: Handle the error here with a provider-specific message
+          console.error("🚨 CRITICAL: Intercepting outer error - preventing fallback");
+          
+          // Don't continue to further error handling that might cause a fallback
           try {
-            // Format error message as a text content delta that the client can directly display
-            // DEBUG CRITICAL: If we get a generic "An error occurred" message, we need to manually display the full
-            // error details since the AI SDK is hiding them from us
-            // FORMAT: Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens
-
-            let errorContent;
-
-            // Check for the useless "An error occurred" message that hides details
-            if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
-              console.log("INTERCEPTED GENERIC ERROR MESSAGE - USING IMPROVED ERROR FORMAT");
-              
-              // Check what kind of error we likely encountered based on the model and provider
-              if (provider === 'openrouter' && MODEL.includes('/')) {
-                // Most likely an OpenRouter model that doesn't exist or has permissions issues
-                errorContent = `Error from OpenRouter: The model "${MODEL}" could not be accessed. This could be due to an invalid model ID, rate limiting, or permission issues. If this is a paid model, ensure your OpenRouter API key has sufficient credit.`;
-              } else if (provider === 'anthropic' && MODEL.startsWith('claude-')) {
-                // Most likely an Anthropic API issue
-                errorContent = `Error from Anthropic: The Claude model "${MODEL}" encountered an issue. This could be due to rate limiting, API key validation, or service availability. Please check your Anthropic API key and try again.`;
-              } else if (provider === 'lmstudio') {
-                // Most likely an LMStudio connectivity issue
-                errorContent = `Error connecting to LMStudio: Could not communicate with the local LMStudio server for model "${MODEL}". Please make sure LMStudio is running with the local server enabled on the configured URL.`;
-              } else {
-                // More helpful generic error
-                errorContent = `Error using model "${MODEL}" with provider "${provider}": The service responded with an error. This could be due to invalid model configuration, API key issues, rate limiting, or service availability.`;
-              }
-              
-              console.log("USING IMPROVED ERROR MESSAGE:", errorContent);
-            }
-            // PRIORITY FIX: Context overflow errors always use the raw error message
-            else {
-              const isContextOverflow = userFriendlyError && (
-                userFriendlyError.includes('context the overflows') ||
-                userFriendlyError.includes('Trying to keep the first') && userFriendlyError.includes('context length of only')
-              );
-
-              // Log for debugging what we're actually sending
-              console.log("FINAL ERROR TO DISPLAY:", {
-                isContextOverflow,
-                userFriendlyError: userFriendlyError?.substring(0, 100),
-                containsOverflow: userFriendlyError?.includes('context the overflows'),
-                containsTrying: userFriendlyError?.includes('Trying to keep')
-              });
-
-              if (isContextOverflow) {
-                // For context overflow errors, send the raw error message without any formatting or prefix
-                errorContent = userFriendlyError;
-                console.log("USING RAW ERROR FOR DISPLAY:", errorContent);
-              } else {
-                // Add error prefix for other errors
-                errorContent = `⚠️ Error: ${userFriendlyError}`;
-              }
-            }
-
+            // Custom error message based on provider
+            let errorContent = `Error with ${provider} provider for model "${MODEL}": ${errorMessage.substring(0, 100)}...`;
+                    
+            // Format the error response
             const errorData = {
               id: `error-${Date.now()}`,
               role: "assistant",
@@ -784,15 +714,22 @@ app.post('/api/chat', async (c) => {
               ],
               created: Date.now()
             };
-
-            // Send the error to client in regular AI SDK format
+            
+            // Send the error and terminate the stream
             await responseStream.write(`data: ${JSON.stringify(errorData)}\n\n`);
-
-            // Send final message to terminate the stream properly
             await responseStream.write("data: [DONE]\n\n");
+            
+            return; // Critical: Return immediately to prevent further processing
           } catch (writeError) {
-            console.error("Failed to write error message to stream");
+            console.error("Failed to write clean error, but still preventing fallback:", writeError);
+            // Still prevent further processing
+            return;
           }
+          
+          // We've completely replaced this error handling code with our custom implementation above
+          // All the old code is effectively cut off by the return statements
+          // This completely prevents any potential fallback behavior to LMStudio or other providers
+          // END OF ERROR HANDLING
         }
       });
     } catch (streamSetupError) {
