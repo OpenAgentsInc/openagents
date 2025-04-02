@@ -4,15 +4,8 @@ import {
   Sidebar,
   SidebarHeader,
   SidebarContent,
-  SidebarFooter,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
   SidebarInset
 } from '@/components/ui/sidebar';
-import { Link } from '@tanstack/react-router';
-import { SettingsIcon } from 'lucide-react';
-import ToggleTheme from '@/components/ToggleTheme';
 import { AppHeader } from '@/components/AppHeader';
 import { ModelHeader } from '@/components/ModelHeader';
 import { ThreadList } from '@/components/ThreadList';
@@ -104,19 +97,7 @@ export const MainLayout = memo(function MainLayout() {
                 />
               </SidebarContent>
 
-              <SidebarFooter>
-                <SidebarMenu>
-                  <SidebarMenuItem className="flex justify-between items-center">
-                    <Link to="/settings/models">
-                      <SidebarMenuButton>
-                        <SettingsIcon />
-                        <span>Settings</span>
-                      </SidebarMenuButton>
-                    </Link>
-                    <ToggleTheme />
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarFooter>
+              {/* SidebarFooter removed */}
             </Sidebar>
 
             <SidebarInset>

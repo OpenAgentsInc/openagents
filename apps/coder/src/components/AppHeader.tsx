@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { NewChatIcon } from '@/components/NewChatIcon';
 import { useStableHeader } from '@/providers/StableHeaderProvider';

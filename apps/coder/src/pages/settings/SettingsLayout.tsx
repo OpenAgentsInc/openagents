@@ -15,7 +15,6 @@ import {
   Sidebar,
   SidebarHeader,
   SidebarContent,
-  SidebarFooter,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -123,23 +122,7 @@ export default function SettingsLayout() {
                 </SidebarMenu>
               </SidebarContent>
 
-              <SidebarFooter>
-                <SidebarMenu>
-                  <SidebarMenuItem className="flex justify-between items-center">
-                    <Link to="/">
-                      <SidebarMenuButton
-                        isActive={currentPath === "/"}
-                        className={currentPath === "/" ? 
-                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
-                      >
-                        <Home className="h-4 w-4" />
-                        <span>Home</span>
-                      </SidebarMenuButton>
-                    </Link>
-                    <ToggleTheme />
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarFooter>
+              {/* SidebarFooter removed */}
             </Sidebar>
 
             {/* Main Content Area */}
@@ -152,6 +135,16 @@ export default function SettingsLayout() {
                     {currentPath.includes("/local-models") && "Local Models"}
                     {currentPath.includes("/prompts") && "Prompts"}
                     {currentPath.includes("/preferences") && "Preferences"}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link to="/">
+                      <Button 
+                        size="icon" 
+                        className="bg-transparent text-primary hover:bg-primary/5">
+                        <Home size={16} />
+                      </Button>
+                    </Link>
+                    <ToggleTheme />
                   </div>
                 </div>
 
