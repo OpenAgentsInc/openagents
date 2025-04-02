@@ -200,14 +200,29 @@ app.post('/api/chat', async (c) => {
             }),
             description: "Execute a shell command",
             execute: async (args) => {
-              // Implementation will be handled elsewhere
               console.log("Running command:", args.command);
 
-              // run the command
-              const result = await exec(args.command);
-              console.log("Command result:", result);
+              try {
+                // Set maxBuffer to 5MB and add timeout
+                const result = await exec(args.command, {
+                  maxBuffer: 5 * 1024 * 1024, // 5MB buffer
+                  timeout: 30000 // 30 second timeout
+                });
 
-              return "Executed command: " + args.command + "\n\n" + result.stdout;
+                // Truncate output if too long (limit to ~100KB to ensure it fits in context)
+                const maxOutputLength = 100 * 1024; // 100KB
+                let output = result.stdout;
+                if (output.length > maxOutputLength) {
+                  output = output.slice(0, maxOutputLength) + "\n... [Output truncated due to length]";
+                }
+
+                return "Executed command: " + args.command + "\n\n" + output;
+              } catch (error: any) {
+                if (error?.code === 'ENOBUFS' || error?.message?.includes('maxBuffer')) {
+                  return "Command output was too large. Please modify the command to produce less output.";
+                }
+                throw error;
+              }
             }
           })
         },
