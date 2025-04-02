@@ -262,6 +262,31 @@ Browser → Our Server → LMStudio Server
            └─────┘
 ```
 
+### Development Server Configuration
+
+For development, we need to ensure that API requests made to the Vite dev server (typically running on port 5173) are properly forwarded to the Hono server (typically running on port 3001) that handles the API endpoints.
+
+This is configured in `vite.renderer.config.mts`:
+
+```typescript
+server: {
+  // Other server config...
+  proxy: {
+    // Proxy API requests to the Hono server running on port 3001
+    '/api': {
+      target: 'http://localhost:3001',
+      changeOrigin: true,
+      secure: false,
+    },
+  },
+},
+```
+
+This configuration ensures that when running the application in development mode:
+1. Requests to `http://localhost:5173/api/*` are forwarded to `http://localhost:3001/api/*`
+2. The proxy handles all the API routes, including the LMStudio proxy endpoint
+3. CORS issues are avoided because the request appears to come from the same origin
+
 ## Model Detection
 
 The application includes a robust approach to detecting whether local models are available:
@@ -337,6 +362,16 @@ Common issues and solutions:
 - Increase the timeout value in the code if consistently timing out
 - Try using a smaller, faster model in LMStudio
 - Restart both the application and LMStudio
+
+### Development Server API Issues
+
+**Problem**: API requests work on port 3001 but not on port 5173
+**Solution**:
+- Ensure the Vite dev server proxy is configured correctly in `vite.renderer.config.mts`
+- Add a proxy configuration to forward `/api` requests to the Hono server
+- Check if the Vite dev server is properly running alongside the Hono server
+- Verify that both servers can communicate with each other
+- Restart both servers if the issue persists
 
 ## Future Improvements
 

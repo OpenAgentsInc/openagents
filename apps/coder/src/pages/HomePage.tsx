@@ -452,13 +452,17 @@ export default function HomePage() {
           return [];
         };
         
-        // Function to check if LMStudio is running
+        // Function to check if LMStudio is running - use proxy to avoid CORS issues
         const checkLMStudioAvailable = async (): Promise<boolean> => {
           try {
-            const response = await fetch("http://localhost:1234/v1/models");
+            // Use our server proxy to avoid CORS issues
+            const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent("http://localhost:1234/v1/models")}`;
+            console.log("Checking LMStudio via proxy:", proxyUrl);
+            
+            const response = await fetch(proxyUrl);
             return response.ok;
           } catch (error) {
-            console.warn("Failed to connect to LMStudio API:", error);
+            console.warn("Failed to connect to LMStudio API via proxy:", error);
             return false;
           }
         };
