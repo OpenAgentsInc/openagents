@@ -156,12 +156,13 @@ app.post('/api/chat', async (c) => {
 
     // Find model info in MODELS
     let modelInfo = MODELS.find(m => m.id === MODEL);
-    let provider = "lmstudio"; // Default provider if not found
+    let provider: string | null = null; // No default provider - we'll require an explicit provider match
 
     // Be more lenient about model detection to avoid false rejections
     // Accept any model that appears to be an open model format
     if (!modelInfo) {
       // Check for patterns in the model ID that suggest different model types
+      const isClaudeModel = MODEL.startsWith('claude-');
       const isLmStudioModel = MODEL.includes('gemma') ||
         MODEL.toLowerCase().includes('llama') ||
         MODEL.includes('mistral') ||
@@ -170,23 +171,52 @@ app.post('/api/chat', async (c) => {
         MODEL.includes('gpt') ||
         MODEL.includes('deepseek');
 
-      // Consider any model with a / in the name as a potentially valid model
+      // Consider any model with a / in the name as a potentially valid OpenRouter model
       const hasSlash = MODEL.includes('/');
 
-      // If it looks like any kind of valid model ID, accept it
-      if (isLmStudioModel || hasSlash) {
-        console.log(`[Server] Model ${MODEL} not in MODELS array but detected as LMStudio model`);
-        // Create temporary model info for dynamic models
+      // If it's a Claude model, set provider to Anthropic
+      if (isClaudeModel) {
+        console.log(`[Server] Model ${MODEL} not in MODELS array but detected as Anthropic Claude model`);
+        modelInfo = {
+          id: MODEL,
+          name: MODEL.split('/').pop() || MODEL,
+          provider: 'anthropic',
+          author: 'anthropic' as any,
+          created: Date.now(),
+          description: `Anthropic ${MODEL} model`,
+          context_length: 200000,
+          supportsTools: true,
+          shortDescription: `Anthropic ${MODEL} model`
+        };
+      }
+      // If it looks like an LMStudio model ID and ONLY if specifically requested by the client to use LMStudio
+      else if (isLmStudioModel && body.preferredProvider === 'lmstudio') {
+        console.log(`[Server] Model ${MODEL} not in MODELS array but explicitly requested to use LMStudio`);
         modelInfo = {
           id: MODEL,
           name: MODEL.split('/').pop() || MODEL,
           provider: 'lmstudio',
           author: 'unknown' as any,
           created: Date.now(),
-          description: `Dynamically discovered model: ${MODEL}`,
-          context_length: 8192, // Reasonable default
-          supportsTools: true, // Most modern models support tools
-          shortDescription: `Dynamic model: ${MODEL}`
+          description: `LMStudio model: ${MODEL}`,
+          context_length: 8192,
+          supportsTools: true,
+          shortDescription: `LMStudio model: ${MODEL}`
+        };
+      }
+      // If it has a slash, assume it's an OpenRouter model
+      else if (hasSlash) {
+        console.log(`[Server] Model ${MODEL} not in MODELS array but detected as OpenRouter model due to slash`);
+        modelInfo = {
+          id: MODEL,
+          name: MODEL.split('/').pop() || MODEL,
+          provider: 'openrouter',
+          author: MODEL.split('/')[0] as any || 'unknown' as any,
+          created: Date.now(),
+          description: `OpenRouter model: ${MODEL}`,
+          context_length: 8192,
+          supportsTools: true,
+          shortDescription: `OpenRouter model: ${MODEL}`
         };
       } else {
         // This model ID doesn't match any known pattern
@@ -200,6 +230,14 @@ app.post('/api/chat', async (c) => {
     }
 
     console.log(`🔍 MODEL: ${MODEL}, PROVIDER: ${provider}`);
+    
+    // Check if a valid provider was found
+    if (!provider) {
+      console.error(`[Server] ERROR: No valid provider determined for model ${MODEL}`);
+      return c.json({
+        error: `No valid provider could be determined for model "${MODEL}". Please select a model with a known provider.`
+      }, 400);
+    }
 
     // Check if we need OpenRouter
     if (provider === "openrouter" && !OPENROUTER_API_KEY) {
@@ -345,14 +383,19 @@ app.post('/api/chat', async (c) => {
         model = anthropicClient(MODEL);
 
       } else {
-        console.log(`[Server] Using default provider: OpenRouter`);
-        // Default to OpenRouter for unspecified providers
-        model = openrouter(MODEL);
-        headers = {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://openagents.com',
-          'X-Title': 'OpenAgents Coder'
-        };
+        // No longer default to any provider - if we get here, it's an error
+        console.error(`[Server] ERROR: Unrecognized provider: ${provider} for model ${MODEL}`);
+        
+        // Return error as SSE
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `Unknown provider "${provider}" for model ${MODEL}. Please select a model with a supported provider (anthropic, openrouter, lmstudio, or ollama).`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
       }
 
       // console.log("tools:", tools)
@@ -470,6 +513,55 @@ app.post('/api/chat', async (c) => {
         console.log('[Server] Model does not support tools, continuing without tools');
       } else {
         console.log('[Server] No MCP tools available, continuing without tools');
+      }
+
+      // CRITICAL SAFEGUARD - Add final check to prevent improper provider routing
+      console.log(`⚠️ CRITICAL SAFEGUARD CHECK: MODEL: ${MODEL}, PROVIDER: ${provider}`);
+      
+      // Prevent Claude models from being routed anywhere except Anthropic
+      if (MODEL.startsWith('claude-') && provider !== 'anthropic') {
+        console.error(`[Server] CRITICAL ERROR: Claude model ${MODEL} is being routed to non-Anthropic provider: ${provider}`);
+        
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `ROUTING ERROR: Claude model ${MODEL} must use the Anthropic provider, not ${provider}. Please select a model with the correct provider.`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
+      }
+      
+      // Prevent non-LMStudio models from going to LMStudio
+      if (provider === 'lmstudio' && !MODEL.includes('gemma') && !MODEL.toLowerCase().includes('llama') && 
+          !MODEL.includes('mistral') && !MODEL.includes('qwen')) {
+        console.error(`[Server] CRITICAL ERROR: Inappropriate model ${MODEL} is being routed to LMStudio`);
+        
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `ROUTING ERROR: Model ${MODEL} is not appropriate for LMStudio. Please select a model with the correct provider.`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
+      }
+      
+      // Prevent models with a slash from going to non-OpenRouter
+      if (MODEL.includes('/') && provider !== 'openrouter') {
+        console.error(`[Server] CRITICAL ERROR: OpenRouter-style model ${MODEL} is being routed to non-OpenRouter provider: ${provider}`);
+        
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `ROUTING ERROR: Model ${MODEL} with a '/' pattern should use the OpenRouter provider, not ${provider}. Please select a model with the correct provider.`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
       }
 
       const streamResult = streamText(streamOptions);
@@ -635,10 +727,24 @@ app.post('/api/chat', async (c) => {
 
             // Check for the useless "An error occurred" message that hides details
             if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
-              console.log("INTERCEPTED GENERIC ERROR MESSAGE - USING MANUAL OVERRIDE");
-              // HARDCODED FOR IMMEDIATE FIX - USE EXACT ERROR MESSAGE FORMAT FOR CONTEXT OVERFLOW
-              errorContent = "Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens, which is not enough. Try to load the model with a larger context length, or provide a shorter input";
-              console.log("USING HARDCODED ERROR MESSAGE:", errorContent);
+              console.log("INTERCEPTED GENERIC ERROR MESSAGE - USING IMPROVED ERROR FORMAT");
+              
+              // Check what kind of error we likely encountered based on the model and provider
+              if (provider === 'openrouter' && MODEL.includes('/')) {
+                // Most likely an OpenRouter model that doesn't exist or has permissions issues
+                errorContent = `Error from OpenRouter: The model "${MODEL}" could not be accessed. This could be due to an invalid model ID, rate limiting, or permission issues. If this is a paid model, ensure your OpenRouter API key has sufficient credit.`;
+              } else if (provider === 'anthropic' && MODEL.startsWith('claude-')) {
+                // Most likely an Anthropic API issue
+                errorContent = `Error from Anthropic: The Claude model "${MODEL}" encountered an issue. This could be due to rate limiting, API key validation, or service availability. Please check your Anthropic API key and try again.`;
+              } else if (provider === 'lmstudio') {
+                // Most likely an LMStudio connectivity issue
+                errorContent = `Error connecting to LMStudio: Could not communicate with the local LMStudio server for model "${MODEL}". Please make sure LMStudio is running with the local server enabled on the configured URL.`;
+              } else {
+                // More helpful generic error
+                errorContent = `Error using model "${MODEL}" with provider "${provider}": The service responded with an error. This could be due to invalid model configuration, API key issues, rate limiting, or service availability.`;
+              }
+              
+              console.log("USING IMPROVED ERROR MESSAGE:", errorContent);
             }
             // PRIORITY FIX: Context overflow errors always use the raw error message
             else {

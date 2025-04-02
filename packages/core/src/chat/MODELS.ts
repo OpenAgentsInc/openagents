@@ -67,17 +67,17 @@ export const MODELS: Model[] = [
     supportsTools: true,
     shortDescription: "Fast and efficient Claude model"
   },
-  {
-    id: "claude-3-5-sonnet-20240620",
-    name: "Claude 3.5 Sonnet (Old)",
-    provider: "anthropic",
-    author: "anthropic",
-    created: 1714435200, // 2024-06-20
-    description: "Anthropic's Claude 3.5 Sonnet model - good balance of capabilities",
-    context_length: 200000,
-    supportsTools: true,
-    shortDescription: "Versatile Claude model"
-  },
+  // {
+  //   id: "claude-3-5-sonnet-20240620",
+  //   name: "Claude 3.5 Sonnet (Old)",
+  //   provider: "anthropic",
+  //   author: "anthropic",
+  //   created: 1714435200, // 2024-06-20
+  //   description: "Anthropic's Claude 3.5 Sonnet model - good balance of capabilities",
+  //   context_length: 200000,
+  //   supportsTools: true,
+  //   shortDescription: "Versatile Claude model"
+  // },
   {
     author: 'qwen',
     provider: 'lmstudio',

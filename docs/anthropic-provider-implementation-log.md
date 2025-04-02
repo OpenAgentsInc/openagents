@@ -78,6 +78,15 @@ Manual testing verified:
 - Added validation to prevent routing Claude models to LMStudio
 - Improved logging to better diagnose incorrect model routing
 - Skipped unnecessary LMStudio checks for Anthropic models to prevent errors
+- Removed automatic fallback to LMStudio for unrecognized models
+- Prevented automatic fallback to OpenRouter when primary provider fails
+- Implemented strict provider validation to prevent incorrect routing
+- Modified model detection to identify appropriate providers based on model ID patterns
+- Required explicit provider declaration for unknown models via preferredProvider parameter
+- Added critical safeguards that run just before request execution to prevent cross-provider routing
+- Implemented multiple validation checks to prevent fallback to incorrect providers after errors
+- Added provider-specific error messages that give clear guidance instead of generic errors
+- Added pattern-based validation to restrict models to their appropriate providers only
 
 ## Conclusion
 
