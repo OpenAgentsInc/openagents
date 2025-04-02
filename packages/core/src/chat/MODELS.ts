@@ -39,18 +39,40 @@ export const MODELS: Model[] = [
     name: "Claude 3.7 Sonnet (Anthropic)",
     provider: "anthropic",
     author: "anthropic",
-    created: 1714608000000, // 2024-08-02 (approximate)
+    created: 1740422110, // 2024-02-24
     description: "Anthropic's Claude 3.7 Sonnet model - balanced performance",
     context_length: 200000,
     supportsTools: true,
     shortDescription: "Balanced performance Claude model"
   },
   {
-    id: "claude-3-5-sonnet-20240620",
-    name: "Claude 3.5 Sonnet (Anthropic)",
+    id: "claude-3-5-sonnet-20241022",
+    name: "Claude 3.5 Sonnet (New)",
     provider: "anthropic",
     author: "anthropic",
-    created: 1714435200000, // 2024-07-30 (approximate)
+    created: 1698019200, // 2024-10-22
+    description: "Anthropic's Claude 3.5 Sonnet model - latest version with improved capabilities",
+    context_length: 200000,
+    supportsTools: true,
+    shortDescription: "Latest Claude 3.5 Sonnet model"
+  },
+  {
+    id: "claude-3-5-haiku-20241022",
+    name: "Claude 3.5 Haiku",
+    provider: "anthropic",
+    author: "anthropic",
+    created: 1698019200, // 2024-10-22
+    description: "Anthropic's Claude 3.5 Haiku model - faster, more efficient version",
+    context_length: 200000,
+    supportsTools: true,
+    shortDescription: "Fast and efficient Claude model"
+  },
+  {
+    id: "claude-3-5-sonnet-20240620",
+    name: "Claude 3.5 Sonnet (Old)",
+    provider: "anthropic",
+    author: "anthropic",
+    created: 1714435200, // 2024-06-20
     description: "Anthropic's Claude 3.5 Sonnet model - good balance of capabilities",
     context_length: 200000,
     supportsTools: true,
