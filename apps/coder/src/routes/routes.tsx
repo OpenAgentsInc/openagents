@@ -7,6 +7,7 @@ import ApiKeysPage from "../pages/settings/ApiKeysPage";
 import LocalModelsPage from "../pages/settings/LocalModelsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
 import PreferencesPage from "../pages/settings/PreferencesPage";
+import ChangelogPage from "../pages/ChangelogPage";
 
 // TODO: Steps to add a new route:
 // 1. Create a new page component in the '../pages/' directory (e.g., NewPage.tsx)
@@ -69,9 +70,16 @@ export const ApiKeysSettingsRoute = createRoute({
   component: ApiKeysPage,
 });
 
+export const ChangelogRoute = createRoute({
+  getParentRoute: () => RootRoute,
+  path: "/changelog",
+  component: ChangelogPage,
+});
+
 // Add all routes to the route tree
 export const rootTree = RootRoute.addChildren([
   HomeRoute,
+  ChangelogRoute,
   SettingsRoute.addChildren([
     SettingsIndexRoute,
     ModelsSettingsRoute,
