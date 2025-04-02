@@ -114,6 +114,7 @@ export default function ApiKeysPage() {
 
   // Get provider display name
   const getProviderDisplayName = (provider: string) => {
+    if (provider === "openrouter") return "OpenRouter";
     return provider.charAt(0).toUpperCase() + provider.slice(1);
   };
 
