@@ -287,8 +287,14 @@
   }
 
   /* Only keep this single fix to prevent animation */
-  [data-slot="sidebar-container"] {
+  /* [data-slot="sidebar-container"] {
     transition: none !important;
+  } */
+
+  /* Ensure Sonner toast animations work properly */
+  [data-sonner-toast] {
+    animation-duration: var(--duration);
+    transition: transform 0.4s ease, opacity 0.4s ease !important;
   }
 }
 
