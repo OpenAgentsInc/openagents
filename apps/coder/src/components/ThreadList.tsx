@@ -12,6 +12,7 @@ import {
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { ThreadGroup } from './ThreadGroup';
+import { StableThreadProvider } from '../providers/StableThreadProvider';
 
 interface ThreadListProps {
   currentThreadId: string;
@@ -161,17 +162,21 @@ export const ThreadList = React.memo(function ThreadList({
 
   return (
     <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
-      {groupedThreads.map((group) => (
-        <ThreadGroup
-          key={group.label}
-          label={group.label}
-          threads={group.threads}
-          selectedThreadId={currentThreadId}
-          onSelectThread={onSelectThread}
-          onDeleteThread={handleDeleteClick}
-          deletingThreadIds={deletingThreadIds}
-        />
-      ))}
+      {/* Wrap the ThreadGroups with the StableThreadProvider to stabilize handlers */}
+      <StableThreadProvider
+        currentThreadId={currentThreadId}
+        onSelectThread={onSelectThread}
+        onDeleteThread={handleDeleteClick}
+        deletingThreadIds={deletingThreadIds}
+      >
+        {groupedThreads.map((group) => (
+          <ThreadGroup
+            key={group.label}
+            label={group.label}
+            threads={group.threads}
+          />
+        ))}
+      </StableThreadProvider>
 
       {/* Rename Dialog */}
       <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>

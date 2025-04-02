@@ -1,24 +1,20 @@
 import React from 'react';
 import { Thread } from '@openagents/core';
 import { ThreadItem } from './ThreadItem';
+import { useStableThread } from '../providers/StableThreadProvider';
 
 interface ThreadGroupProps {
   label: string;
   threads: Thread[];
-  selectedThreadId: string;
-  onSelectThread: (threadId: string) => void;
-  onDeleteThread: (e: React.MouseEvent, threadId: string, threadTitle: string) => void;
-  deletingThreadIds?: Set<string>; // New prop to track threads being deleted
 }
 
 export const ThreadGroup = React.memo(function ThreadGroup({
   label,
-  threads,
-  selectedThreadId,
-  onSelectThread,
-  onDeleteThread,
-  deletingThreadIds = new Set()
+  threads
 }: ThreadGroupProps) {
+  // Get stable handlers from context instead of props
+  const { currentThreadId, handleSelectThread, handleDeleteThread, deletingThreadIds } = useStableThread();
+  
   if (threads.length === 0) {
     return null;
   }
@@ -35,9 +31,9 @@ export const ThreadGroup = React.memo(function ThreadGroup({
             <ThreadItem
               key={thread.id}
               thread={thread}
-              isSelected={thread.id === selectedThreadId}
-              onSelect={onSelectThread}
-              onDelete={onDeleteThread}
+              isSelected={thread.id === currentThreadId}
+              onSelect={handleSelectThread}
+              onDelete={handleDeleteThread}
               isDeleting={deletingThreadIds.has(thread.id)}
             />
           ))}

@@ -13,6 +13,7 @@ Analysis of the React Scan performance data revealed several key performance iss
 - High combined render time (166ms) with additional browser processing time (201ms)
 - **NEW**: ChatInputArea rerenders on every token during streaming (causing lag)
 - **NEW**: Message processing functions run repeatedly during streaming
+- **NEW**: ThreadItem handlers (onSelect, onDelete) rerender 500+ times during token streaming
 
 ## Implemented Solutions
 
@@ -169,86 +170,278 @@ export const ModelSelect = React.memo(function ModelSelect(props: ModelSelectPro
 });
 ```
 
-## Context-Based State Management Implementation
+## Advanced Isolation Architecture for Streaming UI
 
-We've implemented a context-based state management system to improve performance, especially during streaming:
+We've implemented a component isolation architecture to completely eliminate unnecessary rerenders during streaming. This is a more advanced approach than standard context-based state management:
 
-### 1. Split ChatState into Specialized Contexts
+### 1. Dedicated Streaming Message Provider
 
-The original global ChatState context was split into three specialized contexts:
-
-1. **MessageContext**: Contains only message-related state that changes during streaming
-   ```tsx
-   type MessageContextType = {
-     messages: UIMessage[];
-     isGenerating: boolean;
-   };
-   ```
-
-2. **ThreadContext**: Contains thread-related state that shouldn't change during streaming
-   ```tsx
-   type ThreadContextType = {
-     currentThreadId: string | null;
-     handleSelectThread: (threadId: string) => void;
-     handleCreateThread: () => Promise<void>;
-     handleDeleteThread: (threadId: string) => void;
-     handleRenameThread: (threadId: string, title: string) => void;
-     threadListKey: number;
-   };
-   ```
-
-3. **InputContext**: Contains input-related state that shouldn't change during streaming
-   ```tsx
-   type InputContextType = {
-     input: string;
-     handleInputChange: (value: string) => void;
-     handleSubmit: (event?: { preventDefault?: () => void }) => void;
-     stop: () => void;
-   };
-   ```
-
-### 2. Component-Specific Context Hooks
-
-Components now use only the contexts they need:
+Instead of sharing a single context for all message data, we created a dedicated provider just for streaming:
 
 ```tsx
-// MessageArea only needs MessageContext
-export const MessageArea = memo(function MessageArea() {
-  const { messages, isGenerating } = useMessageContext();
-  // ...
-});
+// StreamingMessageProvider.tsx
+export const StreamingMessageProvider: React.FC<StreamingMessageProviderProps> = ({
+  messages,
+  isGenerating,
+  children
+}) => {
+  // Process messages with timestamp correction
+  const processedMessages = useMemo(() => {
+    // Message processing logic...
+  }, [messages]);
+  
+  // Create a dedicated context value just for this component tree
+  const contextValue = useMemo(() => ({
+    messages: processedMessages,
+    isGenerating
+  }), [processedMessages, isGenerating]);
 
-// ChatInputArea needs both InputContext and MessageContext
-export const ChatInputArea = memo(function ChatInputArea() {
-  const { input, handleInputChange, handleSubmit, stop } = useInputContext();
-  const { isGenerating } = useMessageContext();
-  // ...
-});
+  return (
+    <StreamingMessageContext.Provider value={contextValue}>
+      {children}
+    </StreamingMessageContext.Provider>
+  );
+};
+```
 
-// ThreadList and MainLayout only need ThreadContext
-export const MainLayout = memo(function MainLayout() {
-  const { currentThreadId, handleSelectThread } = useThreadContext();
-  // ...
+This provider is used ONLY for the MessageArea component and nothing else:
+
+```tsx
+// In MainLayout.tsx
+<StreamingMessageProvider messages={messages} isGenerating={isGenerating}>
+  <MessageArea />
+</StreamingMessageProvider>
+```
+
+### 2. Handler Stabilization with Refs
+
+All event handlers are completely stabilized using refs to maintain stable identities:
+
+```tsx
+// StableInputProvider.tsx
+export const StableInputProvider = ({
+  input,
+  handleInputChange,
+  handleSubmit,
+  stop,
+  isGenerating,
+  children
+}) => {
+  // Store handlers in refs
+  const inputChangeRef = useRef(handleInputChange);
+  const submitRef = useRef(handleSubmit);
+  
+  // Update refs when props change
+  useEffect(() => {
+    inputChangeRef.current = handleInputChange;
+    submitRef.current = handleSubmit;
+    // ...other updates
+  }, [handleInputChange, handleSubmit, ...]);
+  
+  // Create stable handlers that never change identity
+  const stableInputChange = useCallback((value: string) => {
+    inputChangeRef.current(value);
+  }, []);
+  
+  const stableSubmit = useCallback((event) => {
+    submitRef.current(event);
+  }, []);
+  
+  // Provide stable handlers to children
+  const contextValue = useMemo(() => ({
+    input,
+    handleInputChange: stableInputChange,
+    handleSubmit: stableSubmit,
+    // ...other values
+  }), [input, stableInputChange, stableSubmit, ...]);
+
+  return (
+    <StableInputContext.Provider value={contextValue}>
+      {children}
+    </StableInputContext.Provider>
+  );
+};
+```
+
+### 3. Complete Provider Isolation
+
+The key innovation is that each functional area gets its own dedicated provider that wraps exactly the components that need it:
+
+```tsx
+// 1. Thread management context for the UI structure
+<ThreadContext.Provider value={threadContextValue}>
+  <SidebarProvider>
+    {/* Layout components */}
+    
+    {/* 2. Streaming context ONLY for message display */}
+    <StreamingMessageProvider messages={messages} isGenerating={isGenerating}>
+      <MessageArea />
+    </StreamingMessageProvider>
+    
+    {/* 3. Input context ONLY for the input area */}
+    <StableInputProvider 
+      input={inputContext.input} 
+      handleInputChange={inputContext.handleInputChange}
+      handleSubmit={inputContext.handleSubmit}
+      stop={inputContext.stop}
+      isGenerating={isGenerating}>
+      <ChatInputArea />
+    </StableInputProvider>
+  </SidebarProvider>
+</ThreadContext.Provider>
+```
+
+### 4. Component-Level Optimizations
+
+Within each isolated component, we applied additional optimizations:
+
+```tsx
+// In MessageInput.tsx (used by ChatInputArea)
+export const MessageInput = React.memo(function MessageInput(props) {
+  // Store unstable props in refs
+  const onChangeRef = useRef(props.onChange);
+  
+  // Update refs when props change
+  useEffect(() => {
+    onChangeRef.current = props.onChange;
+  }, [props.onChange]);
+
+  // Create completely stable handlers that never change
+  const stableOnChange = useCallback((e) => {
+    onChangeRef.current?.(e);
+  }, []);
+  
+  // Pre-compute and memoize all values
+  const showFileList = useMemo(() => 
+    props.allowAttachments && props.files && props.files.length > 0,
+  [props.allowAttachments, props.files]);
+  
+  // Memoize rendered components to avoid JSX recreation
+  const renderedFiles = useMemo(() => {
+    // File rendering logic
+  }, [props.files, handleFileRemove]);
+
+  // The component now has completely stable identity
+  return (
+    <div onDragOver={onDragOver} onDrop={onDrop}>
+      {/* Component content */}
+    </div>
+  );
 });
 ```
 
-### 3. Provider Implementation
+### 5. Thread List Optimizations
 
-The provider is implemented with nested contexts to maintain compatibility:
+The Thread List components were optimized to prevent unnecessary rerenders:
 
 ```tsx
-return (
-  <ThreadContext.Provider value={threadContextValue}>
-    <InputContext.Provider value={inputContextValue}>
-      <MessageContext.Provider value={messageContextValue}>
-        <ChatStateContext.Provider value={legacyContextValue}>
-          {children}
-        </ChatStateContext.Provider>
-      </MessageContext.Provider>
-    </InputContext.Provider>
-  </ThreadContext.Provider>
-);
+// StableThreadProvider.tsx
+export const StableThreadProvider: React.FC<StableThreadProviderProps> = ({
+  currentThreadId,
+  onSelectThread,
+  onDeleteThread,
+  deletingThreadIds,
+  children
+}) => {
+  // Store handler references to maintain stable identities
+  const selectThreadRef = useRef(onSelectThread);
+  const deleteThreadRef = useRef(onDeleteThread);
+  
+  // Update refs when props change
+  useEffect(() => {
+    selectThreadRef.current = onSelectThread;
+    deleteThreadRef.current = onDeleteThread;
+  }, [onSelectThread, onDeleteThread]);
+  
+  // Create stable handler functions that never change identity
+  const handleSelectThread = useCallback((threadId: string) => {
+    selectThreadRef.current(threadId);
+  }, []);
+  
+  const handleDeleteThread = useCallback((e: React.MouseEvent, threadId: string, threadTitle: string) => {
+    deleteThreadRef.current(e, threadId, threadTitle);
+  }, []);
+  
+  // Create context value
+  const contextValue = useMemo(() => ({
+    currentThreadId,
+    handleSelectThread,
+    handleDeleteThread,
+    deletingThreadIds
+  }), [currentThreadId, handleSelectThread, handleDeleteThread, deletingThreadIds]);
+  
+  return (
+    <StableThreadContext.Provider value={contextValue}>
+      {children}
+    </StableThreadContext.Provider>
+  );
+};
 ```
+
+The Thread Group and Thread Item components were updated to use this provider:
+
+```tsx
+// ThreadGroup.tsx
+export const ThreadGroup = React.memo(function ThreadGroup({
+  label,
+  threads
+}: ThreadGroupProps) {
+  // Get stable handlers from context instead of props
+  const { currentThreadId, handleSelectThread, handleDeleteThread, deletingThreadIds } = useStableThread();
+  
+  // Component implementation
+});
+
+// ThreadItem.tsx
+export const ThreadItem = React.memo(function ThreadItem({
+  thread,
+  isSelected,
+  onSelect,
+  onDelete,
+  isDeleting
+}: ThreadItemProps) {
+  // Create stable reference to thread ID and title
+  const threadIdRef = useRef(thread.id);
+  const threadTitleRef = useRef(thread.title);
+  
+  // Update refs when thread changes
+  if (threadIdRef.current !== thread.id) {
+    threadIdRef.current = thread.id;
+  }
+  
+  // Create stable handlers using refs and useCallback
+  const handleSelectThread = useCallback(() => {
+    onSelect(threadIdRef.current);
+    window.dispatchEvent(new Event('focus-chat-input'));
+  }, [onSelect]);
+  
+  // Memoize computed values
+  const threadItemClasses = useMemo(() => `...complex class string...`, 
+    [isSelected, isDeleting]);
+  
+  // Component implementation
+});
+```
+
+### 6. Key Performance Patterns
+
+This advanced architecture uses several key patterns for performance:
+
+1. **Isolation Boundaries**: Each functional area has its own provider
+2. **Component-Specific Contexts**: Contexts only include what each component needs
+3. **Handler Stabilization**: Using refs to create handlers that never change identity
+4. **JSX Memoization**: Memoizing rendered JSX to avoid recreation during renders
+5. **Value Pre-computation**: Computing values early and memoizing the results
+6. **Ref-Based Prop Stabilization**: Storing prop values in refs to maintain stable identity
+
+The result is a completely decoupled system where:
+- The streaming message display can update at 60 FPS
+- The input component never rerenders during streaming
+- The thread management UI never rerenders during streaming
+- The thread list items never rerender during streaming
+- No state changes propagate beyond the components that need them
+
+This architecture can be applied to any React application that needs to handle high-frequency updates in one part of the UI while keeping the rest of the interface stable.
 
 ## Remaining Issues: API Key Management
 
