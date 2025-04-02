@@ -61,60 +61,19 @@ export interface MarkdownRendererProps {
 const REMARK_PLUGINS = [remarkGfm];
 
 // Memoize the entire MarkdownRenderer component
-// Create a specialized component for incremental rendering of streamed markdown content
-// This uses a different approach since memoization doesn't help with streaming content
+// Create a specialized component for streaming content
+// Simpler implementation that always shows the current content
 export const StreamedMarkdownRenderer = ({ 
   children, 
   className 
 }: MarkdownRendererProps) => {
-  // Only parse the markdown when it REALLY changes - not on every character
-  // Store the last rendered content to compare with the new one
-  const lastContentRef = useRef<string>(children);
-  // Store the last rendered DOM to avoid recreating it
-  const lastRenderedRef = useRef<React.ReactNode>(null);
-  
-  // Calculate if this is a significant update (not just a few characters)
-  // Only re-parse markdown on significant updates to reduce CPU usage
-  const shouldUpdate = useMemo(() => {
-    // Always parse on first render
-    if (!lastRenderedRef.current) return true;
-    
-    // If content length is very similar, this is likely just a streaming update
-    // Only re-parse if we've received a substantial amount of new content
-    // (for example, 10+ new characters, or a new paragraph)
-    const lastLength = lastContentRef.current.length;
-    const newLength = children.length;
-    
-    // Parse on big chunks or if content has decreased (rare, but possible)
-    const lengthDifference = Math.abs(newLength - lastLength);
-    return lengthDifference > 20 || newLength < lastLength || children.includes("```") || children.includes("\n\n");
-  }, [children]);
-  
-  // Update the rendered content only when necessary
-  useEffect(() => {
-    if (shouldUpdate) {
-      lastContentRef.current = children;
-      lastRenderedRef.current = (
-        <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
-          {children}
-        </Markdown>
-      );
-    }
-  }, [children, shouldUpdate]);
-  
-  // Initial render - we need something right away
-  if (!lastRenderedRef.current) {
-    lastContentRef.current = children;
-    lastRenderedRef.current = (
+  // Just render the current content directly - no caching or optimization
+  // This ensures tokens always show up immediately
+  return (
+    <div className={className}>
       <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
         {children}
       </Markdown>
-    );
-  }
-  
-  return (
-    <div className={className}>
-      {lastRenderedRef.current}
     </div>
   );
 };

@@ -11,6 +11,8 @@ Analysis of the React Scan performance data revealed several key performance iss
 - `ChatMessage` component rendered 72 times unnecessarily
 - `ModelSelect` rendered 12 times with only `onChange` prop changes
 - High combined render time (166ms) with additional browser processing time (201ms)
+- **NEW**: ChatInputArea rerenders on every token during streaming (causing lag)
+- **NEW**: Message processing functions run repeatedly during streaming
 
 ## Implemented Solutions
 
@@ -70,7 +72,75 @@ export const ChatMessage = React.memo(function ChatMessage(props: ChatMessagePro
 });
 ```
 
-### 3. ModelSelect Component Optimizations
+### 3. ChatInputArea Optimizations
+
+The `ChatInputArea.tsx` component was heavily optimized to prevent unnecessary rerenders during streaming:
+
+- Memoized all event handlers with `useCallback` to maintain stable references
+- Added dependency arrays to all callback functions to prevent recreation
+- Memoized static values like placeholder text with `useMemo`
+- Optimized the render function for MessageInput to prevent cascading rerenders
+
+```tsx
+export const ChatInputArea = memo(function ChatInputArea() {
+  // Memoized handlers
+  const handleOnChange = useCallback((e: string | React.ChangeEvent<HTMLTextAreaElement>) => {
+    // Handle input change logic
+  }, [handleInputChange]);
+
+  const memoizedHandleSubmit = useCallback((event?: { preventDefault?: () => void }) => {
+    // Submit logic
+  }, [isModelAvailable, handleSubmit]);
+  
+  // Memoized values
+  const placeholderText = useMemo(() => 
+    !isModelAvailable ? "API key required for this model" : "Message...", 
+  [isModelAvailable]);
+  
+  // Optimized render function
+  const renderMessageInput = useCallback(({ files, setFiles }) => (
+    <MessageInput
+      value={input}
+      onChange={handleOnChange}
+      // Other props
+    />
+  ), [input, handleOnChange, stop, isGenerating, isModelAvailable, placeholderText]);
+  
+  return (
+    // Component JSX
+  );
+});
+```
+
+### 4. ChatStateProvider Optimizations
+
+The `ChatStateProvider.tsx` component was optimized to avoid expensive processing during streaming:
+
+- Added cache references to avoid reprocessing messages when only streaming updates occur
+- Implemented efficient message processing by checking if only the latest message has changed
+- Added refs to store processed message results to avoid redundant work
+- Optimized timestamp collision detection to run only when necessary
+
+```tsx
+// Use refs to cache processed messages
+const lastProcessedMessageIdRef = React.useRef<string | null>(null);
+const lastProcessedMessagesRef = React.useRef<UIMessage[]>([]);
+
+// Optimized processedMessages calculation
+const processedMessages = React.useMemo(() => {
+  // Skip processing if only streaming updates to the last message
+  if (messages.length > 0 && lastProcessedMessageIdRef.current === messages[messages.length - 1].id) {
+    return lastProcessedMessagesRef.current;
+  }
+  
+  // Process messages only when necessary
+  // Store results in refs for future reuse
+  
+  return processedMessages;
+}, [messages]);
+```
+
+### 5. ModelSelect Component Optimizations
 
 The `model-select.tsx` component had several performance issues that were addressed:
 
@@ -138,6 +208,7 @@ The performance optimizations should significantly reduce render counts and proc
 4. Profile with browser tools to identify potential DOM manipulation bottlenecks
 5. Fix the API key management to improve user experience and security
 6. **NEW**: Monitor the effectiveness of the streamed markdown renderer implementation to ensure it resolves the 1 FPS issue
+7. **NEW**: Consider adding debug modes for performance with `window.PERFORMANCE_DEBUG = true` to track rerenders
 
 ## Implementation Notes
 
@@ -150,5 +221,7 @@ When optimizing React applications for performance:
 5. Look for opportunities to pre-calculate values outside of render paths
 6. Reduce unnecessary re-renders using proper dependency arrays
 7. Ensure proper API key handling for production applications
+8. **NEW**: Use refs to cache expensive calculations that don't need to run on every render
+9. **NEW**: Consider incremental processing for streaming content to maintain UI responsiveness
 
-The Coder application should now have significantly improved performance, especially when displaying chat messages with markdown content. The next step should be to improve API key management for better user experience and security.
+The Coder application should now have significantly improved performance, especially when displaying chat messages with markdown content and handling streaming responses. The next step should be to improve API key management for better user experience and security.

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useState } from "react"
+import React, { useMemo, useState, useCallback } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { motion } from "framer-motion"
 import { ChevronRight } from "lucide-react"
@@ -108,14 +108,23 @@ function dataUrlToUint8Array(data: string) {
   return new Uint8Array(buf)
 }
 
-const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
+// Memoize the ReasoningBlock component to prevent unnecessary rerenders
+const ReasoningBlock = React.memo(function ReasoningBlock({ part }: { part: ReasoningPart }) {
   const [isOpen, setIsOpen] = useState(false)
+  
+  // Memoize the onOpenChange handler to maintain reference stability
+  const handleOpenChange = useCallback((open: boolean) => {
+    setIsOpen(open);
+  }, []);
+
+  // Memoize the reasoning content to prevent rendering on parent rerenders
+  const reasoningContent = useMemo(() => part.reasoning, [part.reasoning]);
 
   return (
     <div className="mb-2 flex flex-col items-start sm:max-w-[70%]">
       <Collapsible
         open={isOpen}
-        onOpenChange={setIsOpen}
+        onOpenChange={handleOpenChange}
         className="group w-full overflow-hidden rounded-lg border bg-muted/50"
       >
         <CollapsibleTrigger asChild>
@@ -141,7 +150,7 @@ const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
           >
             <div className="p-2">
               <div className="whitespace-pre-wrap text-xs">
-                {part.reasoning}
+                {reasoningContent}
               </div>
             </div>
           </motion.div>
@@ -149,7 +158,7 @@ const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
       </Collapsible>
     </div>
   )
-}
+});
 
 // Memoize the entire ChatMessage component to prevent unnecessary renders
 export const ChatMessage = React.memo(function ChatMessage({
@@ -184,14 +193,12 @@ export const ChatMessage = React.memo(function ChatMessage({
     })
   }, [createdAt])
   
-  // Use StreamedMarkdownRenderer for assistant messages (which are likely streaming)
-  // and regular MarkdownRenderer for user/system messages (which are not streaming)
+  // Use regular markdown renderer for all messages
+  // The previous attempt to optimize with StreamedMarkdownRenderer was causing issues
   const messageContent = useMemo(() => {
-    // Assistant messages use the streamed renderer for better performance with incremental updates
-    return role === 'assistant' 
-      ? <StreamedMarkdownRenderer>{content}</StreamedMarkdownRenderer>
-      : <MarkdownRenderer>{content}</MarkdownRenderer>;
-  }, [content, role])
+    // All messages now use the standard renderer
+    return <MarkdownRenderer>{content}</MarkdownRenderer>;
+  }, [content])
 
   if (isSystem) {
     // System messages (like errors) use a special style
@@ -265,59 +272,105 @@ export const ChatMessage = React.memo(function ChatMessage({
   }
 
   if (parts && parts.length > 0) {
-    // Use useMemo to memoize the mapped parts
-    const renderedParts = useMemo(() => {
-      return parts.map((part, index) => {
-        if (part.type === "text") {
-          // Use StreamedMarkdownRenderer for assistant messages which are likely streaming
-          const partContent = role === 'assistant'
-            ? <StreamedMarkdownRenderer>{part.text}</StreamedMarkdownRenderer>
-            : <MarkdownRenderer>{part.text}</MarkdownRenderer>;
-          
-          return (
-            <div
-              className={cn(
-                "flex flex-col",
-                isUser ? "items-end" : "items-start"
-              )}
-              key={`text-${index}`}
-            >
-              <div className={cn(chatBubbleVariants({ isUser, animation }))}>
-                {partContent}
-                {actions ? (
-                  <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
-                    {actions}
-                  </div>
-                ) : null}
-              </div>
-
-              {showTimeStamp && createdAt ? (
-                <time
-                  dateTime={createdAt.toISOString()}
-                  className={cn(
-                    "mt-1 block px-1 text-xs opacity-50"
-                  )}
-                >
-                  {formattedTime}
-                </time>
+    // Extract and memoize reasoning parts separately
+    const reasoningParts = useMemo(() => 
+      parts.filter(part => part.type === "reasoning") as ReasoningPart[],
+    [parts]);
+    
+    // Extract and memoize tool invocation parts separately
+    const toolInvocationParts = useMemo(() => 
+      parts.filter(part => part.type === "tool-invocation") as ToolInvocationPart[],
+    [parts]);
+    
+    // Extract and memoize text parts separately
+    const textParts = useMemo(() => 
+      parts.filter(part => part.type === "text") as TextPart[],
+    [parts]);
+    
+    // Render text parts
+    const renderedTextParts = useMemo(() => {
+      return textParts.map((part, index) => {
+        // Use standard MarkdownRenderer for all parts
+        const partContent = <MarkdownRenderer>{part.text}</MarkdownRenderer>;
+        
+        return (
+          <div
+            className={cn(
+              "flex flex-col",
+              isUser ? "items-end" : "items-start"
+            )}
+            key={`text-${index}`}
+          >
+            <div className={cn(chatBubbleVariants({ isUser, animation }))}>
+              {partContent}
+              {actions ? (
+                <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
+                  {actions}
+                </div>
               ) : null}
             </div>
-          );
-        } else if (part.type === "reasoning") {
-          return <ReasoningBlock key={`reasoning-${index}`} part={part} />;
-        } else if (part.type === "tool-invocation") {
-          return (
-            <ToolCall
-              key={`tool-${index}`}
-              toolInvocations={[part.toolInvocation]}
-            />
-          );
-        }
-        return null;
+
+            {showTimeStamp && createdAt ? (
+              <time
+                dateTime={createdAt.toISOString()}
+                className={cn(
+                  "mt-1 block px-1 text-xs opacity-50"
+                )}
+              >
+                {formattedTime}
+              </time>
+            ) : null}
+          </div>
+        );
       });
-    }, [parts, isUser, animation, actions, showTimeStamp, createdAt, formattedTime]);
+    }, [textParts, role, isUser, animation, actions, showTimeStamp, createdAt, formattedTime]);
     
-    return renderedParts;
+    // Render reasoning parts
+    const renderedReasoningParts = useMemo(() => {
+      return reasoningParts.map((part, index) => (
+        <ReasoningBlock key={`reasoning-${index}`} part={part} />
+      ));
+    }, [reasoningParts]);
+    
+    // Render tool invocation parts
+    const renderedToolParts = useMemo(() => {
+      return toolInvocationParts.map((part, index) => (
+        <ToolCall
+          key={`tool-${index}`}
+          toolInvocations={[part.toolInvocation]}
+        />
+      ));
+    }, [toolInvocationParts]);
+    
+    // Combine all rendered parts in proper order
+    const renderedParts = useMemo(() => {
+      // Create an array to hold all rendered parts in their original order
+      const result: React.ReactNode[] = [];
+      
+      // Map through original parts to maintain order
+      parts.forEach((part, index) => {
+        if (part.type === "text") {
+          const textIndex = textParts.findIndex(p => p === part);
+          if (textIndex !== -1) {
+            result.push(renderedTextParts[textIndex]);
+          }
+        } else if (part.type === "reasoning") {
+          const reasoningIndex = reasoningParts.findIndex(p => p === part);
+          if (reasoningIndex !== -1) {
+            result.push(renderedReasoningParts[reasoningIndex]);
+          }
+        } else if (part.type === "tool-invocation") {
+          const toolIndex = toolInvocationParts.findIndex(p => p === part);
+          if (toolIndex !== -1) {
+            result.push(renderedToolParts[toolIndex]);
+          }
+        }
+      });
+      
+      return result;
+    }, [parts, textParts, reasoningParts, toolInvocationParts, renderedTextParts, renderedReasoningParts, renderedToolParts]);
+    
+    return <>{renderedParts}</>;
   }
 
   if (toolInvocations && toolInvocations.length > 0) {

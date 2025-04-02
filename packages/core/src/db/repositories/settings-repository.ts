@@ -118,7 +118,7 @@ export class SettingsRepository {
 
       // If we have changes, return the updated settings
       if (hasChanges) {
-        console.log("Returning settings with pending updates applied");
+        // console.log("Returning settings with pending updates applied");
         return toMutableSettings(updatedSettings);
       }
 
