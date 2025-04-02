@@ -47,7 +47,7 @@ export const ModelSelect = React.memo(function ModelSelect({
     // Add safety check to prevent running too frequently (throttle)
     const now = Date.now();
     if (now - lastCheckTimeRef.current < 2000) { // 2 second minimum delay
-      console.log("Throttling model availability check - ran too recently");
+      // console.log("Throttling model availability check - ran too recently");
       return {
         availability: modelAvailability,  // Return current values
         messages: modelMessages
@@ -55,7 +55,7 @@ export const ModelSelect = React.memo(function ModelSelect({
     }
 
     lastCheckTimeRef.current = now;
-    console.log("Checking model availability in ModelSelect");
+    // console.log("Checking model availability in ModelSelect");
     const availability: Record<string, boolean> = {};
     const messages: Record<string, string> = {};
 
@@ -86,7 +86,7 @@ export const ModelSelect = React.memo(function ModelSelect({
             const storedUrl = localStorage.getItem("openagents_lmstudio_url");
             if (storedUrl) {
               lmStudioUrl = storedUrl;
-              console.log("Using LMStudio URL from localStorage:", lmStudioUrl);
+              // console.log("Using LMStudio URL from localStorage:", lmStudioUrl);
             }
           } catch (e) {
             console.warn("Error reading LMStudio URL from localStorage:", e);
@@ -94,7 +94,7 @@ export const ModelSelect = React.memo(function ModelSelect({
 
           // Use our server-side proxy to avoid CORS issues
           const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${lmStudioUrl}/v1/models`)}`;
-          console.log("Checking LMStudio via proxy:", proxyUrl);
+          // console.log("Checking LMStudio via proxy:", proxyUrl);
 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
@@ -106,11 +106,11 @@ export const ModelSelect = React.memo(function ModelSelect({
           });
 
           clearTimeout(timeoutId);
-          console.log("LMStudio proxy response status:", response.status, "ok:", response.ok);
+          // console.log("LMStudio proxy response status:", response.status, "ok:", response.ok);
 
           if (response.ok) {
             const data = await response.json();
-            console.log("LMStudio models data:", data);
+            // console.log("LMStudio models data:", data);
 
             // Extract model IDs from different formats and create model entries
             let newDynamicModels: typeof MODELS = [];
@@ -118,7 +118,7 @@ export const ModelSelect = React.memo(function ModelSelect({
             if (data) {
               if (data.data && Array.isArray(data.data) && data.data.length > 0) {
                 // Standard OpenAI format
-                console.log("Found LMStudio models in data.data array:", data.data);
+                // console.log("Found LMStudio models in data.data array:", data.data);
 
                 newDynamicModels = data.data.map((model: any) => {
                   const id = model.id || "unknown";
@@ -153,7 +153,7 @@ export const ModelSelect = React.memo(function ModelSelect({
 
               } else if (Array.isArray(data) && data.length > 0) {
                 // Array format
-                console.log("Found LMStudio models in root array:", data);
+                // console.log("Found LMStudio models in root array:", data);
 
                 newDynamicModels = data.map((model: any) => {
                   const id = typeof model === 'string' ? model : (model.id || model.name || model.model || "unknown");
@@ -188,7 +188,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                 });
               } else if (data.models && Array.isArray(data.models) && data.models.length > 0) {
                 // models array format
-                console.log("Found LMStudio models in data.models array:", data.models);
+                // console.log("Found LMStudio models in data.models array:", data.models);
 
                 newDynamicModels = data.models.map((model: any) => {
                   const id = typeof model === 'string' ? model : (model.id || model.name || model.model || "unknown");
@@ -224,7 +224,7 @@ export const ModelSelect = React.memo(function ModelSelect({
               }
             }
 
-            console.log("Created dynamic LMStudio models:", newDynamicModels);
+            // console.log("Created dynamic LMStudio models:", newDynamicModels);
 
             // Compare with current models to see if we actually need to update
             // This prevents infinite update loops
@@ -235,10 +235,10 @@ export const ModelSelect = React.memo(function ModelSelect({
               );
 
             if (needsUpdate) {
-              console.log("Updating dynamic models - models have changed");
+              // console.log("Updating dynamic models - models have changed");
               setDynamicLmStudioModels(newDynamicModels);
             } else {
-              console.log("Skipping dynamic models update - no changes detected");
+              // console.log("Skipping dynamic models update - no changes detected");
             }
 
             return newDynamicModels.length > 0;
@@ -256,7 +256,7 @@ export const ModelSelect = React.memo(function ModelSelect({
           // Only clear dynamic models on error if we actually have some
           // This prevents unnecessary re-renders
           if (dynamicLmStudioModels.length > 0) {
-            console.log("Clearing dynamic models due to error");
+            // console.log("Clearing dynamic models due to error");
             setDynamicLmStudioModels([]);
           }
           return false;
@@ -353,7 +353,7 @@ export const ModelSelect = React.memo(function ModelSelect({
       }
 
       lastUpdateRef.current = now;
-      console.log("Running availability update at:", new Date().toISOString());
+      // console.log("Running availability update at:", new Date().toISOString());
 
       const { availability, messages } = await checkAvailability();
       setModelAvailability(availability);
@@ -365,13 +365,13 @@ export const ModelSelect = React.memo(function ModelSelect({
 
     // Listen for URL changes
     const handleLmStudioUrlChange = () => {
-      console.log("LMStudio URL changed, updating model availability in ModelSelect");
+      // console.log("LMStudio URL changed, updating model availability in ModelSelect");
       updateAvailability();
     };
 
     // Handle when a model is selected from outside this component
     const handleModelSelected = (event: CustomEvent<{ modelId: string }>) => {
-      console.log("Model selected event received:", event.detail?.modelId);
+      // console.log("Model selected event received:", event.detail?.modelId);
 
       // If the selected model is not in our dynamic models, add it
       const modelId = event.detail?.modelId;
@@ -500,7 +500,7 @@ export const ModelSelect = React.memo(function ModelSelect({
   useEffect(() => {
     // If value is set but not in filtered models, add it specially
     if (value && filteredModels.every(model => model.id !== value)) {
-      console.log("Currently selected model not found in filtered models. Adding it:", value);
+      // console.log("Currently selected model not found in filtered models. Adding it:", value);
 
       // Create temporary model object for the current value
       const modelName = value.split('/').pop() || value;
@@ -543,7 +543,7 @@ export const ModelSelect = React.memo(function ModelSelect({
     // If no match found but we have a value, create a temporary model object
     // This handles cases where the model ID exists but hasn't been loaded into either array yet
     if (value) {
-      console.log("Creating temporary model object for ID:", value);
+      // console.log("Creating temporary model object for ID:", value);
       // Try to extract a decent name from the ID
       const modelName = value.split('/').pop() || value;
       const formattedName = modelName
@@ -640,7 +640,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                   onSelect={() => {
                     // Only allow selection if model is available
                     if (isAvailable) {
-                      console.log("Selecting model:", model.id, model.name);
+                      // console.log("Selecting model:", model.id, model.name);
                       onChange(model.id);
                       setOpen(false);
 
@@ -653,7 +653,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                       // Additionally update dynamic models list if needed
                       if (model.provider === 'lmstudio' &&
                         !dynamicModelsRef.current.some(m => m.id === model.id)) {
-                        console.log("Adding selected model to dynamic models list");
+                        // console.log("Adding selected model to dynamic models list");
                         setDynamicLmStudioModels(prev => [...prev, model]);
                       }
 
