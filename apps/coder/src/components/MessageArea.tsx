@@ -1,9 +1,10 @@
 import React, { memo } from 'react';
 import { MessageList } from '@/components/ui/message-list';
-import { useChatState } from '@/providers/ChatStateProvider';
+import { useMessageContext } from '@/providers/ChatStateProvider';
 
 export const MessageArea = memo(function MessageArea() {
-  const { messages, isGenerating } = useChatState();
+  // Use only the message context to avoid rerenders from other state changes
+  const { messages, isGenerating } = useMessageContext();
   
   return (
     <div className="overflow-y-auto relative">

@@ -18,9 +18,11 @@ import { ModelHeader } from '@/components/ModelHeader';
 import { ThreadList } from '@/components/ThreadList';
 import { MessageArea } from '@/components/MessageArea';
 import { ChatInputArea } from '@/components/ChatInputArea';
-import { useChatState } from '@/providers/ChatStateProvider';
+import { useThreadContext } from '@/providers/ChatStateProvider';
 
 export const MainLayout = memo(function MainLayout() {
+  // Use thread context instead of the full chat state
+  // This ensures this component won't rerender during message streaming
   const { 
     currentThreadId, 
     handleSelectThread,
@@ -28,7 +30,7 @@ export const MainLayout = memo(function MainLayout() {
     handleDeleteThread,
     handleRenameThread,
     threadListKey
-  } = useChatState();
+  } = useThreadContext();
   
   return (
     <SidebarProvider defaultOpen={true}>

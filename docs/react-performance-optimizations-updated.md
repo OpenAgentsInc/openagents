@@ -169,9 +169,88 @@ export const ModelSelect = React.memo(function ModelSelect(props: ModelSelectPro
 });
 ```
 
-## Additional Improvements Needed
+## Context-Based State Management Implementation
 
-### API Key Management
+We've implemented a context-based state management system to improve performance, especially during streaming:
+
+### 1. Split ChatState into Specialized Contexts
+
+The original global ChatState context was split into three specialized contexts:
+
+1. **MessageContext**: Contains only message-related state that changes during streaming
+   ```tsx
+   type MessageContextType = {
+     messages: UIMessage[];
+     isGenerating: boolean;
+   };
+   ```
+
+2. **ThreadContext**: Contains thread-related state that shouldn't change during streaming
+   ```tsx
+   type ThreadContextType = {
+     currentThreadId: string | null;
+     handleSelectThread: (threadId: string) => void;
+     handleCreateThread: () => Promise<void>;
+     handleDeleteThread: (threadId: string) => void;
+     handleRenameThread: (threadId: string, title: string) => void;
+     threadListKey: number;
+   };
+   ```
+
+3. **InputContext**: Contains input-related state that shouldn't change during streaming
+   ```tsx
+   type InputContextType = {
+     input: string;
+     handleInputChange: (value: string) => void;
+     handleSubmit: (event?: { preventDefault?: () => void }) => void;
+     stop: () => void;
+   };
+   ```
+
+### 2. Component-Specific Context Hooks
+
+Components now use only the contexts they need:
+
+```tsx
+// MessageArea only needs MessageContext
+export const MessageArea = memo(function MessageArea() {
+  const { messages, isGenerating } = useMessageContext();
+  // ...
+});
+
+// ChatInputArea needs both InputContext and MessageContext
+export const ChatInputArea = memo(function ChatInputArea() {
+  const { input, handleInputChange, handleSubmit, stop } = useInputContext();
+  const { isGenerating } = useMessageContext();
+  // ...
+});
+
+// ThreadList and MainLayout only need ThreadContext
+export const MainLayout = memo(function MainLayout() {
+  const { currentThreadId, handleSelectThread } = useThreadContext();
+  // ...
+});
+```
+
+### 3. Provider Implementation
+
+The provider is implemented with nested contexts to maintain compatibility:
+
+```tsx
+return (
+  <ThreadContext.Provider value={threadContextValue}>
+    <InputContext.Provider value={inputContextValue}>
+      <MessageContext.Provider value={messageContextValue}>
+        <ChatStateContext.Provider value={legacyContextValue}>
+          {children}
+        </ChatStateContext.Provider>
+      </MessageContext.Provider>
+    </InputContext.Provider>
+  </ThreadContext.Provider>
+);
+```
+
+## Remaining Issues: API Key Management
 
 Currently, there's an issue with how API keys are handled in the application:
 

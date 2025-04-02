@@ -1,15 +1,19 @@
-import React, { createContext, useContext, useCallback, useState } from 'react';
+import React, { createContext, useContext, useCallback, useState, useRef, useMemo } from 'react';
 import { usePersistentChat, type UIMessage, createUserFriendlyErrorMessage } from '@openagents/core';
 import { useModelContext } from './ModelProvider';
 import { useApiKeyContext } from './ApiKeyProvider';
 
-type ChatStateContextType = {
+// Create separate contexts for different parts of the state
+// This allows components to only rerender when the parts they care about change
+
+// For message content - this will update frequently during streaming
+type MessageContextType = {
   messages: UIMessage[];
-  input: string;
-  handleInputChange: (value: string) => void;
-  handleSubmit: (event?: { preventDefault?: () => void } | undefined, options?: { experimental_attachments?: FileList | undefined } | undefined) => void;
   isGenerating: boolean;
-  stop: () => void;
+};
+
+// For thread management - this should not update during streaming
+type ThreadContextType = {
   currentThreadId: string | null;
   handleSelectThread: (threadId: string) => void;
   handleCreateThread: () => Promise<void>;
@@ -18,8 +22,43 @@ type ChatStateContextType = {
   threadListKey: number;
 };
 
+// For input handling - this should not update during streaming
+type InputContextType = {
+  input: string;
+  handleInputChange: (value: string) => void;
+  handleSubmit: (event?: { preventDefault?: () => void } | undefined, options?: { experimental_attachments?: FileList | undefined } | undefined) => void;
+  stop: () => void;
+};
+
+// Create the separate contexts
+const MessageContext = createContext<MessageContextType | null>(null);
+const ThreadContext = createContext<ThreadContextType | null>(null);
+const InputContext = createContext<InputContextType | null>(null);
+
+// Legacy combined context for backward compatibility
+type ChatStateContextType = MessageContextType & ThreadContextType & InputContextType;
 const ChatStateContext = createContext<ChatStateContextType | null>(null);
 
+// Export hooks for each context
+export const useMessageContext = () => {
+  const context = useContext(MessageContext);
+  if (!context) throw new Error('useMessageContext must be used within a ChatStateProvider');
+  return context;
+};
+
+export const useThreadContext = () => {
+  const context = useContext(ThreadContext);
+  if (!context) throw new Error('useThreadContext must be used within a ChatStateProvider');
+  return context;
+};
+
+export const useInputContext = () => {
+  const context = useContext(InputContext);
+  if (!context) throw new Error('useInputContext must be used within a ChatStateProvider');
+  return context;
+};
+
+// Legacy hook for backward compatibility
 export const useChatState = () => {
   const context = useContext(ChatStateContext);
   if (!context) throw new Error('useChatState must be used within a ChatStateProvider');
@@ -345,22 +384,47 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     handleInputChange(syntheticEvent);
   };
 
+  // Memoize context values to prevent unnecessary rerenders
+  // 1. Message context - will update during streaming
+  const messageContextValue = useMemo(() => ({
+    messages: processedMessages,
+    isGenerating
+  }), [processedMessages, isGenerating]);
+
+  // 2. Thread context - should not update during streaming
+  const threadContextValue = useMemo(() => ({
+    currentThreadId: currentThreadId || null,
+    handleSelectThread,
+    handleCreateThread,
+    handleDeleteThread,
+    handleRenameThread,
+    threadListKey
+  }), [currentThreadId, handleSelectThread, handleCreateThread, handleDeleteThread, handleRenameThread, threadListKey]);
+
+  // 3. Input context - should not update during streaming
+  const inputContextValue = useMemo(() => ({
+    input,
+    handleInputChange: typeSafeHandleInputChange,
+    handleSubmit,
+    stop
+  }), [input, typeSafeHandleInputChange, handleSubmit, stop]);
+
+  // Combined legacy context for backward compatibility
+  const legacyContextValue = useMemo(() => ({
+    ...messageContextValue,
+    ...threadContextValue,
+    ...inputContextValue
+  }), [messageContextValue, threadContextValue, inputContextValue]);
+
   return (
-    <ChatStateContext.Provider value={{
-      messages: processedMessages,
-      input,
-      handleInputChange: typeSafeHandleInputChange,
-      handleSubmit,
-      isGenerating,
-      stop,
-      currentThreadId: currentThreadId || null,
-      handleSelectThread,
-      handleCreateThread,
-      handleDeleteThread,
-      handleRenameThread,
-      threadListKey,
-    }}>
-      {children}
-    </ChatStateContext.Provider>
+    <ThreadContext.Provider value={threadContextValue}>
+      <InputContext.Provider value={inputContextValue}>
+        <MessageContext.Provider value={messageContextValue}>
+          <ChatStateContext.Provider value={legacyContextValue}>
+            {children}
+          </ChatStateContext.Provider>
+        </MessageContext.Provider>
+      </InputContext.Provider>
+    </ThreadContext.Provider>
   );
 };

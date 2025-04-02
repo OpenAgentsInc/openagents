@@ -3,17 +3,21 @@ import { ChatForm } from '@/components/ui/chat';
 import { MessageInput } from '@/components/ui/message-input';
 import { ModelWarningBanner } from './ModelWarningBanner';
 import { useModelContext } from '@/providers/ModelProvider';
-import { useChatState } from '@/providers/ChatStateProvider';
+import { useInputContext, useMessageContext } from '@/providers/ChatStateProvider';
 
 export const ChatInputArea = memo(function ChatInputArea() {
   const { isModelAvailable } = useModelContext();
+  
+  // Get input state from InputContext (won't rerender during streaming)
   const { 
     input, 
     handleInputChange, 
     handleSubmit,
-    isGenerating,
     stop 
-  } = useChatState();
+  } = useInputContext();
+  
+  // Only get isGenerating from MessageContext
+  const { isGenerating } = useMessageContext();
   
   // Memoize the onChange handler to prevent recreation on every render
   const handleOnChange = useCallback((e: string | React.ChangeEvent<HTMLTextAreaElement>) => {
