@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
-import { usePersistentChat, useSettings, models, DEFAULT_SYSTEM_PROMPT } from "@openagents/core";
+import { usePersistentChat, useSettings, MODELS, DEFAULT_SYSTEM_PROMPT } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -26,13 +26,18 @@ import { Button } from "@/components/ui/button";
 import { Message, type UIPart, type UIMessage } from "@openagents/core";
 
 interface Settings {
-  defaultModel: string;
+  defaultModel?: string;
+  selectedModelId?: string;
+  visibleModelIds?: string[];
   // Add other settings properties as needed
 }
 
 export default function HomePage() {
   // Get settings including the default model
-  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings } = useSettings();
+  const { settings, isLoading: isLoadingSettings, clearSettingsCache, updateSettings, refresh: refreshSettings, selectModel } = useSettings();
+  
+  // Define state variables first
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
 
   // Force a refresh of settings when the component mounts
   useEffect(() => {
@@ -50,8 +55,76 @@ export default function HomePage() {
       }
     })();
   }, [clearSettingsCache]);
-  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  
+  // Use a ref to track the last applied model ID to prevent loops
+  const lastAppliedModelRef = React.useRef<string | null>(null);
+  
+  // Add event listener for page visibility and focus to refresh settings
+  useEffect(() => {
+    // Store the visibility handler to properly remove it
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleFocus();
+      }
+    };
+    
+    // Function to refresh settings from database
+    const handleFocus = () => {
+      console.log("Page focused, refreshing settings");
+      refreshSettings().then(updatedSettings => {
+        if (updatedSettings && updatedSettings.selectedModelId) {
+          const newModelId = updatedSettings.selectedModelId;
+          console.log(`Refreshed settings with model: ${newModelId}`);
+          
+          // Check if this model update is new (not just the one we applied)
+          // and also different from what's currently selected
+          if (selectedModelId !== newModelId && lastAppliedModelRef.current !== newModelId) {
+            console.log(`Updating model from ${selectedModelId} to ${newModelId}`);
+            // Update our ref to track this change
+            lastAppliedModelRef.current = newModelId;
+            setSelectedModelId(newModelId);
+          }
+        }
+      });
+    };
+    
+    // Handle custom event from settings page
+    const handleModelSettingsChanged = (event: any) => {
+      console.log("Received model-settings-changed event", event.detail);
+      if (event.detail && event.detail.selectedModelId) {
+        const newModelId = event.detail.selectedModelId;
+        console.log(`Setting model from event: ${newModelId}`);
+        
+        // Track that we're about to apply this model ID to prevent loops
+        lastAppliedModelRef.current = newModelId;
+        
+        if (selectedModelId !== newModelId) {
+          setSelectedModelId(newModelId);
+        }
+      } else {
+        // If no details provided, just refresh settings
+        handleFocus();
+      }
+    };
 
+    // Add event listeners
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('model-settings-changed', handleModelSettingsChanged);
+    
+    // Load settings on first mount
+    handleFocus();
+    
+    // Cleanup event listeners
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('model-settings-changed', handleModelSettingsChanged);
+    };
+    
+    // Only depend on refreshSettings to avoid re-running the effect when selectedModelId changes
+  }, [refreshSettings]);
+  
   useEffect(() => {
     async function setupModel() {
       try {
@@ -65,7 +138,7 @@ export default function HomePage() {
         try {
           if (typeof window !== 'undefined' && window.localStorage) {
             const activeModel = window.localStorage.getItem('openagents_active_model');
-            if (activeModel && models.some(model => model.id === activeModel)) {
+            if (activeModel && MODELS.some(model => model.id === activeModel)) {
               // console.log(`Using active model from localStorage: ${activeModel}`);
               userSelectedModel = activeModel;
             }
@@ -79,7 +152,7 @@ export default function HomePage() {
           try {
             if (typeof window !== 'undefined' && window.sessionStorage) {
               const currentModel = window.sessionStorage.getItem('openagents_current_model');
-              if (currentModel && models.some(model => model.id === currentModel)) {
+              if (currentModel && MODELS.some(model => model.id === currentModel)) {
                 console.log(`Using current model from sessionStorage: ${currentModel}`);
                 userSelectedModel = currentModel;
               }
@@ -102,45 +175,51 @@ export default function HomePage() {
           return;
         }
 
-        // If no user selection, use default from settings (lower priority)
-        // Check if we already have a selected model and matches settings (to prevent unnecessary reselection)
-        if (selectedModelId && selectedModelId === settings.defaultModel) {
+        // If no user selection, use selected model from settings (lower priority)
+        // First get the model ID from settings, preferring selectedModelId but falling back to defaultModel
+        const settingsModelId = settings.selectedModelId || settings.defaultModel;
+        
+        // Check if we already have a selected model that matches settings (to prevent unnecessary reselection)
+        if (selectedModelId && selectedModelId === settingsModelId) {
           // console.log(`Model already selected (${selectedModelId}) matches settings`);
           return;
         }
 
-        if (settings.defaultModel) {
-          console.log(`Loading default model from settings: ${settings.defaultModel}`);
+        if (settingsModelId) {
+          console.log(`Loading model from settings: ${settingsModelId}`);
 
           // Check if the model exists in our models list
-          const modelExists = models.some(model => model.id === settings.defaultModel);
+          const modelExists = MODELS.some(model => model.id === settingsModelId);
 
           if (modelExists) {
-            console.log(`Model ${settings.defaultModel} found, selecting it`);
-            setSelectedModelId(settings.defaultModel);
+            console.log(`Model ${settingsModelId} found, selecting it`);
+            setSelectedModelId(settingsModelId);
 
             // Also save to sessionStorage for resilience
             try {
               if (typeof window !== 'undefined' && window.sessionStorage) {
-                window.sessionStorage.setItem('openagents_current_model', settings.defaultModel);
+                window.sessionStorage.setItem('openagents_current_model', settingsModelId);
               }
             } catch (storageError) {
               console.warn("Error storing model in sessionStorage:", storageError);
             }
           } else {
             // If model doesn't exist, default to first model AND update settings
-            console.warn(`Model ${settings.defaultModel} not found in models list, using fallback`);
+            console.warn(`Model ${settingsModelId} not found in models list, using fallback`);
 
-            if (models.length > 0) {
-              const fallbackModel = models[0].id;
+            if (MODELS.length > 0) {
+              const fallbackModel = MODELS[0].id;
               setSelectedModelId(fallbackModel);
 
               // Update the settings to use a valid model
               console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
               try {
-                // Update the default model
-                const result = await updateSettings({ defaultModel: fallbackModel }) as Settings;
-                console.log("Settings auto-corrected:", result.defaultModel);
+                // Update both fields for compatibility
+                const result = await updateSettings({ 
+                  defaultModel: fallbackModel,
+                  selectedModelId: fallbackModel
+                }) as Settings;
+                console.log("Settings auto-corrected:", result.selectedModelId || result.defaultModel);
               } catch (error) {
                 console.error("Failed to auto-correct settings:", error);
               }
@@ -148,18 +227,21 @@ export default function HomePage() {
           }
         } else {
           // Default to first model if no default is set
-          console.log("No default model in settings, using first model");
-          if (models.length > 0) {
-            const firstModel = models[0].id;
+          console.log("No model selected in settings, using first model");
+          if (MODELS.length > 0) {
+            const firstModel = MODELS[0].id;
             setSelectedModelId(firstModel);
 
-            // Save this as the default
-            console.log(`Setting first model as default: ${firstModel}`);
+            // Save this as the selected model
+            console.log(`Setting first model as selected model: ${firstModel}`);
             try {
-              await updateSettings({ defaultModel: firstModel });
-              console.log("Default model saved");
+              await updateSettings({ 
+                defaultModel: firstModel, // For backward compatibility
+                selectedModelId: firstModel 
+              });
+              console.log("Selected model saved");
             } catch (error) {
-              console.error("Failed to save default model:", error);
+              console.error("Failed to save selected model:", error);
             }
           }
         }
@@ -172,7 +254,7 @@ export default function HomePage() {
   }, [settings, clearSettingsCache, updateSettings]);
 
   // Find the selected model
-  const selectedModel = models.find(model => model.id === selectedModelId) || models[0];
+  // const selectedModel = MODELS.find(model => model.id === selectedModelId) || models[0];
 
   // Load the system prompt from preferences
   const [systemPrompt, setSystemPrompt] = useState<string>("");
@@ -294,8 +376,11 @@ export default function HomePage() {
 
   // Handle model change - this happens when user selects from dropdown
   const handleModelChange = (modelId: string) => {
-    // console.log(`Model changed via dropdown to: ${modelId}`);
+    console.log(`Model changed via dropdown to: ${modelId}`);
 
+    // Track that we're about to apply this model to prevent loops
+    lastAppliedModelRef.current = modelId;
+    
     // Set the model ID for current session
     setSelectedModelId(modelId);
 
@@ -317,8 +402,10 @@ export default function HomePage() {
       console.warn("Error storing model in localStorage:", localStorageError);
     }
 
-    // We don't update the default model here - this is just for the current session
-    // Users need to go to settings to permanently change the default model
+    // Also update the settings to persist this selection
+    selectModel(modelId).catch(error => {
+      console.error("Failed to update settings with selected model:", error);
+    });
   };
 
   return (

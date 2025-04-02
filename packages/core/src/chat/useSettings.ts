@@ -127,6 +127,69 @@ export function useSettings() {
     }
   }, [loadSettings]);
 
+  // Select a model as the current active model
+  const selectModel = useCallback(async (modelId: string): Promise<Settings | null> => {
+    try {
+      const updatedSettings = await settingsRepository.selectModel(modelId);
+      setSettings(updatedSettings);
+      return updatedSettings;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error selecting model:', error);
+      return null;
+    }
+  }, []);
+
+  // Show a model in the selector
+  const showModel = useCallback(async (modelId: string): Promise<Settings | null> => {
+    try {
+      const updatedSettings = await settingsRepository.showModel(modelId);
+      setSettings(updatedSettings);
+      return updatedSettings;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error showing model:', error);
+      return null;
+    }
+  }, []);
+
+  // Hide a model from the selector
+  const hideModel = useCallback(async (modelId: string): Promise<Settings | null> => {
+    try {
+      const updatedSettings = await settingsRepository.hideModel(modelId);
+      setSettings(updatedSettings);
+      return updatedSettings;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error hiding model:', error);
+      return null;
+    }
+  }, []);
+
+  // Toggle a model's visibility
+  const toggleModelVisibility = useCallback(async (modelId: string): Promise<Settings | null> => {
+    try {
+      const updatedSettings = await settingsRepository.toggleModelVisibility(modelId);
+      setSettings(updatedSettings);
+      return updatedSettings;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error toggling model visibility:', error);
+      return null;
+    }
+  }, []);
+
+  // Get visible model IDs
+  const getVisibleModelIds = useCallback(async (): Promise<string[]> => {
+    try {
+      return await settingsRepository.getVisibleModelIds();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error getting visible model IDs:', error);
+      return [];
+    }
+  }, []);
+
   return {
     settings,
     isLoading,
@@ -139,6 +202,12 @@ export function useSettings() {
     setPreference,
     getPreference,
     clearSettingsCache,
-    resetSettings
+    resetSettings,
+    // New model grid methods
+    selectModel,
+    showModel,
+    hideModel,
+    toggleModelVisibility,
+    getVisibleModelIds
   };
 }
