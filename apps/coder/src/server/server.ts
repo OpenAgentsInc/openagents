@@ -8,6 +8,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ollama, createOllama } from 'ollama-ai-provider';
 import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
 // Define environment interface
 interface Env {
@@ -134,7 +135,16 @@ app.post('/api/chat', async (c) => {
       let model;
       let headers = {};
 
-      if (provider === "ollama") {
+      if (provider === "lmstudio") {
+        console.log(`[Server] Using LMStudio provider`);
+
+        const lmstudio = createOpenAICompatible({
+          name: 'lmstudio',
+          baseURL: 'http://localhost:1234/v1',
+        });
+
+        model = lmstudio(MODEL);
+      } else if (provider === "ollama") {
         console.log(`[Server] Using Ollama provider with base URL: ${OLLAMA_BASE_URL}`);
         // For Ollama models, we need to extract the model name without version
         // Ollama API expects just the model name without version specifiers
