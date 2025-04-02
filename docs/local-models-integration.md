@@ -54,31 +54,32 @@ A key component is the proxy endpoint in `server.ts` that handles requests to lo
 app.get('/api/proxy/lmstudio/models', async (c) => {
   try {
     const url = c.req.query('url') || 'http://localhost:1234/v1/models';
-    
+
     console.log(`[Server] Proxying request to LMStudio at: ${url}`);
-    
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
       },
     });
-    
+
     if (!response.ok) {
       console.error(`[Server] LMStudio proxy request failed with status: ${response.status}`);
-      return c.json({ 
+      return c.json({
         error: `Failed to connect to LMStudio server: ${response.statusText}`,
         status: response.status
       }, response.status);
     }
-    
+
     const data = await response.json();
     console.log(`[Server] LMStudio proxy request successful`);
-    
+
     return c.json(data);
   } catch (error) {
-    console.error('[Server] LMStudio proxy error:', error);
-    return c.json({ 
+    console.log('[Server] LMStudio not available')
+    // console.error('[Server] LMStudio proxy error:', error);
+    return c.json({
       error: 'Failed to connect to LMStudio server',
       details: error instanceof Error ? error.message : String(error)
     }, 500);
@@ -126,26 +127,26 @@ const checkLMStudioModels = async (): Promise<boolean> => {
     const lmStudioUrl = settings?.lmstudioUrl || "http://localhost:1234";
     const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${lmStudioUrl}/v1/models`)}`;
     console.log("Checking LMStudio via proxy:", proxyUrl);
-    
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
       console.error("LMStudio connection timed out");
     }, 10000); // 10 second timeout
-    
+
     const response = await fetch(proxyUrl, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
       signal: controller.signal
     });
-    
+
     clearTimeout(timeoutId);
     console.log("LMStudio proxy response status:", response.status, "ok:", response.ok);
-    
+
     if (response.ok) {
       const data = await response.json();
       console.log("LMStudio models data:", data);
-      
+
       // Handle different response formats
       if (data) {
         if (data.data && Array.isArray(data.data) && data.data.length > 0) {
@@ -163,21 +164,21 @@ const checkLMStudioModels = async (): Promise<boolean> => {
           return true;
         }
       }
-      
+
       // If we didn't find any recognizable model data, but the server responded successfully
       console.log("LMStudio server responded but no model data found. Considering it running anyway");
       return true;
     }
-    
+
     return false; // Response was not OK
-    
+
   } catch (error) {
     console.warn("Failed to connect to LMStudio API via proxy:", error);
-    
+
     if (error instanceof DOMException && error.name === 'AbortError') {
       console.error("LMStudio connection timed out");
     }
-    
+
     return false;
   }
 };
@@ -201,11 +202,11 @@ export default function LocalModelsPage() {
       // Reset error state
       setLmStudioError(null);
       setLmStudioStatus('checking');
-      
+
       // Use our server proxy to avoid CORS issues with the user-specified URL
       const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${lmStudioUrl}/v1/models`)}`;
       console.log("Using proxy URL:", proxyUrl);
-      
+
       // Request implementation with timeout handling and response parsing...
     } catch (error) {
       // Error handling with helpful user messages...
@@ -358,7 +359,7 @@ Common issues and solutions:
 ### Connection Issues
 
 **Problem**: "LMStudio is not running" despite the server being active
-**Solution**: 
+**Solution**:
 - Verify LMStudio is running on the correct port (default: 1234)
 - Check that the server is started in LMStudio's UI (Local Server tab)
 - Ensure the proxy endpoint in server.ts is functioning correctly
@@ -379,8 +380,8 @@ Common issues and solutions:
 ### CORS Errors
 
 **Problem**: CORS errors in the console
-**Solution**: 
-- Ensure requests are going through the proxy endpoint 
+**Solution**:
+- Ensure requests are going through the proxy endpoint
 - Check proxy endpoint implementation in server.ts
 - Verify LMStudio isn't blocking requests (rarely happens)
 - Make sure the correct URL is being passed to the proxy endpoint
