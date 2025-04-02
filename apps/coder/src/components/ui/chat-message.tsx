@@ -147,7 +147,8 @@ const ReasoningBlock = ({ part }: { part: ReasoningPart }) => {
   )
 }
 
-export const ChatMessage: React.FC<ChatMessageProps> = ({
+// Memoize the entire ChatMessage component to prevent unnecessary renders
+export const ChatMessage = React.memo(function ChatMessage({
   role,
   content,
   createdAt,
@@ -157,7 +158,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   experimental_attachments,
   toolInvocations,
   parts,
-}) => {
+}: ChatMessageProps) {
   const files = useMemo(() => {
     return experimental_attachments?.map((attachment) => {
       const dataArray = dataUrlToUint8Array(attachment.url)
@@ -168,10 +169,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   const isUser = role === "user"
 
-  const formattedTime = createdAt?.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+  // Memoize the formatted time to avoid recalculations
+  const formattedTime = useMemo(() => {
+    return createdAt?.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }, [createdAt])
 
   if (isUser) {
     return (
@@ -277,4 +281,4 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
       ) : null}
     </div>
   )
-}
+});

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { MODELS, useSettings } from "@openagents/core";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/utils/tailwind";
@@ -22,7 +22,7 @@ interface ModelSelectProps {
   disabled?: boolean;
 }
 
-export function ModelSelect({
+export const ModelSelect = React.memo(function ModelSelect({
   value,
   onChange,
   placeholder = "Select a model",
@@ -33,22 +33,29 @@ export function ModelSelect({
   const [visibleModels, setVisibleModels] = useState<typeof MODELS>([]);
   const { settings } = useSettings();
 
-  // Filter models based on visibility settings
-  useEffect(() => {
+  // Filter models based on visibility settings - create memoized value outside the effect
+  const filteredModels = useMemo(() => {
     if (settings && settings.visibleModelIds && settings.visibleModelIds.length > 0) {
       // Filter MODELS to only include those in visibleModelIds
-      const filteredModels = MODELS.filter(model => 
+      return MODELS.filter(model => 
         settings.visibleModelIds!.includes(model.id)
       );
-      setVisibleModels(filteredModels);
     } else {
       // Fall back to all models if no visibility settings are found
-      setVisibleModels(MODELS);
+      return MODELS;
     }
   }, [settings]);
+  
+  // Update visible models only when filtered models change
+  useEffect(() => {
+    setVisibleModels(filteredModels);
+  }, [filteredModels]);
 
-  // Find the currently selected model
-  const selectedModel = MODELS.find((model) => model.id === value);
+  // Find the currently selected model with useMemo
+  const selectedModel = useMemo(() => 
+    MODELS.find((model) => model.id === value), 
+    [value]
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -74,33 +81,38 @@ export function ModelSelect({
           <CommandInput placeholder="Search models..." className="font-mono" />
           <CommandEmpty className="font-mono">No model found.</CommandEmpty>
           <CommandGroup className="max-h-[300px] overflow-auto font-mono">
-            {visibleModels.map((model) => (
-              <CommandItem
-                key={model.id}
-                value={model.id}
-                onSelect={() => {
-                  onChange(model.id);
-                  setOpen(false);
-                  window.dispatchEvent(new Event('focus-chat-input'));
-                }}
-                className="font-mono"
-              >
-                <div className="flex flex-col gap-1 truncate font-mono">
-                  <div className="flex items-center gap-2">
-                    <Check
-                      className={cn(
-                        "h-4 w-4",
-                        value === model.id ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    <span className="font-medium font-mono">{model.name}</span>
+            {visibleModels.map((model) => {
+              // Precompute this value to avoid recalculation in the render
+              const isSelected = value === model.id;
+              
+              return (
+                <CommandItem
+                  key={model.id}
+                  value={model.id}
+                  onSelect={() => {
+                    onChange(model.id);
+                    setOpen(false);
+                    window.dispatchEvent(new Event('focus-chat-input'));
+                  }}
+                  className="font-mono"
+                >
+                  <div className="flex flex-col gap-1 truncate font-mono">
+                    <div className="flex items-center gap-2">
+                      <Check
+                        className={cn(
+                          "h-4 w-4",
+                          isSelected ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      <span className="font-medium font-mono">{model.name}</span>
+                    </div>
                   </div>
-                </div>
-              </CommandItem>
-            ))}
+                </CommandItem>
+              );
+            })}
           </CommandGroup>
         </Command>
       </PopoverContent>
     </Popover>
   );
-}
+});

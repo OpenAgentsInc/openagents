@@ -1,4 +1,4 @@
-import React, { Suspense } from "react"
+import React, { Suspense, useMemo } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/utils/tailwind"
@@ -8,21 +8,26 @@ import { CopyButton } from "@/components/ui/copy-button"
 
 type HTMLTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'a' | 'ul' | 'ol' | 'li' | 'blockquote' | 'hr' | 'table' | 'th' | 'td' | 'pre' | 'code';
 
-function withClass(Tag: HTMLTag, classes: string) {
-  return function MarkdownComponent({ node, ...props }: any) {
-    // Special handling for links to open in new tab
-    if (Tag === 'a') {
-      return React.createElement(Tag, {
-        ...props,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        className: cn(classes, props.className)
-      });
-    }
+// Use React.memo on the component to prevent unnecessary renders
+const MarkdownComponent = React.memo(function MemoizedComponent({ node, Tag, classes, ...props }: any) {
+  // Special handling for links to open in new tab
+  if (Tag === 'a') {
     return React.createElement(Tag, {
       ...props,
+      target: '_blank',
+      rel: 'noopener noreferrer',
       className: cn(classes, props.className)
     });
+  }
+  return React.createElement(Tag, {
+    ...props,
+    className: cn(classes, props.className)
+  });
+});
+
+function withClass(Tag: HTMLTag, classes: string) {
+  return function WithClassWrapper({ node, ...props }: any) {
+    return <MarkdownComponent Tag={Tag} classes={classes} node={node} {...props} />;
   };
 }
 
@@ -52,15 +57,22 @@ export interface MarkdownRendererProps {
   className?: string;
 }
 
-export function MarkdownRenderer({ children, className }: MarkdownRendererProps) {
+// Memoize the remarkPlugins array
+const REMARK_PLUGINS = [remarkGfm];
+
+// Memoize the entire MarkdownRenderer component
+export const MarkdownRenderer = React.memo(function MarkdownRenderer({ 
+  children, 
+  className 
+}: MarkdownRendererProps) {
   return (
     <div className={className}>
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
+      <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
         {children}
       </Markdown>
     </div>
   );
-}
+});
 
 interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
   children: string
