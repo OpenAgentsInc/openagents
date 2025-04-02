@@ -91,11 +91,6 @@ export const ChatInputArea = memo(function ChatInputArea() {
 
   // Create completely stable props for MessageInput
   const messageInputProps = useMemo(() => {
-    console.log('Creating messageInputProps:');
-    console.log('- input:', input);
-    console.log('- isGenerating:', isGenerating);
-    console.log('- isModelAvailable:', isModelAvailable);
-
     return {
       value: input,
       onChange: stableOnChange,
@@ -114,7 +109,6 @@ export const ChatInputArea = memo(function ChatInputArea() {
 
   // Wrap the MessageInput render function in useMemo to prevent rerenders during streaming
   const renderMessageInput = useCallback(({ files, setFiles }: { files: File[] | null, setFiles: React.Dispatch<React.SetStateAction<File[] | null>> }) => {
-    console.log('Rendering MessageInput with props:', messageInputProps);
     return <MessageInput {...messageInputProps} />;
   }, [messageInputProps]);
 

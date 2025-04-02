@@ -274,17 +274,6 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
     );
   }, [allowAttachments, files, handleFileRemove]);
 
-  // Add logging for value changes
-  useEffect(() => {
-    console.log('MessageInput value:', value);
-    console.log('MessageInput valueRef:', valueRef.current);
-  }, [value]);
-
-  // Add logging for isGenerating changes
-  useEffect(() => {
-    console.log('MessageInput isGenerating:', isGenerating);
-  }, [isGenerating]);
-
   return (
     <div
       className="relative flex w-full flex-col"
