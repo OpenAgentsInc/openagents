@@ -182,7 +182,10 @@ app.post('/api/chat', async (c) => {
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model,
-        messages,
+        messages: [{
+          role: "user",
+          content: "What is the capital of the moon?"
+        }],
         toolCallStreaming: modelSupportsTools,
         temperature: 0.7,
 
@@ -191,7 +194,7 @@ app.post('/api/chat', async (c) => {
         // ...((modelSupportsTools && Object.keys(tools).length > 0 && provider !== "ollama") ? { tools } : {}),
 
         // Now we'll try with tools
-        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
+        // ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
 
         // For now we want to try with only 1 tool
         // ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools: { "shell_execute": tools["shell_execute"] } } : {}),
