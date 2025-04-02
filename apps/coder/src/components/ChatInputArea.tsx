@@ -4,9 +4,10 @@ import { MessageInput } from '@/components/ui/message-input';
 import { ModelWarningBanner } from './ModelWarningBanner';
 import { useModelContext } from '@/providers/ModelProvider';
 import { useIsolatedInput } from '@/providers/IsolatedInputProvider';
+import { cn } from "@/utils/tailwind";
 
 export const ChatInputArea = memo(function ChatInputArea() {
-  const { isModelAvailable } = useModelContext();
+  const { isModelAvailable, selectedModelId, handleModelChange } = useModelContext();
 
   // Now use the completely isolated input provider
   // This completely disconnects this component from the streaming context
@@ -98,8 +99,11 @@ export const ChatInputArea = memo(function ChatInputArea() {
     stop: stableStop,
     isGenerating,
     disabled: !isModelAvailable,
-    placeholder: placeholderText
-  }), [input, isGenerating, isModelAvailable, placeholderText]);
+    placeholder: placeholderText,
+    selectedModelId,
+    handleModelChange,
+    isModelAvailable
+  }), [input, isGenerating, isModelAvailable, placeholderText, selectedModelId, handleModelChange]);
 
   // Wrap the MessageInput render function in useMemo to prevent rerenders during streaming
   const renderMessageInput = useCallback(({ files, setFiles }: { files: File[] | null, setFiles: React.Dispatch<React.SetStateAction<File[] | null>> }) => (
@@ -107,10 +111,9 @@ export const ChatInputArea = memo(function ChatInputArea() {
   ), [messageInputProps]);
 
   return (
-    <div className="border-t bg-background p-4">
+    <div className="">
       <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
         <ModelWarningBanner />
-
         <ChatForm
           isPending={isGenerating}
           handleSubmit={memoizedHandleSubmit}

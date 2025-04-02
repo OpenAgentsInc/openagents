@@ -11,6 +11,7 @@ import { AudioVisualizer } from "@/components/ui/audio-visualizer"
 import { Button } from "@/components/ui/button"
 import { FilePreview } from "@/components/ui/file-preview"
 import { InterruptPrompt } from "@/components/ui/interrupt-prompt"
+import { ModelSelect } from '@/components/ui/model-select'
 
 interface MessageInputBaseProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -18,6 +19,9 @@ interface MessageInputBaseProps
   submitOnEnter?: boolean
   stop?: () => void
   isGenerating: boolean
+  selectedModelId: string
+  handleModelChange: (value: string) => void
+  isModelAvailable: boolean
   enableInterrupt?: boolean
   transcribeAudio?: (blob: Blob) => Promise<string>
 }
@@ -36,17 +40,24 @@ type MessageInputProps =
   | MessageInputWithoutAttachmentProps
   | MessageInputWithAttachmentsProps
 
-export const MessageInput = React.memo(function MessageInput(props: MessageInputProps) {
+export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputProps>(({
+  placeholder = "Message...",
+  className,
+  onKeyDown: onKeyDownProp,
+  submitOnEnter = true,
+  stop,
+  isGenerating,
+  selectedModelId,
+  handleModelChange,
+  isModelAvailable,
+  enableInterrupt = true,
+  transcribeAudio,
+  allowAttachments,
+  ...props
+}: MessageInputProps, ref) => {
   const {
-    placeholder = "Ask Coder",
-    className,
-    onKeyDown: onKeyDownProp,
-    submitOnEnter = true,
-    stop,
-    isGenerating,
-    enableInterrupt = true,
-    transcribeAudio,
-    allowAttachments,
+    value,
+    onChange,
     ...restProps
   } = props;
 
@@ -57,12 +68,12 @@ export const MessageInput = React.memo(function MessageInput(props: MessageInput
   const [showInterruptPrompt, setShowInterruptPrompt] = useState(false);
 
   // Store the onChange handler in a ref to avoid creating functions
-  const onChangeRef = useRef(restProps.onChange);
+  const onChangeRef = useRef(onChange);
 
   // Update the ref when props.onChange changes
   useEffect(() => {
-    onChangeRef.current = restProps.onChange;
-  }, [restProps.onChange]);
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   // Memoize the speech callbacks
   const onTranscriptionComplete = useCallback((text: string) => {
@@ -83,18 +94,18 @@ export const MessageInput = React.memo(function MessageInput(props: MessageInput
   })
 
   // Store the value and allowAttachments in refs to avoid recreating functions
-  const valueRef = useRef(restProps.value);
+  const valueRef = useRef(value);
   const filesRef = useRef(files);
   const allowAttachmentsRef = useRef(allowAttachments);
   const setFilesRef = useRef(setFiles);
 
   // Update refs when props change
   useEffect(() => {
-    valueRef.current = restProps.value;
+    valueRef.current = value;
     filesRef.current = files;
     setFilesRef.current = setFiles;
     allowAttachmentsRef.current = allowAttachments;
-  }, [restProps.value, files, allowAttachments, setFiles]);
+  }, [value, files, allowAttachments, setFiles]);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -198,7 +209,7 @@ export const MessageInput = React.memo(function MessageInput(props: MessageInput
     if (textAreaRef.current) {
       setTextAreaHeight(textAreaRef.current.offsetHeight)
     }
-  }, [restProps.value])
+  }, [value])
 
   // Use the focus hook - textAreaRef is correctly typed for this hook
   useFocusInput(textAreaRef as React.RefObject<HTMLTextAreaElement>)
@@ -211,7 +222,7 @@ export const MessageInput = React.memo(function MessageInput(props: MessageInput
   // Auto-size the textarea
   useAutosizeTextArea({
     ref: textAreaRef,
-    value: restProps.value || ''
+    value: value || ''
   })
 
   // File removal handler - memoized to avoid recreation
@@ -239,18 +250,21 @@ export const MessageInput = React.memo(function MessageInput(props: MessageInput
 
   // Memoize sending disabled state
   const isSendDisabled = useMemo(() =>
-    restProps.value === "" || isGenerating,
-    [restProps.value, isGenerating]);
+    value === "" || isGenerating,
+    [value, isGenerating]);
 
   // Memoize textarea props to avoid spread recreation
   const textareaProps = useMemo(() => {
-    const propsToOmit = ['allowAttachments', 'files', 'setFiles'] as const;
     if (allowAttachments) {
-      return omit(restProps as any, propsToOmit);
+      // Cast to MessageInputWithAttachmentsProps to handle the correct type
+      const { allowAttachments: _, files: __, setFiles: ___, value: _value, onChange: _onChange, ...rest } = props as MessageInputWithAttachmentsProps;
+      return rest;
     } else {
-      return omit(restProps as any, ['allowAttachments'] as const);
+      // Cast to MessageInputWithoutAttachmentProps for the other case
+      const { allowAttachments: _, value: _value, onChange: _onChange, ...rest } = props as MessageInputWithoutAttachmentProps;
+      return rest;
     }
-  }, [allowAttachments, restProps]);
+  }, [allowAttachments, props]);
 
   // Memoize rendered files
   const renderedFiles = useMemo(() => {
@@ -271,11 +285,61 @@ export const MessageInput = React.memo(function MessageInput(props: MessageInput
 
   return (
     <div
-      className="relative flex w-full"
+      className="relative flex w-full flex-col"
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
+      <div className="relative flex w-full flex-col items-stretch gap-2 rounded-t-xl border-x border-t bg-background px-3 sm:px-4 pt-3 sm:pt-4 pb-2 shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]">
+        <div className="flex flex-grow flex-col">
+          <textarea
+            aria-label="Write your prompt here"
+            autoFocus
+            placeholder={placeholder}
+            ref={textAreaRef}
+            onPaste={onPaste}
+            onKeyDown={onKeyDown}
+            onFocus={(e) => {
+              setTimeout(() => e.target.focus(), 0);
+            }}
+            onClick={(e) => (e.target as HTMLElement).focus()}
+            className={cn(
+              "mb-2 w-full resize-none bg-transparent text-base md:text-sm leading-6 outline-none disabled:opacity-0 min-h-[44px] touch-manipulation",
+              showFileList && "pb-16",
+              className
+            )}
+            {...textareaProps}
+          />
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            <div className="flex flex-wrap items-center gap-2 pb-1 md:pb-0 overflow-x-auto">
+              <div className={cn("w-auto min-w-[120px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
+                <ModelSelect value={selectedModelId} onChange={handleModelChange} />
+              </div>
+              {/* Comment out AgentSelection and ToolSelection for now */}
+              {/*<div className={cn("w-auto min-w-[100px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
+                <AgentSelection />
+              </div>
+              <div className={cn("w-auto min-w-[80px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
+                <ToolSelection />
+              </div>*/}
+            </div>
+
+            {allowAttachments && (
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:bg-neutral-800/40 rounded-md text-xs h-[44px] w-[44px] gap-2 px-2 py-1.5 text-muted-foreground hover:text-neutral-300 touch-manipulation flex-shrink-0"
+                aria-label="Attach a file"
+                onClick={handleAttachClick}
+              >
+                <Paperclip className="h-5 w-5" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {enableInterrupt && (
         <InterruptPrompt
           isOpen={showInterruptPrompt}
@@ -287,33 +351,6 @@ export const MessageInput = React.memo(function MessageInput(props: MessageInput
         isVisible={isRecording}
         onStopRecording={stopRecording}
       />
-
-      <div className="relative flex w-full items-center space-x-2">
-        <div className="relative flex-1">
-          <textarea
-            autoFocus
-            aria-label="Write your prompt here"
-            placeholder={placeholder}
-            ref={textAreaRef}
-            onPaste={onPaste}
-            onKeyDown={onKeyDown}
-            className={cn(
-              "z-10 w-full grow resize-none border border-input bg-background p-3 pr-24 text-sm ring-offset-background transition-[border] placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-              showFileList && "pb-16",
-              className
-            )}
-            {...textareaProps}
-          />
-
-          {allowAttachments && (
-            <div className="absolute inset-x-3 bottom-0 z-20 overflow-x-scroll py-3">
-              <div className="flex space-x-3">
-                {renderedFiles}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       <div className="absolute right-3 top-3 z-20 flex gap-2">
         {allowAttachments && (
