@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useSettings } from "@openagents/core";
-import { 
-  Trash2, 
-  Plus, 
-  Eye, 
+import {
+  Trash2,
+  Plus,
+  Eye,
   EyeOff,
   KeyRound,
   ShieldCheck
@@ -24,15 +24,15 @@ import {
 } from "@/components/ui";
 
 export default function ApiKeysPage() {
-  const { 
-    setApiKey, 
-    getApiKey, 
+  const {
+    setApiKey,
+    getApiKey,
     deleteApiKey,
   } = useSettings();
-  
+
   // Only include Anthropic and OpenRouter
   const providers = ["anthropic", "openrouter"];
-  
+
   // API keys state
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -74,10 +74,10 @@ export default function ApiKeysPage() {
       await setApiKey(provider, key);
       setApiKeys(prev => ({ ...prev, [provider]: key }));
       setKeyInputs(prev => ({ ...prev, [provider]: "" }));
-      
+
       // Dispatch event to notify about API key change
       try {
-        window.dispatchEvent(new CustomEvent('api-key-changed', { 
+        window.dispatchEvent(new CustomEvent('api-key-changed', {
           detail: { provider }
         }));
         console.log(`Dispatched api-key-changed event for ${provider}`);
@@ -95,10 +95,10 @@ export default function ApiKeysPage() {
       delete updated[provider];
       return updated;
     });
-    
+
     // Dispatch event to notify about API key deletion
     try {
-      window.dispatchEvent(new CustomEvent('api-key-changed', { 
+      window.dispatchEvent(new CustomEvent('api-key-changed', {
         detail: { provider, deleted: true }
       }));
       console.log(`Dispatched api-key-changed event for ${provider} (deleted)`);
@@ -221,9 +221,6 @@ export default function ApiKeysPage() {
         <div className="w-full flex items-center">
           <ShieldCheck className="h-4 w-4 mr-2 text-green-500" />
           <span>Your API keys are stored securely in your browser's local database.</span>
-        </div>
-        <div className="w-full text-center text-xs">
-          Never share your API keys or commit them to version control.
         </div>
       </CardFooter>
     </Card>
