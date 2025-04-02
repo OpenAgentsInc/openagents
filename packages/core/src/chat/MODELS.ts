@@ -8,7 +8,7 @@ interface Model {
   shortDescription?: string
   supportsTools?: boolean
   tokenizer?: string
-  pricing: {
+  pricing?: {
     prompt: string
     completion: string
     image: string
@@ -18,21 +18,32 @@ interface Model {
     web_search: string
     internal_reasoning: string
   }
-  top_provider: {
+  top_provider?: {
     context_length: number
     max_completion_tokens: number
     is_moderated: boolean
   }
-  architecture: {
+  architecture?: {
     modality: "text->text" | "text+image->text"
     tokenizer: string
     instruct_type: string | null
   }
-  per_request_limits: null
+  per_request_limits?: null
   context_length: number
 }
 
 export const MODELS: Model[] = [
+  {
+    author: "google",
+    provider: "ollama",
+    id: "gemma3:12b",
+    name: "Gemma 3 12B",
+    created: 1742824755,
+    description: "Gemma 3 12B is a large language model with 12B parameters.",
+    shortDescription: "Gemma 3 12B is a large language model with 12B parameters.",
+    context_length: 128000,
+    supportsTools: true,
+  },
   {
     author: "deepseek",
     provider: "openrouter",

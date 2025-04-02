@@ -3,10 +3,9 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
-import { streamText, type Message, experimental_createMCPClient, type StreamTextOnFinishCallback } from "ai";
-import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
+import { streamText, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { initMCPClients, getMCPClients } from './mcp-clients';
+import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
 
 // Define environment interface
