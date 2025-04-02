@@ -1,4 +1,19 @@
 import { app, BrowserWindow, Menu, Tray } from "electron";
+
+// IMPORTANT: Set app name before anything else (this affects macOS dock name)
+app.setName("Coder");
+
+// Set macOS specific about panel options
+if (process.platform === 'darwin') {
+  app.setAboutPanelOptions({
+    applicationName: "Coder",
+    applicationVersion: app.getVersion(),
+    copyright: "© 2025 OpenAgents",
+    version: app.getVersion(),
+    credits: "OpenAgents Team"
+  });
+}
+
 import registerListeners from "./helpers/ipc/listeners-register";
 // "electron-squirrel-startup" seems broken when packaging with vite
 //import started from "electron-squirrel-startup";
@@ -15,9 +30,6 @@ import { initMCPClients, cleanupMCPClients } from './server/mcp-clients';
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
-// Set app name (important for macOS dock)
-app.setName("Coder");
-
 // Define a port for the local API server
 const LOCAL_API_PORT = 3001; // Or another available port
 
@@ -26,6 +38,87 @@ let serverInstance: ReturnType<typeof serve> | null = null;
 
 // Keep track of tray instance
 let tray: Tray | null = null;
+
+// Create application menu
+function createAppMenu() {
+  // Create the application menu
+  const template = [
+    ...(process.platform === 'darwin' ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'File',
+      submenu: [
+        process.platform === 'darwin' 
+          ? { role: 'close' } 
+          : { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(process.platform === 'darwin' ? [
+          { role: 'delete' },
+          { role: 'selectAll' },
+        ] : [
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ])
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(process.platform === 'darwin' ? [
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    }
+  ];
+
+  // @ts-ignore - template is typed but not perfectly
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
 
 function createWindow() {
   const preload = path.join(__dirname, "preload.js");
@@ -144,12 +237,24 @@ app.whenReady()
   .then(async () => {
     console.log('[Main Process] App is ready.');
     
-    // On macOS, set the dock icon explicitly
+    // Create application menu
+    createAppMenu();
+    
+    // On macOS, set the dock icon explicitly and configure dock menu
     if (process.platform === 'darwin') {
       // For macOS dock, PNG actually works better than ICNS for dynamic updates
       const iconPath = path.join(inDevelopment ? process.cwd() : process.resourcesPath, 'src', 'images', 'icon.png');
       console.log(`Setting dock icon to: ${iconPath}`);
       app.dock.setIcon(iconPath);
+      
+      // Set up a dock menu
+      const dockMenu = Menu.buildFromTemplate([
+        {
+          label: 'New Window',
+          click() { createWindow(); }
+        }
+      ]);
+      app.dock.setMenu(dockMenu);
     }
 
     // Start the local Hono server using the Node adapter
