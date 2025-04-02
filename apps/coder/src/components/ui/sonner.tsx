@@ -7,7 +7,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       theme={isDark ? "dark" : "light"}
-      position="top-right"
+      position="bottom-left"
       className="toaster group !font-mono"
       style={{
         '--normal-bg': 'hsl(var(--popover))',

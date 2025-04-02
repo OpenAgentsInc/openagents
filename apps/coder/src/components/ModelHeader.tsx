@@ -5,6 +5,18 @@ import ToggleTheme from '@/components/ToggleTheme';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@/components/ui/button';
 import { SlidersHorizontal } from 'lucide-react';
+import { react19 } from "@openagents/core";
+
+// Interface for Lucide icon props
+interface IconProps {
+  size?: number;
+  color?: string;
+  className?: string;
+  [key: string]: any;
+}
+
+// Make Lucide icons compatible with React 19
+const SlidersHorizontalIcon = react19.icon<IconProps>(SlidersHorizontal);
 
 export const ModelHeader = memo(function ModelHeader() {
   const { selectedModelId, handleModelChange } = useModelContext();
@@ -20,8 +32,8 @@ export const ModelHeader = memo(function ModelHeader() {
         <Link to="/settings/models">
           <Button 
             size="icon" 
-            className="bg-transparent text-primary hover:bg-primary/5">
-            <SlidersHorizontal size={16} />
+            className="flex items-center justify-center h-8 w-8 bg-transparent text-primary hover:bg-primary/5">
+            <SlidersHorizontalIcon size={20} />
           </Button>
         </Link>
         <ToggleTheme />

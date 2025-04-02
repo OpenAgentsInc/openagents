@@ -140,8 +140,8 @@ export default function SettingsLayout() {
                     <Link to="/">
                       <Button 
                         size="icon" 
-                        className="bg-transparent text-primary hover:bg-primary/5">
-                        <Home size={16} />
+                        className="flex items-center justify-center h-8 w-8 bg-transparent text-primary hover:bg-primary/5">
+                        <Home size={20} />
                       </Button>
                     </Link>
                     <ToggleTheme />
