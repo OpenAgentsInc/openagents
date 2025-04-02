@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useThreads, Thread } from '@openagents/core';
+import { useThreads, Thread, useSettings } from '@openagents/core';
 import { Button } from './ui/button';
 import { X, Plus } from 'lucide-react';
 import { format, subDays, isWithinInterval, startOfDay } from 'date-fns';
@@ -11,6 +11,7 @@ import {
   DialogFooter
 } from './ui/dialog';
 import { Input } from './ui/input';
+import { toast } from 'sonner';
 
 interface ThreadListProps {
   currentThreadId: string;
@@ -35,7 +36,8 @@ export function ThreadList({
   // onPinThread
 }: ThreadListProps) {
   // Use a very short refresh interval for immediate updates
-  const { threads, isLoading, error, refresh } = useThreads({ refreshInterval: 300 });
+  const { threads, isLoading, error, refresh, deleteThread } = useThreads({ refreshInterval: 300 });
+  const { settings, getPreference } = useSettings();
 
   // Immediately refresh when component mounts or is forced to re-render
   useEffect(() => {
@@ -46,6 +48,17 @@ export function ThreadList({
   const [newTitle, setNewTitle] = useState('');
   // Local state to track threads to be removed for optimistic updates
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
+  // State to store the confirmation preference
+  const [confirmThreadDeletion, setConfirmThreadDeletion] = useState(true);
+  
+  // Load the confirmation preference
+  useEffect(() => {
+    const loadPreference = async () => {
+      const shouldConfirm = await getPreference("confirmThreadDeletion", true);
+      setConfirmThreadDeletion(shouldConfirm);
+    };
+    loadPreference();
+  }, [getPreference, settings]);
   // We don't need optimistic threads since we're handling that in the database layer now
   // This keeps the UI simpler and avoids duplicate entries
 
@@ -161,11 +174,46 @@ export function ThreadList({
                               tabIndex={-1}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm('Are you sure you want to delete this chat?')) {
+                                
+                                // Function to handle thread deletion
+                                const handleDeleteWithToast = (threadId: string, threadTitle: string) => {
                                   // Optimistic update - add to pending deletes first
-                                  setPendingDeletes(prev => new Set([...prev, thread.id]));
+                                  setPendingDeletes(prev => new Set([...prev, threadId]));
+                                  
+                                  // Show toast with undo option
+                                  toast.info(
+                                    `Chat deleted`,
+                                    {
+                                      description: `"${threadTitle || 'Untitled'}" was deleted.`,
+                                      action: {
+                                        label: "Undo",
+                                        onClick: () => {
+                                          // Remove from pending deletes
+                                          setPendingDeletes(prev => {
+                                            const newSet = new Set([...prev]);
+                                            newSet.delete(threadId);
+                                            return newSet;
+                                          });
+                                          // Refresh to restore the thread in UI
+                                          refresh();
+                                        }
+                                      },
+                                      duration: 5000
+                                    }
+                                  );
+                                  
                                   // Then call the actual delete function
-                                  onDeleteThread(thread.id);
+                                  onDeleteThread(threadId);
+                                };
+                                
+                                if (confirmThreadDeletion) {
+                                  // Show confirmation dialog if preference is set
+                                  if (window.confirm('Are you sure you want to delete this chat?')) {
+                                    handleDeleteWithToast(thread.id, thread.title);
+                                  }
+                                } else {
+                                  // Delete immediately with toast if confirmation is disabled
+                                  handleDeleteWithToast(thread.id, thread.title);
                                 }
                               }}
                               aria-label="Delete thread"

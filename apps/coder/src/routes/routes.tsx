@@ -4,6 +4,7 @@ import HomePage from "../pages/HomePage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
 import ModelsPage from "../pages/settings/ModelsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
+import PreferencesPage from "../pages/settings/PreferencesPage";
 
 // TODO: Steps to add a new route:
 // 1. Create a new page component in the '../pages/' directory (e.g., NewPage.tsx)
@@ -48,12 +49,19 @@ export const PromptsSettingsRoute = createRoute({
   component: PromptsPage,
 });
 
+export const PreferencesSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/preferences",
+  component: PreferencesPage,
+});
+
 // Add all routes to the route tree
 export const rootTree = RootRoute.addChildren([
   HomeRoute,
   SettingsRoute.addChildren([
     SettingsIndexRoute,
     ModelsSettingsRoute,
-    PromptsSettingsRoute
+    PromptsSettingsRoute,
+    PreferencesSettingsRoute
   ])
 ]);
