@@ -14,7 +14,9 @@ export default function SettingsLayout() {
 
   // Use the proper Tanstack Router location hook
   const location = useLocation();
-  const isPrompts = location.pathname.includes("prompts");
+  const currentPath = location.pathname;
+  const isPrompts = currentPath.includes("prompts");
+  const isPreferences = currentPath.includes("preferences");
 
   return (
     <ScrollArea className="h-screen w-full">
@@ -64,7 +66,7 @@ export default function SettingsLayout() {
                   <Link
                     to="/settings/models"
                     className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
-                      ${!isPrompts ? "bg-background text-foreground shadow" : ""}`}
+                      ${currentPath.includes("models") ? "bg-background text-foreground shadow" : ""}`}
                   >
                     Models
                   </Link>
@@ -74,6 +76,13 @@ export default function SettingsLayout() {
                       ${isPrompts ? "bg-background text-foreground shadow" : ""}`}
                   >
                     Prompts
+                  </Link>
+                  <Link
+                    to="/settings/preferences"
+                    className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
+                      ${isPreferences ? "bg-background text-foreground shadow" : ""}`}
+                  >
+                    Preferences
                   </Link>
                 </div>
               </div>
