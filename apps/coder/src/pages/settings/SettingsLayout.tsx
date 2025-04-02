@@ -17,6 +17,7 @@ export default function SettingsLayout() {
   const currentPath = location.pathname;
   const isPrompts = currentPath.includes("prompts");
   const isPreferences = currentPath.includes("preferences");
+  const isLocalModels = currentPath.includes("local-models");
 
   return (
     <ScrollArea className="h-screen w-full">
@@ -66,9 +67,16 @@ export default function SettingsLayout() {
                   <Link
                     to="/settings/models"
                     className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
-                      ${currentPath.includes("models") ? "bg-background text-foreground shadow" : ""}`}
+                      ${currentPath.includes("models") && !isLocalModels ? "bg-background text-foreground shadow" : ""}`}
                   >
-                    Models
+                    API Models
+                  </Link>
+                  <Link
+                    to="/settings/local-models"
+                    className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
+                      ${isLocalModels ? "bg-background text-foreground shadow" : ""}`}
+                  >
+                    Local Models
                   </Link>
                   <Link
                     to="/settings/prompts"

@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useThreads, Thread, useSettings } from '@openagents/core';
-import { Button } from './ui/button';
-import { X, Plus } from 'lucide-react';
+import { useThreadDeletion } from '@openagents/core/src/chat/useThreadDeletion';
 import { format, subDays, isWithinInterval, startOfDay } from 'date-fns';
 import {
   Dialog,
@@ -11,15 +10,16 @@ import {
   DialogFooter
 } from './ui/dialog';
 import { Input } from './ui/input';
-import { toast } from 'sonner';
+import { Button } from './ui/button';
+import { ThreadGroup } from './ThreadGroup';
+import { StableThreadProvider } from '../providers/StableThreadProvider';
 
 interface ThreadListProps {
   currentThreadId: string;
   onSelectThread: (threadId: string) => void;
-  onCreateThread: () => Promise<void>; // Changed to Promise for optimistic updates
+  onCreateThread: () => Promise<void>;
   onDeleteThread: (threadId: string) => void;
   onRenameThread?: (threadId: string, title: string) => void;
-  // onPinThread?: (threadId: string) => void;
 }
 
 interface ThreadGroup {
@@ -27,29 +27,37 @@ interface ThreadGroup {
   threads: Thread[];
 }
 
-export function ThreadList({
+export const ThreadList = React.memo(function ThreadList({
   currentThreadId,
   onSelectThread,
   onCreateThread,
   onDeleteThread,
   onRenameThread,
-  // onPinThread
 }: ThreadListProps) {
-  // Use a very short refresh interval for immediate updates
-  const { threads, isLoading, error, refresh, deleteThread } = useThreads({ refreshInterval: 300 });
+  // Use a more reasonable refresh interval (3 seconds instead of 300ms)
+  const { threads, isLoading, error, refresh, deleteThread, createThread, updateThread } = useThreads({ refreshInterval: 3000 });
   const { settings, getPreference } = useSettings();
 
-  // Immediately refresh when component mounts or is forced to re-render
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // Dialog state
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [threadToRename, setThreadToRename] = useState<Thread | null>(null);
   const [newTitle, setNewTitle] = useState('');
-  // Local state to track threads to be removed for optimistic updates
-  const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
+  
   // State to store the confirmation preference
   const [confirmThreadDeletion, setConfirmThreadDeletion] = useState(true);
+  
+  // Track threads that are in the process of being deleted (for visual feedback)
+  const [deletingThreadIds, setDeletingThreadIds] = useState<Set<string>>(new Set());
+  
+  // Use the custom thread deletion hook
+  const { pendingDeletes, handleDeleteWithToast } = useThreadDeletion({
+    threads,
+    refresh,
+    createThread,
+    updateThread,
+    onDeleteThread,
+    onSelectThread
+  });
   
   // Load the confirmation preference
   useEffect(() => {
@@ -59,12 +67,14 @@ export function ThreadList({
     };
     loadPreference();
   }, [getPreference, settings]);
-  // We don't need optimistic threads since we're handling that in the database layer now
-  // This keeps the UI simpler and avoids duplicate entries
 
+  // Memoize date values to prevent recalculation on every render
+  const now = useMemo(() => new Date(), []);
+  const sevenDaysAgo = useMemo(() => subDays(now, 7), [now]);
+  const thirtyDaysAgo = useMemo(() => subDays(now, 30), [now]);
+  
   // Group threads by time periods - filter out pending deletes for optimistic UI
   const groupedThreads = useMemo(() => {
-    const now = new Date();
     const groups: ThreadGroup[] = [
       { label: 'Last 7 Days', threads: [] },
       { label: 'Last 30 Days', threads: [] },
@@ -77,9 +87,9 @@ export function ThreadList({
     filteredThreads.forEach(thread => {
       const threadDate = new Date(thread.createdAt);
 
-      if (isWithinInterval(threadDate, { start: subDays(now, 7), end: now })) {
+      if (isWithinInterval(threadDate, { start: sevenDaysAgo, end: now })) {
         groups[0].threads.push(thread);
-      } else if (isWithinInterval(threadDate, { start: subDays(now, 30), end: now })) {
+      } else if (isWithinInterval(threadDate, { start: thirtyDaysAgo, end: now })) {
         groups[1].threads.push(thread);
       } else {
         groups[2].threads.push(thread);
@@ -87,10 +97,50 @@ export function ThreadList({
     });
 
     return groups;
-  }, [threads, pendingDeletes]);
+  }, [threads, pendingDeletes, sevenDaysAgo, thirtyDaysAgo, now]);
+
+  // Memoize the delete handler to prevent recreation on every render
+  const handleDeleteClick = useCallback((e: React.MouseEvent, threadId: string, threadTitle: string) => {
+    e.stopPropagation();
+    
+    const performDelete = () => {
+      // Set the thread as deleting for visual feedback
+      setDeletingThreadIds(prev => {
+        const newSet = new Set(prev);
+        newSet.add(threadId);
+        return newSet;
+      });
+      
+      // Call the toast handler after a small delay to ensure animation is visible
+      setTimeout(() => {
+        handleDeleteWithToast(threadId, threadTitle);
+        
+        // Remove from deleting set after a delay (to allow animation to be seen)
+        setTimeout(() => {
+          setDeletingThreadIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(threadId);
+            return newSet;
+          });
+        }, 500);
+      }, 100);
+    };
+    
+    if (confirmThreadDeletion) {
+      if (window.confirm('Are you sure you want to delete this chat?')) {
+        performDelete();
+      }
+    } else {
+      performDelete();
+    }
+  }, [confirmThreadDeletion, handleDeleteWithToast]);
+
+  // Refresh once when component mounts
+  useEffect(() => {
+    refresh();
+  }, []); // Empty dependency array ensures this only runs once
 
   // Only show loading state on initial load when no threads are available
-  // Don't show loading state during refreshes to prevent UI flashing
   if (isLoading && threads.length === 0) {
     return (
       <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
@@ -112,125 +162,21 @@ export function ThreadList({
 
   return (
     <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
-      {groupedThreads.map((group, index) => (
-        group.threads.length > 0 && (
-          <div key={group.label} data-sidebar="group" className="relative flex w-full min-w-0 flex-col p-2">
-            <div data-sidebar="group-label" className="flex h-8 shrink-0 select-none items-center rounded-md text-xs font-medium outline-none ring-sidebar-ring transition-[margin,opa] duration-200 ease-snappy focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0 group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 px-1.5 text-color-heading">
-              <span>{group.label}</span>
-            </div>
-            <div data-sidebar="group-content" className="w-full text-sm">
-              <ul data-sidebar="menu" className="flex w-full min-w-0 flex-col gap-1">
-                {group.threads.map((thread) => (
-                  <span key={thread.id} data-state="closed">
-                    <li data-sidebar="menu-item" className="group/menu-item relative">
-                      <a
-                        className={`group/link relative flex h-9 w-full items-center overflow-hidden rounded-lg px-2 py-1 text-sm outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring hover:focus-visible:bg-sidebar-accent ${thread.id === currentThreadId ? 'bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md' : ''
-                          }`}
-                        title={thread.title || 'Untitled'}
-                        onClick={() => {
-                          onSelectThread(thread.id);
-                          // Dispatch focus event when thread is selected
-                          window.dispatchEvent(new Event('focus-chat-input'));
-                        }}
-                      >
-                        <div className="relative flex w-full items-center">
-                          <div className="relative w-full">
-                            <input
-                              aria-label="Thread title"
-                              aria-describedby="thread-title-hint"
-                              aria-readonly="true"
-                              readOnly
-                              tabIndex={-1}
-                              className="hover:truncate-none h-full w-full rounded bg-transparent px-1 py-1 text-sm text-muted-foreground outline-none pointer-events-none cursor-pointer overflow-hidden truncate"
-                              title={thread.title || 'Untitled'}
-                              type="text"
-                              value={thread.title || 'Untitled'}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectThread(thread.id);
-                                // Dispatch focus event when thread is selected via the input
-                                window.dispatchEvent(new Event('focus-chat-input'));
-                              }}
-                            />
-                          </div>
-                          <div className="pointer-events-auto flex items-center justify-end text-muted-foreground opacity-0 group-hover/link:opacity-100 transition-opacity">
-                            {/* Commented out pin button
-                            {onPinThread && (
-                              <button
-                                className="rounded-md p-1.5 hover:bg-muted/40"
-                                tabIndex={-1}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onPinThread(thread.id);
-                                }}
-                                aria-label="Pin thread"
-                              >
-                                <Pin className="size-4" />
-                              </button>
-                            )}
-                            */}
-                            <button
-                              className="rounded-md p-1.5 hover:bg-destructive/50 hover:text-destructive-foreground"
-                              tabIndex={-1}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                
-                                // Function to handle thread deletion
-                                const handleDeleteWithToast = (threadId: string, threadTitle: string) => {
-                                  // Optimistic update - add to pending deletes first
-                                  setPendingDeletes(prev => new Set([...prev, threadId]));
-                                  
-                                  // Show toast with undo option
-                                  toast.info(
-                                    `Chat deleted`,
-                                    {
-                                      description: `"${threadTitle || 'Untitled'}" was deleted.`,
-                                      action: {
-                                        label: "Undo",
-                                        onClick: () => {
-                                          // Remove from pending deletes
-                                          setPendingDeletes(prev => {
-                                            const newSet = new Set([...prev]);
-                                            newSet.delete(threadId);
-                                            return newSet;
-                                          });
-                                          // Refresh to restore the thread in UI
-                                          refresh();
-                                        }
-                                      },
-                                      duration: 5000
-                                    }
-                                  );
-                                  
-                                  // Then call the actual delete function
-                                  onDeleteThread(threadId);
-                                };
-                                
-                                if (confirmThreadDeletion) {
-                                  // Show confirmation dialog if preference is set
-                                  if (window.confirm('Are you sure you want to delete this chat?')) {
-                                    handleDeleteWithToast(thread.id, thread.title);
-                                  }
-                                } else {
-                                  // Delete immediately with toast if confirmation is disabled
-                                  handleDeleteWithToast(thread.id, thread.title);
-                                }
-                              }}
-                              aria-label="Delete thread"
-                            >
-                              <X className="size-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </a>
-                    </li>
-                  </span>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )
-      ))}
+      {/* Wrap the ThreadGroups with the StableThreadProvider to stabilize handlers */}
+      <StableThreadProvider
+        currentThreadId={currentThreadId}
+        onSelectThread={onSelectThread}
+        onDeleteThread={handleDeleteClick}
+        deletingThreadIds={deletingThreadIds}
+      >
+        {groupedThreads.map((group) => (
+          <ThreadGroup
+            key={group.label}
+            label={group.label}
+            threads={group.threads}
+          />
+        ))}
+      </StableThreadProvider>
 
       {/* Rename Dialog */}
       <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
@@ -275,4 +221,4 @@ export function ThreadList({
       </Dialog>
     </div>
   );
-}
+});

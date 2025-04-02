@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { threadRepository } from '../db/repositories';
 import { Thread } from '../db/types';
 
@@ -11,6 +11,37 @@ export interface UseThreadsOptions {
    * Default: 0 (no auto-refresh)
    */
   refreshInterval?: number;
+}
+
+/**
+ * Deep equality comparison function
+ */
+function areThreadListsEqual(oldThreads: Thread[], newThreads: Thread[]): boolean {
+  if (oldThreads.length !== newThreads.length) {
+    return false;
+  }
+  
+  for (let i = 0; i < oldThreads.length; i++) {
+    const oldThread = oldThreads[i];
+    const newThread = newThreads[i];
+    
+    // Quick ID check
+    if (oldThread.id !== newThread.id) {
+      return false;
+    }
+    
+    // Check essential properties
+    if (
+      oldThread.title !== newThread.title ||
+      oldThread.updatedAt !== newThread.updatedAt ||
+      oldThread.modelId !== newThread.modelId ||
+      oldThread.systemPrompt !== newThread.systemPrompt
+    ) {
+      return false;
+    }
+  }
+  
+  return true;
 }
 
 /**
@@ -28,25 +59,49 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Error state
   const [error, setError] = useState<Error | null>(null);
   
+  // Ref to store the last threads list for comparison
+  const lastThreadsRef = useRef<Thread[]>([]);
+  
+  // Track if component is mounted
+  const isMountedRef = useRef<boolean>(true);
+  
   // Load threads
   const loadThreads = useCallback(async () => {
     try {
-      setIsLoading(true);
+      if (!isMountedRef.current) return [];
+      
+      // Only set loading on first load, not refreshes
+      if (threads.length === 0) {
+        setIsLoading(true);
+      }
+      
       setError(null);
       
       const threadList = await threadRepository.getAllThreads();
-      setThreads(threadList);
+      
+      // Only update state if threads actually changed (deep comparison)
+      if (!areThreadListsEqual(lastThreadsRef.current, threadList)) {
+        if (isMountedRef.current) {
+          console.log('Updating threads state - change detected');
+          setThreads(threadList);
+          lastThreadsRef.current = threadList;
+        }
+      }
       
       return threadList;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      setError(error);
+      if (isMountedRef.current) {
+        setError(error);
+      }
       console.error('Error loading threads:', error);
       return [];
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, []);
+  }, [threads.length]);
   
   // Create a new thread
   const createThread = useCallback(async (title?: string): Promise<Thread> => {
@@ -57,9 +112,13 @@ export function useThreads(options: UseThreadsOptions = {}) {
       });
       
       // Update local state immediately for optimistic UI
-      setThreads(currentThreads => [thread, ...currentThreads]);
-      
-      // Skip the full loadThreads to avoid showing duplicates
+      if (isMountedRef.current) {
+        setThreads(currentThreads => {
+          const newThreads = [thread, ...currentThreads];
+          lastThreadsRef.current = newThreads;
+          return newThreads;
+        });
+      }
       
       return thread;
     } catch (err) {
@@ -67,13 +126,19 @@ export function useThreads(options: UseThreadsOptions = {}) {
       console.error('Error creating thread:', error);
       throw error;
     }
-  }, [loadThreads]);
+  }, []);
   
   // Delete a thread
   const deleteThread = useCallback(async (threadId: string): Promise<boolean> => {
     try {
       // First optimistically update local state for immediate UI response
-      setThreads(currentThreads => currentThreads.filter(thread => thread.id !== threadId));
+      if (isMountedRef.current) {
+        setThreads(currentThreads => {
+          const newThreads = currentThreads.filter(thread => thread.id !== threadId);
+          lastThreadsRef.current = newThreads;
+          return newThreads;
+        });
+      }
       
       // Then actually perform the deletion
       const result = await threadRepository.deleteThread(threadId);
@@ -100,13 +165,17 @@ export function useThreads(options: UseThreadsOptions = {}) {
   const updateThread = useCallback(async (threadId: string, updates: Partial<Thread>): Promise<Thread | null> => {
     try {
       // First optimistically update local state for immediate UI response
-      setThreads(currentThreads => 
-        currentThreads.map(thread => 
-          thread.id === threadId 
-            ? { ...thread, ...updates, updatedAt: Date.now() } 
-            : thread
-        )
-      );
+      if (isMountedRef.current) {
+        setThreads(currentThreads => {
+          const newThreads = currentThreads.map(thread => 
+            thread.id === threadId 
+              ? { ...thread, ...updates, updatedAt: Date.now() } 
+              : thread
+          );
+          lastThreadsRef.current = newThreads;
+          return newThreads;
+        });
+      }
       
       // Then actually perform the update
       const result = await threadRepository.updateThread(threadId, updates);
@@ -129,23 +198,27 @@ export function useThreads(options: UseThreadsOptions = {}) {
     }
   }, [loadThreads]);
   
-  // Initial load with isLoading state management
+  // Initial load when component mounts
   useEffect(() => {
-    // Set loading state only if threads array is empty
-    if (threads.length === 0) {
-      setIsLoading(true);
-    }
+    // Reset the mounted ref
+    isMountedRef.current = true;
     
-    loadThreads().finally(() => {
-      // Clear loading state after load completes
-      setIsLoading(false);
-    });
-  }, [loadThreads, threads.length]);
+    // Initial load
+    loadThreads();
+    
+    // Cleanup function to prevent memory leaks
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [loadThreads]);
   
   // Set up auto-refresh if enabled - don't show loading state for background refreshes
   useEffect(() => {
     if (refreshInterval > 0) {
       const intervalId = setInterval(() => {
+        // Skip if component unmounted
+        if (!isMountedRef.current) return;
+        
         // Run the load without updating the loading state to prevent flashing
         loadThreads().catch(err => {
           console.error('Error in background refresh:', err);
@@ -159,6 +232,9 @@ export function useThreads(options: UseThreadsOptions = {}) {
   // Set up a one-time refresh when a thread is created/deleted - without loading indicator
   useEffect(() => {
     const handleThreadChange = () => {
+      // Skip if component unmounted
+      if (!isMountedRef.current) return;
+      
       // Run the load without updating the loading state to prevent flashing
       loadThreads().catch(err => {
         console.error('Error in event-triggered refresh:', err);

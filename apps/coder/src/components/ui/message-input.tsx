@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowUp, Info, Loader2, Mic, Paperclip, Square, X } from "lucide-react"
 import { omit } from "remeda"
@@ -36,19 +36,38 @@ type MessageInputProps =
   | MessageInputWithoutAttachmentProps
   | MessageInputWithAttachmentsProps
 
-export function MessageInput({
-  placeholder = "Ask Coder",
-  className,
-  onKeyDown: onKeyDownProp,
-  submitOnEnter = true,
-  stop,
-  isGenerating,
-  enableInterrupt = true,
-  transcribeAudio,
-  ...props
-}: MessageInputProps) {
-  const [isDragging, setIsDragging] = useState(false)
-  const [showInterruptPrompt, setShowInterruptPrompt] = useState(false)
+export const MessageInput = React.memo(function MessageInput(props: MessageInputProps) {
+  const {
+    placeholder = "Ask Coder",
+    className,
+    onKeyDown: onKeyDownProp,
+    submitOnEnter = true,
+    stop,
+    isGenerating,
+    enableInterrupt = true,
+    transcribeAudio,
+    allowAttachments,
+    ...restProps
+  } = props;
+
+  const files = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).files : null;
+  const setFiles = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).setFiles : null;
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [showInterruptPrompt, setShowInterruptPrompt] = useState(false);
+
+  // Store the onChange handler in a ref to avoid creating functions
+  const onChangeRef = useRef(restProps.onChange);
+
+  // Update the ref when props.onChange changes
+  useEffect(() => {
+    onChangeRef.current = restProps.onChange;
+  }, [restProps.onChange]);
+
+  // Memoize the speech callbacks
+  const onTranscriptionComplete = useCallback((text: string) => {
+    onChangeRef.current?.({ target: { value: text } } as any);
+  }, []);
 
   const {
     isListening,
@@ -60,10 +79,22 @@ export function MessageInput({
     stopRecording,
   } = useAudioRecording({
     transcribeAudio,
-    onTranscriptionComplete: (text) => {
-      props.onChange?.({ target: { value: text } } as any)
-    },
+    onTranscriptionComplete
   })
+
+  // Store the value and allowAttachments in refs to avoid recreating functions
+  const valueRef = useRef(restProps.value);
+  const filesRef = useRef(files);
+  const allowAttachmentsRef = useRef(allowAttachments);
+  const setFilesRef = useRef(setFiles);
+
+  // Update refs when props change
+  useEffect(() => {
+    valueRef.current = restProps.value;
+    filesRef.current = files;
+    setFilesRef.current = setFiles;
+    allowAttachmentsRef.current = allowAttachments;
+  }, [restProps.value, files, allowAttachments, setFiles]);
 
   useEffect(() => {
     if (!isGenerating) {
@@ -71,50 +102,51 @@ export function MessageInput({
     }
   }, [isGenerating])
 
-  const addFiles = (files: File[] | null) => {
-    if (props.allowAttachments) {
-      props.setFiles((currentFiles) => {
-        if (currentFiles === null) {
-          return files
-        }
+  // All event handlers memoized with useCallback
+  const addFiles = useCallback((files: File[] | null) => {
+    if (!allowAttachmentsRef.current || !setFilesRef.current) return;
 
-        if (files === null) {
-          return currentFiles
-        }
+    setFilesRef.current((currentFiles) => {
+      if (currentFiles === null) {
+        return files;
+      }
 
-        return [...currentFiles, ...files]
-      })
-    }
-  }
+      if (files === null) {
+        return currentFiles;
+      }
 
-  const onDragOver = (event: React.DragEvent) => {
-    if (props.allowAttachments !== true) return
+      return [...currentFiles, ...files];
+    });
+  }, []);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    if (allowAttachmentsRef.current !== true) return
     event.preventDefault()
     setIsDragging(true)
-  }
+  }, []);
 
-  const onDragLeave = (event: React.DragEvent) => {
-    if (props.allowAttachments !== true) return
+  const onDragLeave = useCallback((event: React.DragEvent) => {
+    if (allowAttachmentsRef.current !== true) return
     event.preventDefault()
     setIsDragging(false)
-  }
+  }, []);
 
-  const onDrop = (event: React.DragEvent) => {
+  const onDrop = useCallback((event: React.DragEvent) => {
     setIsDragging(false)
-    if (props.allowAttachments !== true) return
+    if (allowAttachmentsRef.current !== true) return
     event.preventDefault()
     const dataTransfer = event.dataTransfer
     if (dataTransfer.files.length) {
       addFiles(Array.from(dataTransfer.files))
     }
-  }
+  }, [addFiles]);
 
-  const onPaste = (event: React.ClipboardEvent) => {
+  const onPaste = useCallback((event: React.ClipboardEvent) => {
     const items = event.clipboardData?.items
     if (!items) return
 
     const text = event.clipboardData.getData("text")
-    if (text && text.length > 500 && props.allowAttachments) {
+    if (text && text.length > 500 && allowAttachmentsRef.current) {
       event.preventDefault()
       const blob = new Blob([text], { type: "text/plain" })
       const file = new File([blob], "Pasted text", {
@@ -129,12 +161,12 @@ export function MessageInput({
       .map((item) => item.getAsFile())
       .filter((file) => file !== null)
 
-    if (props.allowAttachments && files.length > 0) {
+    if (allowAttachmentsRef.current && files.length > 0) {
       addFiles(files)
     }
-  }
+  }, [addFiles]);
 
-  const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (submitOnEnter && event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
 
@@ -144,8 +176,8 @@ export function MessageInput({
           setShowInterruptPrompt(false)
           event.currentTarget.form?.requestSubmit()
         } else if (
-          props.value ||
-          (props.allowAttachments && props.files?.length)
+          valueRef.current ||
+          (allowAttachmentsRef.current && filesRef.current?.length)
         ) {
           setShowInterruptPrompt(true)
           return
@@ -156,27 +188,86 @@ export function MessageInput({
     }
 
     onKeyDownProp?.(event)
-  }
+  }, [submitOnEnter, isGenerating, stop, enableInterrupt, showInterruptPrompt, onKeyDownProp]);
 
   const textAreaRef = useRef<HTMLTextAreaElement>(null)
   const [textAreaHeight, setTextAreaHeight] = useState<number>(0)
 
+  // Memoize this effect that measures textarea height
   useEffect(() => {
     if (textAreaRef.current) {
       setTextAreaHeight(textAreaRef.current.offsetHeight)
     }
-  }, [props.value])
+  }, [restProps.value])
 
   // Use the focus hook - textAreaRef is correctly typed for this hook
   useFocusInput(textAreaRef as React.RefObject<HTMLTextAreaElement>)
 
-  const showFileList =
-    props.allowAttachments && props.files && props.files.length > 0
+  // Memoize this computation
+  const showFileList = useMemo(() =>
+    allowAttachments && files && files.length > 0,
+    [allowAttachments, files]);
 
+  // Auto-size the textarea
   useAutosizeTextArea({
     ref: textAreaRef,
-    value: props.value || ''
+    value: restProps.value || ''
   })
+
+  // File removal handler - memoized to avoid recreation
+  const handleFileRemove = useCallback((file: File) => {
+    if (!allowAttachmentsRef.current || !setFilesRef.current) return;
+
+    setFilesRef.current((files) => {
+      if (!files) return null;
+
+      const filtered = Array.from(files).filter(f => f !== file);
+      return filtered.length === 0 ? null : filtered;
+    });
+  }, []);
+
+  // Close interrupt prompt handler
+  const closeInterruptPrompt = useCallback(() => {
+    setShowInterruptPrompt(false);
+  }, []);
+
+  // Button click handler
+  const handleAttachClick = useCallback(async () => {
+    const files = await showFileUploadDialog();
+    addFiles(files);
+  }, [addFiles]);
+
+  // Memoize sending disabled state
+  const isSendDisabled = useMemo(() =>
+    restProps.value === "" || isGenerating,
+    [restProps.value, isGenerating]);
+
+  // Memoize textarea props to avoid spread recreation
+  const textareaProps = useMemo(() => {
+    const propsToOmit = ['allowAttachments', 'files', 'setFiles'] as const;
+    if (allowAttachments) {
+      return omit(restProps as any, propsToOmit);
+    } else {
+      return omit(restProps as any, ['allowAttachments'] as const);
+    }
+  }, [allowAttachments, restProps]);
+
+  // Memoize rendered files
+  const renderedFiles = useMemo(() => {
+    if (!allowAttachments || !files) return null;
+
+    return (
+      <AnimatePresence mode="popLayout">
+        {files.map((file) => (
+          <FilePreview
+            key={file.name + String(file.lastModified)}
+            file={file}
+            onRemove={() => handleFileRemove(file)}
+          />
+        ))}
+      </AnimatePresence>
+    );
+  }, [allowAttachments, files, handleFileRemove]);
 
   return (
     <div
@@ -188,7 +279,7 @@ export function MessageInput({
       {enableInterrupt && (
         <InterruptPrompt
           isOpen={showInterruptPrompt}
-          close={() => setShowInterruptPrompt(false)}
+          close={closeInterruptPrompt}
         />
       )}
 
@@ -207,39 +298,17 @@ export function MessageInput({
             onPaste={onPaste}
             onKeyDown={onKeyDown}
             className={cn(
-              "z-10 w-full grow resize-none  border border-input bg-background p-3 pr-24 text-sm ring-offset-background transition-[border] placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+              "z-10 w-full grow resize-none border border-input bg-background p-3 pr-24 text-sm ring-offset-background transition-[border] placeholder:text-muted-foreground focus-visible:border-primary focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
               showFileList && "pb-16",
               className
             )}
-            {...(props.allowAttachments
-              ? omit(props, ["allowAttachments", "files", "setFiles"])
-              : omit(props, ["allowAttachments"]))}
+            {...textareaProps}
           />
 
-          {props.allowAttachments && (
+          {allowAttachments && (
             <div className="absolute inset-x-3 bottom-0 z-20 overflow-x-scroll py-3">
               <div className="flex space-x-3">
-                <AnimatePresence mode="popLayout">
-                  {props.files?.map((file) => {
-                    return (
-                      <FilePreview
-                        key={file.name + String(file.lastModified)}
-                        file={file}
-                        onRemove={() => {
-                          props.setFiles((files) => {
-                            if (!files) return null
-
-                            const filtered = Array.from(files).filter(
-                              (f) => f !== file
-                            )
-                            if (filtered.length === 0) return null
-                            return filtered
-                          })
-                        }}
-                      />
-                    )
-                  })}
-                </AnimatePresence>
+                {renderedFiles}
               </div>
             </div>
           )}
@@ -247,17 +316,14 @@ export function MessageInput({
       </div>
 
       <div className="absolute right-3 top-3 z-20 flex gap-2">
-        {props.allowAttachments && (
+        {allowAttachments && (
           <Button
             type="button"
             size="icon"
             variant="outline"
             className="h-8 w-8"
             aria-label="Attach a file"
-            onClick={async () => {
-              const files = await showFileUploadDialog()
-              addFiles(files)
-            }}
+            onClick={handleAttachClick}
           >
             <Paperclip className="h-4 w-4" />
           </Button>
@@ -290,14 +356,14 @@ export function MessageInput({
             size="icon"
             className="h-8 w-8 transition-opacity"
             aria-label="Send message"
-            disabled={props.value === "" || isGenerating}
+            disabled={isSendDisabled}
           >
             <ArrowUp className="h-5 w-5" />
           </Button>
         )}
       </div>
 
-      {props.allowAttachments && <FileUploadOverlay isDragging={isDragging} />}
+      {allowAttachments && <FileUploadOverlay isDragging={isDragging} />}
 
       <RecordingControls
         isRecording={isRecording}
@@ -307,9 +373,11 @@ export function MessageInput({
         onStopRecording={stopRecording}
       />
     </div>
-  )
-}
-MessageInput.displayName = "MessageInput"
+  );
+});
+
+// Set display name
+MessageInput.displayName = "MessageInput";
 
 interface FileUploadOverlayProps {
   isDragging: boolean
