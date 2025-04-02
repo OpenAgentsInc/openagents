@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 // Restored persistence with our wrapper
-import { usePersistentChat, useSettings, MODELS, DEFAULT_SYSTEM_PROMPT } from "@openagents/core";
+import { usePersistentChat, useSettings, MODELS, DEFAULT_SYSTEM_PROMPT, createUserFriendlyErrorMessage } from "@openagents/core";
 import { MessageInput } from "@/components/ui/message-input";
 import { MessageList } from "@/components/ui/message-list";
 import { Chat, ChatForm } from "@/components/ui/chat";
@@ -358,6 +358,8 @@ export default function HomePage() {
     createNewThread,
     deleteThread,
     updateThread,
+    append,
+    setMessages,
   } = usePersistentChat({
     // Use relative URL to work with any port (will be proxied if needed)
     api: `/api/chat`,
@@ -399,6 +401,20 @@ export default function HomePage() {
     // Handle errors from the AI SDK hook itself
     onError: (error) => {
       console.error('Chat hook onError:', error);
+      
+      // Get user-friendly error message using utility function
+      const userFriendlyError = createUserFriendlyErrorMessage(error);
+      
+      // Display error in chat as system message
+      const errorSystemMessage = {
+        id: `error-${Date.now()}`,
+        role: 'system' as const,
+        content: `⚠️ Error: ${userFriendlyError}`,
+        createdAt: new Date(),
+      };
+      
+      // Add the error message to the chat using the append function from usePersistentChat
+      append(errorSystemMessage);
     }
   });
 
@@ -631,6 +647,7 @@ export default function HomePage() {
     try {
       if (typeof window !== 'undefined' && window.sessionStorage) {
         window.sessionStorage.setItem('openagents_current_model', modelId);
+        console.log("Saved model to sessionStorage:", modelId);
       }
     } catch (storageError) {
       console.warn("Error storing model in sessionStorage:", storageError);
@@ -640,6 +657,14 @@ export default function HomePage() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('openagents_active_model', modelId);
+        console.log("Saved model to localStorage:", modelId);
+        
+        // If it's an LMStudio model (like gemma), store it in a special key as well
+        // This helps with restoring LMStudio models specifically
+        if (modelId.includes('gemma') || modelId.toLowerCase().includes('llama')) {
+          window.localStorage.setItem('openagents_lmstudio_model', modelId);
+          console.log("Saved LMStudio model to localStorage:", modelId);
+        }
       }
     } catch (localStorageError) {
       console.warn("Error storing model in localStorage:", localStorageError);
@@ -649,6 +674,11 @@ export default function HomePage() {
     selectModel(modelId).catch(error => {
       console.error("Failed to update settings with selected model:", error);
     });
+    
+    // Dispatch an event to update model availability
+    window.dispatchEvent(new CustomEvent('model-selected', { 
+      detail: { modelId } 
+    }));
   };
 
   return (

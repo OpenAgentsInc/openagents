@@ -287,27 +287,69 @@ This configuration ensures that when running the application in development mode
 2. The proxy handles all the API routes, including the LMStudio proxy endpoint
 3. CORS issues are avoided because the request appears to come from the same origin
 
-## Model Detection
+## Model Detection and Dynamic Discovery
 
-The application includes a robust approach to detecting whether local models are available:
+The application includes a sophisticated approach to detecting and dynamically displaying local models:
 
-1. Proxy requests to LMStudio's API endpoint
-2. Handle various response formats
-3. Implement timeout and error handling
-4. Make availability information accessible to UI components
+### Dynamic Model Discovery
 
-This detection happens in two main places:
-- On application startup and model selection
-- When explicitly checking in the Local Models settings page
+Rather than showing a static list of predefined models, the application:
+
+1. Automatically detects available models from LMStudio in real-time
+2. Creates model entries for each discovered model with appropriate metadata
+3. Shows only models that are actually available in your LMStudio instance
+4. Handles various API response formats for maximum compatibility
+
+This means you'll see only the models that are actually loaded in your local LMStudio server, making the interface more relevant and user-friendly.
+
+### Implementation Details
+
+The dynamic model discovery process:
+
+1. Makes proxy requests to LMStudio's `/v1/models` API endpoint
+2. Extracts model information from multiple possible response formats:
+   - OpenAI API format: `data.data[].id`
+   - Array format: Direct array of model objects or strings
+   - Custom formats: With model information in various properties
+3. Creates model definitions for each discovered model with:
+   - Proper formatting of model names from IDs
+   - Default context length and capability settings
+   - Identification as LMStudio provider models
+4. Prioritizes discovered models over static predefined models
+5. Updates immediately when the LMStudio URL is changed
+6. Makes all discovered models available without requiring API keys
+
+### General Model Detection
+
+Detection of LMStudio availability happens in multiple places:
+1. On application startup and model selection
+2. When explicitly checking in the Local Models settings page
+3. When the LMStudio URL is updated in settings
+4. On API key changes that might affect availability
 
 ## User Interface
 
 The user interface provides several components that facilitate local model usage:
 
-1. **Model Selection Dropdown**: Shows available models and status indicators
-2. **Local Models Settings Page**: Configuration interface for LMStudio
-3. **Warning Messages**: Clear indicators when models are unavailable
-4. **Configuration Guidance**: Installation and setup instructions
+### Model Selection UI
+
+The interface dynamically adapts to show only relevant models:
+
+1. **Dynamic Model List**: Shows actual models available in your LMStudio instance
+2. **Formatted Model Names**: Converts technical model IDs to readable names
+3. **Availability Indicators**: Clearly shows which models are available
+4. **Status Information**: Tooltips explain why models might be unavailable
+5. **Automatic Updates**: UI refreshes when URL changes or models become available
+
+### Configuration UI
+
+The Local Models settings page provides comprehensive configuration options:
+
+1. **URL Configuration**: Set the address where your LMStudio instance is running
+2. **Connection Testing**: Test connectivity to LMStudio with visual feedback
+3. **Model Discovery**: View all available models on your LMStudio server
+4. **Installation Guidance**: Instructions for setting up LMStudio if not detected
+5. **Error Diagnostics**: Helpful error messages for troubleshooting connection issues
 
 ## Troubleshooting
 

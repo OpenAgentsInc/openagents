@@ -138,14 +138,30 @@ app.post('/api/chat', async (c) => {
     }
 
     // Find model info in MODELS
-    const modelInfo = MODELS.find(m => m.id === MODEL);
+    let modelInfo = MODELS.find(m => m.id === MODEL);
+    let provider = "lmstudio"; // Default provider if not found
 
-    if (!modelInfo) {
-      return c.json({ error: `Model ${MODEL} not found in the MODELS array` }, 400);
+    // If model not found in MODELS but looks like an LMStudio model (includes gemma or llama)
+    if (!modelInfo && (MODEL.includes('gemma') || MODEL.toLowerCase().includes('llama'))) {
+      console.log(`[Server] Model ${MODEL} not in MODELS array but detected as LMStudio model`);
+      // Create temporary model info for dynamic models
+      modelInfo = {
+        id: MODEL,
+        name: MODEL.split('/').pop() || MODEL,
+        provider: 'lmstudio',
+        author: 'unknown' as any,
+        created: Date.now(),
+        description: `Dynamically discovered LMStudio model: ${MODEL}`,
+        context_length: 8192, // Reasonable default
+        supportsTools: true, // Most modern models support tools
+        shortDescription: `Dynamic LMStudio model: ${MODEL}`
+      };
+    } else if (!modelInfo) {
+      return c.json({ error: `Model ${MODEL} not found in the MODELS array and doesn't appear to be an LMStudio model` }, 400);
+    } else {
+      // Get provider from model info if found in MODELS
+      provider = modelInfo.provider;
     }
-
-    // Get provider from model info
-    const provider = modelInfo.provider;
 
     console.log(`🔍 MODEL: ${MODEL}, PROVIDER: ${provider}`);
 
@@ -199,6 +215,7 @@ app.post('/api/chat', async (c) => {
         
         // Debug what we're receiving in the request
         console.log(`[Server] Request body.apiKeys:`, JSON.stringify(body.apiKeys));
+        console.log(`[Server] Using LMStudio URL from request:`, lmStudioUrl);
         
         // Make sure the URL doesn't already have /v1 (avoid double /v1/v1)
         if (!lmStudioUrl.endsWith('/v1')) {
@@ -316,16 +333,25 @@ app.post('/api/chat', async (c) => {
 
         // Standard callbacks
         onError: (event: { error: unknown }) => {
-          console.error("💥 streamText onError callback:",
-            event.error instanceof Error
-              ? `${event.error.message}\n${event.error.stack}`
-              : String(event.error));
+          const errorMessage = event.error instanceof Error
+            ? `${event.error.message}\n${event.error.stack}`
+            : String(event.error);
+            
+          console.error("💥 streamText onError callback:", errorMessage);
 
           // Additional debugging for Ollama-specific errors
           if (provider === "ollama") {
             console.error("Ollama error details:", JSON.stringify(event.error, null, 2));
             console.error("Please check if the Ollama server is running and the model is available.");
             console.error("You can pull the model with: ollama pull " + MODEL.split(":")[0]);
+          }
+          
+          // Try to send the error message back to the client via the stream
+          try {
+            // We'll handle this in the stream processing code below
+            throw new Error(`MODEL_ERROR: ${errorMessage}`);
+          } catch (e) {
+            console.error("Error will be propagated to stream handling");
           }
         },
         onFinish: (event: Parameters<StreamTextOnFinishCallback<{}>>[0]) => {
@@ -399,8 +425,43 @@ app.post('/api/chat', async (c) => {
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`Error during stream handling: ${errorMessage}`);
+          
+          // If this is a model error specifically, extract the actual error message
+          let userFriendlyError = errorMessage;
+          
+          if (errorMessage.includes('MODEL_ERROR:')) {
+            // Extract the specific context error from the message
+            const contextErrorMatch = errorMessage.match(/context length of only (\d+) tokens.+Try to load the model with a larger context length/);
+            const genericErrorMatch = errorMessage.match(/MODEL_ERROR:\s+(.*?)(\n|$)/);
+            
+            if (contextErrorMatch) {
+              // This is a context length error - create a more user-friendly message
+              const contextLength = contextErrorMatch[1];
+              userFriendlyError = `Model context overflow: This conversation is too long for the model's ${contextLength} token limit. Try starting a new conversation or using a model with larger context.`;
+            } else if (genericErrorMatch) {
+              // Extract the actual error message without the MODEL_ERROR prefix
+              userFriendlyError = genericErrorMatch[1];
+            }
+          }
+          
+          // Special handling for common LLM error types
+          if (errorMessage.toLowerCase().includes('context') && errorMessage.toLowerCase().includes('overflow')) {
+            userFriendlyError = "Context length exceeded: This conversation is too long for the model. Try starting a new chat or using a model with larger context window.";
+          } else if (errorMessage.toLowerCase().includes('rate limit')) {
+            userFriendlyError = "Rate limit exceeded: The API service is limiting requests. Please wait a minute and try again.";
+          }
+          
           try {
-            await responseStream.write(`data: 3:${JSON.stringify(`Stream processing failed: ${errorMessage}`)}\n\n`);
+            // Format error message as a special event type that clients can detect and handle
+            // The format should be JSON that the client can parse
+            const errorObject = {
+              error: true,
+              message: userFriendlyError,
+              details: errorMessage
+            };
+            
+            // Send error as special format to client
+            await responseStream.write(`data: error:${JSON.stringify(errorObject)}\n\n`);
           } catch (writeError) {
             console.error("Failed to write error message to stream");
           }

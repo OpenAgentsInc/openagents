@@ -25,6 +25,10 @@ const chatBubbleVariants = cva(
         true: "border-muted-foreground border bg-transparent text-foreground sm:max-w-[70%]",
         false: "text-foreground w-full",
       },
+      isSystem: {
+        true: "border-yellow-500 border bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 w-full",
+        false: "",
+      },
       animation: {
         none: "",
         fade: "",
@@ -168,6 +172,7 @@ export const ChatMessage = React.memo(function ChatMessage({
   }, [experimental_attachments])
 
   const isUser = role === "user"
+  const isSystem = role === "system"
 
   // Memoize the formatted time to avoid recalculations
   const formattedTime = useMemo(() => {
@@ -176,6 +181,26 @@ export const ChatMessage = React.memo(function ChatMessage({
       minute: "2-digit",
     })
   }, [createdAt])
+
+  if (isSystem) {
+    // System messages (like errors) use a special style
+    return (
+      <div className="flex flex-col items-center w-full">
+        <div className={cn(chatBubbleVariants({ isUser: false, isSystem: true, animation }))}>
+          <MarkdownRenderer>{content}</MarkdownRenderer>
+        </div>
+
+        {showTimeStamp && createdAt ? (
+          <time
+            dateTime={createdAt.toISOString()}
+            className={cn("mt-1 block px-1 text-xs opacity-50")}
+          >
+            {formattedTime}
+          </time>
+        ) : null}
+      </div>
+    )
+  }
 
   if (isUser) {
     return (
@@ -190,7 +215,7 @@ export const ChatMessage = React.memo(function ChatMessage({
           </div>
         ) : null}
 
-        <div className={cn(chatBubbleVariants({ isUser, animation }))}>
+        <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
           <MarkdownRenderer>{content}</MarkdownRenderer>
         </div>
 
@@ -260,7 +285,7 @@ export const ChatMessage = React.memo(function ChatMessage({
 
   return (
     <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
-      <div className={cn(chatBubbleVariants({ isUser, animation }))}>
+      <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
         <MarkdownRenderer>{content}</MarkdownRenderer>
         {actions ? (
           <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
