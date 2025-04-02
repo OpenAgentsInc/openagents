@@ -272,20 +272,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     });
   }, [updateThread]);
 
-  // To prevent excessive reprocessing during streaming, we should use a reference for the last processed message id
-  const lastProcessedMessageIdRef = React.useRef<string | null>(null);
-  const lastProcessedMessagesRef = React.useRef<UIMessage[]>([]);
-  
-  // Process messages for the UI - optimized to handle streaming without excessive rerenders
+  // Process messages without caching during streaming
+  // This ensures every token shows up immediately
   const processedMessages = React.useMemo(() => {
-    // Quick check - if no messages have changed since last processing, return cached result
-    // This is especially important during streaming to prevent massive reprocessing on every token
-    if (messages.length > 0 && lastProcessedMessageIdRef.current === messages[messages.length - 1].id) {
-      // If we're just getting streaming updates to the last message, reuse our previous work
-      return lastProcessedMessagesRef.current;
-    }
-
-    // BRUTE FORCE FIX - Aggressively correct identical timestamps - Remains as backup in case database fixes still have issues
+    // ALWAYS process the messages fresh during streaming 
+    // to ensure we see every token update immediately
 
     // First, identify if we have timestamp collisions
     const timestampCounts: Record<number, number> = {};
@@ -296,6 +287,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         text: msg.content
       }]
     }));
+    
     messagesWithParts.forEach(msg => {
       const timestamp = msg.createdAt?.getTime() || 0;
       timestampCounts[timestamp] = (timestampCounts[timestamp] || 0) + 1;
@@ -305,11 +297,6 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 
     // If no collisions, return messages as-is
     if (!hasCollisions) {
-      // Update our refs with the latest processed data
-      if (messages.length > 0) {
-        lastProcessedMessageIdRef.current = messages[messages.length - 1].id;
-        lastProcessedMessagesRef.current = messagesWithParts;
-      }
       return messagesWithParts;
     }
 
@@ -343,12 +330,6 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         correctedMessages.push(assistantMsg);
         baseTime += 3000; // 3 second gap
       }
-    }
-    
-    // Update our refs with the latest processed data
-    if (messages.length > 0) {
-      lastProcessedMessageIdRef.current = messages[messages.length - 1].id;
-      lastProcessedMessagesRef.current = correctedMessages;
     }
 
     return correctedMessages;
