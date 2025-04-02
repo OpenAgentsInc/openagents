@@ -34,6 +34,17 @@ interface Model {
 
 export const MODELS: Model[] = [
   {
+    author: 'qwen',
+    provider: 'lmstudio',
+    id: 'qwen2.5-14b-instruct',
+    context_length: 131000,
+    created: 1721088000,
+    description: "Qwen2.5 14B Instruct is a powerful instruction-tuned language model with 14.7B parameters. It excels in coding, mathematics, instruction following, and long-text generation. The model supports 29+ languages including Chinese, English, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, and more. It features a 131K token context length with 8K token generation capability, and uses advanced architecture components like RoPE, SwiGLU, RMSNorm, and GQA attention.",
+    name: "Qwen 2.5 14B Instruct",
+    shortDescription: "14.7B parameter multilingual model with 131K context window, optimized for coding, math, and structured outputs across 29+ languages.",
+    supportsTools: true,
+  },
+  {
     author: "qwen",
     provider: "lmstudio",
     id: "qwen2-7b-instruct",

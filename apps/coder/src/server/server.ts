@@ -145,7 +145,8 @@ app.post('/api/chat', async (c) => {
 
         const lmstudio = createOpenAICompatible({
           name: 'lmstudio',
-          baseURL: 'http://localhost:1234/v1',
+          baseURL: "http://192.168.1.189:1234/v1",
+          // baseURL: 'http://localhost:1234/v1',
         });
 
         model = lmstudio(MODEL);
@@ -182,7 +183,7 @@ app.post('/api/chat', async (c) => {
         };
       }
 
-      console.log("tools:", tools)
+      // console.log("tools:", tools)
 
       // If model context length is less than 10000, dont return history, just for messages use the most recent user message
       if (modelInfo.context_length < 10000) {
