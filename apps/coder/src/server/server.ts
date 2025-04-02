@@ -37,6 +37,51 @@ app.use('*', cors({
   exposeHeaders: ['Content-Length', 'X-Vercel-AI-Data-Stream'],
 }));
 
+// Add type definitions for tool calls
+interface ToolCall {
+  index: number;
+  id: string;
+  type?: string;
+  function?: {
+    arguments?: string;
+  };
+}
+
+interface StreamChunk {
+  choices?: Array<{
+    delta?: {
+      tool_calls?: ToolCall[];
+    };
+  }>;
+}
+
+// Create a transform stream to validate and fix tool calls
+function createToolCallValidator() {
+  return new TransformStream({
+    transform(chunk: string, controller) {
+      try {
+        const data = JSON.parse(chunk.replace(/^data: /, ''));
+        if (data.choices?.[0]?.delta?.tool_calls) {
+          const toolCalls = data.choices[0].delta.tool_calls;
+          toolCalls.forEach((call: ToolCall) => {
+            if (!call.type) call.type = "function";
+            if (call.function?.arguments && typeof call.function.arguments === 'string') {
+              try {
+                JSON.parse(call.function.arguments);
+              } catch (e) {
+                call.function.arguments = "{}";
+              }
+            }
+          });
+        }
+        controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (e) {
+        controller.enqueue(chunk);
+      }
+    }
+  });
+}
+
 // Main chat endpoint
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
@@ -295,7 +340,40 @@ app.post('/api/chat', async (c) => {
           const sdkStream = streamResult.toDataStream({
             sendReasoning: true
           });
-          await responseStream.pipe(sdkStream);
+
+          // Process stream using reader
+          const reader = sdkStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              // Convert Uint8Array to string
+              const chunk = new TextDecoder().decode(value);
+
+              try {
+                const data = JSON.parse(chunk.replace(/^data: /, ''));
+                if (data.choices?.[0]?.delta?.tool_calls) {
+                  const toolCalls = data.choices[0].delta.tool_calls;
+                  toolCalls.forEach((call: ToolCall) => {
+                    if (!call.type) call.type = "function";
+                    if (call.function?.arguments && typeof call.function.arguments === 'string') {
+                      try {
+                        JSON.parse(call.function.arguments);
+                      } catch (e) {
+                        call.function.arguments = "{}";
+                      }
+                    }
+                  });
+                }
+                await responseStream.write(`data: ${JSON.stringify(data)}\n\n`);
+              } catch (e) {
+                await responseStream.write(chunk);
+              }
+            }
+          } finally {
+            reader.releaseLock();
+          }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`Error during stream handling: ${errorMessage}`);
