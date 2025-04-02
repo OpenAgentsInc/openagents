@@ -7,6 +7,7 @@ import { streamText, type Message, experimental_createMCPClient, type StreamText
 import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { initMCPClients, getMCPClients } from './mcp-clients';
+import { MODELS } from "@openagents/core";
 
 // Define environment interface
 interface Env {
@@ -208,15 +209,22 @@ app.post('/api/chat', async (c) => {
         }
       }
 
-      // Configure stream options with MCP tools if available
+      // Check if the model supports tools using the model ID
+      const modelInfo = MODELS.find(m => m.id === MODEL);
+      const modelSupportsTools = modelInfo?.supportsTools ?? false;
+      
+      console.log(`[Server] Model ${MODEL} ${modelSupportsTools ? 'supports' : 'does not support'} tools`);
+      
+      // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model: openrouter(MODEL),
         messages: messages,
 
-        toolCallStreaming: true,
+        toolCallStreaming: modelSupportsTools,
 
         temperature: 0.7,
-        tools, // Add MCP tools to the request
+        // Only include tools if the model supports them
+        ...(modelSupportsTools && Object.keys(tools).length > 0 ? { tools } : {}),
 
         // Headers for OpenRouter
         headers: {
@@ -237,13 +245,13 @@ app.post('/api/chat', async (c) => {
         }
       };
 
-      // Enable MCP tools integration if we have tools
-      if (Object.keys(tools).length > 0) {
+      // Log tools integration status
+      if (modelSupportsTools && Object.keys(tools).length > 0) {
         console.log(`[Server] Enabling MCP tools integration with ${Object.keys(tools).length} tools`);
+      } else if (!modelSupportsTools) {
+        console.log('[Server] Model does not support tools, continuing without tools');
       } else {
         console.log('[Server] No MCP tools available, continuing without tools');
-        // Remove tools if empty to avoid schema errors
-        streamOptions.tools = {};
       }
 
       const streamResult = streamText(streamOptions);

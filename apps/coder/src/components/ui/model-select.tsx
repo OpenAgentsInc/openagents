@@ -1,5 +1,5 @@
-import React from "react";
-import { models } from "@openagents/core";
+import React, { useState, useEffect } from "react";
+import { MODELS, useSettings } from "@openagents/core";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/utils/tailwind";
 import {
@@ -20,7 +20,6 @@ interface ModelSelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
-  showFreePlanOnly?: boolean;
 }
 
 export function ModelSelect({
@@ -29,17 +28,27 @@ export function ModelSelect({
   placeholder = "Select a model",
   className,
   disabled = false,
-  showFreePlanOnly = false,
 }: ModelSelectProps) {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useState(false);
+  const [visibleModels, setVisibleModels] = useState<typeof MODELS>([]);
+  const { settings } = useSettings();
 
-  // Filter models based on plan if needed
-  const filteredModels = showFreePlanOnly
-    ? models.filter((model) => model.plan === "free")
-    : models;
+  // Filter models based on visibility settings
+  useEffect(() => {
+    if (settings && settings.visibleModelIds && settings.visibleModelIds.length > 0) {
+      // Filter MODELS to only include those in visibleModelIds
+      const filteredModels = MODELS.filter(model => 
+        settings.visibleModelIds!.includes(model.id)
+      );
+      setVisibleModels(filteredModels);
+    } else {
+      // Fall back to all models if no visibility settings are found
+      setVisibleModels(MODELS);
+    }
+  }, [settings]);
 
   // Find the currently selected model
-  const selectedModel = filteredModels.find((model) => model.id === value);
+  const selectedModel = MODELS.find((model) => model.id === value);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -65,13 +74,14 @@ export function ModelSelect({
           <CommandInput placeholder="Search models..." className="font-mono" />
           <CommandEmpty className="font-mono">No model found.</CommandEmpty>
           <CommandGroup className="max-h-[300px] overflow-auto font-mono">
-            {filteredModels.map((model) => (
+            {visibleModels.map((model) => (
               <CommandItem
                 key={model.id}
                 value={model.id}
                 onSelect={() => {
                   onChange(model.id);
                   setOpen(false);
+                  window.dispatchEvent(new Event('focus-chat-input'));
                 }}
                 className="font-mono"
               >
@@ -85,11 +95,6 @@ export function ModelSelect({
                     />
                     <span className="font-medium font-mono">{model.name}</span>
                   </div>
-                  {model.shortDescription && (
-                    <span className="text-xs text-muted-foreground pl-6 font-mono">
-                      {model.shortDescription}
-                    </span>
-                  )}
                 </div>
               </CommandItem>
             ))}

@@ -3,7 +3,7 @@ import { Thread, StoredMessage, Settings } from './types';
 
 // Increment this when making schema changes
 // This allows RxDB to handle migrations properly
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Thread collection schema
@@ -125,6 +125,17 @@ export const settingsSchema: RxJsonSchema<Settings> = {
     defaultModel: {
       type: 'string',
       maxLength: 100
+    },
+    selectedModelId: {
+      type: 'string',
+      maxLength: 100
+    },
+    visibleModelIds: {
+      type: 'array',
+      items: {
+        type: 'string',
+        maxLength: 100
+      }
     },
     preferences: {
       type: 'object',
