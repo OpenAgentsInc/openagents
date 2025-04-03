@@ -15,7 +15,10 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarInset
+  SidebarInset,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent
 } from '@/components/ui/sidebar';
 import { Button } from "@/components/ui";
 import { react19 } from "@openagents/core";
@@ -36,73 +39,85 @@ export default function SettingsLayout() {
           <div className="mt-[30px] relative flex h-full w-full flex-row overflow-hidden">
             {/* Settings Sidebar */}
             <Sidebar>
-              <SidebarContent className="pt-[30px]">
-                <SidebarMenu>
-                  <SidebarMenuItem>
-                    <Link to="/settings/models">
-                      <SidebarMenuButton
-                        isActive={currentPath.includes("/models") && !currentPath.includes("/local-models")}
-                        className={currentPath.includes("/models") && !currentPath.includes("/local-models") ?
-                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
-                      >
-                        <Database className="h-4 w-4" />
-                        <span>Models</span>
-                      </SidebarMenuButton>
-                    </Link>
-                  </SidebarMenuItem>
+              <SidebarContent>
+                <SidebarGroup>
+                  <SidebarGroupLabel>Models & API</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <Link to="/settings/models">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/models") && !currentPath.includes("/local-models")}
+                            className={currentPath.includes("/models") && !currentPath.includes("/local-models") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Database className="h-4 w-4" />
+                            <span>Models</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
 
-                  <SidebarMenuItem>
-                    <Link to="/settings/api-keys">
-                      <SidebarMenuButton
-                        isActive={currentPath.includes("/api-keys")}
-                        className={currentPath.includes("/api-keys") ?
-                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
-                      >
-                        <KeyRound className="h-4 w-4" />
-                        <span>API Keys</span>
-                      </SidebarMenuButton>
-                    </Link>
-                  </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <Link to="/settings/api-keys">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/api-keys")}
+                            className={currentPath.includes("/api-keys") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <KeyRound className="h-4 w-4" />
+                            <span>API Keys</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
 
-                  <SidebarMenuItem>
-                    <Link to="/settings/local-models">
-                      <SidebarMenuButton
-                        isActive={currentPath.includes("/local-models")}
-                        className={currentPath.includes("/local-models") ?
-                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
-                      >
-                        <Server className="h-4 w-4" />
-                        <span>Local Models</span>
-                      </SidebarMenuButton>
-                    </Link>
-                  </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <Link to="/settings/local-models">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/local-models")}
+                            className={currentPath.includes("/local-models") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Server className="h-4 w-4" />
+                            <span>LM Studio</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
 
-                  <SidebarMenuItem>
-                    <Link to="/settings/prompts">
-                      <SidebarMenuButton
-                        isActive={currentPath.includes("/prompts")}
-                        className={currentPath.includes("/prompts") ?
-                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        <span>Prompts</span>
-                      </SidebarMenuButton>
-                    </Link>
-                  </SidebarMenuItem>
+                <SidebarGroup>
+                  <SidebarGroupLabel>Customization</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <Link to="/settings/prompts">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/prompts")}
+                            className={currentPath.includes("/prompts") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                            <span>Prompts</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
 
-                  <SidebarMenuItem>
-                    <Link to="/settings/preferences">
-                      <SidebarMenuButton
-                        isActive={currentPath.includes("/preferences")}
-                        className={currentPath.includes("/preferences") ?
-                          "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
-                      >
-                        <Sliders className="h-4 w-4" />
-                        <span>Preferences</span>
-                      </SidebarMenuButton>
-                    </Link>
-                  </SidebarMenuItem>
-                </SidebarMenu>
+                      <SidebarMenuItem>
+                        <Link to="/settings/preferences">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/preferences")}
+                            className={currentPath.includes("/preferences") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Sliders className="h-4 w-4" />
+                            <span>Preferences</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
               </SidebarContent>
 
               {/* Add SidebarFooter */}
