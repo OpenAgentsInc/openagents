@@ -96,7 +96,7 @@ function getHighlighter() {
   if (!shikiHighlighterPromise) {
     // Initialize once with our custom theme
     shikiHighlighterPromise = shiki.createHighlighter({
-      themes: [xt256Theme],
+      themes: ['github-dark'],
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css'],
     });
   }

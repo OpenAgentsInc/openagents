@@ -578,7 +578,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       vercelChatState.setMessages([]);
       setMessages([]);
       messagesRef.current = [];
-      
+
       // Create the actual thread in the database
       const thread = await threadRepository.createThread({
         title: title || 'New Chat',
@@ -588,13 +588,13 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         systemPrompt: '',
         metadata: {}
       });
-      
+
       // Dispatch a custom event to notify all components that a thread was created
-      window.dispatchEvent(new CustomEvent('thread-changed', { 
+      window.dispatchEvent(new CustomEvent('thread-changed', {
         detail: { action: 'create', threadId: thread.id }
       }));
 
-      console.log('Created new thread:', thread.id);
+      // console.log('Created new thread:', thread.id);
 
       // For a new thread, we should definitely clear all cached statuses
       loadedThreadsRef.current.delete(thread.id);
@@ -626,7 +626,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         // Get all threads except the one being deleted
         const allThreads = await threadRepository.getAllThreads();
         const remainingThreads = allThreads.filter(t => t.id !== threadId);
-        
+
         if (remainingThreads.length > 0) {
           // Switch to the most recent thread first
           await switchThread(remainingThreads[0].id);
@@ -636,18 +636,18 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
           await switchThread(newThread.id);
         }
       }
-      
+
       // Delete messages
       await messageRepository.deleteMessagesByThreadId(threadId);
 
       // Then delete the thread
       const result = await threadRepository.deleteThread(threadId);
-      
+
       // Dispatch a custom event to notify all components that a thread was deleted
-      window.dispatchEvent(new CustomEvent('thread-changed', { 
+      window.dispatchEvent(new CustomEvent('thread-changed', {
         detail: { action: 'delete', threadId: threadId }
       }));
-      
+
       return result;
     } catch (error) {
       console.error('Error deleting thread:', error);

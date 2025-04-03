@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
+import mcpApi from './mcp-api';
 import { streamText, tool, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ollama, createOllama } from 'ollama-ai-provider';
@@ -85,7 +86,68 @@ function createToolCallValidator() {
   });
 }
 
+// Remove this endpoint - we'll handle errors directly in the stream
+
 // Main chat endpoint
+// Helper function to clean up unresolved tool calls in messages
+// This is defined outside the request handler to ensure it's always available
+const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls) => {
+  console.log("🧹 Running global cleanup function for tool calls");
+  
+  try {
+    // Extract the system message if it exists
+    let systemMessage = messagesWithToolCalls.find(msg => msg.role === 'system');
+    let nonSystemMessages = messagesWithToolCalls.filter(msg => msg.role !== 'system');
+    
+    // Now filter out assistant messages with tool calls from non-system messages
+    let userAssistantMessages = nonSystemMessages.filter(msg => {
+      if (msg.role === 'assistant' && 
+          (msg.toolInvocations?.length > 0 || 
+           msg.parts?.some(p => p.type === 'tool-invocation'))) {
+        console.log(`Removing assistant message with tool calls: ${msg.id || 'unnamed'}`);
+        return false;
+      }
+      return true;
+    });
+    
+    // Get the last user message if it exists
+    const lastUserMessage = userAssistantMessages.length > 0 && 
+      userAssistantMessages[userAssistantMessages.length - 1].role === 'user' ?
+      userAssistantMessages[userAssistantMessages.length - 1] : null;
+      
+    // Make a modified system message that includes the error information
+    const errorSystemMessage = {
+      id: `system-${Date.now()}`,
+      role: 'system',
+      content: (systemMessage?.content || "") + 
+        "\n\nNOTE: There was an issue with a previous tool call (Authentication Failed: Bad credentials). The problematic message has been removed so the conversation can continue.",
+      createdAt: new Date()
+    };
+    
+    // Create the final cleaned messages with system message first, then alternating user/assistant
+    let cleanedMessages = [errorSystemMessage, ...userAssistantMessages];
+    
+    // If the last message is not from the user, add a special assistant message explaining the issue
+    if (lastUserMessage === null || 
+        (userAssistantMessages.length > 0 && userAssistantMessages[userAssistantMessages.length - 1].role !== 'user')) {
+      // Add an assistant message explaining the error
+      cleanedMessages.push({
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: "I encountered an error while trying to use a tool: Authentication Failed: Bad credentials. Please try a different request or continue our conversation without using this tool.",
+        createdAt: new Date()
+      });
+    }
+    
+    // Return cleaned messages for use in the stream
+    console.log("✅ Cleanup complete - returning cleaned messages");
+    return cleanedMessages;
+  } catch (err) {
+    console.error("Cleanup function failed:", err);
+    throw new Error("Failed to clean up messages with tool calls");
+  }
+};
+
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
 
@@ -405,6 +467,12 @@ app.post('/api/chat', async (c) => {
         messages = [messages[messages.length - 1]];
       }
 
+      // Global space for error tracking
+      (global as any).__lastToolExecutionError = null;
+      
+      // Just a log for clarity - we'll use the global cleanup function 
+      console.log("Using global cleanup function defined at the top level");
+      
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model,
@@ -464,9 +532,38 @@ app.post('/api/chat', async (c) => {
 
         // Standard callbacks
         onError: (event: { error: unknown }) => {
-          const errorMessage = event.error instanceof Error
-            ? `${event.error.message}\n${event.error.stack}`
-            : String(event.error);
+          // Enhanced debugging - log the ENTIRE error object
+          console.error("💥 streamText onError FULL EVENT:", JSON.stringify(event, null, 2));
+          console.error("💥 streamText onError ORIGINAL ERROR:", event.error);
+          
+          // For Error objects, log all properties
+          if (event.error instanceof Error) {
+            console.error("💥 ERROR DETAILS:", {
+              name: event.error.name,
+              message: event.error.message,
+              stack: event.error.stack,
+              cause: (event.error as any).cause,
+              code: (event.error as any).code,
+              // Try to stringify the entire error object
+              fullError: JSON.stringify(event.error, Object.getOwnPropertyNames(event.error))
+            });
+          }
+          
+          // Create a more focused error message for tool execution errors
+          let errorMessage = "";
+          if (event.error instanceof Error) {
+            // Special handling for AI_ToolExecutionError
+            if ((event.error as any).name === 'AI_ToolExecutionError') {
+              // Use only the message without the stack trace for tool execution errors
+              errorMessage = event.error.message;
+              console.error("💥 USING AI_TOOL_EXECUTION_ERROR MESSAGE DIRECTLY:", errorMessage);
+            } else {
+              // Standard format for other errors
+              errorMessage = `${event.error.message}\n${event.error.stack}`;
+            }
+          } else {
+            errorMessage = String(event.error);
+          }
 
           console.error("💥 streamText onError callback:", errorMessage);
 
@@ -480,11 +577,106 @@ app.post('/api/chat', async (c) => {
           // Check if this is a TypeValidationError before we do anything else
           const isTypeValidationError = errorMessage.includes('AI_TypeValidationError') ||
             errorMessage.includes('Type validation failed');
+            
+          // Check if this is a tool execution error - be thorough with matching
+          const isToolExecutionError = 
+            // Check in the error message
+            errorMessage.includes('Error executing tool') || 
+            errorMessage.includes('AI_ToolExecutionError') ||
+            errorMessage.includes('Authentication Failed') ||
+            errorMessage.includes('Bad credentials') ||
+            // Also check in the original error object
+            (event.error instanceof Error && 
+              ((event.error as any).name === 'AI_ToolExecutionError' || 
+               (event.error as any).code === 'AI_ToolExecutionError' || 
+               ((event.error as any).cause && 
+                ((event.error as any).cause.includes?.('Error executing tool') || 
+                 (event.error as any).cause.includes?.('Authentication Failed')))));
+          
+          // Special logging for tool execution errors
+          if (isToolExecutionError) {
+            console.error("SERVER: DETECTED TOOL EXECUTION ERROR - DETAILS:", {
+              originalMessage: event.error instanceof Error ? event.error.message : String(event.error),
+              causedBy: (event.error instanceof Error) ? (event.error as any).cause : null,
+              code: (event.error instanceof Error) ? (event.error as any).code : null,
+              name: (event.error instanceof Error) ? (event.error as any).name : null
+            });
+          }
 
           // Try to send the error message back to the client via the stream
           try {
+            // Special case for Tool Execution errors - pass them through completely unmodified
+            if (isToolExecutionError) {
+              console.log("SERVER: PASSING THROUGH TOOL EXECUTION ERROR");
+              
+              // Special handling for AI_ToolExecutionError type - MOST IMPORTANT CASE
+              if (event.error instanceof Error && (event.error as any).name === 'AI_ToolExecutionError') {
+                // Keep the original error message exactly as is
+                const errorMsg = event.error.message;
+                console.log("SERVER: DIRECT AI_TOOL_EXECUTION_ERROR MESSAGE:", errorMsg);
+                
+                // CRITICAL: Store this error in global space
+                (global as any).__lastToolExecutionError = errorMsg;
+                
+                // Explicitly create a new error with just this message to avoid any transformation
+                const cleanError = new Error(errorMsg);
+                // Add special marker for the client to detect
+                (cleanError as any).isToolExecutionError = true;
+                
+                // Store error message in a response header to ensure it's preserved
+                c.header('X-Tool-Execution-Error', encodeURIComponent(errorMsg));
+                
+                throw cleanError;
+              }
+              
+              // Try to find the most detailed error message possible
+              if (event.error instanceof Error && (event.error as any).cause) {
+                const cause = (event.error as any).cause;
+                if (typeof cause === 'string' && 
+                    (cause.includes('Error executing tool') || cause.includes('Authentication Failed'))) {
+                  console.log("SERVER: USING ERROR CAUSE AS MESSAGE:", cause);
+                  throw new Error(cause);
+                }
+              }
+              
+              // Extract the actual tool error message if possible
+              const toolErrorMatch = errorMessage.match(/Error executing tool[^:]*:(.*?)(\n|$)/);
+              if (toolErrorMatch && toolErrorMatch[1]) {
+                const toolError = `Error executing tool${toolErrorMatch[1]}`;
+                console.log("SERVER: EXTRACTED TOOL ERROR:", toolError);
+                
+                // Create error with special marker
+                const cleanError = new Error(toolError);
+                (cleanError as any).isToolExecutionError = true;
+                throw cleanError;
+              } else if (errorMessage.includes('Authentication Failed')) {
+                // Special case for authentication errors
+                const authMatch = errorMessage.match(/(Authentication Failed[^.\n]*)([.\n]|$)/);
+                if (authMatch && authMatch[1]) {
+                  console.log("SERVER: EXTRACTED AUTH ERROR:", authMatch[1]);
+                  
+                  // Create error with special marker
+                  const cleanError = new Error(authMatch[1]);
+                  (cleanError as any).isToolExecutionError = true;
+                  throw cleanError;
+                } else {
+                  // If specific extraction fails, just ensure Authentication Failed is in the message
+                  const cleanError = new Error("Authentication Failed: Bad credentials");
+                  (cleanError as any).isToolExecutionError = true;
+                  throw cleanError;
+                }
+              } else {
+                // If extraction fails, use the whole message
+                console.log("SERVER: USING FULL ERROR MESSAGE");
+                
+                // Create error with special marker
+                const cleanError = new Error(errorMessage);
+                (cleanError as any).isToolExecutionError = true;
+                throw cleanError;
+              }
+            }
             // Special case for Type validation errors - pass them through completely unmodified
-            if (isTypeValidationError) {
+            else if (isTypeValidationError) {
               console.log("SERVER: PASSING THROUGH TYPE VALIDATION ERROR");
               throw new Error(errorMessage);
             }
@@ -734,6 +926,88 @@ app.post('/api/chat', async (c) => {
       });
     } catch (streamSetupError) {
       console.error("🚨 streamText setup failed:", streamSetupError);
+      
+      // Check if this is a message conversion error for unresolved tool calls
+      const isToolCallError = streamSetupError instanceof Error && 
+        (streamSetupError.message?.includes('ToolInvocation must have a result') ||
+         streamSetupError.message?.includes('tool execution error') ||
+         streamSetupError.message?.includes('MessageConversionError'));
+      
+      if (isToolCallError) {
+        console.log("🛠️ Detected unresolved tool call error - attempting recovery");
+        
+        try {
+          // Use our centralized cleanup function to remove problematic messages
+          const cleanedMessages = await cleanupAndRetryWithoutToolCalls(messages);
+          
+          // Created a simplified model for the recovery
+          const recoveryModel = createAnthropic({
+            apiKey: ANTHROPIC_API_KEY
+          })(MODEL);
+          
+          // Create a simple stream configuration without tools to avoid the same error
+          const recoveryStreamOptions = {
+            model: recoveryModel,
+            messages: cleanedMessages,
+            temperature: 0.7,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'text/event-stream'
+            }
+          };
+          
+          // Create the recovery stream
+          const recoveryStream = streamText(recoveryStreamOptions);
+          
+          // Set up the SSE response
+          c.header('Content-Type', 'text/event-stream; charset=utf-8');
+          c.header('Cache-Control', 'no-cache');
+          c.header('Connection', 'keep-alive');
+          c.header('X-Vercel-AI-Data-Stream', 'v1');
+          
+          // Return the stream directly
+          return stream(c, async (responseStream) => {
+            try {
+              // Convert the stream to data format
+              const dataStream = recoveryStream.toDataStream({ sendReasoning: false });
+              
+              // Create a reader from the stream
+              const reader = dataStream.getReader();
+              
+              // Read and process chunks
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                // Decode the Uint8Array to string
+                const chunk = new TextDecoder().decode(value);
+                
+                // Output the chunk to the console for debugging
+                console.log("Recovery chunk:", chunk.substring(0, 50) + "...");
+                
+                // Pass through the chunk with proper SSE formatting
+                await responseStream.write(chunk);
+              }
+            } catch (streamError) {
+              console.error("Stream error during recovery:", streamError);
+              
+              // Send a simple error message if streaming fails
+              await responseStream.write(`data: ${JSON.stringify({
+                id: `error-${Date.now()}`,
+                role: "system",
+                content: "Error during chat recovery. Please try again."
+              })}\n\n`);
+              await responseStream.write("data: [DONE]\n\n");
+            }
+          });
+        } catch (recoveryError) {
+          console.error("Failed to recover from tool call error:", recoveryError);
+          return c.json({ 
+            error: "Recovery from tool error failed, please try again with a different request" 
+          }, 500);
+        }
+      }
+      
       return c.json({ error: "Failed to initialize AI stream" }, 500);
     }
   } catch (error) {
@@ -791,7 +1065,7 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
             error: 'LMStudio server not found. Make sure LMStudio is running and the Local Server is enabled.',
             status: response.status,
             server_status: 'not_running'
-          }, { status: response.status });
+          }, 404);
         }
 
         return new Response(JSON.stringify({
@@ -840,12 +1114,13 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
         server_status: 'running'
       };
 
-      return c.json(enhancedData, { status: 200 });
+      return c.json(enhancedData, 200);
     } catch (fetchError) {
       clearTimeout(timeoutId);
 
       // Check if it's a timeout error
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+      const typedError = fetchError as Error;
+      if (typedError.name === 'AbortError') {
         console.error('[Server] LMStudio proxy request timed out');
         return new Response(JSON.stringify({
           error: 'Connection to LMStudio server timed out. Make sure LMStudio is running and responsive.',
@@ -853,7 +1128,8 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
         }), { status: 408 });
       }
 
-      throw fetchError; // Re-throw for the outer catch block
+      // Re-throw for the outer catch block
+      throw typedError;
     }
   } catch (error) {
     console.error('[Server] LMStudio proxy error:', error);
@@ -862,14 +1138,17 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
     let errorMessage = 'Failed to connect to LMStudio server';
     let serverStatus = 'error';
 
-    if (error instanceof Error) {
-      if ('code' in error && error.code === 'ECONNREFUSED') {
+    const typedError = error as Error;
+    if (typedError instanceof Error) {
+      // Check if error has code property (like NodeJS errors)
+      const nodeError = typedError as Error & { code?: string };
+      if (nodeError.code === 'ECONNREFUSED') {
         errorMessage = 'Connection refused. LMStudio server is not running.';
         serverStatus = 'not_running';
-      } else if ('code' in error && error.code === 'ENOTFOUND') {
+      } else if (nodeError.code === 'ENOTFOUND') {
         errorMessage = 'Host not found. Check the LMStudio URL.';
         serverStatus = 'invalid_url';
-      } else if (error.message && error.message.includes('network')) {
+      } else if (typedError.message && typedError.message.includes('network')) {
         errorMessage = 'Network error. Check your internet connection.';
         serverStatus = 'network_error';
       }
@@ -877,11 +1156,14 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
 
     return new Response(JSON.stringify({
       error: errorMessage,
-      details: error instanceof Error ? error.message : String(error),
+      details: typedError instanceof Error ? typedError.message : String(typedError),
       server_status: serverStatus
     }), { status: 500 });
   }
 });
+
+// Mount MCP API routes
+app.route('/api/mcp', mcpApi);
 
 // --- End API Routes ---
 

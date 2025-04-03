@@ -49,7 +49,7 @@ export const ApiKeyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.warn("Error loading LMStudio URL from settings:", error);
       }
 
-      console.log(`Loaded API keys and settings for providers: ${Object.keys(keys).join(', ')}`);
+      // console.log(`Loaded API keys and settings for providers: ${Object.keys(keys).join(', ')}`);
       setApiKeys(keys);
     } catch (error) {
       console.error("Error loading API keys:", error);
