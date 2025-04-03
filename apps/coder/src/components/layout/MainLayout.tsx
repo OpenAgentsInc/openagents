@@ -124,7 +124,7 @@ export const MainLayout = memo(function MainLayout({ children }: { children?: Re
               </SidebarContent>
 
               {/* Add SidebarFooter */}
-              <div className="absolute bottom-0 left-0 right-0 p-3 border-t flex items-center justify-between">
+              <div className="bg-background absolute bottom-0 left-0 right-0 p-3 border-t flex items-center justify-between">
                 <ToggleTheme />
                 <Link to="/settings/models">
                   <Button
