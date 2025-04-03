@@ -6,7 +6,8 @@ import {
   KeyRound,
   Server,
   MessageSquare,
-  Sliders
+  Sliders,
+  ArrowLeft
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -40,6 +41,18 @@ export default function SettingsLayout() {
             {/* Settings Sidebar */}
             <Sidebar>
               <SidebarContent>
+                <div className="px-4 mt-[45px] mb-2">
+                  <Link to="/">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start gap-2 bg-transparent border-primary/20 hover:bg-primary/5"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to Chat
+                    </Button>
+                  </Link>
+                </div>
+
                 <SidebarGroup>
                   <SidebarGroupLabel>Models & API</SidebarGroupLabel>
                   <SidebarGroupContent>
