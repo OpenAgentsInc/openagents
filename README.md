@@ -8,6 +8,17 @@ This repo holds our new cross-platform version (v5), a work in progress.
 
 Initial focus is Coder, our desktop app intended to be a drop-in replacement for Claude Code with standard chat UI & thread history and first-class MCP integration.
 
+## Running Coder locally
+
+```bash
+git clone git@github.com:OpenAgentsInc/openagents.git
+cd openagents
+yarn install
+yarn coder
+```
+
+Then click settings icon bottom right > API Keys > Add Anthropic and/or OpenRouter key
+
 ## Repo Structure
 
 ```
