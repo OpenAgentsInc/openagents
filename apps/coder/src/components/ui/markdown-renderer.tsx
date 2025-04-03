@@ -204,7 +204,7 @@ function PreComponent({ node, children, className, ...props }: { node?: any, chi
   const stabilizedContent = codeContent.trim();
   
   return (
-    <div className="code-block-wrapper transition-all ease-in-out duration-150">
+    <div className="code-block-wrapper transition-all ease-in-out duration-50">
       <CodeBlockComponent
         language={language}
         className={cn("not-prose", className)}

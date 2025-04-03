@@ -26,6 +26,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [html, setHtml] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
+  const [isVisible, setIsVisible] = useState(false)
 
   // Capture initial dimensions to stabilize layout
   useEffect(() => {
@@ -40,6 +41,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
   useEffect(() => {
     let isMounted = true
     setIsLoading(true)
+    setIsVisible(false) // Hide content while loading
     console.log(`HighlightedPre useEffect with language: ${language}`)
 
     async function highlight() {
@@ -72,6 +74,9 @@ const HighlightedPre = React.memo(function HighlightedPre({
         if (isMounted) {
           setHtml(highlighted)
           setIsLoading(false)
+          
+          // Show content immediately after highlighting is complete
+          setIsVisible(true)
         }
       } catch (error) {
         console.error(`Failed to highlight code:`, error)
@@ -84,6 +89,9 @@ const HighlightedPre = React.memo(function HighlightedPre({
             .replace(/'/g, "&#039;")
           setHtml(`<pre class="shiki"><code>${escapedCode}</code></pre>`)
           setIsLoading(false)
+          
+          // Show content immediately after fallback is ready
+          setIsVisible(true)
         }
       }
     }
@@ -94,6 +102,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
       console.log('No code string provided to HighlightedPre');
       setHtml('')
       setIsLoading(false)
+      setIsVisible(true)
     }
 
     return () => {
@@ -101,10 +110,13 @@ const HighlightedPre = React.memo(function HighlightedPre({
     }
   }, [codeString, language])
 
+  // Loading placeholder with similar dimensions but no content
   const fallbackPre = (
-    <pre {...props} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4", className)}>
-      <code>{codeString}</code>
-    </pre>
+    <div className="animate-pulse">
+      <pre {...props} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4 min-h-[120px]", className)}>
+        <code className="invisible">{codeString}</code>
+      </pre>
+    </div>
   )
 
   return (
@@ -125,8 +137,10 @@ const HighlightedPre = React.memo(function HighlightedPre({
         <div
           ref={preRef}
           style={{
-            minHeight: dimensions.height > 0 ? `${dimensions.height}px` : undefined,
+            minHeight: dimensions.height > 0 ? `${dimensions.height}px` : '120px',
             minWidth: dimensions.width > 0 ? `${dimensions.width}px` : undefined,
+            opacity: isVisible ? 1 : 0,
+            transition: 'opacity 50ms ease-in-out'
           }}
           className={cn(
             "shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b",
@@ -184,21 +198,27 @@ export const CodeBlock = React.memo(({
   // Use same dimensions and styling for both fallback and final render to prevent jitter
   const sharedStyles = "relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4";
   
-  // Create a stable-size fallback
+  // Create a loading placeholder with similar styling but invisible content
   const fallbackPre = (
-    <div className="relative" style={{ minHeight: '100px' }}>
-      <pre className={cn(sharedStyles, className, "animate-pulse")} {...restProps}>
-        <code>{processedCodeString}</code>
-      </pre>
+    <div className="relative min-h-[120px]">
+      <div className="animate-pulse">
+        <pre className={cn(sharedStyles, className)} {...restProps}>
+          <code className="invisible">{processedCodeString}</code>
+        </pre>
+      </div>
     </div>
   )
 
   // Stabilize wrapper dimensions to prevent jitter
   return (
     <div className="group/code relative my-4 transition-all duration-300 ease-in-out">
-      <div className="relative min-h-[100px]">
+      <div className="relative min-h-[120px]">
         <Suspense fallback={fallbackPre}>
-          <HighlightedPre language={effectiveLanguage} className={cn(className, "transition-opacity duration-300")} {...restProps}>
+          <HighlightedPre 
+            language={effectiveLanguage} 
+            className={cn(className, "transition-opacity duration-300")} 
+            {...restProps}
+          >
             {processedCodeString}
           </HighlightedPre>
         </Suspense>
