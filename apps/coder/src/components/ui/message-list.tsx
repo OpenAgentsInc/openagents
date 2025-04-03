@@ -42,7 +42,7 @@ export function MessageList({
       ref={containerRef}
       onScroll={handleScroll}
       onTouchStart={handleTouchStart}
-      className="space-y-4 overflow-y-auto min-h-0 max-h-full h-full pb-6"
+      className="space-y-4 min-h-0 pb-6"
     >
       {sortedMessages.map((message, index) => {
         const additionalOptions =

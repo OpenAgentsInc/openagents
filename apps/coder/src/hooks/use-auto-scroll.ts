@@ -87,12 +87,26 @@ export function useAutoScroll(dependencies: React.DependencyList) {
     
     previousScrollTop.current = containerRef.current.scrollTop
     
-    // Ensure we scroll to bottom on initial load
-    // Use slightly longer timeout to ensure all content is rendered
-    setTimeout(scrollToBottom, 100)
+    // Wait a bit to make sure all content is properly rendered and measured
+    setTimeout(() => {
+      // Get parent scroll container
+      let parent = containerRef.current?.parentElement;
+      while (parent) {
+        if (window.getComputedStyle(parent).overflowY === 'auto' || 
+            window.getComputedStyle(parent).overflowY === 'scroll') {
+          // Set scroll for parent container
+          parent.scrollTop = parent.scrollHeight;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      
+      // Also do direct scroll in case we're the scroller
+      scrollToBottom();
+    }, 100);
     
-    // Scroll again after a bit longer in case of slow-loading content
-    setTimeout(scrollToBottom, 300)
+    // Try again after a bit longer
+    setTimeout(scrollToBottom, 300);
   }, [scrollToBottom])
 
   // Auto-scroll when dependencies change
@@ -104,12 +118,34 @@ export function useAutoScroll(dependencies: React.DependencyList) {
     const container = containerRef.current
     const currentHeight = container.scrollHeight
     
+    // Function to scroll parent container if we're not the scrollable element
+    const scrollParentIfNeeded = () => {
+      // Check if our parent is the actual scroll container
+      let parent = container.parentElement;
+      while (parent) {
+        if (window.getComputedStyle(parent).overflowY === 'auto' || 
+            window.getComputedStyle(parent).overflowY === 'scroll') {
+          // For parent container, we just set it directly
+          parent.scrollTop = parent.scrollHeight;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    };
+    
     // Only scroll if content has actually increased
     // This prevents unnecessary scrolling when content changes but doesn't grow
     if (currentHeight > lastContentHeight.current) {
       // Use multiple timeouts for reliability across different browsers/scenarios
-      setTimeout(scrollToBottom, 0)
-      setTimeout(scrollToBottom, 50)
+      setTimeout(() => {
+        scrollToBottom();
+        scrollParentIfNeeded();
+      }, 0);
+      
+      setTimeout(() => {
+        scrollToBottom();
+        scrollParentIfNeeded();
+      }, 50);
     }
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
