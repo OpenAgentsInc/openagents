@@ -1,13 +1,9 @@
 {
   "name": "@openagents/coder",
-  "env": {
-    "OPENROUTER_API_KEY": "your-api-key-here"
-  },
   "productName": "Coder",
   "version": "0.0.1",
   "description": "OpenAgents Coder - AI coding assistant",
   "main": ".vite/build/main.js",
-  "private": true,
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "electron-forge start",
