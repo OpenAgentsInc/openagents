@@ -85,7 +85,7 @@ export default function SettingsLayout() {
                         </Link>
                       </SidebarMenuItem>
 
-                      <SidebarMenuItem>
+                      {/* <SidebarMenuItem>
                         <Link to="/settings/local-models">
                           <SidebarMenuButton
                             isActive={currentPath.includes("/local-models")}
@@ -96,8 +96,8 @@ export default function SettingsLayout() {
                             <span>LM Studio</span>
                           </SidebarMenuButton>
                         </Link>
-                      </SidebarMenuItem>
-                      
+                      </SidebarMenuItem> */}
+
                       <SidebarMenuItem>
                         <Link to="/settings/mcp-clients">
                           <SidebarMenuButton
