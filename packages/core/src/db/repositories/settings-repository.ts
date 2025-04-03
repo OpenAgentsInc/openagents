@@ -648,15 +648,43 @@ export class SettingsRepository {
     // Use cached settings if available
     const settings = this.cachedSettings || await this.getSettings();
     const apiKeys = { ...(settings.apiKeys || {}) };
-
+    
     if (provider in apiKeys) {
       delete apiKeys[provider];
 
       // console.log(`Deleting API key for provider: ${provider}`);
-
-      await this.updateSettings({
-        apiKeys
-      });
+      
+      // Check if the selected model belongs to this provider and reset it if necessary
+      let selectedModelId = settings.selectedModelId;
+      const currentSelectedModelId = settings.selectedModelId || settings.defaultModel;
+      
+      if (currentSelectedModelId) {
+        // Check if the current selected model needs an API key from this provider
+        const isProviderModel = 
+          (provider === 'anthropic' && currentSelectedModelId.includes('claude')) ||
+          (provider === 'openai' && (currentSelectedModelId.includes('gpt') || currentSelectedModelId.startsWith('openai/'))) ||
+          (provider === 'google' && (currentSelectedModelId.includes('gemini') || currentSelectedModelId.startsWith('google/'))) ||
+          (provider === 'openrouter' && currentSelectedModelId.startsWith('openrouter/'));
+          
+        if (isProviderModel) {
+          // If we delete the key for the provider of the currently selected model,
+          // reset to a default model that might not need an API key
+          selectedModelId = 'qwen-qwq-32b'; // Fallback model
+        }
+      }
+      
+      // Update settings with deleted API key and potentially reset selected model
+      if (selectedModelId !== settings.selectedModelId) {
+        await this.updateSettings({
+          apiKeys,
+          selectedModelId,
+          defaultModel: selectedModelId // Keep for backward compatibility
+        });
+      } else {
+        await this.updateSettings({
+          apiKeys
+        });
+      }
     }
   }
 

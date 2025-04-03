@@ -696,7 +696,7 @@ export const ModelSelect = React.memo(function ModelSelect({
                       <span className="font-medium font-mono">{model.name}</span>
                     </div>
                     <div className="text-xs text-muted-foreground pl-6">
-                      {model.provider} {model.supportsTools ? "• Tools" : ""} • {Math.round(model.context_length / 1000)}k ctx
+                      {model.provider}
                     </div>
                   </div>
                 </CommandItem>
