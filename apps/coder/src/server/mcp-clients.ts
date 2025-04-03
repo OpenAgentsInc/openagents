@@ -24,13 +24,16 @@ const mcpClients: MCPClients = {
  * Initialize MCP clients once when the server starts
  */
 export async function initMCPClients(): Promise<void> {
+  console.log('[MCP Clients] Skipping MCP client initialization');
+  return;
+
   if (mcpClients.initialized) {
     console.log('[MCP Clients] Already initialized, skipping');
     return;
   }
 
   console.log('[MCP Clients] Initializing MCP clients...');
-  
+
   // GitHub MCP URL
   const GITHUB_MCP_URL = "https://mcp-github.openagents.com/sse";
 
@@ -153,7 +156,7 @@ export async function refreshTools(): Promise<Record<string, any>> {
 
   // Update the global tools cache
   mcpClients.allTools = tools;
-  
+
   return tools;
 }
 
@@ -162,7 +165,7 @@ export async function refreshTools(): Promise<Record<string, any>> {
  */
 export function cleanupMCPClients(): void {
   console.log('[MCP Clients] Cleaning up MCP clients');
-  
+
   // Reset the global state - this will allow the garbage collector
   // to clean up the clients and their transports
   mcpClients.remoteMcpClient = null;
@@ -170,6 +173,6 @@ export function cleanupMCPClients(): void {
   mcpClients.localShellMcpClient = null;
   mcpClients.allTools = {};
   mcpClients.initialized = false;
-  
+
   console.log('[MCP Clients] Cleanup complete');
 }

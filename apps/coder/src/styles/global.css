@@ -2,6 +2,7 @@
 @import "./fonts.css";
 
 @plugin 'tailwindcss-animate';
+@plugin "@tailwindcss/typography";
 
 /*
  * Tailwind v4 dark mode configuration

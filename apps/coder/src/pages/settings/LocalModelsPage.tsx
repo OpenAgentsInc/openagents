@@ -27,7 +27,7 @@ export default function LocalModelsPage() {
       try {
         const { settingsRepository } = await import('@openagents/core/src/db/repositories');
         const savedUrl = await settingsRepository.getPreference<string>("lmstudioUrl", "http://localhost:1234");
-        console.log("Loaded LMStudio URL from settings:", savedUrl);
+        // console.log("Loaded LMStudio URL from settings:", savedUrl);
         setLmStudioUrl(savedUrl);
       } catch (error) {
         console.error("Failed to load LMStudio URL from settings:", error);

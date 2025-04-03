@@ -15,6 +15,7 @@ import { CopyButton } from "@/components/ui/copy-button"
 import { MessageInput } from "@/components/ui/message-input"
 import { MessageList } from "@/components/ui/message-list"
 import { PromptSuggestions } from "@/components/ui/prompt-suggestions"
+import { TypingIndicator } from "@/components/ui/typing-indicator" 
 import { UIMessage } from "@openagents/core"
 
 interface ChatPropsBase {
@@ -204,7 +205,7 @@ export function Chat({
         <ChatMessages messages={messages}>
           <MessageList
             messages={messages}
-            isTyping={isTyping}
+            isTyping={false}
             messageOptions={messageOptions}
           />
         </ChatMessages>
@@ -239,17 +240,21 @@ export function ChatMessages({
 }: React.PropsWithChildren<{
   messages: UIMessage[] | Message[];
 }>) {
+  // Track parts count to detect content changes
+  const totalParts = messages.reduce((count, msg) => 
+    count + ((msg as any).parts?.length || 1), 0);
+    
   const {
     containerRef,
     scrollToBottom,
     handleScroll,
     shouldAutoScroll,
     handleTouchStart,
-  } = useAutoScroll([messages])
+  } = useAutoScroll([messages, totalParts])
 
   return (
     <div
-      className="grid grid-cols-1 overflow-y-auto pb-4"
+      className="grid grid-cols-1 overflow-y-auto pb-4 h-full"
       ref={containerRef}
       onScroll={handleScroll}
       onTouchStart={handleTouchStart}
@@ -260,14 +265,26 @@ export function ChatMessages({
 
       {!shouldAutoScroll && (
         <div className="pointer-events-none flex flex-1 items-end justify-end [grid-column:1/1] [grid-row:1/1]">
-          <div className="sticky bottom-0 left-0 flex w-full justify-end">
+          <div className="sticky bottom-4 right-4 flex w-full justify-end">
             <Button
-              onClick={scrollToBottom}
-              className="pointer-events-auto h-8 w-8 rounded-full ease-in-out animate-in fade-in-0 slide-in-from-bottom-1"
+              onClick={() => {
+                // Find and scroll the parent scrollable container
+                let parent = containerRef.current?.parentElement;
+                while (parent) {
+                  if (window.getComputedStyle(parent).overflowY === 'auto' || 
+                      window.getComputedStyle(parent).overflowY === 'scroll') {
+                    parent.scrollTop = parent.scrollHeight;
+                    break;
+                  }
+                  parent = parent.parentElement;
+                }
+                scrollToBottom();
+              }}
+              className="pointer-events-auto h-10 w-10 rounded-full shadow-md ease-in-out animate-in fade-in-0 slide-in-from-bottom-1 mr-4 mb-2 bg-primary text-primary-foreground hover:bg-primary/90"
               size="icon"
-              variant="ghost"
+              variant="outline"
             >
-              <ArrowDown className="h-4 w-4" />
+              <ArrowDown className="h-5 w-5" />
             </Button>
           </div>
         </div>

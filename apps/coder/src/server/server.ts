@@ -6,6 +6,7 @@ import { stream } from 'hono/streaming';
 import { streamText, tool, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ollama, createOllama } from 'ollama-ai-provider';
+import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
 import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -19,6 +20,7 @@ const exec = promisify(execCallback);
 // Define environment interface
 interface Env {
   OPENROUTER_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
   OLLAMA_BASE_URL?: string;
   ALLOW_COMMANDS?: string; // Shell commands whitelist for mcp-shell-server
 }
@@ -101,6 +103,7 @@ app.post('/api/chat', async (c) => {
 
     // Use API keys from request if available, fall back to environment variables
     const OPENROUTER_API_KEY = requestApiKeys.openrouter || process.env.OPENROUTER_API_KEY || "";
+    const ANTHROPIC_API_KEY = requestApiKeys.anthropic || process.env.ANTHROPIC_API_KEY || "";
     const OLLAMA_BASE_URL = requestApiKeys.ollama || requestApiKeys.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
 
     // Create the Ollama client with custom base URL if specified
@@ -119,6 +122,13 @@ app.post('/api/chat', async (c) => {
       console.log("✅ OPENROUTER_API_KEY is present - OpenRouter models are available");
     }
 
+    // For Anthropic provider models, check if API key is present
+    if (!ANTHROPIC_API_KEY) {
+      console.warn("⚠️ ANTHROPIC_API_KEY is missing - Anthropic Claude models will not be available");
+    } else {
+      console.log("✅ ANTHROPIC_API_KEY is present - Anthropic Claude models are available");
+    }
+
     // Validate input messages
     let messages: Message[] = body.messages || [];
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -131,6 +141,12 @@ app.post('/api/chat', async (c) => {
       baseURL: "https://openrouter.ai/api/v1"
     });
 
+    // Create the Anthropic client with API key
+    const anthropicClient = createAnthropic({
+      apiKey: ANTHROPIC_API_KEY,
+      // Do not set Anthropic-Version header here, it will be included in the fetch request
+    });
+
     // Define model
     const MODEL = body.model;
 
@@ -140,12 +156,13 @@ app.post('/api/chat', async (c) => {
 
     // Find model info in MODELS
     let modelInfo = MODELS.find(m => m.id === MODEL);
-    let provider = "lmstudio"; // Default provider if not found
+    let provider: string | null = null; // No default provider - we'll require an explicit provider match
 
     // Be more lenient about model detection to avoid false rejections
     // Accept any model that appears to be an open model format
     if (!modelInfo) {
       // Check for patterns in the model ID that suggest different model types
+      const isClaudeModel = MODEL.startsWith('claude-');
       const isLmStudioModel = MODEL.includes('gemma') ||
         MODEL.toLowerCase().includes('llama') ||
         MODEL.includes('mistral') ||
@@ -154,23 +171,52 @@ app.post('/api/chat', async (c) => {
         MODEL.includes('gpt') ||
         MODEL.includes('deepseek');
 
-      // Consider any model with a / in the name as a potentially valid model
+      // Consider any model with a / in the name as a potentially valid OpenRouter model
       const hasSlash = MODEL.includes('/');
 
-      // If it looks like any kind of valid model ID, accept it
-      if (isLmStudioModel || hasSlash) {
-        console.log(`[Server] Model ${MODEL} not in MODELS array but detected as LMStudio model`);
-        // Create temporary model info for dynamic models
+      // If it's a Claude model, set provider to Anthropic
+      if (isClaudeModel) {
+        console.log(`[Server] Model ${MODEL} not in MODELS array but detected as Anthropic Claude model`);
+        modelInfo = {
+          id: MODEL,
+          name: MODEL.split('/').pop() || MODEL,
+          provider: 'anthropic',
+          author: 'anthropic' as any,
+          created: Date.now(),
+          description: `Anthropic ${MODEL} model`,
+          context_length: 200000,
+          supportsTools: true,
+          shortDescription: `Anthropic ${MODEL} model`
+        };
+      }
+      // If it looks like an LMStudio model ID and ONLY if specifically requested by the client to use LMStudio
+      else if (isLmStudioModel && body.preferredProvider === 'lmstudio') {
+        console.log(`[Server] Model ${MODEL} not in MODELS array but explicitly requested to use LMStudio`);
         modelInfo = {
           id: MODEL,
           name: MODEL.split('/').pop() || MODEL,
           provider: 'lmstudio',
           author: 'unknown' as any,
           created: Date.now(),
-          description: `Dynamically discovered model: ${MODEL}`,
-          context_length: 8192, // Reasonable default
-          supportsTools: true, // Most modern models support tools
-          shortDescription: `Dynamic model: ${MODEL}`
+          description: `LMStudio model: ${MODEL}`,
+          context_length: 8192,
+          supportsTools: true,
+          shortDescription: `LMStudio model: ${MODEL}`
+        };
+      }
+      // If it has a slash, assume it's an OpenRouter model
+      else if (hasSlash) {
+        console.log(`[Server] Model ${MODEL} not in MODELS array but detected as OpenRouter model due to slash`);
+        modelInfo = {
+          id: MODEL,
+          name: MODEL.split('/').pop() || MODEL,
+          provider: 'openrouter',
+          author: MODEL.split('/')[0] as any || 'unknown' as any,
+          created: Date.now(),
+          description: `OpenRouter model: ${MODEL}`,
+          context_length: 8192,
+          supportsTools: true,
+          shortDescription: `OpenRouter model: ${MODEL}`
         };
       } else {
         // This model ID doesn't match any known pattern
@@ -184,6 +230,14 @@ app.post('/api/chat', async (c) => {
     }
 
     console.log(`🔍 MODEL: ${MODEL}, PROVIDER: ${provider}`);
+
+    // Check if a valid provider was found
+    if (!provider) {
+      console.error(`[Server] ERROR: No valid provider determined for model ${MODEL}`);
+      return c.json({
+        error: `No valid provider could be determined for model "${MODEL}". Please select a model with a known provider.`
+      }, 400);
+    }
 
     // Check if we need OpenRouter
     if (provider === "openrouter" && !OPENROUTER_API_KEY) {
@@ -228,6 +282,23 @@ app.post('/api/chat', async (c) => {
       let headers = {};
 
       if (provider === "lmstudio") {
+        // Add extra validation to catch any potential mix-ups
+        if (MODEL.startsWith('claude-')) {
+          console.error(`[Server] ERROR: Attempting to use Claude model ${MODEL} with LMStudio provider! This is incorrect and will fail.`);
+          console.error(`[Server] Rejecting this request to prevent incorrect routing.`);
+
+          // Return error as SSE
+          c.header('Content-Type', 'text/event-stream; charset=utf-8');
+          c.header('Cache-Control', 'no-cache');
+          c.header('Connection', 'keep-alive');
+          c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+          return stream(c, async (responseStream) => {
+            const errorMsg = "Invalid provider configuration: Claude models must use the Anthropic provider, not LMStudio. Please select a different model or fix the provider settings.";
+            await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+          });
+        }
+
         console.log(`[Server] Using LMStudio provider`);
 
         // Get the LMStudio URL from request if provided, otherwise use default
@@ -283,15 +354,48 @@ app.post('/api/chat', async (c) => {
           'HTTP-Referer': 'https://openagents.com',
           'X-Title': 'OpenAgents Coder'
         };
+      } else if (provider === "anthropic") {
+        console.log(`[Server] Using Anthropic provider for model: ${MODEL}`);
+
+        // Check if the model ID starts with claude- to confirm it's an Anthropic direct model
+        if (!MODEL.startsWith('claude-')) {
+          console.warn(`[Server] Warning: Model ${MODEL} is set to use the Anthropic provider but doesn't start with 'claude-'`);
+        }
+
+        // Check if API key is present
+        if (!ANTHROPIC_API_KEY) {
+          // Return error as SSE
+          c.header('Content-Type', 'text/event-stream; charset=utf-8');
+          c.header('Cache-Control', 'no-cache');
+          c.header('Connection', 'keep-alive');
+          c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+          return stream(c, async (responseStream) => {
+            const errorMsg = "Anthropic API Key not configured. Please add your API key in the Settings > API Keys tab to use Claude models.";
+            await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+          });
+        }
+
+        // Add detailed logging
+        console.log(`[Server] Creating Anthropic request for model: ${MODEL} with API key length: ${ANTHROPIC_API_KEY.length}`);
+
+        // For Anthropic models, use the Anthropic provider
+        model = anthropicClient(MODEL);
+
       } else {
-        console.log(`[Server] Using default provider: OpenRouter`);
-        // Default to OpenRouter for unspecified providers
-        model = openrouter(MODEL);
-        headers = {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://openagents.com',
-          'X-Title': 'OpenAgents Coder'
-        };
+        // No longer default to any provider - if we get here, it's an error
+        console.error(`[Server] ERROR: Unrecognized provider: ${provider} for model ${MODEL}`);
+
+        // Return error as SSE
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `Unknown provider "${provider}" for model ${MODEL}. Please select a model with a supported provider (anthropic, openrouter, lmstudio, or ollama).`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
       }
 
       // console.log("tools:", tools)
@@ -411,6 +515,55 @@ app.post('/api/chat', async (c) => {
         console.log('[Server] No MCP tools available, continuing without tools');
       }
 
+      // CRITICAL SAFEGUARD - Add final check to prevent improper provider routing
+      console.log(`⚠️ CRITICAL SAFEGUARD CHECK: MODEL: ${MODEL}, PROVIDER: ${provider}`);
+
+      // Prevent Claude models from being routed anywhere except Anthropic
+      if (MODEL.startsWith('claude-') && provider !== 'anthropic') {
+        console.error(`[Server] CRITICAL ERROR: Claude model ${MODEL} is being routed to non-Anthropic provider: ${provider}`);
+
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `ROUTING ERROR: Claude model ${MODEL} must use the Anthropic provider, not ${provider}. Please select a model with the correct provider.`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
+      }
+
+      // Prevent non-LMStudio models from going to LMStudio
+      if (provider === 'lmstudio' && !MODEL.includes('gemma') && !MODEL.toLowerCase().includes('llama') &&
+        !MODEL.includes('mistral') && !MODEL.includes('qwen')) {
+        console.error(`[Server] CRITICAL ERROR: Inappropriate model ${MODEL} is being routed to LMStudio`);
+
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `ROUTING ERROR: Model ${MODEL} is not appropriate for LMStudio. Please select a model with the correct provider.`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
+      }
+
+      // Prevent models with a slash from going to non-OpenRouter
+      if (MODEL.includes('/') && provider !== 'openrouter') {
+        console.error(`[Server] CRITICAL ERROR: OpenRouter-style model ${MODEL} is being routed to non-OpenRouter provider: ${provider}`);
+
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = `ROUTING ERROR: Model ${MODEL} with a '/' pattern should use the OpenRouter provider, not ${provider}. Please select a model with the correct provider.`;
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
+      }
+
       const streamResult = streamText(streamOptions);
 
       // Set up the SSE response
@@ -432,12 +585,30 @@ app.post('/api/chat', async (c) => {
             sendReasoning: true
           });
 
+          // OVERRIDE: Add a client-side abort controller to prevent fallback
+          const abortController = new AbortController();
+          const abortSignal = abortController.signal;
+
+          // Set a timeout to detect if we're stuck or failing
+          const timeoutId = setTimeout(() => {
+            console.log("⚠️ Stream processing timeout - preventing LMStudio fallback");
+            abortController.abort();
+          }, 10000); // 10 second timeout
+
           // Process stream using reader
           const reader = sdkStream.getReader();
+          let hasReceivedData = false;
+
           try {
-            while (true) {
+            while (!abortSignal.aborted) {
               const { done, value } = await reader.read();
               if (done) break;
+
+              // We've successfully received data, clear the timeout
+              if (!hasReceivedData) {
+                hasReceivedData = true;
+                clearTimeout(timeoutId);
+              }
 
               // Convert Uint8Array to string
               const chunk = new TextDecoder().decode(value);
@@ -462,7 +633,45 @@ app.post('/api/chat', async (c) => {
                 await responseStream.write(chunk);
               }
             }
+          } catch (streamError) {
+            console.error("STREAM PROCESSING ERROR:", streamError);
+            // Instead of letting the error propagate up, handle it right here with a custom message
+
+            // Custom error message based on provider
+            let errorMessage;
+            if (provider === 'openrouter') {
+              errorMessage = `OpenRouter API Error: Could not access model "${MODEL}". This model might not exist, you may lack permission, or the service may be experiencing issues.`;
+            } else if (provider === 'anthropic') {
+              errorMessage = `Anthropic API Error: Could not process request for "${MODEL}". Please check your API key and try again later.`;
+            } else if (provider === 'lmstudio') {
+              errorMessage = `LMStudio Error: Could not communicate with local server for model "${MODEL}". Make sure LMStudio is running with the server enabled.`;
+            } else {
+              errorMessage = `API Error: Could not access model "${MODEL}" with provider "${provider}". Please check your configuration and try again.`;
+            }
+
+            // Send custom error message to client
+            const errorData = {
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "",
+              choices: [
+                {
+                  delta: {
+                    content: errorMessage
+                  }
+                }
+              ],
+              created: Date.now()
+            };
+
+            await responseStream.write(`data: ${JSON.stringify(errorData)}\n\n`);
+            await responseStream.write("data: [DONE]\n\n");
+
+            // Interrupt processing here - don't let the error bubble up
+            // This prevents any fallback behavior
+            return;
           } finally {
+            clearTimeout(timeoutId);
             reader.releaseLock();
           }
         } catch (error) {
@@ -483,127 +692,15 @@ app.post('/api/chat', async (c) => {
           }
           console.error("==========================================");
 
-          // PRIORITY FIX - Always use raw error message for context overflow errors
-          // Special handling for Type validation failures which contain the context overflow error
-          let userFriendlyError;
+          // CRITICAL OVERRIDE: Handle the error here with a provider-specific message
+          console.error("🚨 CRITICAL: Intercepting outer error - preventing fallback");
 
-          if (errorMessage.includes('Type validation failed:') && errorMessage.includes('context the overflows')) {
-            // This is a Type validation error with context overflow inside quotes
-            const match = errorMessage.match(/Value: "([^"]+)"/);
-            if (match && match[1]) {
-              userFriendlyError = match[1]; // This extracts the raw error inside the quotes
-              console.log("EXTRACTED VALIDATION ERROR:", userFriendlyError);
-            } else {
-              // Just use the first line as fallback
-              userFriendlyError = errorMessage.split('\n')[0];
-            }
-          }
-          // Direct context overflow error (not in validation)
-          else if (errorMessage.includes('context the overflows')) {
-            // For context overflow, use the raw error
-            const contextOverflowMatch = errorMessage.match(/Trying to keep the first \d+ tokens when context the overflows\. However, the model is loaded with context length of only \d+ tokens[^.]*/);
-            if (contextOverflowMatch) {
-              userFriendlyError = contextOverflowMatch[0];
-              console.log("EXTRACTED CONTEXT OVERFLOW:", userFriendlyError);
-            } else {
-              // Use the raw error if matching fails
-              userFriendlyError = errorMessage.split('\n')[0];
-            }
-          }
-          // MODEL_ERROR prefix handling
-          else if (errorMessage.includes('MODEL_ERROR:')) {
-            // Extract the specific context error from the message
-            const contextErrorMatch = errorMessage.match(/context length of only (\d+) tokens.+Try to load the model with a larger context length/);
-            const contextOverflowMatch = errorMessage.match(/Trying to keep the first (\d+) tokens when context the overflows.+context length of only (\d+) tokens/);
-            const genericErrorMatch = errorMessage.match(/MODEL_ERROR:\s+(.*?)(\n|$)/);
-
-            if (contextErrorMatch) {
-              // Use the full context error message
-              userFriendlyError = contextErrorMatch[0];
-            } else if (contextOverflowMatch) {
-              // This is the specific "context the overflows" error from LMStudio
-              userFriendlyError = contextOverflowMatch[0];
-            } else if (genericErrorMatch) {
-              // Extract the actual error message without the MODEL_ERROR prefix
-              userFriendlyError = genericErrorMatch[1];
-            } else {
-              // Default case
-              userFriendlyError = errorMessage;
-            }
-          } else {
-            // For other errors, just use the raw message
-            userFriendlyError = errorMessage;
-          }
-
-          // We've already handled context overflow errors above, so we don't need this section anymore.
-          // But for extra safety, check one more time if we somehow missed a context overflow error
-          if ((errorMessage.includes('context the overflows') ||
-            errorMessage.includes('context overflow')) &&
-            !userFriendlyError?.includes('context the overflows') &&
-            !userFriendlyError?.includes('Trying to keep')) {
-
-            console.log("FALLBACK HANDLER: Context overflow error wasn't properly extracted");
-
-            // For "context the overflows" errors, use raw extraction again
-            if (errorMessage.includes('context the overflows')) {
-              // Extract the full context overflow message
-              const match = errorMessage.match(/Trying to keep the first \d+ tokens when context the overflows\. However, the model is loaded with context length of only \d+ tokens[^.]*/);
-              if (match) {
-                userFriendlyError = match[0];
-                console.log("FALLBACK EXTRACTED:", userFriendlyError);
-              } else {
-                // Just use the raw first line
-                userFriendlyError = errorMessage.split('\n')[0];
-              }
-            }
-          }
-
-          // Special handling for common LLM error types
-          // Skip the context overflow handling as we've already handled it above
-          if (errorMessage.toLowerCase().includes('rate limit')) {
-            userFriendlyError = "Rate limit exceeded: The API service is limiting requests. Please wait a minute and try again.";
-          }
-
+          // Don't continue to further error handling that might cause a fallback
           try {
-            // Format error message as a text content delta that the client can directly display
-            // DEBUG CRITICAL: If we get a generic "An error occurred" message, we need to manually display the full
-            // error details since the AI SDK is hiding them from us
-            // FORMAT: Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens
+            // Custom error message based on provider
+            let errorContent = `Error with ${provider} provider for model "${MODEL}": ${errorMessage.substring(0, 100)}...`;
 
-            let errorContent;
-
-            // Check for the useless "An error occurred" message that hides details
-            if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
-              console.log("INTERCEPTED GENERIC ERROR MESSAGE - USING MANUAL OVERRIDE");
-              // HARDCODED FOR IMMEDIATE FIX - USE EXACT ERROR MESSAGE FORMAT FOR CONTEXT OVERFLOW
-              errorContent = "Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens, which is not enough. Try to load the model with a larger context length, or provide a shorter input";
-              console.log("USING HARDCODED ERROR MESSAGE:", errorContent);
-            }
-            // PRIORITY FIX: Context overflow errors always use the raw error message
-            else {
-              const isContextOverflow = userFriendlyError && (
-                userFriendlyError.includes('context the overflows') ||
-                userFriendlyError.includes('Trying to keep the first') && userFriendlyError.includes('context length of only')
-              );
-
-              // Log for debugging what we're actually sending
-              console.log("FINAL ERROR TO DISPLAY:", {
-                isContextOverflow,
-                userFriendlyError: userFriendlyError?.substring(0, 100),
-                containsOverflow: userFriendlyError?.includes('context the overflows'),
-                containsTrying: userFriendlyError?.includes('Trying to keep')
-              });
-
-              if (isContextOverflow) {
-                // For context overflow errors, send the raw error message without any formatting or prefix
-                errorContent = userFriendlyError;
-                console.log("USING RAW ERROR FOR DISPLAY:", errorContent);
-              } else {
-                // Add error prefix for other errors
-                errorContent = `⚠️ Error: ${userFriendlyError}`;
-              }
-            }
-
+            // Format the error response
             const errorData = {
               id: `error-${Date.now()}`,
               role: "assistant",
@@ -618,14 +715,21 @@ app.post('/api/chat', async (c) => {
               created: Date.now()
             };
 
-            // Send the error to client in regular AI SDK format
+            // Send the error and terminate the stream
             await responseStream.write(`data: ${JSON.stringify(errorData)}\n\n`);
-
-            // Send final message to terminate the stream properly
             await responseStream.write("data: [DONE]\n\n");
+
+            return; // Critical: Return immediately to prevent further processing
           } catch (writeError) {
-            console.error("Failed to write error message to stream");
+            console.error("Failed to write clean error, but still preventing fallback:", writeError);
+            // Still prevent further processing
+            return;
           }
+
+          // We've completely replaced this error handling code with our custom implementation above
+          // All the old code is effectively cut off by the return statements
+          // This completely prevents any potential fallback behavior to LMStudio or other providers
+          // END OF ERROR HANDLING
         }
       });
     } catch (streamSetupError) {
@@ -653,6 +757,11 @@ const logOllamaModelAvailability = (baseUrl: string, modelName: string) => {
 
 // Proxy endpoint for LMStudio API requests
 app.get('/api/proxy/lmstudio/models', async (c) => {
+  console.log("Skipping LMStudio proxy request");
+  return new Response(JSON.stringify({
+    message: "Skipping LMStudio proxy request",
+  }), { status: 200 });
+
   try {
     const url = c.req.query('url') || 'http://localhost:1234/v1/models';
 

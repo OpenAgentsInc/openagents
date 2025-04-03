@@ -48,16 +48,16 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Function to refresh settings from database
     const handleFocus = () => {
-      console.log("Page focused, refreshing settings");
+      // console.log("Page focused, refreshing settings");
       refreshSettings().then(updatedSettings => {
         if (updatedSettings && updatedSettings.selectedModelId) {
           const newModelId = updatedSettings.selectedModelId;
-          console.log(`Refreshed settings with model: ${newModelId}`);
+          // console.log(`Refreshed settings with model: ${newModelId}`);
 
           // Check if this model update is new (not just the one we applied)
           // and also different from what's currently selected
           if (selectedModelId !== newModelId && lastAppliedModelRef.current !== newModelId) {
-            console.log(`Updating model from ${selectedModelId} to ${newModelId}`);
+            // console.log(`Updating model from ${selectedModelId} to ${newModelId}`);
             // Update our ref to track this change
             lastAppliedModelRef.current = newModelId;
             setSelectedModelId(newModelId);
@@ -68,10 +68,10 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Handle custom event from settings page
     const handleModelSettingsChanged = (event: any) => {
-      console.log("Received model-settings-changed event", event.detail);
+      // console.log("Received model-settings-changed event", event.detail);
       if (event.detail && event.detail.selectedModelId) {
         const newModelId = event.detail.selectedModelId;
-        console.log(`Setting model from event: ${newModelId}`);
+        // console.log(`Setting model from event: ${newModelId}`);
 
         // Track that we're about to apply this model ID to prevent loops
         lastAppliedModelRef.current = newModelId;
@@ -121,7 +121,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           }
         } catch (storageError) {
-          console.warn("Error reading active model from localStorage:", storageError);
+          // console.warn("Error reading active model from localStorage:", storageError);
         }
 
         // If no localStorage model, check sessionStorage (selected in this tab only)
@@ -130,12 +130,12 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (typeof window !== 'undefined' && window.sessionStorage) {
               const currentModel = window.sessionStorage.getItem('openagents_current_model');
               if (currentModel && MODELS.some(model => model.id === currentModel)) {
-                console.log(`Using current model from sessionStorage: ${currentModel}`);
+                // console.log(`Using current model from sessionStorage: ${currentModel}`);
                 userSelectedModel = currentModel;
               }
             }
           } catch (storageError) {
-            console.warn("Error reading from sessionStorage:", storageError);
+            // console.warn("Error reading from sessionStorage:", storageError);
           }
         }
 
@@ -160,13 +160,13 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         if (settingsModelId) {
-          console.log(`Loading model from settings: ${settingsModelId}`);
+          // console.log(`Loading model from settings: ${settingsModelId}`);
 
           // Check if the model exists in our models list
           const modelExists = MODELS.some(model => model.id === settingsModelId);
 
           if (modelExists) {
-            console.log(`Model ${settingsModelId} found, selecting it`);
+            // console.log(`Model ${settingsModelId} found, selecting it`);
             setSelectedModelId(settingsModelId);
 
             // Also save to sessionStorage for resilience
@@ -175,18 +175,18 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 window.sessionStorage.setItem('openagents_current_model', settingsModelId);
               }
             } catch (storageError) {
-              console.warn("Error storing model in sessionStorage:", storageError);
+              // console.warn("Error storing model in sessionStorage:", storageError);
             }
           } else {
             // If model doesn't exist, default to first model AND update settings
-            console.warn(`Model ${settingsModelId} not found in models list, using fallback`);
+            // console.warn(`Model ${settingsModelId} not found in models list, using fallback`);
 
             if (MODELS.length > 0) {
               const fallbackModel = MODELS[0].id;
               setSelectedModelId(fallbackModel);
 
               // Update the settings to use a valid model
-              console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
+              // console.log(`Automatically updating settings to use valid model: ${fallbackModel}`);
               try {
                 // Update both fields for compatibility
                 const result = await updateSettings({
@@ -194,35 +194,35 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   selectedModelId: fallbackModel
                 });
                 if (result) {
-                  console.log("Settings auto-corrected:", result.selectedModelId || result.defaultModel);
+                  // console.log("Settings auto-corrected:", result.selectedModelId || result.defaultModel);
                 }
               } catch (error) {
-                console.error("Failed to auto-correct settings:", error);
+                // console.error("Failed to auto-correct settings:", error);
               }
             }
           }
         } else {
           // Default to first model if no default is set
-          console.log("No model selected in settings, using first model");
+          // console.log("No model selected in settings, using first model");
           if (MODELS.length > 0) {
             const firstModel = MODELS[0].id;
             setSelectedModelId(firstModel);
 
             // Save this as the selected model
-            console.log(`Setting first model as selected model: ${firstModel}`);
+            // console.log(`Setting first model as selected model: ${firstModel}`);
             try {
               await updateSettings({
                 defaultModel: firstModel, // For backward compatibility
                 selectedModelId: firstModel
               });
-              console.log("Selected model saved");
+              // console.log("Selected model saved");
             } catch (error) {
-              console.error("Failed to save selected model:", error);
+              // console.error("Failed to save selected model:", error);
             }
           }
         }
       } catch (error) {
-        console.error("Error setting up model:", error);
+        // console.error("Error setting up model:", error);
       }
     }
 
@@ -234,7 +234,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       if (!selectedModelId) return;
 
-      console.log("Checking availability for model:", selectedModelId);
+      // console.log("Checking availability for model:", selectedModelId);
 
       const selectedModel = MODELS.find(m => m.id === selectedModelId) as SelectedModel;
       if (!selectedModel) return;
@@ -251,7 +251,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return data.models.map((model: any) => model.name);
           }
         } catch (error) {
-          console.warn("Failed to connect to Ollama API:", error);
+          // console.warn("Failed to connect to Ollama API:", error);
         }
         return [];
       };
@@ -280,20 +280,20 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               }
             }
           } catch (e) {
-            console.warn("Error getting LMStudio URL from settings, using default:", e);
+            // console.warn("Error getting LMStudio URL from settings, using default:", e);
           }
 
-          console.log("Using LMStudio URL from settings:", savedLMStudioUrl);
+          // console.log("Using LMStudio URL from settings:", savedLMStudioUrl);
 
           // Use our server proxy to avoid CORS issues
           const proxyUrl = `/api/proxy/lmstudio/models?url=${encodeURIComponent(`${savedLMStudioUrl}/v1/models`)}`;
-          console.log("Checking LMStudio via proxy:", proxyUrl);
+          // console.log("Checking LMStudio via proxy:", proxyUrl);
 
           const response = await fetch(proxyUrl);
-          console.log("LMStudio check response:", response.status, response.ok);
+          // console.log("LMStudio check response:", response.status, response.ok);
           return response.ok;
         } catch (error) {
-          console.warn("Failed to connect to LMStudio API via proxy:", error);
+          // console.warn("Failed to connect to LMStudio API via proxy:", error);
           return false;
         }
       };
@@ -350,11 +350,11 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      console.log(`Model ${selectedModel.id} availability:`, isAvailable);
+      // console.log(`Model ${selectedModel.id} availability:`, isAvailable);
       setIsModelAvailable(isAvailable);
       setModelWarning(warning);
     } catch (error) {
-      console.error("Error checking model availability:", error);
+      // console.error("Error checking model availability:", error);
       setIsModelAvailable(true);
       setModelWarning(null);
     }
@@ -369,7 +369,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Add listener for LMStudio URL changes
   useEffect(() => {
     const handleLMStudioUrlChange = () => {
-      console.log("LMStudio URL changed, rechecking model availability");
+      // console.log("LMStudio URL changed, rechecking model availability");
       if (availabilityCheckRef.current) {
         availabilityCheckRef.current();
       }
@@ -394,7 +394,7 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Handle model change - this happens when user selects from dropdown
   const handleModelChange = useCallback((modelId: string) => {
-    console.log(`Model changed via dropdown to: ${modelId}`);
+    // console.log(`Model changed via dropdown to: ${modelId}`);
 
     // Track that we're about to apply this model to prevent loops
     lastAppliedModelRef.current = modelId;
@@ -406,32 +406,38 @@ export const ModelProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       if (typeof window !== 'undefined' && window.sessionStorage) {
         window.sessionStorage.setItem('openagents_current_model', modelId);
-        console.log("Saved model to sessionStorage:", modelId);
+        // console.log("Saved model to sessionStorage:", modelId);
       }
     } catch (storageError) {
-      console.warn("Error storing model in sessionStorage:", storageError);
+      // console.warn("Error storing model in sessionStorage:", storageError);
     }
 
     // Also save to localStorage for persistence across tabs (but not as default)
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('openagents_active_model', modelId);
-        console.log("Saved model to localStorage:", modelId);
+        // console.log("Saved model to localStorage:", modelId);
 
         // If it's an LMStudio model (like gemma), store it in a special key as well
         // This helps with restoring LMStudio models specifically
         if (modelId.includes('gemma') || modelId.toLowerCase().includes('llama')) {
           window.localStorage.setItem('openagents_lmstudio_model', modelId);
-          console.log("Saved LMStudio model to localStorage:", modelId);
+          // console.log("Saved LMStudio model to localStorage:", modelId);
+        }
+
+        // Store Anthropic models similarly in a special key
+        if (modelId.startsWith('claude-')) {
+          window.localStorage.setItem('openagents_anthropic_model', modelId);
+          // console.log("Saved Anthropic model to localStorage:", modelId);
         }
       }
     } catch (localStorageError) {
-      console.warn("Error storing model in localStorage:", localStorageError);
+      // console.warn("Error storing model in localStorage:", localStorageError);
     }
 
     // Also update the settings to persist this selection
     selectModel(modelId).catch(error => {
-      console.error("Failed to update settings with selected model:", error);
+      // console.error("Failed to update settings with selected model:", error);
     });
 
     // Dispatch an event to update model availability

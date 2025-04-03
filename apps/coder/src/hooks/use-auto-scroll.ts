@@ -1,92 +1,185 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 
 // How many pixels from the bottom of the container to enable auto-scroll
 const ACTIVATION_THRESHOLD = 50
 // Minimum pixels of scroll-up movement required to disable auto-scroll
 const MIN_SCROLL_UP_THRESHOLD = 10
-// Smooth scroll behavior for better user experience
-const SCROLL_BEHAVIOR: ScrollBehavior = "smooth"
+// Improved scroll behavior - use 'auto' for better performance than 'smooth'
+const SCROLL_BEHAVIOR: ScrollBehavior = "auto"
 
 export function useAutoScroll(dependencies: React.DependencyList) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const previousScrollTop = useRef<number | null>(null)
   const isUserScrolling = useRef<boolean>(false)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const lastContentHeight = useRef<number>(0)
 
-  const scrollToBottom = () => {
-    if (containerRef.current && !isUserScrolling.current) {
-      containerRef.current.scrollTo({
-        top: containerRef.current.scrollHeight,
-        behavior: SCROLL_BEHAVIOR
-      })
-    }
-  }
+  // More reliable scrollToBottom with different strategies based on browser behavior
+  const scrollToBottom = useCallback(() => {
+    if (!containerRef.current) return
+    
+    // Ensure we respect user control
+    if (isUserScrolling.current) return
 
-  const handleScroll = () => {
-    if (containerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = containerRef.current
+    const container = containerRef.current
+    const { scrollHeight } = container
 
-      const distanceFromBottom = Math.abs(
-        scrollHeight - scrollTop - clientHeight
-      )
+    // Force layout calculation to get accurate scrollHeight
+    void container.offsetHeight
 
-      const isScrollingUp = previousScrollTop.current
-        ? scrollTop < previousScrollTop.current
-        : false
+    // Record current content height to detect genuine changes
+    lastContentHeight.current = scrollHeight
 
-      const scrollUpDistance = previousScrollTop.current
-        ? previousScrollTop.current - scrollTop
-        : 0
+    // Strategy 1: scrollTo method
+    container.scrollTo({
+      top: scrollHeight,
+      behavior: SCROLL_BEHAVIOR
+    })
 
-      const isDeliberateScrollUp =
-        isScrollingUp && scrollUpDistance > MIN_SCROLL_UP_THRESHOLD
-      
-      // If user is deliberately scrolling up, disable auto-scroll
-      if (isDeliberateScrollUp) {
-        isUserScrolling.current = true
-        setShouldAutoScroll(false)
-      } else {
-        // If user has scrolled close to bottom, re-enable auto-scroll
-        const isScrolledToBottom = distanceFromBottom < ACTIVATION_THRESHOLD
-        if (isScrolledToBottom) {
-          isUserScrolling.current = false
-          setShouldAutoScroll(true)
-        }
+    // Strategy 2: Direct property assignment (more reliable in some browsers)
+    // This is a backup that works better in some cases
+    setTimeout(() => {
+      if (container && !isUserScrolling.current) {
+        container.scrollTop = container.scrollHeight
       }
-
-      previousScrollTop.current = scrollTop
-    }
-  }
-
-  const handleTouchStart = () => {
-    // When user touches the screen, temporarily disable auto-scroll
-    // It will re-enable if they scroll back to bottom
-    isUserScrolling.current = true
-  }
-
-  // Initialize scroll position tracking
-  useEffect(() => {
-    if (containerRef.current) {
-      previousScrollTop.current = containerRef.current.scrollTop
-      
-      // Initial scroll to bottom
-      setTimeout(() => {
-        scrollToBottom()
-      }, 100)
-    }
+    }, 0)
   }, [])
 
-  // Auto-scroll when dependencies change (messages, parts, typing)
-  useEffect(() => {
-    if (shouldAutoScroll) {
-      // Small delay to ensure DOM updates have completed
-      setTimeout(() => {
-        scrollToBottom()
-      }, 10)
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current) return
+    
+    const container = containerRef.current
+    const { scrollTop, scrollHeight, clientHeight } = container
+
+    const distanceFromBottom = Math.abs(scrollHeight - scrollTop - clientHeight)
+    const isAtBottom = distanceFromBottom < ACTIVATION_THRESHOLD
+
+    const isScrollingUp = previousScrollTop.current !== null && 
+                          scrollTop < previousScrollTop.current
+    
+    const scrollUpDistance = previousScrollTop.current !== null
+      ? previousScrollTop.current - scrollTop
+      : 0
+
+    // Detect deliberate scroll up action
+    if (isScrollingUp && scrollUpDistance > MIN_SCROLL_UP_THRESHOLD) {
+      isUserScrolling.current = true
+      setShouldAutoScroll(false)
+    } 
+    // Detect when user has scrolled back to bottom
+    else if (isAtBottom) {
+      isUserScrolling.current = false
+      setShouldAutoScroll(true)
     }
+
+    previousScrollTop.current = scrollTop
+  }, [])
+
+  const handleTouchStart = useCallback(() => {
+    // When user touches the screen, mark that they're taking control
+    // Will re-enable auto-scroll if they return to bottom
+    isUserScrolling.current = true
+  }, [])
+
+  // Initialize scroll on mount
+  useEffect(() => {
+    if (!containerRef.current) return
+    
+    previousScrollTop.current = containerRef.current.scrollTop
+    
+    // Wait a bit to make sure all content is properly rendered and measured
+    setTimeout(() => {
+      // Get parent scroll container
+      let parent = containerRef.current?.parentElement;
+      while (parent) {
+        if (window.getComputedStyle(parent).overflowY === 'auto' || 
+            window.getComputedStyle(parent).overflowY === 'scroll') {
+          // Set scroll for parent container
+          parent.scrollTop = parent.scrollHeight;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+      
+      // Also do direct scroll in case we're the scroller
+      scrollToBottom();
+    }, 100);
+    
+    // Try again after a bit longer
+    setTimeout(scrollToBottom, 300);
+  }, [scrollToBottom])
+
+  // Auto-scroll when dependencies change
+  useEffect(() => {
+    if (!shouldAutoScroll) return
+    
+    if (!containerRef.current) return
+    
+    const container = containerRef.current
+    const currentHeight = container.scrollHeight
+    
+    // Function to scroll parent container if we're not the scrollable element
+    const scrollParentIfNeeded = () => {
+      // Check if our parent is the actual scroll container
+      let parent = container.parentElement;
+      while (parent) {
+        if (window.getComputedStyle(parent).overflowY === 'auto' || 
+            window.getComputedStyle(parent).overflowY === 'scroll') {
+          // For parent container, we just set it directly
+          parent.scrollTop = parent.scrollHeight;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    };
+    
+    // Only scroll if content has actually increased
+    // This prevents unnecessary scrolling when content changes but doesn't grow
+    if (currentHeight > lastContentHeight.current) {
+      // Use multiple timeouts for reliability across different browsers/scenarios
+      setTimeout(() => {
+        scrollToBottom();
+        scrollParentIfNeeded();
+      }, 0);
+      
+      setTimeout(() => {
+        scrollToBottom();
+        scrollParentIfNeeded();
+      }, 50);
+    }
+    
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, dependencies)
 
+  // Add a mutation observer to handle dynamic content changes
+  useEffect(() => {
+    if (!containerRef.current) return
+    
+    const observer = new MutationObserver((mutations) => {
+      // Only auto-scroll if we're supposed to
+      if (!shouldAutoScroll) return
+      
+      // Check if any mutations actually added content
+      const hasAddedNodes = mutations.some(mutation => 
+        mutation.addedNodes.length > 0 || 
+        mutation.type === 'characterData'
+      )
+      
+      if (hasAddedNodes) {
+        scrollToBottom()
+      }
+    })
+    
+    observer.observe(containerRef.current, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    })
+    
+    return () => observer.disconnect()
+  }, [scrollToBottom, shouldAutoScroll])
+
+  // Expose the API
   return {
     containerRef,
     scrollToBottom,

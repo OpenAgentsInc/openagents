@@ -1,5 +1,3 @@
-"use client"
-
 import React, { useMemo, useState, useCallback } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { motion } from "framer-motion"
@@ -11,6 +9,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { CopyButton } from "@/components/ui/copy-button"
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer, StreamedMarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { ToolCall } from "@/components/ui/tool-call"
@@ -18,11 +17,11 @@ import { ToolCall } from "@/components/ui/tool-call"
 type Animation = "none" | "fade" | "scale" | null | undefined
 
 const chatBubbleVariants = cva(
-  "group/message relative break-words rounded-lg p-3 text-sm",
+  "group/message relative break-words p-3 text-sm",
   {
     variants: {
       isUser: {
-        true: "border-muted-foreground border bg-transparent text-foreground sm:max-w-[70%]",
+        true: "border border-secondary/50 bg-secondary/50 text-foreground sm:max-w-[80%]",
         false: "text-foreground w-full",
       },
       isSystem: {
@@ -111,7 +110,7 @@ function dataUrlToUint8Array(data: string) {
 // Memoize the ReasoningBlock component to prevent unnecessary rerenders
 const ReasoningBlock = React.memo(function ReasoningBlock({ part }: { part: ReasoningPart }) {
   const [isOpen, setIsOpen] = useState(false)
-  
+
   // Memoize the onOpenChange handler to maintain reference stability
   const handleOpenChange = useCallback((open: boolean) => {
     setIsOpen(open);
@@ -125,7 +124,7 @@ const ReasoningBlock = React.memo(function ReasoningBlock({ part }: { part: Reas
       <Collapsible
         open={isOpen}
         onOpenChange={handleOpenChange}
-        className="group w-full overflow-hidden rounded-lg border bg-muted/50"
+        className="group w-full overflow-hidden rounded-xl border bg-muted/50"
       >
         <CollapsibleTrigger asChild>
           <button className="w-full">
@@ -192,7 +191,7 @@ export const ChatMessage = React.memo(function ChatMessage({
       minute: "2-digit",
     })
   }, [createdAt])
-  
+
   // Use regular markdown renderer for all messages
   // The previous attempt to optimize with StreamedMarkdownRenderer was causing issues
   const messageContent = useMemo(() => {
@@ -207,17 +206,17 @@ export const ChatMessage = React.memo(function ChatMessage({
 
     // For context overflow errors, show content directly (without markdown processing)
     // Also check for the special hardcoded error
-    const isContextOverflowError = content.includes('context the overflows') || 
-                                   content.includes('context length of only') ||
-                                   content.includes('Trying to keep the first');
-    
+    const isContextOverflowError = content.includes('context the overflows') ||
+      content.includes('context length of only') ||
+      content.includes('Trying to keep the first');
+
     console.log("RENDERING SYSTEM MESSAGE:", {
       content,
       isContextOverflowError,
       hasOverflows: content.includes('context the overflows'),
       hasTrying: content.includes('Trying to keep the first')
     });
-    
+
     return (
       <div className="flex flex-col items-center w-full">
         <div className={cn(chatBubbleVariants({ isUser: false, isSystem: true, animation }))}>
@@ -231,7 +230,9 @@ export const ChatMessage = React.memo(function ChatMessage({
         {showTimeStamp && createdAt ? (
           <time
             dateTime={createdAt.toISOString()}
-            className={cn("mt-1 block px-1 text-xs opacity-50")}
+            className={cn(
+              "mt-1 block px-1 text-xs text-secondary-foreground"
+            )}
           >
             {formattedTime}
           </time>
@@ -253,15 +254,22 @@ export const ChatMessage = React.memo(function ChatMessage({
           </div>
         ) : null}
 
-        <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
+        <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }), "group/message")}>
           {messageContent}
+          <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
+            <CopyButton
+              content={content}
+              copyMessage="Copied to clipboard"
+              className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+            />
+          </div>
         </div>
 
         {showTimeStamp && createdAt ? (
           <time
             dateTime={createdAt.toISOString()}
             className={cn(
-              "mt-1 block px-1 text-xs opacity-50"
+              "mt-1 block px-1 text-xs text-secondary-foreground/80"
             )}
           >
             {formattedTime}
@@ -273,26 +281,26 @@ export const ChatMessage = React.memo(function ChatMessage({
 
   if (parts && parts.length > 0) {
     // Extract and memoize reasoning parts separately
-    const reasoningParts = useMemo(() => 
+    const reasoningParts = useMemo(() =>
       parts.filter(part => part.type === "reasoning") as ReasoningPart[],
-    [parts]);
-    
+      [parts]);
+
     // Extract and memoize tool invocation parts separately
-    const toolInvocationParts = useMemo(() => 
+    const toolInvocationParts = useMemo(() =>
       parts.filter(part => part.type === "tool-invocation") as ToolInvocationPart[],
-    [parts]);
-    
+      [parts]);
+
     // Extract and memoize text parts separately
-    const textParts = useMemo(() => 
+    const textParts = useMemo(() =>
       parts.filter(part => part.type === "text") as TextPart[],
-    [parts]);
-    
+      [parts]);
+
     // Render text parts
     const renderedTextParts = useMemo(() => {
       return textParts.map((part, index) => {
         // Use standard MarkdownRenderer for all parts
         const partContent = <MarkdownRenderer>{part.text}</MarkdownRenderer>;
-        
+
         return (
           <div
             className={cn(
@@ -303,18 +311,22 @@ export const ChatMessage = React.memo(function ChatMessage({
           >
             <div className={cn(chatBubbleVariants({ isUser, animation }))}>
               {partContent}
-              {actions ? (
-                <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
-                  {actions}
-                </div>
-              ) : null}
+              <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
+                {actions ? actions : (
+                  <CopyButton
+                    content={part.text}
+                    copyMessage="Copied to clipboard"
+                    className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+                  />
+                )}
+              </div>
             </div>
 
             {showTimeStamp && createdAt ? (
               <time
                 dateTime={createdAt.toISOString()}
                 className={cn(
-                  "mt-1 block px-1 text-xs opacity-50"
+                  "mt-1 block px-1 text-xs text-secondary-foreground/80"
                 )}
               >
                 {formattedTime}
@@ -324,14 +336,14 @@ export const ChatMessage = React.memo(function ChatMessage({
         );
       });
     }, [textParts, role, isUser, animation, actions, showTimeStamp, createdAt, formattedTime]);
-    
+
     // Render reasoning parts
     const renderedReasoningParts = useMemo(() => {
       return reasoningParts.map((part, index) => (
         <ReasoningBlock key={`reasoning-${index}`} part={part} />
       ));
     }, [reasoningParts]);
-    
+
     // Render tool invocation parts
     const renderedToolParts = useMemo(() => {
       return toolInvocationParts.map((part, index) => (
@@ -341,12 +353,12 @@ export const ChatMessage = React.memo(function ChatMessage({
         />
       ));
     }, [toolInvocationParts]);
-    
+
     // Combine all rendered parts in proper order
     const renderedParts = useMemo(() => {
       // Create an array to hold all rendered parts in their original order
       const result: React.ReactNode[] = [];
-      
+
       // Map through original parts to maintain order
       parts.forEach((part, index) => {
         if (part.type === "text") {
@@ -366,10 +378,10 @@ export const ChatMessage = React.memo(function ChatMessage({
           }
         }
       });
-      
+
       return result;
     }, [parts, textParts, reasoningParts, toolInvocationParts, renderedTextParts, renderedReasoningParts, renderedToolParts]);
-    
+
     return <>{renderedParts}</>;
   }
 
@@ -381,18 +393,22 @@ export const ChatMessage = React.memo(function ChatMessage({
     <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
       <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
         {messageContent}
-        {actions ? (
-          <div className="absolute -bottom-4 right-2 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
-            {actions}
-          </div>
-        ) : null}
+        <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
+          {actions ? actions : (
+            <CopyButton
+              content={content}
+              copyMessage="Copied to clipboard"
+              className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+            />
+          )}
+        </div>
       </div>
 
       {showTimeStamp && createdAt ? (
         <time
           dateTime={createdAt.toISOString()}
           className={cn(
-            "mt-1 block px-1 text-xs opacity-50"
+            "mt-1 block px-1 text-xs text-secondary-foreground/80"
           )}
         >
           {formattedTime}

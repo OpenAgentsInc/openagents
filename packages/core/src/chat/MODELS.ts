@@ -33,6 +33,51 @@ interface Model {
 }
 
 export const MODELS: Model[] = [
+  // Anthropic Claude models
+  {
+    id: "claude-3-7-sonnet-20250219",
+    name: "Claude 3.7 Sonnet",
+    provider: "anthropic",
+    author: "anthropic",
+    created: 1740422110, // 2024-02-24
+    description: "Anthropic's Claude 3.7 Sonnet model - balanced performance",
+    context_length: 200000,
+    supportsTools: true,
+    shortDescription: "Balanced performance Claude model"
+  },
+  {
+    id: "claude-3-5-sonnet-20241022",
+    name: "Claude 3.5 Sonnet",
+    provider: "anthropic",
+    author: "anthropic",
+    created: 1698019200, // 2024-10-22
+    description: "Anthropic's Claude 3.5 Sonnet model - latest version with improved capabilities",
+    context_length: 200000,
+    supportsTools: true,
+    shortDescription: "Latest Claude 3.5 Sonnet model"
+  },
+  {
+    id: "claude-3-5-haiku-20241022",
+    name: "Claude 3.5 Haiku",
+    provider: "anthropic",
+    author: "anthropic",
+    created: 1698019200, // 2024-10-22
+    description: "Anthropic's Claude 3.5 Haiku model - faster, more efficient version",
+    context_length: 200000,
+    supportsTools: true,
+    shortDescription: "Fast and efficient Claude model"
+  },
+  // {
+  //   id: "claude-3-5-sonnet-20240620",
+  //   name: "Claude 3.5 Sonnet (Old)",
+  //   provider: "anthropic",
+  //   author: "anthropic",
+  //   created: 1714435200, // 2024-06-20
+  //   description: "Anthropic's Claude 3.5 Sonnet model - good balance of capabilities",
+  //   context_length: 200000,
+  //   supportsTools: true,
+  //   shortDescription: "Versatile Claude model"
+  // },
   {
     author: 'qwen',
     provider: 'lmstudio',
@@ -425,36 +470,36 @@ export const MODELS: Model[] = [
     },
     "per_request_limits": null
   },
-  {
-    author: "mistralai",
-    provider: "openrouter",
-    "id": "mistralai/mistral-nemo",
-    "name": "Mistral Nemo",
-    "created": 1721347200,
-    "description": "A 12B parameter model with a 128k token context length built by Mistral in collaboration with NVIDIA.\n\nThe model is multilingual, supporting English, French, German, Spanish, Italian, Portuguese, Chinese, Japanese, Korean, Arabic, and Hindi.\n\nIt supports function calling and is released under the Apache 2.0 license.",
-    "shortDescription": "12B multilingual model with 128k context window, supporting 11 languages and function calling capabilities.",
-    "context_length": 128000,
-    supportsTools: true,
-    "architecture": {
-      "modality": "text->text",
-      "tokenizer": "Mistral",
-      "instruct_type": "mistral"
-    },
-    "pricing": {
-      "prompt": "0.000000035",
-      "completion": "0.00000008",
-      "image": "0",
-      "request": "0",
-      "input_cache_read": "0",
-      "input_cache_write": "0",
-      "web_search": "0",
-      "internal_reasoning": "0"
-    },
-    "top_provider": {
-      "context_length": 131072,
-      "max_completion_tokens": 8192,
-      "is_moderated": false
-    },
-    "per_request_limits": null
-  }
+  // {
+  //   author: "mistralai",
+  //   provider: "openrouter",
+  //   "id": "mistralai/mistral-nemo",
+  //   "name": "Mistral Nemo",
+  //   "created": 1721347200,
+  //   "description": "A 12B parameter model with a 128k token context length built by Mistral in collaboration with NVIDIA.\n\nThe model is multilingual, supporting English, French, German, Spanish, Italian, Portuguese, Chinese, Japanese, Korean, Arabic, and Hindi.\n\nIt supports function calling and is released under the Apache 2.0 license.",
+  //   "shortDescription": "12B multilingual model with 128k context window, supporting 11 languages and function calling capabilities.",
+  //   "context_length": 128000,
+  //   supportsTools: true,
+  //   "architecture": {
+  //     "modality": "text->text",
+  //     "tokenizer": "Mistral",
+  //     "instruct_type": "mistral"
+  //   },
+  //   "pricing": {
+  //     "prompt": "0.000000035",
+  //     "completion": "0.00000008",
+  //     "image": "0",
+  //     "request": "0",
+  //     "input_cache_read": "0",
+  //     "input_cache_write": "0",
+  //     "web_search": "0",
+  //     "internal_reasoning": "0"
+  //   },
+  //   "top_provider": {
+  //     "context_length": 131072,
+  //     "max_completion_tokens": 8192,
+  //     "is_moderated": false
+  //   },
+  //   "per_request_limits": null
+  // }
 ]

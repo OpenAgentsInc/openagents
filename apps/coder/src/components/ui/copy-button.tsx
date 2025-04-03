@@ -6,12 +6,13 @@ import { cn } from "@/utils/tailwind"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 import { Button } from "@/components/ui/button"
 
-type CopyButtonProps = {
+export interface CopyButtonProps {
   content: string
   copyMessage?: string
+  className?: string
 }
 
-export function CopyButton({ content, copyMessage }: CopyButtonProps) {
+export function CopyButton({ content, copyMessage = "Copied to clipboard", className }: CopyButtonProps) {
   const { isCopied, handleCopy } = useCopyToClipboard({
     text: content,
     copyMessage,
@@ -21,7 +22,7 @@ export function CopyButton({ content, copyMessage }: CopyButtonProps) {
     <Button
       variant="ghost"
       size="icon"
-      className="relative h-6 w-6"
+      className={cn("relative size-6", className)}
       aria-label="Copy to clipboard"
       onClick={handleCopy}
     >
