@@ -4,8 +4,10 @@ import { CopyButton } from "@/components/ui/copy-button";
 import * as shiki from 'shiki';
 
 // Custom theme based on xt256 from highlight.js
+// Define our custom theme
 const xt256Theme = {
-  name: 'xt256',
+  name: 'xt256', // Theme name must be lowercase and no spaces
+  displayName: 'XT256',
   type: 'dark',
   colors: {
     'editor.background': '#000000',
@@ -100,7 +102,7 @@ function getHighlighter() {
   if (!shikiHighlighterPromise) {
     // Initialize once with our custom theme
     shikiHighlighterPromise = shiki.createHighlighter({
-      themes: ['github-dark'],
+      themes: [xt256Theme], // Use our custom theme
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css'],
     }).catch(error => {
       console.error("Shiki initialization error:", error);
@@ -281,7 +283,7 @@ export const CodeBlock = React.memo(function CodeBlock({
         // Highlight this specific line
         const html = await highlighter.codeToHtml(lineText, { 
           lang: language || 'text', 
-          theme: 'xt256' 
+          theme: xt256Theme.name // Use our theme name
         });
         
         // Extract just the inner HTML content
