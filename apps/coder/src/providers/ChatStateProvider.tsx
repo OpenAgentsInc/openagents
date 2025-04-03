@@ -153,14 +153,40 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       console.log("HANDLING ERROR:", error);
 
       if (error instanceof Error) {
-        // IMMEDIATE FIX FOR "An error occurred" useless error message
-        if (error.message === "An error occurred." || error.message === "An error occurred") {
-          console.log("CLIENT: INTERCEPTED GENERIC ERROR MESSAGE - USING MANUAL OVERRIDE");
-
-          // HARDCODED FOR IMMEDIATE FIX - this will match what the server sends
-          userFriendlyError = "Trying to keep the first 6269 tokens when context the overflows. However, the model is loaded with context length of only 4096 tokens, which is not enough. Try to load the model with a larger context length, or provide a shorter input";
-
-          console.log("CLIENT: USING HARDCODED CONTEXT OVERFLOW ERROR:", userFriendlyError);
+        // Check if the error message directly contains tool execution error
+        if (error.message && (
+          error.message.includes('Error executing tool') || 
+          error.message.includes('AI_ToolExecutionError') ||
+          error.message.includes('Authentication Failed')
+        )) {
+          console.log("CLIENT: DETECTED TOOL EXECUTION ERROR IN MESSAGE");
+          userFriendlyError = error.message;
+          console.log("CLIENT: USING DIRECT TOOL ERROR MESSAGE:", userFriendlyError);
+        }
+        // Check if the error stack includes tool execution error
+        else if (error.stack && (
+          error.stack.includes('Error executing tool') || 
+          error.stack.includes('AI_ToolExecutionError') ||
+          error.stack.includes('Authentication Failed')
+        )) {
+          // Extract the actual error message from the stack trace
+          console.log("CLIENT: DETECTED TOOL EXECUTION ERROR IN STACK");
+          const toolErrorMatch = error.stack.match(/Error executing tool[^:]*:(.*?)(\n|$)/);
+          if (toolErrorMatch && toolErrorMatch[1]) {
+            userFriendlyError = `Error executing tool${toolErrorMatch[1]}`;
+            console.log("CLIENT: EXTRACTED TOOL ERROR:", userFriendlyError);
+          } else {
+            // If we can't extract it, use what we have
+            userFriendlyError = error.message;
+            console.log("CLIENT: USING ERROR MESSAGE FOR TOOL ERROR:", userFriendlyError);
+          }
+        }
+        // Generic error message case - we'll just use the error message directly without any override
+        else if (error.message === "An error occurred." || error.message === "An error occurred") {
+          console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE");
+          // Just use the original error message without any hardcoded override
+          userFriendlyError = error.message;
+          console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
         }
         // Special case for AI_TypeValidationError with context overflow
         else if (error.message.includes('AI_TypeValidationError') &&
@@ -201,8 +227,14 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 
         console.log("FORMATTING CLIENT-SIDE ERROR:", userFriendlyError);
 
+        // Handle tool execution errors - show them exactly as received
+        if (userFriendlyError && userFriendlyError.includes('Error executing tool')) {
+          console.log("DETECTED TOOL EXECUTION ERROR:", userFriendlyError);
+          // Show the exact error message without modification
+          errorContent = userFriendlyError;
+        }
         // Check for context overflow errors - IMPORTANT: No prefix for these!
-        if (userFriendlyError && (
+        else if (userFriendlyError && (
           userFriendlyError.includes('context the overflows') ||
           userFriendlyError.includes('Trying to keep the first') ||
           userFriendlyError.includes('context length of only')
@@ -231,6 +263,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         }
         // Other TypeValidationError errors
         else if (userFriendlyError && userFriendlyError.includes('AI_TypeValidationError')) {
+          errorContent = userFriendlyError;
+        }
+        // Catch specific authentication errors
+        else if (userFriendlyError && userFriendlyError.includes('Authentication Failed: Bad credentials')) {
+          console.log("DETECTED AUTHENTICATION ERROR:", userFriendlyError);
           errorContent = userFriendlyError;
         }
         else {

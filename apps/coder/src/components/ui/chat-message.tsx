@@ -204,23 +204,32 @@ export const ChatMessage = React.memo(function ChatMessage({
     // Log to console first for debugging
     console.log("SYSTEM MESSAGE CONTENT:", content);
 
-    // For context overflow errors, show content directly (without markdown processing)
+    // For context overflow errors and tool execution errors, show content directly (without markdown processing)
     // Also check for the special hardcoded error
-    const isContextOverflowError = content.includes('context the overflows') ||
+    const isSpecialErrorFormat = 
+      content.includes('context the overflows') ||
       content.includes('context length of only') ||
-      content.includes('Trying to keep the first');
+      content.includes('Trying to keep the first') ||
+      content.includes('Error executing tool') ||
+      content.includes('Authentication Failed: Bad credentials');
 
+    // Add more detailed console logging for debugging
+    console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
     console.log("RENDERING SYSTEM MESSAGE:", {
-      content,
-      isContextOverflowError,
+      firstChars: content.substring(0, 50),
+      length: content.length,
+      isSpecialErrorFormat,
       hasOverflows: content.includes('context the overflows'),
-      hasTrying: content.includes('Trying to keep the first')
+      hasTrying: content.includes('Trying to keep the first'),
+      hasToolError: content.includes('Error executing tool'),
+      hasAuthError: content.includes('Authentication Failed: Bad credentials'),
+      hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
     });
 
     return (
       <div className="flex flex-col items-center w-full">
         <div className={cn(chatBubbleVariants({ isUser: false, isSystem: true, animation }))}>
-          {isContextOverflowError ? (
+          {isSpecialErrorFormat ? (
             <div className="whitespace-pre-wrap font-mono text-sm p-1">{content}</div>
           ) : (
             messageContent

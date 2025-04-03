@@ -481,11 +481,30 @@ app.post('/api/chat', async (c) => {
           // Check if this is a TypeValidationError before we do anything else
           const isTypeValidationError = errorMessage.includes('AI_TypeValidationError') ||
             errorMessage.includes('Type validation failed');
+            
+          // Check if this is a tool execution error
+          const isToolExecutionError = errorMessage.includes('Error executing tool') || 
+            errorMessage.includes('AI_ToolExecutionError') ||
+            errorMessage.includes('Authentication Failed');
 
           // Try to send the error message back to the client via the stream
           try {
+            // Special case for Tool Execution errors - pass them through completely unmodified
+            if (isToolExecutionError) {
+              console.log("SERVER: PASSING THROUGH TOOL EXECUTION ERROR");
+              // Extract the actual tool error message if possible
+              const toolErrorMatch = errorMessage.match(/Error executing tool[^:]*:(.*?)(\n|$)/);
+              if (toolErrorMatch && toolErrorMatch[1]) {
+                const toolError = `Error executing tool${toolErrorMatch[1]}`;
+                console.log("SERVER: EXTRACTED TOOL ERROR:", toolError);
+                throw new Error(toolError);
+              } else {
+                // If extraction fails, use the whole message
+                throw new Error(errorMessage);
+              }
+            }
             // Special case for Type validation errors - pass them through completely unmodified
-            if (isTypeValidationError) {
+            else if (isTypeValidationError) {
               console.log("SERVER: PASSING THROUGH TYPE VALIDATION ERROR");
               throw new Error(errorMessage);
             }
