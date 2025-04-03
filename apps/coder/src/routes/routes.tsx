@@ -1,6 +1,6 @@
 import { createRoute } from "@tanstack/react-router";
 import { RootRoute } from "./__root";
-import HomePage from "../pages/HomePage";
+import ChatPage from "../pages/ChatPage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
 import ModelsPage from "../pages/settings/ModelsPage";
 import ApiKeysPage from "../pages/settings/ApiKeysPage";
@@ -48,11 +48,11 @@ export const MainLayoutRoute = createRoute({
   component: MainLayoutWrapper,
 });
 
-// Home route under MainLayout
+// Home/Chat route under MainLayout
 export const HomeRoute = createRoute({
   getParentRoute: () => MainLayoutRoute,
   path: "/",
-  component: HomePage,
+  component: ChatPage,
 });
 
 // Changelog route under MainLayout

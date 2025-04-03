@@ -16,6 +16,7 @@ import { StreamingMessageProvider } from '@/providers/StreamingMessageProvider';
 import { StableInputProvider } from '@/providers/StableInputProvider';
 import { StableHeaderProvider } from '@/providers/StableHeaderProvider';
 import { IsolatedInputProvider } from '@/providers/IsolatedInputProvider';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
 
 // Special component that completely isolates the input area
 // It gets the input handlers only once on mount and never rerenders
@@ -57,6 +58,10 @@ const IsolatedInputWrapper = memo(function IsolatedInputWrapper({
 });
 
 export const MainLayout = memo(function MainLayout({ children }: { children?: React.ReactNode }) {
+  const navigate = useNavigate();
+  const { location } = useRouterState();
+  const isOnChatPage = location.pathname === "/";
+
   // Use thread context instead of the full chat state
   // This ensures this component won't rerender during message streaming
   const {
@@ -74,6 +79,12 @@ export const MainLayout = memo(function MainLayout({ children }: { children?: Re
   // Get input data for stable input provider - still needed for other parts
   const inputContext = useInputContext();
 
+  // Wrap the thread selection to handle navigation
+  const handleThreadSelect = (threadId: string) => {
+    handleSelectThread(threadId);
+    navigate({ to: "/" });
+  };
+
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex h-screen w-full flex-col text-primary font-mono">
@@ -89,8 +100,8 @@ export const MainLayout = memo(function MainLayout({ children }: { children?: Re
               <SidebarContent>
                 <ThreadList
                   key={`thread-list-${threadListKey}`}
-                  currentThreadId={currentThreadId ?? ''}
-                  onSelectThread={handleSelectThread}
+                  currentThreadId={isOnChatPage ? currentThreadId ?? '' : ''}
+                  onSelectThread={handleThreadSelect}
                   onDeleteThread={handleDeleteThread}
                   onRenameThread={handleRenameThread}
                   onCreateThread={handleCreateThread}
