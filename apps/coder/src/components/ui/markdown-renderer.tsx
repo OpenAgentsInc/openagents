@@ -69,7 +69,8 @@ const PreComponent = React.memo(function PreComponent({ node, children, classNam
       (child.type === 'code' ||
         (typeof child.type === 'string' && child.type.toLowerCase() === 'code') ||
         ((child as React.ReactElement<CodeElementProps>).props?.className &&
-          (child as React.ReactElement<CodeElementProps>).props.className.includes('language-')))
+          typeof (child as React.ReactElement<CodeElementProps>).props.className === 'string' &&
+          (child as React.ReactElement<CodeElementProps>).props.className?.includes('language-')))
   );
 
   // Log basic info without attempting to serialize
@@ -90,15 +91,17 @@ const PreComponent = React.memo(function PreComponent({ node, children, classNam
     //   hasChildren: Boolean(codeChild.props?.children),
     // });
 
+    const codeProps = codeChild.props as CodeElementProps & { children?: string | string[] };
+
     // Get content directly
-    if (typeof codeChild.props.children === 'string') {
-      codeContent = codeChild.props.children;
-    } else if (Array.isArray(codeChild.props.children)) {
-      codeContent = codeChild.props.children.join('');
+    if (typeof codeProps.children === 'string') {
+      codeContent = codeProps.children;
+    } else if (Array.isArray(codeProps.children)) {
+      codeContent = codeProps.children.join('');
     }
 
     // Get language from className
-    const codeClassName = (codeChild as React.ReactElement<CodeElementProps>).props?.className || '';
+    const codeClassName = codeProps.className || '';
     const match = /language-(\w+)/.exec(codeClassName);
     if (match && match[1]) {
       language = match[1];

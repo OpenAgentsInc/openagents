@@ -140,6 +140,35 @@ export const settingsSchema: RxJsonSchema<Settings> = {
     preferences: {
       type: 'object',
       additionalProperties: true
+    },
+    mcpClients: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          enabled: { type: 'boolean' },
+          type: { type: 'string', enum: ['sse', 'stdio'] },
+          url: { type: 'string' },
+          command: { type: 'string' },
+          args: { 
+            type: 'array',
+            items: { type: 'string' }
+          },
+          env: { 
+            type: 'object',
+            additionalProperties: true
+          },
+          lastConnected: { type: 'number' },
+          status: { 
+            type: 'string',
+            enum: ['connected', 'disconnected', 'error']
+          },
+          statusMessage: { type: 'string' }
+        },
+        required: ['id', 'name', 'enabled', 'type']
+      }
     }
   },
   required: ['id']

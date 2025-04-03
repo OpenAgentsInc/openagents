@@ -140,7 +140,9 @@ export async function createDatabase(): Promise<Database> {
                   'openai/gpt-4o-mini', 
                   'openai/gpt-4o-2024-11-20',
                   'google/gemini-2.0-flash-001'
-                ]
+                ],
+                // Add empty array for MCP clients
+                mcpClients: []
               };
             }
           }

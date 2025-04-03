@@ -226,6 +226,9 @@ export function Chat({
             stop={handleStop}
             isGenerating={isGenerating}
             transcribeAudio={transcribeAudio}
+            selectedModelId="default"
+            handleModelChange={() => {}}
+            isModelAvailable={true}
           />
         )}
       </ChatForm>

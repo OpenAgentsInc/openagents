@@ -7,7 +7,9 @@ import {
   Server,
   MessageSquare,
   Sliders,
-  ArrowLeft
+  ArrowLeft,
+  Globe,
+  Wrench
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -95,6 +97,19 @@ export default function SettingsLayout() {
                           </SidebarMenuButton>
                         </Link>
                       </SidebarMenuItem> */}
+
+                      <SidebarMenuItem>
+                        <Link to="/settings/mcp-clients">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/mcp-clients")}
+                            className={currentPath.includes("/mcp-clients") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Wrench className="h-4 w-4" />
+                            <span>MCP Clients</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>

@@ -5,6 +5,9 @@ import { useSettings } from "@openagents/core";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { cleanupDatabase } from "@openagents/core/src/db/database";
 
 export default function PreferencesPage() {
   const { getPreference, setPreference } = useSettings();
@@ -49,6 +52,24 @@ export default function PreferencesPage() {
     }
   };
 
+  const handleResetDatabase = async () => {
+    try {
+      await cleanupDatabase();
+      toast.success("Database reset successfully", {
+        description: "The application will now reload to apply changes",
+      });
+      // Give time for the toast to be shown
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      console.error("Error resetting database:", error);
+      toast.error("Failed to reset database", {
+        description: "Please try restarting the application"
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -86,6 +107,45 @@ export default function PreferencesPage() {
               onCheckedChange={handleToggleConfirmThreadDeletion}
               disabled={isLoading}
             />
+          </div>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Database Management</CardTitle>
+          <CardDescription>
+            Reset the application database to resolve issues
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Separator className="my-4" />
+          <div className="flex flex-col space-y-4">
+            <div>
+              <div className="font-medium">Reset Database</div>
+              <div className="text-sm text-muted-foreground">
+                This will reset the entire database, clearing all threads, messages, and settings. 
+                Use this option if you're experiencing database-related issues.
+              </div>
+            </div>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">Reset Database</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action will reset the entire database, removing all threads, messages, and settings.
+                    This action cannot be undone. The application will reload after the reset.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleResetDatabase}>Reset Database</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </CardContent>
       </Card>

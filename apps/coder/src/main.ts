@@ -270,10 +270,8 @@ app.whenReady()
         throw new Error('serverApp.fetch is not a function');
       }
 
-      // Initialize MCP clients before starting the server
-      console.log('[Main Process] Initializing MCP clients...');
-      await initMCPClients();
-      console.log('[Main Process] MCP clients initialized successfully');
+      // We'll initialize MCP clients after the window is created
+      console.log('[Main Process] MCP client initialization will happen after window creation');
 
       // Start the server with Hono's serve adapter
       serverInstance = serve({
@@ -297,9 +295,21 @@ app.whenReady()
     createTray();
 
     // Create window and install extensions
-    return createWindow();
-  })
-  .then(installExtensions);
+    createWindow();
+    
+    // Now initialize MCP clients after window is created
+    setTimeout(async () => {
+      try {
+        console.log('[Main Process] Initializing MCP clients now that window is created...');
+        await initMCPClients();
+        console.log('[Main Process] MCP clients initialized successfully');
+      } catch (error) {
+        console.error('[Main Process] Error initializing MCP clients:', error);
+      }
+    }, 3000); // Delay by 3 seconds to ensure everything is ready
+    
+    return installExtensions();
+  });
 
 // Graceful shutdown
 app.on('will-quit', () => {

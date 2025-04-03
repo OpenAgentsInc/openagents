@@ -28,6 +28,10 @@ const chatBubbleVariants = cva(
         true: "border-yellow-500 border bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 w-full",
         false: "",
       },
+      isError: {
+        true: "border-red-500 border bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 w-full",
+        false: "",
+      },
       animation: {
         none: "",
         fade: "",
@@ -99,6 +103,7 @@ export interface ChatMessageProps extends Message {
   showTimeStamp?: boolean
   animation?: 'none' | 'fade' | 'scale'
   actions?: React.ReactNode
+  isError?: boolean
 }
 
 function dataUrlToUint8Array(data: string) {
@@ -170,6 +175,7 @@ export const ChatMessage = React.memo(function ChatMessage({
   experimental_attachments,
   toolInvocations,
   parts,
+  isError: propIsError,
 }: ChatMessageProps) {
   // Memoize file processing to prevent unnecessary processing on re-renders
   const files = useMemo(() => {
@@ -183,6 +189,16 @@ export const ChatMessage = React.memo(function ChatMessage({
   // Memoize these values to prevent recalculations
   const isUser = useMemo(() => role === "user", [role])
   const isSystem = useMemo(() => role === "system", [role])
+  
+  // Check if this is a tool execution error message - check for all variants
+  const isToolError = useMemo(() => 
+    propIsError || 
+    (content && (
+      content.includes('Error executing tool') || 
+      content.includes('Authentication Failed') ||
+      content.includes('Bad credentials')
+    )),
+  [propIsError, content])
 
   // Memoize the formatted time to avoid recalculations
   const formattedTime = useMemo(() => {
@@ -204,24 +220,74 @@ export const ChatMessage = React.memo(function ChatMessage({
     // Log to console first for debugging
     console.log("SYSTEM MESSAGE CONTENT:", content);
 
-    // For context overflow errors, show content directly (without markdown processing)
+    // For context overflow errors and tool execution errors, show content directly (without markdown processing)
     // Also check for the special hardcoded error
-    const isContextOverflowError = content.includes('context the overflows') ||
+    const isSpecialErrorFormat = 
+      content.includes('context the overflows') ||
       content.includes('context length of only') ||
-      content.includes('Trying to keep the first');
+      content.includes('Trying to keep the first') ||
+      content.includes('Error executing tool') ||
+      content.includes('Authentication Failed') ||
+      content.includes('Bad credentials') ||
+      content.includes('An error occurred') || // Include generic errors
+      isToolError;
+      
+    // Force the tool error flag if the content contains our specific error strings
+    const forcedToolError = isToolError || 
+                          content.includes('Error executing tool') || 
+                          content.includes('Authentication Failed') || 
+                          content.includes('Bad credentials');
 
+    // Add more detailed console logging for debugging
+    console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
     console.log("RENDERING SYSTEM MESSAGE:", {
-      content,
-      isContextOverflowError,
+      firstChars: content.substring(0, 50),
+      length: content.length,
+      isSpecialErrorFormat,
+      isToolError,
       hasOverflows: content.includes('context the overflows'),
-      hasTrying: content.includes('Trying to keep the first')
+      hasTrying: content.includes('Trying to keep the first'),
+      hasToolError: content.includes('Error executing tool'),
+      hasAuthError: content.includes('Authentication Failed: Bad credentials'),
+      hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
     });
+
+    // Format tool execution errors to display on two lines
+    let formattedContent = content;
+    
+    // Check if the content starts with the warning prefix and remove it for tool errors
+    if (content.startsWith('⚠️ Error:') && 
+        (content.includes('Error executing tool') || 
+         content.includes('Authentication Failed') ||
+         content.includes('Bad credentials'))) {
+      // Remove the prefix for tool errors
+      formattedContent = content.replace('⚠️ Error:', '').trim();
+      console.log("REMOVED PREFIX FROM TOOL ERROR:", formattedContent);
+    }
+    
+    // Format errors with colons to display on two lines
+    if ((isToolError || formattedContent.includes('Error executing tool')) && formattedContent.includes(':')) {
+      // Find the first colon that belongs to the error message (not part of a URL)
+      const colonIndex = formattedContent.indexOf(':');
+      if (colonIndex > 0) {
+        // Format with a line break after the colon
+        formattedContent = formattedContent.substring(0, colonIndex + 1) + 
+                          '\n' + 
+                          formattedContent.substring(colonIndex + 1).trim();
+        console.log("FORMATTED ERROR WITH LINE BREAK:", formattedContent);
+      }
+    }
 
     return (
       <div className="flex flex-col items-center w-full">
-        <div className={cn(chatBubbleVariants({ isUser: false, isSystem: true, animation }))}>
-          {isContextOverflowError ? (
-            <div className="whitespace-pre-wrap font-mono text-sm p-1">{content}</div>
+        <div className={cn(chatBubbleVariants({ 
+          isUser: false, 
+          isSystem: !isToolError && !forcedToolError, 
+          isError: isToolError || forcedToolError,
+          animation 
+        }))}>
+          {isSpecialErrorFormat ? (
+            <div className="whitespace-pre-wrap font-mono text-sm p-1">{formattedContent}</div>
           ) : (
             messageContent
           )}
@@ -260,7 +326,7 @@ export const ChatMessage = React.memo(function ChatMessage({
             <CopyButton
               content={content}
               copyMessage="Copied to clipboard"
-              className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+              className="size-6 rounded-md bg-transparent p-1 hover:bg-muted-foreground/10"
             />
           </div>
         </div>
@@ -316,7 +382,7 @@ export const ChatMessage = React.memo(function ChatMessage({
                   <CopyButton
                     content={part.text}
                     copyMessage="Copied to clipboard"
-                    className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+                    className="size-6 rounded-md bg-transparent p-1 hover:bg-muted-foreground/10"
                   />
                 )}
               </div>
