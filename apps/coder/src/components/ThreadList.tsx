@@ -147,7 +147,7 @@ export const ThreadList = React.memo(function ThreadList({
   // Only show loading state on initial load when no threads are available
   if (isLoading && threads.length === 0) {
     return (
-      <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
+      <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-4">
         {/* Empty space with no visible loading text to prevent layout shifts */}
         <div className="py-4"></div>
       </div>
@@ -156,7 +156,7 @@ export const ThreadList = React.memo(function ThreadList({
 
   if (error) {
     return (
-      <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
+      <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-4">
         <div className="py-4 text-center text-red-500">
           Error loading chats. Please try again.
         </div>
@@ -165,7 +165,7 @@ export const ThreadList = React.memo(function ThreadList({
   }
 
   return (
-    <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-2">
+    <div data-sidebar="content" className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto group-data-[collapsible=icon]:overflow-hidden small-scrollbar scroll-shadow relative pb-4">
       {/* Wrap the ThreadGroups with the StableThreadProvider to stabilize handlers */}
       <StableThreadProvider
         currentThreadId={currentThreadId}
