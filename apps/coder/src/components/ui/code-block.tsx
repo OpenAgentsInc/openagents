@@ -106,36 +106,86 @@ export const CodeBlock = React.memo(function CodeBlock({
     }
   };
   
-  // Update content when input changes
+  // Initial render of complete content
+  useEffect(() => {
+    if (hasMounted && codeRef.current && codeString && !textRef.current) {
+      // If we have initial content but nothing has been rendered yet,
+      // render the entire content immediately
+      const lines = codeString.split('\n');
+      
+      lines.forEach((line, index) => {
+        // Create a placeholder for immediate display
+        const lineElement = document.createElement('div');
+        lineElement.className = 'code-line';
+        lineElement.style.width = '100%';
+        lineElement.style.minHeight = '1.2em';
+        lineElement.style.lineHeight = '1.5';
+        
+        // Add a blank space for empty lines or the line content
+        if (!line.trim()) {
+          lineElement.innerHTML = '&nbsp;';
+        } else {
+          lineElement.textContent = line;
+        }
+        
+        // Add to DOM
+        codeRef.current.appendChild(lineElement);
+        lineElementsRef.current[index] = lineElement;
+      });
+      
+      // Remember current content 
+      textRef.current = codeString;
+      lineCountRef.current = lines.length;
+    }
+  }, [hasMounted, codeString]);
+  
+  // Update content when changes happen OR highlighter becomes ready
   useEffect(() => {
     if (!hasMounted || !codeRef.current) return;
     
-    // Skip if this is not new content
-    if (codeString === textRef.current) return;
+    // Skip if no content
+    if (!codeString) return;
     
-    // Remember current content for comparison
-    const oldText = textRef.current;
-    const newText = codeString;
-    textRef.current = newText;
-    
-    // Split into lines
-    const oldLines = oldText.split('\n');
-    const newLines = newText.split('\n');
-    
-    // Only process new and changed lines
-    for (let i = 0; i < newLines.length; i++) {
-      if (i >= oldLines.length || newLines[i] !== oldLines[i]) {
-        // This is a new or changed line - highlight it
-        addLineWithHighlighting(newLines[i], i);
-      }
+    // If the highlighter just became ready, process all lines
+    if (isHighlighterReady && textRef.current) {
+      const lines = textRef.current.split('\n');
+      // Highlight all existing lines now that highlighter is ready
+      lines.forEach((line, index) => {
+        if (line.trim() && lineElementsRef.current[index]) {
+          addLineWithHighlighting(line, index);
+        }
+      });
     }
     
-    // Update line count
-    lineCountRef.current = newLines.length;
+    // Skip if content hasn't changed
+    if (codeString === textRef.current && isHighlighterReady) return;
     
-    // Force container resize
-    if (containerRef.current) {
-      containerRef.current.style.height = "auto";
+    // Process new/changed content if anything has changed
+    if (codeString !== textRef.current) {
+      // Remember current content for comparison
+      const oldText = textRef.current;
+      const newText = codeString;
+      textRef.current = newText;
+      
+      // Split into lines
+      const oldLines = oldText.split('\n');
+      const newLines = newText.split('\n');
+      
+      // Only process new and changed lines
+      for (let i = 0; i < newLines.length; i++) {
+        if (i >= oldLines.length || newLines[i] !== oldLines[i]) {
+          // This is a new or changed line - highlight it
+          addLineWithHighlighting(newLines[i], i);
+        }
+      }
+      
+      // Update line count
+      lineCountRef.current = newLines.length;
+      
+      // Force container resize
+      if (containerRef.current) {
+        containerRef.current.style.height = "auto";
+      }
     }
   }, [codeString, hasMounted, isHighlighterReady, language]);
   
