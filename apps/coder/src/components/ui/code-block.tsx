@@ -16,21 +16,15 @@ const HighlightedPre = React.memo(function HighlightedPre({
   className,
   ...props
 }: HighlightedPreProps) {
-  console.log('HighlightedPre received:', {
-    codeString: codeString.slice(0, 100) + '...',
-    language,
-    className
-  });
-
   // Use refs to maintain stable sizing during renders
   const preRef = React.useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [html, setHtml] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
-  
+
   // Create a stable version of the props to prevent unnecessary re-renders
-  const stableProps = React.useMemo(() => ({...props}), [])
+  const stableProps = React.useMemo(() => ({ ...props }), [])
   const stableClassName = React.useMemo(() => className, [])
 
   // Capture initial dimensions to stabilize layout
@@ -47,20 +41,11 @@ const HighlightedPre = React.memo(function HighlightedPre({
     let isMounted = true
     setIsLoading(true)
     setIsVisible(false) // Hide content while loading
-    console.log(`HighlightedPre useEffect with language: ${language}`)
 
     async function highlight() {
-      console.log('Highlighting code:', {
-        language,
-        codeLength: codeString.length
-      });
-
       try {
-        console.log('Creating highlighter for language:', language);
-        
-        // Create a safe language identifier for Shiki - fallback to text if language isn't supported
         const safeLanguage = language || 'text';
-        
+
         const highlighter = await shiki.createHighlighter({
           themes: ['github-dark'],
           langs: [safeLanguage],
@@ -71,20 +56,15 @@ const HighlightedPre = React.memo(function HighlightedPre({
           theme: 'github-dark'
         })
 
-        console.log('Highlighting successful:', {
-          language,
-          htmlLength: highlighted.length
-        });
-
         if (isMounted) {
           setHtml(highlighted)
           setIsLoading(false)
-          
+
           // Show content immediately after highlighting is complete
           setIsVisible(true)
         }
       } catch (error) {
-        console.error(`Failed to highlight code:`, error)
+        // console.error(`Failed to highlight code:`, error)
         if (isMounted) {
           const escapedCode = codeString
             .replace(/&/g, "&amp;")
@@ -94,7 +74,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
             .replace(/'/g, "&#039;")
           setHtml(`<pre class="shiki"><code>${escapedCode}</code></pre>`)
           setIsLoading(false)
-          
+
           // Show content immediately after fallback is ready
           setIsVisible(true)
         }
@@ -104,7 +84,6 @@ const HighlightedPre = React.memo(function HighlightedPre({
     if (codeString) {
       highlight()
     } else {
-      console.log('No code string provided to HighlightedPre');
       setHtml('')
       setIsLoading(false)
       setIsVisible(true)
@@ -149,7 +128,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
       {/* Fixed position elements that don't depend on content */}
       {headerSection}
       {copyButton}
-      
+
       {/* Content container with fixed height */}
       <div style={{ minHeight: '120px' }} className="relative">
         {isLoading ? (
@@ -159,7 +138,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
             ref={preRef}
             style={{
               minHeight: '120px',
-              width: '100%', 
+              width: '100%',
               opacity: isVisible ? 1 : 0,
               position: 'relative',
               transition: 'opacity 50ms ease-in-out'
@@ -177,8 +156,8 @@ const HighlightedPre = React.memo(function HighlightedPre({
 }, (prevProps, nextProps) => {
   // Custom comparison function for React.memo
   // Only re-render if the essential content has changed
-  return prevProps.children === nextProps.children && 
-         prevProps.language === nextProps.language;
+  return prevProps.children === nextProps.children &&
+    prevProps.language === nextProps.language;
 });
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
@@ -201,12 +180,12 @@ export const CodeBlock = React.memo(({
   language = 'text',
   ...restProps
 }: CodeBlockProps) => {
-  console.log('CodeBlock called with raw language:', language);
-  
+  // console.log('CodeBlock called with raw language:', language);
+
   // Force language to the actual language identifier if it's 'text'
   let effectiveLanguage = language;
   let processedCodeString = codeString;
-  
+
   // Try to extract from className if language is 'text'
   if (language === 'text' && className?.includes('language-')) {
     const classMatch = className.match(/language-(\w+)/);
@@ -214,7 +193,7 @@ export const CodeBlock = React.memo(({
       effectiveLanguage = classMatch[1];
     }
   }
-  
+
   // If code string contains a language marker, prioritize that
   if (typeof codeString === 'string') {
     const lines = codeString.split('\n');
@@ -227,18 +206,18 @@ export const CodeBlock = React.memo(({
       }
     }
   }
-  
+
   // Create a stable identifier for this code block
-  const contentKey = React.useMemo(() => 
+  const contentKey = React.useMemo(() =>
     hashContent(processedCodeString, effectiveLanguage),
     [processedCodeString, effectiveLanguage]
   );
-    
-  console.log('CodeBlock using language:', effectiveLanguage);
+
+  // console.log('CodeBlock using language:', effectiveLanguage);
 
   // Use same dimensions and styling for both fallback and final render to prevent jitter
   const sharedStyles = "relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4";
-  
+
   // Create a loading placeholder with similar styling but invisible content
   const fallbackPre = React.useMemo(() => (
     <div className="relative min-h-[120px]" style={{ opacity: 0.5 }}>
@@ -250,11 +229,11 @@ export const CodeBlock = React.memo(({
     </div>
   ), [className, processedCodeString, restProps, sharedStyles]);
 
-  // Create a stable and memoized pre element to prevent re-renders 
+  // Create a stable and memoized pre element to prevent re-renders
   const codeElement = React.useMemo(() => (
-    <HighlightedPre 
-      language={effectiveLanguage} 
-      className={cn(className)} 
+    <HighlightedPre
+      language={effectiveLanguage}
+      className={cn(className)}
       {...restProps}
     >
       {processedCodeString}
@@ -263,10 +242,10 @@ export const CodeBlock = React.memo(({
 
   // Wrap in a stable container with fixed dimensions
   return (
-    <div 
+    <div
       key={contentKey}
       className="group/code relative my-4 overflow-hidden"
-      style={{ 
+      style={{
         minHeight: '120px',
         contain: 'content' // Improve performance by containing repaints
       }}
@@ -279,9 +258,9 @@ export const CodeBlock = React.memo(({
 }, (prevProps, nextProps) => {
   // Custom comparison function for React.memo
   // Only re-render if the content or language has changed
-  return prevProps.children === nextProps.children && 
-         prevProps.language === nextProps.language &&
-         prevProps.className === nextProps.className;
+  return prevProps.children === nextProps.children &&
+    prevProps.language === nextProps.language &&
+    prevProps.className === nextProps.className;
 });
 
 interface CodeElementProps {
@@ -302,17 +281,17 @@ interface ReactElementWithChildren extends React.ReactElement {
 }
 
 export function extractCodeInfo(children: React.ReactNode): { codeString: string; language: string } {
-  console.log('extractCodeInfo received:', {
-    children,
-    childrenCount: React.Children.count(children),
-    childrenType: typeof children,
-    isArray: Array.isArray(children),
-    childrenDetails: React.Children.map(children, child => ({
-      type: typeof child,
-      isElement: React.isValidElement(child),
-      elementType: React.isValidElement(child) ? child.type : null
-    }))
-  });
+  // console.log('extractCodeInfo received:', {
+  //   children,
+  //   childrenCount: React.Children.count(children),
+  //   childrenType: typeof children,
+  //   isArray: Array.isArray(children),
+  //   childrenDetails: React.Children.map(children, child => ({
+  //     type: typeof child,
+  //     isElement: React.isValidElement(child),
+  //     elementType: React.isValidElement(child) ? child.type : null
+  //   }))
+  // });
 
   let codeString = ''
   let language = 'text'
@@ -339,14 +318,14 @@ export function extractCodeInfo(children: React.ReactNode): { codeString: string
       (child.type === 'code' || (typeof child.type === 'string' && child.type.toLowerCase() === 'code'))
   )
 
-  console.log('extractCodeInfo found code element:', {
-    found: Boolean(codeElement),
-    type: codeElement ? (typeof codeElement.type === 'string' ? codeElement.type : 'unknown') : 'none',
-    className: codeElement?.props?.className,
-    hasChildren: Boolean(codeElement?.props?.children),
-    childrenType: codeElement?.props?.children ? typeof codeElement.props.children : 'none',
-    rawChildren: codeElement?.props?.children
-  });
+  // console.log('extractCodeInfo found code element:', {
+  //   found: Boolean(codeElement),
+  //   type: codeElement ? (typeof codeElement.type === 'string' ? codeElement.type : 'unknown') : 'none',
+  //   className: codeElement?.props?.className,
+  //   hasChildren: Boolean(codeElement?.props?.children),
+  //   childrenType: codeElement?.props?.children ? typeof codeElement.props.children : 'none',
+  //   rawChildren: codeElement?.props?.children
+  // });
 
   if (codeElement) {
     // Extract language from className
@@ -354,7 +333,6 @@ export function extractCodeInfo(children: React.ReactNode): { codeString: string
     const match = /language-(\w+)/.exec(codeClassName)
     if (match && match[1]) {
       language = match[1]
-      console.log('extractCodeInfo found language in className:', language)
     } else {
       // Try to detect language from code content itself
       const lines = extractTextContent(codeElement.props.children || '').split('\n')
@@ -362,7 +340,6 @@ export function extractCodeInfo(children: React.ReactNode): { codeString: string
         const langMatch = /^```(\w+)/.exec(lines[0])
         if (langMatch && langMatch[1]) {
           language = langMatch[1]
-          console.log('extractCodeInfo found language in fence marker:', language)
           // Remove the language marker line if it's found
           lines.shift()
           codeElement.props.children = lines.join('\n')
@@ -377,12 +354,12 @@ export function extractCodeInfo(children: React.ReactNode): { codeString: string
     codeString = extractTextContent(children).trimEnd()
   }
 
-  console.log('extractCodeInfo result:', {
-    language,
-    codeStringLength: codeString.length,
-    codePreview: codeString ? (codeString.slice(0, 100) + '...') : 'EMPTY',
-    hasContent: Boolean(codeString)
-  });
+  // console.log('extractCodeInfo result:', {
+  //   language,
+  //   codeStringLength: codeString.length,
+  //   codePreview: codeString ? (codeString.slice(0, 100) + '...') : 'EMPTY',
+  //   hasContent: Boolean(codeString)
+  // });
 
   return { codeString, language }
 }
