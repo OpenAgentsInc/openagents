@@ -98,7 +98,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
   // Memoize to avoid recreating this component on every render
   const fallbackPre = React.useMemo(() => (
     <div className="animate-pulse">
-      <pre {...stableProps} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4 min-h-[120px]", stableClassName)}>
+      <pre {...stableProps} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4 min-h-[120px] rounded-b-md", stableClassName)}>
         <code className="invisible">{codeString}</code>
       </pre>
     </div>
@@ -106,7 +106,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
 
   // Create a stable header that doesn't rerender
   const headerSection = React.useMemo(() => (
-    <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t bg-secondary px-4 py-2 text-sm text-secondary-foreground">
+    <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t-md bg-secondary px-4 py-2 text-sm text-secondary-foreground border-b border-border">
       <span className="font-mono">{language}</span>
     </div>
   ), [language]);
@@ -144,7 +144,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
               transition: 'opacity 50ms ease-in-out'
             }}
             className={cn(
-              "shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b",
+              "shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b-md",
               stableClassName
             )}
             dangerouslySetInnerHTML={{ __html: html }}
@@ -222,7 +222,7 @@ export const CodeBlock = React.memo(({
   const fallbackPre = React.useMemo(() => (
     <div className="relative min-h-[120px]" style={{ opacity: 0.5 }}>
       <div className="animate-pulse">
-        <pre className={cn(sharedStyles, className)} {...restProps}>
+        <pre className={cn(sharedStyles, "rounded-b-md", className)} {...restProps}>
           <code className="invisible">{processedCodeString}</code>
         </pre>
       </div>
@@ -244,7 +244,7 @@ export const CodeBlock = React.memo(({
   return (
     <div
       key={contentKey}
-      className="group/code relative my-4 overflow-hidden"
+      className="group/code relative my-4 overflow-hidden rounded-md border border-border"
       style={{
         minHeight: '120px',
         contain: 'content' // Improve performance by containing repaints
