@@ -8,6 +8,7 @@ import LocalModelsPage from "../pages/settings/LocalModelsPage";
 import MCPClientsPage from "../pages/settings/MCPClientsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
 import PreferencesPage from "../pages/settings/PreferencesPage";
+import DebugPage from "../pages/settings/DebugPage";
 import ChangelogPage from "../pages/ChangelogPage";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ChatStateProvider } from "@/providers/ChatStateProvider";
@@ -117,6 +118,12 @@ export const ApiKeysSettingsRoute = createRoute({
   component: ApiKeysPage,
 });
 
+export const DebugSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/debug",
+  component: DebugPage,
+});
+
 // Add all routes to the route tree
 export const rootTree = RootRoute.addChildren([
   MainLayoutRoute.addChildren([
@@ -130,6 +137,7 @@ export const rootTree = RootRoute.addChildren([
     LocalModelsSettingsRoute,
     MCPClientsSettingsRoute,
     PromptsSettingsRoute,
-    PreferencesSettingsRoute
+    PreferencesSettingsRoute,
+    DebugSettingsRoute
   ])
 ]);

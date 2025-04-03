@@ -22,6 +22,7 @@ export * from './utils/commandExecutor'
 export * from './utils/commandParser'
 export * from './utils/setupElectronCommandExecutor'
 export * from './utils/reactCompatibility'
+export * from './utils/logManager'
 
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
