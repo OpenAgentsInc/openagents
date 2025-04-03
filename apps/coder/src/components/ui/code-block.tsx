@@ -1,4 +1,4 @@
-import React, { Suspense, useMemo, useEffect, useState } from "react"
+import React, { Suspense, useState, useEffect } from "react"
 import * as shiki from 'shiki'
 import { cn } from "@/utils/tailwind"
 import { CopyButton } from "@/components/ui/copy-button"
@@ -27,6 +27,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
   useEffect(() => {
     let isMounted = true
     setIsLoading(true)
+    console.log(`HighlightedPre useEffect with language: ${language}`)
 
     async function highlight() {
       console.log('Highlighting code:', {
@@ -35,19 +36,23 @@ const HighlightedPre = React.memo(function HighlightedPre({
       });
 
       try {
-        const validLanguage = language || 'text'
+        console.log('Creating highlighter for language:', language);
+        
+        // Create a safe language identifier for Shiki - fallback to text if language isn't supported
+        const safeLanguage = language || 'text';
+        
         const highlighter = await shiki.createHighlighter({
           themes: ['github-dark'],
-          langs: [validLanguage],
+          langs: [safeLanguage],
         })
 
         const highlighted = await highlighter.codeToHtml(codeString, {
-          lang: validLanguage,
+          lang: safeLanguage,
           theme: 'github-dark'
         })
 
         console.log('Highlighting successful:', {
-          language: validLanguage,
+          language,
           htmlLength: highlighted.length
         });
 
@@ -92,7 +97,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
   return (
     <div className="group relative flex w-full flex-col pt-9">
       <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t bg-secondary px-4 py-2 text-sm text-secondary-foreground">
-        <span className="font-mono">{language || 'text'}</span>
+        <span className="font-mono">{language}</span>
       </div>
       <div className="absolute top-1 right-1 z-10">
         <CopyButton
@@ -126,26 +131,49 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
 export const CodeBlock = React.memo(({
   children: codeString,
   className,
-  language,
+  language = 'text',
   ...restProps
 }: CodeBlockProps) => {
-  console.log('CodeBlock received:', {
-    codeString: codeString.slice(0, 100) + '...',
-    language,
-    className
-  });
+  console.log('CodeBlock called with raw language:', language);
+  
+  // Force language to the actual language identifier if it's 'text'
+  let effectiveLanguage = language;
+  let processedCodeString = codeString;
+  
+  // Try to extract from className if language is 'text'
+  if (language === 'text' && className?.includes('language-')) {
+    const classMatch = className.match(/language-(\w+)/);
+    if (classMatch && classMatch[1]) {
+      effectiveLanguage = classMatch[1];
+    }
+  }
+  
+  // If code string contains a language marker, prioritize that
+  if (typeof codeString === 'string') {
+    const lines = codeString.split('\n');
+    if (lines[0] && /^```\w+/.test(lines[0])) {
+      const langMatch = /^```(\w+)/.exec(lines[0]);
+      if (langMatch && langMatch[1]) {
+        effectiveLanguage = langMatch[1];
+        // Remove the language marker line from code string
+        processedCodeString = lines.slice(1).join('\n');
+      }
+    }
+  }
+    
+  console.log('CodeBlock using language:', effectiveLanguage);
 
   const fallbackPre = (
     <pre className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4", className)} {...restProps}>
-      <code>{codeString}</code>
+      <code>{processedCodeString}</code>
     </pre>
   )
 
   return (
     <div className="group/code relative my-4">
       <Suspense fallback={fallbackPre}>
-        <HighlightedPre language={language} className={className} {...restProps}>
-          {codeString}
+        <HighlightedPre language={effectiveLanguage} className={className} {...restProps}>
+          {processedCodeString}
         </HighlightedPre>
       </Suspense>
     </div>
@@ -194,14 +222,15 @@ export function extractCodeInfo(children: React.ReactNode): { codeString: string
       return node.map(extractTextContent).join('')
     }
     if (React.isValidElement(node)) {
-      return extractTextContent(node.props?.children || '')
+      const props = node.props as { children?: React.ReactNode }
+      return extractTextContent(props.children || '')
     }
     return ''
   }
 
   // First try to find a direct code element
   const codeElement = React.Children.toArray(children).find(
-    (child): child is React.ReactElement =>
+    (child): child is React.ReactElement<{ className?: string; children?: React.ReactNode }> =>
       React.isValidElement(child) &&
       (child.type === 'code' || (typeof child.type === 'string' && child.type.toLowerCase() === 'code'))
   )
@@ -217,12 +246,28 @@ export function extractCodeInfo(children: React.ReactNode): { codeString: string
 
   if (codeElement) {
     // Extract language from className
-    const codeClassName = codeElement.props?.className || ''
+    const codeClassName = codeElement.props.className || ''
     const match = /language-(\w+)/.exec(codeClassName)
-    language = match ? match[1] : 'text'
+    if (match && match[1]) {
+      language = match[1]
+      console.log('extractCodeInfo found language in className:', language)
+    } else {
+      // Try to detect language from code content itself
+      const lines = extractTextContent(codeElement.props.children || '').split('\n')
+      if (lines[0] && lines[0].startsWith('```')) {
+        const langMatch = /^```(\w+)/.exec(lines[0])
+        if (langMatch && langMatch[1]) {
+          language = langMatch[1]
+          console.log('extractCodeInfo found language in fence marker:', language)
+          // Remove the language marker line if it's found
+          lines.shift()
+          codeElement.props.children = lines.join('\n')
+        }
+      }
+    }
 
     // Extract code content from the code element
-    codeString = extractTextContent(codeElement.props?.children || '').trimEnd()
+    codeString = extractTextContent(codeElement.props.children || '').trimEnd()
   } else {
     // If no code element found, try to extract from children directly
     codeString = extractTextContent(children).trimEnd()

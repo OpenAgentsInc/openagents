@@ -30,6 +30,209 @@ function withClass(Tag: HTMLTag, classes: string) {
   };
 }
 
+interface CodeElementProps {
+  className?: string;
+  children?: React.ReactNode;
+}
+
+function PreComponent({ node, children, className, ...props }: { node?: any, children?: React.ReactNode, className?: string, [key: string]: any }) {
+  console.log('Pre component received:', {
+    children,
+    className,
+    nodeType: node?.type,
+    childrenCount: React.Children.count(children)
+  });
+  
+  // Log child element details for debugging
+  React.Children.forEach(children, child => {
+    if (React.isValidElement(child)) {
+      console.log('Pre child element:', {
+        type: child.type,
+        className: child.props.className,
+        hasChildren: Boolean(child.props.children),
+      });
+    }
+  });
+
+  // Extract code content and language
+  let codeContent = '';
+  let language = 'text';
+
+  // Process all children to find code element and its language
+  // Extract direct text content if it exists
+  const childArray = React.Children.toArray(children);
+  
+  // Try direct extraction from a single code child
+  const codeChild = childArray.find(
+    child => React.isValidElement(child) && 
+            (child.type === 'code' || 
+             (typeof child.type === 'string' && child.type.toLowerCase() === 'code') ||
+             (child.props?.className && child.props.className.includes('language-')))
+  );
+  
+  // Log basic info without attempting to serialize
+  console.log('Child array info:', {
+    length: childArray.length,
+    types: childArray.map(child => 
+      React.isValidElement(child) ? 
+      (typeof child.type === 'function' ? 'function component' : child.type) : 
+      typeof child
+    )
+  });
+  
+  if (React.isValidElement(codeChild)) {
+    console.log('Found direct code child:', {
+      type: typeof codeChild.type,
+      typeValue: typeof codeChild.type === 'function' ? 'function component' : codeChild.type,
+      className: codeChild.props?.className,
+      hasChildren: Boolean(codeChild.props?.children),
+    });
+    
+    // Get content directly
+    if (typeof codeChild.props.children === 'string') {
+      codeContent = codeChild.props.children;
+    } else if (Array.isArray(codeChild.props.children)) {
+      codeContent = codeChild.props.children.join('');
+    }
+    
+    // Get language from className
+    const codeClassName = codeChild.props.className || '';
+    const match = /language-(\w+)/.exec(codeClassName);
+    if (match && match[1]) {
+      language = match[1];
+      console.log('Found language match:', { match, language });
+    }
+  }
+  
+  // If direct extraction didn't work, try recursively
+  if (!codeContent.trim()) {
+    console.log('No content from direct child, trying recursive extraction');
+    React.Children.forEach(children, child => {
+      if (React.isValidElement(child)) {
+        console.log('Processing child:', {
+          type: typeof child.type,
+          typeValue: typeof child.type === 'function' ? 'function component' : child.type,
+          hasClassName: Boolean(child.props?.className), 
+          hasChildren: Boolean(child.props?.children),
+        });
+        // Handle any child element that has content, not just 'code'
+        const codeElement = child as React.ReactElement<{
+          className?: string;
+          children?: string | string[];
+        }>;
+
+        // Get language from className if we don't already have it
+        if (language === 'text') {
+          const codeClassName = codeElement.props.className || '';
+          console.log('Checking for language in className:', codeClassName);
+          const match = /language-(\w+)/.exec(codeClassName);
+          if (match && match[1]) {
+            language = match[1];
+            console.log('Found language match:', { match, language });
+          } else {
+            // Try to get language from code block syntax (i.e., ```rust)
+            const firstLine = codeElement.props.children?.toString().split('\n')[0];
+            if (firstLine && /^```\w+/.test(firstLine)) {
+              const langMatch = /^```(\w+)/.exec(firstLine);
+              if (langMatch && langMatch[1]) {
+                language = langMatch[1];
+                console.log('Found language in fence marker:', { langMatch, language });
+              }
+            }
+          }
+        }
+
+        // Get content from children
+        let codeChildren = codeElement.props.children;
+        
+        // Check if content starts with ```language
+        if (typeof codeChildren === 'string') {
+          const lines = codeChildren.split('\n');
+          if (lines[0] && /^```\w+/.test(lines[0])) {
+            // Remove the language marker if found
+            lines.shift();
+            codeChildren = lines.join('\n');
+          }
+          codeContent = codeChildren;
+        } else if (Array.isArray(codeChildren)) {
+          codeContent = codeChildren.join('');
+        }
+      }
+    });
+  }
+
+  console.log('Pre component processing:', {
+    extractedContent: codeContent.slice(0, 100) + '...',
+    language,
+    contentLength: codeContent.length
+  });
+
+  // Add a fallback for direct content in pre
+  if (!codeContent.trim()) {
+    console.log('No code content yet, trying fallback methods');
+    
+    // Try to extract directly from the pre element
+    if (React.isValidElement(children)) {
+      console.log('Pre component: Trying to extract content directly from children');
+      if (typeof children.props.children === 'string') {
+        codeContent = children.props.children;
+        console.log('Extracted content directly from pre children:', codeContent.slice(0, 100));
+      }
+    }
+    
+    // Check if content is just a text node (string)
+    if (!codeContent.trim() && typeof children === 'string') {
+      codeContent = children;
+      console.log('Extracted content from direct text node:', codeContent.slice(0, 100));
+    }
+  }
+
+  // Only render CodeBlock if we have content
+  if (!codeContent.trim()) {
+    console.log('Pre component: No code content found, returning default pre');
+    // Return a fallback pre instead of null
+    return (
+      <pre className={className} {...props}>
+        {children}
+      </pre>
+    );
+  }
+
+  return (
+    <CodeBlockComponent
+      language={language}
+      className={cn("not-prose", className)}
+      {...props}
+    >
+      {codeContent.trim()}
+    </CodeBlockComponent>
+  );
+}
+
+function CodeComponent({ node, inline, className, children, ...props }: any) {
+  console.log('Code component received:', {
+    inline,
+    className,
+    children,
+    childrenCount: React.Children.count(children)
+  });
+
+  if (inline) {
+    return (
+      <code className={cn("relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm", className)} {...props}>
+        {children}
+      </code>
+    );
+  }
+
+  // For block code, pass the className to pre component
+  return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  );
+}
+
 const COMPONENTS: Components = {
   h1: withClass('h1', 'mt-6 mb-4 text-2xl font-bold text-foreground'),
   h2: withClass('h2', 'mt-6 mb-4 text-xl font-bold text-foreground'),
@@ -47,61 +250,8 @@ const COMPONENTS: Components = {
   table: withClass('table', 'my-4 w-full overflow-y-auto text-sm'),
   th: withClass('th', 'border border-border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right'),
   td: withClass('td', 'border border-border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right'),
-
-  // Handle pre tags and extract code information
-  pre: ({ node, children, className, ...props }: any) => {
-    console.log('Pre component received:', {
-      children,
-      className,
-      nodeType: node?.type,
-      childrenCount: React.Children.count(children)
-    });
-
-    // Use the helper function to get the language and code string
-    const { codeString, language } = extractCodeInfo(children);
-
-    console.log('Pre component extracted:', {
-      codeString: codeString.slice(0, 100) + '...',
-      language,
-      hasContent: Boolean(codeString)
-    });
-
-    // Only render CodeBlock if we have code content
-    if (!codeString) {
-      console.log('Pre component: No code content found, returning null');
-      return null;
-    }
-
-    return (
-      <CodeBlockComponent
-        language={language}
-        className={cn("not-prose", className)}
-        {...props}
-      >
-        {codeString}
-      </CodeBlockComponent>
-    );
-  },
-
-  // Only handle inline code, let pre handle code blocks
-  code: ({ node, inline, className, children, ...props }: any) => {
-    console.log('Code component received:', {
-      inline,
-      className,
-      children,
-      childrenCount: React.Children.count(children)
-    });
-
-    if (inline) {
-      return (
-        <code className={cn("relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm", className)} {...props}>
-          {children}
-        </code>
-      );
-    }
-    // For block code, just return the code element for pre to handle
-    return <code className={className} {...props}>{children}</code>;
-  }
+  pre: PreComponent,
+  code: CodeComponent
 };
 
 export interface MarkdownRendererProps {
