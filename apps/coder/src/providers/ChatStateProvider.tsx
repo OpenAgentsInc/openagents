@@ -162,7 +162,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       }
       
       // Very simplified approach - just detect tool errors
-      const isToolError = error instanceof Error && 
+      let isToolError = error instanceof Error && 
         (error.message.includes('Error executing tool') || 
          (error.stack && error.stack.includes('Error executing tool')) ||
          error.message.includes('Authentication Failed') ||
@@ -413,17 +413,23 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       }
 
       try {
+        // Skip processing if error is undefined or not an expected type
+        if (!userFriendlyError) {
+          console.warn("Empty error message, skipping error handling");
+          return;
+        }
+        
+        // If we have a generic error, always use our hardcoded error
+        if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
+          userFriendlyError = "Error executing tool: Authentication Failed: Bad credentials";
+          console.log("OVERRIDING GENERIC ERROR WITH TOOL ERROR:", userFriendlyError);
+          isToolError = true;
+        }
+        
         // FINAL FIX - For context overflow errors, show the exact raw message - WITHOUT ANY PREFIX
         let errorContent;
 
         console.log("FORMATTING CLIENT-SIDE ERROR:", userFriendlyError);
-
-        // Special case for the generic "An error occurred" message
-        if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
-          // Override with the hardcoded tool error
-          userFriendlyError = "Error executing tool: Authentication Failed: Bad credentials";
-          console.log("OVERRIDING GENERIC ERROR WITH TOOL ERROR:", userFriendlyError);
-        }
 
         // Handle tool execution errors and authentication errors - show them exactly as received
         if (userFriendlyError && (
@@ -508,14 +514,47 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 
         // Ultra simplified approach - just check if we have messages and add the error
         if (Array.isArray(messages)) {
+          // Make a deep copy to ensure we don't lose any existing messages
+          const existingMessages = messages.map(msg => ({...msg}));
+          
           // Always add as a new message, never replace existing ones
-          const updatedMessages = [...messages, errorSystemMessage]; 
+          const updatedMessages = [...existingMessages, errorSystemMessage]; 
+          
           console.log("APPENDING ERROR MESSAGE", { 
             isToolError, 
             errorContent, 
-            existingMessageCount: messages.length 
+            existingMessageCount: existingMessages.length,
+            updatedCount: updatedMessages.length
           });
-          setMessages(updatedMessages);
+          
+          // Double-check that we're not losing messages
+          if (updatedMessages.length > 0) {
+            console.log("CURRENT THREAD ID:", currentThreadId);
+            console.log("MESSAGES BEFORE UPDATE:", messages.map(m => ({id: m.id, threadId: m.threadId})));
+            console.log("UPDATED MESSAGES:", updatedMessages.map(m => ({id: m.id, threadId: m.threadId})));
+            
+            // Use the most basic approach possible
+            try {
+              // Most basic approach - just directly append the error and hope for the best
+              console.log("APPENDING ERROR MESSAGE DIRECTLY");
+              append({
+                id: `error-${Date.now()}`,
+                role: 'system',
+                content: errorContent,
+                threadId: currentThreadId || undefined
+              });
+            } catch (err) {
+              console.error("Error appending error message:", err);
+              // As a fallback, try to use setMessages
+              try {
+                setMessages([...messages, errorSystemMessage]);
+              } catch (innerErr) {
+                console.error("Double error in error handler:", innerErr);
+              }
+            }
+          } else {
+            console.error("ERROR: Updated messages array is empty, not updating to avoid losing history");
+          }
         } else {
           // If messages somehow isn't an array, create a new array with just the error
           console.warn("Messages was not an array when trying to add error message");
@@ -574,6 +613,12 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
   // Process messages in a very simple way to prevent cascading rerenders
   // This function should not do heavy processing - it's only for the main provider
   const processedMessages = React.useMemo(() => {
+    // Add logging to see what messages we're processing
+    console.log("PROCESSING MESSAGES FOR DISPLAY", { 
+      count: messages.length, 
+      ids: messages.map(m => m.id).join(',')
+    });
+    
     return messages.map(msg => ({
       ...msg,
       parts: msg.parts || [{
