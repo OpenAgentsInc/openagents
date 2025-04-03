@@ -1,110 +1,165 @@
 import React from "react";
 import { Outlet, Link, useLocation } from "@tanstack/react-router";
-import { ArrowLeft, Sun, Moon } from "lucide-react";
+import {
+  Home,
+  Database,
+  KeyRound,
+  Server,
+  MessageSquare,
+  Sliders,
+  ArrowLeft
+} from "lucide-react";
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarInset,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent
+} from '@/components/ui/sidebar';
 import { Button } from "@/components/ui";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { react19 } from "@openagents/core";
-import { useDarkMode } from "@/hooks/use-dark-mode";
+import ToggleTheme from '@/components/ToggleTheme';
 
 // Make React Router components compatible with React 19
 const OutletCompat = react19.router(Outlet);
 
 export default function SettingsLayout() {
-  const { isDark, toggleDarkMode } = useDarkMode();
-
   // Use the proper Tanstack Router location hook
   const location = useLocation();
   const currentPath = location.pathname;
-  const isPrompts = currentPath.includes("prompts");
-  const isPreferences = currentPath.includes("preferences");
-  const isLocalModels = currentPath.includes("local-models");
 
   return (
-    <ScrollArea className="h-screen w-full">
-      <div className="mx-auto flex min-h-screen max-w-[1200px] flex-col px-4 pb-24 pt-6 md:px-6 lg:px-8">
-        {/* Background */}
-        <div className="absolute inset-0 -z-50 dark:bg-sidebar !fixed">
-          <div className="absolute inset-0 opacity-40"
-            style={{
-              backgroundImage: "radial-gradient(closest-corner at 180px 36px, rgba(255, 1, 111, 0.19), rgba(255, 1, 111, 0.08)), linear-gradient(rgb(63, 51, 69) 15%, rgb(7, 3, 9))"
-            }}>
-          </div>
-          <div className="absolute inset-0 bg-noise"></div>
-          <div className="absolute inset-0 bg-black/40"></div>
-        </div>
-
-        {/* Header */}
-        <header className="flex items-center justify-between pb-8">
-          <Link to="/">
-            <Button variant="ghost" className="flex items-center hover:bg-muted/40">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Chat
-            </Button>
-          </Link>
-
-          <div className="flex flex-row items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleDarkMode}
-              className="relative size-8 hover:bg-muted/40 hover:text-foreground"
-            >
-              <Moon className={`absolute size-4 transition-all duration-200 ${isDark ? 'rotate-0 scale-100' : '-rotate-90 scale-0'}`} />
-              <Sun className={`absolute size-4 transition-all duration-200 ${isDark ? 'rotate-90 scale-0' : 'rotate-0 scale-100'}`} />
-              <span className="sr-only">Toggle theme</span>
-            </Button>
-          </div>
-        </header>
-
-        {/* Content */}
-        <div className="flex flex-grow flex-col gap-4 md:flex-row justify-center">
-          {/* Main content area */}
-          <div className="w-full">
-            <div className="space-y-6">
-              {/* Tabs navigation */}
-              <div className="flex justify-center w-full">
-                <div className="inline-flex h-9 items-center rounded-lg bg-secondary/80 p-1 text-secondary-foreground no-scrollbar overflow-auto">
-                  <Link
-                    to="/settings/models"
-                    className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
-                      ${currentPath.includes("models") && !isLocalModels ? "bg-background text-foreground shadow" : ""}`}
-                  >
-                    API Models
-                  </Link>
-                  <Link
-                    to="/settings/local-models"
-                    className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
-                      ${isLocalModels ? "bg-background text-foreground shadow" : ""}`}
-                  >
-                    Local Models
-                  </Link>
-                  <Link
-                    to="/settings/prompts"
-                    className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
-                      ${isPrompts ? "bg-background text-foreground shadow" : ""}`}
-                  >
-                    Prompts
-                  </Link>
-                  <Link
-                    to="/settings/preferences"
-                    className={`mx-0.5 rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer
-                      ${isPreferences ? "bg-background text-foreground shadow" : ""}`}
-                  >
-                    Preferences
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex h-screen w-full flex-col text-primary font-mono">
+        <div className="relative flex h-full w-full flex-1 overflow-hidden z-0">
+          <div className="mt-[30px] relative flex h-full w-full flex-row overflow-hidden">
+            {/* Settings Sidebar */}
+            <Sidebar>
+              <SidebarContent>
+                <div className="px-4 mt-[45px] mb-2">
+                  <Link to="/">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start gap-2 bg-transparent border-primary/20 hover:bg-primary/5"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to Chat
+                    </Button>
                   </Link>
                 </div>
-              </div>
 
-              {/* Tab content */}
-              <div className="flex justify-center w-full">
-                <div className="w-full max-w-3xl mt-2 space-y-8">
-                  <OutletCompat />
+                <SidebarGroup>
+                  <SidebarGroupLabel>Models & API</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <Link to="/settings/models">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/models") && !currentPath.includes("/local-models")}
+                            className={currentPath.includes("/models") && !currentPath.includes("/local-models") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Database className="h-4 w-4" />
+                            <span>Models</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
+
+                      <SidebarMenuItem>
+                        <Link to="/settings/api-keys">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/api-keys")}
+                            className={currentPath.includes("/api-keys") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <KeyRound className="h-4 w-4" />
+                            <span>API Keys</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
+
+                      {/* <SidebarMenuItem>
+                        <Link to="/settings/local-models">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/local-models")}
+                            className={currentPath.includes("/local-models") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Server className="h-4 w-4" />
+                            <span>LM Studio</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem> */}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+
+                <SidebarGroup>
+                  <SidebarGroupLabel>Customization</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <Link to="/settings/prompts">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/prompts")}
+                            className={currentPath.includes("/prompts") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                            <span>Prompts</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
+
+                      <SidebarMenuItem>
+                        <Link to="/settings/preferences">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/preferences")}
+                            className={currentPath.includes("/preferences") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Sliders className="h-4 w-4" />
+                            <span>Preferences</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              </SidebarContent>
+
+              {/* Add SidebarFooter */}
+              <div className="absolute bottom-0 left-0 right-0 p-3 border-t flex items-center justify-between">
+                <ToggleTheme />
+                <Link to="/">
+                  <Button
+                    size="icon"
+                    className="flex items-center justify-center h-8 w-8 bg-transparent text-primary hover:bg-primary/5">
+                    <Home size={20} />
+                  </Button>
+                </Link>
+              </div>
+            </Sidebar>
+
+            {/* Main Content Area */}
+            <SidebarInset>
+              <div className="grid grid-rows-[minmax(0,1fr)] h-[calc(100vh-30px)]">
+                {/* Content Area */}
+                <div className="overflow-auto p-6">
+                  <div className="max-w-3xl mx-auto">
+                    <OutletCompat />
+                  </div>
                 </div>
               </div>
-            </div>
+            </SidebarInset>
           </div>
         </div>
       </div>
-    </ScrollArea>
+    </SidebarProvider>
   );
 }

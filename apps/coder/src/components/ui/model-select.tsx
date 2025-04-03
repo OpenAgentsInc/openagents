@@ -280,7 +280,15 @@ export const ModelSelect = React.memo(function ModelSelect({
       // Focus only on LMStudio for now, skipping Ollama
       // const ollamaModels = await checkOllamaModels();
       const ollamaModels: string[] = []; // Empty for now to focus on LMStudio
-      const lmStudioAvailable = await checkLMStudioModels();
+
+      // Skip LMStudio check for pure Anthropic models to avoid unnecessary API calls
+      const isAnthropicModel = value && value.startsWith("claude-");
+      if (isAnthropicModel) {
+        // console.log(`Skipping LMStudio availability check for Anthropic model: ${value}`);
+      }
+
+      // Only check LMStudio if this isn't an Anthropic model
+      const lmStudioAvailable = isAnthropicModel ? false : await checkLMStudioModels();
 
       // Add availability for dynamic LMStudio models
       // These are always available since they were just discovered
@@ -497,7 +505,8 @@ export const ModelSelect = React.memo(function ModelSelect({
       const dynamicSelectedModel = {
         id: value,
         name: formattedName,
-        provider: value.includes("gemma") || value.toLowerCase().includes("llama") ? 'lmstudio' as const : 'unknown' as any,
+        provider: value.startsWith("claude-") ? 'anthropic' as const :
+          (value.includes("gemma") || value.toLowerCase().includes("llama")) ? 'lmstudio' as const : 'unknown' as any,
         author: 'unknown' as any,
         created: Date.now(),
         description: `${formattedName} model`,
@@ -521,11 +530,22 @@ export const ModelSelect = React.memo(function ModelSelect({
   // Update visible models when filtered models change
   // Also make sure we include the currently selected model if it exists
   useEffect(() => {
-    // If value is set but not in filtered models, add it specially
-    if (value && filteredModels.every(model => model.id !== value)) {
-      // console.log("Currently selected model not found in filtered models. Adding it:", value);
+    // Filter out unavailable models
+    const availableModels = filteredModels.filter(model => {
+      // Keep the currently selected model even if unavailable
+      if (model.id === value) return true;
 
-      // Create temporary model object for the current value
+      // For LMStudio models (including Gemma)
+      if (model.provider === 'lmstudio' && model.id.includes('gemma')) {
+        return modelAvailability[model.id] !== false;
+      }
+
+      // For all other models
+      return modelAvailability[model.id] !== false;
+    });
+
+    // If value is set but not in filtered models, add it specially
+    if (value && availableModels.every(model => model.id !== value)) {
       const modelName = value.split('/').pop() || value;
       const formattedName = modelName
         .replace(/-/g, ' ')
@@ -537,21 +557,21 @@ export const ModelSelect = React.memo(function ModelSelect({
       const temporaryModel = {
         id: value,
         name: formattedName,
-        provider: value.includes("gemma") ? 'lmstudio' as const : 'unknown' as any,
+        provider: value.startsWith("claude-") ? 'anthropic' as const :
+          (value.includes("gemma") || value.toLowerCase().includes("llama")) ? 'lmstudio' as const : 'unknown' as any,
         author: 'unknown' as any,
         created: Date.now(),
         description: `${formattedName} model`,
         context_length: 8192,
         supportsTools: true,
-        shortDescription: `Model: ${formattedName}`
+        shortDescription: `Dynamic model: ${formattedName}`
       };
 
-      // Add the current model to visible models
-      setVisibleModels([...filteredModels, temporaryModel]);
-    } else {
-      setVisibleModels(filteredModels);
+      availableModels.push(temporaryModel);
     }
-  }, [filteredModels, value]);
+
+    setVisibleModels(availableModels);
+  }, [filteredModels, value, modelAvailability]);
 
   // Find the currently selected model with useMemo - check both static and dynamic models
   const selectedModel = useMemo(() => {
@@ -579,7 +599,8 @@ export const ModelSelect = React.memo(function ModelSelect({
       return {
         id: value,
         name: formattedName,
-        provider: value.includes("gemma") ? 'lmstudio' : 'unknown',
+        provider: value.startsWith("claude-") ? 'anthropic' :
+          value.includes("gemma") ? 'lmstudio' : 'unknown',
         author: 'unknown' as any,
         created: Date.now(),
         description: `${formattedName} model`,
@@ -621,7 +642,6 @@ export const ModelSelect = React.memo(function ModelSelect({
           aria-expanded={open}
           className={cn(
             "w-full justify-between overflow-hidden text-ellipsis whitespace-nowrap font-mono",
-            !isSelectedModelAvailable && "border-yellow-500 text-yellow-600 dark:text-yellow-400",
             className
           )}
           disabled={disabled}
@@ -630,17 +650,6 @@ export const ModelSelect = React.memo(function ModelSelect({
             <span className="overflow-hidden text-ellipsis">
               {selectedModel ? selectedModel.name : placeholder}
             </span>
-
-            {!isSelectedModelAvailable && selectedModelWarning && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <AlertCircle className="ml-2 h-4 w-4 text-yellow-500 shrink-0" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{selectedModelWarning}</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
           </div>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -651,43 +660,31 @@ export const ModelSelect = React.memo(function ModelSelect({
           <CommandEmpty className="font-mono">No model found.</CommandEmpty>
           <CommandGroup className="max-h-[300px] overflow-auto font-mono">
             {visibleModels.map((model) => {
-              // Precompute this value to avoid recalculation in the render
               const isSelected = value === model.id;
-              const isAvailable = modelAvailability[model.id] !== false;
-              const warningMessage = modelMessages[model.id];
 
               return (
                 <CommandItem
                   key={model.id}
                   value={model.id}
                   onSelect={() => {
-                    // Only allow selection if model is available
-                    if (isAvailable) {
-                      // console.log("Selecting model:", model.id, model.name);
-                      onChange(model.id);
-                      setOpen(false);
+                    onChange(model.id);
+                    setOpen(false);
 
-                      // Update availability to ensure this model stays available
-                      setModelAvailability(prev => ({
-                        ...prev,
-                        [model.id]: true
-                      }));
+                    // Update availability to ensure this model stays available
+                    setModelAvailability(prev => ({
+                      ...prev,
+                      [model.id]: true
+                    }));
 
-                      // Additionally update dynamic models list if needed
-                      if (model.provider === 'lmstudio' &&
-                        !dynamicModelsRef.current.some(m => m.id === model.id)) {
-                        // console.log("Adding selected model to dynamic models list");
-                        setDynamicLmStudioModels(prev => [...prev, model]);
-                      }
-
-                      window.dispatchEvent(new Event('focus-chat-input'));
+                    // Additionally update dynamic models list if needed
+                    if (model.provider === 'lmstudio' &&
+                      !dynamicModelsRef.current.some(m => m.id === model.id)) {
+                      setDynamicLmStudioModels(prev => [...prev, model]);
                     }
+
+                    window.dispatchEvent(new Event('focus-chat-input'));
                   }}
-                  className={cn(
-                    "font-mono",
-                    !isAvailable && "cursor-not-allowed opacity-60"
-                  )}
-                  disabled={!isAvailable}
+                  className="font-mono"
                 >
                   <div className="flex flex-col gap-1 truncate font-mono">
                     <div className="flex items-center gap-2">
@@ -697,20 +694,9 @@ export const ModelSelect = React.memo(function ModelSelect({
                         <span className="h-4 w-4" />
                       )}
                       <span className="font-medium font-mono">{model.name}</span>
-
-                      {!isAvailable && warningMessage && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <AlertCircle className="h-4 w-4 text-yellow-500" />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{warningMessage}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
                     </div>
                     <div className="text-xs text-muted-foreground pl-6">
-                      {model.provider} {model.supportsTools ? "• Tools" : ""} • {Math.round(model.context_length / 1000)}k ctx
+                      {model.provider}
                     </div>
                   </div>
                 </CommandItem>

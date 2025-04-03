@@ -1,10 +1,9 @@
-import React, { Suspense, useMemo, useRef, useEffect } from "react"
+import React, { useMemo } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/utils/tailwind"
 import type { Components } from 'react-markdown'
-
-import { CopyButton } from "@/components/ui/copy-button"
+import { CodeBlock as CodeBlockComponent, extractCodeInfo } from "./code-block"
 
 type HTMLTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'a' | 'ul' | 'ol' | 'li' | 'blockquote' | 'hr' | 'table' | 'th' | 'td' | 'pre' | 'code';
 
@@ -31,25 +30,245 @@ function withClass(Tag: HTMLTag, classes: string) {
   };
 }
 
+interface CodeElementProps {
+  className?: string;
+  children?: React.ReactNode;
+}
+
+// Memoize the PreComponent to prevent unnecessary rerenders
+const PreComponent = React.memo(function PreComponent({ node, children, className, ...props }: { node?: any, children?: React.ReactNode, className?: string, [key: string]: any }) {
+  // console.log('Pre component received:', {
+  //   children,
+  //   className,
+  //   nodeType: node?.type,
+  //   childrenCount: React.Children.count(children)
+  // });
+
+  // Log child element details for debugging
+  React.Children.forEach(children, child => {
+    if (React.isValidElement(child)) {
+      // console.log('Pre child element:', {
+      //   type: child.type,
+      //   className: child.props.className,
+      //   hasChildren: Boolean(child.props.children),
+      // });
+    }
+  });
+
+  // Extract code content and language
+  let codeContent = '';
+  let language = 'text';
+
+  // Process all children to find code element and its language
+  // Extract direct text content if it exists
+  const childArray = React.Children.toArray(children);
+
+  // Try direct extraction from a single code child
+  const codeChild = childArray.find(
+    child => React.isValidElement(child) &&
+      (child.type === 'code' ||
+        (typeof child.type === 'string' && child.type.toLowerCase() === 'code') ||
+        ((child as React.ReactElement<CodeElementProps>).props?.className &&
+          (child as React.ReactElement<CodeElementProps>).props.className.includes('language-')))
+  );
+
+  // Log basic info without attempting to serialize
+  // console.log('Child array info:', {
+  //   length: childArray.length,
+  //   types: childArray.map(child =>
+  //     React.isValidElement(child) ?
+  //     (typeof child.type === 'function' ? 'function component' : child.type) :
+  //     typeof child
+  //   )
+  // });
+
+  if (React.isValidElement(codeChild)) {
+    // console.log('Found direct code child:', {
+    //   type: typeof codeChild.type,
+    //   typeValue: typeof codeChild.type === 'function' ? 'function component' : codeChild.type,
+    //   className: codeChild.props?.className,
+    //   hasChildren: Boolean(codeChild.props?.children),
+    // });
+
+    // Get content directly
+    if (typeof codeChild.props.children === 'string') {
+      codeContent = codeChild.props.children;
+    } else if (Array.isArray(codeChild.props.children)) {
+      codeContent = codeChild.props.children.join('');
+    }
+
+    // Get language from className
+    const codeClassName = (codeChild as React.ReactElement<CodeElementProps>).props?.className || '';
+    const match = /language-(\w+)/.exec(codeClassName);
+    if (match && match[1]) {
+      language = match[1];
+      // console.log('Found language match:', { match, language });
+    }
+  }
+
+  // If direct extraction didn't work, try recursively
+  if (!codeContent.trim()) {
+    // console.log('No content from direct child, trying recursive extraction');
+    React.Children.forEach(children, child => {
+      if (React.isValidElement(child)) {
+        // console.log('Processing child:', {
+        //   type: typeof child.type,
+        //   typeValue: typeof child.type === 'function' ? 'function component' : child.type,
+        //   hasClassName: Boolean(child.props?.className),
+        //   hasChildren: Boolean(child.props?.children),
+        // });
+        // Handle any child element that has content, not just 'code'
+        const codeElement = child as React.ReactElement<{
+          className?: string;
+          children?: string | string[];
+        }>;
+
+        // Get language from className if we don't already have it
+        if (language === 'text') {
+          const codeClassName = codeElement.props.className || '';
+          // console.log('Checking for language in className:', codeClassName);
+          const match = /language-(\w+)/.exec(codeClassName);
+          if (match && match[1]) {
+            language = match[1];
+            // console.log('Found language match:', { match, language });
+          } else {
+            // Try to get language from code block syntax (i.e., ```rust)
+            const firstLine = codeElement.props.children?.toString().split('\n')[0];
+            if (firstLine && /^```\w+/.test(firstLine)) {
+              const langMatch = /^```(\w+)/.exec(firstLine);
+              if (langMatch && langMatch[1]) {
+                language = langMatch[1];
+                // console.log('Found language in fence marker:', { langMatch, language });
+              }
+            }
+          }
+        }
+
+        // Get content from children
+        let codeChildren = codeElement.props.children;
+
+        // Check if content starts with ```language
+        if (typeof codeChildren === 'string') {
+          const lines = codeChildren.split('\n');
+          if (lines[0] && /^```\w+/.test(lines[0])) {
+            // Remove the language marker if found
+            lines.shift();
+            codeChildren = lines.join('\n');
+          }
+          codeContent = codeChildren;
+        } else if (Array.isArray(codeChildren)) {
+          codeContent = codeChildren.join('');
+        }
+      }
+    });
+  }
+
+  // console.log('Pre component processing:', {
+  //   extractedContent: codeContent.slice(0, 100) + '...',
+  //   language,
+  //   contentLength: codeContent.length
+  // });
+
+  // Add a fallback for direct content in pre
+  if (!codeContent.trim()) {
+    // console.log('No code content yet, trying fallback methods');
+
+    // Try to extract directly from the pre element
+    if (React.isValidElement(children)) {
+      // console.log('Pre component: Trying to extract content directly from children');
+      const childrenElement = children as React.ReactElement<CodeElementProps>;
+      if (typeof childrenElement.props?.children === 'string') {
+        codeContent = childrenElement.props.children;
+        // console.log('Extracted content directly from pre children:', codeContent.slice(0, 100));
+      }
+    }
+
+    // Check if content is just a text node (string)
+    if (!codeContent.trim() && typeof children === 'string') {
+      codeContent = children;
+      // console.log('Extracted content from direct text node:', codeContent.slice(0, 100));
+    }
+  }
+
+  // Only render CodeBlock if we have content
+  if (!codeContent.trim()) {
+    // console.log('Pre component: No code content found, returning default pre');
+    // Return a fallback pre instead of null with stable dimensions
+    return (
+      <div className="min-h-[60px]">
+        <pre className={cn("transition-all duration-200", className)} {...props}>
+          {children}
+        </pre>
+      </div>
+    );
+  }
+
+  // Stabilize content size to reduce jitter
+  const stabilizedContent = codeContent.trim();
+
+  // Generate a stable instance ID for the component
+  const stableId = React.useMemo(() => {
+    return `code_${Math.random().toString(36).substr(2, 9)}`;
+  }, []); // Empty dependencies - never regenerate during the lifetime of this component
+
+  // Render CodeBlock directly, always with the same key
+  return (
+    <div className="code-block-wrapper">
+      <CodeBlockComponent
+        key={stableId}
+        language={language}
+        className={cn("not-prose", className)}
+        {...props}
+      >
+        {stabilizedContent}
+      </CodeBlockComponent>
+    </div>
+  );
+});
+
+function CodeComponent({ node, inline, className, children, ...props }: any) {
+  // console.log('Code component received:', {
+  //   inline,
+  //   className,
+  //   children,
+  //   childrenCount: React.Children.count(children)
+  // });
+
+  if (inline) {
+    return (
+      <code className={cn("relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm border border-border", className)} {...props}>
+        {children}
+      </code>
+    );
+  }
+
+  // For block code, pass the className to pre component
+  return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  );
+}
+
 const COMPONENTS: Components = {
-  h1: withClass('h1', 'mt-6 mb-4 text-2xl font-bold'),
-  h2: withClass('h2', 'mt-6 mb-4 text-xl font-bold'),
-  h3: withClass('h3', 'mt-6 mb-4 text-lg font-bold'),
-  h4: withClass('h4', 'mt-4 mb-2 text-base font-bold'),
-  h5: withClass('h5', 'mt-4 mb-2 text-sm font-bold'),
-  h6: withClass('h6', 'mt-4 mb-2 text-xs font-bold'),
-  p: withClass('p', 'leading-6'),
-  a: withClass('a', 'text-primary underline underline-offset-4'),
-  ul: withClass('ul', 'mb-4 list-disc pl-8'),
-  ol: withClass('ol', 'mb-4 list-decimal pl-8'),
-  li: withClass('li', 'mt-2'),
-  blockquote: withClass('blockquote', 'mt-6 border-l-2 pl-6 italic'),
-  hr: withClass('hr', 'my-4 border-t'),
-  table: withClass('table', 'mb-4 w-full text-sm'),
-  th: withClass('th', 'border px-3 py-2 text-left font-bold'),
-  td: withClass('td', 'border px-3 py-2'),
-  pre: withClass('pre', 'mb-4 overflow-auto rounded-lg bg-muted p-4'),
-  code: withClass('code', 'rounded bg-muted px-1 py-0.5 font-mono text-sm'),
+  h1: withClass('h1', 'mt-6 mb-4 text-2xl font-bold text-foreground'),
+  h2: withClass('h2', 'mt-6 mb-4 text-xl font-bold text-foreground'),
+  h3: withClass('h3', 'mt-6 mb-4 text-lg font-bold text-foreground'),
+  h4: withClass('h4', 'mt-4 mb-2 text-base font-bold text-foreground'),
+  h5: withClass('h5', 'mt-4 mb-2 text-sm font-bold text-foreground'),
+  h6: withClass('h6', 'mt-4 mb-2 text-xs font-bold text-foreground'),
+  p: withClass('p', '!leading-6 [&:not(:first-child)]:mt-4 text-sm'),
+  a: withClass('a', 'font-medium underline underline-offset-4 text-primary hover:text-primary/80'),
+  ul: withClass('ul', 'my-4 list-disc pl-8 [&>li]:mt-2'),
+  ol: withClass('ol', 'my-4 list-decimal pl-8 [&>li]:mt-2'),
+  li: withClass('li', 'leading-7 text-sm'),
+  blockquote: withClass('blockquote', 'mt-6 border-l-2 border-border pl-6 italic text-muted-foreground'),
+  hr: withClass('hr', 'my-4 border-border'),
+  table: withClass('table', 'my-4 w-full overflow-y-auto text-sm'),
+  th: withClass('th', 'border border-border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right'),
+  td: withClass('td', 'border border-border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right'),
+  pre: PreComponent,
+  code: CodeComponent
 };
 
 export interface MarkdownRendererProps {
@@ -60,15 +279,16 @@ export interface MarkdownRendererProps {
 // Memoize the remarkPlugins array
 const REMARK_PLUGINS = [remarkGfm];
 
-// Memoize the entire MarkdownRenderer component
 // Create a specialized component for streaming content
-// Simpler implementation that always shows the current content
 export const StreamedMarkdownRenderer = ({
   children,
   className
 }: MarkdownRendererProps) => {
-  // Just render the current content directly - no caching or optimization
-  // This ensures tokens always show up immediately
+  // console.log('StreamedMarkdownRenderer rendering:', {
+  //   content: children.slice(0, 100) + '...',
+  //   className
+  // });
+
   return (
     <div className={className}>
       <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
@@ -83,158 +303,27 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   children,
   className
 }: MarkdownRendererProps) {
-  // For regular (non-streaming) content, use our existing memoized approach
+  // console.log('MarkdownRenderer rendering:', {
+  //   content: children.slice(0, 100) + '...',
+  //   className
+  // });
+
   const memoizedContent = useMemo(() => {
     return (
-      <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
+      <Markdown
+        remarkPlugins={REMARK_PLUGINS}
+        components={COMPONENTS}
+      >
         {children}
       </Markdown>
     );
   }, [children]);
 
   return (
-    <div className={className}>
+    <div className={cn("prose max-w-none dark:prose-invert prose-pre:m-0 prose-pre:bg-transparent prose-pre:p-0", className)}>
       {memoizedContent}
     </div>
   );
 });
-
-interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
-  children: string
-  language: string
-}
-
-const HighlightedPre = React.memo(
-  async ({ children, language, ...props }: HighlightedPre) => {
-    const { codeToTokens, bundledLanguages } = await import("shiki")
-
-    if (!(language in bundledLanguages)) {
-      return <pre {...props}>{children}</pre>
-    }
-
-    // Cache key that combines code content and language
-    const cacheKey = `${language}:${children}`;
-
-    // Use a ref to store the cached tokens to avoid re-tokenizing the same code
-    const tokenCache = React.useRef<{ [key: string]: any }>({});
-
-    let tokens;
-    if (tokenCache.current[cacheKey]) {
-      // Use cached tokens
-      tokens = tokenCache.current[cacheKey];
-    } else {
-      // Generate new tokens and cache them
-      const result = await codeToTokens(children, {
-        lang: language as keyof typeof bundledLanguages,
-        defaultColor: false,
-        themes: {
-          light: "github-light",
-          dark: "github-dark",
-        },
-      });
-      tokens = result.tokens;
-      tokenCache.current[cacheKey] = tokens;
-    }
-
-    return (
-      <pre {...props}>
-        <code>
-          {tokens.map((line: Array<any>, lineIndex: number) => (
-            <div key={lineIndex} className="table-row">
-              <div className="table-cell pr-4 text-right text-muted-foreground">
-                {lineIndex + 1}
-              </div>
-              <div className="table-cell">
-                {line.map((token: any, tokenIndex: number) => {
-                  const style =
-                    typeof token.htmlStyle === "string"
-                      ? undefined
-                      : token.htmlStyle
-
-                  return (
-                    <span
-                      key={tokenIndex}
-                      className="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"
-                      style={style}
-                    >
-                      {token.content}
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </code>
-      </pre>
-    )
-  }
-)
-HighlightedPre.displayName = "HighlightedCode"
-
-interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
-  children: React.ReactNode
-  className?: string
-  language: string
-}
-
-const CodeBlock = React.memo(({
-  children,
-  className,
-  language,
-  ...restProps
-}: CodeBlockProps) => {
-  // Memoize the code extraction which can be expensive for large code blocks
-  const code = useMemo(() =>
-    typeof children === "string"
-      ? children
-      : childrenTakeAllStringContents(children),
-    [children]
-  );
-
-  const preClass = cn(
-    "overflow-x-scroll rounded-md border bg-background/50 p-4 font-mono text-sm [scrollbar-width:none]",
-    className
-  )
-
-  return (
-    <div className="group/code relative mb-4">
-      <Suspense
-        fallback={
-          <pre className={preClass} {...restProps}>
-            {children}
-          </pre>
-        }
-      >
-        <HighlightedPre language={language} className={preClass}>
-          {code}
-        </HighlightedPre>
-      </Suspense>
-
-      <div className="invisible absolute right-2 top-2 flex space-x-1 rounded-lg p-1 opacity-0 duration-200 group-hover/code:visible group-hover/code:opacity-100">
-        <CopyButton content={code} copyMessage="Copied code to clipboard" />
-      </div>
-    </div>
-  )
-});
-
-function childrenTakeAllStringContents(element: any): string {
-  if (typeof element === "string") {
-    return element
-  }
-
-  if (element?.props?.children) {
-    let children = element.props.children
-
-    if (Array.isArray(children)) {
-      return children
-        .map((child) => childrenTakeAllStringContents(child))
-        .join("")
-    } else {
-      return childrenTakeAllStringContents(children)
-    }
-  }
-
-  return ""
-}
 
 export default MarkdownRenderer

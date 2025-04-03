@@ -57,7 +57,7 @@ export class SettingsRepository {
       if (typeof window !== 'undefined' && window.localStorage) {
         const pendingModel = window.localStorage.getItem('openagents_pending_model');
         if (pendingModel) {
-          console.log(`Loading pending model from localStorage: ${pendingModel}`);
+          // console.log(`Loading pending model from localStorage: ${pendingModel}`);
           this._pendingModelUpdate = pendingModel;
         }
 
@@ -66,16 +66,16 @@ export class SettingsRepository {
           try {
             const visibleIds = JSON.parse(pendingVisibility);
             if (Array.isArray(visibleIds)) {
-              console.log(`Loading pending visibility from localStorage: ${visibleIds.length} models`);
+              // console.log(`Loading pending visibility from localStorage: ${visibleIds.length} models`);
               this._pendingVisibilityUpdates = visibleIds;
             }
           } catch (e) {
-            console.warn("Error parsing pending visibility from localStorage:", e);
+            // console.warn("Error parsing pending visibility from localStorage:", e);
           }
         }
       }
     } catch (error) {
-      console.warn("Error loading pending updates from localStorage:", error);
+      // console.warn("Error loading pending updates from localStorage:", error);
     }
   }
 
@@ -123,7 +123,7 @@ export class SettingsRepository {
       }
 
       // Otherwise return cached settings as-is
-      console.log("Returning cached settings");
+      // console.log("Returning cached settings");
       return toMutableSettings(this.cachedSettings!);
     }
 
@@ -135,12 +135,12 @@ export class SettingsRepository {
       const settingsDoc = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
       if (settingsDoc) {
         const settings = settingsDoc.toJSON();
-        console.log("Found settings in database:", settings.selectedModelId || settings.defaultModel);
+        // console.log("Found settings in database:", settings.selectedModelId || settings.defaultModel);
         this.cachedSettings = toMutableSettings(settings);
         return toMutableSettings(settings);
       }
     } catch (e) {
-      console.warn("Error fetching settings from database:", e);
+      // console.warn("Error fetching settings from database:", e);
     }
 
     await this.initialize();
@@ -166,12 +166,12 @@ export class SettingsRepository {
                 localSettings = JSON.parse(storedSettings) as Settings;
                 // console.log("Found backup settings in localStorage");
               } catch (parseError) {
-                console.warn("Error parsing localStorage settings:", parseError);
+                // console.warn("Error parsing localStorage settings:", parseError);
               }
             }
           }
         } catch (localStorageError) {
-          console.warn("Error accessing localStorage:", localStorageError);
+          // console.warn("Error accessing localStorage:", localStorageError);
         }
 
         // Try to find existing settings
@@ -179,7 +179,7 @@ export class SettingsRepository {
         try {
           settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
         } catch (findError) {
-          console.error("Error finding settings:", findError);
+          // console.error("Error finding settings:", findError);
           // Continue to the default settings creation path
         }
 
@@ -188,7 +188,7 @@ export class SettingsRepository {
 
           // Validate the default model - ensure it's a string
           if (settingsData.defaultModel && typeof settingsData.defaultModel !== 'string') {
-            console.warn("Invalid defaultModel type, resetting to default");
+            // console.warn("Invalid defaultModel type, resetting to default");
             settingsData = { ...settingsData, defaultModel: 'qwen-qwq-32b' }; // Create new object with fallback model
           }
 
@@ -198,7 +198,7 @@ export class SettingsRepository {
               window.localStorage.setItem('openagents_settings_backup', JSON.stringify(settingsData));
             }
           } catch (backupError) {
-            console.warn("Error backing up settings to localStorage:", backupError);
+            // console.warn("Error backing up settings to localStorage:", backupError);
           }
 
           const mutableData = toMutableSettings(settingsData);
@@ -208,7 +208,7 @@ export class SettingsRepository {
 
         // If we have settings from localStorage, try to use those
         if (localSettings && localSettings.id === GLOBAL_SETTINGS_ID) {
-          console.log("Using backup settings from localStorage");
+          // console.log("Using backup settings from localStorage");
           try {
             // Validate and insert the localStorage settings
             if (localSettings.defaultModel && typeof localSettings.defaultModel !== 'string') {
@@ -219,7 +219,7 @@ export class SettingsRepository {
             this.cachedSettings = localSettings;
             return localSettings;
           } catch (insertLocalError) {
-            console.warn("Failed to insert localStorage settings:", insertLocalError);
+            // console.warn("Failed to insert localStorage settings:", insertLocalError);
             // Continue to default settings
           }
         }
@@ -243,7 +243,7 @@ export class SettingsRepository {
             visibleModelIds.push(id);
           }
         } catch (e) {
-          console.warn("Could not load MODELS for default visibleModelIds", e);
+          // console.warn("Could not load MODELS for default visibleModelIds", e);
         }
 
         // Default selected model (previously defaultModel)
@@ -270,13 +270,13 @@ export class SettingsRepository {
               window.localStorage.setItem('openagents_settings_backup', JSON.stringify(defaultSettings));
             }
           } catch (backupError) {
-            console.warn("Error backing up settings to localStorage:", backupError);
+            // console.warn("Error backing up settings to localStorage:", backupError);
           }
 
           return defaultSettings;
         } catch (error) {
           // If we get an error (likely a conflict error), try to fetch again
-          console.log('Settings insert conflict, retrying fetch...');
+          // console.log('Settings insert conflict, retrying fetch...');
 
           // Add a small delay to let other operations complete
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -295,18 +295,18 @@ export class SettingsRepository {
                   window.localStorage.setItem('openagents_settings_backup', JSON.stringify(existingData));
                 }
               } catch (backupError) {
-                console.warn("Error backing up settings to localStorage:", backupError);
+                // console.warn("Error backing up settings to localStorage:", backupError);
               }
 
               return mutableData;
             }
           } catch (retryError) {
-            console.error("Error on retry fetch:", retryError);
+            // console.error("Error on retry fetch:", retryError);
           }
 
           // If we have localStorage settings, use those as a fallback
           if (localSettings && localSettings.id === GLOBAL_SETTINGS_ID) {
-            console.log("Using localStorage settings as fallback after fetch errors");
+            // console.log("Using localStorage settings as fallback after fetch errors");
             this.cachedSettings = localSettings;
             return localSettings;
           }
@@ -325,7 +325,7 @@ export class SettingsRepository {
       } catch (error) {
         // If any error occurs during fetching (including database not available),
         // fall back to returning default settings without persisting
-        console.warn('Error fetching settings, using defaults:', error);
+        // console.warn('Error fetching settings, using defaults:', error);
         const fallbackSettings = {
           id: GLOBAL_SETTINGS_ID,
           theme: 'system',
@@ -356,7 +356,7 @@ export class SettingsRepository {
       if (updates.defaultModel || updates.selectedModelId) {
         const modelId = updates.selectedModelId || updates.defaultModel;
         if (modelId) {
-          console.log(`Setting pending model update: ${modelId}`);
+          // console.log(`Setting pending model update: ${modelId}`);
           this._pendingModelUpdate = modelId;
 
           // If updates only contains defaultModel, also update selectedModelId for new schema
@@ -381,14 +381,14 @@ export class SettingsRepository {
               window.localStorage.setItem('openagents_pending_model', modelId);
             }
           } catch (localStorageError) {
-            console.warn("Error saving pending model to localStorage:", localStorageError);
+            // console.warn("Error saving pending model to localStorage:", localStorageError);
           }
         }
       }
 
       // Handle model visibility updates
       if (updates.visibleModelIds) {
-        console.log(`Setting pending visibility update: ${updates.visibleModelIds.length} models`);
+        // console.log(`Setting pending visibility update: ${updates.visibleModelIds.length} models`);
         this._pendingVisibilityUpdates = updates.visibleModelIds;
 
         // Store the pending update in localStorage for persistence across page reloads
@@ -397,7 +397,7 @@ export class SettingsRepository {
             window.localStorage.setItem('openagents_pending_visibility', JSON.stringify(updates.visibleModelIds));
           }
         } catch (localStorageError) {
-          console.warn("Error saving pending visibility to localStorage:", localStorageError);
+          // console.warn("Error saving pending visibility to localStorage:", localStorageError);
         }
       }
 
@@ -405,7 +405,7 @@ export class SettingsRepository {
       // This helps maintain values not included in the updates
       let combinedUpdates = { ...updates };
       if (this.cachedSettings) {
-        console.log("Merging updates with cached settings");
+        // console.log("Merging updates with cached settings");
         combinedUpdates = {
           ...this.cachedSettings,
           ...updates
@@ -428,13 +428,13 @@ export class SettingsRepository {
               // Log the schema to help diagnose issues
               try {
                 const collection = this.db!.settings;
-                console.log("Settings schema:", collection.schema.jsonSchema);
+                // console.log("Settings schema:", collection.jsonSchema);
               } catch (e) {
-                console.warn("Could not log schema:", e);
+                // console.warn("Could not log schema:", e);
               }
 
               // Use patch instead of atomicUpdate
-              console.log("Using patch with only schema fields:", Object.keys(updates));
+              // console.log("Using patch with only schema fields:", Object.keys(updates));
               await currentDoc.patch({
                 ...updates
               });
@@ -466,7 +466,7 @@ export class SettingsRepository {
 
               return fallbackSettings;
             } catch (updateError) {
-              console.warn(`Update attempt ${retries + 1} failed:`, updateError);
+              // console.warn(`Update attempt ${retries + 1} failed:`, updateError);
               retries++;
 
               // Add an increased delay between retries to avoid race conditions
@@ -492,18 +492,18 @@ export class SettingsRepository {
               if (checkDoc) {
                 const settingsData = checkDoc.toJSON();
                 this.cachedSettings = toMutableSettings(settingsData);
-                console.log("New settings document created and verified");
+                // console.log("New settings document created and verified");
                 return toMutableSettings(settingsData);
               } else {
                 // Document not found after insert - this is unexpected
-                console.error("Document not found after insert - will retry");
+                // console.error("Document not found after insert - will retry");
                 retries++;
                 await new Promise(resolve => setTimeout(resolve, 100 * retries));
                 continue;
               }
             } catch (insertError) {
               // This likely means the document was created by another process
-              console.warn(`Insert attempt ${retries + 1} failed:`, insertError);
+              // console.warn(`Insert attempt ${retries + 1} failed:`, insertError);
               retries++;
 
               // Add a delay between retries
@@ -512,7 +512,7 @@ export class SettingsRepository {
             }
           }
         } catch (dbError) {
-          console.error(`Database operation failed on attempt ${retries + 1}:`, dbError);
+          // console.error(`Database operation failed on attempt ${retries + 1}:`, dbError);
           retries++;
 
           // More substantial delay for DB errors
@@ -523,7 +523,7 @@ export class SettingsRepository {
 
       // If we've exhausted retries, use the recovery approach
       // But don't use the nuclear option since it's causing page refreshes
-      console.warn("Exhausted retry attempts, using stable recovery method");
+      // console.warn("Exhausted retry attempts, using stable recovery method");
 
       try {
         // Create a safe recovery document based on what we know
@@ -538,7 +538,7 @@ export class SettingsRepository {
 
         // Update our cache with what we intended to save
         this.cachedSettings = recoverySettings;
-        console.log("Settings recovery successful with in-memory update");
+        // console.log("Settings recovery successful with in-memory update");
 
         // Try one last time to read the actual data
         try {
@@ -548,8 +548,8 @@ export class SettingsRepository {
             // Only update our cache if the defaultModel in the database
             // doesn't match what the user was trying to set
             if (updates.defaultModel && lastSettings.defaultModel !== updates.defaultModel) {
-              console.log("Database has defaultModel:", lastSettings.defaultModel,
-                "but user wanted:", updates.defaultModel);
+              // console.log("Database has defaultModel:", lastSettings.defaultModel,
+              //   "but user wanted:", updates.defaultModel);
               // Keep our in-memory version with the user's preference
             } else {
               // Otherwise use what's in the database
@@ -557,13 +557,13 @@ export class SettingsRepository {
             }
           }
         } catch (finalReadError) {
-          console.warn("Final read attempt failed, using recovery settings");
+          // console.warn("Final read attempt failed, using recovery settings");
         }
 
         return this.cachedSettings;
       } catch (finalCatchAllError) {
         // Absolute last resort - return a memory object
-        console.error("All database operations failed:", finalCatchAllError);
+        // console.error("All database operations failed:", finalCatchAllError);
         const fallbackSettings = {
           id: GLOBAL_SETTINGS_ID,
           theme: 'system',
@@ -575,7 +575,7 @@ export class SettingsRepository {
         return fallbackSettings;
       }
     } catch (error) {
-      console.error('Fatal error updating settings:', error);
+      // console.error('Fatal error updating settings:', error);
 
       // If we have cached settings, merge with updates
       if (this.cachedSettings) {
@@ -613,7 +613,7 @@ export class SettingsRepository {
     const settings = this.cachedSettings || await this.getSettings();
     const apiKeys = settings.apiKeys || {};
 
-    console.log(`Setting API key for provider: ${provider}`);
+    // console.log(`Setting API key for provider: ${provider}`);
 
     await this.updateSettings({
       apiKeys: {
@@ -648,15 +648,43 @@ export class SettingsRepository {
     // Use cached settings if available
     const settings = this.cachedSettings || await this.getSettings();
     const apiKeys = { ...(settings.apiKeys || {}) };
-
+    
     if (provider in apiKeys) {
       delete apiKeys[provider];
 
-      console.log(`Deleting API key for provider: ${provider}`);
-
-      await this.updateSettings({
-        apiKeys
-      });
+      // console.log(`Deleting API key for provider: ${provider}`);
+      
+      // Check if the selected model belongs to this provider and reset it if necessary
+      let selectedModelId = settings.selectedModelId;
+      const currentSelectedModelId = settings.selectedModelId || settings.defaultModel;
+      
+      if (currentSelectedModelId) {
+        // Check if the current selected model needs an API key from this provider
+        const isProviderModel = 
+          (provider === 'anthropic' && currentSelectedModelId.includes('claude')) ||
+          (provider === 'openai' && (currentSelectedModelId.includes('gpt') || currentSelectedModelId.startsWith('openai/'))) ||
+          (provider === 'google' && (currentSelectedModelId.includes('gemini') || currentSelectedModelId.startsWith('google/'))) ||
+          (provider === 'openrouter' && currentSelectedModelId.startsWith('openrouter/'));
+          
+        if (isProviderModel) {
+          // If we delete the key for the provider of the currently selected model,
+          // reset to a default model that might not need an API key
+          selectedModelId = 'qwen-qwq-32b'; // Fallback model
+        }
+      }
+      
+      // Update settings with deleted API key and potentially reset selected model
+      if (selectedModelId !== settings.selectedModelId) {
+        await this.updateSettings({
+          apiKeys,
+          selectedModelId,
+          defaultModel: selectedModelId // Keep for backward compatibility
+        });
+      } else {
+        await this.updateSettings({
+          apiKeys
+        });
+      }
     }
   }
 
@@ -686,7 +714,7 @@ export class SettingsRepository {
     const settings = this.cachedSettings || await this.getSettings();
     const preferences = settings.preferences || {};
 
-    console.log(`Setting preference: ${key}`);
+    // console.log(`Setting preference: ${key}`);
 
     await this.updateSettings({
       preferences: {
@@ -702,7 +730,7 @@ export class SettingsRepository {
   async resetSettings(): Promise<Settings> {
     await this.initialize();
 
-    console.log("Resetting settings to defaults");
+    // console.log("Resetting settings to defaults");
 
     try {
       // Try to remove existing settings
@@ -715,20 +743,20 @@ export class SettingsRepository {
               documentId: GLOBAL_SETTINGS_ID
             }]
           });
-          console.log("Successfully removed settings via bulkWrite during reset");
+          // console.log("Successfully removed settings via bulkWrite during reset");
         } catch (bulkError) {
-          console.error("Error removing settings via bulkWrite:", bulkError);
+          // console.error("Error removing settings via bulkWrite:", bulkError);
 
           // Try the normal approach
           let settings = await this.db!.settings.findOne(GLOBAL_SETTINGS_ID).exec();
           if (settings) {
             await settings.remove();
-            console.log("Successfully removed existing settings document during reset");
+            // console.log("Successfully removed existing settings document during reset");
           }
         }
       }
     } catch (removeError) {
-      console.error("Error removing settings during reset:", removeError);
+      // console.error("Error removing settings during reset:", removeError);
     }
 
     // Clear cache
@@ -750,7 +778,7 @@ export class SettingsRepository {
         visibleModelIds.push(id);
       }
     } catch (e) {
-      console.warn("Could not load MODELS for default visibleModelIds during reset", e);
+      // console.warn("Could not load MODELS for default visibleModelIds during reset", e);
     }
 
     // Default selected model
@@ -773,10 +801,10 @@ export class SettingsRepository {
     try {
       await this.db!.settings.insert(defaultSettings);
       this.cachedSettings = defaultSettings;
-      console.log("Settings reset successfully");
+      // console.log("Settings reset successfully");
       return defaultSettings;
     } catch (insertError) {
-      console.error("Error inserting default settings during reset:", insertError);
+      // console.error("Error inserting default settings during reset:", insertError);
       // Return in-memory version
       this.cachedSettings = defaultSettings;
       return defaultSettings;
@@ -796,7 +824,7 @@ export class SettingsRepository {
    * This replaces the old defaultModel concept
    */
   async selectModel(modelId: string): Promise<Settings> {
-    console.log(`Selecting model: ${modelId}`);
+    // console.log(`Selecting model: ${modelId}`);
     try {
       const result = await this.updateSettings({
         selectedModelId: modelId,
@@ -804,7 +832,7 @@ export class SettingsRepository {
       });
       return result;
     } catch (error) {
-      console.error("Error selecting model:", error);
+      // console.error("Error selecting model:", error);
       // Return fallback settings instead of null
       return {
         id: GLOBAL_SETTINGS_ID,
@@ -822,7 +850,7 @@ export class SettingsRepository {
    * Show a model in the selector
    */
   async showModel(modelId: string): Promise<Settings> {
-    console.log(`Showing model: ${modelId}`);
+    // console.log(`Showing model: ${modelId}`);
     const settings = await this.getSettings();
     const visibleModelIds = settings.visibleModelIds || [];
 
@@ -840,7 +868,7 @@ export class SettingsRepository {
    * Hide a model from the selector
    */
   async hideModel(modelId: string): Promise<Settings> {
-    console.log(`Hiding model: ${modelId}`);
+    // console.log(`Hiding model: ${modelId}`);
     const settings = await this.getSettings();
     const visibleModelIds = settings.visibleModelIds || [];
 
@@ -881,7 +909,7 @@ export class SettingsRepository {
       }
       return [];
     } catch (error) {
-      console.error("Error getting visible model IDs:", error);
+      // console.error("Error getting visible model IDs:", error);
       return [];
     }
   }

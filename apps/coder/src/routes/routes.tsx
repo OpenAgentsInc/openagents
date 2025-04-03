@@ -1,11 +1,38 @@
 import { createRoute } from "@tanstack/react-router";
 import { RootRoute } from "./__root";
-import HomePage from "../pages/HomePage";
+import ChatPage from "../pages/ChatPage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
 import ModelsPage from "../pages/settings/ModelsPage";
+import ApiKeysPage from "../pages/settings/ApiKeysPage";
 import LocalModelsPage from "../pages/settings/LocalModelsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
 import PreferencesPage from "../pages/settings/PreferencesPage";
+import ChangelogPage from "../pages/ChangelogPage";
+import { MainLayout } from "@/components/layout/MainLayout";
+import { ChatStateProvider } from "@/providers/ChatStateProvider";
+import { ModelProvider } from "@/providers/ModelProvider";
+import { ApiKeyProvider } from "@/providers/ApiKeyProvider";
+import { DEFAULT_SYSTEM_PROMPT } from "@openagents/core";
+import { Outlet } from "@tanstack/react-router";
+import { react19 } from "@openagents/core";
+
+// Make React Router components compatible with React 19
+const OutletCompat = react19.router(Outlet);
+
+// Wrapper component that provides necessary context
+function MainLayoutWrapper() {
+  return (
+    <ModelProvider>
+      <ApiKeyProvider>
+        <ChatStateProvider systemPrompt={DEFAULT_SYSTEM_PROMPT}>
+          <MainLayout>
+            <OutletCompat />
+          </MainLayout>
+        </ChatStateProvider>
+      </ApiKeyProvider>
+    </ModelProvider>
+  );
+}
 
 // TODO: Steps to add a new route:
 // 1. Create a new page component in the '../pages/' directory (e.g., NewPage.tsx)
@@ -14,10 +41,25 @@ import PreferencesPage from "../pages/settings/PreferencesPage";
 // 4. Add the new route to the routeTree in RootRoute.addChildren([...])
 // 5. Add a new Link in the navigation section of RootRoute if needed
 
-export const HomeRoute = createRoute({
+// Main layout parent route
+export const MainLayoutRoute = createRoute({
   getParentRoute: () => RootRoute,
+  id: "main",
+  component: MainLayoutWrapper,
+});
+
+// Home/Chat route under MainLayout
+export const HomeRoute = createRoute({
+  getParentRoute: () => MainLayoutRoute,
   path: "/",
-  component: HomePage,
+  component: ChatPage,
+});
+
+// Changelog route under MainLayout
+export const ChangelogRoute = createRoute({
+  getParentRoute: () => MainLayoutRoute,
+  path: "/changelog",
+  component: ChangelogPage,
 });
 
 // Settings parent route
@@ -27,12 +69,12 @@ export const SettingsRoute = createRoute({
   component: SettingsLayout,
 });
 
-// Settings default route (redirects to models)
+// Settings default route (redirects to api-keys)
 export const SettingsIndexRoute = createRoute({
   getParentRoute: () => SettingsRoute,
   path: "/",
   component: () => {
-    window.location.href = '/settings/models';
+    window.location.href = '/settings/api-keys';
     return null;
   }
 });
@@ -62,12 +104,22 @@ export const PreferencesSettingsRoute = createRoute({
   component: PreferencesPage,
 });
 
+export const ApiKeysSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/api-keys",
+  component: ApiKeysPage,
+});
+
 // Add all routes to the route tree
 export const rootTree = RootRoute.addChildren([
-  HomeRoute,
+  MainLayoutRoute.addChildren([
+    HomeRoute,
+    ChangelogRoute,
+  ]),
   SettingsRoute.addChildren([
     SettingsIndexRoute,
     ModelsSettingsRoute,
+    ApiKeysSettingsRoute,
     LocalModelsSettingsRoute,
     PromptsSettingsRoute,
     PreferencesSettingsRoute

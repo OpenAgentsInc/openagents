@@ -125,14 +125,14 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       console.error('Chat hook onError:', error);
 
       // IMMEDIATE DEBUG - Show the raw error in the console
-      console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
+      // console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
       console.log(error);
-      if (error instanceof Error) {
-        console.log("%c ERROR MESSAGE:", "background: red; color: white");
-        console.log(error.message);
-        console.log("%c ERROR STACK:", "background: red; color: white");
-        console.log(error.stack);
-      }
+      // if (error instanceof Error) {
+      //   console.log("%c ERROR MESSAGE:", "background: red; color: white");
+      //   console.log(error.message);
+      //   console.log("%c ERROR STACK:", "background: red; color: white");
+      //   console.log(error.stack);
+      // }
 
       // CRITICAL: Don't use append in onError because it can trigger another error and cause infinite loops
       // Instead, use direct state manipulation which is safe and won't trigger API calls
@@ -223,6 +223,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           } else {
             errorContent = userFriendlyError;
           }
+        }
+        // Handle streaming parse errors
+        else if (userFriendlyError && userFriendlyError.includes('Failed to parse stream string. Invalid code data.')) {
+          errorContent = "Error: No response from LLM. Check your API key.";
+          console.log("REPLACED STREAM PARSING ERROR WITH FRIENDLY MESSAGE");
         }
         // Other TypeValidationError errors
         else if (userFriendlyError && userFriendlyError.includes('AI_TypeValidationError')) {

@@ -24,10 +24,10 @@ export function useThreadDeletion({
 }: UseThreadDeletionProps) {
   // State for tracking pending deletes (optimistic UI)
   const [pendingDeletes, setPendingDeletes] = useState<Set<string>>(new Set());
-  
+
   // Initialize repositories once
   const repositoriesInitialized = useRef(false);
-  
+
   useEffect(() => {
     if (!repositoriesInitialized.current) {
       (async () => {
@@ -36,13 +36,13 @@ export function useThreadDeletion({
           await messageRepository.initialize(db);
           await threadRepository.initialize(db);
           repositoriesInitialized.current = true;
-          console.log("Repositories initialized for thread deletion");
+          // console.log("Repositories initialized for thread deletion");
         } catch (error) {
           console.error("Error initializing repositories:", error);
         }
       })();
     }
-    
+
     return () => {
       // Cleanup logic if needed
     };
@@ -55,7 +55,7 @@ export function useThreadDeletion({
       console.error("Could not find thread for deletion:", threadId);
       return;
     }
-    
+
     // Save a copy of the thread data
     const threadData = {
       id: deletedThread.id,
@@ -65,25 +65,25 @@ export function useThreadDeletion({
       modelId: deletedThread.modelId,
       systemPrompt: deletedThread.systemPrompt
     };
-    
+
     // Optimistic update - add to pending deletes first
     setPendingDeletes(prev => new Set([...prev, threadId]));
-    
+
     // Cache all messages from this thread
     let cachedMessages: UIMessage[] = [];
     if (repositoriesInitialized.current) {
       try {
         cachedMessages = await messageRepository.getMessagesByThreadId(threadId);
-        console.log(`Cached ${cachedMessages.length} messages for potential thread restoration`);
+        // console.log(`Cached ${cachedMessages.length} messages for potential thread restoration`);
       } catch (fetchError) {
         console.error("Error caching messages before deletion:", fetchError);
       }
     }
-    
+
     // Delay actual deletion to allow for undo
     let deleteTimeoutId: NodeJS.Timeout;
     let undoClicked = false;
-    
+
     // Show toast with undo option
     toast.info(`Chat deleted`, {
       description: `"${threadTitle || 'Untitled'}" was deleted.`,
@@ -92,29 +92,29 @@ export function useThreadDeletion({
         onClick: async () => {
           // Mark that undo was clicked to prevent deletion
           undoClicked = true;
-          
+
           // Clear the deletion timeout if it's still pending
           if (deleteTimeoutId) {
             clearTimeout(deleteTimeoutId);
           }
-          
+
           // Remove from pending deletes to show in UI
           setPendingDeletes(prev => {
             const newSet = new Set([...prev]);
             newSet.delete(threadId);
             return newSet;
           });
-          
+
           // UNDO FUNCTIONALITY
           try {
             // Check if thread still exists or has been deleted
             const existingThreads = await refresh();
             const threadExists = existingThreads.some(t => t.id === threadId);
-            
+
             if (!threadExists) {
               // Thread was deleted, need to recreate it
               console.log("Thread was already deleted, recreating with data:", threadData);
-              
+
               // Initialize repositories if needed
               if (repositoriesInitialized.current) {
                 try {
@@ -127,11 +127,11 @@ export function useThreadDeletion({
                     modelId: threadData.modelId,
                     systemPrompt: threadData.systemPrompt
                   });
-                  
+
                   // Restore all messages if we have them cached
                   if (cachedMessages.length > 0) {
                     console.log(`Restoring ${cachedMessages.length} messages to thread ${threadData.id}`);
-                    
+
                     // Reinsert messages one by one
                     for (const message of cachedMessages) {
                       try {
@@ -144,13 +144,13 @@ export function useThreadDeletion({
                       }
                     }
                   }
-                  
+
                   // Switch to the restored thread
                   onSelectThread(threadData.id);
-                  toast.success(`Chat "${threadData.title || 'Untitled'}" restored completely`);
+                  toast.success(`Chat "${threadData.title || 'Untitled'}" restored`);
                 } catch (createError) {
                   console.error("Error recreating thread:", createError);
-                  
+
                   // Fallback: create a new thread if exact recreation fails
                   const newThread = await createThread(threadData.title);
                   onSelectThread(newThread.id);
@@ -167,7 +167,7 @@ export function useThreadDeletion({
               onSelectThread(threadId);
               toast.success("Operation canceled");
             }
-            
+
             // Final refresh to update UI
             refresh();
           } catch (error) {
@@ -178,7 +178,7 @@ export function useThreadDeletion({
       },
       duration: 5000
     });
-    
+
     // Delay the actual deletion to allow for undo
     deleteTimeoutId = setTimeout(() => {
       if (!undoClicked) {
@@ -187,7 +187,7 @@ export function useThreadDeletion({
       }
     }, 300);
   }, [threads, refresh, createThread, updateThread, onDeleteThread, onSelectThread]);
-  
+
   return {
     pendingDeletes,
     handleDeleteWithToast

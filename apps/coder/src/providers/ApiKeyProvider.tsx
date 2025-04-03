@@ -14,7 +14,7 @@ export const useApiKeyContext = () => {
   return context;
 };
 
-export const ApiKeyProvider: React.FC<{children: React.ReactNode}> = ({children}) => {
+export const ApiKeyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Get settings
   const { settings } = useSettings();
 
@@ -43,7 +43,7 @@ export const ApiKeyProvider: React.FC<{children: React.ReactNode}> = ({children}
         if (lmStudioUrlPreference) {
           // Add the URL to the apiKeys object to be sent to the server
           keys['lmstudioUrl'] = lmStudioUrlPreference;
-          console.log(`Loaded LMStudio URL from settings: ${lmStudioUrlPreference}`);
+          // console.log(`Loaded LMStudio URL from settings: ${lmStudioUrlPreference}`);
         }
       } catch (error) {
         console.warn("Error loading LMStudio URL from settings:", error);

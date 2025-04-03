@@ -4,6 +4,7 @@ import { Label } from "@/components/ui/label";
 import { useSettings } from "@openagents/core";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 export default function PreferencesPage() {
   const { getPreference, setPreference } = useSettings();
@@ -31,11 +32,11 @@ export default function PreferencesPage() {
     try {
       setConfirmThreadDeletion(checked);
       await setPreference("confirmThreadDeletion", checked);
-      
+
       toast.success(
-        checked ? "Thread deletion confirmation enabled" : "Thread deletion confirmation disabled", 
-        { 
-          description: checked 
+        checked ? "Thread deletion confirmation enabled" : "Thread deletion confirmation disabled",
+        {
+          description: checked
             ? "You will be asked to confirm before deleting threads"
             : "Threads will be deleted instantly with an undo option"
         }
@@ -56,7 +57,7 @@ export default function PreferencesPage() {
           Customize your application experience
         </p>
       </div>
-      
+
       <Card>
         <CardHeader>
           <CardTitle>Thread Management</CardTitle>
@@ -65,15 +66,20 @@ export default function PreferencesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between space-x-2">
-            <Label htmlFor="confirmation-toggle" className="flex flex-col space-y-1">
-              <span>Confirm Thread Deletion</span>
-              <span className="font-normal text-sm text-muted-foreground">
-                {confirmThreadDeletion 
-                  ? "You'll be asked to confirm before deleting threads" 
-                  : "Threads will be deleted instantly with an undo option"}
-              </span>
-            </Label>
+          <Separator className="my-4" />
+          <div className="flex items-center space-x-4">
+            <div className="flex-1">
+              <Label htmlFor="confirmation-toggle">
+                <div className="space-y-1">
+                  <div>Confirm Thread Deletion</div>
+                  <div className="font-normal text-sm text-muted-foreground">
+                    {confirmThreadDeletion
+                      ? "You'll be asked to confirm before deleting threads"
+                      : "Threads will be deleted instantly with an undo option"}
+                  </div>
+                </div>
+              </Label>
+            </div>
             <Switch
               id="confirmation-toggle"
               checked={confirmThreadDeletion}
