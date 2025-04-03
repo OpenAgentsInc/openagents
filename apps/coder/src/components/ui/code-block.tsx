@@ -18,31 +18,31 @@ export const CodeBlock = React.memo(function CodeBlock({
   const preRef = useRef<HTMLPreElement>(null);
   const codeRef = useRef<HTMLElement>(null);
   const textRef = useRef("");
-  
+
   // Only run once to capture container refs
   useEffect(() => {
     setHasMounted(true);
   }, []);
-  
+
   // Update content when input changes
   useEffect(() => {
     if (!hasMounted || !codeRef.current) return;
-    
+
     // Skip if this is not new content
     if (codeString === textRef.current) return;
-    
+
     // Update content
     textRef.current = codeString;
-    
+
     // Directly set the innerText to preserve all whitespace and newlines
     codeRef.current.innerText = codeString;
-    
+
     // Force container resize
     if (containerRef.current) {
       containerRef.current.style.height = "auto";
     }
   }, [codeString, hasMounted]);
-  
+
   return (
     <div
       ref={containerRef}
@@ -53,16 +53,16 @@ export const CodeBlock = React.memo(function CodeBlock({
       <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t-md bg-secondary px-4 py-2 text-sm text-secondary-foreground border-b border-border">
         <span className="font-mono">{language}</span>
       </div>
-      
+
       {/* Copy button */}
-      <div className="absolute top-1 right-1 z-10">
+      <div className="absolute top-[1px] right-1 z-10">
         <CopyButton
           content={codeString}
           className="size-8 rounded-md bg-secondary p-2 opacity-0 transition-opacity group-hover/code:opacity-100 focus:opacity-100 hover:bg-muted-foreground/10 hover:text-muted-foreground dark:hover:bg-muted-foreground/5"
           aria-label="Copy code"
         />
       </div>
-      
+
       {/* Code content */}
       <div className="pt-9 w-full">
         <pre

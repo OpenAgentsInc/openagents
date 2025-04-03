@@ -12,7 +12,7 @@ export interface CopyButtonProps {
   className?: string
 }
 
-export function CopyButton({ content, copyMessage = "Copied!", className }: CopyButtonProps) {
+export function CopyButton({ content, copyMessage = "Copied to clipboard", className }: CopyButtonProps) {
   const { isCopied, handleCopy } = useCopyToClipboard({
     text: content,
     copyMessage,
