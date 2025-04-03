@@ -66,8 +66,10 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     id: options.id,
     maxSteps: options.maxSteps || 10,
     // Set explicit AI API options to ensure compatibility
-    // Always use relative URL in Electron context to work with our URL redirector
-    api: options.api || '/api/chat',
+    // Always use absolute URL in production builds for better reliability
+    api: options.api || (typeof window !== 'undefined' && window.location.href.includes('app.asar') 
+      ? 'http://localhost:3001/api/chat'  // Production build - use absolute URL
+      : '/api/chat'),                     // Development build - use relative URL
     body: {
       ...options.body,
       // Add any missing required parameters for the AI API

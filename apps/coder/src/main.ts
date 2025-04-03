@@ -168,13 +168,32 @@ function createWindow() {
   // Set up custom web request handling to allow connections to our local API server
   // This fixes the "Failed to fetch" errors when the app is making network requests
   mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-    // Check if this is an API request to our local server
-    if (details.url.includes('/api/') && !details.url.startsWith(`http://localhost:${LOCAL_API_PORT}`)) {
-      const redirectUrl = `http://localhost:${LOCAL_API_PORT}${new URL(details.url).pathname}${new URL(details.url).search || ''}`;
-      console.log(`[Main Process] Redirecting API request from ${details.url} to ${redirectUrl}`);
-      callback({ redirectURL: redirectUrl });
-    } else {
-      callback({});
+    try {
+      // Check if this is an API request to our local server
+      const isApiRequest = details.url.includes('/api/');
+      const isLocalhost = details.url.startsWith(`http://localhost:${LOCAL_API_PORT}`);
+      
+      if (isApiRequest && !isLocalhost) {
+        let redirectUrl;
+        try {
+          // Parse the URL to extract path and query parameters
+          const urlObj = new URL(details.url);
+          redirectUrl = `http://localhost:${LOCAL_API_PORT}${urlObj.pathname}${urlObj.search || ''}`;
+        } catch (parseError) {
+          // Fallback for URLs that may not parse correctly
+          const urlPath = details.url.split('/api/')[1] || '';
+          redirectUrl = `http://localhost:${LOCAL_API_PORT}/api/${urlPath}`;
+        }
+        
+        console.log(`[Main Process] Redirecting API request from ${details.url} to ${redirectUrl}`);
+        callback({ redirectURL: redirectUrl });
+      } else {
+        callback({});
+      }
+    } catch (error) {
+      // Log the error but allow the request to continue
+      console.error('[Main Process] Error in web request handler:', error);
+      callback({}); // Don't block the request on error
     }
   });
   registerListeners(mainWindow);
