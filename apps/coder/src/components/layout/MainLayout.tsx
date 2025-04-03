@@ -56,7 +56,7 @@ const IsolatedInputWrapper = memo(function IsolatedInputWrapper({
   );
 });
 
-export const MainLayout = memo(function MainLayout() {
+export const MainLayout = memo(function MainLayout({ children }: { children?: React.ReactNode }) {
   // Use thread context instead of the full chat state
   // This ensures this component won't rerender during message streaming
   const {
@@ -96,8 +96,6 @@ export const MainLayout = memo(function MainLayout() {
                   onCreateThread={handleCreateThread}
                 />
               </SidebarContent>
-
-              {/* SidebarFooter removed */}
             </Sidebar>
 
             <SidebarInset>
@@ -109,15 +107,20 @@ export const MainLayout = memo(function MainLayout() {
                 {/* Add a spacer div to maintain grid layout */}
                 <div className="" />
 
-                {/* Wrap just the MessageArea in the streaming provider */}
-                <StreamingMessageProvider messages={messages} isGenerating={isGenerating}>
-                  <MessageArea />
-                </StreamingMessageProvider>
+                {/* Render either the children (for routes like changelog) or the chat interface */}
+                {children || (
+                  <>
+                    {/* Wrap just the MessageArea in the streaming provider */}
+                    <StreamingMessageProvider messages={messages} isGenerating={isGenerating}>
+                      <MessageArea />
+                    </StreamingMessageProvider>
 
-                {/* Create the most isolated possible input area */}
-                <IsolatedInputWrapper>
-                  <ChatInputArea />
-                </IsolatedInputWrapper>
+                    {/* Create the most isolated possible input area */}
+                    <IsolatedInputWrapper>
+                      <ChatInputArea />
+                    </IsolatedInputWrapper>
+                  </>
+                )}
               </div>
             </SidebarInset>
           </div>
