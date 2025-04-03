@@ -7,6 +7,20 @@ const { FusesPlugin } = require("@electron-forge/plugin-fuses");
 const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 
 const config = {
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'OpenAgentsInc',
+          name: 'openagents'
+        },
+        prerelease: true
+      },
+      generateReleaseNotes: true,
+      authToken: process.env.GITHUB_TOKEN,
+    }
+  ],
   packagerConfig: {
     asar: true,
     extraResource: ['src/images'],
