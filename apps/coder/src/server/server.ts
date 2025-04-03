@@ -86,15 +86,7 @@ function createToolCallValidator() {
   });
 }
 
-// Endpoint to check for the last tool execution error
-app.get('/api/last-tool-error', (c) => {
-  if ((global as any).__lastToolExecutionError) {
-    return c.json({
-      error: (global as any).__lastToolExecutionError
-    });
-  }
-  return c.json({ error: null });
-});
+// Remove this endpoint - we'll handle errors directly in the stream
 
 // Main chat endpoint
 app.post('/api/chat', async (c) => {

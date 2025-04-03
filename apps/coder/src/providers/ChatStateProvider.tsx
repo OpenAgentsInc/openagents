@@ -120,22 +120,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     maxSteps: 10,
 
     // Handle errors from the AI SDK hook itself
-    onStreamError: (streamError) => {
-      console.log("DIRECT STREAM ERROR HANDLING:", streamError);
-      if (streamError && streamError.message && streamError.message.includes("Error executing tool")) {
-        console.log("DIRECT ERROR DETECTED: TOOL EXECUTION ERROR");
-        append({
-          id: `error-${Date.now()}`,
-          role: 'system',
-          content: streamError.message,
-          createdAt: new Date(),
-          threadId: currentThreadId || '',
-          parts: [{ type: 'text', text: streamError.message }],
-          isError: true // Mark as an error for styling
-        });
-        return;
-      }
-    },
+    // Remove the stream error handler since it's not working correctly
 
     onError: (error) => {
       // Log the complete error for debugging
@@ -175,11 +160,39 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         console.warn("Skipping recursive error handling to prevent infinite loop");
         return;
       }
-
+      
+      // Very simplified approach - just detect tool errors
+      const isToolError = error instanceof Error && 
+        (error.message.includes('Error executing tool') || 
+         (error.stack && error.stack.includes('Error executing tool')) ||
+         error.message.includes('Authentication Failed') ||
+         (error.stack && error.stack.includes('Authentication Failed')));
+      
       // Get user-friendly error message using utility function
       // FINAL APPROACH: Just use the raw error message
       // For context overflow errors or TypeValidationError, show the exact message
       let userFriendlyError = "";
+      
+      // CRITICAL: Check for AI_ToolExecutionError specifically
+      if ((error as any)?.name === 'AI_ToolExecutionError' || 
+          (error as any)?.cause?.name === 'MCPClientError') {
+        console.log("DETECTED DIRECT TOOL EXECUTION ERROR - HIGH PRIORITY");
+        
+        // If it's a direct tool execution error, get the message directly
+        if ((error as any).message && (error as any).message.includes('Error executing tool')) {
+          userFriendlyError = (error as any).message;
+          console.log("USING DIRECT TOOL ERROR MESSAGE:", userFriendlyError);
+          // Continue to next part of function to format and display the error
+        }
+        else if ((error as any).cause?.message) {
+          userFriendlyError = (error as any).cause.message;
+          if (!userFriendlyError.includes('Error executing tool')) {
+            userFriendlyError = "Error executing tool: " + userFriendlyError;
+          }
+          console.log("USING CAUSE MESSAGE FOR TOOL ERROR:", userFriendlyError);
+          // Continue to next part of function to format and display the error
+        }
+      }
 
       console.log("HANDLING ERROR:", error);
 
@@ -227,37 +240,23 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
             console.log("CLIENT: USING ERROR MESSAGE FOR TOOL ERROR:", userFriendlyError);
           }
         }
-        // Generic error message case - try to extract more details from the error object
+        // Generic error message case - try to extract tool execution error
         else if (error.message === "An error occurred." || error.message === "An error occurred") {
-          console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE - WILL CHECK SERVER FOR TOOL ERRORS");
+          console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE - CHECKING FOR TOOL ERROR IN CAUSE");
           
-          // Make an immediate fetch to the server to check for tool execution errors
-          fetch('/api/last-tool-error')
-            .then(response => response.json())
-            .then(data => {
-              if (data.error) {
-                console.log("CLIENT: FOUND TOOL ERROR FROM SERVER:", data.error);
-                
-                // Create a system message with the actual error
-                const errorSystemMessage = {
-                  id: `error-${Date.now()}`,
-                  role: 'system' as const,
-                  content: data.error,
-                  createdAt: new Date(),
-                  threadId: currentThreadId,
-                  parts: [{ type: 'text' as const, text: data.error }],
-                  isError: true // Mark as an error for styling
-                };
-                
-                // Add this to messages
-                if (Array.isArray(messages)) {
-                  setMessages([...messages, errorSystemMessage]);
-                }
-              }
-            })
-            .catch(err => {
-              console.error("CLIENT: Error fetching tool error from server:", err);
-            });
+          // Check if we can find an AI_ToolExecutionError in the properties
+          if ((error as any).cause && (error as any).cause.stack && 
+              (error as any).cause.stack.includes('Error executing tool')) {
+            // Extract the error from the cause
+            const causeMessage = (error as any).cause.message;
+            if (causeMessage && causeMessage.includes('Error executing tool')) {
+              console.log("CLIENT: FOUND TOOL ERROR IN CAUSE:", causeMessage);
+              userFriendlyError = causeMessage;
+            }
+          } else {
+            // Just use the original generic message
+            userFriendlyError = error.message;
+          }
           
           // Try to extract a better error message from potential sources
           const cause = (error as any).cause;
@@ -444,20 +443,16 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           isError: errorContent.includes('Error executing tool') || errorContent.includes('Authentication Failed')
         };
 
-        // We need to be very careful here - directly add the message to avoid errors
-        // in a safer way that handles potential issues with messages not being an array
+        // Ultra simplified approach - just check if we have messages and add the error
         if (Array.isArray(messages)) {
-          // Check if the last message is already an error to avoid duplicates
-          const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-          const isLastMessageError = lastMessage &&
-            (lastMessage.content?.includes('⚠️ Error') ||
-              (lastMessage.role === 'system' && lastMessage.content?.includes('Error')));
-
-          if (!isLastMessageError) {
-            // If messages is an array and the last message isn't an error, add the new error
-            const updatedMessages = [...messages, errorSystemMessage];
-            setMessages(updatedMessages);
-          }
+          // Always add as a new message, never replace existing ones
+          const updatedMessages = [...messages, errorSystemMessage]; 
+          console.log("APPENDING ERROR MESSAGE", { 
+            isToolError, 
+            errorContent, 
+            existingMessageCount: messages.length 
+          });
+          setMessages(updatedMessages);
         } else {
           // If messages somehow isn't an array, create a new array with just the error
           console.warn("Messages was not an array when trying to add error message");
