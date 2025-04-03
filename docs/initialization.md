@@ -83,38 +83,52 @@ RouterProvider
 ### 3. Database Initialization
 
 ```
-usePersistentChat hook
+App startup
 ↓
-getDatabase()
+HomePage component loads
 ↓
-createDatabase()
+getDatabase() with timeout
+↓
+createDatabase() with retry mechanism
 ↓
 createRxDatabase()
 ↓
 addCollections()
+↓
+initialize repositories
+↓
+render application
 ```
 
 #### Key Steps:
 
-1. **Lazy Initialization**
-   - Database initialization is triggered by the first component that needs database access
-   - Typically the `usePersistentChat` hook is the first to request database access
-   - Initialization is deferred until needed to improve application startup time
+1. **Proactive Initialization**
+   - Database initialization happens during application startup via the HomePage component
+   - A loading screen is displayed while initialization is in progress
+   - Initialization completes before the main application UI is rendered
 
-2. **Database Creation**
+2. **Timeout and Retry Mechanism**
+   - Database operations have timeouts to prevent infinite hangs
+   - Failed initialization attempts are retried up to a maximum number of times
+   - Lock errors (another instance running) are detected and clearly communicated to the user
+
+3. **Database Creation**
    - The `getDatabase()` function handles initialization logic
    - Creates the database if it doesn't exist, or returns the existing instance
    - Uses a singleton pattern to ensure only one database instance exists
+   - Verifies that all required collections exist before confirming initialization
 
-3. **Collection Setup**
+4. **Collection Setup**
    - Schema definitions are imported from `schema.ts`
    - Collections are created with appropriate validation and indexes
    - Migration strategies are defined for schema evolution
+   - Collection existence is verified after creation
 
-4. **Error Handling**
+5. **Error Handling**
    - Database creation errors are captured and dispatched as custom events
    - Special handling for collection limit errors (regenerates database name)
-   - Errors are displayed in UI through the DatabaseErrorProvider
+   - Lock errors are detected with specific user guidance
+   - Errors are displayed in UI through both the HomePage and DatabaseErrorProvider
 
 ### 4. Repository Initialization
 
@@ -204,6 +218,20 @@ The most common initialization issues occur in the database layer:
    - **Cause**: Schema changes that are incompatible with existing data
    - **Solution**: Proper migration strategies or database reset
    - **Prevention**: Design schema with future migrations in mind, test migrations thoroughly
+
+4. **Database Lock Errors**
+   - **Cause**: Another instance of the application is already running and has locked the database
+   - **Solution**: 
+     * Detect lock errors and provide clear UI feedback
+     * Implement retry mechanism with a timeout to prevent infinite spinning
+     * Give user options to retry or close the application
+   - **Detection**: Errors containing terms like "lock", "in use", "access denied"
+   - **Prevention**: Single-instance enforcement at the application level
+
+5. **Timeout Errors**
+   - **Cause**: Database initialization taking too long or hanging indefinitely
+   - **Solution**: Implement timeouts for database operations and clear error messages
+   - **Prevention**: Regular performance testing of initialization sequence
 
 ### Double Initialization in React Strict Mode
 
