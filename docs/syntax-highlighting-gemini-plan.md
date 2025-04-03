@@ -53,7 +53,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
   const [themedTokens, setThemedTokens] = useState<shiki.ThemedToken[][]>([]);
   const [highlightError, setHighlightError] = useState<string | null>(null);
 
-  const theme = 'github-dark'; // Or your preferred theme
+  const theme = 'tokyo-night'; // Or your preferred theme
 
   useEffect(() => {
     // Only attempt to highlight if the highlighter is ready and we have code
@@ -180,7 +180,7 @@ let highlighterPromise: Promise<shiki.Highlighter> | null = null;
 const getHighlighter = (): Promise<shiki.Highlighter> => {
     if (!highlighterPromise) {
         highlighterPromise = shiki.createHighlighter({
-            themes: ['github-dark'], // Pre-load themes you'll use
+            themes: ['tokyo-night'], // Pre-load themes you'll use
             langs: [], // Load common languages initially or dynamically later
                          // Load NO languages initially to speed up creation,
                          // rely on loadLanguage inside HighlightedPre maybe?

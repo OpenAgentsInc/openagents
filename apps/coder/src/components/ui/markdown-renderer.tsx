@@ -205,12 +205,12 @@ const PreComponent = React.memo(function PreComponent({ node, children, classNam
 
   // Stabilize content size to reduce jitter
   const stabilizedContent = codeContent.trim();
-  
+
   // Generate a stable instance ID for the component
   const stableId = React.useMemo(() => {
     return `code_${Math.random().toString(36).substr(2, 9)}`;
   }, []); // Empty dependencies - never regenerate during the lifetime of this component
-  
+
   // Render CodeBlock directly, always with the same key
   return (
     <div className="code-block-wrapper">

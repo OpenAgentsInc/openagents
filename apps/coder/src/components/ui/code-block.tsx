@@ -10,8 +10,8 @@ function getHighlighter() {
   if (!shikiHighlighterPromise) {
     // Initialize once
     shikiHighlighterPromise = shiki.createHighlighter({
-      themes: ['github-dark'],
-      langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json'],
+      themes: ['tokyo-night'],
+      langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'asm', 'c', 'c++', 'css', 'java', 'kotlin', 'php', 'ruby', 'swift', 'typescript', 'yaml', 'markdown', 'sql', 'yaml', 'yaml'],
     });
   }
   return shikiHighlighterPromise;
@@ -61,7 +61,7 @@ export const CodeBlock = React.memo(function CodeBlock({
       // Add a placeholder line element if it doesn't exist
       if (!lineElementsRef.current[lineIndex]) {
         const lineElement = document.createElement('div');
-        lineElement.className = 'code-line animate-fade-in';
+        lineElement.className = 'code-line animate-in fade-in';
         lineElement.style.width = '100%';
         lineElement.style.minHeight = '1.2em';
         lineElement.style.lineHeight = '1.5';
@@ -87,7 +87,7 @@ export const CodeBlock = React.memo(function CodeBlock({
           // Highlight this specific line
           const html = await highlighter.codeToHtml(lineText, {
             lang: language || 'text',
-            theme: 'github-dark'
+            theme: 'tokyo-night'
           });
 
           // Extract just the inner HTML content
@@ -116,7 +116,7 @@ export const CodeBlock = React.memo(function CodeBlock({
       lines.forEach((line, index) => {
         // Create a placeholder for immediate display
         const lineElement = document.createElement('div');
-        lineElement.className = 'code-line animate-fade-in';
+        lineElement.className = 'code-line animate-in fade-in';
         lineElement.style.width = '100%';
         lineElement.style.minHeight = '1.2em';
         lineElement.style.lineHeight = '1.5';
@@ -214,7 +214,7 @@ export const CodeBlock = React.memo(function CodeBlock({
         <pre
           ref={preRef}
           className={cn(
-            "m-0 px-4 py-4 text-sm font-mono bg-[#0d1117] text-white rounded-b-md",
+            "m-0 px-4 py-4 text-xs font-mono bg-[#0d1117] text-white rounded-b-md",
             className
           )}
           style={{
@@ -237,7 +237,7 @@ export const CodeBlock = React.memo(function CodeBlock({
         </pre>
       </div>
 
-      {/* No custom CSS needed - using Tailwind's animate-fade-in */}
+      {/* No custom CSS needed - using Tailwind's animate-in fade-in */}
     </div>
   );
 });

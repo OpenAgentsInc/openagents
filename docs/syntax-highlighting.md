@@ -18,7 +18,7 @@ Instead of rendering the entire code block as a single unit, each line is treate
 ```typescript
 // Add a line of code to the DOM
 const lineElement = document.createElement('div');
-lineElement.className = 'code-line animate-fade-in';
+lineElement.className = 'code-line animate-in fade-in';
 lineElement.textContent = lineText;
 codeRef.current.appendChild(lineElement);
 ```
@@ -34,7 +34,7 @@ let shikiHighlighterPromise: Promise<shiki.Highlighter> | null = null;
 function getHighlighter() {
   if (!shikiHighlighterPromise) {
     shikiHighlighterPromise = shiki.createHighlighter({
-      themes: ['github-dark'],
+      themes: ['tokyo-night'],
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json'],
     });
   }
@@ -98,10 +98,10 @@ The implementation handles several edge cases:
 
 ## Animation
 
-Each line is animated with a subtle fade-in using Tailwind's `animate-fade-in` class:
+Each line is animated with a subtle fade-in using Tailwind's `animate-in fade-in` class:
 
 ```html
-<div class="code-line animate-fade-in">...</div>
+<div class="code-line animate-in fade-in">...</div>
 ```
 
 ## Implementation Benefits

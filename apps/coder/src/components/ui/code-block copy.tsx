@@ -9,7 +9,7 @@ let highlighterPromise: Promise<shiki.Highlighter> | null = null;
 function getHighlighter() {
   if (!highlighterPromise) {
     highlighterPromise = shiki.createHighlighter({
-      themes: ['github-dark'],
+      themes: ['tokyo-night'],
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css', 'jsx', 'tsx'],
     });
   }
@@ -51,32 +51,32 @@ const HighlightedPre = React.memo(function HighlightedPre({
   const currentString = useRef("");
   const lastProcessedLength = useRef(0);
   const [isReady, setIsReady] = useState(false);
-  
+
   // Create a stable version of the props
   const stableProps = React.useMemo(() => ({ ...props }), [])
   const stableClassName = React.useMemo(() => className, [])
-  
+
   // Show code immediately with basic formatting
   useEffect(() => {
     // Only process new content that's been added
     if (codeString.length > lastProcessedLength.current) {
       // Get the latest content
       currentString.current = codeString;
-      
+
       // Display immediately with basic formatting
       const visibleHtml = basicHighlight(currentString.current, language);
       setHtml(visibleHtml);
-      
+
       // Update processed length
       lastProcessedLength.current = codeString.length;
-      
+
       // If this is the first content, mark as ready
       if (!isReady) {
         setIsReady(true);
       }
     }
   }, [codeString, language, isReady]);
-  
+
   // When content stops changing, apply full highlighting
   useEffect(() => {
     // Create a timer to check if content has stopped changing
@@ -87,9 +87,9 @@ const HighlightedPre = React.memo(function HighlightedPre({
           const highlighter = await getHighlighter();
           const highlighted = await highlighter.codeToHtml(codeString, {
             lang: language || 'text',
-            theme: 'github-dark'
+            theme: 'tokyo-night'
           });
-          
+
           // Extract just the code content from the HTML
           const codeContent = highlighted.match(/<code>(.*?)<\/code>/s)?.[1] || '';
           if (codeContent) {
@@ -101,10 +101,10 @@ const HighlightedPre = React.memo(function HighlightedPre({
         // Fallback already applied in the immediate effect
       }
     }, 500); // Wait 500ms after content stops changing
-    
+
     return () => clearTimeout(finalizeTimer);
   }, [codeString, language]);
- 
+
   // Maintain scroll position at the bottom
   useEffect(() => {
     if (preRef.current) {
@@ -116,7 +116,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
       }
     }
   }, [html]);
-  
+
   // Create a stable header that doesn't rerender
   const headerSection = React.useMemo(() => (
     <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t-md bg-secondary px-4 py-2 text-sm text-secondary-foreground border-b border-border">
@@ -134,7 +134,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
       />
     </div>
   ), [codeString]);
-  
+
   // Loading placeholder when nothing is rendered yet
   const fallbackPre = React.useMemo(() => (
     <div className="animate-pulse">
@@ -152,7 +152,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
       {copyButton}
 
       {/* Content container with stable dimensions */}
-      <div className="relative" style={{ 
+      <div className="relative" style={{
         minHeight: isReady ? undefined : '60px',
         transition: 'min-height 100ms ease-out'
       }}>
@@ -169,7 +169,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
             <pre className="shiki" style={{ margin: 0, background: 'transparent' }}>
               <code dangerouslySetInnerHTML={{ __html: html }} />
             </pre>
-            
+
             <style jsx>{`
               code {
                 white-space: pre-wrap;
@@ -226,7 +226,7 @@ export const CodeBlock = React.memo(({
   }
 
   // Create a stable identifier for this code block
-  const contentKey = React.useMemo(() => 
+  const contentKey = React.useMemo(() =>
     `${effectiveLanguage}_${Math.random().toString(36).slice(2)}`,
     [effectiveLanguage]
   );

@@ -14,7 +14,7 @@ let highlighterPromise: Promise<shiki.Highlighter> | null = null;
 function getHighlighter() {
   if (!highlighterPromise) {
     highlighterPromise = shiki.createHighlighter({
-      themes: ['github-dark'],
+      themes: ['tokyo-night'],
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css'],
     });
   }
@@ -32,20 +32,20 @@ async function highlightLine(line: string, language: string): Promise<string> {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
-  
+
   // For empty lines, just return a line break
   if (!line.trim()) {
     return '<span class="line"></span>';
   }
-  
+
   try {
     const highlighter = await getHighlighter();
     // Highlight just this single line
     const html = await highlighter.codeToHtml(line, {
       lang: language || 'text',
-      theme: 'github-dark'
+      theme: 'tokyo-night'
     });
-    
+
     // Extract just the highlighted content from the HTML
     const codeContent = html.match(/<code>(.*?)<\/code>/s)?.[1] || '';
     return `<span class="line">${codeContent}</span>`;
@@ -72,7 +72,7 @@ export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
   const contentLines = useRef<string[]>([]);
   const currentLineIndex = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   // Parse content into lines once on mount or when content changes completely
   useEffect(() => {
     contentLines.current = content.split('\n');
@@ -80,42 +80,42 @@ export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
     setRenderedLines([]);
     setIsComplete(false);
   }, [content]);
-  
+
   // Process each line one at a time
   useEffect(() => {
     if (currentLineIndex.current >= contentLines.current.length) {
       setIsComplete(true);
       return;
     }
-    
+
     const processNextLine = async () => {
       const line = contentLines.current[currentLineIndex.current];
       const highlightedLine = await highlightLine(line, language);
-      
+
       // Add this line to our rendered lines (never replacing previous ones)
       setRenderedLines(prev => [...prev, highlightedLine]);
-      
+
       // Move to next line
       currentLineIndex.current += 1;
     };
-    
+
     // Process the next line after a delay
     const timer = setTimeout(processNextLine, streamingSpeed);
     return () => clearTimeout(timer);
   }, [renderedLines, language, streamingSpeed]);
-  
+
   // Auto-scroll to bottom as new lines are added
   useEffect(() => {
     if (containerRef.current && renderedLines.length > 0) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
   }, [renderedLines]);
-  
+
   return (
     <div className="code-block-container">
       <div className="code-header">
         <span className="language-tag">{language}</span>
-        <button 
+        <button
           className="copy-button"
           onClick={() => navigator.clipboard.writeText(content)}
           aria-label="Copy code"
@@ -123,23 +123,23 @@ export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
           Copy
         </button>
       </div>
-      
-      <div 
+
+      <div
         ref={containerRef}
         className="code-content-container"
-        style={{ 
+        style={{
           maxHeight: '500px',
           overflow: 'auto',
           position: 'relative'
         }}
       >
         <pre className="shiki">
-          <code dangerouslySetInnerHTML={{ 
-            __html: renderedLines.join('\n') 
+          <code dangerouslySetInnerHTML={{
+            __html: renderedLines.join('\n')
           }} />
         </pre>
       </div>
-      
+
       <style jsx>{`
         .code-block-container {
           border: 1px solid #1e2a3a;
@@ -149,7 +149,7 @@ export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
           font-family: monospace;
           margin: 1rem 0;
         }
-        
+
         .code-header {
           display: flex;
           justify-content: space-between;
@@ -158,13 +158,13 @@ export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
           background: #161b22;
           border-bottom: 1px solid #30363d;
         }
-        
+
         .language-tag {
           font-size: 0.8rem;
           color: #8b949e;
           text-transform: lowercase;
         }
-        
+
         .copy-button {
           background: transparent;
           color: #8b949e;
@@ -174,21 +174,21 @@ export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
           font-size: 0.8rem;
           cursor: pointer;
         }
-        
+
         .copy-button:hover {
           background: #1f6feb;
           color: white;
         }
-        
+
         .code-content-container {
           padding: 1rem;
         }
-        
+
         .line {
           display: block;
           animation: fadeIn 0.3s ease-out;
         }
-        
+
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -199,9 +199,9 @@ export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
 };
 
 // Example usage:
-// <StreamingCodeBlock 
-//   content="const hello = 'world';\nconsole.log(hello);\n\n// This is a comment\nfunction add(a, b) {\n  return a + b;\n}" 
-//   language="javascript" 
+// <StreamingCodeBlock
+//   content="const hello = 'world';\nconsole.log(hello);\n\n// This is a comment\nfunction add(a, b) {\n  return a + b;\n}"
+//   language="javascript"
 //   streamingSpeed={50}
 // />
 ```
