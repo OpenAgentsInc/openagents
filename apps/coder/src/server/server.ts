@@ -91,19 +91,19 @@ function createToolCallValidator() {
 // Main chat endpoint
 // Helper function to clean up unresolved tool calls in messages
 // This is defined outside the request handler to ensure it's always available
-const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls) => {
+const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls: Message[]) => {
   console.log("🧹 Running global cleanup function for tool calls");
   
   try {
     // Extract the system message if it exists
-    let systemMessage = messagesWithToolCalls.find(msg => msg.role === 'system');
-    let nonSystemMessages = messagesWithToolCalls.filter(msg => msg.role !== 'system');
+    let systemMessage = messagesWithToolCalls.find((msg: Message) => msg.role === 'system');
+    let nonSystemMessages = messagesWithToolCalls.filter((msg: Message) => msg.role !== 'system');
     
     // Now filter out assistant messages with tool calls from non-system messages
-    let userAssistantMessages = nonSystemMessages.filter(msg => {
+    let userAssistantMessages = nonSystemMessages.filter((msg: Message) => {
       if (msg.role === 'assistant' && 
-          (msg.toolInvocations?.length > 0 || 
-           msg.parts?.some(p => p.type === 'tool-invocation'))) {
+          ((msg.toolInvocations && msg.toolInvocations.length > 0) || 
+           (msg.parts && msg.parts.some((p: any) => p.type === 'tool-invocation')))) {
         console.log(`Removing assistant message with tool calls: ${msg.id || 'unnamed'}`);
         return false;
       }
@@ -116,12 +116,17 @@ const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls) => {
       userAssistantMessages[userAssistantMessages.length - 1] : null;
       
     // Make a modified system message that includes the error information
-    const errorSystemMessage = {
+    const errorSystemMessage: Message = {
       id: `system-${Date.now()}`,
       role: 'system',
       content: (systemMessage?.content || "") + 
         "\n\nNOTE: There was an issue with a previous tool call (Authentication Failed: Bad credentials). The problematic message has been removed so the conversation can continue.",
-      createdAt: new Date()
+      createdAt: new Date(),
+      parts: [{
+        type: 'text',
+        text: (systemMessage?.content || "") + 
+          "\n\nNOTE: There was an issue with a previous tool call (Authentication Failed: Bad credentials). The problematic message has been removed so the conversation can continue."
+      }]
     };
     
     // Create the final cleaned messages with system message first, then alternating user/assistant
@@ -135,8 +140,12 @@ const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls) => {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         content: "I encountered an error while trying to use a tool: Authentication Failed: Bad credentials. Please try a different request or continue our conversation without using this tool.",
-        createdAt: new Date()
-      });
+        createdAt: new Date(),
+        parts: [{
+          type: 'text',
+          text: "I encountered an error while trying to use a tool: Authentication Failed: Bad credentials. Please try a different request or continue our conversation without using this tool."
+        }]
+      } as Message);
     }
     
     // Return cleaned messages for use in the stream
@@ -252,6 +261,8 @@ app.post('/api/chat', async (c) => {
         };
       }
       // If it looks like an LMStudio model ID and ONLY if specifically requested by the client to use LMStudio
+      // Commented out as LMStudio is disabled
+      /*
       else if (isLmStudioModel && body.preferredProvider === 'lmstudio') {
         console.log(`[Server] Model ${MODEL} not in MODELS array but explicitly requested to use LMStudio`);
         modelInfo = {
@@ -266,6 +277,7 @@ app.post('/api/chat', async (c) => {
           shortDescription: `LMStudio model: ${MODEL}`
         };
       }
+      */
       // If it has a slash, assume it's an OpenRouter model
       else if (hasSlash) {
         console.log(`[Server] Model ${MODEL} not in MODELS array but detected as OpenRouter model due to slash`);
@@ -344,6 +356,8 @@ app.post('/api/chat', async (c) => {
       let headers = {};
 
       if (provider === "lmstudio") {
+        // LMStudio provider is commented out to prevent unnecessary connection attempts
+        /* 
         // Add extra validation to catch any potential mix-ups
         if (MODEL.startsWith('claude-')) {
           console.error(`[Server] ERROR: Attempting to use Claude model ${MODEL} with LMStudio provider! This is incorrect and will fail.`);
@@ -394,6 +408,18 @@ app.post('/api/chat', async (c) => {
         });
 
         model = lmstudio(MODEL);
+        */
+        
+        // Return friendly error that LMStudio is disabled
+        c.header('Content-Type', 'text/event-stream; charset=utf-8');
+        c.header('Cache-Control', 'no-cache');
+        c.header('Connection', 'keep-alive');
+        c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+        return stream(c, async (responseStream) => {
+          const errorMsg = "LMStudio provider is currently disabled. Please select a different model.";
+          await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
+        });
       } else if (provider === "ollama") {
         console.log(`[Server] Using Ollama provider with base URL: ${OLLAMA_BASE_URL}`);
         // For Ollama models, we need to extract the model name without version
@@ -725,7 +751,8 @@ app.post('/api/chat', async (c) => {
         });
       }
 
-      // Prevent non-LMStudio models from going to LMStudio
+      // Prevent non-LMStudio models from going to LMStudio - commented out as LMStudio is disabled
+      /*
       if (provider === 'lmstudio' && !MODEL.includes('gemma') && !MODEL.toLowerCase().includes('llama') &&
         !MODEL.includes('mistral') && !MODEL.includes('qwen')) {
         console.error(`[Server] CRITICAL ERROR: Inappropriate model ${MODEL} is being routed to LMStudio`);
@@ -740,6 +767,7 @@ app.post('/api/chat', async (c) => {
           await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
         });
       }
+      */
 
       // Prevent models with a slash from going to non-OpenRouter
       if (MODEL.includes('/') && provider !== 'openrouter') {
@@ -835,8 +863,8 @@ app.post('/api/chat', async (c) => {
               errorMessage = `OpenRouter API Error: Could not access model "${MODEL}". This model might not exist, you may lack permission, or the service may be experiencing issues.`;
             } else if (provider === 'anthropic') {
               errorMessage = `Anthropic API Error: Could not process request for "${MODEL}". Please check your API key and try again later.`;
-            } else if (provider === 'lmstudio') {
-              errorMessage = `LMStudio Error: Could not communicate with local server for model "${MODEL}". Make sure LMStudio is running with the server enabled.`;
+            } else if (provider === 'ollama') {
+              errorMessage = `Ollama Error: Could not communicate with local server for model "${MODEL}". Make sure Ollama is running.`;
             } else {
               errorMessage = `API Error: Could not access model "${MODEL}" with provider "${provider}". Please check your configuration and try again.`;
             }
@@ -946,14 +974,21 @@ app.post('/api/chat', async (c) => {
           })(MODEL);
           
           // Create a simple stream configuration without tools to avoid the same error
+          // Convert cleanedMessages to standard format expected by AI SDK
+          const formattedMessages = cleanedMessages.map(msg => {
+            if (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'system') {
+              return {
+                role: msg.role,
+                content: msg.content
+              };
+            }
+            return msg;
+          });
+          
           const recoveryStreamOptions = {
             model: recoveryModel,
-            messages: cleanedMessages,
-            temperature: 0.7,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'text/event-stream'
-            }
+            messages: formattedMessages,
+            temperature: 0.7
           };
           
           // Create the recovery stream
@@ -1029,137 +1064,12 @@ const logOllamaModelAvailability = (baseUrl: string, modelName: string) => {
   // console.log(`[Server]   3. If needed, pull the model with: 'ollama pull ${modelName}'`);
 };
 
-// Proxy endpoint for LMStudio API requests
+// Proxy endpoint for LMStudio API requests - LMStudio is disabled
 app.get('/api/proxy/lmstudio/models', async (c) => {
-  console.log("Skipping LMStudio proxy request");
+  console.log("LMStudio is disabled");
   return new Response(JSON.stringify({
-    message: "Skipping LMStudio proxy request",
+    message: "LMStudio provider is disabled",
   }), { status: 200 });
-
-  try {
-    const url = c.req.query('url') || 'http://localhost:1234/v1/models';
-
-    console.log(`[Server] Proxying request to LMStudio at: ${url}`);
-
-    // Add timeout to prevent hanging
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        console.error(`[Server] LMStudio proxy request failed with status: ${response.status}`);
-
-        // Check for common error conditions
-        if (response.status === 404) {
-          return c.json({
-            error: 'LMStudio server not found. Make sure LMStudio is running and the Local Server is enabled.',
-            status: response.status,
-            server_status: 'not_running'
-          }, 404);
-        }
-
-        return new Response(JSON.stringify({
-          error: `Failed to connect to LMStudio server: ${response.statusText}`,
-          status: response.status,
-          server_status: 'error'
-        }), { status: response.status });
-      }
-
-      const data = await response.json();
-      console.log(`[Server] LMStudio proxy request successful`);
-
-      // Check if models array is empty
-      if (data && data.data && Array.isArray(data.data) && data.data.length === 0) {
-        console.log('[Server] LMStudio server is running but no models are loaded');
-        // Return a 200 OK but with a special flag
-        return c.json({
-          data: [],
-          object: 'list',
-          server_status: 'no_models'
-        }, { status: 200 });
-      }
-
-      // Check if models can be found in the response data
-      let modelCount = 0;
-      if (data && data.data && Array.isArray(data.data)) {
-        modelCount = data.data.length;
-      } else if (data && Array.isArray(data)) {
-        modelCount = data.length;
-      } else if (data && data.models && Array.isArray(data.models)) {
-        modelCount = data.models.length;
-      }
-
-      if (modelCount === 0) {
-        console.log('[Server] LMStudio server is running but no models detected');
-        return c.json({
-          data: [],
-          object: 'list',
-          server_status: 'no_models'
-        }, { status: 200 });
-      }
-
-      // Add server status info to the response
-      const enhancedData = {
-        ...data,
-        server_status: 'running'
-      };
-
-      return c.json(enhancedData, 200);
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-
-      // Check if it's a timeout error
-      const typedError = fetchError as Error;
-      if (typedError.name === 'AbortError') {
-        console.error('[Server] LMStudio proxy request timed out');
-        return new Response(JSON.stringify({
-          error: 'Connection to LMStudio server timed out. Make sure LMStudio is running and responsive.',
-          server_status: 'timeout'
-        }), { status: 408 });
-      }
-
-      // Re-throw for the outer catch block
-      throw typedError;
-    }
-  } catch (error) {
-    console.error('[Server] LMStudio proxy error:', error);
-
-    // Provide more specific error messages
-    let errorMessage = 'Failed to connect to LMStudio server';
-    let serverStatus = 'error';
-
-    const typedError = error as Error;
-    if (typedError instanceof Error) {
-      // Check if error has code property (like NodeJS errors)
-      const nodeError = typedError as Error & { code?: string };
-      if (nodeError.code === 'ECONNREFUSED') {
-        errorMessage = 'Connection refused. LMStudio server is not running.';
-        serverStatus = 'not_running';
-      } else if (nodeError.code === 'ENOTFOUND') {
-        errorMessage = 'Host not found. Check the LMStudio URL.';
-        serverStatus = 'invalid_url';
-      } else if (typedError.message && typedError.message.includes('network')) {
-        errorMessage = 'Network error. Check your internet connection.';
-        serverStatus = 'network_error';
-      }
-    }
-
-    return new Response(JSON.stringify({
-      error: errorMessage,
-      details: typedError instanceof Error ? typedError.message : String(typedError),
-      server_status: serverStatus
-    }), { status: 500 });
-  }
 });
 
 // Mount MCP API routes

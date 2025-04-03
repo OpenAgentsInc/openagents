@@ -4,8 +4,10 @@ import { CopyButton } from "@/components/ui/copy-button";
 import * as shiki from 'shiki';
 
 // Custom theme based on xt256 from highlight.js
+// Define our custom theme
 const xt256Theme = {
-  name: 'xt256',
+  name: 'xt256', // Theme name must be lowercase and no spaces
+  displayName: 'XT256',
   type: 'dark',
   colors: {
     'editor.background': '#000000',
@@ -91,17 +93,55 @@ const xt256Theme = {
 
 // Singleton for Shiki highlighter
 let shikiHighlighterPromise: Promise<shiki.Highlighter> | null = null;
+// Track if we've had a WebAssembly error
+let hasWasmError = false;
+// Fallback mode for when Shiki fails
+let fallbackMode = false;
 
 function getHighlighter() {
   if (!shikiHighlighterPromise) {
     // Initialize once with our custom theme
     shikiHighlighterPromise = shiki.createHighlighter({
-      themes: ['github-dark'],
+      themes: [xt256Theme], // Use our custom theme
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css'],
+    }).catch(error => {
+      console.error("Shiki initialization error:", error);
+      
+      // Check if this is a WebAssembly CSP error
+      if (error instanceof Error && 
+          (error.message.includes('WebAssembly') || 
+           error.message.includes('unsafe-eval') ||
+           error.message.includes('wasm'))) {
+        hasWasmError = true;
+        fallbackMode = true;
+        console.warn("WebAssembly blocked by CSP - using fallback text rendering");
+      }
+      
+      // Return null to indicate highlighter isn't available
+      return null;
     });
   }
   return shikiHighlighterPromise;
 }
+
+// Helper function to escape HTML for the fallback renderer
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Add CSS for the fallback syntax highlighting
+const fallbackStyles = `
+  .string { color: #00ff00; }
+  .keyword { color: #fff000; font-weight: bold; }
+  .comment { color: #969896; }
+  .number { color: #ff0000; }
+  .function { color: #00ffff; }
+`;
 
 // Simple component for streaming code display with syntax highlighting
 export const CodeBlock = React.memo(function CodeBlock({
@@ -130,10 +170,25 @@ export const CodeBlock = React.memo(function CodeBlock({
   // Load the highlighter once
   useEffect(() => {
     getHighlighter().then(highlighter => {
-      highlighterRef.current = highlighter;
-      setIsHighlighterReady(true);
+      if (highlighter) {
+        highlighterRef.current = highlighter;
+        setIsHighlighterReady(true);
+      } else {
+        // Highlighter failed to load - use fallback mode
+        console.warn("Using fallback syntax highlighting mode");
+        // Add the fallback styles to the document
+        const styleEl = document.createElement('style');
+        styleEl.textContent = fallbackStyles;
+        document.head.appendChild(styleEl);
+        setIsHighlighterReady(true); // Still mark as ready so we render with fallback
+      }
     }).catch(error => {
       console.error("Failed to load Shiki highlighter:", error);
+      // Add the fallback styles for error case too
+      const styleEl = document.createElement('style');
+      styleEl.textContent = fallbackStyles;
+      document.head.appendChild(styleEl);
+      setIsHighlighterReady(true); // Mark ready to use fallback mode
     });
 
     setHasMounted(true);
@@ -173,14 +228,11 @@ export const CodeBlock = React.memo(function CodeBlock({
   
   // Function to add a new line of code with highlighting
   const addLineWithHighlighting = async (lineText: string, lineIndex: number) => {
-    if (!codeRef.current || !highlighterRef.current) {
+    if (!codeRef.current) {
       return Promise.resolve(); // Resolve immediately if not ready
     }
     
     try {
-      // Try to highlight with Shiki if language is supported
-      const highlighter = highlighterRef.current;
-      
       // Add a placeholder line element if it doesn't exist
       if (!lineElementsRef.current[lineIndex]) {
         const lineElement = document.createElement('div');
@@ -202,15 +254,36 @@ export const CodeBlock = React.memo(function CodeBlock({
         lineElementsRef.current[lineIndex] = lineElement;
       }
       
-      // Highlight the line
+      // Get the line element
+      const lineElement = lineElementsRef.current[lineIndex];
+      
+      // Check if we're in fallback mode or highlighter isn't available
+      if (fallbackMode || !highlighterRef.current) {
+        // Simple fallback - just use the basic syntax coloring with CSS
+        lineElement.innerHTML = escapeHtml(lineText) || '&nbsp;';
+        
+        // Apply some basic syntax highlighting with regex
+        if (lineText.trim()) {
+          // Highlight strings
+          lineElement.innerHTML = lineElement.innerHTML
+            .replace(/(".*?")/g, '<span class="string">$1</span>')
+            .replace(/('.*?')/g, '<span class="string">$1</span>')
+            // Highlight keywords
+            .replace(/\b(function|return|if|for|while|var|let|const|class|import|export|from|async|await)\b/g, 
+                    '<span class="keyword">$1</span>');
+        }
+        
+        return Promise.resolve();
+      }
+      
+      // Use Shiki if available
       try {
-        // Get the line element
-        const lineElement = lineElementsRef.current[lineIndex];
+        const highlighter = highlighterRef.current;
         
         // Highlight this specific line
         const html = await highlighter.codeToHtml(lineText, { 
           lang: language || 'text', 
-          theme: 'xt256' 
+          theme: xt256Theme.name // Use our theme name
         });
         
         // Extract just the inner HTML content
@@ -222,8 +295,9 @@ export const CodeBlock = React.memo(function CodeBlock({
         
         return Promise.resolve();
       } catch (err) {
-        // Fallback - show plain text
+        // Fallback if Shiki highlighting fails for this line
         console.log("Line highlighting fallback:", err);
+        lineElement.innerHTML = escapeHtml(lineText) || '&nbsp;';
         return Promise.resolve();
       }
     } catch (error) {

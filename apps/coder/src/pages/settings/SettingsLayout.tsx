@@ -9,7 +9,8 @@ import {
   Sliders,
   ArrowLeft,
   Globe,
-  Wrench
+  Wrench,
+  Bug
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -140,6 +141,26 @@ export default function SettingsLayout() {
                           >
                             <Sliders className="h-4 w-4" />
                             <span>Preferences</span>
+                          </SidebarMenuButton>
+                        </Link>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+
+                <SidebarGroup>
+                  <SidebarGroupLabel>Development</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <Link to="/settings/debug">
+                          <SidebarMenuButton
+                            isActive={currentPath.includes("/debug")}
+                            className={currentPath.includes("/debug") ?
+                              "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
+                          >
+                            <Bug className="h-4 w-4" />
+                            <span>Debug Console</span>
                           </SidebarMenuButton>
                         </Link>
                       </SidebarMenuItem>
