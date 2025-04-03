@@ -130,7 +130,8 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           content: streamError.message,
           createdAt: new Date(),
           threadId: currentThreadId || '',
-          parts: [{ type: 'text', text: streamError.message }]
+          parts: [{ type: 'text', text: streamError.message }],
+          isError: true // Mark as an error for styling
         });
         return;
       }
@@ -244,7 +245,8 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
                   content: data.error,
                   createdAt: new Date(),
                   threadId: currentThreadId,
-                  parts: [{ type: 'text' as const, text: data.error }]
+                  parts: [{ type: 'text' as const, text: data.error }],
+                  isError: true // Mark as an error for styling
                 };
                 
                 // Add this to messages
@@ -437,7 +439,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           content: errorContent,
           createdAt: new Date(),
           threadId: currentThreadId,
-          parts: [{ type: 'text' as const, text: errorContent }]
+          parts: [{ type: 'text' as const, text: errorContent }],
+          // Mark as an error if it's a tool execution error
+          isError: errorContent.includes('Error executing tool') || errorContent.includes('Authentication Failed')
         };
 
         // We need to be very careful here - directly add the message to avoid errors

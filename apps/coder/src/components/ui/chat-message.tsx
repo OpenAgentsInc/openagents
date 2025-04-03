@@ -28,6 +28,10 @@ const chatBubbleVariants = cva(
         true: "border-yellow-500 border bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 w-full",
         false: "",
       },
+      isError: {
+        true: "border-red-500 border bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 w-full",
+        false: "",
+      },
       animation: {
         none: "",
         fade: "",
@@ -99,6 +103,7 @@ export interface ChatMessageProps extends Message {
   showTimeStamp?: boolean
   animation?: 'none' | 'fade' | 'scale'
   actions?: React.ReactNode
+  isError?: boolean
 }
 
 function dataUrlToUint8Array(data: string) {
@@ -170,6 +175,7 @@ export const ChatMessage = React.memo(function ChatMessage({
   experimental_attachments,
   toolInvocations,
   parts,
+  isError: propIsError,
 }: ChatMessageProps) {
   // Memoize file processing to prevent unnecessary processing on re-renders
   const files = useMemo(() => {
@@ -183,6 +189,11 @@ export const ChatMessage = React.memo(function ChatMessage({
   // Memoize these values to prevent recalculations
   const isUser = useMemo(() => role === "user", [role])
   const isSystem = useMemo(() => role === "system", [role])
+  
+  // Check if this is a tool execution error message
+  const isToolError = useMemo(() => 
+    propIsError || (content && content.includes('Error executing tool')),
+  [propIsError, content])
 
   // Memoize the formatted time to avoid recalculations
   const formattedTime = useMemo(() => {
@@ -219,6 +230,7 @@ export const ChatMessage = React.memo(function ChatMessage({
       firstChars: content.substring(0, 50),
       length: content.length,
       isSpecialErrorFormat,
+      isToolError,
       hasOverflows: content.includes('context the overflows'),
       hasTrying: content.includes('Trying to keep the first'),
       hasToolError: content.includes('Error executing tool'),
@@ -226,11 +238,26 @@ export const ChatMessage = React.memo(function ChatMessage({
       hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
     });
 
+    // Format tool execution errors to display on two lines
+    let formattedContent = content;
+    if (isToolError && content.includes('Error executing tool') && content.includes(':')) {
+      const parts = content.split(':');
+      if (parts.length >= 2) {
+        // Format with a line break after the colon
+        formattedContent = parts[0] + ':\n' + parts.slice(1).join(':');
+      }
+    }
+
     return (
       <div className="flex flex-col items-center w-full">
-        <div className={cn(chatBubbleVariants({ isUser: false, isSystem: true, animation }))}>
+        <div className={cn(chatBubbleVariants({ 
+          isUser: false, 
+          isSystem: !isToolError, 
+          isError: isToolError,
+          animation 
+        }))}>
           {isSpecialErrorFormat ? (
-            <div className="whitespace-pre-wrap font-mono text-sm p-1">{content}</div>
+            <div className="whitespace-pre-wrap font-mono text-sm p-1">{formattedContent}</div>
           ) : (
             messageContent
           )}
