@@ -36,7 +36,7 @@ export function useThreadDeletion({
           await messageRepository.initialize(db);
           await threadRepository.initialize(db);
           repositoriesInitialized.current = true;
-          console.log("Repositories initialized for thread deletion");
+          // console.log("Repositories initialized for thread deletion");
         } catch (error) {
           console.error("Error initializing repositories:", error);
         }
@@ -74,7 +74,7 @@ export function useThreadDeletion({
     if (repositoriesInitialized.current) {
       try {
         cachedMessages = await messageRepository.getMessagesByThreadId(threadId);
-        console.log(`Cached ${cachedMessages.length} messages for potential thread restoration`);
+        // console.log(`Cached ${cachedMessages.length} messages for potential thread restoration`);
       } catch (fetchError) {
         console.error("Error caching messages before deletion:", fetchError);
       }

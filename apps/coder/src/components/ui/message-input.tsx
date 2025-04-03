@@ -55,10 +55,12 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
   allowAttachments,
   value,
   onChange,
-  ...props
+  ...restProps
 }: MessageInputProps, ref) => {
-  const files = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).files : null;
-  const setFiles = allowAttachments === true ? (props as MessageInputWithAttachmentsProps).setFiles : null;
+  // Extract files and setFiles from restProps if allowAttachments is true
+  const { files, setFiles, ...props } = allowAttachments === true
+    ? restProps as MessageInputWithAttachmentsProps
+    : { files: null, setFiles: null, ...restProps };
 
   const [isDragging, setIsDragging] = useState(false);
   const [showInterruptPrompt, setShowInterruptPrompt] = useState(false);
@@ -246,16 +248,9 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
 
   // Memoize textarea props to avoid spread recreation
   const textareaProps = useMemo(() => {
-    if (allowAttachments) {
-      // Cast to MessageInputWithAttachmentsProps to handle the correct type
-      const { allowAttachments: _, files: __, setFiles: ___, value: _value, onChange: _onChange, ...rest } = props as MessageInputWithAttachmentsProps;
-      return rest;
-    } else {
-      // Cast to MessageInputWithoutAttachmentProps for the other case
-      const { allowAttachments: _, value: _value, onChange: _onChange, ...rest } = props as MessageInputWithoutAttachmentProps;
-      return rest;
-    }
-  }, [allowAttachments, props]);
+    // We can now just use the cleaned props directly
+    return props;
+  }, [props]);
 
   // Memoize rendered files
   const renderedFiles = useMemo(() => {
