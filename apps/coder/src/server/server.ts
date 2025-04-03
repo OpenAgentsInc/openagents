@@ -86,6 +86,16 @@ function createToolCallValidator() {
   });
 }
 
+// Endpoint to check for the last tool execution error
+app.get('/api/last-tool-error', (c) => {
+  if ((global as any).__lastToolExecutionError) {
+    return c.json({
+      error: (global as any).__lastToolExecutionError
+    });
+  }
+  return c.json({ error: null });
+});
+
 // Main chat endpoint
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
@@ -406,6 +416,9 @@ app.post('/api/chat', async (c) => {
         messages = [messages[messages.length - 1]];
       }
 
+      // Global space for error tracking
+      (global as any).__lastToolExecutionError = null;
+      
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model,
@@ -465,9 +478,38 @@ app.post('/api/chat', async (c) => {
 
         // Standard callbacks
         onError: (event: { error: unknown }) => {
-          const errorMessage = event.error instanceof Error
-            ? `${event.error.message}\n${event.error.stack}`
-            : String(event.error);
+          // Enhanced debugging - log the ENTIRE error object
+          console.error("💥 streamText onError FULL EVENT:", JSON.stringify(event, null, 2));
+          console.error("💥 streamText onError ORIGINAL ERROR:", event.error);
+          
+          // For Error objects, log all properties
+          if (event.error instanceof Error) {
+            console.error("💥 ERROR DETAILS:", {
+              name: event.error.name,
+              message: event.error.message,
+              stack: event.error.stack,
+              cause: (event.error as any).cause,
+              code: (event.error as any).code,
+              // Try to stringify the entire error object
+              fullError: JSON.stringify(event.error, Object.getOwnPropertyNames(event.error))
+            });
+          }
+          
+          // Create a more focused error message for tool execution errors
+          let errorMessage = "";
+          if (event.error instanceof Error) {
+            // Special handling for AI_ToolExecutionError
+            if ((event.error as any).name === 'AI_ToolExecutionError') {
+              // Use only the message without the stack trace for tool execution errors
+              errorMessage = event.error.message;
+              console.error("💥 USING AI_TOOL_EXECUTION_ERROR MESSAGE DIRECTLY:", errorMessage);
+            } else {
+              // Standard format for other errors
+              errorMessage = `${event.error.message}\n${event.error.stack}`;
+            }
+          } else {
+            errorMessage = String(event.error);
+          }
 
           console.error("💥 streamText onError callback:", errorMessage);
 
@@ -482,25 +524,101 @@ app.post('/api/chat', async (c) => {
           const isTypeValidationError = errorMessage.includes('AI_TypeValidationError') ||
             errorMessage.includes('Type validation failed');
             
-          // Check if this is a tool execution error
-          const isToolExecutionError = errorMessage.includes('Error executing tool') || 
+          // Check if this is a tool execution error - be thorough with matching
+          const isToolExecutionError = 
+            // Check in the error message
+            errorMessage.includes('Error executing tool') || 
             errorMessage.includes('AI_ToolExecutionError') ||
-            errorMessage.includes('Authentication Failed');
+            errorMessage.includes('Authentication Failed') ||
+            errorMessage.includes('Bad credentials') ||
+            // Also check in the original error object
+            (event.error instanceof Error && 
+              ((event.error as any).name === 'AI_ToolExecutionError' || 
+               (event.error as any).code === 'AI_ToolExecutionError' || 
+               ((event.error as any).cause && 
+                ((event.error as any).cause.includes?.('Error executing tool') || 
+                 (event.error as any).cause.includes?.('Authentication Failed')))));
+          
+          // Special logging for tool execution errors
+          if (isToolExecutionError) {
+            console.error("SERVER: DETECTED TOOL EXECUTION ERROR - DETAILS:", {
+              originalMessage: event.error instanceof Error ? event.error.message : String(event.error),
+              causedBy: (event.error instanceof Error) ? (event.error as any).cause : null,
+              code: (event.error instanceof Error) ? (event.error as any).code : null,
+              name: (event.error instanceof Error) ? (event.error as any).name : null
+            });
+          }
 
           // Try to send the error message back to the client via the stream
           try {
             // Special case for Tool Execution errors - pass them through completely unmodified
             if (isToolExecutionError) {
               console.log("SERVER: PASSING THROUGH TOOL EXECUTION ERROR");
+              
+              // Special handling for AI_ToolExecutionError type - MOST IMPORTANT CASE
+              if (event.error instanceof Error && (event.error as any).name === 'AI_ToolExecutionError') {
+                // Keep the original error message exactly as is
+                const errorMsg = event.error.message;
+                console.log("SERVER: DIRECT AI_TOOL_EXECUTION_ERROR MESSAGE:", errorMsg);
+                
+                // CRITICAL: Store this error in global space
+                (global as any).__lastToolExecutionError = errorMsg;
+                
+                // Explicitly create a new error with just this message to avoid any transformation
+                const cleanError = new Error(errorMsg);
+                // Add special marker for the client to detect
+                (cleanError as any).isToolExecutionError = true;
+                
+                // Store error message in a response header to ensure it's preserved
+                c.header('X-Tool-Execution-Error', encodeURIComponent(errorMsg));
+                
+                throw cleanError;
+              }
+              
+              // Try to find the most detailed error message possible
+              if (event.error instanceof Error && (event.error as any).cause) {
+                const cause = (event.error as any).cause;
+                if (typeof cause === 'string' && 
+                    (cause.includes('Error executing tool') || cause.includes('Authentication Failed'))) {
+                  console.log("SERVER: USING ERROR CAUSE AS MESSAGE:", cause);
+                  throw new Error(cause);
+                }
+              }
+              
               // Extract the actual tool error message if possible
               const toolErrorMatch = errorMessage.match(/Error executing tool[^:]*:(.*?)(\n|$)/);
               if (toolErrorMatch && toolErrorMatch[1]) {
                 const toolError = `Error executing tool${toolErrorMatch[1]}`;
                 console.log("SERVER: EXTRACTED TOOL ERROR:", toolError);
-                throw new Error(toolError);
+                
+                // Create error with special marker
+                const cleanError = new Error(toolError);
+                (cleanError as any).isToolExecutionError = true;
+                throw cleanError;
+              } else if (errorMessage.includes('Authentication Failed')) {
+                // Special case for authentication errors
+                const authMatch = errorMessage.match(/(Authentication Failed[^.\n]*)([.\n]|$)/);
+                if (authMatch && authMatch[1]) {
+                  console.log("SERVER: EXTRACTED AUTH ERROR:", authMatch[1]);
+                  
+                  // Create error with special marker
+                  const cleanError = new Error(authMatch[1]);
+                  (cleanError as any).isToolExecutionError = true;
+                  throw cleanError;
+                } else {
+                  // If specific extraction fails, just ensure Authentication Failed is in the message
+                  const cleanError = new Error("Authentication Failed: Bad credentials");
+                  (cleanError as any).isToolExecutionError = true;
+                  throw cleanError;
+                }
               } else {
                 // If extraction fails, use the whole message
-                throw new Error(errorMessage);
+                console.log("SERVER: USING FULL ERROR MESSAGE");
+                
+                // Create error with special marker
+                const cleanError = new Error(errorMessage);
+                (cleanError as any).isToolExecutionError = true;
+                throw cleanError;
               }
             }
             // Special case for Type validation errors - pass them through completely unmodified

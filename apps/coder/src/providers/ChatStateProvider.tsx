@@ -120,19 +120,49 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     maxSteps: 10,
 
     // Handle errors from the AI SDK hook itself
+    onStreamError: (streamError) => {
+      console.log("DIRECT STREAM ERROR HANDLING:", streamError);
+      if (streamError && streamError.message && streamError.message.includes("Error executing tool")) {
+        console.log("DIRECT ERROR DETECTED: TOOL EXECUTION ERROR");
+        append({
+          id: `error-${Date.now()}`,
+          role: 'system',
+          content: streamError.message,
+          createdAt: new Date(),
+          threadId: currentThreadId || '',
+          parts: [{ type: 'text', text: streamError.message }]
+        });
+        return;
+      }
+    },
+
     onError: (error) => {
       // Log the complete error for debugging
       console.error('Chat hook onError:', error);
 
-      // IMMEDIATE DEBUG - Show the raw error in the console
-      // console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
+      // Detailed error logging to diagnose the issue
+      console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
       console.log(error);
-      // if (error instanceof Error) {
-      //   console.log("%c ERROR MESSAGE:", "background: red; color: white");
-      //   console.log(error.message);
-      //   console.log("%c ERROR STACK:", "background: red; color: white");
-      //   console.log(error.stack);
-      // }
+      
+      if (error instanceof Error) {
+        console.log("%c ERROR MESSAGE:", "background: red; color: white");
+        console.log(error.message);
+        console.log("%c ERROR STACK:", "background: red; color: white");
+        console.log(error.stack);
+        
+        console.log("%c ERROR CAUSE:", "background: red; color: white");
+        console.log((error as any).cause);
+        
+        console.log("%c ERROR CODE:", "background: red; color: white");
+        console.log((error as any).code);
+        
+        // Try to get ALL properties
+        console.log("%c ALL ERROR PROPERTIES:", "background: red; color: white");
+        console.log(Object.getOwnPropertyNames(error).map(prop => ({
+          property: prop,
+          value: (error as any)[prop]
+        })));
+      }
 
       // CRITICAL: Don't use append in onError because it can trigger another error and cause infinite loops
       // Instead, use direct state manipulation which is safe and won't trigger API calls
@@ -153,8 +183,23 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       console.log("HANDLING ERROR:", error);
 
       if (error instanceof Error) {
+        // First check for our custom isToolExecutionError property
+        if ((error as any).isToolExecutionError === true) {
+          console.log("CLIENT: DETECTED TOOL EXECUTION ERROR VIA CUSTOM PROPERTY");
+          userFriendlyError = error.message;
+          console.log("CLIENT: USING TOOL EXECUTION ERROR WITH CUSTOM PROPERTY:", userFriendlyError);
+        }
+        // Check for the special symbol that marks this as an AI_ToolExecutionError
+        else if (Object.getOwnPropertySymbols(error).some(sym => 
+            String(sym) === 'Symbol(vercel.ai.error.AI_ToolExecutionError)')) {
+          console.log("CLIENT: DETECTED AI_TOOL_EXECUTION_ERROR VIA SYMBOL");
+          
+          // Directly use the message as it's the most reliable
+          userFriendlyError = error.message;
+          console.log("CLIENT: USING AI_TOOL_EXECUTION_ERROR MESSAGE:", userFriendlyError);
+        }
         // Check if the error message directly contains tool execution error
-        if (error.message && (
+        else if (error.message && (
           error.message.includes('Error executing tool') || 
           error.message.includes('AI_ToolExecutionError') ||
           error.message.includes('Authentication Failed')
@@ -181,12 +226,107 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
             console.log("CLIENT: USING ERROR MESSAGE FOR TOOL ERROR:", userFriendlyError);
           }
         }
-        // Generic error message case - we'll just use the error message directly without any override
+        // Generic error message case - try to extract more details from the error object
         else if (error.message === "An error occurred." || error.message === "An error occurred") {
-          console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE");
-          // Just use the original error message without any hardcoded override
-          userFriendlyError = error.message;
-          console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
+          console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE - WILL CHECK SERVER FOR TOOL ERRORS");
+          
+          // Make an immediate fetch to the server to check for tool execution errors
+          fetch('/api/last-tool-error')
+            .then(response => response.json())
+            .then(data => {
+              if (data.error) {
+                console.log("CLIENT: FOUND TOOL ERROR FROM SERVER:", data.error);
+                
+                // Create a system message with the actual error
+                const errorSystemMessage = {
+                  id: `error-${Date.now()}`,
+                  role: 'system' as const,
+                  content: data.error,
+                  createdAt: new Date(),
+                  threadId: currentThreadId,
+                  parts: [{ type: 'text' as const, text: data.error }]
+                };
+                
+                // Add this to messages
+                if (Array.isArray(messages)) {
+                  setMessages([...messages, errorSystemMessage]);
+                }
+              }
+            })
+            .catch(err => {
+              console.error("CLIENT: Error fetching tool error from server:", err);
+            });
+          
+          // Try to extract a better error message from potential sources
+          const cause = (error as any).cause;
+          const data = (error as any).data;
+          const detail = (error as any).detail;
+          const errorData = (error as any).errorData;
+          
+          // Check if we have a cause with better info
+          if (cause) {
+            console.log("CLIENT: FOUND CAUSE - TYPE:", typeof cause);
+            
+            // Handle different cause types
+            if (typeof cause === 'object') {
+              // MCPClientError case
+              if (cause.name === 'MCPClientError' && cause.message) {
+                userFriendlyError = "Error executing tool: " + cause.message;
+                console.log("CLIENT: EXTRACTED MCP CLIENT ERROR MESSAGE:", userFriendlyError);
+              } 
+              // General error with message
+              else if (cause.message) {
+                userFriendlyError = cause.message;
+                console.log("CLIENT: EXTRACTED CAUSE MESSAGE:", userFriendlyError);
+              }
+              // Check for nested cause
+              else if (cause.cause && typeof cause.cause === 'object' && cause.cause.message) {
+                userFriendlyError = cause.cause.message;
+                console.log("CLIENT: EXTRACTED NESTED CAUSE MESSAGE:", userFriendlyError);
+              }
+              // Last resort for object causes - stringify
+              else {
+                userFriendlyError = "Error executing tool: " + JSON.stringify(cause);
+                console.log("CLIENT: USING STRINGIFIED CAUSE:", userFriendlyError);
+              }
+            } 
+            // String cause
+            else if (typeof cause === 'string') {
+              userFriendlyError = cause;
+              console.log("CLIENT: USING STRING CAUSE:", userFriendlyError);
+            }
+          }
+          // Check if we have detailed error info
+          else if (errorData) {
+            userFriendlyError = typeof errorData === 'string' ? errorData : JSON.stringify(errorData);
+            console.log("CLIENT: EXTRACTED ERROR DATA:", userFriendlyError);
+          }
+          // Check for HTTP error details 
+          else if (detail) {
+            userFriendlyError = typeof detail === 'string' ? detail : JSON.stringify(detail);
+            console.log("CLIENT: EXTRACTED ERROR DETAIL:", userFriendlyError);
+          }
+          // Check for response data
+          else if (data) {
+            userFriendlyError = typeof data === 'string' ? data : JSON.stringify(data);
+            console.log("CLIENT: EXTRACTED ERROR RESPONSE DATA:", userFriendlyError);
+          }
+          // Try to extract from the stack trace - look for tool execution errors
+          else if (error.stack) {
+            const toolErrorMatch = error.stack.match(/Error executing tool[^:\n]+(:[^\n]+)/i);
+            if (toolErrorMatch && toolErrorMatch[1]) {
+              userFriendlyError = `Error executing tool${toolErrorMatch[1]}`;
+              console.log("CLIENT: EXTRACTED TOOL ERROR FROM STACK:", userFriendlyError);
+            } else {
+              // Just use the original message if nothing better is found
+              userFriendlyError = error.message;
+              console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
+            }
+          } else {
+            // Just use the original message if nothing better is found
+            userFriendlyError = error.message;
+            console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
+          }
         }
         // Special case for AI_TypeValidationError with context overflow
         else if (error.message.includes('AI_TypeValidationError') &&
@@ -227,8 +367,13 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 
         console.log("FORMATTING CLIENT-SIDE ERROR:", userFriendlyError);
 
-        // Handle tool execution errors - show them exactly as received
-        if (userFriendlyError && userFriendlyError.includes('Error executing tool')) {
+        // Handle tool execution errors and authentication errors - show them exactly as received
+        if (userFriendlyError && (
+            userFriendlyError.includes('Error executing tool') || 
+            userFriendlyError.includes('Authentication Failed') ||
+            userFriendlyError.includes('Bad credentials') ||
+            userFriendlyError.includes('AI_ToolExecutionError')
+          )) {
           console.log("DETECTED TOOL EXECUTION ERROR:", userFriendlyError);
           // Show the exact error message without modification
           errorContent = userFriendlyError;
@@ -271,8 +416,18 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           errorContent = userFriendlyError;
         }
         else {
-          // Normal error formatting with prefix
-          errorContent = `⚠️ Error: ${userFriendlyError}`;
+          // Normal error formatting with prefix - but avoid adding redundant prefixes
+          if (userFriendlyError.startsWith('Error') || 
+              userFriendlyError.startsWith('⚠️') || 
+              userFriendlyError.startsWith('MODEL_ERROR')) {
+            // Don't add a prefix if one already exists
+            errorContent = userFriendlyError;
+            console.log("USING ERROR AS-IS (ALREADY HAS PREFIX):", userFriendlyError);
+          } else {
+            // Add a prefix for errors that don't have one
+            errorContent = `⚠️ Error: ${userFriendlyError}`;
+            console.log("ADDING PREFIX TO ERROR:", errorContent);
+          }
         }
 
         // Create a new error message with parts to match UIMessage type
