@@ -35,7 +35,8 @@ interface CodeElementProps {
   children?: React.ReactNode;
 }
 
-function PreComponent({ node, children, className, ...props }: { node?: any, children?: React.ReactNode, className?: string, [key: string]: any }) {
+// Memoize the PreComponent to prevent unnecessary rerenders
+const PreComponent = React.memo(function PreComponent({ node, children, className, ...props }: { node?: any, children?: React.ReactNode, className?: string, [key: string]: any }) {
   console.log('Pre component received:', {
     children,
     className,
@@ -203,18 +204,29 @@ function PreComponent({ node, children, className, ...props }: { node?: any, chi
   // Stabilize content size to reduce jitter
   const stabilizedContent = codeContent.trim();
   
-  return (
-    <div className="code-block-wrapper transition-all ease-in-out duration-50">
+  // Generate a stable key for this code block to preserve component identity
+  const contentKey = `${language}_${stabilizedContent.length}_${stabilizedContent.slice(0, 40)}`;
+  
+  // Memoize the rendered component to prevent re-rendering when parent re-renders
+  const memoizedCodeBlock = React.useMemo(() => {
+    return (
       <CodeBlockComponent
+        key={contentKey}
         language={language}
         className={cn("not-prose", className)}
         {...props}
       >
         {stabilizedContent}
       </CodeBlockComponent>
+    );
+  }, [contentKey, language, stabilizedContent, className]);
+  
+  return (
+    <div className="code-block-wrapper transition-all ease-in-out duration-50">
+      {memoizedCodeBlock}
     </div>
   );
-}
+});
 
 function CodeComponent({ node, inline, className, children, ...props }: any) {
   console.log('Code component received:', {

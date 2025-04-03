@@ -306,7 +306,7 @@ export const ChatMessage = React.memo(function ChatMessage({
             <div className={cn(chatBubbleVariants({ isUser, animation }))}>
               {partContent}
               {actions ? (
-                <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 transition-opacity group-hover/message:opacity-100">
+                <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
                   {actions}
                 </div>
               ) : null}
@@ -384,7 +384,7 @@ export const ChatMessage = React.memo(function ChatMessage({
       <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
         {messageContent}
         {actions ? (
-          <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 transition-opacity group-hover/message:opacity-100">
+          <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
             {actions}
           </div>
         ) : null}

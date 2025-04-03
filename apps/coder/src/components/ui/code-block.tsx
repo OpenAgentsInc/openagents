@@ -9,6 +9,7 @@ interface HighlightedPreProps extends React.HTMLAttributes<HTMLPreElement> {
 }
 
 // HighlightedPre component handles the actual code highlighting and display
+// Heavily memoized component to prevent unnecessary rerenders
 const HighlightedPre = React.memo(function HighlightedPre({
   children: codeString,
   language,
@@ -27,6 +28,10 @@ const HighlightedPre = React.memo(function HighlightedPre({
   const [html, setHtml] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [isVisible, setIsVisible] = useState(false)
+  
+  // Create a stable version of the props to prevent unnecessary re-renders
+  const stableProps = React.useMemo(() => ({...props}), [])
+  const stableClassName = React.useMemo(() => className, [])
 
   // Capture initial dimensions to stabilize layout
   useEffect(() => {
@@ -111,52 +116,82 @@ const HighlightedPre = React.memo(function HighlightedPre({
   }, [codeString, language])
 
   // Loading placeholder with similar dimensions but no content
-  const fallbackPre = (
+  // Memoize to avoid recreating this component on every render
+  const fallbackPre = React.useMemo(() => (
     <div className="animate-pulse">
-      <pre {...props} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4 min-h-[120px]", className)}>
+      <pre {...stableProps} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4 min-h-[120px]", stableClassName)}>
         <code className="invisible">{codeString}</code>
       </pre>
     </div>
-  )
+  ), [stableProps, stableClassName, codeString])
 
+  // Create a stable header that doesn't rerender
+  const headerSection = React.useMemo(() => (
+    <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t bg-secondary px-4 py-2 text-sm text-secondary-foreground">
+      <span className="font-mono">{language}</span>
+    </div>
+  ), [language]);
+
+  // Create a stable copy button that doesn't rerender
+  const copyButton = React.useMemo(() => (
+    <div className="absolute top-1 right-1 z-10">
+      <CopyButton
+        content={codeString}
+        className="size-8 rounded-md bg-secondary p-2 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:bg-muted-foreground/10 hover:text-muted-foreground dark:hover:bg-muted-foreground/5"
+        aria-label="Copy code"
+      />
+    </div>
+  ), [codeString]);
+
+  // Stable outer container to prevent jitter
   return (
     <div className="group relative flex w-full flex-col pt-9">
-      <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t bg-secondary px-4 py-2 text-sm text-secondary-foreground">
-        <span className="font-mono">{language}</span>
+      {/* Fixed position elements that don't depend on content */}
+      {headerSection}
+      {copyButton}
+      
+      {/* Content container with fixed height */}
+      <div style={{ minHeight: '120px' }} className="relative">
+        {isLoading ? (
+          fallbackPre
+        ) : (
+          <div
+            ref={preRef}
+            style={{
+              minHeight: '120px',
+              width: '100%', 
+              opacity: isVisible ? 1 : 0,
+              position: 'relative',
+              transition: 'opacity 50ms ease-in-out'
+            }}
+            className={cn(
+              "shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b",
+              stableClassName
+            )}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        )}
       </div>
-      <div className="absolute top-1 right-1 z-10">
-        <CopyButton
-          content={codeString}
-          className="size-8 rounded-md bg-secondary p-2 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:bg-muted-foreground/10 hover:text-muted-foreground dark:hover:bg-muted-foreground/5"
-          aria-label="Copy code"
-        />
-      </div>
-      {isLoading ? (
-        fallbackPre
-      ) : (
-        <div
-          ref={preRef}
-          style={{
-            minHeight: dimensions.height > 0 ? `${dimensions.height}px` : '120px',
-            minWidth: dimensions.width > 0 ? `${dimensions.width}px` : undefined,
-            opacity: isVisible ? 1 : 0,
-            transition: 'opacity 50ms ease-in-out'
-          }}
-          className={cn(
-            "shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b",
-            className
-          )}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      )}
     </div>
   )
-})
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo
+  // Only re-render if the essential content has changed
+  return prevProps.children === nextProps.children && 
+         prevProps.language === nextProps.language;
+});
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   children: string
   className?: string
   language: string
+}
+
+// Create a stable content hash for memoization key
+function hashContent(content: string, language: string): string {
+  // Simple hash function - combine content and language
+  // In a production app, you might want a more robust hash function
+  return `${language}_${content.length}_${content.slice(0, 50)}`;
 }
 
 // CodeBlock component handles the wrapper and suspense boundary
@@ -192,6 +227,12 @@ export const CodeBlock = React.memo(({
       }
     }
   }
+  
+  // Create a stable identifier for this code block
+  const contentKey = React.useMemo(() => 
+    hashContent(processedCodeString, effectiveLanguage),
+    [processedCodeString, effectiveLanguage]
+  );
     
   console.log('CodeBlock using language:', effectiveLanguage);
 
@@ -199,33 +240,49 @@ export const CodeBlock = React.memo(({
   const sharedStyles = "relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4";
   
   // Create a loading placeholder with similar styling but invisible content
-  const fallbackPre = (
-    <div className="relative min-h-[120px]">
+  const fallbackPre = React.useMemo(() => (
+    <div className="relative min-h-[120px]" style={{ opacity: 0.5 }}>
       <div className="animate-pulse">
         <pre className={cn(sharedStyles, className)} {...restProps}>
           <code className="invisible">{processedCodeString}</code>
         </pre>
       </div>
     </div>
-  )
+  ), [className, processedCodeString, restProps, sharedStyles]);
 
-  // Stabilize wrapper dimensions to prevent jitter
+  // Create a stable and memoized pre element to prevent re-renders 
+  const codeElement = React.useMemo(() => (
+    <HighlightedPre 
+      language={effectiveLanguage} 
+      className={cn(className)} 
+      {...restProps}
+    >
+      {processedCodeString}
+    </HighlightedPre>
+  ), [effectiveLanguage, processedCodeString, className, restProps]);
+
+  // Wrap in a stable container with fixed dimensions
   return (
-    <div className="group/code relative my-4 transition-all duration-300 ease-in-out">
-      <div className="relative min-h-[120px]">
-        <Suspense fallback={fallbackPre}>
-          <HighlightedPre 
-            language={effectiveLanguage} 
-            className={cn(className, "transition-opacity duration-300")} 
-            {...restProps}
-          >
-            {processedCodeString}
-          </HighlightedPre>
-        </Suspense>
+    <div 
+      key={contentKey}
+      className="group/code relative my-4 overflow-hidden"
+      style={{ 
+        minHeight: '120px',
+        contain: 'content' // Improve performance by containing repaints
+      }}
+    >
+      <div className="relative">
+        {codeElement}
       </div>
     </div>
-  )
-})
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison function for React.memo
+  // Only re-render if the content or language has changed
+  return prevProps.children === nextProps.children && 
+         prevProps.language === nextProps.language &&
+         prevProps.className === nextProps.className;
+});
 
 interface CodeElementProps {
   className?: string;
