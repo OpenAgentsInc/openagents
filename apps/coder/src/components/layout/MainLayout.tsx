@@ -7,7 +7,6 @@ import {
   SidebarInset
 } from '@/components/ui/sidebar';
 import { AppHeader } from '@/components/AppHeader';
-import { ModelHeader } from '@/components/ModelHeader';
 import { ThreadList } from '@/components/ThreadList';
 import { MessageArea } from '@/components/MessageArea';
 import { ChatInputArea } from '@/components/ChatInputArea';
@@ -17,6 +16,22 @@ import { StableInputProvider } from '@/providers/StableInputProvider';
 import { StableHeaderProvider } from '@/providers/StableHeaderProvider';
 import { IsolatedInputProvider } from '@/providers/IsolatedInputProvider';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { SlidersHorizontal } from 'lucide-react';
+import ToggleTheme from '@/components/ToggleTheme';
+import { react19 } from "@openagents/core";
+
+// Interface for Lucide icon props
+interface IconProps {
+  size?: number;
+  color?: string;
+  className?: string;
+  [key: string]: any;
+}
+
+// Make Lucide icons compatible with React 19
+const SlidersHorizontalIcon = react19.icon<IconProps>(SlidersHorizontal);
 
 // Special component that completely isolates the input area
 // It gets the input handlers only once on mount and never rerenders
@@ -107,15 +122,23 @@ export const MainLayout = memo(function MainLayout({ children }: { children?: Re
                   onCreateThread={handleCreateThread}
                 />
               </SidebarContent>
+
+              {/* Add SidebarFooter */}
+              <div className="absolute bottom-0 left-0 right-0 p-3 border-t flex items-center justify-between">
+                <ToggleTheme />
+                <Link to="/settings/models">
+                  <Button
+                    size="icon"
+                    className="flex items-center justify-center h-8 w-8 bg-transparent text-primary hover:bg-primary/5">
+                    <SlidersHorizontalIcon size={20} />
+                  </Button>
+                </Link>
+              </div>
             </Sidebar>
 
             <SidebarInset>
               <div className="grid grid-rows-[auto_minmax(0,1fr)_auto] h-[calc(100vh-30px)]">
-                <div className="absolute top-0 left-0 right-0 p-3 flex items-center justify-between z-20">
-                  <ModelHeader />
-                </div>
-
-                {/* Add a spacer div to maintain grid layout */}
+                {/* Remove ModelHeader */}
                 <div className="" />
 
                 {/* Render either the children (for routes like changelog) or the chat interface */}
