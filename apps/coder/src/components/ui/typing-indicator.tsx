@@ -1,14 +1,22 @@
 import React from "react"
+import { cn } from "@/utils/tailwind"
 
-export function TypingIndicator() {
+interface TypingIndicatorProps {
+  className?: string;
+}
+
+export function TypingIndicator({ className }: TypingIndicatorProps) {
+  // Simplified indicator that just shows the dots, positioned next to the send button
   return (
-    <div className="mb-6 justify-left flex space-x-1">
-      <div className="font-mono bg-background p-2">
-        <div className="flex space-x-[3px]">
-          <span className="inline-block w-2 h-4 bg-foreground animate-typing-dot" />
-          <span className="inline-block w-2 h-4 bg-foreground animate-typing-dot [animation-delay:150ms]" />
-          <span className="inline-block w-2 h-4 bg-foreground animate-typing-dot [animation-delay:300ms]" />
-        </div>
+    <div className={cn(
+      "absolute right-[48px] top-[15px] z-20",
+      "flex items-center justify-center",
+      className
+    )}>
+      <div className="flex space-x-[3px]">
+        <span className="inline-block w-1.5 h-3 rounded-sm bg-primary animate-typing-dot opacity-70" />
+        <span className="inline-block w-1.5 h-3 rounded-sm bg-primary animate-typing-dot [animation-delay:150ms] opacity-70" />
+        <span className="inline-block w-1.5 h-3 rounded-sm bg-primary animate-typing-dot [animation-delay:300ms] opacity-70" />
       </div>
     </div>
   )

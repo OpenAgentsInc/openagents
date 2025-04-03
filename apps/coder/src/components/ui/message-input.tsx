@@ -352,6 +352,16 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
             <Mic className="h-4 w-4" />
           </Button>
         )}
+        {/* Show typing indicator next to the stop/submit button when generating */}
+        {isGenerating && <div className="relative">
+          <div className="absolute right-[20px] top-1/2 -translate-y-1/2">
+            <div className="flex space-x-[3px]">
+              <span className="inline-block w-1.5 h-3 rounded-sm bg-primary animate-typing-dot opacity-70" />
+              <span className="inline-block w-1.5 h-3 rounded-sm bg-primary animate-typing-dot [animation-delay:150ms] opacity-70" />
+              <span className="inline-block w-1.5 h-3 rounded-sm bg-primary animate-typing-dot [animation-delay:300ms] opacity-70" />
+            </div>
+          </div>
+        </div>}
         {isGenerating && stop ? (
           <Button
             type="button"

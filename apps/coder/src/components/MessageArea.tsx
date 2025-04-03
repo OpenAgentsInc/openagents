@@ -27,7 +27,7 @@ export const MessageArea = memo(function MessageArea() {
         <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
           <MessageList
             messages={messages}
-            isTyping={isGenerating}
+            isTyping={false}
           />
         </div>
       </div>
