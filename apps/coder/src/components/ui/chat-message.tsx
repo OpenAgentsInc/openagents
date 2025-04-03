@@ -1,5 +1,3 @@
-"use client"
-
 import React, { useMemo, useState, useCallback } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { motion } from "framer-motion"
