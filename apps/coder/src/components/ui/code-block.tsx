@@ -1,164 +1,88 @@
-import React, { Suspense, useState, useEffect } from "react"
+import React, { Suspense, useMemo, useEffect, useState } from "react"
 import * as shiki from 'shiki'
 import { cn } from "@/utils/tailwind"
 import { CopyButton } from "@/components/ui/copy-button"
 
 interface HighlightedPreProps extends React.HTMLAttributes<HTMLPreElement> {
-  children: string
+  children: string // Expects the raw code string
   language: string
 }
 
 // HighlightedPre component handles the actual code highlighting and display
-// Heavily memoized component to prevent unnecessary rerenders
 const HighlightedPre = React.memo(function HighlightedPre({
   children: codeString,
   language,
   className,
   ...props
 }: HighlightedPreProps) {
-  // Use refs to maintain stable sizing during renders
-  const preRef = React.useRef<HTMLDivElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [html, setHtml] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(true)
-  const [isVisible, setIsVisible] = useState(false)
-
-  // Create a stable version of the props to prevent unnecessary re-renders
-  const stableProps = React.useMemo(() => ({ ...props }), [])
-  const stableClassName = React.useMemo(() => className, [])
-
-  // Capture initial dimensions to stabilize layout
-  useEffect(() => {
-    if (preRef.current) {
-      const { offsetWidth, offsetHeight } = preRef.current;
-      if (offsetWidth > 0 && offsetHeight > 0) {
-        setDimensions({ width: offsetWidth, height: offsetHeight });
-      }
-    }
-  }, [codeString]);
 
   useEffect(() => {
-    let isMounted = true
-    setIsLoading(true)
-    setIsVisible(false) // Hide content while loading
-
+    let isMounted = true;
     async function highlight() {
       try {
-        const safeLanguage = language || 'text';
-
+        const validLanguage = language || 'text';
         const highlighter = await shiki.createHighlighter({
           themes: ['github-dark'],
-          langs: [safeLanguage],
+          langs: [validLanguage],
         })
 
         const highlighted = await highlighter.codeToHtml(codeString, {
-          lang: safeLanguage,
+          lang: validLanguage,
           theme: 'github-dark'
-        })
+        });
 
         if (isMounted) {
-          setHtml(highlighted)
-          setIsLoading(false)
-
-          // Show content immediately after highlighting is complete
-          setIsVisible(true)
+          setHtml(highlighted);
         }
       } catch (error) {
-        // console.error(`Failed to highlight code:`, error)
+        console.error(`Failed to highlight code language "${language}":`, error);
         if (isMounted) {
           const escapedCode = codeString
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;")
-          setHtml(`<pre class="shiki"><code>${escapedCode}</code></pre>`)
-          setIsLoading(false)
-
-          // Show content immediately after fallback is ready
-          setIsVisible(true)
+            .replace(/'/g, "&#039;");
+          setHtml(`<pre class="shiki github-dark"><code>${escapedCode}</code></pre>`);
         }
       }
     }
 
-    if (codeString) {
-      highlight()
-    } else {
-      setHtml('')
-      setIsLoading(false)
-      setIsVisible(true)
-    }
-
+    highlight();
     return () => {
-      isMounted = false
-    }
-  }, [codeString, language])
+      isMounted = false;
+    };
+  }, [codeString, language]);
 
-  // Loading placeholder with similar dimensions but no content
-  // Memoize to avoid recreating this component on every render
-  const fallbackPre = React.useMemo(() => (
-    <div className="animate-pulse">
-      <pre {...stableProps} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4 min-h-[120px] rounded-b-md", stableClassName)}>
-        <code className="invisible">{codeString}</code>
-      </pre>
-    </div>
-  ), [stableProps, stableClassName, codeString])
+  const fallbackPre = (
+    <pre {...props} className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4", className)}>
+      <code>{codeString}</code>
+    </pre>
+  )
 
-  // Create a stable header that doesn't rerender
-  const headerSection = React.useMemo(() => (
-    <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t-md bg-secondary px-4 py-2 text-sm text-secondary-foreground border-b border-border">
-      <span className="font-mono">{language}</span>
-    </div>
-  ), [language]);
-
-  // Create a stable copy button that doesn't rerender
-  const copyButton = React.useMemo(() => (
-    <div className="absolute top-1 right-1 z-10">
-      <CopyButton
-        content={codeString}
-        className="size-8 rounded-md bg-secondary p-2 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:bg-muted-foreground/10 hover:text-muted-foreground dark:hover:bg-muted-foreground/5"
-        aria-label="Copy code"
-      />
-    </div>
-  ), [codeString]);
-
-  // Stable outer container to prevent jitter
   return (
     <div className="group relative flex w-full flex-col pt-9">
-      {/* Fixed position elements that don't depend on content */}
-      {headerSection}
-      {copyButton}
-
-      {/* Content container with fixed height */}
-      <div style={{ minHeight: '120px' }} className="relative">
-        {isLoading ? (
-          fallbackPre
-        ) : (
-          <div
-            ref={preRef}
-            style={{
-              minHeight: '120px',
-              width: '100%',
-              opacity: isVisible ? 1 : 0,
-              position: 'relative',
-              transition: 'opacity 50ms ease-in-out'
-            }}
-            className={cn(
-              "shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b-md",
-              stableClassName
-            )}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )}
+      <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t bg-secondary px-4 py-2 text-sm text-secondary-foreground">
+        <span className="font-mono">{language || 'text'}</span>
       </div>
+      <div className="absolute top-1 right-1 z-10">
+        <CopyButton
+          content={codeString}
+          className="size-8 rounded-md bg-secondary p-2 opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:bg-muted-foreground/10 hover:text-muted-foreground dark:hover:bg-muted-foreground/5"
+          aria-label="Copy code"
+        />
+      </div>
+      <div
+        className={cn(
+          "shiki github-dark not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b",
+          className
+        )}
+        dangerouslySetInnerHTML={{ __html: html || `<pre><code>${codeString}</code></pre>` }}
+      />
     </div>
   )
-}, (prevProps, nextProps) => {
-  // Custom comparison function for React.memo
-  // Only re-render if the essential content has changed
-  return prevProps.children === nextProps.children &&
-    prevProps.language === nextProps.language;
-});
+})
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   children: string
@@ -166,200 +90,52 @@ interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   language: string
 }
 
-// Create a stable content hash for memoization key
-function hashContent(content: string, language: string): string {
-  // Simple hash function - combine content and language
-  // In a production app, you might want a more robust hash function
-  return `${language}_${content.length}_${content.slice(0, 50)}`;
-}
-
 // CodeBlock component handles the wrapper and suspense boundary
 export const CodeBlock = React.memo(({
   children: codeString,
   className,
-  language = 'text',
+  language,
   ...restProps
 }: CodeBlockProps) => {
-  // console.log('CodeBlock called with raw language:', language);
-
-  // Force language to the actual language identifier if it's 'text'
-  let effectiveLanguage = language;
-  let processedCodeString = codeString;
-
-  // Try to extract from className if language is 'text'
-  if (language === 'text' && className?.includes('language-')) {
-    const classMatch = className.match(/language-(\w+)/);
-    if (classMatch && classMatch[1]) {
-      effectiveLanguage = classMatch[1];
-    }
-  }
-
-  // If code string contains a language marker, prioritize that
-  if (typeof codeString === 'string') {
-    const lines = codeString.split('\n');
-    if (lines[0] && /^```\w+/.test(lines[0])) {
-      const langMatch = /^```(\w+)/.exec(lines[0]);
-      if (langMatch && langMatch[1]) {
-        effectiveLanguage = langMatch[1];
-        // Remove the language marker line from code string
-        processedCodeString = lines.slice(1).join('\n');
-      }
-    }
-  }
-
-  // Create a stable identifier for this code block
-  const contentKey = React.useMemo(() =>
-    hashContent(processedCodeString, effectiveLanguage),
-    [processedCodeString, effectiveLanguage]
+  const fallbackPre = (
+    <pre className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4", className)} {...restProps}>
+      <code>{codeString}</code>
+    </pre>
   );
 
-  // console.log('CodeBlock using language:', effectiveLanguage);
-
-  // Use same dimensions and styling for both fallback and final render to prevent jitter
-  const sharedStyles = "relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4";
-
-  // Create a loading placeholder with similar styling but invisible content
-  const fallbackPre = React.useMemo(() => (
-    <div className="relative min-h-[120px]" style={{ opacity: 0.5 }}>
-      <div className="animate-pulse">
-        <pre className={cn(sharedStyles, "rounded-b-md", className)} {...restProps}>
-          <code className="invisible">{processedCodeString}</code>
-        </pre>
-      </div>
-    </div>
-  ), [className, processedCodeString, restProps, sharedStyles]);
-
-  // Create a stable and memoized pre element to prevent re-renders
-  const codeElement = React.useMemo(() => (
-    <HighlightedPre
-      language={effectiveLanguage}
-      className={cn(className)}
-      {...restProps}
-    >
-      {processedCodeString}
-    </HighlightedPre>
-  ), [effectiveLanguage, processedCodeString, className, restProps]);
-
-  // Wrap in a stable container with fixed dimensions
   return (
-    <div
-      key={contentKey}
-      className="group/code relative my-4 overflow-hidden rounded-md border border-border"
-      style={{
-        minHeight: '120px',
-        contain: 'content' // Improve performance by containing repaints
-      }}
-    >
-      <div className="relative">
-        {codeElement}
-      </div>
+    <div className="border border-border group/code relative my-4">
+      <Suspense fallback={fallbackPre}>
+        <HighlightedPre language={language} className={className} {...restProps}>
+          {codeString}
+        </HighlightedPre>
+      </Suspense>
     </div>
-  );
-}, (prevProps, nextProps) => {
-  // Custom comparison function for React.memo
-  // Only re-render if the content or language has changed
-  return prevProps.children === nextProps.children &&
-    prevProps.language === nextProps.language &&
-    prevProps.className === nextProps.className;
+  )
 });
 
-interface CodeElementProps {
-  className?: string;
-  children?: React.ReactNode;
-  type?: string;
-  props?: {
-    className?: string;
-    children?: React.ReactNode;
-  };
-}
-
-interface ReactElementWithChildren extends React.ReactElement {
-  props: {
-    children?: React.ReactNode;
-    [key: string]: any;
-  };
-}
-
+// Helper function to extract code and language from react-markdown's pre component children
 export function extractCodeInfo(children: React.ReactNode): { codeString: string; language: string } {
-  // console.log('extractCodeInfo received:', {
-  //   children,
-  //   childrenCount: React.Children.count(children),
-  //   childrenType: typeof children,
-  //   isArray: Array.isArray(children),
-  //   childrenDetails: React.Children.map(children, child => ({
-  //     type: typeof child,
-  //     isElement: React.isValidElement(child),
-  //     elementType: React.isValidElement(child) ? child.type : null
-  //   }))
-  // });
-
-  let codeString = ''
-  let language = 'text'
-
-  // Helper function to extract text content from any node
-  const extractTextContent = (node: React.ReactNode): string => {
-    if (typeof node === 'string') {
-      return node
-    }
-    if (Array.isArray(node)) {
-      return node.map(extractTextContent).join('')
-    }
-    if (React.isValidElement(node)) {
-      const props = node.props as { children?: React.ReactNode }
-      return extractTextContent(props.children || '')
-    }
-    return ''
-  }
-
-  // First try to find a direct code element
+  // Find the <code> element within the children
   const codeElement = React.Children.toArray(children).find(
-    (child): child is React.ReactElement<{ className?: string; children?: React.ReactNode }> =>
-      React.isValidElement(child) &&
-      (child.type === 'code' || (typeof child.type === 'string' && child.type.toLowerCase() === 'code'))
-  )
+    (child: any): child is React.ReactElement<{ className?: string, children?: React.ReactNode }> =>
+      React.isValidElement(child) && child.type === 'code'
+  );
 
-  // console.log('extractCodeInfo found code element:', {
-  //   found: Boolean(codeElement),
-  //   type: codeElement ? (typeof codeElement.type === 'string' ? codeElement.type : 'unknown') : 'none',
-  //   className: codeElement?.props?.className,
-  //   hasChildren: Boolean(codeElement?.props?.children),
-  //   childrenType: codeElement?.props?.children ? typeof codeElement.props.children : 'none',
-  //   rawChildren: codeElement?.props?.children
-  // });
-
-  if (codeElement) {
-    // Extract language from className
-    const codeClassName = codeElement.props.className || ''
-    const match = /language-(\w+)/.exec(codeClassName)
-    if (match && match[1]) {
-      language = match[1]
-    } else {
-      // Try to detect language from code content itself
-      const lines = extractTextContent(codeElement.props.children || '').split('\n')
-      if (lines[0] && lines[0].startsWith('```')) {
-        const langMatch = /^```(\w+)/.exec(lines[0])
-        if (langMatch && langMatch[1]) {
-          language = langMatch[1]
-          // Remove the language marker line if it's found
-          lines.shift()
-          codeElement.props.children = lines.join('\n')
-        }
-      }
-    }
-
-    // Extract code content from the code element
-    codeString = extractTextContent(codeElement.props.children || '').trimEnd()
-  } else {
-    // If no code element found, try to extract from children directly
-    codeString = extractTextContent(children).trimEnd()
+  if (!codeElement) {
+    return { codeString: '', language: 'text' };
   }
 
-  // console.log('extractCodeInfo result:', {
-  //   language,
-  //   codeStringLength: codeString.length,
-  //   codePreview: codeString ? (codeString.slice(0, 100) + '...') : 'EMPTY',
-  //   hasContent: Boolean(codeString)
-  // });
+  // Extract language from the <code> element's className
+  const codeClassName = codeElement.props.className || '';
+  const match = /language-(\w+)/.exec(codeClassName);
+  const language = match ? match[1] : 'text';
 
-  return { codeString, language }
+  // Extract the raw code string from the <code> element's children
+  const codeString = React.Children.toArray(codeElement.props.children)
+    .map(child => (typeof child === 'string' ? child : ''))
+    .join('')
+    .trim();
+
+  return { codeString, language };
 }
