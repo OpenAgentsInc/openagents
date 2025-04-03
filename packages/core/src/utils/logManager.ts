@@ -27,6 +27,9 @@ const logEntries: LogEntry[] = [];
 // Flag to determine if console output is enabled
 let consoleOutputEnabled = true;
 
+// Flag to prevent recursive console logging
+let isLoggingToConsole = false;
+
 /**
  * Add a log entry to the log storage
  */
@@ -39,23 +42,33 @@ function addLogEntry(entry: LogEntry): void {
   // Add new log
   logEntries.push(entry);
   
-  // Also log to console if enabled
-  if (consoleOutputEnabled) {
-    const logPrefix = `[${new Date(entry.timestamp).toISOString()}] [${entry.level.toUpperCase()}] [${entry.module}]`;
-    
-    switch (entry.level) {
-      case 'debug':
-        console.debug(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-        break;
-      case 'info':
-        console.info(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-        break;
-      case 'warn':
-        console.warn(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-        break;
-      case 'error':
-        console.error(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-        break;
+  // Only log to console if enabled and we're not already in a logging operation
+  if (consoleOutputEnabled && !isLoggingToConsole) {
+    try {
+      isLoggingToConsole = true; // Set flag to prevent recursion
+      
+      const logPrefix = `[${new Date(entry.timestamp).toISOString()}] [${entry.level.toUpperCase()}] [${entry.module}]`;
+      
+      // Use the original console methods directly to avoid recursion
+      const originalConsole = (window as any).__originalConsole__;
+      if (originalConsole) {
+        switch (entry.level) {
+          case 'debug':
+            originalConsole.debug(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+            break;
+          case 'info':
+            originalConsole.info(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+            break;
+          case 'warn':
+            originalConsole.warn(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+            break;
+          case 'error':
+            originalConsole.error(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+            break;
+        }
+      }
+    } finally {
+      isLoggingToConsole = false; // Reset flag
     }
   }
 }
@@ -153,10 +166,15 @@ export function createLogger(module: string) {
 // Export a default logger for quick usage
 export const logger = createLogger('app');
 
+// Track if interceptor is already installed
+let interceptorInstalled = false;
+
 // Override console methods to capture all logs
 export function installConsoleInterceptor() {
-  if (typeof window !== 'undefined') {
-    // Store original console methods
+  if (typeof window !== 'undefined' && !interceptorInstalled) {
+    interceptorInstalled = true;
+    
+    // Store original console methods globally to avoid recursion issues
     const originalConsole = {
       log: console.log,
       debug: console.debug,
@@ -164,85 +182,109 @@ export function installConsoleInterceptor() {
       warn: console.warn,
       error: console.error
     };
+    
+    // Store original console methods in window for access in other functions
+    (window as any).__originalConsole__ = originalConsole;
+
+    // Helper function to process arguments
+    const processArgs = (args: any[]): string => {
+      return args.map(arg => {
+        if (arg === undefined) return 'undefined';
+        if (arg === null) return 'null';
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg);
+          } catch (e) {
+            return '[Object]';
+          }
+        }
+        return String(arg);
+      }).join(' ');
+    };
 
     // Override console.log
     console.log = function(...args) {
-      // Call original method
+      // Call original method first
       originalConsole.log.apply(console, args);
       
-      // Add to our log system
-      addLogEntry({
-        timestamp: Date.now(),
-        level: 'info',
-        message: args.map(arg => 
-          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' '),
-        module: 'console'
-      });
+      // If we're already logging, don't create a recursive loop
+      if (!isLoggingToConsole) {
+        // Add to our log system
+        addLogEntry({
+          timestamp: Date.now(),
+          level: 'info',
+          message: processArgs(args),
+          module: 'console'
+        });
+      }
     };
 
     // Override console.debug
     console.debug = function(...args) {
-      // Call original method
+      // Call original method first
       originalConsole.debug.apply(console, args);
       
-      // Add to our log system
-      addLogEntry({
-        timestamp: Date.now(),
-        level: 'debug',
-        message: args.map(arg => 
-          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' '),
-        module: 'console'
-      });
+      // If we're already logging, don't create a recursive loop
+      if (!isLoggingToConsole) {
+        // Add to our log system
+        addLogEntry({
+          timestamp: Date.now(),
+          level: 'debug',
+          message: processArgs(args),
+          module: 'console'
+        });
+      }
     };
 
     // Override console.info
     console.info = function(...args) {
-      // Call original method
+      // Call original method first
       originalConsole.info.apply(console, args);
       
-      // Add to our log system
-      addLogEntry({
-        timestamp: Date.now(),
-        level: 'info',
-        message: args.map(arg => 
-          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' '),
-        module: 'console'
-      });
+      // If we're already logging, don't create a recursive loop
+      if (!isLoggingToConsole) {
+        // Add to our log system
+        addLogEntry({
+          timestamp: Date.now(),
+          level: 'info',
+          message: processArgs(args),
+          module: 'console'
+        });
+      }
     };
 
     // Override console.warn
     console.warn = function(...args) {
-      // Call original method
+      // Call original method first
       originalConsole.warn.apply(console, args);
       
-      // Add to our log system
-      addLogEntry({
-        timestamp: Date.now(),
-        level: 'warn',
-        message: args.map(arg => 
-          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' '),
-        module: 'console'
-      });
+      // If we're already logging, don't create a recursive loop
+      if (!isLoggingToConsole) {
+        // Add to our log system
+        addLogEntry({
+          timestamp: Date.now(),
+          level: 'warn',
+          message: processArgs(args),
+          module: 'console'
+        });
+      }
     };
 
     // Override console.error
     console.error = function(...args) {
-      // Call original method
+      // Call original method first
       originalConsole.error.apply(console, args);
       
-      // Add to our log system
-      addLogEntry({
-        timestamp: Date.now(),
-        level: 'error',
-        message: args.map(arg => 
-          typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-        ).join(' '),
-        module: 'console'
-      });
+      // If we're already logging, don't create a recursive loop
+      if (!isLoggingToConsole) {
+        // Add to our log system
+        addLogEntry({
+          timestamp: Date.now(),
+          level: 'error',
+          message: processArgs(args),
+          module: 'console'
+        });
+      }
     };
   }
 }

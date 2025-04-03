@@ -1,8 +1,8 @@
-import { installConsoleInterceptor, logger } from "@openagents/core";
+import { logger } from "@openagents/core";
 
-// Initialize the logger interceptor in production
+// Initialize base logging without console interception
+// Console interception will be enabled by the user through the debug page
 if (process.env.NODE_ENV === 'production') {
-  installConsoleInterceptor();
   logger.info('Application started in production mode');
   
   // Add some detailed startup logging

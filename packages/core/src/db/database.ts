@@ -96,25 +96,34 @@ export async function createDatabase(): Promise<Database> {
       dbLogger.info(`Creating RxDB database with name: ${dbName}`);
 
       // Create database with more resilient options
-      dbLogger.info('Calling createRxDatabase with configuration');
-      const db = await createRxDatabase<DatabaseCollections>({
+      dbLogger.info('Creating RxDatabase with configuration', {
         name: dbName,
-        storage,
-        multiInstance: false, // Single instance mode for better reliability
-        ignoreDuplicate: true, // Ignore duplicate db creation for strict mode
-        eventReduce: true, // Reduce event load
-        cleanupPolicy: {
-          // Automatically clean up old revisions to prevent storage issues
-          minimumCollectionAge: 1000 * 60 * 60 * 24, // 1 day
-          minimumDeletedTime: 1000 * 60 * 60 * 24, // 1 day
-          runEach: 1000 * 60 * 60 // every hour
-        }
+        multiInstance: false,
+        ignoreDuplicate: true,
+        eventReduce: true
       });
-
-      // Create collections with schema validation and migrations
-      dbLogger.info('Adding collections to database');
+      
       try {
-        await db.addCollections({
+        const db = await createRxDatabase<DatabaseCollections>({
+          name: dbName,
+          storage,
+          multiInstance: false, // Single instance mode for better reliability
+          ignoreDuplicate: true, // Ignore duplicate db creation for strict mode
+          eventReduce: true, // Reduce event load
+          cleanupPolicy: {
+            // Automatically clean up old revisions to prevent storage issues
+            minimumCollectionAge: 1000 * 60 * 60 * 24, // 1 day
+            minimumDeletedTime: 1000 * 60 * 60 * 24, // 1 day
+            runEach: 1000 * 60 * 60 // every hour
+          }
+        });
+        
+        dbLogger.info('RxDatabase created successfully');
+
+        // Create collections with schema validation and migrations
+        dbLogger.info('Adding collections to database');
+        try {
+          await db.addCollections({
           threads: {
             schema: threadSchema,
             migrationStrategies: {
@@ -174,14 +183,18 @@ export async function createDatabase(): Promise<Database> {
         throw error;
       }
 
-      // Check that collections were created successfully
-      const collectionNames = Object.keys(db.collections);
-      dbLogger.info(`Database collections created: ${collectionNames.join(', ')}`);
-      
-      // Database successfully created
-      dbInstance = db;
-      dbLogger.info('Database successfully created and initialized');
-      return db;
+        // Check that collections were created successfully
+        const collectionNames = Object.keys(db.collections);
+        dbLogger.info(`Database collections created: ${collectionNames.join(', ')}`);
+        
+        // Database successfully created
+        dbInstance = db;
+        dbLogger.info('Database successfully created and initialized');
+        return db;
+      } catch (dbCreateError) {
+        dbLogger.error('Error creating database or collections', dbCreateError);
+        throw dbCreateError;
+      }
 
     } catch (error) {
       // Import logger dynamically to avoid circular dependencies

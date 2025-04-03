@@ -21,6 +21,9 @@ import {
   Badge,
   ScrollArea,
   Input,
+  Alert,
+  AlertTitle,
+  AlertDescription,
 } from "@/components/ui";
 import { Toaster, toast as sonnerToast } from "sonner";
 import { 
@@ -33,7 +36,8 @@ import {
   Info,
   FileWarning,
   FileX,
-  Copy
+  Copy,
+  Terminal
 } from "lucide-react";
 import { 
   LogEntry, 
@@ -47,18 +51,16 @@ import {
   logger
 } from "@openagents/core";
 
-// Initialize the console interceptor
+// Only log that the debug page has been loaded
+// We'll let the user enable console interception manually
 if (typeof window !== 'undefined') {
-  installConsoleInterceptor();
-  
-  // Log that the debug page has been loaded
   logger.info('Debug page initialized');
 }
 
 export default function DebugPage() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filter, setFilter] = useState<LogLevel | 'all'>('all');
-  const [moduleFilter, setModuleFilter] = useState<string>('');
+  const [moduleFilter, setModuleFilter] = useState<string>('all');
   const [searchFilter, setSearchFilter] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -81,8 +83,8 @@ export default function DebugPage() {
         filteredLogs = filterLogs({ level: filter as LogLevel });
       }
       
-      // Filter by module if specified
-      if (moduleFilter) {
+      // Filter by module if specified and not 'all'
+      if (moduleFilter && moduleFilter !== 'all') {
         filteredLogs = filteredLogs.filter(log => log.module === moduleFilter);
       }
       
@@ -158,6 +160,31 @@ export default function DebugPage() {
       });
     }
   };
+  
+  // Handle enabling console interception
+  const [interceptorEnabled, setInterceptorEnabled] = useState(false);
+  
+  const handleEnableInterception = () => {
+    try {
+      if (!interceptorEnabled) {
+        installConsoleInterceptor();
+        setInterceptorEnabled(true);
+        sonnerToast("Console interception enabled", {
+          description: "Console logs will now be captured and displayed in the debug console"
+        });
+        logger.info('Console interception enabled by user');
+      } else {
+        sonnerToast("Console interception already enabled", {
+          description: "Console logs are already being captured"
+        });
+      }
+    } catch (error) {
+      console.error('Error enabling console interception:', error);
+      sonnerToast("Error enabling console interception", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  };
 
   // Handle downloading logs
   const handleDownloadLogs = () => {
@@ -219,6 +246,17 @@ export default function DebugPage() {
   const triggerTestDatabaseError = async () => {
     try {
       logger.info('Testing database error handling...');
+      
+      // If console capture isn't enabled, prompt the user
+      if (!interceptorEnabled) {
+        const shouldEnable = window.confirm(
+          "Console capture is not enabled. Would you like to enable it to see all logs in the debug console?"
+        );
+        
+        if (shouldEnable) {
+          handleEnableInterception();
+        }
+      }
       
       // Import database dynamically
       const { getDatabase, cleanupDatabase } = await import('@openagents/core/src/db/database');
@@ -316,6 +354,17 @@ export default function DebugPage() {
               />
             </div>
             
+            <Button
+              size="sm"
+              onClick={handleEnableInterception}
+              disabled={interceptorEnabled}
+              variant="outline"
+              className="flex items-center gap-1"
+            >
+              <Terminal className="h-4 w-4" />
+              {interceptorEnabled ? "Console Capture Active" : "Capture Console Logs"}
+            </Button>
+            
             <div className="flex items-center gap-2">
               <Label htmlFor="log-level">Level</Label>
               <Select value={filter} onValueChange={(value) => setFilter(value as LogLevel | 'all')}>
@@ -342,7 +391,7 @@ export default function DebugPage() {
                   <SelectValue placeholder="All modules" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Modules</SelectItem>
+                  <SelectItem value="all">All Modules</SelectItem>
                   {uniqueModules.map(module => (
                     <SelectItem key={module} value={module}>{module}</SelectItem>
                   ))}
@@ -402,6 +451,18 @@ export default function DebugPage() {
           
           <Separator />
           
+          {/* Info banner */}
+          {!interceptorEnabled && (
+            <Alert className="bg-blue-500/10 border-blue-500/50 text-blue-700 dark:text-blue-300">
+              <Info className="h-4 w-4" />
+              <AlertTitle>Console capture not enabled</AlertTitle>
+              <AlertDescription>
+                Click the "Capture Console Logs" button to start capturing all console output. 
+                This will help you diagnose issues in production where the developer console is not available.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Logs display */}
           <div className="border rounded-md">
             <div className="p-2 bg-secondary/20 border-b flex justify-between items-center">
@@ -409,7 +470,7 @@ export default function DebugPage() {
                 Log Entries ({logs.length})
               </span>
               <Badge variant="outline" className="text-xs">
-                {moduleFilter ? moduleFilter : 'All modules'} | {filter === 'all' ? 'All levels' : filter}
+                {moduleFilter === 'all' ? 'All modules' : moduleFilter} | {filter === 'all' ? 'All levels' : filter}
               </Badge>
             </div>
             
