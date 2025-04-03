@@ -267,9 +267,44 @@ export async function getDatabase(): Promise<Database> {
         return dbCreationPromise;
       }
       
-      return createDatabase();
+      // Create the database
+      const db = await createDatabase();
+      
+      // Verify collections exist
+      if (db && db.collections) {
+        const collectionNames = Object.keys(db.collections);
+        if (collectionNames.length === 0) {
+          dbLogger.error('Database created but no collections were added');
+          throw new Error('Database created but no collections were added');
+        }
+        
+        // Check for required collections
+        const requiredCollections = ['threads', 'messages', 'settings'];
+        const missingCollections = requiredCollections.filter(c => !collectionNames.includes(c));
+        
+        if (missingCollections.length > 0) {
+          dbLogger.error(`Database missing required collections: ${missingCollections.join(', ')}`);
+          throw new Error(`Database missing required collections: ${missingCollections.join(', ')}`);
+        }
+        
+        dbLogger.info(`Database verified with collections: ${collectionNames.join(', ')}`);
+      }
+      
+      return db;
     }
-    return dbInstance;
+    
+    // Database instance exists, verify it's still valid
+    if (dbInstance.collections && Object.keys(dbInstance.collections).length > 0) {
+      return dbInstance;
+    } else {
+      // Import logger dynamically to avoid circular dependencies
+      const { createLogger } = await import('../utils/logManager');
+      const dbLogger = createLogger('database');
+      
+      dbLogger.error('Existing database instance has no collections, recreating');
+      dbInstance = null; // Clear invalid instance
+      return createDatabase(); // Try to recreate
+    }
   } catch (error) {
     // Import logger dynamically to avoid circular dependencies
     const { createLogger } = await import('../utils/logManager');
