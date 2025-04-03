@@ -95,28 +95,29 @@ export async function createDatabase(): Promise<Database> {
       
       dbLogger.info(`Creating RxDB database with name: ${dbName}`);
 
-      // Create database with more resilient options
-      dbLogger.info('Creating RxDatabase with configuration', {
+      // Create database with environment-appropriate options
+      const dbConfig: RxDatabaseCreator = {
         name: dbName,
-        multiInstance: false,
-        ignoreDuplicate: true,
-        eventReduce: true
-      });
+        storage,
+        multiInstance: false, // Single instance mode for better reliability
+        eventReduce: true, // Reduce event load
+        cleanupPolicy: {
+          // Automatically clean up old revisions to prevent storage issues
+          minimumCollectionAge: 1000 * 60 * 60 * 24, // 1 day
+          minimumDeletedTime: 1000 * 60 * 60 * 24, // 1 day
+          runEach: 1000 * 60 * 60 // every hour
+        }
+      };
+      
+      // Only use ignoreDuplicate in development mode
+      if (process.env.NODE_ENV === 'development') {
+        dbConfig.ignoreDuplicate = true;
+      }
+      
+      dbLogger.info('Creating RxDatabase with configuration', dbConfig);
       
       try {
-        const db = await createRxDatabase<DatabaseCollections>({
-          name: dbName,
-          storage,
-          multiInstance: false, // Single instance mode for better reliability
-          ignoreDuplicate: true, // Ignore duplicate db creation for strict mode
-          eventReduce: true, // Reduce event load
-          cleanupPolicy: {
-            // Automatically clean up old revisions to prevent storage issues
-            minimumCollectionAge: 1000 * 60 * 60 * 24, // 1 day
-            minimumDeletedTime: 1000 * 60 * 60 * 24, // 1 day
-            runEach: 1000 * 60 * 60 // every hour
-          }
-        });
+        const db = await createRxDatabase<DatabaseCollections>(dbConfig);
         
         dbLogger.info('RxDatabase created successfully');
 
@@ -202,6 +203,14 @@ export async function createDatabase(): Promise<Database> {
       const dbLogger = createLogger('database');
       
       dbLogger.error('Failed to create RxDB database:', error);
+
+      // Dispatch a global event that UI components can listen for
+      if (typeof window !== 'undefined') {
+        dbLogger.info('Dispatching database-error event to notify UI components');
+        window.dispatchEvent(new CustomEvent('database-error', { 
+          detail: { error }
+        }));
+      }
 
       // If we hit the collection limit, try to clean up and regenerate the database name
       if (error && typeof error === 'object' && 'code' in error && error.code === 'COL23') {

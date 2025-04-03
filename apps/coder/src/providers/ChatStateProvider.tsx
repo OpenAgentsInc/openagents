@@ -586,9 +586,38 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       // No return value (void) to match the expected type signature
     } catch (error) {
       console.error("Failed to create new thread:", error);
-      // Create a fallback thread in UI only
-      // This can happen if DB fails to initialize
-      alert("Could not create a new thread. Database may be initializing. Please try again.");
+      
+      // Check if this is a database error
+      if (error instanceof Error) {
+        // Check for DB9 error (ignoreDuplicate in production)
+        if (typeof error === 'object' && 'code' in error && error.code === 'DB9') {
+          // Dispatch a database error event
+          window.dispatchEvent(new CustomEvent('database-error', { 
+            detail: { error }
+          }));
+          
+          // Show a nicer error than alert
+          import('@/components/ui/database-error-notification').then(module => {
+            const { showDatabaseErrorToast } = module;
+            showDatabaseErrorToast(error);
+          });
+        } else {
+          // For other errors, show a simpler message
+          import('sonner').then(({ toast }) => {
+            toast.error("Database Error", {
+              description: "Could not create a new thread. Try again or check the debug console.",
+              action: {
+                label: "Debug Console",
+                onClick: () => window.location.href = '/settings/debug'
+              }
+            });
+          });
+        }
+      } else {
+        // Fallback to alert for non-Error objects
+        alert("Could not create a new thread. Database may be initializing. Please try again.");
+      }
+      
       throw error;
     }
   }, [createNewThread]);

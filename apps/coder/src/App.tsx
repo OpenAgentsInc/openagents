@@ -6,6 +6,7 @@ import { updateAppLanguage } from "./helpers/language_helpers";
 import { router } from "./routes/router";
 import { RouterProvider } from "@tanstack/react-router";
 import { Toaster } from "./components/ui/sonner";
+import { DatabaseErrorProvider } from "./providers/DatabaseErrorProvider";
 
 // Immediately sync theme before any rendering
 (async () => {
@@ -29,9 +30,9 @@ export default function App() {
   }, [i18n]);
 
   return (
-    <>
+    <DatabaseErrorProvider>
       <RouterProvider router={router} />
-      <Toaster />
-    </>
+      <Toaster position="top-right" closeButton />
+    </DatabaseErrorProvider>
   );
 }

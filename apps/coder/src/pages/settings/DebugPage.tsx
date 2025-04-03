@@ -37,7 +37,9 @@ import {
   FileWarning,
   FileX,
   Copy,
-  Terminal
+  Terminal,
+  ServerCrash,
+  RotateCcw
 } from "lucide-react";
 import { 
   LogEntry, 
@@ -48,8 +50,12 @@ import {
   setConsoleOutput, 
   getConsoleOutputState, 
   installConsoleInterceptor,
-  logger
+  logger,
+  getDatabase,
+  cleanupDatabase
 } from "@openagents/core";
+import { DatabaseErrorNotification } from "@/components/ui/database-error-notification";
+import { useDatabaseError } from "@/providers/DatabaseErrorProvider";
 
 // Only log that the debug page has been loaded
 // We'll let the user enable console interception manually
@@ -66,6 +72,10 @@ export default function DebugPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [consoleOutput, setConsoleOutputState] = useState(getConsoleOutputState());
   const [uniqueModules, setUniqueModules] = useState<string[]>([]);
+  const [isDbOperationInProgress, setIsDbOperationInProgress] = useState(false);
+  
+  // Access the database error context
+  const { databaseError, setDatabaseError, clearDatabaseError, retryDatabaseOperation } = useDatabaseError();
 
   // Function to refresh logs
   const refreshLogs = useCallback(() => {
@@ -186,6 +196,75 @@ export default function DebugPage() {
     }
   };
 
+  // Handle retrying database connection
+  const handleRetryDatabase = async () => {
+    try {
+      setIsDbOperationInProgress(true);
+      logger.info('Manually retrying database connection');
+      
+      // Clear any existing database error
+      clearDatabaseError();
+      
+      // Attempt to get the database, which will trigger creation if needed
+      await getDatabase();
+      
+      sonnerToast.success("Database connection restored", {
+        description: "Successfully reconnected to the database"
+      });
+      
+      logger.info('Database connection successfully restored');
+    } catch (error) {
+      logger.error('Failed to retry database connection', error);
+      
+      // Don't set error directly here, it will be caught by the event handler
+      sonnerToast.error("Database connection failed", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
+    } finally {
+      setIsDbOperationInProgress(false);
+    }
+  };
+  
+  // Handle clearing database (wipe all data)
+  const handleClearDatabase = async () => {
+    try {
+      if (!confirm("Are you sure you want to clear the database? This will delete ALL data and cannot be undone.")) {
+        return;
+      }
+      
+      setIsDbOperationInProgress(true);
+      logger.info('Manually clearing database');
+      
+      // Clear any existing database error
+      clearDatabaseError();
+      
+      // Clean up the database
+      await cleanupDatabase();
+      
+      sonnerToast.success("Database cleared", {
+        description: "All database data has been removed. The application will attempt to recreate the database."
+      });
+      
+      logger.info('Database successfully cleared');
+      
+      // Attempt to recreate the database
+      try {
+        await getDatabase();
+        logger.info('Database successfully recreated after clear');
+      } catch (dbError) {
+        logger.error('Failed to recreate database after clear', dbError);
+        // Error will be handled by event listener
+      }
+    } catch (error) {
+      logger.error('Failed to clear database', error);
+      sonnerToast.error("Database clear failed", {
+        description: error instanceof Error ? error.message : "Unknown error"
+      });
+    } finally {
+      setIsDbOperationInProgress(false);
+    }
+  };
+  
   // Handle downloading logs
   const handleDownloadLogs = () => {
     try {
@@ -522,6 +601,88 @@ export default function DebugPage() {
                 </div>
               )}
             </ScrollArea>
+          </div>
+        </CardContent>
+      </Card>
+      
+      {/* Database Management Section */}
+      <Card className="mt-4">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Database Management
+              </CardTitle>
+              <CardDescription>
+                Manage the application database. Use these tools to diagnose and fix database issues.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Display database error notification if there is an error */}
+          {databaseError && (
+            <DatabaseErrorNotification 
+              error={databaseError} 
+              onClose={clearDatabaseError}
+              onRetry={handleRetryDatabase}
+            />
+          )}
+          
+          <div className="grid grid-cols-1 gap-4 mb-6">
+            <div className="flex flex-col">
+              <h3 className="text-sm font-medium mb-2">Database Status</h3>
+              
+              <div className="bg-muted/40 p-4 rounded-md mb-4">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div className="text-sm font-medium">Status</div>
+                  <div className="text-sm">
+                    {databaseError ? (
+                      <span className="flex items-center text-destructive">
+                        <ServerCrash className="h-4 w-4 mr-1" /> Error
+                      </span>
+                    ) : (
+                      <span className="flex items-center text-green-500">
+                        <Database className="h-4 w-4 mr-1" /> Connected
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="text-sm font-medium">Environment</div>
+                  <div className="text-sm">{process.env.NODE_ENV}</div>
+                  
+                  <div className="text-sm font-medium">Error Code</div>
+                  <div className="text-sm">
+                    {databaseError && typeof databaseError === 'object' && 'code' in databaseError
+                      ? String(databaseError.code)
+                      : '-'}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex flex-col gap-2">
+                <Button 
+                  onClick={handleRetryDatabase}
+                  disabled={isDbOperationInProgress || !databaseError}
+                  className="w-full"
+                  variant="outline"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  {isDbOperationInProgress ? 'Connecting...' : 'Retry Database Connection'}
+                </Button>
+                
+                <Button 
+                  onClick={handleClearDatabase}
+                  disabled={isDbOperationInProgress}
+                  className="w-full"
+                  variant="destructive"
+                >
+                  <Trash className="h-4 w-4 mr-2" />
+                  {isDbOperationInProgress ? 'Clearing...' : 'Clear Database (Wipe All Data)'}
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
