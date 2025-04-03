@@ -27,7 +27,7 @@ const HighlightedPre = React.memo(function HighlightedPre({
           langs: [validLanguage],
         })
 
-        const highlighted = await highlighter.codeToHtml(codeString, {
+        const highlighted = highlighter.codeToHtml(codeString, {
           lang: validLanguage,
           theme: 'github-dark'
         });
