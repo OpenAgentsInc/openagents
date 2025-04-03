@@ -239,17 +239,21 @@ export function ChatMessages({
 }: React.PropsWithChildren<{
   messages: UIMessage[] | Message[];
 }>) {
+  // Track parts count to detect content changes
+  const totalParts = messages.reduce((count, msg) => 
+    count + ((msg as any).parts?.length || 1), 0);
+    
   const {
     containerRef,
     scrollToBottom,
     handleScroll,
     shouldAutoScroll,
     handleTouchStart,
-  } = useAutoScroll([messages])
+  } = useAutoScroll([messages, totalParts])
 
   return (
     <div
-      className="grid grid-cols-1 overflow-y-auto pb-4"
+      className="grid grid-cols-1 overflow-y-auto pb-4 h-full"
       ref={containerRef}
       onScroll={handleScroll}
       onTouchStart={handleTouchStart}
@@ -262,10 +266,12 @@ export function ChatMessages({
         <div className="pointer-events-none flex flex-1 items-end justify-end [grid-column:1/1] [grid-row:1/1]">
           <div className="sticky bottom-0 left-0 flex w-full justify-end">
             <Button
-              onClick={scrollToBottom}
-              className="pointer-events-auto h-8 w-8 rounded-full ease-in-out animate-in fade-in-0 slide-in-from-bottom-1"
+              onClick={() => {
+                scrollToBottom();
+              }}
+              className="pointer-events-auto h-8 w-8 rounded-full ease-in-out animate-in fade-in-0 slide-in-from-bottom-1 mr-2 mb-2"
               size="icon"
-              variant="ghost"
+              variant="outline"
             >
               <ArrowDown className="h-4 w-4" />
             </Button>

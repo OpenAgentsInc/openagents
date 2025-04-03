@@ -8,9 +8,9 @@ export const MessageArea = memo(function MessageArea() {
   const { messages, isGenerating } = useStreamingMessages();
   
   return (
-    <div className="overflow-y-auto relative">
-      <div className="absolute inset-0 p-4 pt-8">
-        <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem]">
+    <div className="flex-1 overflow-hidden relative">
+      <div className="absolute inset-0 p-4 pt-8 flex flex-col h-full">
+        <div className="mx-auto md:max-w-3xl lg:max-w-[40rem] xl:max-w-[48rem] flex-1 flex flex-col h-full">
           <MessageList
             messages={messages}
             isTyping={isGenerating}
