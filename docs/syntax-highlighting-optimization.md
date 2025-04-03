@@ -1,283 +1,248 @@
 # Syntax Highlighting Optimization
 
-## Current Issues
+## Line-by-Line Streaming Approach
 
-After analyzing the code in `apps/coder/src/components/ui/markdown-renderer.tsx` and `apps/coder/src/components/ui/code-block.tsx`, we've identified several issues causing flashing during syntax highlighting:
+Here's a new approach that renders code line-by-line with a fade-in effect, ensuring each line is only rendered once and nothing is ever re-rendered:
 
-1. **Multiple Render Cycles and State Transitions:**
-   - The current implementation has several state transitions (`isLoading`, `isVisible`) that cause flickering
-   - There's a delay between initial render and when Shiki highlighting completes
+```tsx
+import React, { useState, useEffect, useRef } from 'react';
+import * as shiki from 'shiki';
 
-2. **Inefficient Content Processing:**
-   - Complex recursive extraction logic in `extractCodeInfo` and the markdown parser
-   - Multiple phases of language detection that can change during rendering
+// Create a singleton highlighter that's initialized once
+let highlighterPromise: Promise<shiki.Highlighter> | null = null;
 
-3. **Incomplete Memoization Strategy:**
-   - While there's extensive use of `React.memo` and `useMemo`, the dependency arrays aren't optimized
-   - Content hashing is happening multiple times in different components
-
-4. **Synchronous to Asynchronous Transition:**
-   - The main issue is that React initially renders synchronously, but Shiki highlighting is asynchronous
-   - This creates an unavoidable flash unless we pre-highlight or use better transitions
-
-## Optimization Solutions
-
-### 1. Pre-highlight Common Languages
-
-Create a singleton highlighter that loads common languages on startup and cache highlighting results:
-
-```typescript
-// Create a singleton highlighter that loads common languages on startup
-const shikiHighlighterPromise = shiki.createHighlighter({
-  themes: ['github-dark'],
-  langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css', 'jsx', 'tsx'], // Add common languages
-});
-
-// Cache highlighted results to avoid re-highlighting identical code
-const highlightCache = new Map<string, string>();
-```
-
-### 2. Implement a Two-Phase Rendering Strategy
-
-First render with basic/fast highlighting, then enhance with Shiki:
-
-```typescript
-// In code-block.tsx
-const CodeBlock = ({ children, language }) => {
-  // First render quickly with basic formatting (no Shiki)
-  const [html, setHtml] = useState(getBasicHighlightedHtml(children, language));
-  const [isEnhanced, setIsEnhanced] = useState(false);
-  
-  useEffect(() => {
-    let isMounted = true;
-    
-    // Second phase: load enhanced highlighting
-    const enhanceHighlighting = async () => {
-      const cacheKey = `${language}:${children}`;
-      
-      // Check cache first
-      if (highlightCache.has(cacheKey)) {
-        if (isMounted) {
-          setHtml(highlightCache.get(cacheKey)!);
-          setIsEnhanced(true);
-        }
-        return;
-      }
-      
-      // Otherwise highlight with Shiki
-      try {
-        const highlighter = await shikiHighlighterPromise;
-        const enhanced = await highlighter.codeToHtml(children, {
-          lang: language || 'text',
-          theme: 'github-dark'
-        });
-        
-        // Cache the result
-        highlightCache.set(cacheKey, enhanced);
-        
-        if (isMounted) {
-          setHtml(enhanced);
-          setIsEnhanced(true);
-        }
-      } catch (error) {
-        console.error("Enhanced highlighting failed:", error);
-        // We already have basic highlighting, so no fallback needed
-      }
-    };
-    
-    enhanceHighlighting();
-    
-    return () => { isMounted = false; };
-  }, [children, language]);
-  
-  return (
-    <div className="code-container">
-      <div 
-        className={`code-content ${isEnhanced ? 'enhanced' : 'basic'}`}
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
-  );
-};
-
-// Simple synchronous highlighter for first render
-function getBasicHighlightedHtml(code: string, language: string): string {
-  // Implement basic highlighting with regex for keywords or just escape HTML
-  const escaped = code
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-  
-  // Simple highlighting for common languages with regex
-  // (implement basic keyword highlighting for most common languages)
-  
-  return `<pre class="shiki-basic"><code class="language-${language}">${escaped}</code></pre>`;
-}
-```
-
-### 3. Simplify Content Extraction
-
-Replace complex nested extraction logic with a simpler approach:
-
-```typescript
-// In markdown-renderer.tsx
-const CodeWrapper = ({ children, className }) => {
-  // Extract language from className (simpler approach)
-  const languageMatch = /language-(\w+)/.exec(className || '');
-  const language = languageMatch ? languageMatch[1] : 'text';
-  
-  // Extract code content directly
-  let code = '';
-  React.Children.forEach(children, child => {
-    if (typeof child === 'string') {
-      code += child;
-    } else if (React.isValidElement(child) && child.props.children) {
-      // Handle nested content
-      if (typeof child.props.children === 'string') {
-        code += child.props.children;
-      }
-    }
-  });
-  
-  return <CodeBlock language={language}>{code}</CodeBlock>;
-};
-```
-
-### 4. Use CSS Transitions Better
-
-Implement smooth transitions between highlighting states:
-
-```css
-/* In your styles */
-.code-content {
-  transition: opacity 200ms ease-out;
+function getHighlighter() {
+  if (!highlighterPromise) {
+    highlighterPromise = shiki.createHighlighter({
+      themes: ['github-dark'],
+      langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css'],
+    });
+  }
+  return highlighterPromise;
 }
 
-.code-content.basic {
-  /* Styling for basic highlighting */
-  opacity: 0.95;
-}
-
-.code-content.enhanced {
-  /* Styling for enhanced highlighting */
-  opacity: 1;
-}
-```
-
-### 5. Optimize DOM Structure for Performance
-
-Optimize the component structure for better rendering performance:
-
-```typescript
-// In code-block.tsx
-const CodeBlock = () => {
-  // ...
+// Function to highlight a single line of code
+async function highlightLine(line: string, language: string): Promise<string> {
+  // Simple escape function for immediate display while waiting for Shiki
+  function escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
   
-  return (
-    <div className="code-container" style={{ contain: 'content', minHeight: lineCount * 1.5 + 'em' }}>
-      {/* Header remains stable */}
-      {headerSection}
-      
-      {/* Content transitions smoothly */}
-      <div 
-        className="code-content-wrapper"
-        style={{ 
-          position: 'relative',
-          overflow: 'hidden',
-          willChange: 'contents' // Performance hint
-        }}
-      >
-        <div
-          className={`code-content ${isEnhanced ? 'enhanced' : 'basic'}`}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      </div>
-    </div>
-  );
-};
-```
-
-### 6. Reduce Debug Logging in Production
-
-Implement a conditional logger to reduce performance impact:
-
-```typescript
-// Create a conditional logger that can be disabled in production
-const logger = {
-  log: process.env.NODE_ENV === 'development' ? console.log : () => {},
-  error: console.error
-};
-
-// Replace all console.log calls with logger.log
-```
-
-### 7. Consider Using Web Workers for Highlighting
-
-For large code blocks, offload processing to a web worker:
-
-```typescript
-// In a separate file: highlight-worker.js
-self.onmessage = async ({ data }) => {
-  const { code, language, id } = data;
-  
-  // Import shiki in the worker
-  importScripts('path-to-shiki-bundle.js');
+  // For empty lines, just return a line break
+  if (!line.trim()) {
+    return '<span class="line"></span>';
+  }
   
   try {
-    const highlighter = await shiki.createHighlighter({
-      themes: ['github-dark'],
-      langs: [language]
-    });
-    
-    const html = await highlighter.codeToHtml(code, {
-      lang: language,
+    const highlighter = await getHighlighter();
+    // Highlight just this single line
+    const html = await highlighter.codeToHtml(line, {
+      lang: language || 'text',
       theme: 'github-dark'
     });
     
-    self.postMessage({ id, html, success: true });
+    // Extract just the highlighted content from the HTML
+    const codeContent = html.match(/<code>(.*?)<\/code>/s)?.[1] || '';
+    return `<span class="line">${codeContent}</span>`;
   } catch (error) {
-    self.postMessage({ id, error: error.message, success: false });
+    // Fallback to basic HTML escaping if highlighting fails
+    return `<span class="line">${escapeHtml(line)}</span>`;
   }
+}
+
+interface StreamingCodeBlockProps {
+  content: string;
+  language: string;
+  streamingSpeed?: number; // ms between line additions
+}
+
+export const StreamingCodeBlock: React.FC<StreamingCodeBlockProps> = ({
+  content,
+  language,
+  streamingSpeed = 30, // Default speed between lines
+}) => {
+  // Store rendered lines as an array of HTML strings
+  const [renderedLines, setRenderedLines] = useState<string[]>([]);
+  const [isComplete, setIsComplete] = useState(false);
+  const contentLines = useRef<string[]>([]);
+  const currentLineIndex = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Parse content into lines once on mount or when content changes completely
+  useEffect(() => {
+    contentLines.current = content.split('\n');
+    currentLineIndex.current = 0;
+    setRenderedLines([]);
+    setIsComplete(false);
+  }, [content]);
+  
+  // Process each line one at a time
+  useEffect(() => {
+    if (currentLineIndex.current >= contentLines.current.length) {
+      setIsComplete(true);
+      return;
+    }
+    
+    const processNextLine = async () => {
+      const line = contentLines.current[currentLineIndex.current];
+      const highlightedLine = await highlightLine(line, language);
+      
+      // Add this line to our rendered lines (never replacing previous ones)
+      setRenderedLines(prev => [...prev, highlightedLine]);
+      
+      // Move to next line
+      currentLineIndex.current += 1;
+    };
+    
+    // Process the next line after a delay
+    const timer = setTimeout(processNextLine, streamingSpeed);
+    return () => clearTimeout(timer);
+  }, [renderedLines, language, streamingSpeed]);
+  
+  // Auto-scroll to bottom as new lines are added
+  useEffect(() => {
+    if (containerRef.current && renderedLines.length > 0) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [renderedLines]);
+  
+  return (
+    <div className="code-block-container">
+      <div className="code-header">
+        <span className="language-tag">{language}</span>
+        <button 
+          className="copy-button"
+          onClick={() => navigator.clipboard.writeText(content)}
+          aria-label="Copy code"
+        >
+          Copy
+        </button>
+      </div>
+      
+      <div 
+        ref={containerRef}
+        className="code-content-container"
+        style={{ 
+          maxHeight: '500px',
+          overflow: 'auto',
+          position: 'relative'
+        }}
+      >
+        <pre className="shiki">
+          <code dangerouslySetInnerHTML={{ 
+            __html: renderedLines.join('\n') 
+          }} />
+        </pre>
+      </div>
+      
+      <style jsx>{`
+        .code-block-container {
+          border: 1px solid #1e2a3a;
+          border-radius: 8px;
+          overflow: hidden;
+          background: #0d1117;
+          font-family: monospace;
+          margin: 1rem 0;
+        }
+        
+        .code-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.5rem 1rem;
+          background: #161b22;
+          border-bottom: 1px solid #30363d;
+        }
+        
+        .language-tag {
+          font-size: 0.8rem;
+          color: #8b949e;
+          text-transform: lowercase;
+        }
+        
+        .copy-button {
+          background: transparent;
+          color: #8b949e;
+          border: 1px solid #30363d;
+          border-radius: 4px;
+          padding: 0.25rem 0.5rem;
+          font-size: 0.8rem;
+          cursor: pointer;
+        }
+        
+        .copy-button:hover {
+          background: #1f6feb;
+          color: white;
+        }
+        
+        .code-content-container {
+          padding: 1rem;
+        }
+        
+        .line {
+          display: block;
+          animation: fadeIn 0.3s ease-out;
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
 };
 
-// In your component
-useEffect(() => {
-  if (!codeString) return;
-  
-  const worker = new Worker('highlight-worker.js');
-  const id = Math.random().toString(36).slice(2);
-  
-  worker.onmessage = ({ data }) => {
-    if (data.id === id && data.success) {
-      setHtml(data.html);
-      setIsEnhanced(true);
-    }
-  };
-  
-  worker.postMessage({ code: codeString, language, id });
-  
-  return () => worker.terminate();
-}, [codeString, language]);
+// Example usage:
+// <StreamingCodeBlock 
+//   content="const hello = 'world';\nconsole.log(hello);\n\n// This is a comment\nfunction add(a, b) {\n  return a + b;\n}" 
+//   language="javascript" 
+//   streamingSpeed={50}
+// />
 ```
 
-### 8. Additional Recommendations
+## Implementation Details
 
-1. **Use CSS `will-change` judiciously** for elements that will animate
-2. **Implement a faster content hashing function** 
-3. **Preload Shiki and common languages** on application startup
-4. **Reduce the DOM complexity** of the code highlighting component
-5. **Consider using a simpler highlighting library** for the first render phase, such as highlight.js which is faster but less accurate
+This approach has several advantages:
 
-## Implementation Plan
+1. **True Line-by-Line Streaming**:
+   - Each line is processed independently
+   - Lines are never re-highlighted once added
+   - The DOM only grows, never replacing existing content
 
-1. Create shared highlighter service
-2. Refactor code-block.tsx to use two-phase highlighting
-3. Simplify the markdown-renderer code extraction logic
-4. Optimize the HTML and CSS structure
-5. Add caching layer for highlighted code
-6. Replace debug logging with conditional logger
-7. Optimize all memoization strategies
+2. **Performance Optimization**:
+   - Singleton Shiki highlighter that's only created once
+   - Each line is highlighted individually, making the work incremental
+   - No re-rendering of previous content during streaming
+   - Lines are added to the DOM with append-only operations
 
-This approach creates a two-phase rendering system that shows basic highlighting immediately (no flash of unstyled content) and smoothly transitions to enhanced highlighting when ready, significantly reducing the perceived flashing.
+3. **Visual Polish**:
+   - Simple fade-in animation for each new line
+   - Auto-scrolling to follow new content
+   - Clean transitions with no flashing or visual jumps
+
+4. **Low Memory Usage**:
+   - Only holds state for what's already been processed
+   - No need to hold multiple versions of the same content
+
+5. **Maintainable Architecture**:
+   - Clean separation of highlighter logic
+   - Explicit state management
+   - Self-contained component with no external dependencies
+   - Easy to customize animation timing and appearance
+
+## How It Works
+
+1. A singleton highlighter is initialized once and reused for all highlighting operations
+2. Content is split into lines on initial render
+3. Each line is processed independently with a small delay between lines
+4. Highlighted lines are added to the DOM with a CSS animation for smooth appearance
+5. The rendered content is stored as an array of HTML strings that only grows, never changes
+6. Once all lines are processed, the component marks itself as complete
+
+This approach ensures that we never waste CPU time re-highlighting content that's already been displayed, creating a very efficient streaming experience with minimal browser rendering work.
