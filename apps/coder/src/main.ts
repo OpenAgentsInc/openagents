@@ -157,10 +157,25 @@ function createWindow() {
       nodeIntegration: true,
       nodeIntegrationInSubFrames: false,
       preload: preload,
+      webSecurity: true, // Enable web security
+      allowRunningInsecureContent: false,
     },
     titleBarStyle: "hidden",
     icon: iconPath,
     title: "Coder",
+  });
+  
+  // Set up custom web request handling to allow connections to our local API server
+  // This fixes the "Failed to fetch" errors when the app is making network requests
+  mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    // Check if this is an API request to our local server
+    if (details.url.includes('/api/') && !details.url.startsWith(`http://localhost:${LOCAL_API_PORT}`)) {
+      const redirectUrl = `http://localhost:${LOCAL_API_PORT}${new URL(details.url).pathname}${new URL(details.url).search || ''}`;
+      console.log(`[Main Process] Redirecting API request from ${details.url} to ${redirectUrl}`);
+      callback({ redirectURL: redirectUrl });
+    } else {
+      callback({});
+    }
   });
   registerListeners(mainWindow);
 

@@ -4,7 +4,7 @@ import * as React from "react"
 import { XCircle } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "./alert"
 import { Button } from "./button"
-import { toast } from "./sonner"
+import { toast } from "sonner"
 
 /**
  * Error message codes and their user-friendly explanations

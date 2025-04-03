@@ -66,7 +66,8 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     id: options.id,
     maxSteps: options.maxSteps || 10,
     // Set explicit AI API options to ensure compatibility
-    api: options.api || 'https://chat.openagents.com',
+    // Always use relative URL in Electron context to work with our URL redirector
+    api: options.api || '/api/chat',
     body: {
       ...options.body,
       // Add any missing required parameters for the AI API
@@ -77,6 +78,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       ...options.headers,
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
+      'X-Requested-With': 'XMLHttpRequest',
     },
     // Force the stream protocol to be data for compatibility
     streamProtocol: 'data' as 'data',
