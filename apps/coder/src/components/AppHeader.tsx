@@ -61,7 +61,7 @@ export const AppHeader = memo(function AppHeader() {
               variant="outline"
               className="text-[11px] px-[4px] py-[2px] ml-2 mt-[1px] hover:bg-muted cursor-pointer"
             >
-              v0.0.1
+              v0.0.1-rc1
             </Badge>
           </Link>
         </span>
