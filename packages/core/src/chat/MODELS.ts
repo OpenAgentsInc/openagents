@@ -470,36 +470,36 @@ export const MODELS: Model[] = [
     },
     "per_request_limits": null
   },
-  {
-    author: "mistralai",
-    provider: "openrouter",
-    "id": "mistralai/mistral-nemo",
-    "name": "Mistral Nemo",
-    "created": 1721347200,
-    "description": "A 12B parameter model with a 128k token context length built by Mistral in collaboration with NVIDIA.\n\nThe model is multilingual, supporting English, French, German, Spanish, Italian, Portuguese, Chinese, Japanese, Korean, Arabic, and Hindi.\n\nIt supports function calling and is released under the Apache 2.0 license.",
-    "shortDescription": "12B multilingual model with 128k context window, supporting 11 languages and function calling capabilities.",
-    "context_length": 128000,
-    supportsTools: true,
-    "architecture": {
-      "modality": "text->text",
-      "tokenizer": "Mistral",
-      "instruct_type": "mistral"
-    },
-    "pricing": {
-      "prompt": "0.000000035",
-      "completion": "0.00000008",
-      "image": "0",
-      "request": "0",
-      "input_cache_read": "0",
-      "input_cache_write": "0",
-      "web_search": "0",
-      "internal_reasoning": "0"
-    },
-    "top_provider": {
-      "context_length": 131072,
-      "max_completion_tokens": 8192,
-      "is_moderated": false
-    },
-    "per_request_limits": null
-  }
+  // {
+  //   author: "mistralai",
+  //   provider: "openrouter",
+  //   "id": "mistralai/mistral-nemo",
+  //   "name": "Mistral Nemo",
+  //   "created": 1721347200,
+  //   "description": "A 12B parameter model with a 128k token context length built by Mistral in collaboration with NVIDIA.\n\nThe model is multilingual, supporting English, French, German, Spanish, Italian, Portuguese, Chinese, Japanese, Korean, Arabic, and Hindi.\n\nIt supports function calling and is released under the Apache 2.0 license.",
+  //   "shortDescription": "12B multilingual model with 128k context window, supporting 11 languages and function calling capabilities.",
+  //   "context_length": 128000,
+  //   supportsTools: true,
+  //   "architecture": {
+  //     "modality": "text->text",
+  //     "tokenizer": "Mistral",
+  //     "instruct_type": "mistral"
+  //   },
+  //   "pricing": {
+  //     "prompt": "0.000000035",
+  //     "completion": "0.00000008",
+  //     "image": "0",
+  //     "request": "0",
+  //     "input_cache_read": "0",
+  //     "input_cache_write": "0",
+  //     "web_search": "0",
+  //     "internal_reasoning": "0"
+  //   },
+  //   "top_provider": {
+  //     "context_length": 131072,
+  //     "max_completion_tokens": 8192,
+  //     "is_moderated": false
+  //   },
+  //   "per_request_limits": null
+  // }
 ]
