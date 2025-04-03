@@ -260,7 +260,7 @@ export const ChatMessage = React.memo(function ChatMessage({
             <CopyButton
               content={content}
               copyMessage="Copied to clipboard"
-              className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+              className="size-6 rounded-md bg-transparent p-1 hover:bg-muted-foreground/10"
             />
           </div>
         </div>
@@ -316,7 +316,7 @@ export const ChatMessage = React.memo(function ChatMessage({
                   <CopyButton
                     content={part.text}
                     copyMessage="Copied to clipboard"
-                    className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+                    className="size-6 rounded-md bg-transparent p-1 hover:bg-muted-foreground/10"
                   />
                 )}
               </div>
