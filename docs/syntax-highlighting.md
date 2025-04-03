@@ -4,12 +4,13 @@ The optimized syntax highlighting implementation in this codebase solves several
 
 1. Handling streaming content with no flickering
 2. Rendering line-by-line with syntax highlighting
-3. Supporting both initial page loads and streaming updates
+3. Supporting both initial page loads and streaming updates with distinct behaviors
 4. Optimizing performance by never re-rendering content
+5. Providing consistent animation timing regardless of processing speed
 
 ## Core Architecture
 
-The solution uses a line-by-line rendering approach with Shiki syntax highlighting:
+The solution uses direct DOM manipulation with Shiki syntax highlighting:
 
 ### 1. Line-Based Rendering
 
@@ -18,8 +19,11 @@ Instead of rendering the entire code block as a single unit, each line is treate
 ```typescript
 // Add a line of code to the DOM
 const lineElement = document.createElement('div');
-lineElement.className = 'code-line animate-in fade-in';
-lineElement.textContent = lineText;
+lineElement.className = 'code-line';
+lineElement.style.width = '100%';
+lineElement.style.minHeight = '1.2em';
+lineElement.style.lineHeight = '1.5';
+lineElement.style.opacity = '0'; // Start invisible
 codeRef.current.appendChild(lineElement);
 ```
 
@@ -34,7 +38,7 @@ let shikiHighlighterPromise: Promise<shiki.Highlighter> | null = null;
 function getHighlighter() {
   if (!shikiHighlighterPromise) {
     shikiHighlighterPromise = shiki.createHighlighter({
-      themes: ['tokyo-night'],
+      themes: ['github-dark'],
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json'],
     });
   }
@@ -42,18 +46,32 @@ function getHighlighter() {
 }
 ```
 
-### 3. Incremental Updates
+### 3. Processing Queue
 
-The code tracks previously rendered content and only processes new or changed lines:
+A key innovation is using a processing queue to ensure consistent animation timing regardless of how long syntax highlighting takes:
 
 ```typescript
-// Process new or changed lines
-for (let i = 0; i < newLines.length; i++) {
-  if (i >= oldLines.length || newLines[i] !== oldLines[i]) {
-    // This is a new or changed line - highlight it
-    addLineWithHighlighting(newLines[i], i);
+// Process queue of lines at a steady rate
+const processLineQueue = () => {
+  if (isProcessingQueueRef.current || lineQueueRef.current.length === 0) return;
+  
+  isProcessingQueueRef.current = true;
+  
+  const nextLine = lineQueueRef.current.shift();
+  if (nextLine) {
+    addLineWithHighlighting(nextLine.text, nextLine.index).then(() => {
+      // After processing, check if there are more lines
+      isProcessingQueueRef.current = false;
+      
+      // Continue with next line after a consistent delay
+      if (lineQueueRef.current.length > 0) {
+        setTimeout(processLineQueue, 20); // Steady animation rate
+      }
+    });
+  } else {
+    isProcessingQueueRef.current = false;
   }
-}
+};
 ```
 
 ### 4. Direct DOM Manipulation
@@ -61,64 +79,180 @@ for (let i = 0; i < newLines.length; i++) {
 Critical for performance, we use direct DOM manipulation to add new content without triggering React renders:
 
 ```typescript
-// Apply highlighting without replacing the element
-lineElement.innerHTML = highlightedContent;
+// Extract just the inner HTML content
+const contentMatch = html.match(/<code[^>]*>(.*?)<\/code>/s);
+if (contentMatch && contentMatch[1]) {
+  // Apply highlighting without replacing the element
+  lineElement.innerHTML = contentMatch[1] || lineText;
+}
 ```
 
-## Streaming Content Flow
+## Dual-Mode Rendering Strategy
 
-The component handles streaming content using this flow:
+The component intelligently handles two distinct rendering scenarios:
 
-1. Each line initially appears instantly as plain text
-2. Then Shiki highlighting is applied line-by-line
-3. This creates a smooth experience where:
-   - Content is visible immediately
-   - Highlighting is applied asynchronously
-   - Previous content is never re-rendered
+### Streaming Content Mode
+
+When content is streaming in real-time:
+
+```typescript
+// Update content when streaming (only if already showing)
+useEffect(() => {
+  if (!hasMounted || !codeRef.current || !isHighlighterReady || !showContent) return;
+  
+  // Skip if no content or no change
+  if (!codeString || codeString === textRef.current) return;
+  
+  // If content has changed, process new/changed lines
+  if (codeString !== textRef.current) {
+    // Remember current content for comparison
+    const oldText = textRef.current;
+    const newText = codeString;
+    textRef.current = newText;
+    
+    // Split into lines
+    const oldLines = oldText.split('\n');
+    const newLines = newText.split('\n');
+    
+    // Only process new and changed lines
+    for (let i = 0; i < newLines.length; i++) {
+      if (i >= oldLines.length || newLines[i] !== oldLines[i]) {
+        // Add to processing queue - this is a new or changed line
+        queueLineForHighlighting(newLines[i], i);
+      }
+    }
+  }
+}, [codeString, hasMounted, isHighlighterReady, language, showContent]);
+```
+
+Key features:
+1. Lines are added one-by-one with individual fade-in animations
+2. Only new or modified lines are processed
+3. Lines are animated in sequence, creating a typing-like effect
+4. Consistent animation timing between lines for smooth appearance
+
+### Page Refresh Mode
+
+For page refresh or initial load:
+
+```typescript
+// Page refresh: Pre-size container and load all content at once
+if (isHighlighterReady && !showContent && textRef.current) {
+  // Set the initial container size to prevent layout shift
+  if (preRef.current) {
+    const approximateHeight = Math.max(60, lines.length * 20);
+    preRef.current.style.minHeight = `${approximateHeight}px`;
+  }
+  
+  // Process all lines in the background
+  const processLines = async () => {
+    // First, highlight all lines without showing them
+    for (let i = 0; i < lines.length; i++) {
+      await addLineWithHighlighting(lines[i], i);
+    }
+    
+    // Then prepare to show content with animation
+    if (codeRef.current) {
+      // Make the entire container initially invisible
+      codeRef.current.style.opacity = '0';
+    }
+    
+    // Mark content as ready to show
+    setShowContent(true);
+    
+    // After a tiny delay, fade in the entire block at once
+    setTimeout(() => {
+      if (codeRef.current) {
+        codeRef.current.style.transition = 'opacity 300ms ease-in-out';
+        codeRef.current.style.opacity = '1';
+      }
+    }, 50);
+  };
+  
+  processLines();
+}
+```
+
+Key features:
+1. Pre-sizes the container to prevent layout shifts
+2. Processes all content at once in the background
+3. Only displays content when everything is highlighted
+4. Fades in the entire code block at once for a clean appearance
+
+## Container Pre-sizing
+
+To prevent layout shifts, the container is pre-sized based on the number of lines:
+
+```typescript
+// Set the initial container size to prevent layout shift
+if (preRef.current) {
+  const approximateHeight = Math.max(60, lines.length * 20); // 20px per line minimum
+  preRef.current.style.minHeight = `${approximateHeight}px`;
+}
+```
+
+## Animation Timing
+
+The component uses CSS transitions for smooth animations with consistent timing:
+
+```typescript
+// Staggered fade-in for streaming mode
+if (isStreaming) {
+  setTimeout(() => {
+    lineEl.classList.remove('opacity-0');
+    lineEl.classList.add('opacity-100', 'transition-opacity', 'duration-300');
+  }, 10);
+}
+```
+
+The processing queue ensures consistent timing between line additions:
+
+```typescript
+// Continue with next line after a consistent delay
+if (lineQueueRef.current.length > 0) {
+  setTimeout(processLineQueue, 20); // Steady animation rate
+}
+```
 
 ## Performance Optimizations
 
 The implementation includes several performance optimizations:
 
-1. **Immutable Lines**: Once a line is rendered, it's never replaced or re-rendered
-2. **Cached Highlighting**: The Shiki highlighter is initialized once
-3. **Differential Updates**: Only new/changed lines are processed
-4. **Element Caching**: Line elements are stored in a ref to avoid recreating them
-5. **Minimal React State**: Render cycles are minimized by using refs instead of state
-6. **Animation Optimization**: Tailwind's utility classes for animations
+1. **Singleton Highlighter**: Initialize Shiki once and reuse for all highlighting operations
+2. **Incremental Processing**: Only process new or changed lines, never reprocessing old content
+3. **DOM Pre-sizing**: Set container heights early to prevent layout shifts
+4. **CSS Transitions**: Use CSS for animations instead of JavaScript for better performance
+5. **Processing Queue**: Ensure consistent animation timing regardless of highlighting speed
+6. **Line Element Caching**: Store line elements in a ref to avoid recreating them
+7. **Direct DOM Manipulation**: Bypass React's rendering cycle for highlighting operations
 
-## Special Cases Handling
+## Visual Design Improvements
 
-The implementation handles several edge cases:
-
-1. **Initial Page Load**: Renders all content immediately with plain text, then enhances with highlighting
-2. **Empty Lines**: Special handling to display blank lines properly
-3. **Delayed Highlighter**: Handles the case where content arrives before the highlighter is ready
-4. **Language Detection**: Graceful fallback when language isn't supported
-
-## Animation
-
-Each line is animated with a subtle fade-in using Tailwind's `animate-in fade-in` class:
-
-```html
-<div class="code-line animate-in fade-in">...</div>
-```
-
-## Implementation Benefits
-
-This approach offers several advantages:
-
-1. **Stability**: No content jumping or layout shifts
-2. **Responsiveness**: Immediate feedback for streaming content
-3. **Visual Quality**: Beautiful syntax highlighting with Shiki
-4. **Performance**: Minimal impact on page rendering
-5. **User Experience**: Smooth animations and consistent behavior
+1. **Text Size**: Reduced to `text-xs` for better readability and space efficiency
+2. **Border and Styling**: Clean border with rounded corners for a modern look
+3. **Copy Button**: Accessible in the top-right corner, visible on hover
+4. **Language Indicator**: Shows the detected language in the header
+5. **Spacing and Padding**: Consistent spacing around code content
 
 ## Future Improvements
 
 Potential future improvements:
 
-1. Adding support for more languages and themes
-2. Implementing token-level diffing for even more granular updates
-3. Adding line numbers with proper synchronization
-4. Supporting focused highlighting for specific code regions
+1. **Line Numbers**: Add optional line numbering with proper alignment
+2. **Language Detection Refinement**: Improve automatic language detection 
+3. **Theme Customization**: Support dynamic theme switching based on user preferences
+4. **Performance Monitoring**: Add optional metrics to track rendering performance
+5. **Syntax Error Highlighting**: Integrate with linters to show syntax errors inline
+6. **Highlighted Line Ranges**: Support highlighting specific lines for emphasis
+
+## Implementation Benefits
+
+This approach offers several key advantages:
+
+1. **No Flickering**: Content never flickers or redraws during streaming
+2. **Consistent Animations**: Line additions happen at a steady pace
+3. **Optimized Page Refresh**: Clean single fade-in for complete content on refresh
+4. **Layout Stability**: Pre-sized containers prevent content jumps
+5. **React Integration**: Works well with React despite using direct DOM manipulation
+6. **Minimal Resource Usage**: Only highlights each line once, never reprocessing
+7. **Tailored Experience**: Different behavior for streaming vs. page refresh scenarios

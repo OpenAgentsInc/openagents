@@ -3,15 +3,101 @@ import { cn } from "@/utils/tailwind";
 import { CopyButton } from "@/components/ui/copy-button";
 import * as shiki from 'shiki';
 
+// Custom theme based on xt256 from highlight.js
+const xt256Theme = {
+  name: 'xt256',
+  type: 'dark',
+  colors: {
+    'editor.background': '#000000',
+    'editor.foreground': '#eaeaea',
+  },
+  settings: [
+    {
+      settings: {
+        background: '#000000',
+        foreground: '#eaeaea',
+      }
+    },
+    {
+      scope: ['comment', 'punctuation.definition.comment'],
+      settings: {
+        foreground: '#969896',
+      }
+    },
+    {
+      scope: ['string', 'string.quoted', 'string.template'],
+      settings: {
+        foreground: '#00ff00',
+      }
+    },
+    {
+      scope: ['constant.numeric', 'constant.language', 'constant.character', 'constant.other'],
+      settings: {
+        foreground: '#ff0000',
+      }
+    },
+    {
+      scope: ['keyword', 'storage', 'storage.type', 'keyword.control'],
+      settings: {
+        foreground: '#fff000',
+        fontStyle: 'bold',
+      }
+    },
+    {
+      scope: ['variable', 'entity.name.function', 'entity.name.class', 'entity.name.type', 'entity.name.tag'],
+      settings: {
+        foreground: '#00ffff',
+      }
+    },
+    {
+      scope: ['entity.name.tag', 'meta.tag', 'markup.heading'],
+      settings: {
+        foreground: '#000fff',
+        fontStyle: 'bold',
+      }
+    },
+    {
+      scope: ['entity.other.attribute-name', 'string.regexp'],
+      settings: {
+        foreground: '#ff00ff',
+      }
+    },
+    {
+      scope: ['variable.parameter', 'meta.parameter'],
+      settings: {
+        foreground: '#da0000',
+      }
+    },
+    {
+      scope: ['meta.preprocessor', 'meta.annotation', 'meta.function-call'],
+      settings: {
+        foreground: '#ffffff',
+      }
+    },
+    {
+      scope: ['markup.italic'],
+      settings: {
+        fontStyle: 'italic',
+      }
+    },
+    {
+      scope: ['markup.bold'],
+      settings: {
+        fontStyle: 'bold',
+      }
+    },
+  ]
+};
+
 // Singleton for Shiki highlighter
 let shikiHighlighterPromise: Promise<shiki.Highlighter> | null = null;
 
 function getHighlighter() {
   if (!shikiHighlighterPromise) {
-    // Initialize once
+    // Initialize once with our custom theme
     shikiHighlighterPromise = shiki.createHighlighter({
-      themes: ['github-dark'],
-      langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json'],
+      themes: [xt256Theme],
+      langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css'],
     });
   }
   return shikiHighlighterPromise;
@@ -124,7 +210,7 @@ export const CodeBlock = React.memo(function CodeBlock({
         // Highlight this specific line
         const html = await highlighter.codeToHtml(lineText, { 
           lang: language || 'text', 
-          theme: 'github-dark' 
+          theme: 'xt256' 
         });
         
         // Extract just the inner HTML content
@@ -284,7 +370,7 @@ export const CodeBlock = React.memo(function CodeBlock({
         <pre
           ref={preRef}
           className={cn(
-            "m-0 px-4 py-4 text-xs font-mono bg-[#0d1117] text-white rounded-b-md",
+            "m-0 px-4 py-4 text-xs font-mono bg-[#000000] text-[#eaeaea] rounded-b-md",
             className
           )}
           style={{
