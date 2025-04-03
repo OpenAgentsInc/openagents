@@ -1,10 +1,11 @@
 {
   "name": "@openagents/coder",
   "productName": "Coder",
-  "version": "0.0.1",
-  "description": "OpenAgents Coder - AI coding assistant",
+  "version": "0.0.1-rc1",
+  "description": "Your AI coder",
   "main": ".vite/build/main.js",
   "license": "AGPL-3.0-or-later",
+  "private": true,
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
