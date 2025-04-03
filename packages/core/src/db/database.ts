@@ -70,10 +70,17 @@ export async function createDatabase(): Promise<Database> {
 
   // Set flag to indicate we're creating the database
   dbCreationInProgress = true;
-  dbLogger.info('Starting database creation process');
+  dbLogger.info('Starting database creation process', { timestamp: Date.now() });
 
   // Create a promise to handle concurrent calls
   dbCreationPromise = (async () => {
+    // Add a timeout to detect hung database initialization
+    const initTimeout = setTimeout(() => {
+      dbLogger.warn('Database initialization is taking longer than expected (10 seconds)', {
+        timeElapsed: '10s',
+        creationInProgress: dbCreationInProgress
+      });
+    }, 10000); // 10 seconds
     try {
       // Import dev mode plugins in development
       if (process.env.NODE_ENV === 'development') {
@@ -229,6 +236,10 @@ export async function createDatabase(): Promise<Database> {
       // Clear the creation flags regardless of outcome
       dbCreationInProgress = false;
       dbCreationPromise = null;
+      
+      // Clear the timeout
+      clearTimeout(initTimeout);
+      dbLogger.info('Database creation process completed (success or failure)');
     }
   })();
 
@@ -245,6 +256,17 @@ export async function getDatabase(): Promise<Database> {
     // await cleanupDatabase();
 
     if (!dbInstance) {
+      // Import logger dynamically to avoid circular dependencies
+      const { createLogger } = await import('../utils/logManager');
+      const dbLogger = createLogger('database');
+      dbLogger.info('Database initialization requested from getDatabase()');
+      
+      // Handle the case where a request comes in while initialization is in progress
+      if (dbCreationInProgress && dbCreationPromise) {
+        dbLogger.info('Another initialization is already in progress, joining that one');
+        return dbCreationPromise;
+      }
+      
       return createDatabase();
     }
     return dbInstance;

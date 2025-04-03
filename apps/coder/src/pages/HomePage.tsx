@@ -1,20 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { useSettings, DEFAULT_SYSTEM_PROMPT } from '@openagents/core';
-import { ModelProvider } from '@/providers/ModelProvider';
-import { ApiKeyProvider } from '@/providers/ApiKeyProvider';
-import { ChatStateProvider } from '@/providers/ChatStateProvider';
-import { MainLayout } from '@/components/layout/MainLayout';
+import React, { useEffect } from 'react';
+import { useSettings } from '@openagents/core';
+import ChatPage from './ChatPage';
+import { logger } from '@openagents/core';
 
 export default function HomePage() {
-  // Get settings
-  const { clearSettingsCache } = useSettings();
-  
-  // State for system prompt
-  const [systemPrompt, setSystemPrompt] = useState<string>("");
-  
-  // Initialize database and load system prompt
+  // Create a database initialization logger
+  const dbLogger = logger.createLogger ? logger.createLogger('database-init') : {
+    info: console.log,
+    error: console.error
+  };
+
+  // Initialize database early
   useEffect(() => {
-    clearSettingsCache();
+    dbLogger.info('HomePage mounted - initializing database');
     
     // Initialize database early
     (async () => {
@@ -22,27 +20,13 @@ export default function HomePage() {
         // Import directly here to avoid circular dependencies
         const db = await import('@openagents/core/src/db/database');
         await db.getDatabase();
-        console.log("Database initialized on startup");
-        
-        // Load system prompt
-        const { settingsRepository } = await import('@openagents/core/src/db/repositories');
-        const savedPrompt = await settingsRepository.getPreference("defaultSystemPrompt", DEFAULT_SYSTEM_PROMPT);
-        setSystemPrompt(savedPrompt);
-        console.log("Loaded system prompt:", savedPrompt === DEFAULT_SYSTEM_PROMPT ? "Using default prompt" : "Custom prompt loaded");
+        dbLogger.info("Database initialized on startup successfully");
       } catch (error) {
-        console.error("Failed to initialize database or load system prompt:", error);
-        setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+        dbLogger.error("Failed to initialize database on startup:", error);
       }
     })();
-  }, [clearSettingsCache]);
+  }, []);
   
-  return (
-    <ModelProvider>
-      <ApiKeyProvider>
-        <ChatStateProvider systemPrompt={systemPrompt}>
-          <MainLayout />
-        </ChatStateProvider>
-      </ApiKeyProvider>
-    </ModelProvider>
-  );
+  // Simply render the ChatPage - all providers are already set up in the router
+  return <ChatPage />;
 }

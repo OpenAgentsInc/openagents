@@ -1,3 +1,4 @@
+import React from "react";
 import { createRoute } from "@tanstack/react-router";
 import { RootRoute } from "./__root";
 import ChatPage from "../pages/ChatPage";
@@ -54,7 +55,15 @@ export const MainLayoutRoute = createRoute({
 export const HomeRoute = createRoute({
   getParentRoute: () => MainLayoutRoute,
   path: "/",
-  component: ChatPage,
+  component: () => {
+    // Import HomePage to ensure database initialization happens
+    const HomePage = React.lazy(() => import('../pages/HomePage'));
+    return (
+      <React.Suspense fallback={<div>Loading...</div>}>
+        <HomePage />
+      </React.Suspense>
+    );
+  },
 });
 
 // Changelog route under MainLayout
