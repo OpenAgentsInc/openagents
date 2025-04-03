@@ -151,7 +151,8 @@ export function createUserFriendlyErrorMessage(error: unknown): string {
   
   // Extract useful information from error message if possible
   
-  // Handle LMStudio-specific errors
+  // Handle LMStudio-specific errors - commented out as LMStudio is disabled
+  /*
   if (errorMessage.includes("LMStudio") || errorMessage.includes("lmstudio")) {
     if (errorMessage.includes("not running") || errorMessage.includes("unavailable")) {
       return "LMStudio server is not running or not responding. Please start LMStudio and enable the Local Server.";
@@ -161,6 +162,7 @@ export function createUserFriendlyErrorMessage(error: unknown): string {
       return "No models loaded in LMStudio. Please load a model in LMStudio first.";
     }
   }
+  */
   
   // Context window errors
   if (errorMessage.includes("context length of only") || 

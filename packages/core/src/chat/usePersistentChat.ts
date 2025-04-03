@@ -66,7 +66,9 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     id: options.id,
     maxSteps: options.maxSteps || 10,
     // Set explicit AI API options to ensure compatibility
-    api: options.api || 'https://chat.openagents.com',
+    // Always use absolute URL in production builds for better reliability
+    // Get the API port from the IPC bridge or fall back to the default port
+    api: options.api || '/api/chat',  // Using relative URL is safer with our redirector
     body: {
       ...options.body,
       // Add any missing required parameters for the AI API
@@ -77,6 +79,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       ...options.headers,
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
+      'X-Requested-With': 'XMLHttpRequest',
     },
     // Force the stream protocol to be data for compatibility
     streamProtocol: 'data' as 'data',

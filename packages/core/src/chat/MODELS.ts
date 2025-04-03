@@ -1,5 +1,5 @@
 interface Model {
-  author: "anthropic" | "cohere" | "deepseek" | "openai" | "google" | "meta" | "mistralai" | "qwen"
+  author: "anthropic" | "cloaked" | "cohere" | "deepseek" | "openai" | "google" | "meta" | "mistralai" | "qwen"
   created: number
   description: string
   id: string
@@ -27,6 +27,8 @@ interface Model {
     modality: "text->text" | "text+image->text"
     tokenizer: string
     instruct_type: string | null
+    input_modalities?: ("image" | "text")[]
+    output_modalities?: ("text")[]
   }
   per_request_limits?: null
   context_length: number
@@ -67,6 +69,46 @@ export const MODELS: Model[] = [
     supportsTools: true,
     shortDescription: "Fast and efficient Claude model"
   },
+
+
+  {
+    id: "openrouter/quasar-alpha",
+    name: "Quasar Alpha",
+    author: "cloaked",
+    provider: "openrouter",
+    created: 1743626809,
+    description: "This is a cloaked model provided to the community to gather feedback. It's a powerful, all-purpose model supporting long-context tasks, including code generation. All prompts and completions for this model are logged by the provider as well as OpenRouter.",
+    context_length: 1000000,
+    architecture: {
+      modality: "text+image->text",
+      input_modalities: [
+        "image",
+        "text"
+      ],
+      output_modalities: [
+        "text"
+      ],
+      tokenizer: "Other",
+      instruct_type: null
+    },
+    pricing: {
+      prompt: "0",
+      completion: "0",
+      request: "0",
+      image: "0",
+      web_search: "0",
+      internal_reasoning: "0",
+      input_cache_read: "0",
+      input_cache_write: "0"
+    },
+    top_provider: {
+      context_length: 1000000,
+      max_completion_tokens: 32000,
+      is_moderated: false
+    },
+    per_request_limits: null
+  },
+
   // {
   //   id: "claude-3-5-sonnet-20240620",
   //   name: "Claude 3.5 Sonnet (Old)",
@@ -78,6 +120,8 @@ export const MODELS: Model[] = [
   //   supportsTools: true,
   //   shortDescription: "Versatile Claude model"
   // },
+  // LMStudio models - commented out to prevent unnecessary connection attempts
+  /*
   {
     author: 'qwen',
     provider: 'lmstudio',
@@ -100,6 +144,7 @@ export const MODELS: Model[] = [
     shortDescription: "Qwen 2 7B Instruct is a large language model with 7B parameters.",
     supportsTools: true,
   },
+  */
   // {
   //   author: "meta",
   //   provider: "ollama",

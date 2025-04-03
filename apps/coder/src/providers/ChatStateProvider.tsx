@@ -2,6 +2,7 @@ import React, { createContext, useContext, useCallback, useState, useRef, useMem
 import { usePersistentChat, type UIMessage, createUserFriendlyErrorMessage } from '@openagents/core';
 import { useModelContext } from './ModelProvider';
 import { useApiKeyContext } from './ApiKeyProvider';
+import { showNetworkErrorToast } from '@/components/ui/NetworkErrorNotification';
 
 // Create separate contexts for different parts of the state
 // This allows components to only rerender when the parts they care about change
@@ -129,19 +130,19 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       // Detailed error logging to diagnose the issue
       console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
       console.log(error);
-      
+
       if (error instanceof Error) {
         console.log("%c ERROR MESSAGE:", "background: red; color: white");
         console.log(error.message);
         console.log("%c ERROR STACK:", "background: red; color: white");
         console.log(error.stack);
-        
+
         console.log("%c ERROR CAUSE:", "background: red; color: white");
         console.log((error as any).cause);
-        
+
         console.log("%c ERROR CODE:", "background: red; color: white");
         console.log((error as any).code);
-        
+
         // Try to get ALL properties
         console.log("%c ALL ERROR PROPERTIES:", "background: red; color: white");
         console.log(Object.getOwnPropertyNames(error).map(prop => ({
@@ -153,6 +154,38 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       // CRITICAL: Don't use append in onError because it can trigger another error and cause infinite loops
       // Instead, use direct state manipulation which is safe and won't trigger API calls
 
+      // Special handling for network issues
+      if (error instanceof Error && error.message === 'Failed to fetch') {
+        console.log("%c NETWORK ERROR DETECTED:", "background: red; color: white");
+        console.log("This is likely a network connectivity issue with the local API server");
+        
+        // Create a more descriptive error message for the user
+        const networkErrorMessage: UIMessage = {
+          id: `error-${Date.now()}`,
+          role: 'system',
+          content: "⚠️ Network Error: Unable to connect to AI service. Please check your network connection and try again.",
+          createdAt: new Date(),
+          threadId: currentThreadId || undefined,
+          parts: [{ 
+            type: 'text', 
+            text: "⚠️ Network Error: Unable to connect to AI service. Please check your network connection and try again."
+          }]
+          // Remove isError as it's not in the UIMessage type
+        };
+        
+        // Show a toast notification to help the user
+        showNetworkErrorToast(() => {
+          // Retry function logic would go here
+          console.log("User requested connection retry");
+        });
+        
+        // Use direct state manipulation to avoid network calls
+        // Get current messages and append the network error message
+        const currentMessages = [...messages, networkErrorMessage];
+        setMessages(currentMessages);
+        return;
+      }
+      
       // Skip error handling for errors coming from append() itself to break the loop
       if (error instanceof Error && error.message &&
         (error.message.includes('append error') ||
@@ -160,24 +193,24 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         console.warn("Skipping recursive error handling to prevent infinite loop");
         return;
       }
-      
+
       // Very simplified approach - just detect tool errors
-      let isToolError = error instanceof Error && 
-        (error.message.includes('Error executing tool') || 
-         (error.stack && error.stack.includes('Error executing tool')) ||
-         error.message.includes('Authentication Failed') ||
-         (error.stack && error.stack.includes('Authentication Failed')));
-      
+      let isToolError = error instanceof Error &&
+        (error.message.includes('Error executing tool') ||
+          (error.stack && error.stack.includes('Error executing tool')) ||
+          error.message.includes('Authentication Failed') ||
+          (error.stack && error.stack.includes('Authentication Failed')));
+
       // Get user-friendly error message using utility function
       // FINAL APPROACH: Just use the raw error message
       // For context overflow errors or TypeValidationError, show the exact message
       let userFriendlyError = "";
-      
+
       // CRITICAL: Check for AI_ToolExecutionError specifically
-      if ((error as any)?.name === 'AI_ToolExecutionError' || 
-          (error as any)?.cause?.name === 'MCPClientError') {
+      if ((error as any)?.name === 'AI_ToolExecutionError' ||
+        (error as any)?.cause?.name === 'MCPClientError') {
         console.log("DETECTED DIRECT TOOL EXECUTION ERROR - HIGH PRIORITY");
-        
+
         // If it's a direct tool execution error, get the message directly
         if ((error as any).message && (error as any).message.includes('Error executing tool')) {
           userFriendlyError = (error as any).message;
@@ -204,17 +237,17 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           console.log("CLIENT: USING TOOL EXECUTION ERROR WITH CUSTOM PROPERTY:", userFriendlyError);
         }
         // Check for the special symbol that marks this as an AI_ToolExecutionError
-        else if (Object.getOwnPropertySymbols(error).some(sym => 
-            String(sym) === 'Symbol(vercel.ai.error.AI_ToolExecutionError)')) {
+        else if (Object.getOwnPropertySymbols(error).some(sym =>
+          String(sym) === 'Symbol(vercel.ai.error.AI_ToolExecutionError)')) {
           console.log("CLIENT: DETECTED AI_TOOL_EXECUTION_ERROR VIA SYMBOL");
-          
+
           // Directly use the message as it's the most reliable
           userFriendlyError = error.message;
           console.log("CLIENT: USING AI_TOOL_EXECUTION_ERROR MESSAGE:", userFriendlyError);
         }
         // Check if the error message directly contains tool execution error
         else if (error.message && (
-          error.message.includes('Error executing tool') || 
+          error.message.includes('Error executing tool') ||
           error.message.includes('AI_ToolExecutionError') ||
           error.message.includes('Authentication Failed')
         )) {
@@ -224,7 +257,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         }
         // Check if the error stack includes tool execution error
         else if (error.stack && (
-          error.stack.includes('Error executing tool') || 
+          error.stack.includes('Error executing tool') ||
           error.stack.includes('AI_ToolExecutionError') ||
           error.stack.includes('Authentication Failed')
         )) {
@@ -243,49 +276,49 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         // Generic error message case - try to extract tool execution error
         else if (error.message === "An error occurred." || error.message === "An error occurred") {
           console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE - CHECKING FOR TOOL ERROR IN CAUSE");
-          
+
           // Get the raw error object properties
           const errorProps = Object.getOwnPropertyNames(error).map(prop => ({
             property: prop,
             value: (error as any)[prop]
           }));
-          
+
           // Check if we have a actual tool execution error in any of the properties
           // First look for the common patterns in all properties
           let foundToolError = false;
-          
+
           // Check all properties for tool execution errors
           for (const prop of errorProps) {
             const value = prop.value;
             if (typeof value === 'string' && (
-                value.includes('Error executing tool') || 
-                value.includes('Authentication Failed') ||
-                value.includes('Bad credentials'))) {
+              value.includes('Error executing tool') ||
+              value.includes('Authentication Failed') ||
+              value.includes('Bad credentials'))) {
               userFriendlyError = value;
               console.log(`CLIENT: FOUND TOOL ERROR IN PROPERTY ${prop.property}:`, userFriendlyError);
               foundToolError = true;
               break;
             }
           }
-          
+
           // If not found, check for AI_ToolExecutionError in the cause
           if (!foundToolError && (error as any).cause) {
             const cause = (error as any).cause;
-            
+
             // Check if cause has message with tool error
             if (cause.message && (
-                cause.message.includes('Error executing tool') || 
-                cause.message.includes('Authentication Failed') ||
-                cause.message.includes('Bad credentials'))) {
+              cause.message.includes('Error executing tool') ||
+              cause.message.includes('Authentication Failed') ||
+              cause.message.includes('Bad credentials'))) {
               userFriendlyError = cause.message;
               console.log("CLIENT: FOUND TOOL ERROR IN CAUSE.MESSAGE:", userFriendlyError);
               foundToolError = true;
             }
             // Check if cause stack has tool error
             else if (cause.stack && (
-                cause.stack.includes('Error executing tool') || 
-                cause.stack.includes('Authentication Failed') ||
-                cause.stack.includes('Bad credentials'))) {
+              cause.stack.includes('Error executing tool') ||
+              cause.stack.includes('Authentication Failed') ||
+              cause.stack.includes('Bad credentials'))) {
               // Try to extract the actual error from the stack trace
               const match = cause.stack.match(/(Error executing tool[^:\n]+(:[^\n]+))/i);
               if (match && match[1]) {
@@ -295,7 +328,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
               }
             }
           }
-          
+
           // If we didn't find a better error, use the original
           if (!foundToolError) {
             // CRITICAL FIX: Override the generic message with a better one for this specific error
@@ -307,24 +340,24 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
               console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
             }
           }
-          
+
           // Try to extract a better error message from potential sources
           const cause = (error as any).cause;
           const data = (error as any).data;
           const detail = (error as any).detail;
           const errorData = (error as any).errorData;
-          
+
           // Check if we have a cause with better info
           if (cause) {
             console.log("CLIENT: FOUND CAUSE - TYPE:", typeof cause);
-            
+
             // Handle different cause types
             if (typeof cause === 'object') {
               // MCPClientError case
               if (cause.name === 'MCPClientError' && cause.message) {
                 userFriendlyError = "Error executing tool: " + cause.message;
                 console.log("CLIENT: EXTRACTED MCP CLIENT ERROR MESSAGE:", userFriendlyError);
-              } 
+              }
               // General error with message
               else if (cause.message) {
                 userFriendlyError = cause.message;
@@ -340,7 +373,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
                 userFriendlyError = "Error executing tool: " + JSON.stringify(cause);
                 console.log("CLIENT: USING STRINGIFIED CAUSE:", userFriendlyError);
               }
-            } 
+            }
             // String cause
             else if (typeof cause === 'string') {
               userFriendlyError = cause;
@@ -352,7 +385,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
             userFriendlyError = typeof errorData === 'string' ? errorData : JSON.stringify(errorData);
             console.log("CLIENT: EXTRACTED ERROR DATA:", userFriendlyError);
           }
-          // Check for HTTP error details 
+          // Check for HTTP error details
           else if (detail) {
             userFriendlyError = typeof detail === 'string' ? detail : JSON.stringify(detail);
             console.log("CLIENT: EXTRACTED ERROR DETAIL:", userFriendlyError);
@@ -418,14 +451,14 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           console.warn("Empty error message, skipping error handling");
           return;
         }
-        
+
         // If we have a generic error, always use our hardcoded error
         if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
           userFriendlyError = "Error executing tool: Authentication Failed: Bad credentials";
           console.log("OVERRIDING GENERIC ERROR WITH TOOL ERROR:", userFriendlyError);
           isToolError = true;
         }
-        
+
         // FINAL FIX - For context overflow errors, show the exact raw message - WITHOUT ANY PREFIX
         let errorContent;
 
@@ -433,11 +466,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 
         // Handle tool execution errors and authentication errors - show them exactly as received
         if (userFriendlyError && (
-            userFriendlyError.includes('Error executing tool') || 
-            userFriendlyError.includes('Authentication Failed') ||
-            userFriendlyError.includes('Bad credentials') ||
-            userFriendlyError.includes('AI_ToolExecutionError')
-          )) {
+          userFriendlyError.includes('Error executing tool') ||
+          userFriendlyError.includes('Authentication Failed') ||
+          userFriendlyError.includes('Bad credentials') ||
+          userFriendlyError.includes('AI_ToolExecutionError')
+        )) {
           console.log("DETECTED TOOL EXECUTION ERROR:", userFriendlyError);
           // Show the exact error message without modification
           errorContent = userFriendlyError;
@@ -481,9 +514,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         }
         else {
           // Normal error formatting with prefix - but avoid adding redundant prefixes
-          if (userFriendlyError.startsWith('Error') || 
-              userFriendlyError.startsWith('⚠️') || 
-              userFriendlyError.startsWith('MODEL_ERROR')) {
+          if (userFriendlyError.startsWith('Error') ||
+            userFriendlyError.startsWith('⚠️') ||
+            userFriendlyError.startsWith('MODEL_ERROR')) {
             // Don't add a prefix if one already exists
             errorContent = userFriendlyError;
             console.log("USING ERROR AS-IS (ALREADY HAS PREFIX):", userFriendlyError);
@@ -496,7 +529,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 
         // Set a flag to directly mark this as a tool error if it contains our hardcoded tool error
         const forcedToolError = userFriendlyError.includes("Error executing tool: Authentication Failed: Bad credentials");
-        
+
         // Create a new error message with parts to match UIMessage type
         const errorSystemMessage = {
           id: `error-${Date.now()}`,
@@ -506,33 +539,33 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           threadId: currentThreadId,
           parts: [{ type: 'text' as const, text: errorContent }],
           // Mark as an error if it's a tool execution error or contains authentication errors or is our forced tool error
-          isError: forcedToolError || 
-                   errorContent.includes('Error executing tool') || 
-                   errorContent.includes('Authentication Failed') ||
-                   errorContent.includes('Bad credentials')
+          isError: forcedToolError ||
+            errorContent.includes('Error executing tool') ||
+            errorContent.includes('Authentication Failed') ||
+            errorContent.includes('Bad credentials')
         };
 
         // Ultra simplified approach - just check if we have messages and add the error
         if (Array.isArray(messages)) {
           // Make a deep copy to ensure we don't lose any existing messages
-          const existingMessages = messages.map(msg => ({...msg}));
-          
+          const existingMessages = messages.map(msg => ({ ...msg }));
+
           // Always add as a new message, never replace existing ones
-          const updatedMessages = [...existingMessages, errorSystemMessage]; 
-          
-          console.log("APPENDING ERROR MESSAGE", { 
-            isToolError, 
-            errorContent, 
+          const updatedMessages = [...existingMessages, errorSystemMessage];
+
+          console.log("APPENDING ERROR MESSAGE", {
+            isToolError,
+            errorContent,
             existingMessageCount: existingMessages.length,
             updatedCount: updatedMessages.length
           });
-          
+
           // Double-check that we're not losing messages
           if (updatedMessages.length > 0) {
             console.log("CURRENT THREAD ID:", currentThreadId);
-            console.log("MESSAGES BEFORE UPDATE:", messages.map(m => ({id: m.id, threadId: m.threadId})));
-            console.log("UPDATED MESSAGES:", updatedMessages.map(m => ({id: m.id, threadId: m.threadId})));
-            
+            console.log("MESSAGES BEFORE UPDATE:", messages.map(m => ({ id: m.id, threadId: m.threadId })));
+            console.log("UPDATED MESSAGES:", updatedMessages.map(m => ({ id: m.id, threadId: m.threadId })));
+
             // Use the most basic approach possible
             try {
               // Most basic approach - just directly append the error and hope for the best
@@ -541,7 +574,8 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
                 id: `error-${Date.now()}`,
                 role: 'system',
                 content: errorContent,
-                threadId: currentThreadId || undefined
+                threadId: currentThreadId || undefined,
+                parts: [{ type: 'text', text: errorContent }]
               });
             } catch (err) {
               console.error("Error appending error message:", err);
@@ -586,9 +620,38 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       // No return value (void) to match the expected type signature
     } catch (error) {
       console.error("Failed to create new thread:", error);
-      // Create a fallback thread in UI only
-      // This can happen if DB fails to initialize
-      alert("Could not create a new thread. Database may be initializing. Please try again.");
+
+      // Check if this is a database error
+      if (error instanceof Error) {
+        // Check for DB9 error (ignoreDuplicate in production)
+        if (typeof error === 'object' && 'code' in error && error.code === 'DB9') {
+          // Dispatch a database error event
+          window.dispatchEvent(new CustomEvent('database-error', {
+            detail: { error }
+          }));
+
+          // Show a nicer error than alert
+          import('@/components/ui/database-error-notification').then(module => {
+            const { showDatabaseErrorToast } = module;
+            showDatabaseErrorToast(error);
+          });
+        } else {
+          // For other errors, show a simpler message
+          import('sonner').then(({ toast }) => {
+            toast.error("Database Error", {
+              description: "Could not create a new thread. Try again or check the debug console.",
+              action: {
+                label: "Debug Console",
+                onClick: () => window.location.href = '/settings/debug'
+              }
+            });
+          });
+        }
+      } else {
+        // Fallback to alert for non-Error objects
+        alert("Could not create a new thread. Database may be initializing. Please try again.");
+      }
+
       throw error;
     }
   }, [createNewThread]);
@@ -614,11 +677,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
   // This function should not do heavy processing - it's only for the main provider
   const processedMessages = React.useMemo(() => {
     // Add logging to see what messages we're processing
-    console.log("PROCESSING MESSAGES FOR DISPLAY", { 
-      count: messages.length, 
-      ids: messages.map(m => m.id).join(',')
-    });
-    
+    // console.log("PROCESSING MESSAGES FOR DISPLAY", {
+    //   count: messages.length,
+    //   ids: messages.map(m => m.id).join(',')
+    // });
+
     return messages.map(msg => ({
       ...msg,
       parts: msg.parts || [{
