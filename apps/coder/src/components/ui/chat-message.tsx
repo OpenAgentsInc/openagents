@@ -190,9 +190,14 @@ export const ChatMessage = React.memo(function ChatMessage({
   const isUser = useMemo(() => role === "user", [role])
   const isSystem = useMemo(() => role === "system", [role])
   
-  // Check if this is a tool execution error message
+  // Check if this is a tool execution error message - check for all variants
   const isToolError = useMemo(() => 
-    propIsError || (content && content.includes('Error executing tool')),
+    propIsError || 
+    (content && (
+      content.includes('Error executing tool') || 
+      content.includes('Authentication Failed') ||
+      content.includes('Bad credentials')
+    )),
   [propIsError, content])
 
   // Memoize the formatted time to avoid recalculations
@@ -222,7 +227,16 @@ export const ChatMessage = React.memo(function ChatMessage({
       content.includes('context length of only') ||
       content.includes('Trying to keep the first') ||
       content.includes('Error executing tool') ||
-      content.includes('Authentication Failed: Bad credentials');
+      content.includes('Authentication Failed') ||
+      content.includes('Bad credentials') ||
+      content.includes('An error occurred') || // Include generic errors
+      isToolError;
+      
+    // Force the tool error flag if the content contains our specific error strings
+    const forcedToolError = isToolError || 
+                          content.includes('Error executing tool') || 
+                          content.includes('Authentication Failed') || 
+                          content.includes('Bad credentials');
 
     // Add more detailed console logging for debugging
     console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
@@ -240,11 +254,27 @@ export const ChatMessage = React.memo(function ChatMessage({
 
     // Format tool execution errors to display on two lines
     let formattedContent = content;
-    if (isToolError && content.includes('Error executing tool') && content.includes(':')) {
-      const parts = content.split(':');
-      if (parts.length >= 2) {
+    
+    // Check if the content starts with the warning prefix and remove it for tool errors
+    if (content.startsWith('⚠️ Error:') && 
+        (content.includes('Error executing tool') || 
+         content.includes('Authentication Failed') ||
+         content.includes('Bad credentials'))) {
+      // Remove the prefix for tool errors
+      formattedContent = content.replace('⚠️ Error:', '').trim();
+      console.log("REMOVED PREFIX FROM TOOL ERROR:", formattedContent);
+    }
+    
+    // Format errors with colons to display on two lines
+    if ((isToolError || formattedContent.includes('Error executing tool')) && formattedContent.includes(':')) {
+      // Find the first colon that belongs to the error message (not part of a URL)
+      const colonIndex = formattedContent.indexOf(':');
+      if (colonIndex > 0) {
         // Format with a line break after the colon
-        formattedContent = parts[0] + ':\n' + parts.slice(1).join(':');
+        formattedContent = formattedContent.substring(0, colonIndex + 1) + 
+                          '\n' + 
+                          formattedContent.substring(colonIndex + 1).trim();
+        console.log("FORMATTED ERROR WITH LINE BREAK:", formattedContent);
       }
     }
 
@@ -252,8 +282,8 @@ export const ChatMessage = React.memo(function ChatMessage({
       <div className="flex flex-col items-center w-full">
         <div className={cn(chatBubbleVariants({ 
           isUser: false, 
-          isSystem: !isToolError, 
-          isError: isToolError,
+          isSystem: !isToolError && !forcedToolError, 
+          isError: isToolError || forcedToolError,
           animation 
         }))}>
           {isSpecialErrorFormat ? (

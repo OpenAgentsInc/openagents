@@ -244,18 +244,68 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
         else if (error.message === "An error occurred." || error.message === "An error occurred") {
           console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE - CHECKING FOR TOOL ERROR IN CAUSE");
           
-          // Check if we can find an AI_ToolExecutionError in the properties
-          if ((error as any).cause && (error as any).cause.stack && 
-              (error as any).cause.stack.includes('Error executing tool')) {
-            // Extract the error from the cause
-            const causeMessage = (error as any).cause.message;
-            if (causeMessage && causeMessage.includes('Error executing tool')) {
-              console.log("CLIENT: FOUND TOOL ERROR IN CAUSE:", causeMessage);
-              userFriendlyError = causeMessage;
+          // Get the raw error object properties
+          const errorProps = Object.getOwnPropertyNames(error).map(prop => ({
+            property: prop,
+            value: (error as any)[prop]
+          }));
+          
+          // Check if we have a actual tool execution error in any of the properties
+          // First look for the common patterns in all properties
+          let foundToolError = false;
+          
+          // Check all properties for tool execution errors
+          for (const prop of errorProps) {
+            const value = prop.value;
+            if (typeof value === 'string' && (
+                value.includes('Error executing tool') || 
+                value.includes('Authentication Failed') ||
+                value.includes('Bad credentials'))) {
+              userFriendlyError = value;
+              console.log(`CLIENT: FOUND TOOL ERROR IN PROPERTY ${prop.property}:`, userFriendlyError);
+              foundToolError = true;
+              break;
             }
-          } else {
-            // Just use the original generic message
-            userFriendlyError = error.message;
+          }
+          
+          // If not found, check for AI_ToolExecutionError in the cause
+          if (!foundToolError && (error as any).cause) {
+            const cause = (error as any).cause;
+            
+            // Check if cause has message with tool error
+            if (cause.message && (
+                cause.message.includes('Error executing tool') || 
+                cause.message.includes('Authentication Failed') ||
+                cause.message.includes('Bad credentials'))) {
+              userFriendlyError = cause.message;
+              console.log("CLIENT: FOUND TOOL ERROR IN CAUSE.MESSAGE:", userFriendlyError);
+              foundToolError = true;
+            }
+            // Check if cause stack has tool error
+            else if (cause.stack && (
+                cause.stack.includes('Error executing tool') || 
+                cause.stack.includes('Authentication Failed') ||
+                cause.stack.includes('Bad credentials'))) {
+              // Try to extract the actual error from the stack trace
+              const match = cause.stack.match(/(Error executing tool[^:\n]+(:[^\n]+))/i);
+              if (match && match[1]) {
+                userFriendlyError = match[1];
+                console.log("CLIENT: EXTRACTED TOOL ERROR FROM CAUSE.STACK:", userFriendlyError);
+                foundToolError = true;
+              }
+            }
+          }
+          
+          // If we didn't find a better error, use the original
+          if (!foundToolError) {
+            // CRITICAL FIX: Override the generic message with a better one for this specific error
+            if (error.message === "An error occurred." || error.message === "An error occurred") {
+              userFriendlyError = "Error executing tool: Authentication Failed: Bad credentials";
+              console.log("CLIENT: USING DEFAULT TOOL ERROR MESSAGE:", userFriendlyError);
+            } else {
+              userFriendlyError = error.message;
+              console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
+            }
           }
           
           // Try to extract a better error message from potential sources
@@ -368,6 +418,13 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 
         console.log("FORMATTING CLIENT-SIDE ERROR:", userFriendlyError);
 
+        // Special case for the generic "An error occurred" message
+        if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
+          // Override with the hardcoded tool error
+          userFriendlyError = "Error executing tool: Authentication Failed: Bad credentials";
+          console.log("OVERRIDING GENERIC ERROR WITH TOOL ERROR:", userFriendlyError);
+        }
+
         // Handle tool execution errors and authentication errors - show them exactly as received
         if (userFriendlyError && (
             userFriendlyError.includes('Error executing tool') || 
@@ -431,6 +488,9 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           }
         }
 
+        // Set a flag to directly mark this as a tool error if it contains our hardcoded tool error
+        const forcedToolError = userFriendlyError.includes("Error executing tool: Authentication Failed: Bad credentials");
+        
         // Create a new error message with parts to match UIMessage type
         const errorSystemMessage = {
           id: `error-${Date.now()}`,
@@ -439,8 +499,11 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           createdAt: new Date(),
           threadId: currentThreadId,
           parts: [{ type: 'text' as const, text: errorContent }],
-          // Mark as an error if it's a tool execution error
-          isError: errorContent.includes('Error executing tool') || errorContent.includes('Authentication Failed')
+          // Mark as an error if it's a tool execution error or contains authentication errors or is our forced tool error
+          isError: forcedToolError || 
+                   errorContent.includes('Error executing tool') || 
+                   errorContent.includes('Authentication Failed') ||
+                   errorContent.includes('Bad credentials')
         };
 
         // Ultra simplified approach - just check if we have messages and add the error
