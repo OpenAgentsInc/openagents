@@ -284,7 +284,7 @@ export const ModelSelect = React.memo(function ModelSelect({
       // Skip LMStudio check for pure Anthropic models to avoid unnecessary API calls
       const isAnthropicModel = value && value.startsWith("claude-");
       if (isAnthropicModel) {
-        console.log(`Skipping LMStudio availability check for Anthropic model: ${value}`);
+        // console.log(`Skipping LMStudio availability check for Anthropic model: ${value}`);
       }
 
       // Only check LMStudio if this isn't an Anthropic model
