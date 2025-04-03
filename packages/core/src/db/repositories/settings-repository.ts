@@ -32,6 +32,8 @@ function toMutableSettings(settings: any): Settings {
     selectedModelId: settings.selectedModelId,
     // Ensure visibleModelIds is a mutable array
     visibleModelIds: settings.visibleModelIds ? [...settings.visibleModelIds] : [],
+    // Ensure mcpClients is a mutable array
+    mcpClients: settings.mcpClients ? [...settings.mcpClients] : [],
     preferences: settings.preferences ? { ...settings.preferences } : {}
   };
 
@@ -256,6 +258,7 @@ export class SettingsRepository {
           defaultModel: defaultSelectedModel, // Keep for backward compatibility
           selectedModelId: defaultSelectedModel, // New field
           visibleModelIds: visibleModelIds.length > 0 ? visibleModelIds : [defaultSelectedModel], // New field
+          mcpClients: [], // Empty array for MCP clients
           preferences: {}
         };
 
@@ -317,6 +320,7 @@ export class SettingsRepository {
             theme: 'system',
             apiKeys: {},
             defaultModel: 'qwen-qwq-32b',
+            mcpClients: [], // Empty array for MCP clients
             preferences: {}
           };
           this.cachedSettings = lastResortDefaults;
@@ -331,6 +335,7 @@ export class SettingsRepository {
           theme: 'system',
           apiKeys: {},
           defaultModel: 'qwen-qwq-32b',
+          mcpClients: [], // Empty array for MCP clients
           preferences: {}
         };
         this.cachedSettings = fallbackSettings;
