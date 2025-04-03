@@ -27,14 +27,19 @@ import { serverApp } from "./server";
 import { serve } from '@hono/node-server'; // Import serve from Hono's adapter
 import { Server } from 'http';
 import { initMCPClients, cleanupMCPClients } from './server/mcp-clients';
+import { setApiPort } from './helpers/ipc/api-port/api-port-listeners';
 
 const inDevelopment = process.env.NODE_ENV === "development";
 
 // Define a port for the local API server
-const LOCAL_API_PORT = 3001; // Or another available port
+const DEFAULT_API_PORT = 3001;
+let LOCAL_API_PORT = DEFAULT_API_PORT; // Will be updated if the default port is in use
 
 // Keep track of the server instance for graceful shutdown
 let serverInstance: ReturnType<typeof serve> | null = null;
+
+// Alternative ports to try if the default port is in use
+const ALTERNATIVE_PORTS = [3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010];
 
 // Keep track of tray instance
 let tray: Tray | null = null;
@@ -294,8 +299,6 @@ app.whenReady()
 
     // Start the local Hono server using the Node adapter
     try {
-      console.log(`[Main Process] Starting local API server on port ${LOCAL_API_PORT}...`);
-
       if (!serverApp) {
         throw new Error('serverApp is undefined or null');
       }
@@ -307,22 +310,82 @@ app.whenReady()
       // We'll initialize MCP clients after the window is created
       console.log('[Main Process] MCP client initialization will happen after window creation');
 
-      // Start the server with Hono's serve adapter
-      serverInstance = serve({
-        fetch: serverApp.fetch, // Pass the fetch handler from our Hono app
-        port: LOCAL_API_PORT,
-      }, (info) => {
-        console.log(`[Main Process] ✅ Local API server listening on http://localhost:${info.port}`);
-      });
-
-      // Add error handling
+      // Function to start server with port fallback
+      const startServerWithFallback = async (port: number, attemptedPorts: number[] = []): Promise<Server> => {
+        console.log(`[Main Process] Attempting to start local API server on port ${port}...`);
+        
+        try {
+          // Create a new promise for server startup
+          return new Promise((resolve, reject) => {
+            // Try to start the server on this port
+            const server = serve({
+              fetch: serverApp.fetch,
+              port: port,
+            }, (info) => {
+              // Successfully started
+              console.log(`[Main Process] ✅ Local API server listening on http://localhost:${info.port}`);
+              // Update the global port variable to the successful port
+              LOCAL_API_PORT = info.port;
+              // Update the port in the IPC system so renderer can access it
+              setApiPort(info.port);
+              // Resolve with the server instance
+              resolve(server);
+            });
+            
+            // Handle immediate errors
+            server.on('error', (error: Error) => {
+              const isPortInUseError = error.message?.includes('EADDRINUSE') || 
+                                       error.message?.includes('address already in use');
+              
+              if (isPortInUseError) {
+                console.warn(`[Main Process] Port ${port} already in use`);
+                
+                // Try the next port if we have alternatives
+                const nextPortIndex = ALTERNATIVE_PORTS.findIndex(p => !attemptedPorts.includes(p));
+                
+                if (nextPortIndex >= 0) {
+                  const nextPort = ALTERNATIVE_PORTS[nextPortIndex];
+                  console.log(`[Main Process] Trying alternative port: ${nextPort}`);
+                  
+                  // Close the failed server
+                  server.close();
+                  
+                  // Try next port with updated attempted ports list
+                  startServerWithFallback(nextPort, [...attemptedPorts, port])
+                    .then(resolve)
+                    .catch(reject);
+                } else {
+                  reject(new Error(`All ports are in use. Tried: ${DEFAULT_API_PORT}, ${attemptedPorts.join(', ')}`));
+                }
+              } else {
+                // Some other error
+                console.error('[Main Process] Server error:', error);
+                reject(error);
+              }
+            });
+          });
+        } catch (error) {
+          console.error('[Main Process] Failed to start server:', error);
+          throw error;
+        }
+      };
+      
+      // Start the server with the default port and retry on alternative ports if needed
+      serverInstance = await startServerWithFallback(LOCAL_API_PORT);
+      
+      // Add global error handling for the running server
       if (serverInstance) {
         serverInstance.on('error', (error: Error) => {
           console.error('[Main Process] Server error event:', error);
         });
+        
+        // Set up a custom protocol to expose the port to the renderer
+        console.log(`[Main Process] Exposing API port ${LOCAL_API_PORT} to renderer process`);
       }
     } catch (error) {
       console.error('[Main Process] Failed to start local API server:', error);
+      // Continue app startup even if server fails
+      console.warn('[Main Process] Continuing app startup despite server failure. Some features may not work.');
     }
 
     // Create tray

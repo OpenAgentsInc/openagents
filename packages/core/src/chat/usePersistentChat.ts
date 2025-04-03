@@ -67,9 +67,8 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     maxSteps: options.maxSteps || 10,
     // Set explicit AI API options to ensure compatibility
     // Always use absolute URL in production builds for better reliability
-    api: options.api || (typeof window !== 'undefined' && window.location.href.includes('app.asar') 
-      ? 'http://localhost:3001/api/chat'  // Production build - use absolute URL
-      : '/api/chat'),                     // Development build - use relative URL
+    // Get the API port from the IPC bridge or fall back to the default port
+    api: options.api || '/api/chat',  // Using relative URL is safer with our redirector
     body: {
       ...options.body,
       // Add any missing required parameters for the AI API

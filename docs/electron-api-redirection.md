@@ -82,13 +82,39 @@ This allows:
    - All exceptions in the redirect handler are caught and logged
    - Requests are allowed to continue even if redirection fails, preventing silent blocking
 
+## Dynamic Port Allocation
+
+To handle cases where the default port (3001) may already be in use by another application, we've implemented a dynamic port allocation system:
+
+1. **Alternative Ports**: The application tries a series of alternative ports (3002, 3003, etc.) if the default port is unavailable.
+
+2. **Port Discovery Flow**:
+   - The app first attempts to start the server on port 3001
+   - If that port is in use (EADDRINUSE error), it tries the next port in the alternatives list
+   - This process continues until a free port is found or all options are exhausted
+   - Once a port is successfully bound, it's stored in the `LOCAL_API_PORT` variable
+
+3. **Port Synchronization**: The chosen port is synchronized between:
+   - Main process (server)
+   - Renderer process (web client)
+   - IPC bridge via the `API_PORT` context
+
+4. **Port Information Access**: The renderer process can access the current port through:
+   ```javascript
+   const port = await window.API_PORT.getPort();
+   ```
+
 ## Potential Issues and Debugging
 
 If API requests fail despite this system, check:
 
-1. **Local Server Status**: Ensure the local API server is running and listening on the expected port:
+1. **Local Server Status**: Ensure the local API server is running and listening on some available port:
    ```
    [Main Process] ✅ Local API server listening on http://localhost:3001
+   ```
+   OR
+   ```
+   [Main Process] ✅ Local API server listening on http://localhost:3002
    ```
 
 2. **Request Redirection**: Look for log entries showing the redirection:
