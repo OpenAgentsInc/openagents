@@ -32,24 +32,24 @@ function withClass(Tag: HTMLTag, classes: string) {
 }
 
 const COMPONENTS: Components = {
-  h1: withClass('h1', 'mt-6 mb-4 text-2xl font-bold'),
-  h2: withClass('h2', 'mt-6 mb-4 text-xl font-bold'),
-  h3: withClass('h3', 'mt-6 mb-4 text-lg font-bold'),
-  h4: withClass('h4', 'mt-4 mb-2 text-base font-bold'),
-  h5: withClass('h5', 'mt-4 mb-2 text-sm font-bold'),
-  h6: withClass('h6', 'mt-4 mb-2 text-xs font-bold'),
-  p: withClass('p', 'leading-6'),
-  a: withClass('a', 'text-primary underline underline-offset-4'),
-  ul: withClass('ul', 'mb-4 list-disc pl-8'),
-  ol: withClass('ol', 'mb-4 list-decimal pl-8'),
-  li: withClass('li', 'mt-2'),
-  blockquote: withClass('blockquote', 'mt-6 border-l-2 pl-6 italic'),
-  hr: withClass('hr', 'my-4 border-t'),
-  table: withClass('table', 'mb-4 w-full text-sm'),
-  th: withClass('th', 'border px-3 py-2 text-left font-bold'),
-  td: withClass('td', 'border px-3 py-2'),
-  pre: withClass('pre', 'mb-4 overflow-auto rounded-lg bg-muted p-4'),
-  code: withClass('code', 'rounded bg-muted px-1 py-0.5 font-mono text-sm'),
+  h1: withClass('h1', 'mt-6 mb-4 text-2xl font-bold text-foreground'),
+  h2: withClass('h2', 'mt-6 mb-4 text-xl font-bold text-foreground'),
+  h3: withClass('h3', 'mt-6 mb-4 text-lg font-bold text-foreground'),
+  h4: withClass('h4', 'mt-4 mb-2 text-base font-bold text-foreground'),
+  h5: withClass('h5', 'mt-4 mb-2 text-sm font-bold text-foreground'),
+  h6: withClass('h6', 'mt-4 mb-2 text-xs font-bold text-foreground'),
+  p: withClass('p', '!leading-6 [&:not(:first-child)]:mt-4 text-sm'),
+  a: withClass('a', 'font-medium underline underline-offset-4 text-primary hover:text-primary/80'),
+  ul: withClass('ul', 'my-4 list-disc pl-8 [&>li]:mt-2'),
+  ol: withClass('ol', 'my-4 list-decimal pl-8 [&>li]:mt-2'),
+  li: withClass('li', 'leading-7 text-sm'),
+  blockquote: withClass('blockquote', 'mt-6 border-l-2 border-border pl-6 italic text-muted-foreground'),
+  hr: withClass('hr', 'my-4 border-border'),
+  table: withClass('table', 'my-4 w-full overflow-y-auto text-sm'),
+  th: withClass('th', 'border border-border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right'),
+  td: withClass('td', 'border border-border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right'),
+  pre: withClass('pre', 'mb-4 mt-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm'),
+  code: withClass('code', 'relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm'),
 };
 
 export interface MarkdownRendererProps {
@@ -83,7 +83,6 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   children,
   className
 }: MarkdownRendererProps) {
-  // For regular (non-streaming) content, use our existing memoized approach
   const memoizedContent = useMemo(() => {
     return (
       <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
@@ -93,7 +92,7 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   }, [children]);
 
   return (
-    <div className={className}>
+    <div className={cn("prose max-w-none dark:prose-invert prose-pre:m-0 prose-pre:bg-transparent prose-pre:p-0", className)}>
       {memoizedContent}
     </div>
   );
