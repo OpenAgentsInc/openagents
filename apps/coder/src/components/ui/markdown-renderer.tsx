@@ -1,8 +1,9 @@
-import React, { Suspense, useMemo, useRef, useEffect } from "react"
+import React, { Suspense, useMemo, useRef, useEffect, useState } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/utils/tailwind"
 import type { Components } from 'react-markdown'
+import * as shiki from 'shiki'
 
 import { CopyButton } from "@/components/ui/copy-button"
 
@@ -48,8 +49,26 @@ const COMPONENTS: Components = {
   table: withClass('table', 'my-4 w-full overflow-y-auto text-sm'),
   th: withClass('th', 'border border-border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right'),
   td: withClass('td', 'border border-border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right'),
-  pre: withClass('pre', 'mb-4 mt-4 overflow-x-auto rounded-lg bg-muted p-4 text-sm'),
-  code: withClass('code', 'relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm'),
+  pre: ({ children, className, ...props }: any) => {
+    const match = /language-(\w+)/.exec(className || '')
+    const language = match ? match[1] : ''
+    return (
+      <CodeBlock language={language} className={className} {...props}>
+        {children}
+      </CodeBlock>
+    )
+  },
+  code: ({ node, inline, className, children, ...props }: any) => {
+    if (!inline) {
+      // Let the pre handler deal with code blocks
+      return children
+    }
+    return (
+      <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm" {...props}>
+        {children}
+      </code>
+    )
+  }
 };
 
 export interface MarkdownRendererProps {
@@ -98,77 +117,65 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   );
 });
 
-interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
+interface HighlightedPreProps extends React.HTMLAttributes<HTMLPreElement> {
   children: string
   language: string
 }
 
-const HighlightedPre = React.memo(
-  async ({ children, language, ...props }: HighlightedPre) => {
-    const { codeToTokens, bundledLanguages } = await import("shiki")
+const HighlightedPre = React.memo(function HighlightedPre({ children, language, ...props }: HighlightedPreProps) {
+  const [html, setHtml] = useState<string>('')
 
-    if (!(language in bundledLanguages)) {
-      return <pre {...props}>{children}</pre>
+  useEffect(() => {
+    async function highlight() {
+      try {
+        const highlighter = await shiki.createHighlighter({
+          themes: ['github-dark'],
+          langs: [language],
+        })
+
+        const highlighted = await highlighter.codeToHtml(children, {
+          lang: language || 'text',
+          theme: 'github-dark'
+        })
+
+        setHtml(highlighted)
+      } catch (error) {
+        console.error('Failed to highlight code:', error)
+        // Fallback to plain text if highlighting fails
+        setHtml(`<pre><code>${children}</code></pre>`)
+      }
     }
 
-    // Cache key that combines code content and language
-    const cacheKey = `${language}:${children}`;
+    highlight()
+  }, [children, language])
 
-    // Use a ref to store the cached tokens to avoid re-tokenizing the same code
-    const tokenCache = React.useRef<{ [key: string]: any }>({});
-
-    let tokens;
-    if (tokenCache.current[cacheKey]) {
-      // Use cached tokens
-      tokens = tokenCache.current[cacheKey];
-    } else {
-      // Generate new tokens and cache them
-      const result = await codeToTokens(children, {
-        lang: language as keyof typeof bundledLanguages,
-        defaultColor: false,
-        themes: {
-          light: "github-light",
-          dark: "github-dark",
-        },
-      });
-      tokens = result.tokens;
-      tokenCache.current[cacheKey] = tokens;
-    }
-
+  if (!html) {
     return (
-      <pre {...props}>
-        <code>
-          {tokens.map((line: Array<any>, lineIndex: number) => (
-            <div key={lineIndex} className="table-row">
-              <div className="table-cell pr-4 text-right text-muted-foreground">
-                {lineIndex + 1}
-              </div>
-              <div className="table-cell">
-                {line.map((token: any, tokenIndex: number) => {
-                  const style =
-                    typeof token.htmlStyle === "string"
-                      ? undefined
-                      : token.htmlStyle
-
-                  return (
-                    <span
-                      key={tokenIndex}
-                      className="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"
-                      style={style}
-                    >
-                      {token.content}
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </code>
+      <pre {...props} className="relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4">
+        <code>{children}</code>
       </pre>
     )
   }
-)
-HighlightedPre.displayName = "HighlightedCode"
+
+  return (
+    <div className="group relative flex w-full flex-col pt-9">
+      <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t bg-secondary px-4 py-2 text-sm text-secondary-foreground">
+        <span className="font-mono">{language || 'text'}</span>
+      </div>
+      <div className="sticky left-auto z-[1] ml-auto h-1.5 w-8 transition-[top] top-[42px] max-1170:top-20">
+        <CopyButton
+          content={children}
+          className="absolute -top-[34px] right-2 size-8 rounded-md bg-secondary p-2 transition-colors hover:bg-muted-foreground/10 hover:text-muted-foreground dark:hover:bg-muted-foreground/5"
+        />
+      </div>
+      <div className="-mb-1.5" />
+      <div
+        className="shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&_pre]:overflow-auto [&_pre]:!bg-transparent [&_pre]:px-[1em] [&_pre]:py-[1em]"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </div>
+  )
+})
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
   children: React.ReactNode
@@ -182,7 +189,6 @@ const CodeBlock = React.memo(({
   language,
   ...restProps
 }: CodeBlockProps) => {
-  // Memoize the code extraction which can be expensive for large code blocks
   const code = useMemo(() =>
     typeof children === "string"
       ? children
@@ -190,28 +196,19 @@ const CodeBlock = React.memo(({
     [children]
   );
 
-  const preClass = cn(
-    "overflow-x-scroll rounded-md border bg-background/50 p-4 font-mono text-sm [scrollbar-width:none]",
-    className
-  )
-
   return (
-    <div className="group/code relative mb-4">
+    <div className="group/code relative">
       <Suspense
         fallback={
-          <pre className={preClass} {...restProps}>
+          <pre className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4", className)} {...restProps}>
             {children}
           </pre>
         }
       >
-        <HighlightedPre language={language} className={preClass}>
+        <HighlightedPre language={language} className={className}>
           {code}
         </HighlightedPre>
       </Suspense>
-
-      <div className="invisible absolute right-2 top-2 flex space-x-1 rounded-lg p-1 opacity-0 duration-200 group-hover/code:visible group-hover/code:opacity-100">
-        <CopyButton content={code} copyMessage="Copied code to clipboard" />
-      </div>
     </div>
   )
 });
