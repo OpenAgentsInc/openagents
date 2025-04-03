@@ -11,6 +11,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { CopyButton } from "@/components/ui/copy-button"
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer, StreamedMarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { ToolCall } from "@/components/ui/tool-call"
@@ -255,8 +256,15 @@ export const ChatMessage = React.memo(function ChatMessage({
           </div>
         ) : null}
 
-        <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
+        <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }), "group/message")}>
           {messageContent}
+          <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
+            <CopyButton
+              content={content}
+              copyMessage="Copied message to clipboard!"
+              className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+            />
+          </div>
         </div>
 
         {showTimeStamp && createdAt ? (
@@ -305,11 +313,15 @@ export const ChatMessage = React.memo(function ChatMessage({
           >
             <div className={cn(chatBubbleVariants({ isUser, animation }))}>
               {partContent}
-              {actions ? (
-                <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
-                  {actions}
-                </div>
-              ) : null}
+              <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
+                {actions ? actions : (
+                  <CopyButton
+                    content={part.text}
+                    copyMessage="Copied message to clipboard!"
+                    className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+                  />
+                )}
+              </div>
             </div>
 
             {showTimeStamp && createdAt ? (
@@ -383,11 +395,15 @@ export const ChatMessage = React.memo(function ChatMessage({
     <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
       <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
         {messageContent}
-        {actions ? (
-          <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
-            {actions}
-          </div>
-        ) : null}
+        <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
+          {actions ? actions : (
+            <CopyButton
+              content={content}
+              copyMessage="Copied message to clipboard!"
+              className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
+            />
+          )}
+        </div>
       </div>
 
       {showTimeStamp && createdAt ? (
