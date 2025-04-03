@@ -143,7 +143,7 @@ export default function ApiKeysPage() {
       <CardHeader>
         <CardTitle className="flex items-center">
           <KeyRound className="mr-2 h-5 w-5" />
-          API Keys Management
+          API Keys
         </CardTitle>
         <CardDescription>
           Manage your API keys for different model providers
