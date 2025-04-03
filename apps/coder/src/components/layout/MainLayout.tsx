@@ -80,7 +80,7 @@ export const MainLayout = memo(function MainLayout() {
         <div className="relative flex h-full w-full flex-1 overflow-hidden z-0">
           <div className="mt-[30px] relative flex h-full w-full flex-row overflow-hidden">
             <Sidebar>
-              <SidebarHeader className="border-t h-[120px] mt-4">
+              <SidebarHeader className="h-[120px] mt-4">
                 <StableHeaderProvider onCreateThread={handleCreateThread}>
                   <AppHeader />
                 </StableHeaderProvider>
@@ -102,7 +102,7 @@ export const MainLayout = memo(function MainLayout() {
 
             <SidebarInset>
               <div className="grid grid-rows-[auto_minmax(0,1fr)_auto] h-[calc(100vh-30px)]">
-                <div className="absolute top-0 left-0 right-0 border-t p-3 flex items-center justify-between z-20">
+                <div className="absolute top-0 left-0 right-0 p-3 flex items-center justify-between z-20">
                   <ModelHeader />
                 </div>
 
