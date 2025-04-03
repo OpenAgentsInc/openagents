@@ -4,6 +4,17 @@ import { Button } from '@/components/ui/button';
 import { PenSquare } from 'lucide-react';
 import { useStableHeader } from '@/providers/StableHeaderProvider';
 import { react19 } from "@openagents/core";
+import { Link as RouterLink } from "@tanstack/react-router";
+
+// Interface for router Link props
+interface LinkProps {
+  to: string;
+  children?: React.ReactNode;
+  [key: string]: any;
+}
+
+// Make React Router components compatible with React 19
+const Link = react19.router<LinkProps>(RouterLink);
 
 // Interface for Lucide icon props
 interface IconProps {
@@ -45,12 +56,14 @@ export const AppHeader = memo(function AppHeader() {
       <div className="flex items-center justify-center w-full pt-2">
         <span className="flex items-center text-md font-semibold">
           <span className="select-none">Coder</span>
-          <Badge
-            variant="outline"
-            className="text-[11px] px-[4px] py-[2px] ml-2 mt-[1px]"
-          >
-            v0.0.1
-          </Badge>
+          <Link to="/changelog">
+            <Badge
+              variant="outline"
+              className="text-[11px] px-[4px] py-[2px] ml-2 mt-[1px] hover:bg-muted cursor-pointer"
+            >
+              v0.0.1
+            </Badge>
+          </Link>
         </span>
       </div>
       <Button
