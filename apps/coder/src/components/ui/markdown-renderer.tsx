@@ -49,10 +49,35 @@ const COMPONENTS: Components = {
   td: withClass('td', 'border border-border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right'),
 
   // Handle pre tags and extract code information
-  pre: ({ children, className, ...props }: any) => {
+  pre: ({ node, children, className, ...props }: any) => {
+    console.log('Pre component received:', {
+      children,
+      className,
+      nodeType: node?.type,
+      childrenCount: React.Children.count(children)
+    });
+
+    // Use the helper function to get the language and code string
     const { codeString, language } = extractCodeInfo(children);
+
+    console.log('Pre component extracted:', {
+      codeString: codeString.slice(0, 100) + '...',
+      language,
+      hasContent: Boolean(codeString)
+    });
+
+    // Only render CodeBlock if we have code content
+    if (!codeString) {
+      console.log('Pre component: No code content found, returning null');
+      return null;
+    }
+
     return (
-      <CodeBlockComponent language={language} className={className} {...props}>
+      <CodeBlockComponent
+        language={language}
+        className={cn("not-prose", className)}
+        {...props}
+      >
         {codeString}
       </CodeBlockComponent>
     );
@@ -60,9 +85,16 @@ const COMPONENTS: Components = {
 
   // Only handle inline code, let pre handle code blocks
   code: ({ node, inline, className, children, ...props }: any) => {
+    console.log('Code component received:', {
+      inline,
+      className,
+      children,
+      childrenCount: React.Children.count(children)
+    });
+
     if (inline) {
       return (
-        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm" {...props}>
+        <code className={cn("relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm", className)} {...props}>
           {children}
         </code>
       );
@@ -85,6 +117,11 @@ export const StreamedMarkdownRenderer = ({
   children,
   className
 }: MarkdownRendererProps) => {
+  console.log('StreamedMarkdownRenderer rendering:', {
+    content: children.slice(0, 100) + '...',
+    className
+  });
+
   return (
     <div className={className}>
       <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
@@ -99,9 +136,17 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
   children,
   className
 }: MarkdownRendererProps) {
+  console.log('MarkdownRenderer rendering:', {
+    content: children.slice(0, 100) + '...',
+    className
+  });
+
   const memoizedContent = useMemo(() => {
     return (
-      <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
+      <Markdown
+        remarkPlugins={REMARK_PLUGINS}
+        components={COMPONENTS}
+      >
         {children}
       </Markdown>
     );
