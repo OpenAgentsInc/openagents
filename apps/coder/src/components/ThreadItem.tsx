@@ -54,7 +54,7 @@ export const ThreadItem = React.memo(function ThreadItem({
     hover:bg-primary/5 hover:text-primary-foreground
     focus-visible:text-primary-foreground focus-visible:ring-2
     focus-visible:ring-sidebar-ring hover:focus-visible:bg-primary/5
-    ${isSelected ? 'bg-sidebar-accent text-sidebar-accent-foreground before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md' : ''}
+    ${isSelected ? 'bg-primary/5 text-primary-foreground before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md' : ''}
     ${isDeleting ? 'animate-delete-flash bg-red-500/20 dark:bg-red-800/30' : ''}`, [isSelected, isDeleting]);
 
   const inputClasses = useMemo(() => `hover:truncate-none h-full w-full rounded bg-transparent px-1 py-1 text-sm outline-none pointer-events-none cursor-pointer overflow-hidden truncate
