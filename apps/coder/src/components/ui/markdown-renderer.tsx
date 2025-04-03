@@ -70,7 +70,7 @@ const PreComponent = React.memo(function PreComponent({ node, children, classNam
         (typeof child.type === 'string' && child.type.toLowerCase() === 'code') ||
         ((child as React.ReactElement<CodeElementProps>).props?.className &&
           typeof (child as React.ReactElement<CodeElementProps>).props.className === 'string' &&
-          (child as React.ReactElement<CodeElementProps>).props.className.includes('language-')))
+          (child as React.ReactElement<CodeElementProps>).props.className?.includes('language-')))
   );
 
   // Log basic info without attempting to serialize

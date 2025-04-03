@@ -792,7 +792,7 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
             error: 'LMStudio server not found. Make sure LMStudio is running and the Local Server is enabled.',
             status: response.status,
             server_status: 'not_running'
-          }, { status: response.status });
+          }, 404);
         }
 
         return new Response(JSON.stringify({
@@ -846,7 +846,8 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
       clearTimeout(timeoutId);
 
       // Check if it's a timeout error
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+      const typedError = fetchError as Error;
+      if (typedError.name === 'AbortError') {
         console.error('[Server] LMStudio proxy request timed out');
         return new Response(JSON.stringify({
           error: 'Connection to LMStudio server timed out. Make sure LMStudio is running and responsive.',
@@ -855,7 +856,7 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
       }
 
       // Re-throw for the outer catch block
-      throw fetchError;
+      throw typedError;
     }
   } catch (error) {
     console.error('[Server] LMStudio proxy error:', error);

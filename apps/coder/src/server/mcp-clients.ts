@@ -1,8 +1,11 @@
 // apps/coder/src/server/mcp-clients.ts
 import { experimental_createMCPClient } from "ai";
 import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
-import { settingsRepository } from '@openagents/core/src/db/repositories';
-import { MCPClientConfig } from '@openagents/core/src/db/types';
+// Import type only, don't import the actual repository
+import type { MCPClientConfig } from '@openagents/core/src/db/types';
+import fs from 'fs';
+import path from 'path';
+import { app } from 'electron';
 import { v4 as uuidv4 } from 'uuid';
 
 // Define the type for the MCP clients
@@ -57,31 +60,64 @@ const DEFAULT_MCP_CLIENTS: MCPClientConfig[] = [
   }
 ];
 
+// Helper to get the config file path
+function getConfigFilePath(): string {
+  // Get the user data directory
+  const userDataPath = app.getPath('userData');
+  return path.join(userDataPath, 'mcp-clients.json');
+}
+
+// Load configurations from file
+function loadConfigsFromFile(): MCPClientConfig[] {
+  try {
+    const configPath = getConfigFilePath();
+    if (fs.existsSync(configPath)) {
+      const configData = fs.readFileSync(configPath, 'utf8');
+      const parsedConfigs = JSON.parse(configData);
+      if (Array.isArray(parsedConfigs)) {
+        console.log('[MCP Clients] Loaded configurations from file');
+        return parsedConfigs;
+      }
+    }
+  } catch (error) {
+    console.error('[MCP Clients] Error loading configurations from file:', error);
+  }
+  
+  // Return defaults if file doesn't exist or has invalid content
+  return [...DEFAULT_MCP_CLIENTS];
+}
+
+// Save configurations to file
+function saveConfigsToFile(configs: MCPClientConfig[]): void {
+  try {
+    const configPath = getConfigFilePath();
+    fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+    console.log('[MCP Clients] Saved configurations to file');
+  } catch (error) {
+    console.error('[MCP Clients] Error saving configurations to file:', error);
+  }
+}
+
 /**
- * Ensure MCP client configurations exist in settings
+ * Ensure MCP client configurations exist
  */
 async function ensureMCPClientConfigs(): Promise<MCPClientConfig[]> {
   try {
-    // Get current settings
-    const settings = await settingsRepository.getSettings();
+    // Load from file
+    const configs = loadConfigsFromFile();
     
-    // Check if MCP clients already exist in settings
-    if (settings.mcpClients && Array.isArray(settings.mcpClients) && settings.mcpClients.length > 0) {
-      console.log('[MCP Clients] Found existing MCP client configurations in settings');
-      return settings.mcpClients;
+    // If no configs were loaded (empty array), use defaults
+    if (!configs || configs.length === 0) {
+      console.log('[MCP Clients] No configurations found, using defaults');
+      saveConfigsToFile(DEFAULT_MCP_CLIENTS);
+      return [...DEFAULT_MCP_CLIENTS];
     }
     
-    // If no MCP clients exist, add the default ones
-    console.log('[MCP Clients] Creating default MCP client configurations');
-    await settingsRepository.updateSettings({
-      mcpClients: DEFAULT_MCP_CLIENTS
-    });
-    
-    return DEFAULT_MCP_CLIENTS;
+    return configs;
   } catch (error) {
     console.error('[MCP Clients] Error ensuring MCP client configurations:', error);
     // Return default configurations as fallback
-    return DEFAULT_MCP_CLIENTS;
+    return [...DEFAULT_MCP_CLIENTS];
   }
 }
 
@@ -89,41 +125,23 @@ async function ensureMCPClientConfigs(): Promise<MCPClientConfig[]> {
  * Update MCP client status
  */
 async function updateClientStatus(id: string, status: 'connected' | 'disconnected' | 'error', statusMessage?: string): Promise<void> {
+  // Always update local configs cache first
+  if (mcpClients.configs[id]) {
+    mcpClients.configs[id] = {
+      ...mcpClients.configs[id],
+      status,
+      statusMessage,
+      lastConnected: status === 'connected' ? Date.now() : mcpClients.configs[id].lastConnected
+    };
+  }
+  
+  // Save updated configs to file
   try {
-    // Get current settings
-    const settings = await settingsRepository.getSettings();
-    
-    // Find and update the specific client
-    if (settings.mcpClients && Array.isArray(settings.mcpClients)) {
-      const updatedClients = settings.mcpClients.map(client => {
-        if (client.id === id) {
-          return {
-            ...client,
-            status,
-            statusMessage,
-            lastConnected: status === 'connected' ? Date.now() : client.lastConnected
-          };
-        }
-        return client;
-      });
-      
-      // Update settings with the new client status
-      await settingsRepository.updateSettings({
-        mcpClients: updatedClients
-      });
-      
-      // Update local configs cache
-      if (mcpClients.configs[id]) {
-        mcpClients.configs[id] = {
-          ...mcpClients.configs[id],
-          status,
-          statusMessage,
-          lastConnected: status === 'connected' ? Date.now() : mcpClients.configs[id].lastConnected
-        };
-      }
-    }
+    const allConfigs = Object.values(mcpClients.configs);
+    saveConfigsToFile(allConfigs);
   } catch (error) {
-    console.error(`[MCP Clients] Error updating status for client ${id}:`, error);
+    // Just log the error but don't block MCP client initialization
+    console.warn(`[MCP Clients] Could not save status for client ${id} to file:`, error);
   }
 }
 
@@ -200,37 +218,66 @@ export async function initMCPClients(): Promise<void> {
 
   console.log('[MCP Clients] Initializing MCP clients from settings...');
 
-  // Ensure MCP client configurations exist
-  const configs = await ensureMCPClientConfigs();
-  
-  // Create a map of configs by ID for easy lookup
-  const configsMap: Record<string, MCPClientConfig> = {};
-  configs.forEach(config => {
-    configsMap[config.id] = config;
-  });
-  
-  // Store configs in the global state
-  mcpClients.configs = configsMap;
-  
-  // Initialize each enabled client
-  for (const config of configs) {
-    if (config.enabled) {
-      const client = await initMCPClient(config);
-      if (client) {
-        mcpClients.clients[config.id] = client;
+  try {
+    // Ensure MCP client configurations exist
+    const configs = await ensureMCPClientConfigs();
+    
+    // Create a map of configs by ID for easy lookup
+    const configsMap: Record<string, MCPClientConfig> = {};
+    configs.forEach(config => {
+      configsMap[config.id] = config;
+    });
+    
+    // Store configs in the global state
+    mcpClients.configs = configsMap;
+    
+    // Initialize each enabled client
+    for (const config of configs) {
+      try {
+        if (config.enabled) {
+          const client = await initMCPClient(config);
+          if (client) {
+            mcpClients.clients[config.id] = client;
+          }
+        } else {
+          console.log(`[MCP Clients] Skipping disabled client: ${config.name}`);
+          // Mark as disconnected in the status
+          await updateClientStatus(config.id, 'disconnected', 'Client is disabled');
+        }
+      } catch (clientError) {
+        console.error(`[MCP Clients] Error initializing client ${config.name}:`, clientError);
+        // Continue with other clients even if one fails
       }
-    } else {
-      console.log(`[MCP Clients] Skipping disabled client: ${config.name}`);
-      // Mark as disconnected in the status
-      await updateClientStatus(config.id, 'disconnected', 'Client is disabled');
+    }
+
+    // Fetch and store tools from all initialized clients
+    await refreshTools();
+
+    mcpClients.initialized = true;
+    console.log('[MCP Clients] Initialization complete');
+  } catch (error) {
+    console.error('[MCP Clients] Error during initialization:', error);
+    
+    // Even if there was an error, mark as initialized so we don't try again
+    // This prevents repeated errors during startup
+    mcpClients.initialized = true;
+    
+    // Initialize with default remote client as fallback
+    try {
+      const remoteConfig = DEFAULT_MCP_CLIENTS.find(c => c.id === 'remote-github');
+      if (remoteConfig && remoteConfig.enabled) {
+        console.log('[MCP Clients] Attempting to initialize default remote client as fallback');
+        const client = await initMCPClient(remoteConfig);
+        if (client) {
+          mcpClients.clients['remote-github'] = client;
+          mcpClients.configs['remote-github'] = remoteConfig;
+          await refreshTools();
+        }
+      }
+    } catch (fallbackError) {
+      console.error('[MCP Clients] Failed to initialize fallback client:', fallbackError);
     }
   }
-
-  // Fetch and store tools from all initialized clients
-  await refreshTools();
-
-  mcpClients.initialized = true;
-  console.log('[MCP Clients] Initialization complete');
 }
 
 /**
@@ -314,15 +361,14 @@ export async function addMCPClient(config: Omit<MCPClientConfig, 'id'>): Promise
       status: 'disconnected'
     };
     
-    // Get current settings
-    const settings = await settingsRepository.getSettings();
-    const currentClients = settings.mcpClients || [];
+    // Get current configurations
+    const currentConfigs = Object.values(mcpClients.configs);
     
     // Add the new configuration
-    const updatedClients = [...currentClients, newConfig];
-    await settingsRepository.updateSettings({
-      mcpClients: updatedClients
-    });
+    const updatedConfigs = [...currentConfigs, newConfig];
+    
+    // Save to file
+    saveConfigsToFile(updatedConfigs);
     
     // Update our local cache
     mcpClients.configs[id] = newConfig;
@@ -348,23 +394,18 @@ export async function addMCPClient(config: Omit<MCPClientConfig, 'id'>): Promise
  */
 export async function updateMCPClient(id: string, updates: Partial<MCPClientConfig>): Promise<boolean> {
   try {
-    // Get current settings
-    const settings = await settingsRepository.getSettings();
-    
-    if (!settings.mcpClients || !Array.isArray(settings.mcpClients)) {
-      console.error('[MCP Clients] No MCP clients found in settings');
-      return false;
-    }
+    // Get current configs
+    const currentConfigs = Object.values(mcpClients.configs);
     
     // Find the client to update
-    const clientIndex = settings.mcpClients.findIndex(c => c.id === id);
+    const clientIndex = currentConfigs.findIndex(c => c.id === id);
     if (clientIndex === -1) {
       console.error(`[MCP Clients] Client with ID ${id} not found`);
       return false;
     }
     
     // Create the updated client configuration
-    const currentConfig = settings.mcpClients[clientIndex];
+    const currentConfig = currentConfigs[clientIndex];
     const updatedConfig: MCPClientConfig = {
       ...currentConfig,
       ...updates
@@ -380,12 +421,12 @@ export async function updateMCPClient(id: string, updates: Partial<MCPClientConf
          JSON.stringify(currentConfig.args) !== JSON.stringify(updatedConfig.args) ||
          JSON.stringify(currentConfig.env) !== JSON.stringify(updatedConfig.env)));
     
-    // Update the settings
-    const updatedClients = [...settings.mcpClients];
-    updatedClients[clientIndex] = updatedConfig;
-    await settingsRepository.updateSettings({
-      mcpClients: updatedClients
-    });
+    // Update the configs array
+    const updatedConfigs = [...currentConfigs];
+    updatedConfigs[clientIndex] = updatedConfig;
+    
+    // Save to file
+    saveConfigsToFile(updatedConfigs);
     
     // Update our local cache
     mcpClients.configs[id] = updatedConfig;
@@ -425,26 +466,21 @@ export async function updateMCPClient(id: string, updates: Partial<MCPClientConf
  */
 export async function deleteMCPClient(id: string): Promise<boolean> {
   try {
-    // Get current settings
-    const settings = await settingsRepository.getSettings();
-    
-    if (!settings.mcpClients || !Array.isArray(settings.mcpClients)) {
-      console.error('[MCP Clients] No MCP clients found in settings');
-      return false;
-    }
+    // Get current configs
+    const currentConfigs = Object.values(mcpClients.configs);
     
     // Find the client to delete
-    const clientIndex = settings.mcpClients.findIndex(c => c.id === id);
+    const clientIndex = currentConfigs.findIndex(c => c.id === id);
     if (clientIndex === -1) {
       console.error(`[MCP Clients] Client with ID ${id} not found`);
       return false;
     }
     
-    // Remove from settings
-    const updatedClients = settings.mcpClients.filter(c => c.id !== id);
-    await settingsRepository.updateSettings({
-      mcpClients: updatedClients
-    });
+    // Remove from configs array
+    const updatedConfigs = currentConfigs.filter(c => c.id !== id);
+    
+    // Save to file
+    saveConfigsToFile(updatedConfigs);
     
     // Clean up client
     if (mcpClients.clients[id]) {
@@ -470,9 +506,7 @@ export async function deleteMCPClient(id: string): Promise<boolean> {
  */
 export async function getMCPClientConfigs(): Promise<MCPClientConfig[]> {
   try {
-    // Get current settings
-    const settings = await settingsRepository.getSettings();
-    return settings.mcpClients || [];
+    return Object.values(mcpClients.configs);
   } catch (error) {
     console.error('[MCP Clients] Error getting MCP client configurations:', error);
     return [];

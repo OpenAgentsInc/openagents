@@ -31,7 +31,7 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@/components/ui";
-import { toast } from "sonner";
+import { Toaster, toast as sonnerToast } from "sonner";
 import { 
   Plus, 
   Trash, 
@@ -85,19 +85,15 @@ export default function MCPClientsPage() {
         const data = await response.json();
         setClients(data.clients || []);
       } else {
-        toast({
-          title: "Failed to load MCP clients",
-          description: "Check the console for more details",
-          variant: "destructive"
+        sonnerToast("Failed to load MCP clients", {
+          description: "Check the console for more details"
         });
         console.error("Failed to load MCP clients:", await response.text());
       }
     } catch (error) {
       console.error("Error loading MCP clients:", error);
-      toast({
-        title: "Error loading MCP clients",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive"
+      sonnerToast("Error loading MCP clients", {
+        description: error instanceof Error ? error.message : "Unknown error"
       });
     } finally {
       setLoading(false);
@@ -118,25 +114,20 @@ export default function MCPClientsPage() {
       });
       
       if (response.ok) {
-        toast({
-          title: "Client refreshed",
-          description: "MCP client has been refreshed successfully",
+        sonnerToast("Client refreshed", {
+          description: "MCP client has been refreshed successfully"
         });
         await loadClients(); // Reload clients to get updated status
       } else {
-        toast({
-          title: "Failed to refresh client",
-          description: "Check the console for more details",
-          variant: "destructive"
+        sonnerToast("Failed to refresh client", {
+          description: "Check the console for more details"
         });
         console.error("Failed to refresh client:", await response.text());
       }
     } catch (error) {
       console.error("Error refreshing client:", error);
-      toast({
-        title: "Error refreshing client",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive"
+      sonnerToast("Error refreshing client", {
+        description: error instanceof Error ? error.message : "Unknown error"
       });
     } finally {
       setRefreshing(false);
@@ -152,25 +143,20 @@ export default function MCPClientsPage() {
       });
       
       if (response.ok) {
-        toast({
-          title: "All clients refreshed",
-          description: "All MCP clients have been refreshed successfully",
+        sonnerToast("All clients refreshed", {
+          description: "All MCP clients have been refreshed successfully"
         });
         await loadClients(); // Reload clients to get updated status
       } else {
-        toast({
-          title: "Failed to refresh clients",
-          description: "Check the console for more details",
-          variant: "destructive"
+        sonnerToast("Failed to refresh clients", {
+          description: "Check the console for more details"
         });
         console.error("Failed to refresh clients:", await response.text());
       }
     } catch (error) {
       console.error("Error refreshing clients:", error);
-      toast({
-        title: "Error refreshing clients",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive"
+      sonnerToast("Error refreshing clients", {
+        description: error instanceof Error ? error.message : "Unknown error"
       });
     } finally {
       setRefreshing(false);
@@ -189,25 +175,20 @@ export default function MCPClientsPage() {
       });
       
       if (response.ok) {
-        toast({
-          title: `Client ${enabled ? 'enabled' : 'disabled'}`,
-          description: `MCP client has been ${enabled ? 'enabled' : 'disabled'} successfully`,
+        sonnerToast(`Client ${enabled ? 'enabled' : 'disabled'}`, {
+          description: `MCP client has been ${enabled ? 'enabled' : 'disabled'} successfully`
         });
         await loadClients(); // Reload clients to get updated status
       } else {
-        toast({
-          title: `Failed to ${enabled ? 'enable' : 'disable'} client`,
-          description: "Check the console for more details",
-          variant: "destructive"
+        sonnerToast(`Failed to ${enabled ? 'enable' : 'disable'} client`, {
+          description: "Check the console for more details"
         });
         console.error(`Failed to ${enabled ? 'enable' : 'disable'} client:`, await response.text());
       }
     } catch (error) {
       console.error(`Error ${enabled ? 'enabling' : 'disabling'} client:`, error);
-      toast({
-        title: `Error ${enabled ? 'enabling' : 'disabling'} client`,
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive"
+      sonnerToast(`Error ${enabled ? 'enabling' : 'disabling'} client`, {
+        description: error instanceof Error ? error.message : "Unknown error"
       });
     }
   };
@@ -224,25 +205,20 @@ export default function MCPClientsPage() {
       });
       
       if (response.ok) {
-        toast({
-          title: "Client deleted",
-          description: "MCP client has been deleted successfully",
+        sonnerToast("Client deleted", {
+          description: "MCP client has been deleted successfully"
         });
         await loadClients(); // Reload clients to get updated list
       } else {
-        toast({
-          title: "Failed to delete client",
-          description: "Check the console for more details",
-          variant: "destructive"
+        sonnerToast("Failed to delete client", {
+          description: "Check the console for more details"
         });
         console.error("Failed to delete client:", await response.text());
       }
     } catch (error) {
       console.error("Error deleting client:", error);
-      toast({
-        title: "Error deleting client",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive"
+      sonnerToast("Error deleting client", {
+        description: error instanceof Error ? error.message : "Unknown error"
       });
     }
   };
@@ -419,27 +395,22 @@ export default function MCPClientsPage() {
       }
       
       if (response.ok) {
-        toast({
-          title: isEditMode ? "Client updated" : "Client created",
-          description: `MCP client has been ${isEditMode ? 'updated' : 'created'} successfully`,
+        sonnerToast(isEditMode ? "Client updated" : "Client created", {
+          description: `MCP client has been ${isEditMode ? 'updated' : 'created'} successfully`
         });
         setOpenDialog(false);
         await loadClients(); // Reload clients to get updated list
       } else {
         const errorText = await response.text();
-        toast({
-          title: isEditMode ? "Failed to update client" : "Failed to create client",
-          description: errorText || "Check the console for more details",
-          variant: "destructive"
+        sonnerToast(isEditMode ? "Failed to update client" : "Failed to create client", {
+          description: errorText || "Check the console for more details"
         });
         console.error(isEditMode ? "Failed to update client:" : "Failed to create client:", errorText);
       }
     } catch (error) {
       console.error(isEditMode ? "Error updating client:" : "Error creating client:", error);
-      toast({
-        title: isEditMode ? "Error updating client" : "Error creating client",
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive"
+      sonnerToast(isEditMode ? "Error updating client" : "Error creating client", {
+        description: error instanceof Error ? error.message : "Unknown error"
       });
     }
   };
