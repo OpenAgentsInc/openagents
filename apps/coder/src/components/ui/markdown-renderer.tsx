@@ -205,27 +205,23 @@ const PreComponent = React.memo(function PreComponent({ node, children, classNam
 
   // Stabilize content size to reduce jitter
   const stabilizedContent = codeContent.trim();
-
-  // Generate a stable key for this code block to preserve component identity
-  const contentKey = `${language}_${stabilizedContent.length}_${stabilizedContent.slice(0, 40)}`;
-
-  // Memoize the rendered component to prevent re-rendering when parent re-renders
-  const memoizedCodeBlock = React.useMemo(() => {
-    return (
+  
+  // Generate a stable instance ID for the component
+  const stableId = React.useMemo(() => {
+    return `code_${Math.random().toString(36).substr(2, 9)}`;
+  }, []); // Empty dependencies - never regenerate during the lifetime of this component
+  
+  // Render CodeBlock directly, always with the same key
+  return (
+    <div className="code-block-wrapper">
       <CodeBlockComponent
-        key={contentKey}
+        key={stableId}
         language={language}
         className={cn("not-prose", className)}
         {...props}
       >
         {stabilizedContent}
       </CodeBlockComponent>
-    );
-  }, [contentKey, language, stabilizedContent, className]);
-
-  return (
-    <div className="code-block-wrapper transition-all ease-in-out duration-50">
-      {memoizedCodeBlock}
     </div>
   );
 });
