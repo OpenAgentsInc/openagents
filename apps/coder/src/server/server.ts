@@ -89,6 +89,65 @@ function createToolCallValidator() {
 // Remove this endpoint - we'll handle errors directly in the stream
 
 // Main chat endpoint
+// Helper function to clean up unresolved tool calls in messages
+// This is defined outside the request handler to ensure it's always available
+const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls) => {
+  console.log("🧹 Running global cleanup function for tool calls");
+  
+  try {
+    // Extract the system message if it exists
+    let systemMessage = messagesWithToolCalls.find(msg => msg.role === 'system');
+    let nonSystemMessages = messagesWithToolCalls.filter(msg => msg.role !== 'system');
+    
+    // Now filter out assistant messages with tool calls from non-system messages
+    let userAssistantMessages = nonSystemMessages.filter(msg => {
+      if (msg.role === 'assistant' && 
+          (msg.toolInvocations?.length > 0 || 
+           msg.parts?.some(p => p.type === 'tool-invocation'))) {
+        console.log(`Removing assistant message with tool calls: ${msg.id || 'unnamed'}`);
+        return false;
+      }
+      return true;
+    });
+    
+    // Get the last user message if it exists
+    const lastUserMessage = userAssistantMessages.length > 0 && 
+      userAssistantMessages[userAssistantMessages.length - 1].role === 'user' ?
+      userAssistantMessages[userAssistantMessages.length - 1] : null;
+      
+    // Make a modified system message that includes the error information
+    const errorSystemMessage = {
+      id: `system-${Date.now()}`,
+      role: 'system',
+      content: (systemMessage?.content || "") + 
+        "\n\nNOTE: There was an issue with a previous tool call (Authentication Failed: Bad credentials). The problematic message has been removed so the conversation can continue.",
+      createdAt: new Date()
+    };
+    
+    // Create the final cleaned messages with system message first, then alternating user/assistant
+    let cleanedMessages = [errorSystemMessage, ...userAssistantMessages];
+    
+    // If the last message is not from the user, add a special assistant message explaining the issue
+    if (lastUserMessage === null || 
+        (userAssistantMessages.length > 0 && userAssistantMessages[userAssistantMessages.length - 1].role !== 'user')) {
+      // Add an assistant message explaining the error
+      cleanedMessages.push({
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: "I encountered an error while trying to use a tool: Authentication Failed: Bad credentials. Please try a different request or continue our conversation without using this tool.",
+        createdAt: new Date()
+      });
+    }
+    
+    // Return cleaned messages for use in the stream
+    console.log("✅ Cleanup complete - returning cleaned messages");
+    return cleanedMessages;
+  } catch (err) {
+    console.error("Cleanup function failed:", err);
+    throw new Error("Failed to clean up messages with tool calls");
+  }
+};
+
 app.post('/api/chat', async (c) => {
   console.log('[Server] Received chat request');
 
@@ -410,6 +469,9 @@ app.post('/api/chat', async (c) => {
 
       // Global space for error tracking
       (global as any).__lastToolExecutionError = null;
+      
+      // Just a log for clarity - we'll use the global cleanup function 
+      console.log("Using global cleanup function defined at the top level");
       
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
@@ -864,6 +926,88 @@ app.post('/api/chat', async (c) => {
       });
     } catch (streamSetupError) {
       console.error("🚨 streamText setup failed:", streamSetupError);
+      
+      // Check if this is a message conversion error for unresolved tool calls
+      const isToolCallError = streamSetupError instanceof Error && 
+        (streamSetupError.message?.includes('ToolInvocation must have a result') ||
+         streamSetupError.message?.includes('tool execution error') ||
+         streamSetupError.message?.includes('MessageConversionError'));
+      
+      if (isToolCallError) {
+        console.log("🛠️ Detected unresolved tool call error - attempting recovery");
+        
+        try {
+          // Use our centralized cleanup function to remove problematic messages
+          const cleanedMessages = await cleanupAndRetryWithoutToolCalls(messages);
+          
+          // Created a simplified model for the recovery
+          const recoveryModel = createAnthropic({
+            apiKey: ANTHROPIC_API_KEY
+          })(MODEL);
+          
+          // Create a simple stream configuration without tools to avoid the same error
+          const recoveryStreamOptions = {
+            model: recoveryModel,
+            messages: cleanedMessages,
+            temperature: 0.7,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'text/event-stream'
+            }
+          };
+          
+          // Create the recovery stream
+          const recoveryStream = streamText(recoveryStreamOptions);
+          
+          // Set up the SSE response
+          c.header('Content-Type', 'text/event-stream; charset=utf-8');
+          c.header('Cache-Control', 'no-cache');
+          c.header('Connection', 'keep-alive');
+          c.header('X-Vercel-AI-Data-Stream', 'v1');
+          
+          // Return the stream directly
+          return stream(c, async (responseStream) => {
+            try {
+              // Convert the stream to data format
+              const dataStream = recoveryStream.toDataStream({ sendReasoning: false });
+              
+              // Create a reader from the stream
+              const reader = dataStream.getReader();
+              
+              // Read and process chunks
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                // Decode the Uint8Array to string
+                const chunk = new TextDecoder().decode(value);
+                
+                // Output the chunk to the console for debugging
+                console.log("Recovery chunk:", chunk.substring(0, 50) + "...");
+                
+                // Pass through the chunk with proper SSE formatting
+                await responseStream.write(chunk);
+              }
+            } catch (streamError) {
+              console.error("Stream error during recovery:", streamError);
+              
+              // Send a simple error message if streaming fails
+              await responseStream.write(`data: ${JSON.stringify({
+                id: `error-${Date.now()}`,
+                role: "system",
+                content: "Error during chat recovery. Please try again."
+              })}\n\n`);
+              await responseStream.write("data: [DONE]\n\n");
+            }
+          });
+        } catch (recoveryError) {
+          console.error("Failed to recover from tool call error:", recoveryError);
+          return c.json({ 
+            error: "Recovery from tool error failed, please try again with a different request" 
+          }, 500);
+        }
+      }
+      
       return c.json({ error: "Failed to initialize AI stream" }, 500);
     }
   } catch (error) {
