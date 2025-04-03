@@ -1,11 +1,9 @@
-import React, { Suspense, useMemo, useRef, useEffect, useState } from "react"
+import React, { useMemo } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/utils/tailwind"
 import type { Components } from 'react-markdown'
-import * as shiki from 'shiki'
-
-import { CopyButton } from "@/components/ui/copy-button"
+import { CodeBlock as CodeBlockComponent, extractCodeInfo } from "./code-block"
 
 type HTMLTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'p' | 'a' | 'ul' | 'ol' | 'li' | 'blockquote' | 'hr' | 'table' | 'th' | 'td' | 'pre' | 'code';
 
@@ -49,25 +47,28 @@ const COMPONENTS: Components = {
   table: withClass('table', 'my-4 w-full overflow-y-auto text-sm'),
   th: withClass('th', 'border border-border px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right'),
   td: withClass('td', 'border border-border px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right'),
+
+  // Handle pre tags and extract code information
   pre: ({ children, className, ...props }: any) => {
-    const match = /language-(\w+)/.exec(className || '')
-    const language = match ? match[1] : ''
+    const { codeString, language } = extractCodeInfo(children);
     return (
-      <CodeBlock language={language} className={className} {...props}>
-        {children}
-      </CodeBlock>
-    )
+      <CodeBlockComponent language={language} className={className} {...props}>
+        {codeString}
+      </CodeBlockComponent>
+    );
   },
+
+  // Only handle inline code, let pre handle code blocks
   code: ({ node, inline, className, children, ...props }: any) => {
-    if (!inline) {
-      // Let the pre handler deal with code blocks
-      return children
+    if (inline) {
+      return (
+        <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm" {...props}>
+          {children}
+        </code>
+      );
     }
-    return (
-      <code className="relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm" {...props}>
-        {children}
-      </code>
-    )
+    // For block code, just return the code element for pre to handle
+    return <code className={className} {...props}>{children}</code>;
   }
 };
 
@@ -79,15 +80,11 @@ export interface MarkdownRendererProps {
 // Memoize the remarkPlugins array
 const REMARK_PLUGINS = [remarkGfm];
 
-// Memoize the entire MarkdownRenderer component
 // Create a specialized component for streaming content
-// Simpler implementation that always shows the current content
 export const StreamedMarkdownRenderer = ({
   children,
   className
 }: MarkdownRendererProps) => {
-  // Just render the current content directly - no caching or optimization
-  // This ensures tokens always show up immediately
   return (
     <div className={className}>
       <Markdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
@@ -116,121 +113,5 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
     </div>
   );
 });
-
-interface HighlightedPreProps extends React.HTMLAttributes<HTMLPreElement> {
-  children: string
-  language: string
-}
-
-const HighlightedPre = React.memo(function HighlightedPre({ children, language, ...props }: HighlightedPreProps) {
-  const [html, setHtml] = useState<string>('')
-
-  useEffect(() => {
-    async function highlight() {
-      try {
-        const highlighter = await shiki.createHighlighter({
-          themes: ['github-dark'],
-          langs: [language],
-        })
-
-        const highlighted = await highlighter.codeToHtml(children, {
-          lang: language || 'text',
-          theme: 'github-dark'
-        })
-
-        setHtml(highlighted)
-      } catch (error) {
-        console.error('Failed to highlight code:', error)
-        // Fallback to plain text if highlighting fails
-        setHtml(`<pre><code>${children}</code></pre>`)
-      }
-    }
-
-    highlight()
-  }, [children, language])
-
-  if (!html) {
-    return (
-      <pre {...props} className="relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4">
-        <code>{children}</code>
-      </pre>
-    )
-  }
-
-  return (
-    <div className="group relative flex w-full flex-col pt-9">
-      <div className="absolute inset-x-0 top-0 flex h-9 items-center rounded-t bg-secondary px-4 py-2 text-sm text-secondary-foreground">
-        <span className="font-mono">{language || 'text'}</span>
-      </div>
-      <div className="sticky left-auto z-[1] ml-auto h-1.5 w-8 transition-[top] top-[42px] max-1170:top-20">
-        <CopyButton
-          content={children}
-          className="absolute -top-[34px] right-2 size-8 rounded-md bg-secondary p-2 transition-colors hover:bg-muted-foreground/10 hover:text-muted-foreground dark:hover:bg-muted-foreground/5"
-        />
-      </div>
-      <div className="-mb-1.5" />
-      <div
-        className="shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&_pre]:overflow-auto [&_pre]:!bg-transparent [&_pre]:px-[1em] [&_pre]:py-[1em]"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
-  )
-})
-
-interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
-  children: React.ReactNode
-  className?: string
-  language: string
-}
-
-const CodeBlock = React.memo(({
-  children,
-  className,
-  language,
-  ...restProps
-}: CodeBlockProps) => {
-  const code = useMemo(() =>
-    typeof children === "string"
-      ? children
-      : childrenTakeAllStringContents(children),
-    [children]
-  );
-
-  return (
-    <div className="group/code relative">
-      <Suspense
-        fallback={
-          <pre className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4", className)} {...restProps}>
-            {children}
-          </pre>
-        }
-      >
-        <HighlightedPre language={language} className={className}>
-          {code}
-        </HighlightedPre>
-      </Suspense>
-    </div>
-  )
-});
-
-function childrenTakeAllStringContents(element: any): string {
-  if (typeof element === "string") {
-    return element
-  }
-
-  if (element?.props?.children) {
-    let children = element.props.children
-
-    if (Array.isArray(children)) {
-      return children
-        .map((child) => childrenTakeAllStringContents(child))
-        .join("")
-    } else {
-      return childrenTakeAllStringContents(children)
-    }
-  }
-
-  return ""
-}
 
 export default MarkdownRenderer
