@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { cors } from 'hono/cors';
 import { stream } from 'hono/streaming';
+import mcpApi from './mcp-api';
 import { streamText, tool, type Message, type StreamTextOnFinishCallback } from "ai";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ollama, createOllama } from 'ollama-ai-provider';
@@ -840,7 +841,7 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
         server_status: 'running'
       };
 
-      return c.json(enhancedData, { status: 200 });
+      return c.json(enhancedData, 200);
     } catch (fetchError) {
       clearTimeout(timeoutId);
 
@@ -853,7 +854,8 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
         }), { status: 408 });
       }
 
-      throw fetchError; // Re-throw for the outer catch block
+      // Re-throw for the outer catch block
+      throw fetchError;
     }
   } catch (error) {
     console.error('[Server] LMStudio proxy error:', error);
@@ -862,14 +864,17 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
     let errorMessage = 'Failed to connect to LMStudio server';
     let serverStatus = 'error';
 
-    if (error instanceof Error) {
-      if ('code' in error && error.code === 'ECONNREFUSED') {
+    const typedError = error as Error;
+    if (typedError instanceof Error) {
+      // Check if error has code property (like NodeJS errors)
+      const nodeError = typedError as Error & { code?: string };
+      if (nodeError.code === 'ECONNREFUSED') {
         errorMessage = 'Connection refused. LMStudio server is not running.';
         serverStatus = 'not_running';
-      } else if ('code' in error && error.code === 'ENOTFOUND') {
+      } else if (nodeError.code === 'ENOTFOUND') {
         errorMessage = 'Host not found. Check the LMStudio URL.';
         serverStatus = 'invalid_url';
-      } else if (error.message && error.message.includes('network')) {
+      } else if (typedError.message && typedError.message.includes('network')) {
         errorMessage = 'Network error. Check your internet connection.';
         serverStatus = 'network_error';
       }
@@ -877,11 +882,14 @@ app.get('/api/proxy/lmstudio/models', async (c) => {
 
     return new Response(JSON.stringify({
       error: errorMessage,
-      details: error instanceof Error ? error.message : String(error),
+      details: typedError instanceof Error ? typedError.message : String(typedError),
       server_status: serverStatus
     }), { status: 500 });
   }
 });
+
+// Mount MCP API routes
+app.route('/api/mcp', mcpApi);
 
 // --- End API Routes ---
 

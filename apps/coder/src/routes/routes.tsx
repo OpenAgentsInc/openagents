@@ -5,6 +5,7 @@ import SettingsLayout from "../pages/settings/SettingsLayout";
 import ModelsPage from "../pages/settings/ModelsPage";
 import ApiKeysPage from "../pages/settings/ApiKeysPage";
 import LocalModelsPage from "../pages/settings/LocalModelsPage";
+import MCPClientsPage from "../pages/settings/MCPClientsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
 import PreferencesPage from "../pages/settings/PreferencesPage";
 import ChangelogPage from "../pages/ChangelogPage";
@@ -92,6 +93,12 @@ export const LocalModelsSettingsRoute = createRoute({
   component: LocalModelsPage,
 });
 
+export const MCPClientsSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/mcp-clients",
+  component: MCPClientsPage,
+});
+
 export const PromptsSettingsRoute = createRoute({
   getParentRoute: () => SettingsRoute,
   path: "/prompts",
@@ -121,6 +128,7 @@ export const rootTree = RootRoute.addChildren([
     ModelsSettingsRoute,
     ApiKeysSettingsRoute,
     LocalModelsSettingsRoute,
+    MCPClientsSettingsRoute,
     PromptsSettingsRoute,
     PreferencesSettingsRoute
   ])

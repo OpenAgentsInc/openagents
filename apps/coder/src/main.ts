@@ -270,8 +270,8 @@ app.whenReady()
         throw new Error('serverApp.fetch is not a function');
       }
 
-      // Initialize MCP clients before starting the server
-      console.log('[Main Process] Initializing MCP clients...');
+      // Initialize MCP clients based on settings
+      console.log('[Main Process] Initializing MCP clients from settings...');
       await initMCPClients();
       console.log('[Main Process] MCP clients initialized successfully');
 

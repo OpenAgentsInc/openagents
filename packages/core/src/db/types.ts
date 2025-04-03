@@ -40,6 +40,23 @@ export interface StoredMessage {
 export type MessageDocument = RxDocument<StoredMessage>;
 
 /**
+ * MCP Client Configuration
+ */
+export interface MCPClientConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  type: 'sse' | 'stdio';
+  url?: string; // For 'sse' type
+  command?: string; // For 'stdio' type
+  args?: string[]; // For 'stdio' type
+  env?: Record<string, string>; // For both types
+  lastConnected?: number;
+  status?: 'connected' | 'disconnected' | 'error';
+  statusMessage?: string;
+}
+
+/**
  * Settings data object
  */
 export interface Settings {
@@ -50,6 +67,7 @@ export interface Settings {
   selectedModelId?: string; // New field replacing defaultModel
   visibleModelIds?: string[]; // Array of model IDs that should be visible in the dropdown
   preferences?: Record<string, any>;
+  mcpClients?: MCPClientConfig[]; // MCP client configurations
 }
 
 /**
