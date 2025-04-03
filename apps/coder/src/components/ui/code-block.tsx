@@ -21,8 +21,21 @@ const HighlightedPre = React.memo(function HighlightedPre({
     className
   });
 
+  // Use refs to maintain stable sizing during renders
+  const preRef = React.useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [html, setHtml] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
+
+  // Capture initial dimensions to stabilize layout
+  useEffect(() => {
+    if (preRef.current) {
+      const { offsetWidth, offsetHeight } = preRef.current;
+      if (offsetWidth > 0 && offsetHeight > 0) {
+        setDimensions({ width: offsetWidth, height: offsetHeight });
+      }
+    }
+  }, [codeString]);
 
   useEffect(() => {
     let isMounted = true
@@ -110,6 +123,11 @@ const HighlightedPre = React.memo(function HighlightedPre({
         fallbackPre
       ) : (
         <div
+          ref={preRef}
+          style={{
+            minHeight: dimensions.height > 0 ? `${dimensions.height}px` : undefined,
+            minWidth: dimensions.width > 0 ? `${dimensions.width}px` : undefined,
+          }}
           className={cn(
             "shiki not-prose relative bg-chat-accent text-sm font-[450] text-secondary-foreground [&>pre]:overflow-auto [&>pre]:!bg-transparent [&>pre]:px-[1em] [&>pre]:py-[1em] [&>pre]:m-0 [&>pre]:rounded-b",
             className
@@ -163,19 +181,28 @@ export const CodeBlock = React.memo(({
     
   console.log('CodeBlock using language:', effectiveLanguage);
 
+  // Use same dimensions and styling for both fallback and final render to prevent jitter
+  const sharedStyles = "relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4";
+  
+  // Create a stable-size fallback
   const fallbackPre = (
-    <pre className={cn("relative bg-chat-accent text-sm font-[450] text-secondary-foreground overflow-auto px-4 py-4", className)} {...restProps}>
-      <code>{processedCodeString}</code>
-    </pre>
+    <div className="relative" style={{ minHeight: '100px' }}>
+      <pre className={cn(sharedStyles, className, "animate-pulse")} {...restProps}>
+        <code>{processedCodeString}</code>
+      </pre>
+    </div>
   )
 
+  // Stabilize wrapper dimensions to prevent jitter
   return (
-    <div className="group/code relative my-4">
-      <Suspense fallback={fallbackPre}>
-        <HighlightedPre language={effectiveLanguage} className={className} {...restProps}>
-          {processedCodeString}
-        </HighlightedPre>
-      </Suspense>
+    <div className="group/code relative my-4 transition-all duration-300 ease-in-out">
+      <div className="relative min-h-[100px]">
+        <Suspense fallback={fallbackPre}>
+          <HighlightedPre language={effectiveLanguage} className={cn(className, "transition-opacity duration-300")} {...restProps}>
+            {processedCodeString}
+          </HighlightedPre>
+        </Suspense>
+      </div>
     </div>
   )
 })

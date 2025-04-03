@@ -190,22 +190,29 @@ function PreComponent({ node, children, className, ...props }: { node?: any, chi
   // Only render CodeBlock if we have content
   if (!codeContent.trim()) {
     console.log('Pre component: No code content found, returning default pre');
-    // Return a fallback pre instead of null
+    // Return a fallback pre instead of null with stable dimensions
     return (
-      <pre className={className} {...props}>
-        {children}
-      </pre>
+      <div className="min-h-[60px]">
+        <pre className={cn("transition-all duration-200", className)} {...props}>
+          {children}
+        </pre>
+      </div>
     );
   }
 
+  // Stabilize content size to reduce jitter
+  const stabilizedContent = codeContent.trim();
+  
   return (
-    <CodeBlockComponent
-      language={language}
-      className={cn("not-prose", className)}
-      {...props}
-    >
-      {codeContent.trim()}
-    </CodeBlockComponent>
+    <div className="code-block-wrapper transition-all ease-in-out duration-150">
+      <CodeBlockComponent
+        language={language}
+        className={cn("not-prose", className)}
+        {...props}
+      >
+        {stabilizedContent}
+      </CodeBlockComponent>
+    </div>
   );
 }
 
