@@ -27,7 +27,8 @@ function createDbStatusImplementation(): DbStatusContext {
         return await ipcRenderer.invoke('get-db-status');
       } catch (error) {
         console.error('[DB Status] Error getting DB status via IPC:', error);
-        return { ready: false, error: error.message || 'Failed to communicate with main process' };
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return { ready: false, error: errorMessage || 'Failed to communicate with main process' };
       }
     }
   };

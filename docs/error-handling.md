@@ -4,7 +4,7 @@ This document provides a guide to error handling in the OpenAgents application, 
 
 ## Overview
 
-The OpenAgents application is designed to gracefully handle errors from various sources, particularly from LLM API calls (like OpenAI, Anthropic, OpenRouter, and local models like LMStudio and Ollama). When errors occur, they are:
+The OpenAgents application is designed to gracefully handle errors from various sources, particularly from LLM API calls (like OpenAI, Anthropic, OpenRouter, and local models like Ollama). When errors occur, they are:
 
 1. Logged to the console for debugging
 2. Processed into user-friendly messages
@@ -13,16 +13,126 @@ The OpenAgents application is designed to gracefully handle errors from various 
 
 ## Error Types
 
-Common error types include:
+The application has a comprehensive error type system with the following categories:
 
-- **Context length exceeded**: When the conversation becomes too long for the model's context window
-- **Rate limit exceeded**: When API rate limits are reached
-- **Authentication errors**: When API keys are missing or invalid
-- **Model unavailability**: When a selected model doesn't exist or is unavailable
-- **Network errors**: When network connectivity issues prevent API calls
-- **Service errors**: When the model service returns an error
+- **Provider Errors**: Issues related to external API providers
+  - `AuthenticationError`: When API keys are missing or invalid
+  - `RateLimitError`: When API rate limits are reached
+  - `ModelNotFoundError`: When a requested model doesn't exist
+  - `ServiceUnavailableError`: When the provider service is down
+  - `ResourceExhaustedError`: When provider quota is exceeded
+
+- **Validation Errors**: Issues with input validation
+  - `MessageValidationError`: When messages have invalid format
+  - `ApiKeyValidationError`: When API keys are missing
+  - `ModelValidationError`: When model settings are invalid
+  - `SchemaValidationError`: When request schema is invalid
+
+- **Tool Errors**: Issues with tool execution
+  - `ToolExecutionError`: When tool execution fails
+  - `ToolAuthenticationError`: When tool authentication fails
+  - `ToolArgumentError`: When tool arguments are invalid
+  - `ToolTimeoutError`: When tool execution times out
+
+- **Network Errors**: Connection and communication issues
+  - `ConnectionTimeoutError`: When connections time out
+  - `ServerUnreachableError`: When servers cannot be reached
+  - `HttpStatusError`: When HTTP requests fail with status codes
+
+- **Limit Errors**: Constraints and quota issues
+  - `ContextLengthError`: When the conversation exceeds context length
+  - `ApiRateLimitError`: When API rate limits are exceeded
+  - `TokenQuotaError`: When token quotas are exceeded
 
 ## Implementation
+
+### Backend Error Handling
+
+#### 1. Core Error System
+
+The core error system is implemented in `packages/core/src/chat/errors/` with a class hierarchy:
+
+```typescript
+// Base error class for all chat-related errors
+export class ChatError extends Error {
+  public readonly category: ErrorCategory;
+  public readonly severity: ErrorSeverity;
+  public readonly userMessage: string;
+  
+  // Format error for client consumption
+  toClientFormat(): ErrorResponse {
+    return {
+      error: true,
+      category: this.category,
+      message: this.userMessage,
+      details: this.message,
+      severity: this.severity,
+      timestamp: Date.now()
+    };
+  }
+  
+  // Format for SSE streams
+  toStreamFormat(): string {
+    return `data: error:${JSON.stringify(this.toClientFormat())}\n\n`;
+  }
+}
+```
+
+#### 2. Error Transformation
+
+Provider-specific errors are transformed into our typed system using dedicated transformers:
+
+```typescript
+// Transform Anthropic-specific errors
+export function transformAnthropicError(error: unknown): ProviderError {
+  // Extract error details from Anthropic format
+  
+  // Map to appropriate error types
+  if (statusCode === 401) {
+    return new AuthenticationError({
+      message: errorMessage,
+      provider: 'anthropic',
+      statusCode
+    });
+  }
+  
+  // Handle other error types...
+}
+```
+
+#### 3. Stream Error Handling
+
+Errors in the chat stream are handled with a consistent pattern:
+
+```typescript
+try {
+  // Create and process the stream
+  const streamResult = await streamManager.createStream(provider, messages, options);
+  return streamManager.createStreamResponse(c, streamResult);
+} catch (error) {
+  // Transform error and return error stream
+  const chatError = error instanceof ChatError 
+    ? error 
+    : transformUnknownError(error);
+  return streamManager.handleStreamError(chatError, c);
+}
+```
+
+#### 4. Error Recovery
+
+For certain errors, recovery mechanisms attempt to continue the conversation:
+
+```typescript
+// Clean up messages with failed tool calls
+export async function cleanupMessagesWithFailedToolCalls(
+  messagesWithToolCalls: Message[],
+  error?: unknown
+): Promise<Message[]> {
+  // Remove problematic messages and add error explanation
+  // Create a modified system message with error information
+  // Return cleaned messages for continued conversation
+}
+```
 
 ### Client-Side Error Handling
 
@@ -43,31 +153,25 @@ const errorSystemMessage = {
 append(errorSystemMessage);
 ```
 
-#### 2. Error Message Formatting
+#### 2. Error Parsing from SSE Stream
 
-The `createUserFriendlyErrorMessage` utility function (in `packages/core/src/chat/errorHandler.ts`) transforms technical error messages into user-friendly text:
+The client parses error messages from the server's SSE stream:
 
 ```typescript
-export function createUserFriendlyErrorMessage(error: unknown): string {
-  const errorMessage = error instanceof Error 
-    ? error.message 
-    : typeof error === 'object' && error !== null 
-      ? JSON.stringify(error) 
-      : String(error);
+// Check if this is our special error format
+if (chunk.startsWith("data: error:")) {
+  const errorData = JSON.parse(chunk.substring("data: error:".length));
   
-  // Extract useful information from error message if possible
-  if (errorMessage.includes("context length of only")) {
-    return "This conversation is too long for the model's context window. Try starting a new chat or using a model with a larger context size.";
-  } 
+  // Display error message to user
+  const errorSystemMessage = {
+    id: `error-${Date.now()}`,
+    role: 'system',
+    content: `⚠️ Error: ${errorData.message}`,
+    createdAt: new Date(),
+  };
   
-  if (errorMessage.includes("rate limit")) {
-    return "Rate limit exceeded. Please wait a moment before sending another message.";
-  } 
-  
-  // More error pattern matching...
-  
-  // Return original message if no specific error was matched
-  return errorMessage;
+  append(errorSystemMessage);
+  return;
 }
 ```
 
@@ -101,64 +205,6 @@ const {
 });
 ```
 
-### Server-Side Error Handling
-
-#### 1. Streaming API Errors
-
-The server (`apps/coder/src/server/server.ts`) handles errors in the streaming API:
-
-```typescript
-// In the onError callback
-onError: (event: { error: unknown }) => {
-  const errorMessage = event.error instanceof Error
-    ? `${event.error.message}\n${event.error.stack}`
-    : String(event.error);
-    
-  console.error("💥 streamText onError callback:", errorMessage);
-
-  // Throw error to be caught by stream handler
-  throw new Error(`MODEL_ERROR: ${errorMessage}`);
-},
-```
-
-#### 2. Error Formatting for Client
-
-The server formats errors into a special format for the client to parse:
-
-```typescript
-try {
-  // Format error message as a special event
-  const errorObject = {
-    error: true,
-    message: userFriendlyError,
-    details: errorMessage
-  };
-  
-  // Send error to client
-  await responseStream.write(`data: error:${JSON.stringify(errorObject)}\n\n`);
-} catch (writeError) {
-  console.error("Failed to write error message to stream");
-}
-```
-
-## Special Error Handling for Model Types
-
-### LMStudio Errors
-
-For LMStudio models, special error handling includes:
-
-1. **Context length issues**: When a model has a smaller context window than required
-2. **Connection errors**: When the LMStudio server is not running
-3. **Dynamic model discovery**: When a model referenced is not found in the discovered models
-
-### OpenRouter/Cloud Model Errors
-
-For cloud models, error handling focuses on:
-
-1. **API key validation**: Checking if API keys are present and valid
-2. **Rate limiting**: Detecting and explaining rate limit errors
-3. **Model availability**: Checking if the requested model exists
-
 ## UI Components for Error Display
 
 The `ChatMessage` component (`apps/coder/src/components/ui/chat-message.tsx`) includes special styling for system/error messages:
@@ -185,17 +231,22 @@ if (isSystem) {
 
 ## Best Practices
 
-1. **Always use append()**: When adding error messages to the chat, use the `append()` function from `usePersistentChat` to ensure proper persistence
-2. **Be specific but concise**: Error messages should explain what went wrong without technical jargon
-3. **Suggest solutions**: When possible, include a suggestion for how to fix the issue
-4. **Maintain consistency**: Use the system role and warning style for all error messages
-5. **Log for debugging**: Always include console.error logs with detailed error information
+1. **Use typed errors**: Always use the proper error class for the situation
+2. **Include user-friendly messages**: Provide clear guidance about what went wrong
+3. **Add recovery suggestions**: When possible, suggest how to fix the issue
+4. **Consistent formatting**: Use system role and warning style for all error messages
+5. **Log for debugging**: Include detailed technical information in console logs
+6. **Handle provider-specific errors**: Use dedicated transformers for different providers
+7. **Implement recovery mechanisms**: Try to recover from non-fatal errors
 
 ## Testing Error Scenarios
 
-To test error handling:
-- Set an invalid API key
+To test error handling, try these scenarios:
+
+- Set an invalid API key in Settings
 - Try a conversation that exceeds the model's context length
 - Request a non-existent model
 - Disconnect from the network while generating
-- Use a model with a smaller context window than needed
+- Use a model with smaller context window than needed
+- Try using a tool with invalid permissions
+- Execute a shell command that produces an error

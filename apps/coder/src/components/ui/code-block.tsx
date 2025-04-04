@@ -91,20 +91,20 @@ const xt256Theme = {
   ]
 };
 
-// Singleton for Shiki highlighter
-let shikiHighlighterPromise: Promise<shiki.Highlighter> | null = null;
+// Singleton for Shiki highlighter - using any to bypass type constraints
+let shikiHighlighterPromise: any = null;
 // Track if we've had a WebAssembly error
 let hasWasmError = false;
 // Fallback mode for when Shiki fails
 let fallbackMode = false;
 
-function getHighlighter() {
+function getHighlighter(): Promise<shiki.Highlighter | null> {
   if (!shikiHighlighterPromise) {
     // Initialize once with our custom theme
-    shikiHighlighterPromise = shiki.createHighlighter({
-      themes: [xt256Theme], // Use our custom theme
+    shikiHighlighterPromise = (shiki.createHighlighter({
+      themes: [xt256Theme as any], // Use our custom theme but cast to any to avoid TS errors
       langs: ['javascript', 'typescript', 'python', 'rust', 'go', 'bash', 'json', 'html', 'css', 'markdown'],
-    }).catch(error => {
+    }) as Promise<shiki.Highlighter>).catch(error => {
       console.error("Shiki initialization error:", error);
 
       // Check if this is a WebAssembly CSP error
@@ -279,6 +279,11 @@ export const CodeBlock = React.memo(function CodeBlock({
       // Use Shiki if available
       try {
         const highlighter = highlighterRef.current;
+        
+        // Ensure the highlighter exists
+        if (!highlighter) {
+          throw new Error('Highlighter is null');
+        }
 
         // Highlight this specific line
         const html = await highlighter.codeToHtml(lineText, {

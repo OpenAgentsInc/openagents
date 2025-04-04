@@ -19,11 +19,12 @@ export default function HomePage() {
   });
   const [isLoading, setIsLoading] = useState(process.env.NODE_ENV === 'production'); // Only show loading in production
 
-  // Create a logger
-  const pageLogger = logger.createLogger ? logger.createLogger('HomePage') : {
-    info: console.log,
-    warn: console.warn,
-    error: console.error
+  // Create a logger - use the regular logger since createLogger might not exist
+  const pageLogger = {
+    info: (message: string, details?: any) => logger.info(`[HomePage] ${message}`, details),
+    warn: (message: string, details?: any) => logger.warn(`[HomePage] ${message}`, details),
+    error: (message: string, details?: any) => logger.error(`[HomePage] ${message}`, details),
+    debug: (message: string, details?: any) => logger.debug(`[HomePage] ${message}`, details)
   };
 
   // Check database status on mount and potentially poll
@@ -88,7 +89,8 @@ export default function HomePage() {
           if (process.env.NODE_ENV !== 'production') {
             setDbStatus({ ready: true, error: null });
           } else {
-            setDbStatus({ ready: false, error: error.message || 'Failed to check database status' });
+            const errorMessage = error instanceof Error ? error.message : String(error);
+          setDbStatus({ ready: false, error: errorMessage || 'Failed to check database status' });
           }
           setIsLoading(false);
         }

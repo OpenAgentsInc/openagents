@@ -5,6 +5,7 @@ import { installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-insta
 import { serverApp } from './server';
 import { serve } from '@hono/node-server';
 import { Server } from 'http';
+import type { ServerType } from '@hono/node-server';
 import { initMCPClients, cleanupMCPClients } from './server/mcp-clients';
 import { setApiPort } from './helpers/ipc/api-port/api-port-listeners';
 import registerListeners from './helpers/ipc/listeners-register';
@@ -27,7 +28,7 @@ const inDevelopment = !app.isPackaged; // Use app.isPackaged for reliable env ch
 // --- Global Variables ---
 const DEFAULT_API_PORT = 3001;
 let LOCAL_API_PORT = DEFAULT_API_PORT;
-let serverInstance: ReturnType<typeof serve> | null = null;
+let serverInstance: ServerType | null = null;
 const ALTERNATIVE_PORTS = [3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010];
 let tray: Tray | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -86,8 +87,9 @@ async function initializeMcpClients() {
     await initMCPClients();
     console.log('[Main Process] MCP clients initialized successfully.');
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[Main Process] Error initializing MCP clients:', error);
-    dialog.showErrorBox('MCP Initialization Failed', `Failed to initialize MCP clients: ${error.message}. Some features might be unavailable.`);
+    dialog.showErrorBox('MCP Initialization Failed', `Failed to initialize MCP clients: ${errorMessage}. Some features might be unavailable.`);
     // Optionally make fatal: throw error;
   }
   console.timeEnd('initializeMcpClients');
@@ -108,7 +110,7 @@ async function initializeCoreServices() {
   console.timeEnd('initializeCoreServices');
 }
 
-async function startApiServer(): Promise<Server | null> {
+async function startApiServer(): Promise<ServerType | null> {
   console.time('startApiServer');
   console.log('[Main Process] Starting Local API Server...');
   // ... (rest of startApiServer function remains largely the same as previous refactor)
@@ -116,7 +118,7 @@ async function startApiServer(): Promise<Server | null> {
     if (!serverApp) throw new Error('serverApp is undefined or null');
     if (typeof serverApp.fetch !== 'function') throw new Error('serverApp.fetch is not a function');
 
-    const startServerWithFallback = async (port: number, attemptedPorts: number[] = []): Promise<Server> => {
+    const startServerWithFallback = async (port: number, attemptedPorts: number[] = []): Promise<ServerType> => {
       console.log(`[Main Process] Attempting to start local API server on port ${port}...`);
       return new Promise((resolve, reject) => {
         const server = serve({ fetch: serverApp.fetch, port }, (info) => {
@@ -150,8 +152,9 @@ async function startApiServer(): Promise<Server | null> {
     console.timeEnd('startApiServer');
     return startedServer;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[Main Process] Failed to start local API server:', error);
-    dialog.showErrorBox('Server Startup Failed', `Could not start the local API server: ${error.message}. The application might not function correctly.`);
+    dialog.showErrorBox('Server Startup Failed', `Could not start the local API server: ${errorMessage}. The application might not function correctly.`);
     console.timeEnd('startApiServer');
     return null;
   }
@@ -257,27 +260,66 @@ function createMainWindow() {
 function createAppMenu() {
     console.log('[Main Process] Creating application menu...');
     // ... (createAppMenu function remains the same as previous refactor)
-    const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
+    // Define the menu template with explicit types for roles
+    const template: Electron.MenuItemConstructorOptions[] = [
         ...(process.platform === 'darwin' ? [{
           label: app.name,
           submenu: [
-            { role: 'about' }, { type: 'separator' }, { role: 'services' }, { type: 'separator' },
-            { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }
-          ]
-        }] as Electron.MenuItemConstructorOptions[] : []),
-        { label: 'File', submenu: [ process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' } ] },
-        { label: 'Edit', submenu: [
-            { role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
-            ...(process.platform === 'darwin' ? [ { role: 'delete' }, { role: 'selectAll' } ] : [ { role: 'delete' }, { type: 'separator' }, { role: 'selectAll' } ])
-        ]},
-        { label: 'View', submenu: [
-            { role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }, { type: 'separator' },
-            { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }
-        ]},
-        { label: 'Window', submenu: [
-            { role: 'minimize' }, { role: 'zoom' },
-            ...(process.platform === 'darwin' ? [ { type: 'separator' }, { role: 'front' }, { type: 'separator' }, { role: 'window' } ] : [ { role: 'close' } ])
-        ]}
+            { role: 'about' }, 
+            { type: 'separator' }, 
+            { role: 'services' }, 
+            { type: 'separator' },
+            { role: 'hide' }, 
+            { role: 'hideothers' as any }, // Type as any for hideOthers
+            { role: 'unhide' as any }, // Type as any for unhide
+            { type: 'separator' }, 
+            { role: 'quit' }
+          ] as Electron.MenuItemConstructorOptions[] // Type assertion here
+        }] : []),
+        { 
+          label: 'File', 
+          submenu: [process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }] as Electron.MenuItemConstructorOptions[] 
+        },
+        { 
+          label: 'Edit', 
+          submenu: [
+            { role: 'undo' }, 
+            { role: 'redo' }, 
+            { type: 'separator' }, 
+            { role: 'cut' }, 
+            { role: 'copy' }, 
+            { role: 'paste' },
+            ...(process.platform === 'darwin' 
+              ? [{ role: 'delete' }, { role: 'selectall' as any }] // Type as any for selectAll
+              : [{ role: 'delete' }, { type: 'separator' }, { role: 'selectall' as any }]
+            )
+          ] as Electron.MenuItemConstructorOptions[] 
+        },
+        { 
+          label: 'View', 
+          submenu: [
+            { role: 'reload' }, 
+            { role: 'forcereload' as any }, // Type as any for forceReload
+            { role: 'toggledevtools' as any }, // Type as any for toggleDevTools
+            { type: 'separator' },
+            { role: 'resetzoom' as any }, // Type as any for resetZoom
+            { role: 'zoomin' as any }, // Type as any for zoomIn
+            { role: 'zoomout' as any }, // Type as any for zoomOut
+            { type: 'separator' }, 
+            { role: 'togglefullscreen' }
+          ] as Electron.MenuItemConstructorOptions[] 
+        },
+        { 
+          label: 'Window', 
+          submenu: [
+            { role: 'minimize' }, 
+            { role: 'zoom' },
+            ...(process.platform === 'darwin' 
+              ? [{ type: 'separator' }, { role: 'front' }, { type: 'separator' }, { role: 'window' as any }] 
+              : [{ role: 'close' }]
+            )
+          ] as Electron.MenuItemConstructorOptions[] 
+        }
       ];
     const menu = Menu.buildFromTemplate(template);
     Menu.setApplicationMenu(menu);
@@ -369,8 +411,9 @@ Some features may be unavailable.`);
         if (!serverInstance) {
           console.warn("[Main Process] API Server failed to start in dev mode.");
         }
-      }).catch(error => {
-        console.error("[Main Process] Error starting API server in dev mode:", error);
+      }).catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("[Main Process] Error starting API server in dev mode:", errorMessage);
       });
     } else {
       // Blocking in production mode (might reconsider if server start is slow)
@@ -397,7 +440,8 @@ Some features may be unavailable.`);
     console.log('[Main Process] Application initialization sequence complete.');
   } catch (error) {
     console.error('[Main Process] CRITICAL ERROR during initialization:', error);
-    dialog.showErrorBox('Application Initialization Failed', `A critical error occurred during startup: ${error.message}
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    dialog.showErrorBox('Application Initialization Failed', `A critical error occurred during startup: ${errorMessage}
 
 The application will now exit.`);
     app.quit();
