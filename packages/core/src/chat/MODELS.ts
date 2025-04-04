@@ -4,7 +4,7 @@ interface Model {
   description: string
   id: string
   name: string
-  provider: "openrouter" | "anthropic" | "ollama" | "lmstudio"
+  provider: "openrouter" | "anthropic" | "ollama" | "lmstudio" | "google"
   shortDescription?: string
   supportsTools?: boolean
   tokenizer?: string
@@ -35,6 +35,19 @@ interface Model {
 }
 
 export const MODELS: Model[] = [
+  // Google Gemini models
+  {
+    id: "gemini-2.5-pro-exp-03-25",
+    name: "Gemini 2.5 Pro Experimental",
+    provider: "google",
+    author: "google",
+    created: 1742824755,
+    description: "Gemini 2.5 Pro Experimental is Google's state-of-the-art thinking model, capable of reasoning over complex problems in code, math, and STEM, as well as analyzing large datasets, codebases, and documents using long context.",
+    context_length: 1048576,
+    supportsTools: true,
+    shortDescription: "Gemini 2.5 Pro Experimental is Google's state-of-the-art thinking model, capable of reasoning over complex problems in code, math, and STEM, as well as analyzing large datasets, codebases, and documents using long context.",
+  },
+
   // Anthropic Claude models
   {
     id: "claude-3-7-sonnet-20250219",

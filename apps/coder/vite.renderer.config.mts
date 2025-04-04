@@ -6,7 +6,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
   // Configure asset handling
-  assetsInclude: ['**/*.ttf'],
+  assetsInclude: ['**/*.ttf', '**/*.woff', '**/*.woff2'],
   plugins: [
     tailwindcss(),
     react(),
@@ -55,6 +55,7 @@ export default defineConfig({
     rollupOptions: {
       plugins: [],
     },
+    assetsInlineLimit: 0, // Don't inline any assets, keep all as URLs
   },
   server: {
     watch: {
