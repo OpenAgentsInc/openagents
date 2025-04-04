@@ -18,7 +18,7 @@ export function findModelInfo(modelId: string, preferredProvider?: string): {
   context_length: number;
   supportsTools: boolean;
   shortDescription: string;
-} {
+} | any { // Use any for MODELS that might have supportsTools as undefined
   // First try to find in the MODELS array
   let modelInfo = MODELS.find(m => m.id === modelId);
   

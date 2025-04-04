@@ -63,8 +63,13 @@ chatRoutes.post('/chat', async (c) => {
     // Validate that the provider is appropriate for the model
     validateModelProviderMatch(modelId, providerType);
     
-    // Get API key for the provider
-    const apiKey = apiKeys[providerType] || '';
+    // Get API key for the provider (handle different provider types gracefully)
+    let apiKey = '';
+    if (providerType !== 'unknown') {
+      // Cast to any to avoid TypeScript error with provider types
+      const keys = apiKeys as Record<string, string>;
+      apiKey = keys[providerType] || '';
+    }
     
     // Get provider options
     const providerOptions = getProviderOptions(providerType, apiKeys);

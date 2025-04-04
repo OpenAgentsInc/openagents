@@ -30,10 +30,13 @@ import {
   ApiRateLimitError, TokenQuotaError
 } from './limit-errors';
 
+// Helper type to represent a provider error or similar error type
+type ProviderLikeError = ProviderError | ValidationError | ToolError | NetworkError | LimitError;
+
 /**
  * Transform unknown error to appropriate error class
  */
-export function transformUnknownError(error: unknown): ProviderError | ValidationError | ToolError | NetworkError | LimitError {
+export function transformUnknownError(error: unknown): ProviderLikeError {
   // If it's already one of our error types, return it as is
   if (error instanceof ProviderError ||
       error instanceof ValidationError ||
@@ -87,7 +90,8 @@ export function transformUnknownError(error: unknown): ProviderError | Validatio
     return new ContextLengthError({
       message: errorMessage,
       originalError: error,
-      limit
+      limit,
+      provider: determineProviderFromError(error, errorMessage) // Add provider here
     });
   }
   
@@ -99,7 +103,8 @@ export function transformUnknownError(error: unknown): ProviderError | Validatio
     
     return new ApiRateLimitError({
       message: errorMessage,
-      originalError: error
+      originalError: error,
+      provider: determineProviderFromError(error, errorMessage)
     });
   }
   
@@ -192,15 +197,20 @@ export function transformUnknownError(error: unknown): ProviderError | Validatio
       errorMessage.includes('ENOTFOUND') ||
       errorMessage.includes('timeout')) {
     
+    // Determine the provider for the network error
+    const provider = determineProviderFromError(error, errorMessage);
+    
     if (errorMessage.includes('timeout')) {
       return new ConnectionTimeoutError({
         message: errorMessage,
+        provider,
         originalError: error
       });
     }
     
     return new NetworkError({
       message: errorMessage,
+      provider,
       originalError: error
     });
   }
@@ -624,11 +634,12 @@ export function transformOllamaError(error: unknown): ProviderError {
       errorMessage.includes('connection') ||
       errorMessage.includes('unreachable')) {
     
+    // Creating a server unreachable error with Ollama provider
     return new ServerUnreachableError({
       message: errorMessage,
-      url: 'Ollama local server',
-      originalError: error,
-      userMessage: 'Cannot connect to Ollama server. Please make sure Ollama is running locally.'
+      provider: 'ollama',
+      userMessage: 'Cannot connect to Ollama server. Please make sure Ollama is running locally.',
+      originalError: error
     });
   }
   

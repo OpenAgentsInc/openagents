@@ -3,6 +3,7 @@
  */
 
 import { ChatError, ChatErrorOptions } from './base-error';
+import { ProviderType } from './provider-errors';
 
 // Network error options
 export interface NetworkErrorOptions extends Omit<ChatErrorOptions, 'category'> {
@@ -10,6 +11,7 @@ export interface NetworkErrorOptions extends Omit<ChatErrorOptions, 'category'> 
   statusCode?: number;
   timeout?: number;
   retryable?: boolean;
+  provider: ProviderType;
 }
 
 /**
@@ -20,6 +22,7 @@ export class NetworkError extends ChatError {
   public readonly statusCode?: number;
   public readonly timeout?: number;
   public readonly retryable: boolean;
+  public readonly provider: ProviderType;
   
   constructor(options: NetworkErrorOptions) {
     super({
@@ -32,11 +35,13 @@ export class NetworkError extends ChatError {
     this.statusCode = options.statusCode;
     this.timeout = options.timeout;
     this.retryable = options.retryable !== undefined ? options.retryable : true;
+    this.provider = options.provider;
     
     // Add network info to metadata
     if (options.url) this.metadata.url = options.url;
     if (options.statusCode) this.metadata.statusCode = options.statusCode;
     if (options.timeout) this.metadata.timeout = options.timeout;
+    this.metadata.provider = options.provider;
     this.metadata.retryable = this.retryable;
   }
 }

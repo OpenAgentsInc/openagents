@@ -5,7 +5,7 @@
 import type { Context } from 'hono';
 import type { ReadableStream } from 'stream/web';
 import { stream as honoStream } from 'hono/streaming';
-import { streamText, type Message, type StreamTextOptions, type StreamTextOnFinishCallback } from 'ai';
+import { streamText, type Message, type StreamTextOnFinishCallback } from 'ai';
 import { Provider } from '../providers';
 import { 
   formatErrorForStream,
@@ -57,7 +57,7 @@ export class DefaultStreamManager implements StreamManager {
     const tools = options.tools || {};
     
     // Create stream options
-    const streamOptions: StreamTextOptions<any> = {
+    const streamOptions: any = {
       model: provider.model,
       messages,
       // Only include tools if the model supports them and tools are provided
@@ -330,7 +330,7 @@ export class DefaultStreamManager implements StreamManager {
     messages: Message[], 
     error: unknown, 
     provider: Provider
-  ): any {
+  ): Promise<any> {
     console.log("🛠️ Attempting stream recovery after error");
     
     try {

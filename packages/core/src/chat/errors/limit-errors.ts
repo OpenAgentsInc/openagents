@@ -3,12 +3,13 @@
  */
 
 import { ChatError, ChatErrorOptions } from './base-error';
+import { ProviderType } from './provider-errors';
 
 // Limit error options
 export interface LimitErrorOptions extends Omit<ChatErrorOptions, 'category'> {
   limit?: number;
   current?: number;
-  provider?: string;
+  provider?: ProviderType;
   modelId?: string;
 }
 
@@ -18,7 +19,7 @@ export interface LimitErrorOptions extends Omit<ChatErrorOptions, 'category'> {
 export class LimitError extends ChatError {
   public readonly limit?: number;
   public readonly current?: number;
-  public readonly provider?: string;
+  public readonly provider?: ProviderType;
   public readonly modelId?: string;
   
   constructor(options: LimitErrorOptions) {
@@ -44,7 +45,9 @@ export class LimitError extends ChatError {
  * Context length exceeded errors
  */
 export class ContextLengthError extends LimitError {
-  constructor(options: LimitErrorOptions) {
+  public readonly provider: ProviderType;
+  
+  constructor(options: LimitErrorOptions & { provider: ProviderType }) {
     const modelInfo = options.modelId && options.limit 
       ? ` (${options.modelId} has a limit of ${options.limit} tokens)`
       : options.limit
@@ -57,6 +60,7 @@ export class ContextLengthError extends LimitError {
         `This conversation is too long for the model's context window${modelInfo}. Try starting a new chat or using a model with a larger context size.`
     });
     this.name = 'ContextLengthError';
+    this.provider = options.provider;
   }
 }
 
