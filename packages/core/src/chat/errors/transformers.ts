@@ -18,7 +18,8 @@ import {
 import {
   ToolError, ToolExecutionError, 
   ToolArgumentError, ToolAuthenticationError, 
-  ToolNotFoundError, ToolTimeoutError
+  ToolNotFoundError, ToolTimeoutError,
+  ResourceNotFoundError
 } from './tool-errors';
 import { 
   NetworkError, ConnectionTimeoutError, 
@@ -146,6 +147,36 @@ export function transformUnknownError(error: unknown): ProviderError | Validatio
                            errorMessage.match(/tool ([\w\d\-_]+):/i);
     const toolName = toolNameMatch ? toolNameMatch[1] : 'unknown';
     
+    // Check for resource not found or GitHub specific errors that should be non-fatal
+    if (errorMessage.toLowerCase().includes('not found') || 
+        errorMessage.toLowerCase().includes('resource not found') ||
+        errorMessage.toLowerCase().includes('no such file') ||
+        errorMessage.toLowerCase().includes('404')) {
+      
+      // Try to extract resource path if available
+      const resourceMatch = errorMessage.match(/['"]([\w\d\-\/:.]+)['"]/);
+      const resourcePath = resourceMatch ? resourceMatch[1] : undefined;
+      
+      return new ResourceNotFoundError({
+        message: errorMessage,
+        toolName,
+        resourcePath,
+        originalError: error,
+        nonFatal: true
+      });
+    }
+    
+    // For GitHub authentication errors
+    if (errorMessage.toLowerCase().includes('bad credentials') ||
+        errorMessage.toLowerCase().includes('authentication failed')) {
+      return new ToolAuthenticationError({
+        message: errorMessage,
+        toolName,
+        originalError: error
+      });
+    }
+    
+    // Default tool execution error
     return new ToolExecutionError({
       message: errorMessage,
       toolName,
@@ -671,12 +702,31 @@ export function transformToolError(error: unknown, toolName?: string): ToolError
   // Use provided toolName or extract from error message
   const effectiveToolName = toolName || extractToolNameFromError(errorMessage);
   
+  // First check for GitHub specific errors
+  if (errorMessage.toLowerCase().includes('not found') || 
+      errorMessage.toLowerCase().includes('404') ||
+      errorMessage.toLowerCase().includes('resource not found') ||
+      errorMessage.toLowerCase().includes('no such file')) {
+    
+    // Try to extract the resource path from the error
+    const resourceMatch = extractResourcePathFromError(errorMessage);
+    
+    return new ResourceNotFoundError({
+      message: errorMessage,
+      toolName: effectiveToolName,
+      resourcePath: resourceMatch,
+      originalError: error,
+      nonFatal: true // Important: make this non-fatal so the LLM can handle it
+    });
+  }
+  
   // Auth errors
   if (errorMessage.includes('authentication') || 
       errorMessage.includes('auth') || 
       errorMessage.includes('credentials') || 
       errorMessage.includes('API key') ||
-      errorMessage.includes('permission')) {
+      errorMessage.includes('permission') ||
+      errorMessage.includes('Bad credentials')) {
     
     return new ToolAuthenticationError({
       message: errorMessage,
@@ -690,7 +740,8 @@ export function transformToolError(error: unknown, toolName?: string): ToolError
     return new ToolNotFoundError({
       message: errorMessage,
       toolName: effectiveToolName,
-      originalError: error
+      originalError: error,
+      nonFatal: true
     });
   }
   
@@ -709,7 +760,8 @@ export function transformToolError(error: unknown, toolName?: string): ToolError
       message: errorMessage,
       toolName: effectiveToolName,
       originalError: error,
-      invalidArgument
+      invalidArgument,
+      nonFatal: true
     });
   }
   
@@ -718,7 +770,8 @@ export function transformToolError(error: unknown, toolName?: string): ToolError
     return new ToolTimeoutError({
       message: errorMessage,
       toolName: effectiveToolName,
-      originalError: error
+      originalError: error,
+      nonFatal: true
     });
   }
   
@@ -739,4 +792,38 @@ function extractToolNameFromError(errorMessage: string): string {
                          errorMessage.match(/executing ([\w\d\-_]+)/i);
                          
   return toolNameMatch ? toolNameMatch[1] : 'unknown';
+}
+
+/**
+ * Extract resource path from error message
+ */
+function extractResourcePathFromError(errorMessage: string): string | undefined {
+  // Try different patterns to extract file or resource path
+  
+  // Check for quotes around path
+  const quotedMatch = errorMessage.match(/['"]([^'"]+\.[\w]+)['"]/) || 
+                      errorMessage.match(/['"]([\/\w\d\-_.]+)['"]/) ||
+                      errorMessage.match(/No such file or directory: ['"]([^'"]+)['"]/);
+  
+  if (quotedMatch && quotedMatch[1]) {
+    return quotedMatch[1];
+  }
+  
+  // Check for explicit file path mentions
+  const fileMatch = errorMessage.match(/file not found: ([\w\d\-\/_.]+)/) ||
+                    errorMessage.match(/path ([\w\d\-\/_.]+) not found/) ||
+                    errorMessage.match(/resource ([\w\d\-\/_.]+) not found/);
+  
+  if (fileMatch && fileMatch[1]) {
+    return fileMatch[1];
+  }
+  
+  // Check for path-like structures
+  const pathMatch = errorMessage.match(/[\w\d]+\/[\w\d\-]+\/[\w\d\-_.\/]+/);
+  
+  if (pathMatch) {
+    return pathMatch[0];
+  }
+  
+  return undefined;
 }

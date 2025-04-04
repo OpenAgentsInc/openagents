@@ -10,6 +10,8 @@ export interface ToolErrorOptions extends Omit<ChatErrorOptions, 'category'> {
   toolType?: string;
   arguments?: Record<string, unknown>;
   invocationId?: string;
+  // When true, the error is non-fatal and should be returned as a result to the model
+  nonFatal?: boolean;
 }
 
 /**
@@ -20,6 +22,7 @@ export class ToolError extends ChatError {
   public readonly toolType?: string;
   public readonly arguments?: Record<string, unknown>;
   public readonly invocationId?: string;
+  public readonly nonFatal: boolean;
   
   constructor(options: ToolErrorOptions) {
     super({
@@ -31,11 +34,13 @@ export class ToolError extends ChatError {
     this.toolType = options.toolType;
     this.arguments = options.arguments;
     this.invocationId = options.invocationId;
+    this.nonFatal = options.nonFatal || false;
     
     // Add tool info to metadata
     this.metadata.toolName = options.toolName;
     if (options.toolType) this.metadata.toolType = options.toolType;
     if (options.invocationId) this.metadata.invocationId = options.invocationId;
+    if (options.nonFatal) this.metadata.nonFatal = options.nonFatal;
     
     // Only include arguments if they're safe to serialize
     if (options.arguments) {
@@ -66,9 +71,33 @@ export class ToolNotFoundError extends ToolError {
     super({
       ...options,
       userMessage: options.userMessage || 
-        `Tool "${options.toolName}" not found or unavailable. The model attempted to use a tool that doesn't exist.`
+        `Tool "${options.toolName}" not found or unavailable. The model attempted to use a tool that doesn't exist.`,
+      // Resource not found errors should be non-fatal by default
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : true
     });
     this.name = 'ToolNotFoundError';
+  }
+}
+
+/**
+ * Resource not found errors (file not found, repo not found, etc.)
+ */
+export class ResourceNotFoundError extends ToolError {
+  public readonly resourcePath?: string;
+  
+  constructor(options: ToolErrorOptions & { resourcePath?: string }) {
+    super({
+      ...options,
+      userMessage: options.userMessage || 
+        options.resourcePath
+          ? `Resource not found: ${options.resourcePath}`
+          : `Resource not found`,
+      // Resource not found errors should be non-fatal by default
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : true
+    });
+    this.name = 'ResourceNotFoundError';
+    this.resourcePath = options.resourcePath;
+    if (options.resourcePath) this.metadata.resourcePath = options.resourcePath;
   }
 }
 
@@ -80,7 +109,9 @@ export class ToolAuthenticationError extends ToolError {
     super({
       ...options,
       userMessage: options.userMessage || 
-        `Authentication failed for tool "${options.toolName}". Please check your credentials in Settings.`
+        `Authentication failed for tool "${options.toolName}". Please check your credentials in Settings.`,
+      // Auth errors are fatal by default as they likely affect all tool calls
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : false
     });
     this.name = 'ToolAuthenticationError';
   }
@@ -98,7 +129,9 @@ export class ToolArgumentError extends ToolError {
       userMessage: options.userMessage || 
         options.invalidArgument
           ? `Invalid argument "${options.invalidArgument}" for tool "${options.toolName}".`
-          : `Invalid arguments for tool "${options.toolName}". Please check the tool requirements and try again.`
+          : `Invalid arguments for tool "${options.toolName}". Please check the tool requirements and try again.`,
+      // Argument errors are non-fatal by default as the model can retry with different args
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : true
     });
     this.name = 'ToolArgumentError';
     this.invalidArgument = options.invalidArgument;
@@ -116,7 +149,9 @@ export class ToolTimeoutError extends ToolError {
     super({
       ...options,
       userMessage: options.userMessage || 
-        `Tool "${options.toolName}" execution timed out${options.timeoutMs ? ` after ${options.timeoutMs}ms` : ''}.`
+        `Tool "${options.toolName}" execution timed out${options.timeoutMs ? ` after ${options.timeoutMs}ms` : ''}.`,
+      // Timeout errors are non-fatal by default
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : true
     });
     this.name = 'ToolTimeoutError';
     this.timeoutMs = options.timeoutMs;
@@ -132,7 +167,9 @@ export class ToolPermissionError extends ToolError {
     super({
       ...options,
       userMessage: options.userMessage || 
-        `Permission denied for tool "${options.toolName}". You may not have the necessary permissions to use this tool.`
+        `Permission denied for tool "${options.toolName}". You may not have the necessary permissions to use this tool.`,
+      // Permission errors are usually fatal for that specific tool
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : false
     });
     this.name = 'ToolPermissionError';
   }
@@ -146,7 +183,9 @@ export class ToolExecutionError extends ToolError {
     super({
       ...options,
       userMessage: options.userMessage || 
-        `Error executing tool "${options.toolName}". The tool encountered an error during execution.`
+        `Error executing tool "${options.toolName}". The tool encountered an error during execution.`,
+      // General execution errors could be either fatal or non-fatal
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : false
     });
     this.name = 'ToolExecutionError';
   }
@@ -164,7 +203,9 @@ export class MCPClientError extends ToolError {
       userMessage: options.userMessage || 
         options.clientId
           ? `MCP client "${options.clientId}" error while executing tool "${options.toolName}".`
-          : `MCP client error while executing tool "${options.toolName}".`
+          : `MCP client error while executing tool "${options.toolName}".`,
+      // Client errors are handled based on error specifics
+      nonFatal: options.nonFatal !== undefined ? options.nonFatal : false
     });
     this.name = 'MCPClientError';
     this.clientId = options.clientId;

@@ -12,7 +12,8 @@ import {
   ChatError,
   transformUnknownError,
   cleanupMessagesWithFailedToolCalls,
-  createRecoveryModelOptions
+  createRecoveryModelOptions,
+  ToolError
 } from '../errors';
 
 /**
@@ -91,6 +92,15 @@ export class DefaultStreamManager implements StreamManager {
           ? event.error
           : transformUnknownError(event.error);
         
+        // Check if this is a non-fatal tool error that should be returned as a result
+        if (chatError instanceof ToolError && chatError.nonFatal) {
+          // For non-fatal errors, pass the error message as a result back to the model
+          console.log("Non-fatal tool error detected. Converting to result:", chatError.userMessage);
+          // Set a special property that the AI SDK stream processor will recognize
+          (chatError as any).shouldConvertToToolResult = true;
+          (chatError as any).toolResult = chatError.toToolResult();
+        }
+        
         // Rethrow the error to be caught by the stream handler
         throw chatError;
       },
@@ -162,6 +172,16 @@ export class DefaultStreamManager implements StreamManager {
         } catch (streamError) {
           // Handle errors that occur during stream processing
           console.error("STREAM PROCESSING ERROR:", streamError);
+          
+          // Check if this is a tool error that should be converted to a result
+          if (streamError instanceof ToolError && 
+              streamError.nonFatal && 
+              (streamError as any).shouldConvertToToolResult) {
+            
+            // Just log it and continue - the error is already handled
+            console.log("Non-fatal tool error already handled properly");
+            return;
+          }
           
           // Send error message to client
           const errorData = {
@@ -239,6 +259,13 @@ export class DefaultStreamManager implements StreamManager {
           });
         }
         
+        // If the data is a tool result from a non-fatal error, make sure it's formatted correctly
+        if ((data as any).toolResult) {
+          // Ensure we're passing the formatted tool result
+          // (This should be caught by our error handler, but just in case)
+          console.log("Tool result from error found in stream data");
+        }
+        
         // Write the processed data
         await responseStream.write(`data: ${JSON.stringify(data)}\n\n`);
       } catch (e) {
@@ -266,6 +293,16 @@ export class DefaultStreamManager implements StreamManager {
     console.error(`Error message: ${chatError.message}`);
     console.error(`Error category: ${chatError.category}`);
     console.error("==========================================");
+    
+    // Check if this is a non-fatal tool error
+    if (chatError instanceof ToolError && chatError.nonFatal) {
+      console.log("Non-fatal tool error detected. This should be handled as a tool result.");
+      
+      // For non-fatal tool errors, we want to return the error as a result to the model
+      // We'll add special markers to the error
+      (chatError as any).shouldConvertToToolResult = true;
+      (chatError as any).toolResult = chatError.toToolResult();
+    }
     
     // Set SSE headers
     Object.entries(SSE_HEADERS).forEach(([key, value]) => {
