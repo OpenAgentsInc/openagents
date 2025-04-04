@@ -178,6 +178,83 @@ app.post('/api/chat', async (c) => {
       return c.json({ error: "No valid messages array provided" }, 400);
     }
 
+    // First, sanitize all messages to ensure they have valid content and parts
+    messages = messages.map(msg => {
+      // Ensure every message has valid content
+      if (!msg.content && (!msg.parts || msg.parts.length === 0)) {
+        console.log(`[Server] Found empty message with role ${msg.role}, adding placeholder content`);
+        return {
+          ...msg,
+          content: msg.role === 'user' ? 'Please continue.' : 'I understand.',
+          parts: [{ type: 'text', text: msg.role === 'user' ? 'Please continue.' : 'I understand.' }]
+        };
+      }
+
+      // If content exists but parts is missing or empty, create parts from content
+      if (msg.content && (!msg.parts || msg.parts.length === 0)) {
+        return {
+          ...msg,
+          parts: [{ type: 'text', text: msg.content }]
+        };
+      }
+
+      return msg;
+    });
+
+    // Handle system messages - especially for Google models that require system messages at the beginning
+    const systemMessageIndices = messages
+      .map((msg, index) => msg.role === 'system' ? index : -1)
+      .filter(index => index !== -1);
+
+    // If there are system messages but the first one is not at the beginning (index 0),
+    // OR if there are multiple system messages anywhere in the conversation
+    if ((systemMessageIndices.length > 0 && systemMessageIndices[0] !== 0) ||
+      systemMessageIndices.length > 1) {
+
+      console.log("[Server] Invalid system message configuration detected. Restructuring messages...");
+
+      // Extract all system messages
+      const systemMessages = messages.filter(msg => msg.role === 'system');
+
+      // Combine their content if there are multiple
+      let combinedSystemContent = "";
+      if (systemMessages.length > 0) {
+        combinedSystemContent = systemMessages.map(msg => msg.content).join("\n\n");
+        console.log(`[Server] Combined ${systemMessages.length} system messages into one`);
+      }
+
+      // Filter out all system messages
+      const nonSystemMessages = messages.filter(msg => msg.role !== 'system');
+
+      // Create a new array with a single system message at the beginning, followed by all non-system messages
+      messages = combinedSystemContent
+        ? [{
+          role: 'system',
+          content: combinedSystemContent,
+          id: `system-${Date.now()}`,
+          parts: [{ type: 'text', text: combinedSystemContent }]
+        },
+        ...nonSystemMessages
+        ]
+        : nonSystemMessages;
+
+      console.log(`[Server] Restructured ${messages.length} messages with system message at beginning`);
+    }
+
+    // Remove any empty messages regardless of provider - this is a universal fix
+    const validMessages = messages.filter(msg => {
+      if (!msg.content && (!msg.parts || msg.parts.length === 0)) {
+        console.log(`[Server] Filtering out message with empty content and parts`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validMessages.length !== messages.length) {
+      console.log(`[Server] Removed ${messages.length - validMessages.length} invalid messages`);
+      messages = validMessages;
+    }
+
     // Create the OpenRouter client with API key
     const openrouter = createOpenRouter({
       apiKey: OPENROUTER_API_KEY,
@@ -723,6 +800,7 @@ app.post('/api/chat', async (c) => {
       console.log(`⚠️ CRITICAL SAFEGUARD CHECK: MODEL: ${MODEL}, PROVIDER: ${provider}`);
 
       // Prevent Claude models from being routed anywhere except Anthropic
+      // (OpenRouter prefixes claude- models with anthropic/)
       if (MODEL.startsWith('claude-') && provider !== 'anthropic') {
         console.error(`[Server] CRITICAL ERROR: Claude model ${MODEL} is being routed to non-Anthropic provider: ${provider}`);
 
