@@ -2,7 +2,7 @@
 
 This roadmap outlines the planned product development phases, integrating insights from strategic discussions and recent transcripts (ep150, ep167, ep168).
 
-## Phase 1: Forge the Spearhead - The OpenAgents Coder (Est. 6-9 months)
+## Phase 1: Forge the Spearhead - The OpenAgents Coder (Est. 6-9 weeks)
 
 *   **Goal:** Launch a best-in-class coding agent, achieve product-market fit, generate initial revenue, and establish OpenAgents as a credible player in open-source AI development tools.
 *   **Product:** **OpenAgents Coder (Desktop Application)**
@@ -16,7 +16,7 @@ This roadmap outlines the planned product development phases, integrating insigh
     *   Establish clear benchmarks to demonstrate superiority over competitors.
     *   Rapid iteration based on user feedback.
 
-## Phase 2: Build the Ecosystem - Decentralized Marketplace & Economics (Est. 9-24 months)
+## Phase 2: Build the Ecosystem - Decentralized Marketplace & Economics (Est. 9-24 weeks)
 
 *   **Goal:** Bootstrap the decentralized marketplace for agents, tools, and compute, leveraging the Coder agent's user base and the power of open protocols (MCP, B/L/N).
 *   **Products & Features:**
@@ -39,11 +39,11 @@ This roadmap outlines the planned product development phases, integrating insigh
     *   Promote MCP adoption and standardization for remote servers.
     *   Refine revshare models based on market feedback.
 
-## Phase 3: Scale the Infrastructure - Towards Vertical Integration (Est. 24+ months)
+## Phase 3: Scale the Infrastructure - Towards Vertical Integration (Est. 24+ weeks)
 
 *   **Goal:** Solve the AI hardware cost problem, become a profitable, vertically integrated AI powerhouse, and contribute foundational open-source models.
 *   **Products & Features:**
-    *   **"AWS for Open Agents" - Compute Infrastructure:**
+    *   **\"AWS for Open Agents\" - Compute Infrastructure:**
         *   Strategically invest in owning/leasing and managing optimized GPU clusters based on marketplace demand.
         *   Rent out this compute capacity (inference, fine-tuning) via the established Nostr/Lightning marketplace (spot & reserved instances).
         *   Offer premium, managed AI services (e.g., high-performance inference endpoints for popular models, managed fine-tuning) running on owned infrastructure.
