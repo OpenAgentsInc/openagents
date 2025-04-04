@@ -22,7 +22,12 @@ const config = {
     }
   ],
   packagerConfig: {
-    asar: true,
+    // Keep asar enabled, but configure unpacking
+    asar: {
+      // Use a glob pattern to unpack the fs-extra module
+      // This keeps fs-extra outside app.asar, potentially fixing require issues
+      unpack: "**/node_modules/fs-extra/**",
+    },
     extraResource: ['src/images'],
     icon: 'src/images/icon', // Base name without extension
   },
