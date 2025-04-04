@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain } from 'electron'; // Added ipcMain
-import path from 'path';
+import path from 'node:path';
+import fs from 'node:fs';
 import { installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 import { serverApp } from './server';
 import { serve } from '@hono/node-server';
@@ -163,7 +164,7 @@ function createMainWindow() {
     mainWindow.show();
     return mainWindow;
   }
-  
+
   console.time('createMainWindow');
   console.log('[Main Process] Creating main window...');
   const preload = path.join(__dirname, "preload.js");
@@ -176,11 +177,22 @@ function createMainWindow() {
   const newWindow = new BrowserWindow({
     width: 1200, height: 950,
     webPreferences: { devTools: inDevelopment, contextIsolation: true, preload, webSecurity: true, allowRunningInsecureContent: false },
-    titleBarStyle: 'hidden', icon: iconPath, title: 'Coder', show: false,
+    titleBarStyle: 'hidden', icon: iconPath, title: 'Coder', show: false, // Keep show: false initially
   });
-  
+
   // Assign to global reference before setting up event handlers
   mainWindow = newWindow;
+
+  // --- Add Error Handling for Loading ---
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Main Process] Failed to load window content: ${errorDescription} (Code: ${errorCode}) URL: ${validatedURL}`);
+    // Optionally show an error dialog to the user
+    if (!inDevelopment) { // Avoid annoying dialogs during hot-reloads in dev
+        dialog.showErrorBox('Content Load Error', `Failed to load application content: ${errorDescription}`);
+    }
+    // Decide if the app should quit or retry? For now, just log.
+  });
+  // --- End Error Handling ---
 
   mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
     try {
@@ -196,25 +208,51 @@ function createMainWindow() {
 
   registerListeners(mainWindow);
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  else mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+  console.log(`[Main Process] Loading renderer content. MAIN_WINDOW_VITE_DEV_SERVER_URL: ${MAIN_WINDOW_VITE_DEV_SERVER_URL}`);
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    console.log(`[Main Process] Loading URL: ${MAIN_WINDOW_VITE_DEV_SERVER_URL}`);
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    // --- Simplified Production Path ---
+    // Assumes index.html is in '<outputDir>/renderer/main_window/' relative to main process root
+    // VitePlugin default output is usually '.vite/renderer/main_window'
+    const indexPath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    console.log(`[Main Process] Loading file: ${indexPath}`);
+    if (fs.existsSync(indexPath)) {
+        mainWindow.loadFile(indexPath);
+    } else {
+        console.error(`[Main Process] Renderer index.html not found at expected path: ${indexPath}`);
+        dialog.showErrorBox('Application Load Error', `Could not find the required file to load the application interface: ${indexPath}`);
+        // App likely cannot function, consider quitting
+        // app.quit();
+    }
+    // --- End Simplified Path ---
+  }
 
-  mainWindow.once('ready-to-show', () => { 
-    if (mainWindow) {
-      mainWindow.show(); 
-      console.log('[Main Process] Main window shown.'); 
+  mainWindow.once('ready-to-show', () => {
+    if (mainWindow) { // Check if window still exists
+      console.log('[Main Process] Window ready-to-show event fired. Showing window.');
+      mainWindow.show();
+      console.log('[Main Process] Main window shown.');
+      // Open DevTools automatically in development for debugging
+      if (inDevelopment) {
+           mainWindow.webContents.openDevTools({ mode: 'detach' }); // Detach dev tools
+      }
+    } else {
+        console.warn('[Main Process] Window was destroyed before ready-to-show fired.');
     }
   });
-  
-  mainWindow.on('closed', () => { 
-    console.log('[Main Process] Main window closed.'); 
-    mainWindow = null; 
+
+  mainWindow.on('closed', () => {
+    console.log('[Main Process] Main window closed.');
+    mainWindow = null;
   });
 
-  console.log('[Main Process] Main window created.');
+  console.log('[Main Process] Main window created, waiting for content to load...');
   console.timeEnd('createMainWindow');
   return mainWindow;
 }
+
 
 function createAppMenu() {
     console.log('[Main Process] Creating application menu...');
@@ -283,7 +321,7 @@ const registeredIpcHandlers = new Set<string>();
 
 function registerIpcHandlers() {
     console.log('[Main Process] Registering IPC handlers...');
-    
+
     // Only register if not already registered
     if (!registeredIpcHandlers.has('get-db-status')) {
         ipcMain.handle('get-db-status', () => {
@@ -292,7 +330,7 @@ function registerIpcHandlers() {
         });
         registeredIpcHandlers.add('get-db-status');
     }
-    
+
     // Add other main process handlers here if needed
     console.log('[Main Process] IPC handlers registered.');
 }
@@ -308,18 +346,19 @@ async function initializeApp() {
 
     // 1. Create menus
     createAppMenu();
-    
+
     // 2. Create main window early so it can be displayed while other services initialize
     createMainWindow();
-    
+
     // 3. Create tray
     createTray();
 
     // 4. Initialize core services (DB, MCP) in the background
     initializeCoreServices().catch(error => {
       console.error('[Main Process] Error during core services initialization:', error);
-      dialog.showErrorBox('Service Initialization Error', 
-        `Failed to initialize core services: ${error.message}\nSome features may be unavailable.`);
+      dialog.showErrorBox('Service Initialization Error',
+        `Failed to initialize core services: ${error.message}
+Some features may be unavailable.`);
     });
 
     // 5. Start API server - do this in the background in dev mode
@@ -334,7 +373,7 @@ async function initializeApp() {
         console.error("[Main Process] Error starting API server in dev mode:", error);
       });
     } else {
-      // Blocking in production mode
+      // Blocking in production mode (might reconsider if server start is slow)
       serverInstance = await startApiServer();
       if (!serverInstance) {
         console.error("[Main Process] API Server failed to start. Application may be unstable.");
@@ -349,15 +388,18 @@ async function initializeApp() {
     // 7. Setup macOS Dock
     if (process.platform === 'darwin') {
       const iconPath = path.join(inDevelopment ? path.join(process.cwd(), 'src', 'images') : path.join(process.resourcesPath, 'images'), 'icon.png');
-      if(await require('fs-extra').pathExists(iconPath)) app.dock.setIcon(iconPath);
+      // Use native fs.existsSync instead of fs-extra.pathExists
+      if(fs.existsSync(iconPath)) app.dock.setIcon(iconPath);
       const dockMenu = Menu.buildFromTemplate([{ label: 'New Window', click() { if (!mainWindow) createMainWindow(); } }]);
       app.dock.setMenu(dockMenu);
     }
 
-    console.log('[Main Process] Application initialization complete.');
+    console.log('[Main Process] Application initialization sequence complete.');
   } catch (error) {
     console.error('[Main Process] CRITICAL ERROR during initialization:', error);
-    dialog.showErrorBox('Application Initialization Failed', `A critical error occurred during startup: ${error.message}\n\nThe application will now exit.`);
+    dialog.showErrorBox('Application Initialization Failed', `A critical error occurred during startup: ${error.message}
+
+The application will now exit.`);
     app.quit();
   } finally {
     console.timeEnd('initializeApp');
@@ -384,13 +426,21 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     console.log('[Main Process] App activated with no windows open. Creating new window.');
-    if (app.isReady() && !mainWindow) createMainWindow();
-    else console.warn('[Main Process] App activated but not ready yet or window creation in progress. Window creation deferred.');
+    // Ensure app is ready and window doesn't already exist somehow
+    if (app.isReady() && !mainWindow) {
+        createMainWindow();
+    } else if (mainWindow) {
+         console.log('[Main Process] App activated, window exists but might be hidden. Showing.');
+         mainWindow.show(); // Ensure it's shown if it exists but was hidden
+    } else {
+        console.warn('[Main Process] App activated but not ready yet. Window creation deferred.');
+    }
   } else {
      console.log('[Main Process] App activated, window(s) already exist.');
-     if(mainWindow) mainWindow.show();
+     if(mainWindow) mainWindow.show(); // Bring existing window to front
   }
 });
+
 
 app.on('will-quit', async (event) => {
   console.log('[Main Process] App is quitting...');

@@ -2,7 +2,8 @@
 
 import { app, dialog } from 'electron';
 import path from 'path';
-import fs from 'fs-extra'; // Using fs-extra for robust file operations like ensureDirSync
+import fs from 'node:fs'; // Switch to native Node.js fs module
+import { mkdir } from 'node:fs/promises';
 import {
   createRxDatabase,
   addRxPlugin,
@@ -58,13 +59,24 @@ const DB_VERSION_NAMESPACE = 'v1'; // Increment this if breaking schema changes 
 const userDataPath = app.getPath('userData');
 const dbBasePath = path.join(userDataPath, 'databases');
 
-// Ensure the base directory exists
+// Ensure the base directory exists with native Node.js fs
 try {
-    fs.ensureDirSync(dbBasePath);
+    console.log('[DB Service] Ensuring database directory exists:', dbBasePath);
+    
+    if (!fs.existsSync(dbBasePath)) {
+        fs.mkdirSync(dbBasePath, { recursive: true });
+        console.log('[DB Service] Successfully created database directory');
+    } else {
+        console.log('[DB Service] Database directory already exists');
+    }
 } catch (err) {
     console.error('[DB Service] Failed to create database directory:', dbBasePath, err);
-    // This is likely fatal, throw or handle appropriately
-    throw new Error(`Failed to ensure database directory exists: ${err.message}`);
+    // Not fatal in development mode
+    if (app.isPackaged) {
+        throw new Error(`Failed to ensure database directory exists: ${err.message}`);
+    } else {
+        console.warn('[DB Service] Continuing despite directory creation error in development mode');
+    }
 }
 
 // Define database names based on environment and version

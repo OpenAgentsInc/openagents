@@ -1,3 +1,5 @@
+// apps/coder/src/helpers/ipc/window/window-context.ts
+import { contextBridge, ipcRenderer } from 'electron'; // Import directly
 import {
   WIN_MINIMIZE_CHANNEL,
   WIN_MAXIMIZE_CHANNEL,
@@ -5,7 +7,8 @@ import {
 } from "./window-channels";
 
 export function exposeWindowContext() {
-  const { contextBridge, ipcRenderer } = window.require("electron");
+  // Remove: const { contextBridge, ipcRenderer } = window.require("electron");
+  console.log('[Preload] Exposing ElectronWindowContext'); // Add log
   contextBridge.exposeInMainWorld("electronWindow", {
     minimize: () => ipcRenderer.invoke(WIN_MINIMIZE_CHANNEL),
     maximize: () => ipcRenderer.invoke(WIN_MAXIMIZE_CHANNEL),
