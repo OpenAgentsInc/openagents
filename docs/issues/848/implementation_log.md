@@ -2,7 +2,31 @@
 
 This log tracks the steps taken to implement the refactoring plan outlined in `analysis_and_plan.md`.
 
-## RxDB Storage Refactoring
+## Initial Refactor (#848)
+
+*   Centralized core initialization (DB, MCP) into `main.ts`.
+*   Switched DB storage from Dexie (renderer) to LokiJS (main process).
+*   Implemented IPC for DB status checking.
+*   Corrected MCP client initialization timing.
+*   Added single instance lock.
+
+## Production Build Debugging (#850)
+
+### Problem 1: `Cannot find module 'fs-extra'`
+*   **Symptom:** Packaged app failed to start.
+*   **Cause:** Vite bundled `fs-extra` instead of externalizing it, making it unavailable within `app.asar`.
+*   **Attempt 1 (Failed):** Externalized `fs-extra` in `vite.main.config.ts`.
+*   **Attempt 2 (Failed):** Configured Electron Forge (`forge.config.cjs`) to `unpack` `fs-extra` from asar.
+*   **Solution:** Replaced `fs-extra` usage in `dbService.ts` with native Node.js `fs` module (`fs.existsSync`, `fs.mkdirSync`). This removed the problematic dependency.
+
+### Problem 2: Window not opening in packaged build (No errors)
+*   **Symptom:** Main process started (menu visible), but no window appeared.
+*   **Cause:** Preload script (`preload.ts`) was failing silently in the packaged build due to incorrect use of `window.require('electron')` in multiple context helper files (`window-context.ts`, `theme-context.ts`). This violated context isolation rules and prevented contextBridge APIs from being exposed, leading to renderer errors and the window never becoming ready to show.
+*   **Solution:** Modified affected context helper files (`window-context.ts`, `theme-context.ts`) to import `contextBridge` and `ipcRenderer` directly from `'electron'` instead of using `window.require`.
+*   Added `did-fail-load` listener and improved logging in `main.ts` `createMainWindow` function to aid debugging.
+
+
+## RxDB Storage Refactoring (By another agent)
 
 ### Problem Identification
 
@@ -59,8 +83,7 @@ async function initializeApp() {
   // Create window only after services ready
   createMainWindow();
   // ...
-}
-
+}\n
 // After
 async function initializeApp() {
   // Register IPC Handlers early
@@ -70,16 +93,13 @@ async function initializeApp() {
   // Create window immediately
   createMainWindow();
   // Initialize core services in background
-  initializeCoreServices().catch(error => { /* error handling */ });
-  // Start API server non-blocking in dev mode
+  initializeCoreServices().catch(error => { /* error handling */ });\n  // Start API server non-blocking in dev mode
   if (inDevelopment) {
     startApiServer().then(server => { /* ... */ });
   } else {
     serverInstance = await startApiServer();
-  }
-  // ...
-}
-```
+  }\n  // ...
+}\n```
 
 #### 3. IPC Handler Registration
 
@@ -94,8 +114,7 @@ function registerIpcHandlers() {
   ipcMain.handle('get-db-status', () => {
     return getDbStatus();
   });
-}
-
+}\n
 // After
 const registeredIpcHandlers = new Set<string>();
 
@@ -105,9 +124,7 @@ function registerIpcHandlers() {
       return getDbStatus();
     });
     registeredIpcHandlers.add('get-db-status');
-  }
-}
-```
+  }\n}\n```
 
 #### 4. Window Event Listeners
 
@@ -123,21 +140,16 @@ export function addWindowEventListeners(mainWindow: BrowserWindow) {
     mainWindow.minimize();
   });
   // ...
-}
-
-// After
-const registeredHandlers = new Set<string>();
+}\n
+// After\nconst registeredHandlers = new Set<string>();
 
 export function addWindowEventListeners(mainWindow: BrowserWindow) {
   if (!registeredHandlers.has(WIN_MINIMIZE_CHANNEL)) {
     ipcMain.handle(WIN_MINIMIZE_CHANNEL, () => {
       mainWindow.minimize();
     });
-    registeredHandlers.add(WIN_MINIMIZE_CHANNEL);
-  }
-  // ...
-}
-```
+    registeredHandlers.add(WIN_MINIMIZE_CHANNEL);\n  }\n  // ...
+}\n```
 
 #### 5. DB Context Preload
 
@@ -151,19 +163,14 @@ export function addWindowEventListeners(mainWindow: BrowserWindow) {
 // Before
 export function exposeDbStatusContext() {
   contextBridge.exposeInMainWorld('dbStatusContext', dbStatusContext);
-}
-
+}\n
 // After
 export function exposeDbStatusContext() {
   try {
-    const dbStatusContext = createDbStatusImplementation();
-    contextBridge.exposeInMainWorld('dbStatusContext', dbStatusContext);
+    const dbStatusContext = createDbStatusImplementation();\n    contextBridge.exposeInMainWorld('dbStatusContext', dbStatusContext);
   } catch (error) {
-    const mockContext = createDbStatusMock();
-    contextBridge.exposeInMainWorld('dbStatusContext', mockContext);
-  }
-}
-```
+    const mockContext = createDbStatusMock();\n    contextBridge.exposeInMainWorld('dbStatusContext', mockContext);
+  }\n}\n```
 
 #### 6. Renderer Immediate Startup
 
@@ -174,16 +181,12 @@ export function exposeDbStatusContext() {
   - Bypassed DB status check entirely in development mode
 
 ```javascript
-// Before renderer changes
-const [dbStatus, setDbStatus] = useState({ ready: false, error: null });
-const [isLoading, setIsLoading] = useState(true);
+// Before renderer changes\nconst [dbStatus, setDbStatus] = useState({ ready: false, error: null });\nconst [isLoading, setIsLoading] = useState(true);
 
-// After renderer changes
-const [dbStatus, setDbStatus] = useState({ 
+// After renderer changes\nconst [dbStatus, setDbStatus] = useState({ 
   ready: process.env.NODE_ENV !== 'production',
   error: null 
-});
-const [isLoading, setIsLoading] = useState(process.env.NODE_ENV === 'production');
+});\nconst [isLoading, setIsLoading] = useState(process.env.NODE_ENV === 'production');
 ```
 
 ### Results
