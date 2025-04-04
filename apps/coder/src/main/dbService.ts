@@ -69,11 +69,12 @@ try {
     } else {
         console.log('[DB Service] Database directory already exists');
     }
-} catch (err) {
+} catch (err: unknown) {
     console.error('[DB Service] Failed to create database directory:', dbBasePath, err);
     // Not fatal in development mode
     if (app.isPackaged) {
-        throw new Error(`Failed to ensure database directory exists: ${err.message}`);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to ensure database directory exists: ${errorMessage}`);
     } else {
         console.warn('[DB Service] Continuing despite directory creation error in development mode');
     }
@@ -168,13 +169,25 @@ async function createDatabaseInternal(): Promise<Database> {
     await settingsRepository.initialize(db);
     console.log('[DB Service] Repositories initialized.');
 
-    return db;
+    // Cast to unknown first to avoid strict type checking issues between RxDB versions
+    return db as unknown as Database;
 
   } catch (dbCreateError) {
     console.error('[DB Service] Error creating database or collections:', dbCreateError);
-    // Attempt to log more details if available
-    if (dbCreateError.rxdb) console.error('[DB Service] RxDB Error Code:', dbCreateError.code);
-    if (dbCreateError.parameters) console.error('[DB Service] RxDB Error Parameters:', dbCreateError.parameters);
+    
+    // Safely access properties for logging
+    const errorObj = dbCreateError as any;
+    if (errorObj && typeof errorObj === 'object') {
+      if (errorObj.rxdb) console.error('[DB Service] RxDB Error Code:', errorObj.code);
+      if (errorObj.parameters) console.error('[DB Service] RxDB Error Parameters:', errorObj.parameters);
+    }
+
+    // Safely get error message
+    const errorMessage = dbCreateError instanceof Error 
+      ? dbCreateError.message 
+      : (errorObj && typeof errorObj.message === 'string') 
+        ? errorObj.message 
+        : String(dbCreateError);
 
     // Check for potential lock errors (though less common with single instance lock)
     const errorStr = String(dbCreateError).toLowerCase();
@@ -182,7 +195,7 @@ async function createDatabaseInternal(): Promise<Database> {
         console.error('[DB Service] Potential database lock detected.');
         dialog.showErrorBox('Database Locked', 'Could not access the database. It might be locked by another process. Please ensure no other instances are running and try again.');
     } else {
-        dialog.showErrorBox('Database Error', `Failed to initialize the application database: ${dbCreateError.message}`);
+        dialog.showErrorBox('Database Error', `Failed to initialize the application database: ${errorMessage}`);
     }
     throw dbCreateError; // Rethrow to be caught by main.ts initialization handler
   }
@@ -234,8 +247,14 @@ export async function cleanupDatabase() {
   if (dbInstance) {
     console.log(`[DB Service] Cleaning up existing database instance: ${dbInstance.name}`);
     try {
-      await dbInstance.destroy(); // Destroys the RxDB instance, removes listeners etc.
-      console.log('[DB Service] RxDB instance destroyed.');
+      // Cast to 'any' to access the destroy method which exists but TS doesn't see it
+      const dbAny = dbInstance as any;
+      if (typeof dbAny.destroy === 'function') {
+        await dbAny.destroy(); // Destroys the RxDB instance, removes listeners etc.
+        console.log('[DB Service] RxDB instance destroyed.');
+      } else {
+        console.warn('[DB Service] Database instance has no destroy method');
+      }
     } catch (err) {
       console.error('[DB Service] Error destroying database instance:', err);
     }
