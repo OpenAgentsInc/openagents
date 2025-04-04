@@ -1,35 +1,32 @@
-import { app, BrowserWindow, Menu, Tray } from "electron";
+import { app, BrowserWindow, Menu, Tray, dialog } from 'electron';
+import path from 'path';
+import { installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
+import { serverApp } from './server';
+import { serve } from '@hono/node-server';
+import { Server } from 'http';
+import { initMCPClients, cleanupMCPClients } from './server/mcp-clients';
+import { setApiPort } from './helpers/ipc/api-port/api-port-listeners';
+import registerListeners from './helpers/ipc/listeners-register';
+
+// --- Early Setup ---
 
 // IMPORTANT: Set app name before anything else (this affects macOS dock name)
-app.setName("Coder");
+app.setName('Coder');
 
 // Set macOS specific about panel options
 if (process.platform === 'darwin') {
   app.setAboutPanelOptions({
-    applicationName: "Coder",
+    applicationName: 'Coder',
     applicationVersion: app.getVersion(),
-    copyright: "© 2025 OpenAgents",
+    copyright: '© 2025 OpenAgents',
     version: app.getVersion(),
-    credits: "OpenAgents Team"
+    credits: 'OpenAgents Team',
   });
 }
 
-import registerListeners from "./helpers/ipc/listeners-register";
-// "electron-squirrel-startup" seems broken when packaging with vite
-//import started from "electron-squirrel-startup";
-import path from "path";
-import {
-  installExtension,
-  REACT_DEVELOPER_TOOLS,
-} from "electron-devtools-installer";
-// import { setupElectronCommandExecutor } from "@openagents/core";
-import { serverApp } from "./server";
-import { serve } from '@hono/node-server'; // Import serve from Hono's adapter
-import { Server } from 'http';
-import { initMCPClients, cleanupMCPClients } from './server/mcp-clients';
-import { setApiPort } from './helpers/ipc/api-port/api-port-listeners';
+const inDevelopment = process.env.NODE_ENV === 'development';
 
-const inDevelopment = process.env.NODE_ENV === "development";
+// --- Global Variables ---
 
 // Define a port for the local API server
 const DEFAULT_API_PORT = 3001;
@@ -44,10 +41,245 @@ const ALTERNATIVE_PORTS = [3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009, 3010]
 // Keep track of tray instance
 let tray: Tray | null = null;
 
-// Create application menu
+// Keep track of the main window
+let mainWindow: BrowserWindow | null = null;
+
+// --- Single Instance Lock ---
+
+function requestSingleInstanceLock(): boolean {
+  const gotTheLock = app.requestSingleInstanceLock();
+
+  if (!gotTheLock) {
+    console.log('[Main Process] Another instance is already running. Quitting.');
+    app.quit();
+    return false;
+  }
+
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    console.log('[Main Process] Second instance detected. Focusing existing window.');
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  console.log('[Main Process] Single instance lock acquired.');
+  return true;
+}
+
+// --- Initialization Functions ---
+
+// Placeholder for Database Initialization (Plan Item 2)
+async function initializeDatabaseService() {
+  console.time('initializeDatabaseService');
+  console.log('[Main Process] Initializing Database Service...');
+  // TODO: Implement database initialization logic here
+  // - Use singleton pattern
+  // - Handle locking robustly (consider app versions)
+  // - Perform migrations
+  // - Set up IPC handlers for renderer status checks/queries
+  await new Promise(resolve => setTimeout(resolve, 50)); // Simulate async work
+  console.log('[Main Process] Database Service Initialized (Placeholder).');
+  console.timeEnd('initializeDatabaseService');
+}
+
+// Placeholder for Database Cleanup
+async function cleanupDatabaseService() {
+  console.log('[Main Process] Cleaning up Database Service...');
+  // TODO: Implement database cleanup logic here (destroy, release locks)
+  await new Promise(resolve => setTimeout(resolve, 20)); // Simulate async work
+  console.log('[Main Process] Database Service Cleaned Up (Placeholder).');
+}
+
+async function initializeMcpClients() {
+  console.time('initializeMcpClients');
+  console.log('[Main Process] Initializing MCP clients...');
+  try {
+    await initMCPClients(); // Use the existing function
+    console.log('[Main Process] MCP clients initialized successfully.');
+  } catch (error) {
+    console.error('[Main Process] Error initializing MCP clients:', error);
+    // Decide if this is fatal or if the app can continue degraded
+    dialog.showErrorBox('MCP Initialization Failed', `Failed to initialize MCP clients: ${error.message}. Some features might be unavailable.`);
+    // Optionally: throw error; // To make it fatal
+  }
+  console.timeEnd('initializeMcpClients');
+}
+
+async function initializeCoreServices() {
+  console.time('initializeCoreServices');
+  console.log('[Main Process] Initializing Core Services...');
+  // TODO: Add config loading if needed
+
+  // Initialize Database first (as MCP might depend on config/DB)
+  await initializeDatabaseService();
+
+  // Initialize MCP Clients
+  await initializeMcpClients();
+
+  console.log('[Main Process] Core Services Initialized.');
+  console.timeEnd('initializeCoreServices');
+}
+
+async function startApiServer(): Promise<Server | null> {
+  console.time('startApiServer');
+  console.log('[Main Process] Starting Local API Server...');
+
+  try {
+    if (!serverApp) {
+      throw new Error('serverApp is undefined or null');
+    }
+    if (typeof serverApp.fetch !== 'function') {
+      throw new Error('serverApp.fetch is not a function');
+    }
+
+    // Function to start server with port fallback
+    const startServerWithFallback = async (port: number, attemptedPorts: number[] = []): Promise<Server> => {
+      console.log(`[Main Process] Attempting to start local API server on port ${port}...`);
+      return new Promise((resolve, reject) => {
+        const server = serve(
+          {
+            fetch: serverApp.fetch,
+            port: port,
+          },
+          (info) => {
+            console.log(`[Main Process] ✅ Local API server listening on http://localhost:${info.port}`);
+            LOCAL_API_PORT = info.port;
+            setApiPort(info.port); // Update IPC
+            resolve(server);
+          }
+        );
+
+        server.on('error', (error: Error & { code?: string }) => {
+          if (error.code === 'EADDRINUSE') {
+            console.warn(`[Main Process] Port ${port} already in use`);
+            const nextPortIndex = ALTERNATIVE_PORTS.findIndex(p => !attemptedPorts.includes(p));
+            if (nextPortIndex >= 0) {
+              const nextPort = ALTERNATIVE_PORTS[nextPortIndex];
+              console.log(`[Main Process] Trying alternative port: ${nextPort}`);
+              server.close(() => { // Ensure server is closed before retrying
+                startServerWithFallback(nextPort, [...attemptedPorts, port])
+                  .then(resolve)
+                  .catch(reject);
+              });
+            } else {
+              reject(new Error(`All designated API ports are in use. Tried: ${DEFAULT_API_PORT}, ${ALTERNATIVE_PORTS.join(', ')}`));
+            }
+          } else {
+            console.error('[Main Process] Server startup error:', error);
+            reject(error);
+          }
+        });
+      });
+    };
+
+    const startedServer = await startServerWithFallback(LOCAL_API_PORT);
+
+    // Add global error handling for the running server
+    startedServer.on('error', (error: Error) => {
+      console.error('[Main Process] Runtime Server error event:', error);
+      // Potentially notify the user or attempt recovery
+    });
+
+    console.log(`[Main Process] Exposing API port ${LOCAL_API_PORT} to renderer process via IPC.`);
+    console.timeEnd('startApiServer');
+    return startedServer;
+
+  } catch (error) {
+    console.error('[Main Process] Failed to start local API server:', error);
+    dialog.showErrorBox('Server Startup Failed', `Could not start the local API server: ${error.message}. The application might not function correctly.`);
+    // Decide if this is fatal
+    // throw error; // Uncomment to make server failure fatal
+    console.timeEnd('startApiServer');
+    return null; // Indicate server failed to start
+  }
+}
+
+
+function createMainWindow() {
+  console.time('createMainWindow');
+  console.log('[Main Process] Creating main window...');
+  const preload = path.join(__dirname, "preload.js");
+
+  let iconPath;
+  const imageDir = inDevelopment ? path.join(process.cwd(), 'src', 'images') : path.join(process.resourcesPath, 'images');
+  if (process.platform === 'darwin') {
+    iconPath = path.join(imageDir, 'icon.icns');
+  } else if (process.platform === 'win32') {
+    iconPath = path.join(imageDir, 'icon.ico');
+  } else {
+    iconPath = path.join(imageDir, 'icon.png');
+  }
+
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 950,
+    webPreferences: {
+      devTools: inDevelopment,
+      contextIsolation: true, // Keep true for security
+      // nodeIntegration: false, // Recommended false with contextIsolation
+      preload: preload,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+    },
+    titleBarStyle: 'hidden',
+    icon: iconPath,
+    title: 'Coder',
+    show: false, // Don't show until ready
+  });
+
+  // Redirect local API requests correctly
+  mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    try {
+      const url = new URL(details.url);
+      // Redirect requests aiming for '/api/' but not already targeting the correct local port
+      if (url.pathname.startsWith('/api/') && url.host !== `localhost:${LOCAL_API_PORT}`) {
+          const redirectUrl = `http://localhost:${LOCAL_API_PORT}${url.pathname}${url.search}`;
+          console.log(`[Main Process] Redirecting API request from ${details.url} to ${redirectUrl}`);
+          callback({ redirectURL: redirectUrl });
+          return;
+      }
+    } catch (error) {
+        console.error('[Main Process] Error in web request handler:', error);
+    }
+    callback({}); // Proceed normally
+  });
+
+
+  registerListeners(mainWindow); // Register IPC listeners
+
+  // Load the renderer code
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+  } else {
+    mainWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    );
+  }
+
+  // Show window gracefully when ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    console.log('[Main Process] Main window shown.');
+  });
+
+  // Dereference window object on close
+  mainWindow.on('closed', () => {
+    console.log('[Main Process] Main window closed.');
+    mainWindow = null;
+  });
+
+  console.log('[Main Process] Main window created.');
+  console.timeEnd('createMainWindow');
+
+  return mainWindow;
+}
+
+
 function createAppMenu() {
-  // Create the application menu
-  const template = [
+  console.log('[Main Process] Creating application menu...');
+  const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
     ...(process.platform === 'darwin' ? [{
       label: app.name,
       submenu: [
@@ -61,7 +293,7 @@ function createAppMenu() {
         { type: 'separator' },
         { role: 'quit' }
       ]
-    }] : []),
+    }] as Electron.MenuItemConstructorOptions[] : []),
     {
       label: 'File',
       submenu: [
@@ -120,323 +352,232 @@ function createAppMenu() {
     }
   ];
 
-  // @ts-ignore - template is typed but not perfectly
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  console.log('[Main Process] Application menu created.');
 }
 
-function createWindow() {
-  const preload = path.join(__dirname, "preload.js");
+function createTray() {
+  console.log('[Main Process] Creating tray icon...');
+  let iconPath: string;
+  const imageDir = inDevelopment ? path.join(process.cwd(), 'src', 'images') : path.join(process.resourcesPath, 'images');
 
-  // Determine icon path based on development or production mode and platform
-  let iconPath;
-  if (inDevelopment) {
-    // In development mode, use the appropriate icon for the platform
-    if (process.platform === 'darwin') {
-      // macOS prefers .icns
-      iconPath = path.join(process.cwd(), 'src', 'images', 'icon.icns');
-    } else if (process.platform === 'win32') {
-      // Windows prefers .ico
-      iconPath = path.join(process.cwd(), 'src', 'images', 'icon.ico');
-    } else {
-      // Linux can use .png
-      iconPath = path.join(process.cwd(), 'src', 'images', 'icon.png');
-    }
+  if (process.platform === 'darwin') {
+    // Use template icon for macOS (adapts to light/dark mode)
+    iconPath = path.join(imageDir, 'iconTemplate.png');
   } else {
-    // In production mode
-    if (process.platform === 'darwin') {
-      iconPath = path.join(process.resourcesPath, 'images', 'icon.icns');
-    } else if (process.platform === 'win32') {
-      iconPath = path.join(process.resourcesPath, 'images', 'icon.ico');
-    } else {
-      iconPath = path.join(process.resourcesPath, 'images', 'icon.png');
-    }
+    // Use regular icon for other platforms
+    iconPath = path.join(imageDir, 'icon.png'); // Assuming icon.png exists
   }
 
-  const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 950,
-    webPreferences: {
-      devTools: inDevelopment,
-      contextIsolation: true,
-      nodeIntegration: true,
-      nodeIntegrationInSubFrames: false,
-      preload: preload,
-      webSecurity: true, // Enable web security
-      allowRunningInsecureContent: false,
-    },
-    titleBarStyle: "hidden",
-    icon: iconPath,
-    title: "Coder",
-  });
-  
-  // Set up custom web request handling to allow connections to our local API server
-  // This fixes the "Failed to fetch" errors when the app is making network requests
-  mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-    try {
-      // Check if this is an API request to our local server
-      const isApiRequest = details.url.includes('/api/');
-      const isLocalhost = details.url.startsWith(`http://localhost:${LOCAL_API_PORT}`);
-      
-      if (isApiRequest && !isLocalhost) {
-        let redirectUrl;
-        try {
-          // Parse the URL to extract path and query parameters
-          const urlObj = new URL(details.url);
-          redirectUrl = `http://localhost:${LOCAL_API_PORT}${urlObj.pathname}${urlObj.search || ''}`;
-        } catch (parseError) {
-          // Fallback for URLs that may not parse correctly
-          const urlPath = details.url.split('/api/')[1] || '';
-          redirectUrl = `http://localhost:${LOCAL_API_PORT}/api/${urlPath}`;
+  try {
+    tray = new Tray(iconPath);
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Open Coder', click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+          } else {
+            createMainWindow();
+          }
         }
-        
-        console.log(`[Main Process] Redirecting API request from ${details.url} to ${redirectUrl}`);
-        callback({ redirectURL: redirectUrl });
-      } else {
-        callback({});
-      }
-    } catch (error) {
-      // Log the error but allow the request to continue
-      console.error('[Main Process] Error in web request handler:', error);
-      callback({}); // Don't block the request on error
-    }
-  });
-  registerListeners(mainWindow);
+      },
+      { type: 'separator' },
+      { label: 'Quit', click: () => app.quit() }
+    ]);
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    tray.setToolTip('Coder');
+    tray.setContextMenu(contextMenu);
+
+    // Optional: Handle click to show/hide window
+    tray.on('click', () => {
+        if (mainWindow) {
+            mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
+        } else {
+            createMainWindow();
+        }
+    });
+
+    console.log('[Main Process] Tray icon created.');
+  } catch (error) {
+      console.error('[Main Process] Failed to create tray icon:', error);
+      // App can likely continue without a tray icon
   }
 }
 
-async function installExtensions() {
+async function installDevExtensions() {
+  console.time('installDevExtensions');
+  console.log('[Main Process] Installing development extensions...');
   try {
     const result = await installExtension(REACT_DEVELOPER_TOOLS);
-    console.log(`Extensions installed successfully: ${result.name}`);
-  } catch {
-    console.error("Failed to install extensions");
+    console.log(`[Main Process] Extension installed: ${result.name}`);
+  } catch (error) {
+    console.error('[Main Process] Failed to install React DevTools:', error);
   }
+  console.timeEnd('installDevExtensions');
 }
 
-// Initialize command execution before anything else
-// setupElectronCommandExecutor();
-// console.log('✨ Command execution setup complete');
+// --- Main Application Initialization Orchestrator ---
 
-// Create tray icon
-function createTray() {
-  const isDev = process.env.NODE_ENV === "development";
-  let iconPath: string;
+async function initializeApp() {
+  console.time('initializeApp');
+  console.log('[Main Process] Starting application initialization...');
 
-  // For macOS, use the template icon which works well with both light/dark themes
-  if (process.platform === 'darwin') {
-    if (isDev) {
-      iconPath = path.join(process.cwd(), 'src', 'images', 'iconTemplate.png');
-    } else {
-      iconPath = path.join(process.resourcesPath, 'images', 'iconTemplate.png');
-    }
-  } else {
-    // For other platforms, use the regular icon
-    if (isDev) {
-      iconPath = path.join(process.cwd(), 'src', 'images', 'icon.png');
-    } else {
-      iconPath = path.join(process.resourcesPath, 'images', 'icon.png');
-    }
-  }
-
-  tray = new Tray(iconPath);
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Open Coder', click: () => {
-        const windows = BrowserWindow.getAllWindows();
-        if (windows.length > 0) {
-          windows[0].show();
-        } else {
-          createWindow();
-        }
-      }
-    },
-    { type: 'separator' },
-    { label: 'Quit', click: () => app.quit() }
-  ]);
-
-  tray.setToolTip('Coder');
-  tray.setContextMenu(contextMenu);
-}
-
-// Clear any cached data on app start
-if (app.isReady()) {
-  app.clearRecentDocuments();
-  if (process.platform === 'darwin') {
-    app.dock.setIcon(path.join(inDevelopment ? process.cwd() : process.resourcesPath, 'src', 'images', 'icon.png'));
-  }
-}
-
-app.whenReady()
-  .then(async () => {
-    console.log('[Main Process] App is ready.');
-
-    // Create application menu
+  try {
+    // 1. Create menus early (can be done before core services)
     createAppMenu();
 
-    // On macOS, set the dock icon explicitly and configure dock menu
-    if (process.platform === 'darwin') {
-      // For macOS dock, PNG actually works better than ICNS for dynamic updates
-      const iconPath = path.join(inDevelopment ? process.cwd() : process.resourcesPath, 'src', 'images', 'icon.png');
-      app.dock.setIcon(iconPath);
+    // 2. Initialize core backend services (DB, MCP, Config)
+    await initializeCoreServices();
 
-      // Set up a dock menu
+    // 3. Start the local API server (depends on core services like MCP)
+    serverInstance = await startApiServer();
+    if (!serverInstance && !inDevelopment) { // Make server failure fatal in production?
+       // throw new Error("API Server failed to start, cannot continue.");
+       console.error("[Main Process] API Server failed to start. Application may be unstable.");
+    }
+
+    // 4. Create the main UI window (depends on API port being set)
+    createMainWindow();
+
+    // 5. Create the system tray icon
+    createTray();
+
+    // 6. Install dev extensions if in development mode
+    if (inDevelopment) {
+      await installDevExtensions();
+    }
+
+    // 7. Setup macOS Dock Icon and Menu
+    if (process.platform === 'darwin') {
+      const iconPath = path.join(inDevelopment ? path.join(process.cwd(), 'src', 'images') : path.join(process.resourcesPath, 'images'), 'icon.png');
+      app.dock.setIcon(iconPath);
       const dockMenu = Menu.buildFromTemplate([
         {
           label: 'New Window',
-          click() { createWindow(); }
+          click() {
+            if (!mainWindow) createMainWindow();
+           }
         }
       ]);
       app.dock.setMenu(dockMenu);
     }
 
-    // Start the local Hono server using the Node adapter
-    try {
-      if (!serverApp) {
-        throw new Error('serverApp is undefined or null');
-      }
+    console.log('[Main Process] Application initialization complete.');
 
-      if (typeof serverApp.fetch !== 'function') {
-        throw new Error('serverApp.fetch is not a function');
-      }
+  } catch (error) {
+    console.error('[Main Process] CRITICAL ERROR during initialization:', error);
+    dialog.showErrorBox('Application Initialization Failed', `A critical error occurred during startup: ${error.message}\n\nThe application will now exit.`);
+    app.quit(); // Exit if essential initialization fails
+  } finally {
+    console.timeEnd('initializeApp');
+  }
+}
 
-      // We'll initialize MCP clients after the window is created
-      console.log('[Main Process] MCP client initialization will happen after window creation');
+// --- Electron App Event Handling ---
 
-      // Function to start server with port fallback
-      const startServerWithFallback = async (port: number, attemptedPorts: number[] = []): Promise<Server> => {
-        console.log(`[Main Process] Attempting to start local API server on port ${port}...`);
-        
-        try {
-          // Create a new promise for server startup
-          return new Promise((resolve, reject) => {
-            // Try to start the server on this port
-            const server = serve({
-              fetch: serverApp.fetch,
-              port: port,
-            }, (info) => {
-              // Successfully started
-              console.log(`[Main Process] ✅ Local API server listening on http://localhost:${info.port}`);
-              // Update the global port variable to the successful port
-              LOCAL_API_PORT = info.port;
-              // Update the port in the IPC system so renderer can access it
-              setApiPort(info.port);
-              // Resolve with the server instance
-              resolve(server);
-            });
-            
-            // Handle immediate errors
-            server.on('error', (error: Error) => {
-              const isPortInUseError = error.message?.includes('EADDRINUSE') || 
-                                       error.message?.includes('address already in use');
-              
-              if (isPortInUseError) {
-                console.warn(`[Main Process] Port ${port} already in use`);
-                
-                // Try the next port if we have alternatives
-                const nextPortIndex = ALTERNATIVE_PORTS.findIndex(p => !attemptedPorts.includes(p));
-                
-                if (nextPortIndex >= 0) {
-                  const nextPort = ALTERNATIVE_PORTS[nextPortIndex];
-                  console.log(`[Main Process] Trying alternative port: ${nextPort}`);
-                  
-                  // Close the failed server
-                  server.close();
-                  
-                  // Try next port with updated attempted ports list
-                  startServerWithFallback(nextPort, [...attemptedPorts, port])
-                    .then(resolve)
-                    .catch(reject);
-                } else {
-                  reject(new Error(`All ports are in use. Tried: ${DEFAULT_API_PORT}, ${attemptedPorts.join(', ')}`));
-                }
-              } else {
-                // Some other error
-                console.error('[Main Process] Server error:', error);
-                reject(error);
-              }
-            });
-          });
-        } catch (error) {
-          console.error('[Main Process] Failed to start server:', error);
-          throw error;
-        }
-      };
-      
-      // Start the server with the default port and retry on alternative ports if needed
-      serverInstance = await startServerWithFallback(LOCAL_API_PORT);
-      
-      // Add global error handling for the running server
-      if (serverInstance) {
-        serverInstance.on('error', (error: Error) => {
-          console.error('[Main Process] Server error event:', error);
-        });
-        
-        // Set up a custom protocol to expose the port to the renderer
-        console.log(`[Main Process] Exposing API port ${LOCAL_API_PORT} to renderer process`);
-      }
-    } catch (error) {
-      console.error('[Main Process] Failed to start local API server:', error);
-      // Continue app startup even if server fails
-      console.warn('[Main Process] Continuing app startup despite server failure. Some features may not work.');
+// Request single instance lock early
+if (!requestSingleInstanceLock()) {
+  // The lock function already called app.quit()
+} else {
+  // This method will be called when Electron has finished
+  // initialization and is ready to create browser windows.
+  // Some APIs can only be used after this event occurs.
+  app.whenReady().then(initializeApp);
+}
+
+
+// Quit when all windows are closed, except on macOS.
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    console.log('[Main Process] All windows closed. Quitting.');
+    app.quit();
+  } else {
+    console.log('[Main Process] All windows closed on macOS. App remains active.');
+    // Optionally remove tray icon here if desired when window closed on mac
+    // if (tray) {
+    //   tray.destroy();
+    //   tray = null;
+    // }
+  }
+});
+
+// On macOS, re-create a window when the dock icon is clicked and there are no other windows open.
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    console.log('[Main Process] App activated with no windows open. Creating new window.');
+    if (app.isReady()) { // Ensure app is ready before creating window
+        createMainWindow();
+    } else {
+        console.warn('[Main Process] App activated but not ready yet. Window creation deferred to `whenReady`.');
+        // initializeApp will handle window creation when ready
     }
+  } else {
+     console.log('[Main Process] App activated, window(s) already exist.');
+     // Optionally bring existing window to front
+     if(mainWindow) mainWindow.show();
+  }
+});
 
-    // Create tray
-    createTray();
-
-    // Create window and install extensions
-    createWindow();
-    
-    // Now initialize MCP clients after window is created
-    setTimeout(async () => {
-      try {
-        console.log('[Main Process] Initializing MCP clients now that window is created...');
-        await initMCPClients();
-        console.log('[Main Process] MCP clients initialized successfully');
-      } catch (error) {
-        console.error('[Main Process] Error initializing MCP clients:', error);
-      }
-    }, 3000); // Delay by 3 seconds to ensure everything is ready
-    
-    return installExtensions();
-  });
 
 // Graceful shutdown
-app.on('will-quit', () => {
+app.on('will-quit', async (event) => {
+  console.log('[Main Process] App is quitting...');
+
+  // Prevent immediate quit to allow cleanup
+  event.preventDefault();
+
+  // 1. Close local API server
   if (serverInstance && typeof serverInstance.close === 'function') {
     console.log('[Main Process] Closing local API server...');
-    serverInstance.close();
-    serverInstance = null;
+    await new Promise<void>((resolve, reject) => {
+        serverInstance?.close((err) => {
+            if(err) {
+                console.error("[Main Process] Error closing server:", err);
+                reject(err); // Or just log and continue?
+            } else {
+                console.log("[Main Process] Server closed.");
+                resolve();
+            }
+        });
+        serverInstance = null;
+    });
   }
 
-  // Clean up tray
+  // 2. Clean up MCP clients
+  console.log('[Main Process] Cleaning up MCP clients...');
+  await cleanupMCPClients(); // Assuming this is synchronous or returns a promise
+
+  // 3. Clean up Database Service
+  await cleanupDatabaseService(); // Placeholder
+
+  // 4. Clean up tray
   if (tray) {
+    console.log('[Main Process] Destroying tray icon...');
     tray.destroy();
     tray = null;
   }
 
-  // Clean up MCP clients
-  console.log('[Main Process] Cleaning up MCP clients...');
-  cleanupMCPClients();
+  // 5. Now allow the app to quit
+  console.log('[Main Process] Cleanup complete. Exiting now.');
+  app.exit();
 });
 
-//osX only
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+// Handle unhandled exceptions/rejections
+process.on('uncaughtException', (error) => {
+  console.error('[Main Process] Uncaught Exception:', error);
+  dialog.showErrorBox('Unhandled Error', `An unexpected error occurred: ${error.message}. The application might become unstable.`);
+  // Consider quitting app.quit();
 });
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Main Process] Unhandled Rejection at:', promise, 'reason:', reason);
+  dialog.showErrorBox('Unhandled Promise Rejection', `An unexpected promise rejection occurred: ${reason}. The application might become unstable.`);
 });
-//osX only ends
+
+// Clear recent documents cache on start (optional)
+app.on('ready', () => {
+    if (!inDevelopment) { // Only clear cache in production/packaged builds?
+        app.clearRecentDocuments();
+    }
+});
