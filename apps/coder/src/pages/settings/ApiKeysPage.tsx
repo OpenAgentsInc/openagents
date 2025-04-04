@@ -31,7 +31,7 @@ export default function ApiKeysPage() {
   } = useSettings();
 
   // Only include Anthropic and OpenRouter
-  const providers = ["anthropic", "openrouter"];
+  const providers = ["anthropic", "openrouter", "google"];
 
   // API keys state
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});

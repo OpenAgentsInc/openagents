@@ -8,6 +8,7 @@ import { streamText, tool, type Message, type StreamTextOnFinishCallback } from 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ollama, createOllama } from 'ollama-ai-provider';
 import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
+import { google, createGoogleGenerativeAI } from '@ai-sdk/google';
 import { getMCPClients } from './mcp-clients';
 import { MODELS } from "@openagents/core";
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -34,7 +35,7 @@ app.use('*', logger());
 // Use Hono's CORS middleware
 app.use('*', cors({
   origin: '*', // Allow requests from any origin
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
   maxAge: 86400,
   // Log CORS operations
@@ -51,90 +52,53 @@ interface ToolCall {
   };
 }
 
-interface StreamChunk {
-  choices?: Array<{
-    delta?: {
-      tool_calls?: ToolCall[];
-    };
-  }>;
-}
-
-// Create a transform stream to validate and fix tool calls
-function createToolCallValidator() {
-  return new TransformStream({
-    transform(chunk: string, controller) {
-      try {
-        const data = JSON.parse(chunk.replace(/^data: /, ''));
-        if (data.choices?.[0]?.delta?.tool_calls) {
-          const toolCalls = data.choices[0].delta.tool_calls;
-          toolCalls.forEach((call: ToolCall) => {
-            if (!call.type) call.type = "function";
-            if (call.function?.arguments && typeof call.function.arguments === 'string') {
-              try {
-                JSON.parse(call.function.arguments);
-              } catch (e) {
-                call.function.arguments = "{}";
-              }
-            }
-          });
-        }
-        controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
-      } catch (e) {
-        controller.enqueue(chunk);
-      }
-    }
-  });
-}
-
-// Remove this endpoint - we'll handle errors directly in the stream
-
 // Main chat endpoint
 // Helper function to clean up unresolved tool calls in messages
 // This is defined outside the request handler to ensure it's always available
 const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls: Message[]) => {
   console.log("🧹 Running global cleanup function for tool calls");
-  
+
   try {
     // Extract the system message if it exists
     let systemMessage = messagesWithToolCalls.find((msg: Message) => msg.role === 'system');
     let nonSystemMessages = messagesWithToolCalls.filter((msg: Message) => msg.role !== 'system');
-    
+
     // Now filter out assistant messages with tool calls from non-system messages
     let userAssistantMessages = nonSystemMessages.filter((msg: Message) => {
-      if (msg.role === 'assistant' && 
-          ((msg.toolInvocations && msg.toolInvocations.length > 0) || 
-           (msg.parts && msg.parts.some((p: any) => p.type === 'tool-invocation')))) {
+      if (msg.role === 'assistant' &&
+        ((msg.toolInvocations && msg.toolInvocations.length > 0) ||
+          (msg.parts && msg.parts.some((p: any) => p.type === 'tool-invocation')))) {
         console.log(`Removing assistant message with tool calls: ${msg.id || 'unnamed'}`);
         return false;
       }
       return true;
     });
-    
+
     // Get the last user message if it exists
-    const lastUserMessage = userAssistantMessages.length > 0 && 
+    const lastUserMessage = userAssistantMessages.length > 0 &&
       userAssistantMessages[userAssistantMessages.length - 1].role === 'user' ?
       userAssistantMessages[userAssistantMessages.length - 1] : null;
-      
+
     // Make a modified system message that includes the error information
     const errorSystemMessage: Message = {
       id: `system-${Date.now()}`,
       role: 'system',
-      content: (systemMessage?.content || "") + 
+      content: (systemMessage?.content || "") +
         "\n\nNOTE: There was an issue with a previous tool call (Authentication Failed: Bad credentials). The problematic message has been removed so the conversation can continue.",
       createdAt: new Date(),
       parts: [{
         type: 'text',
-        text: (systemMessage?.content || "") + 
+        text: (systemMessage?.content || "") +
           "\n\nNOTE: There was an issue with a previous tool call (Authentication Failed: Bad credentials). The problematic message has been removed so the conversation can continue."
       }]
     };
-    
+
     // Create the final cleaned messages with system message first, then alternating user/assistant
     let cleanedMessages = [errorSystemMessage, ...userAssistantMessages];
-    
+
     // If the last message is not from the user, add a special assistant message explaining the issue
-    if (lastUserMessage === null || 
-        (userAssistantMessages.length > 0 && userAssistantMessages[userAssistantMessages.length - 1].role !== 'user')) {
+    if (lastUserMessage === null ||
+      (userAssistantMessages.length > 0 && userAssistantMessages[userAssistantMessages.length - 1].role !== 'user')) {
       // Add an assistant message explaining the error
       cleanedMessages.push({
         id: `assistant-${Date.now()}`,
@@ -147,7 +111,7 @@ const cleanupAndRetryWithoutToolCalls = async (messagesWithToolCalls: Message[])
         }]
       } as Message);
     }
-    
+
     // Return cleaned messages for use in the stream
     console.log("✅ Cleanup complete - returning cleaned messages");
     return cleanedMessages;
@@ -175,6 +139,7 @@ app.post('/api/chat', async (c) => {
     // Use API keys from request if available, fall back to environment variables
     const OPENROUTER_API_KEY = requestApiKeys.openrouter || process.env.OPENROUTER_API_KEY || "";
     const ANTHROPIC_API_KEY = requestApiKeys.anthropic || process.env.ANTHROPIC_API_KEY || "";
+    const GOOGLE_API_KEY = requestApiKeys.google || process.env.GOOGLE_API_KEY || "";
     const OLLAMA_BASE_URL = requestApiKeys.ollama || requestApiKeys.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || "http://localhost:11434/api";
 
     // Create the Ollama client with custom base URL if specified
@@ -200,6 +165,13 @@ app.post('/api/chat', async (c) => {
       console.log("✅ ANTHROPIC_API_KEY is present - Anthropic Claude models are available");
     }
 
+    // For Google provider models, check if API key is present
+    if (!GOOGLE_API_KEY) {
+      console.warn("⚠️ GOOGLE_API_KEY is missing - Google Gemini models will not be available");
+    } else {
+      console.log("✅ GOOGLE_API_KEY is present - Google Gemini models are available");
+    }
+
     // Validate input messages
     let messages: Message[] = body.messages || [];
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -216,6 +188,11 @@ app.post('/api/chat', async (c) => {
     const anthropicClient = createAnthropic({
       apiKey: ANTHROPIC_API_KEY,
       // Do not set Anthropic-Version header here, it will be included in the fetch request
+    });
+
+    // Create the Google client with API key
+    const googleClient = createGoogleGenerativeAI({
+      apiKey: GOOGLE_API_KEY,
     });
 
     // Define model
@@ -357,7 +334,7 @@ app.post('/api/chat', async (c) => {
 
       if (provider === "lmstudio") {
         // LMStudio provider is commented out to prevent unnecessary connection attempts
-        /* 
+        /*
         // Add extra validation to catch any potential mix-ups
         if (MODEL.startsWith('claude-')) {
           console.error(`[Server] ERROR: Attempting to use Claude model ${MODEL} with LMStudio provider! This is incorrect and will fail.`);
@@ -409,7 +386,7 @@ app.post('/api/chat', async (c) => {
 
         model = lmstudio(MODEL);
         */
-        
+
         // Return friendly error that LMStudio is disabled
         c.header('Content-Type', 'text/event-stream; charset=utf-8');
         c.header('Cache-Control', 'no-cache');
@@ -432,6 +409,15 @@ app.post('/api/chat', async (c) => {
 
         // For Ollama models, use the Ollama provider
         model = customOllama(ollamaModelName);
+      } else if (provider === "google") {
+        console.log(`[Server] Using Google provider for model: ${MODEL}`);
+        model = googleClient(MODEL);
+        // Set Google specific headers
+        // headers = {
+        //   'Authorization': `Bearer ${GOOGLE_API_KEY}`,
+        //   'HTTP-Referer': 'https://openagents.com',
+        //   'X-Title': 'OpenAgents Coder'
+        // };
       } else if (provider === "openrouter") {
         console.log(`[Server] Using OpenRouter provider`);
         // For OpenRouter models, use the OpenRouter provider
@@ -495,10 +481,10 @@ app.post('/api/chat', async (c) => {
 
       // Global space for error tracking
       (global as any).__lastToolExecutionError = null;
-      
-      // Just a log for clarity - we'll use the global cleanup function 
+
+      // Just a log for clarity - we'll use the global cleanup function
       console.log("Using global cleanup function defined at the top level");
-      
+
       // Configure stream options with MCP tools if available and if the model supports tools
       const streamOptions = {
         model,
@@ -561,7 +547,7 @@ app.post('/api/chat', async (c) => {
           // Enhanced debugging - log the ENTIRE error object
           console.error("💥 streamText onError FULL EVENT:", JSON.stringify(event, null, 2));
           console.error("💥 streamText onError ORIGINAL ERROR:", event.error);
-          
+
           // For Error objects, log all properties
           if (event.error instanceof Error) {
             console.error("💥 ERROR DETAILS:", {
@@ -574,7 +560,7 @@ app.post('/api/chat', async (c) => {
               fullError: JSON.stringify(event.error, Object.getOwnPropertyNames(event.error))
             });
           }
-          
+
           // Create a more focused error message for tool execution errors
           let errorMessage = "";
           if (event.error instanceof Error) {
@@ -603,22 +589,22 @@ app.post('/api/chat', async (c) => {
           // Check if this is a TypeValidationError before we do anything else
           const isTypeValidationError = errorMessage.includes('AI_TypeValidationError') ||
             errorMessage.includes('Type validation failed');
-            
+
           // Check if this is a tool execution error - be thorough with matching
-          const isToolExecutionError = 
+          const isToolExecutionError =
             // Check in the error message
-            errorMessage.includes('Error executing tool') || 
+            errorMessage.includes('Error executing tool') ||
             errorMessage.includes('AI_ToolExecutionError') ||
             errorMessage.includes('Authentication Failed') ||
             errorMessage.includes('Bad credentials') ||
             // Also check in the original error object
-            (event.error instanceof Error && 
-              ((event.error as any).name === 'AI_ToolExecutionError' || 
-               (event.error as any).code === 'AI_ToolExecutionError' || 
-               ((event.error as any).cause && 
-                ((event.error as any).cause.includes?.('Error executing tool') || 
-                 (event.error as any).cause.includes?.('Authentication Failed')))));
-          
+            (event.error instanceof Error &&
+              ((event.error as any).name === 'AI_ToolExecutionError' ||
+                (event.error as any).code === 'AI_ToolExecutionError' ||
+                ((event.error as any).cause &&
+                  ((event.error as any).cause.includes?.('Error executing tool') ||
+                    (event.error as any).cause.includes?.('Authentication Failed')))));
+
           // Special logging for tool execution errors
           if (isToolExecutionError) {
             console.error("SERVER: DETECTED TOOL EXECUTION ERROR - DETAILS:", {
@@ -634,43 +620,43 @@ app.post('/api/chat', async (c) => {
             // Special case for Tool Execution errors - pass them through completely unmodified
             if (isToolExecutionError) {
               console.log("SERVER: PASSING THROUGH TOOL EXECUTION ERROR");
-              
+
               // Special handling for AI_ToolExecutionError type - MOST IMPORTANT CASE
               if (event.error instanceof Error && (event.error as any).name === 'AI_ToolExecutionError') {
                 // Keep the original error message exactly as is
                 const errorMsg = event.error.message;
                 console.log("SERVER: DIRECT AI_TOOL_EXECUTION_ERROR MESSAGE:", errorMsg);
-                
+
                 // CRITICAL: Store this error in global space
                 (global as any).__lastToolExecutionError = errorMsg;
-                
+
                 // Explicitly create a new error with just this message to avoid any transformation
                 const cleanError = new Error(errorMsg);
                 // Add special marker for the client to detect
                 (cleanError as any).isToolExecutionError = true;
-                
+
                 // Store error message in a response header to ensure it's preserved
                 c.header('X-Tool-Execution-Error', encodeURIComponent(errorMsg));
-                
+
                 throw cleanError;
               }
-              
+
               // Try to find the most detailed error message possible
               if (event.error instanceof Error && (event.error as any).cause) {
                 const cause = (event.error as any).cause;
-                if (typeof cause === 'string' && 
-                    (cause.includes('Error executing tool') || cause.includes('Authentication Failed'))) {
+                if (typeof cause === 'string' &&
+                  (cause.includes('Error executing tool') || cause.includes('Authentication Failed'))) {
                   console.log("SERVER: USING ERROR CAUSE AS MESSAGE:", cause);
                   throw new Error(cause);
                 }
               }
-              
+
               // Extract the actual tool error message if possible
               const toolErrorMatch = errorMessage.match(/Error executing tool[^:]*:(.*?)(\n|$)/);
               if (toolErrorMatch && toolErrorMatch[1]) {
                 const toolError = `Error executing tool${toolErrorMatch[1]}`;
                 console.log("SERVER: EXTRACTED TOOL ERROR:", toolError);
-                
+
                 // Create error with special marker
                 const cleanError = new Error(toolError);
                 (cleanError as any).isToolExecutionError = true;
@@ -680,7 +666,7 @@ app.post('/api/chat', async (c) => {
                 const authMatch = errorMessage.match(/(Authentication Failed[^.\n]*)([.\n]|$)/);
                 if (authMatch && authMatch[1]) {
                   console.log("SERVER: EXTRACTED AUTH ERROR:", authMatch[1]);
-                  
+
                   // Create error with special marker
                   const cleanError = new Error(authMatch[1]);
                   (cleanError as any).isToolExecutionError = true;
@@ -694,7 +680,7 @@ app.post('/api/chat', async (c) => {
               } else {
                 // If extraction fails, use the whole message
                 console.log("SERVER: USING FULL ERROR MESSAGE");
-                
+
                 // Create error with special marker
                 const cleanError = new Error(errorMessage);
                 (cleanError as any).isToolExecutionError = true;
@@ -813,7 +799,7 @@ app.post('/api/chat', async (c) => {
           const timeoutId = setTimeout(() => {
             console.log("⚠️ Stream processing timeout - preventing LMStudio fallback");
             abortController.abort();
-          }, 10000); // 10 second timeout
+          }, 60000); // 60 second timeout
 
           // Process stream using reader
           const reader = sdkStream.getReader();
@@ -954,25 +940,25 @@ app.post('/api/chat', async (c) => {
       });
     } catch (streamSetupError) {
       console.error("🚨 streamText setup failed:", streamSetupError);
-      
+
       // Check if this is a message conversion error for unresolved tool calls
-      const isToolCallError = streamSetupError instanceof Error && 
+      const isToolCallError = streamSetupError instanceof Error &&
         (streamSetupError.message?.includes('ToolInvocation must have a result') ||
-         streamSetupError.message?.includes('tool execution error') ||
-         streamSetupError.message?.includes('MessageConversionError'));
-      
+          streamSetupError.message?.includes('tool execution error') ||
+          streamSetupError.message?.includes('MessageConversionError'));
+
       if (isToolCallError) {
         console.log("🛠️ Detected unresolved tool call error - attempting recovery");
-        
+
         try {
           // Use our centralized cleanup function to remove problematic messages
           const cleanedMessages = await cleanupAndRetryWithoutToolCalls(messages);
-          
+
           // Created a simplified model for the recovery
           const recoveryModel = createAnthropic({
             apiKey: ANTHROPIC_API_KEY
           })(MODEL);
-          
+
           // Create a simple stream configuration without tools to avoid the same error
           // Convert cleanedMessages to standard format expected by AI SDK
           const formattedMessages = cleanedMessages.map(msg => {
@@ -984,48 +970,48 @@ app.post('/api/chat', async (c) => {
             }
             return msg;
           });
-          
+
           const recoveryStreamOptions = {
             model: recoveryModel,
             messages: formattedMessages,
             temperature: 0.7
           };
-          
+
           // Create the recovery stream
           const recoveryStream = streamText(recoveryStreamOptions);
-          
+
           // Set up the SSE response
           c.header('Content-Type', 'text/event-stream; charset=utf-8');
           c.header('Cache-Control', 'no-cache');
           c.header('Connection', 'keep-alive');
           c.header('X-Vercel-AI-Data-Stream', 'v1');
-          
+
           // Return the stream directly
           return stream(c, async (responseStream) => {
             try {
               // Convert the stream to data format
               const dataStream = recoveryStream.toDataStream({ sendReasoning: false });
-              
+
               // Create a reader from the stream
               const reader = dataStream.getReader();
-              
+
               // Read and process chunks
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                
+
                 // Decode the Uint8Array to string
                 const chunk = new TextDecoder().decode(value);
-                
+
                 // Output the chunk to the console for debugging
                 console.log("Recovery chunk:", chunk.substring(0, 50) + "...");
-                
+
                 // Pass through the chunk with proper SSE formatting
                 await responseStream.write(chunk);
               }
             } catch (streamError) {
               console.error("Stream error during recovery:", streamError);
-              
+
               // Send a simple error message if streaming fails
               await responseStream.write(`data: ${JSON.stringify({
                 id: `error-${Date.now()}`,
@@ -1037,12 +1023,12 @@ app.post('/api/chat', async (c) => {
           });
         } catch (recoveryError) {
           console.error("Failed to recover from tool call error:", recoveryError);
-          return c.json({ 
-            error: "Recovery from tool error failed, please try again with a different request" 
+          return c.json({
+            error: "Recovery from tool error failed, please try again with a different request"
           }, 500);
         }
       }
-      
+
       return c.json({ error: "Failed to initialize AI stream" }, 500);
     }
   } catch (error) {
