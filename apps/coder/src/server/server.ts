@@ -35,7 +35,7 @@ app.use('*', logger());
 // Use Hono's CORS middleware
 app.use('*', cors({
   origin: '*', // Allow requests from any origin
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
   maxAge: 86400,
   // Log CORS operations
@@ -799,7 +799,7 @@ app.post('/api/chat', async (c) => {
           const timeoutId = setTimeout(() => {
             console.log("⚠️ Stream processing timeout - preventing LMStudio fallback");
             abortController.abort();
-          }, 10000); // 10 second timeout
+          }, 30000); // 30 second timeout
 
           // Process stream using reader
           const reader = sdkStream.getReader();
