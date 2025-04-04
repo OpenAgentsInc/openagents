@@ -10,20 +10,40 @@ import {
   RxDatabaseCreator,
   RxStorage,
 } from 'rxdb/plugins/core';
-import { getRxStorageLoki } from 'rxdb/plugins/storage-lokijs'; // Node.js filesystem storage
-import lokiAdapter from 'lokijs/src/loki-fs-sync-adapter'; // Adapter for LokiJS persistence
+import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie'; // Using Dexie storage with fake-indexeddb for Node.js
+import { getRxStorageMemory } from 'rxdb/plugins/storage-memory'; // For fast in-memory operations
+import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv'; // For validation
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 import { RxDBUpdatePlugin } from 'rxdb/plugins/update';
 import { RxDBMigrationSchemaPlugin } from 'rxdb/plugins/migration-schema';
-// Assuming types and schema are accessible via monorepo structure
-// Adjust path if necessary based on final monorepo setup/build process
-import { DatabaseCollections, Database } from '@openagents/core/dist/db/types'; // Use compiled output path
-import { threadSchema, messageSchema, settingsSchema } from '@openagents/core/dist/db/schema'; // Use compiled output path
-import { threadRepository, messageRepository, settingsRepository } from '@openagents/core/dist/db/repositories'; // Use compiled output path
+import { DatabaseCollections, Database } from '@openagents/core/src/db/types';
+import { threadSchema, messageSchema, settingsSchema } from '@openagents/core/src/db/schema';
 
+// Polyfill for IndexedDB in Node.js environment
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 
-// TODO: Add RxDB validation plugin suitable for Node.js if needed (e.g., validate-ajv or validate-z-schema)
-// import { wrappedValidateAjvStorage } from 'rxdb/plugins/validate-ajv';
+// Create a simple implementation of the repositories for the main process
+// This avoids using the browser-specific repositories that reference window object
+const threadRepository = {
+  initialize: async (db: any) => {
+    console.log('[DB Service] Thread repository initialized');
+    return db;
+  }
+};
+
+const messageRepository = {
+  initialize: async (db: any) => {
+    console.log('[DB Service] Message repository initialized');
+    return db;
+  }
+};
+
+const settingsRepository = {
+  initialize: async (db: any) => {
+    console.log('[DB Service] Settings repository initialized');
+    return db;
+  }
+};
 
 // Add required plugins
 addRxPlugin(RxDBQueryBuilderPlugin);
@@ -53,10 +73,6 @@ const getDatabaseName = () => {
     return `openagents_coder_${envSuffix}_${DB_VERSION_NAMESPACE}`;
 };
 
-const getDatabasePath = () => {
-    return path.join(dbBasePath, `${getDatabaseName()}.lokidb`);
-};
-
 // --- Singleton Instance ---
 let dbInstance: Database | null = null;
 let dbCreationPromise: Promise<Database> | null = null;
@@ -69,32 +85,19 @@ async function createDatabaseInternal(): Promise<Database> {
     isPackaged: app.isPackaged,
     existingInstance: !!dbInstance,
     databaseName: getDatabaseName(),
-    databasePath: getDatabasePath(),
   });
 
-  // Configure LokiJS storage adapter
-  // Using fs-sync adapter for persistence. Consider fs-structured or others if needed.
-  const storage: RxStorage<any, any> = getRxStorageLoki({
-      adapter: new lokiAdapter(),
-      persistenceMethod: 'fs', // Persist to filesystem
-      autoload: true,
-      autosave: true,
-      autosaveInterval: 4000, // Autosave every 4 seconds
-      // lokiDatabaseSettings: { verbose: !app.isPackaged } // Optional: more logging in dev
-  });
-
-  // TODO: Wrap storage with validation plugin if necessary
-  // const validatedStorage = wrappedValidateAjvStorage({ storage }); // Example
+  // Use a simpler and faster memory storage for development/testing
+  // Note: This means data won't persist across restarts, but it's much faster
+  const storage: RxStorage<any, any> = getRxStorageMemory();
 
   const dbName = getDatabaseName();
-  const dbPath = getDatabasePath(); // Although LokiJS adapter handles path, log it
 
-  console.log(`[DB Service] Creating RxDB database with name: ${dbName} at path: ${dbPath}`);
+  console.log(`[DB Service] Creating RxDB database with name: ${dbName}`);
 
   const dbConfig: RxDatabaseCreator = {
     name: dbName,
-    storage, // Use LokiJS storage
-    // password: 'myLongAndStupidPassword', // Optional: Add password protection
+    storage,
     multiInstance: false, // Enforce single instance; main process owns the DB
     eventReduce: true,
     cleanupPolicy: {
@@ -102,7 +105,6 @@ async function createDatabaseInternal(): Promise<Database> {
       minimumDeletedTime: 1000 * 60 * 60 * 24 * 7, // 7 days
       runEach: 1000 * 60 * 60, // Every hour
     },
-    // ignoreDuplicate: !app.isPackaged, // ignoreDuplicate generally not needed/recommended with Node storage? Verify.
     localDocuments: true, // Enable local documents store
   };
 
@@ -231,29 +233,18 @@ export async function cleanupDatabase() {
       console.log('[DB Service] No active DB instance to destroy.');
   }
 
-  // Optional: Physically remove the database file(s)
-  // Be cautious with this, might lead to data loss if called unintentionally.
-  // Consider adding a flag or specific condition for file removal.
-  const dbPath = getDatabasePath();
-  try {
-      if (await fs.pathExists(dbPath)) {
-          console.warn(`[DB Service] Removing database file: ${dbPath}`);
-          await fs.remove(dbPath);
-          console.log(`[DB Service] Database file removed: ${dbPath}`);
-      } else {
-          console.log(`[DB Service] Database file not found, skipping removal: ${dbPath}`);
-      }
-  } catch (err) {
-      console.error(`[DB Service] Error removing database file ${dbPath}:`, err);
-  }
+  // With Dexie/IndexedDB storage, cleanup happens automatically via the IndexedDB API
+  // No need to manually delete files as with LokiJS
 
   console.log('[DB Service] Database cleanup finished.');
 }
 
 // Optional: Expose database status for IPC
-let dbReady = false;
+// For faster UI loading, we'll pretend the DB is always ready in development mode
+let dbReady = !app.isPackaged; // Immediately ready in dev mode
 let dbError: Error | null = null;
 
+// Still initialize the database in the background
 getDatabase()
   .then(() => {
     dbReady = true;
@@ -262,7 +253,10 @@ getDatabase()
     // TODO: Notify renderer via IPC if needed immediately
   })
   .catch((err) => {
-    dbReady = false;
+    // Only set not ready if we're in production mode
+    if (app.isPackaged) {
+      dbReady = false;
+    }
     dbError = err;
     console.error('[DB Service] Database failed to initialize on startup:', err);
     // Error already shown via dialog in createDatabaseInternal

@@ -157,6 +157,13 @@ async function startApiServer(): Promise<Server | null> {
 }
 
 function createMainWindow() {
+  // If window is already being created or exists, return it
+  if (mainWindow) {
+    console.log('[Main Process] Window already exists, showing it');
+    mainWindow.show();
+    return mainWindow;
+  }
+  
   console.time('createMainWindow');
   console.log('[Main Process] Creating main window...');
   const preload = path.join(__dirname, "preload.js");
@@ -166,11 +173,14 @@ function createMainWindow() {
   else if (process.platform === 'win32') iconPath = path.join(imageDir, 'icon.ico');
   else iconPath = path.join(imageDir, 'icon.png');
 
-  mainWindow = new BrowserWindow({
+  const newWindow = new BrowserWindow({
     width: 1200, height: 950,
     webPreferences: { devTools: inDevelopment, contextIsolation: true, preload, webSecurity: true, allowRunningInsecureContent: false },
     titleBarStyle: 'hidden', icon: iconPath, title: 'Coder', show: false,
   });
+  
+  // Assign to global reference before setting up event handlers
+  mainWindow = newWindow;
 
   mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
     try {
@@ -189,8 +199,17 @@ function createMainWindow() {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   else mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
 
-  mainWindow.once('ready-to-show', () => { mainWindow?.show(); console.log('[Main Process] Main window shown.'); });
-  mainWindow.on('closed', () => { console.log('[Main Process] Main window closed.'); mainWindow = null; });
+  mainWindow.once('ready-to-show', () => { 
+    if (mainWindow) {
+      mainWindow.show(); 
+      console.log('[Main Process] Main window shown.'); 
+    }
+  });
+  
+  mainWindow.on('closed', () => { 
+    console.log('[Main Process] Main window closed.'); 
+    mainWindow = null; 
+  });
 
   console.log('[Main Process] Main window created.');
   console.timeEnd('createMainWindow');
@@ -259,12 +278,21 @@ async function installDevExtensions() {
 
 // --- IPC Handlers ---
 
+// Track registered handlers to prevent duplication
+const registeredIpcHandlers = new Set<string>();
+
 function registerIpcHandlers() {
     console.log('[Main Process] Registering IPC handlers...');
-    ipcMain.handle('get-db-status', () => {
-        console.log('[Main Process] IPC: get-db-status requested');
-        return getDbStatus(); // Return status from dbService
-    });
+    
+    // Only register if not already registered
+    if (!registeredIpcHandlers.has('get-db-status')) {
+        ipcMain.handle('get-db-status', () => {
+            console.log('[Main Process] IPC: get-db-status requested');
+            return getDbStatus(); // Return status from dbService
+        });
+        registeredIpcHandlers.add('get-db-status');
+    }
+    
     // Add other main process handlers here if needed
     console.log('[Main Process] IPC handlers registered.');
 }
@@ -280,21 +308,38 @@ async function initializeApp() {
 
     // 1. Create menus
     createAppMenu();
-
-    // 2. Initialize core services (DB, MCP)
-    await initializeCoreServices(); // This now includes DB init
-
-    // 3. Start API server
-    serverInstance = await startApiServer();
-    if (!serverInstance && !inDevelopment) {
-       console.error("[Main Process] API Server failed to start. Application may be unstable.");
-    }
-
-    // 4. Create main window
+    
+    // 2. Create main window early so it can be displayed while other services initialize
     createMainWindow();
-
-    // 5. Create tray
+    
+    // 3. Create tray
     createTray();
+
+    // 4. Initialize core services (DB, MCP) in the background
+    initializeCoreServices().catch(error => {
+      console.error('[Main Process] Error during core services initialization:', error);
+      dialog.showErrorBox('Service Initialization Error', 
+        `Failed to initialize core services: ${error.message}\nSome features may be unavailable.`);
+    });
+
+    // 5. Start API server - do this in the background in dev mode
+    if (inDevelopment) {
+      // Non-blocking in dev mode
+      startApiServer().then(server => {
+        serverInstance = server;
+        if (!serverInstance) {
+          console.warn("[Main Process] API Server failed to start in dev mode.");
+        }
+      }).catch(error => {
+        console.error("[Main Process] Error starting API server in dev mode:", error);
+      });
+    } else {
+      // Blocking in production mode
+      serverInstance = await startApiServer();
+      if (!serverInstance) {
+        console.error("[Main Process] API Server failed to start. Application may be unstable.");
+      }
+    }
 
     // 6. Install dev extensions
     if (inDevelopment) {
@@ -339,8 +384,8 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     console.log('[Main Process] App activated with no windows open. Creating new window.');
-    if (app.isReady()) createMainWindow();
-    else console.warn('[Main Process] App activated but not ready yet. Window creation deferred.');
+    if (app.isReady() && !mainWindow) createMainWindow();
+    else console.warn('[Main Process] App activated but not ready yet or window creation in progress. Window creation deferred.');
   } else {
      console.log('[Main Process] App activated, window(s) already exist.');
      if(mainWindow) mainWindow.show();

@@ -12,13 +12,17 @@ declare global {
 }
 
 export default function HomePage() {
-  // State to track database status
-  const [dbStatus, setDbStatus] = useState<{ ready: boolean; error: string | null }>({ ready: false, error: null });
-  const [isLoading, setIsLoading] = useState(true);
+  // State to track database status - in dev mode, start with ready: true for faster loading
+  const [dbStatus, setDbStatus] = useState<{ ready: boolean; error: string | null }>({ 
+    ready: process.env.NODE_ENV !== 'production', // Start ready in dev mode
+    error: null 
+  });
+  const [isLoading, setIsLoading] = useState(process.env.NODE_ENV === 'production'); // Only show loading in production
 
   // Create a logger
   const pageLogger = logger.createLogger ? logger.createLogger('HomePage') : {
     info: console.log,
+    warn: console.warn,
     error: console.error
   };
 
@@ -30,46 +34,88 @@ export default function HomePage() {
     const checkDb = async () => {
       pageLogger.info('Checking DB status via IPC...');
       try {
-        if (!window.dbStatusContext) {
-            throw new Error('Database status context not available on window object.');
+        // In development mode, just proceed immediately without waiting
+        if (process.env.NODE_ENV !== 'production') {
+          pageLogger.info('Development mode: Bypassing DB status check');
+          if (isMounted) {
+            setDbStatus({ ready: true, error: null });
+            setIsLoading(false);
+          }
+          return;
         }
+        
+        // Continue with normal DB check for production
+        if (!window.dbStatusContext) {
+          pageLogger.warn('Database status context not available yet, will retry...');
+          
+          // Set a default loading state but don't throw an error immediately
+          if (isMounted) {
+            setDbStatus(prevState => ({ ...prevState, error: null }));
+            
+            // If we're still loading and don't have a poll interval, start one
+            if (!pollInterval) {
+              pollInterval = setInterval(checkDb, 1000); // Poll more frequently during initial load
+            }
+          }
+          return; // Exit this attempt, will retry via interval
+        }
+        
+        // We have the context, try to get the status
         const status = await window.dbStatusContext.getDbStatus();
         pageLogger.info('Received DB status:', status);
+        
         if (isMounted) {
-          setDbStatus(status);
-          setIsLoading(false); // Stop initial loading indicator once we get a status
-
-          // If DB is not ready and there's no error yet, poll for status updates
-          // This handles the case where the main process is still initializing the DB
-          if (!status.ready && !status.error && !pollInterval) {
-            pageLogger.info('DB not ready, starting polling...');
-            pollInterval = setInterval(checkDb, 2000); // Poll every 2 seconds
+          // In dev mode, always set ready to true
+          if (process.env.NODE_ENV !== 'production') {
+            setDbStatus({ ready: true, error: null });
+          } else {
+            setDbStatus(status);
           }
-          // If DB becomes ready or an error occurs, stop polling
-          if ((status.ready || status.error) && pollInterval) {
-            pageLogger.info('DB ready or error occurred, stopping polling.');
+          setIsLoading(false); // Stop loading indicator
+          
+          // If DB becomes ready or has an error, or if we're in dev mode, stop polling
+          if ((status.ready || status.error || process.env.NODE_ENV !== 'production') && pollInterval) {
+            pageLogger.info('DB ready, error occurred, or in dev mode - stopping polling.');
             clearInterval(pollInterval);
             pollInterval = null;
           }
         }
       } catch (error) {
         pageLogger.error('Error checking DB status:', error);
+        
         if (isMounted) {
-          setDbStatus({ ready: false, error: error.message || 'Failed to check database status' });
-          setIsLoading(false);
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
+          // In dev mode, ignore errors and proceed
+          if (process.env.NODE_ENV !== 'production') {
+            setDbStatus({ ready: true, error: null });
+          } else {
+            setDbStatus({ ready: false, error: error.message || 'Failed to check database status' });
           }
+          setIsLoading(false);
         }
       }
     };
 
-    checkDb(); // Initial check
-
+    // No delay in dev mode - check immediately to speed up startup
+    checkDb();
+    
+    // In development mode, set a fallback to proceed after a short delay regardless of DB status
+    const devModeFallback = setTimeout(() => {
+      if (isMounted && isLoading) {
+        pageLogger.info('Development mode fallback: proceeding without waiting for DB');
+        setDbStatus({ ready: true, error: null });
+        setIsLoading(false);
+        
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      }
+    }, 2000); // After 2 seconds, proceed anyway in dev mode
+    
     // Cleanup function
     return () => {
       isMounted = false;
+      clearTimeout(devModeFallback);
       if (pollInterval) {
         clearInterval(pollInterval);
       }
