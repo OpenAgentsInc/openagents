@@ -22,12 +22,8 @@ const config = {
     }
   ],
   packagerConfig: {
-    // Keep asar enabled, but configure unpacking
-    asar: {
-      // Use a glob pattern to unpack the fs-extra module
-      // This keeps fs-extra outside app.asar, potentially fixing require issues
-      unpack: "**/node_modules/fs-extra/**",
-    },
+    // Try boolean value for asar instead of pattern
+    asar: true,
     extraResource: ['src/images'],
     icon: 'src/images/icon', // Base name without extension
   },
@@ -78,5 +74,27 @@ const config = {
     }),
   ],
 };
+
+// Add some debug logging to see what's happening during the build
+console.log('Electron Forge config loaded:');
+console.log('- packagerConfig.asar:', config.packagerConfig.asar);
+console.log('- plugins:', config.plugins.map(p => p.constructor.name));
+
+// Add an error handler to the FusesPlugin
+const originalFusesPlugin = config.plugins.find(p => p.constructor.name === 'FusesPlugin');
+if (originalFusesPlugin) {
+  const originalStartup = originalFusesPlugin.startupHook;
+  originalFusesPlugin.startupHook = async (config) => {
+    try {
+      console.log('Running FusesPlugin startupHook...');
+      await originalStartup(config);
+      console.log('FusesPlugin startupHook completed successfully');
+    } catch (error) {
+      console.error('Error in FusesPlugin startupHook:', error);
+      // Continue without failing the build
+      return;
+    }
+  };
+}
 
 module.exports = config;

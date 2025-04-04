@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain } from 'electron'; // Added ipcMain
-import path from 'path';
+import path from 'node:path';
+import fs from 'node:fs';
 import { installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 import { serverApp } from './server';
 import { serve } from '@hono/node-server';
@@ -349,7 +350,8 @@ async function initializeApp() {
     // 7. Setup macOS Dock
     if (process.platform === 'darwin') {
       const iconPath = path.join(inDevelopment ? path.join(process.cwd(), 'src', 'images') : path.join(process.resourcesPath, 'images'), 'icon.png');
-      if(await require('fs-extra').pathExists(iconPath)) app.dock.setIcon(iconPath);
+      // Use native fs.existsSync instead of fs-extra.pathExists
+      if(fs.existsSync(iconPath)) app.dock.setIcon(iconPath);
       const dockMenu = Menu.buildFromTemplate([{ label: 'New Window', click() { if (!mainWindow) createMainWindow(); } }]);
       app.dock.setMenu(dockMenu);
     }

@@ -15,11 +15,14 @@ export default defineConfig({
   build: {
     rollupOptions: {
       external: [
-        'fs-extra', // Prevent bundling fs-extra
         'electron', // Standard externals for Electron apps
         'node:path',
         'node:fs',
+        'node:fs/promises',
         'node:child_process',
+        'path',
+        'fs',
+        'os',
         // Add other Node built-ins or large deps if needed
       ]
     }

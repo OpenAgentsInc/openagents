@@ -119,7 +119,6 @@
     "embla-carousel-react": "^8.5.2",
     "fake-indexeddb": "^5.0.2",
     "framer-motion": "11",
-    "fs-extra": "^11.2.0",
     "hono": "^4.7.5",
     "i18next": "^24.2.3",
     "input-otp": "^1.4.2",
