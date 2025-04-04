@@ -118,7 +118,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     },
     // Enable persistence
     persistenceEnabled: true,
-    maxSteps: 10,
+    maxSteps: 50,
 
     // Handle errors from the AI SDK hook itself
     // Remove the stream error handler since it's not working correctly
@@ -158,7 +158,7 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       if (error instanceof Error && error.message === 'Failed to fetch') {
         console.log("%c NETWORK ERROR DETECTED:", "background: red; color: white");
         console.log("This is likely a network connectivity issue with the local API server");
-        
+
         // Create a more descriptive error message for the user
         const networkErrorMessage: UIMessage = {
           id: `error-${Date.now()}`,
@@ -166,26 +166,26 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
           content: "⚠️ Network Error: Unable to connect to AI service. Please check your network connection and try again.",
           createdAt: new Date(),
           threadId: currentThreadId || undefined,
-          parts: [{ 
-            type: 'text', 
+          parts: [{
+            type: 'text',
             text: "⚠️ Network Error: Unable to connect to AI service. Please check your network connection and try again."
           }]
           // Remove isError as it's not in the UIMessage type
         };
-        
+
         // Show a toast notification to help the user
         showNetworkErrorToast(() => {
           // Retry function logic would go here
           console.log("User requested connection retry");
         });
-        
+
         // Use direct state manipulation to avoid network calls
         // Get current messages and append the network error message
         const currentMessages = [...messages, networkErrorMessage];
         setMessages(currentMessages);
         return;
       }
-      
+
       // Skip error handling for errors coming from append() itself to break the loop
       if (error instanceof Error && error.message &&
         (error.message.includes('append error') ||
