@@ -59,7 +59,7 @@ export const HomeRoute = createRoute({
     // Import HomePage to ensure database initialization happens
     const HomePage = React.lazy(() => import('../pages/HomePage'));
     return (
-      <React.Suspense fallback={<div>Loading...</div>}>
+      <React.Suspense fallback={<div></div>}>
         <HomePage />
       </React.Suspense>
     );
