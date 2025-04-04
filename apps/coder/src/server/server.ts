@@ -799,7 +799,7 @@ app.post('/api/chat', async (c) => {
           const timeoutId = setTimeout(() => {
             console.log("⚠️ Stream processing timeout - preventing LMStudio fallback");
             abortController.abort();
-          }, 30000); // 30 second timeout
+          }, 60000); // 60 second timeout
 
           // Process stream using reader
           const reader = sdkStream.getReader();
