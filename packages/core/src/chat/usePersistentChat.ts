@@ -458,7 +458,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
   // Custom handleSubmit function that adds thread ID
   const handleSubmit = async (
     event?: { preventDefault?: () => void },
-    options?: { experimental_attachments?: FileList }
+    options?: { selectedToolIds?: string[], experimental_attachments?: FileList, debug_tool_selection?: boolean }
   ) => {
     if (event?.preventDefault) {
       event.preventDefault();
@@ -479,6 +479,18 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       }
     }
 
+    // Log debug information if requested
+    if (options?.debug_tool_selection) {
+      console.log('[usePersistentChat] Handling submit with options:', {
+        selectedToolIds: options.selectedToolIds || [],
+        hasSelectedTools: Array.isArray(options.selectedToolIds) && options.selectedToolIds.length > 0,
+        hasAttachments: options.experimental_attachments !== undefined
+      });
+    }
+
+    // Extract selectedToolIds from options, if provided
+    const selectedToolIds = options?.selectedToolIds;
+
     // We need to make sure we're seeing the user message immediately
     // Let Vercel's state management handle displaying the message immediately
     // Persistence will happen in the normal message flow
@@ -488,6 +500,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
     if (!userInput || !currentThreadId) {
       // No input or thread, just call the original submit
+      // But make sure to forward the selectedToolIds
       vercelChatState.handleSubmit(event, options);
       return;
     }
@@ -501,6 +514,27 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       } catch (error) {
         console.error("Failed to create thread:", error);
       }
+    }
+
+    // If tools are explicitly selected, add them to the body options for the API call
+    if (Array.isArray(selectedToolIds)) {
+      // Create a temporary handler that wraps the original submit
+      // with the selected tool IDs properly merged into the body options
+      console.log('[usePersistentChat] Forwarding selected tool IDs to API:', selectedToolIds);
+
+      // Create a copy of the current options
+      const currentOptions = { ...customOptions };
+      
+      // Modify the body to include selectedToolIds
+      currentOptions.body = {
+        ...currentOptions.body,
+        selectedToolIds: selectedToolIds,
+      };
+      
+      // Create a temporary useChat instance with the modified options
+      vercelChatState.body = currentOptions.body;
+    } else {
+      console.log('[usePersistentChat] No selected tools provided, using defaults');
     }
 
     // Call original handleSubmit to trigger the AI process

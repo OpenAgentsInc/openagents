@@ -46,8 +46,14 @@ export const ChatInputArea = memo(function ChatInputArea() {
     
     // Include the selected tools in the submission
     const submissionOptions = {
-      selectedToolIds: selectedToolIds
+      // Pass the tools that have been explicitly selected in the UI
+      // The server should use these specific tool IDs rather than all available tools
+      selectedToolIds: selectedToolIds,
+      // Add a debug flag to trace the tool selection issues
+      debug_tool_selection: true
     };
+    
+    console.log('[ChatInputArea] Submitting with explicitly selected tools:', selectedToolIds);
     
     handleSubmit(event, submissionOptions);
   }, [isModelAvailable, handleSubmit, selectedToolIds]);

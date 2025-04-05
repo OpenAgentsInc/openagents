@@ -152,13 +152,25 @@ chatRoutes.post('/chat', async (c) => {
     
     // Filter tools based on user selection for this request
     if (selectedToolIds.length > 0) {
+      console.log('[Server] Filtering tools based on explicit user selection:', selectedToolIds);
+      
       const filteredTools: Record<string, any> = {};
       for (const toolId of selectedToolIds) {
         if (combinedTools[toolId]) {
+          console.log(`[Server] Including selected tool: ${toolId}`);
           filteredTools[toolId] = combinedTools[toolId];
+        } else {
+          console.log(`[Server] Selected tool not available: ${toolId}`);
         }
       }
+      
+      // This is the important part - ONLY use the tools explicitly selected by the user
+      // rather than all enabled tools
       combinedTools = filteredTools;
+      
+      console.log(`[Server] Final tool selection: ${Object.keys(combinedTools).join(', ')}`);
+    } else {
+      console.log('[Server] No specific tools selected by user, using all enabled tools');
     }
     
     // Helper to get enabled tool IDs
@@ -166,26 +178,32 @@ chatRoutes.post('/chat', async (c) => {
       try {
         console.log('[Server] Attempting to fetch enabled tool IDs');
         
-        // For server-side implementation, use a safer approach
-        // Instead of using dynamic imports which have path resolution issues in the monorepo,
-        // we'll directly check the client-side enabled tools
+        // For server-side implementation, we need to respect the user's settings
+        // rather than automatically including all MCP tools
         
-        // First, try to get MCP tools - these should include the configured tools
-        const mcpTools = getMCPTools();
-        console.log(`[Server] Available MCP tools: ${Object.keys(mcpTools).length}`);
+        // Try to fetch from settings repository
+        try {
+          // Import settings dynamically to avoid circular dependencies
+          const settingsModule = require('@openagents/core');
+          if (settingsModule && settingsModule.settingsRepository && typeof settingsModule.settingsRepository.getEnabledToolIds === 'function') {
+            console.log('[Server] Fetching enabled tool IDs from settings repository');
+            const enabledIds = await settingsModule.settingsRepository.getEnabledToolIds();
+            
+            // If we got valid enabled IDs from settings, use those
+            if (Array.isArray(enabledIds) && enabledIds.length > 0) {
+              console.log('[Server] Using enabled tool IDs from settings:', enabledIds);
+              return enabledIds;
+            } else {
+              console.log('[Server] No enabled tool IDs found in settings, using default');
+            }
+          }
+        } catch (settingsError) {
+          console.warn('[Server] Could not fetch tool IDs from settings repository:', settingsError);
+        }
         
         // At a minimum, always include shell_command if available
         const baseTools = ['shell_command'];
         
-        // If we found MCP tools, add their IDs to our enabled list
-        if (Object.keys(mcpTools).length > 0) {
-          console.log('[Server] Including MCP tools in enabled tools list');
-          const allTools = [...baseTools, ...Object.keys(mcpTools)];
-          console.log('[Server] Enabled tool IDs:', allTools);
-          return allTools;
-        }
-        
-        // Fallback to just shell_command
         console.log('[Server] Using default tool set (shell_command only)');
         return baseTools;
       } catch (error) {
