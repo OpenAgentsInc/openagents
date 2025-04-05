@@ -198,19 +198,34 @@ export function ToolSelect({
   // Toggle a tool's selection
   const toggleTool = (toolId: string) => {
     console.log(`[ToolSelect] Toggling tool selection: ${toolId}`);
-    if (localSelectedToolIds.includes(toolId)) {
-      const newSelection = localSelectedToolIds.filter(id => id !== toolId);
+    
+    // Check current selection state
+    const isCurrentlySelected = localSelectedToolIds.includes(toolId);
+    console.log(`[ToolSelect] Tool ${toolId} is currently ${isCurrentlySelected ? 'selected' : 'not selected'}`);
+    
+    // Create new selection based on current state
+    let newSelection;
+    if (isCurrentlySelected) {
+      // Remove the tool
+      newSelection = localSelectedToolIds.filter(id => id !== toolId);
       console.log(`[ToolSelect] Removing tool from selection: ${toolId}`);
-      console.log(`[ToolSelect] New selection:`, newSelection);
-      setSelectedToolIds(newSelection); // Update local state immediately for visual feedback
-      onChange(newSelection);
     } else {
-      const newSelection = [...localSelectedToolIds, toolId];
+      // Add the tool
+      newSelection = [...localSelectedToolIds, toolId];
       console.log(`[ToolSelect] Adding tool to selection: ${toolId}`);
-      console.log(`[ToolSelect] New selection:`, newSelection);
-      setSelectedToolIds(newSelection); // Update local state immediately for visual feedback
-      onChange(newSelection);
     }
+    
+    console.log(`[ToolSelect] New selection:`, newSelection);
+    
+    // Force a re-render by creating a new array reference
+    // Update both local state and parent component
+    setSelectedToolIds([...newSelection]); 
+    onChange([...newSelection]);
+    
+    // Add extra debugging
+    setTimeout(() => {
+      console.log(`[ToolSelect] After update, localSelectedToolIds:`, localSelectedToolIds);
+    }, 0);
   };
 
   // Select all available tools
@@ -356,22 +371,22 @@ export function ToolSelect({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[350px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search tools..." />
+      <PopoverContent className="w-[350px] p-0 font-mono" align="start">
+        <Command className="font-mono">
+          <CommandInput placeholder="Search tools..." className="font-mono" />
           <CommandEmpty>
-            <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground">
+            <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground font-mono">
               <AlertCircle className="h-6 w-6 mb-2" />
               <p>No tools found.</p>
             </div>
           </CommandEmpty>
           
           {/* Action buttons */}
-          <div className="flex items-center justify-between p-2 border-b">
+          <div className="flex items-center justify-between p-2 border-b font-mono">
             <Button 
               variant="ghost" 
               size="sm" 
-              className="text-xs"
+              className="text-xs font-mono"
               onClick={selectAllTools}
               disabled={allSelected || availableTools.length === 0}
             >
@@ -380,7 +395,7 @@ export function ToolSelect({
             <Button 
               variant="ghost" 
               size="sm" 
-              className="text-xs"
+              className="text-xs font-mono"
               onClick={clearSelection}
               disabled={selectedToolIds.length === 0}
             >
@@ -388,9 +403,9 @@ export function ToolSelect({
             </Button>
           </div>
           
-          <CommandList className="max-h-[350px] overflow-auto">
+          <CommandList className="max-h-[350px] overflow-auto font-mono">
             {availableTools.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground">
+              <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground font-mono">
                 <AlertCircle className="h-6 w-6 mb-2" />
                 <p>No tools are enabled globally.</p>
                 <p className="text-xs mt-1">Enable tools in Settings → Tools.</p>
@@ -408,7 +423,7 @@ export function ToolSelect({
                   <div key={providerId} className="mb-1">
                     {/* Provider header */}
                     <div 
-                      className="flex items-center justify-between px-2 py-1.5 text-sm font-medium cursor-pointer hover:bg-muted/50"
+                      className="flex items-center justify-between px-2 py-1.5 text-sm font-mono cursor-pointer hover:bg-muted/50"
                       onClick={() => toggleProviderExpanded(providerId)}
                     >
                       <div className="flex items-center gap-1.5">
@@ -440,7 +455,7 @@ export function ToolSelect({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[10px]"
+                          className="h-6 px-2 text-[10px] font-mono"
                           onClick={() => selectProviderTools(providerId)}
                           disabled={allSelected}
                         >
@@ -449,7 +464,7 @@ export function ToolSelect({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[10px]"
+                          className="h-6 px-2 text-[10px] font-mono"
                           onClick={() => deselectProviderTools(providerId)}
                           disabled={!someSelected}
                         >
@@ -460,32 +475,41 @@ export function ToolSelect({
                     
                     {/* Provider's tools */}
                     {isExpanded && (
-                      <CommandGroup>
+                      <div className="py-1">
                         {provider.tools.map((tool) => {
                           const isSelected = localSelectedToolIds.includes(tool.id);
                           
                           return (
-                            <CommandItem
+                            <div
                               key={tool.id}
-                              value={`${providerId}:${tool.id}`}
-                              onSelect={() => toggleTool(tool.id)}
-                              className="pl-9"
+                              className="px-2 py-1.5 text-sm font-mono cursor-pointer hover:bg-muted/50 pl-9"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                toggleTool(tool.id);
+                              }}
                             >
                               <div className="flex flex-col gap-1 truncate">
                                 <div className="flex items-center gap-2">
-                                  <span className="h-4 w-4 flex items-center justify-center">
-                                    {isSelected ? <Check className="h-4 w-4" /> : null}
-                                  </span>
-                                  <span className="font-medium">{tool.name}</span>
+                                  <div 
+                                    className="h-4 w-4 flex items-center justify-center border border-muted-foreground/40 rounded-sm"
+                                    style={{ 
+                                      backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
+                                      transition: 'background-color 0.15s ease-in-out'
+                                    }}
+                                  >
+                                    {isSelected && <Check className="h-3 w-3 text-white" />}
+                                  </div>
+                                  <span className="font-mono">{tool.name}</span>
                                 </div>
-                                <div className="text-xs text-muted-foreground pl-6">
+                                <div className="text-xs text-muted-foreground pl-6 font-mono">
                                   {tool.description}
                                 </div>
                               </div>
-                            </CommandItem>
+                            </div>
                           );
                         })}
-                      </CommandGroup>
+                      </div>
                     )}
                     
                     <CommandSeparator />
