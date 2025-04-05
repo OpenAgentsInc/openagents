@@ -12,10 +12,24 @@ export default defineConfig({
     react(),
     // Add Node.js polyfills for browser environment
     nodePolyfills({
-      // To add specific polyfills, specify them here
-      include: ['url', 'util', 'events'],
+      // Include polyfills for all required Node.js modules in browser
+      include: [
+        'url', 
+        'util', 
+        'events', 
+        'stream', 
+        'path', 
+        'http', 
+        'https', 
+        'zlib', 
+        'querystring',
+        'buffer',
+        'crypto',
+        'os'
+      ],
       globals: {
         Buffer: true,
+        process: true,
       },
     }),
   ],
@@ -32,6 +46,10 @@ export default defineConfig({
       "@expo/vector-icons": path.resolve(__dirname, "./src/shims/expo-vector-icons.ts"),
       // Add shim for eventsource
       "eventsource": path.resolve(__dirname, "./src/shims/eventsource.ts"),
+      // Add shim for child_process (needed for AI/MCP modules)
+      "child_process": path.resolve(__dirname, "./src/shims/child_process.ts"),
+      // Add shim for ai/mcp-stdio module
+      "ai/mcp-stdio": path.resolve(__dirname, "./src/shims/ai-mcp-stdio.ts"),
     },
   },
   optimizeDeps: {
@@ -54,6 +72,26 @@ export default defineConfig({
   build: {
     rollupOptions: {
       plugins: [],
+      // Add externals to fix the browser/node compatibility issues with MCP
+      external: [
+        'child_process',
+        'fs',
+        'path',
+        'util',
+        'os',
+        'crypto',
+        'stream',
+        'events',
+        'buffer',
+        'querystring',
+        'url',
+        'http',
+        'https',
+        'zlib',
+        // Add specific AI/MCP related modules
+        'ai/mcp-stdio',
+        'ai',
+      ]
     },
     assetsInlineLimit: 0, // Don't inline any assets, keep all as URLs
   },

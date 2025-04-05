@@ -198,6 +198,31 @@ With these changes, we tested the solution to ensure:
 5. **Tool Usage in Chat** - Enabled tools are actually available in chat conversations
 6. **MCP Tool Integration** - MCP tools from connected clients are properly displayed and can be toggled
 
+## Addressing Build Issues
+
+During the implementation, we encountered several build-related challenges, particularly with browser compatibility:
+
+### 1. Node.js Modules in Browser Context
+
+Some Node.js modules like `child_process` and `spawn` are not available in browser contexts, which caused build failures. We addressed this with several strategies:
+
+1. **Created Shim Implementations**:
+   - Added a shim for `child_process` that provides mock implementations in the browser
+   - Created a shim for `ai/mcp-stdio` to handle MCP-specific functionality
+
+2. **Updated Vite Configuration**:
+   - Extended the `nodePolyfills` plugin to include all necessary Node.js modules
+   - Added appropriate externals in the rollup configuration
+   - Added aliases to map Node.js modules to browser-compatible alternatives
+
+### 2. Import Path Resolution
+
+In a monorepo structure, import paths can sometimes be problematic, especially with dynamic imports. We addressed this by:
+
+1. Using relative paths where necessary
+2. Creating appropriate shims for problematic modules
+3. Avoiding dynamic imports that could cause path resolution issues
+
 ## Future Improvements
 
 While the current solution addresses the immediate issues, there are potential improvements for future consideration:
@@ -206,6 +231,8 @@ While the current solution addresses the immediate issues, there are potential i
 2. **UI Feedback** - Add clearer UI feedback when tool operations succeed or fail
 3. **Performance Optimization** - Optimize the tool filtering process to reduce unnecessary renders
 4. **Pagination/Virtualization** - For users with many tools, implement pagination or virtualization
+5. **Better Browser/Node Environment Detection** - Implement more robust environment detection and handling
+6. **Unified Module Loading Strategy** - Create a consistent approach for handling modules across different environments
 
 ## Debugging Guidance
 
