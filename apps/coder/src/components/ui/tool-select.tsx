@@ -18,13 +18,6 @@ import {
 import { cn } from "@/utils/tailwind";
 import {
   Button,
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandSeparator,
-  CommandList,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -59,6 +52,7 @@ export function ToolSelect({
   const { getEnabledToolIds } = useSettings();
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true); // Add loading state for initial fetch
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   
   // CRITICAL: Use a ref to store selected tools to ensure UI updates properly
@@ -80,6 +74,9 @@ export function ToolSelect({
   // Load all tools (built-in and MCP)
   const loadTools = useCallback(async () => {
     try {
+      // Set loading state
+      setLoading(true);
+      
       // Get globally enabled tool IDs
       const enabledIds = await getEnabledToolIds();
       setEnabledToolIds(enabledIds);
@@ -151,10 +148,12 @@ export function ToolSelect({
       console.log(`[ToolSelect] Combined tools: ${combinedTools.length} tools (${Object.keys(mcpTools).length} MCP tools + ${TOOLS.length} built-in tools)`);
       setAllTools(combinedTools);
       setLastRefreshed(new Date());
+      setLoading(false); // Set loading to false after tools are fetched
     } catch (error) {
       console.error("Error loading tools:", error);
       // Fallback to built-in tools only
       setAllTools(TOOLS);
+      setLoading(false); // Set loading to false even on error
     }
   }, [getEnabledToolIds]);
   
@@ -167,6 +166,7 @@ export function ToolSelect({
   const refreshMCPTools = useCallback(async () => {
     try {
       setRefreshing(true);
+      setLoading(true); // Also set loading state
       console.log('[ToolSelect] Manually refreshing MCP tools...');
       
       // Call the refresh API endpoint
@@ -523,24 +523,7 @@ export function ToolSelect({
         </div>
       </PopoverTrigger>
       <PopoverContent className="w-[350px] p-0 font-mono" align="start">
-        <Command className="font-mono">
-          <CommandInput placeholder="Search tools..." className="font-mono" />
-          <CommandEmpty>
-            <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground font-mono">
-              <AlertCircle className="h-6 w-6 mb-2" />
-              <p>No tools found.</p>
-              <Button 
-                className="mt-4" 
-                size="sm" 
-                onClick={refreshMCPTools}
-                disabled={refreshing}
-              >
-                <RefreshCw className={`h-3 w-3 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                Refresh MCP Tools
-              </Button>
-            </div>
-          </CommandEmpty>
-          
+        <div className="font-mono">
           {/* Action buttons */}
           <div className="flex items-center justify-between p-2 border-b font-mono">
             <Button 
@@ -563,8 +546,13 @@ export function ToolSelect({
             </Button>
           </div>
           
-          <CommandList className="max-h-[350px] overflow-auto font-mono">
-            {availableTools.length === 0 ? (
+          <div className="max-h-[350px] overflow-auto font-mono">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground font-mono">
+                <RefreshCw className="h-6 w-6 mb-2 animate-spin" />
+                <p>Loading tools...</p>
+              </div>
+            ) : allTools.length > 0 && availableTools.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground font-mono">
                 <AlertCircle className="h-6 w-6 mb-2" />
                 <p>No tools are enabled globally.</p>
@@ -682,12 +670,12 @@ export function ToolSelect({
                       </div>
                     )}
                     
-                    <CommandSeparator />
+                    <hr className="my-1" />
                   </div>
                 );
               })
             )}
-          </CommandList>
+          </div>
           
           {/* Status footer */}
           <div className="p-2 border-t flex items-center justify-between text-xs text-muted-foreground">
@@ -713,7 +701,7 @@ export function ToolSelect({
               Refresh
             </Button>
           </div>
-        </Command>
+        </div>
       </PopoverContent>
     </Popover>
   );
