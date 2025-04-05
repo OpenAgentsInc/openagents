@@ -16,6 +16,14 @@ export function getMCPTools(): Record<string, any> {
   try {
     // Get the globally initialized MCP clients
     const { allTools } = getMCPClients();
+    
+    // Log the available tools for diagnostic purposes
+    console.log(`[MCP Tools] Retrieved ${Object.keys(allTools || {}).length} tools from MCP clients:`);
+    Object.keys(allTools || {}).forEach(toolId => {
+      console.log(`[MCP Tools] - Available tool: ${toolId}`);
+    });
+    
+    // Return the raw tools directly without any mocks or modifications
     return allTools || {};
   } catch (error) {
     console.error("Error getting MCP tools:", error);

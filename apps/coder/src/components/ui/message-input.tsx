@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { FilePreview } from "@/components/ui/file-preview"
 import { InterruptPrompt } from "@/components/ui/interrupt-prompt"
 import { ModelSelect } from '@/components/ui/model-select'
+import { ToolSelect } from '@/components/ui/tool-select'
 
 interface MessageInputBaseProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -24,6 +25,8 @@ interface MessageInputBaseProps
   isModelAvailable: boolean
   enableInterrupt?: boolean
   transcribeAudio?: (blob: Blob) => Promise<string>
+  selectedToolIds?: string[]
+  handleToolsChange?: (toolIds: string[]) => void
 }
 
 interface MessageInputWithoutAttachmentProps extends MessageInputBaseProps {
@@ -55,6 +58,8 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
   allowAttachments,
   value,
   onChange,
+  selectedToolIds = [],
+  handleToolsChange,
   ...restProps
 }: MessageInputProps, ref) => {
   // Extract files and setFiles from restProps if allowAttachments is true
@@ -303,13 +308,18 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
               <div className={cn("w-auto min-w-[120px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
                 <ModelSelect value={selectedModelId} onChange={handleModelChange} />
               </div>
-              {/* Comment out AgentSelection and ToolSelection for now */}
-              {/*<div className={cn("w-auto min-w-[100px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
-                <AgentSelection />
-              </div>
-              <div className={cn("w-auto min-w-[80px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
-                <ToolSelection />
-              </div>*/}
+              {handleToolsChange && (
+                <div className={cn("w-auto min-w-[100px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
+                  <ToolSelect 
+                    selectedToolIds={selectedToolIds || []} 
+                    onChange={(toolIds) => {
+                      console.log('[MessageInput] Tool selection changed:', toolIds);
+                      handleToolsChange(toolIds);
+                    }} 
+                    disabled={!isModelAvailable}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

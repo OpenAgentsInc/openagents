@@ -116,3 +116,6 @@ export function getCurrentUrl() {
 
 // Export React compatibility utilities
 export * from './utils/reactCompatibility';
+
+// Export tools-related functionality
+export * from './tools/TOOLS';

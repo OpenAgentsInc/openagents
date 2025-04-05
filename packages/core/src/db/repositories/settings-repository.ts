@@ -19,6 +19,7 @@ function toMutableSettings(settings: any): Settings {
       defaultModel: 'anthropic/claude-3.7-sonnet',
       selectedModelId: 'anthropic/claude-3.7-sonnet',
       visibleModelIds: [],
+      enabledToolIds: ['shell_command'], // Enable shell_command tool by default
       preferences: {}
     };
   }
@@ -34,6 +35,8 @@ function toMutableSettings(settings: any): Settings {
     visibleModelIds: settings.visibleModelIds ? [...settings.visibleModelIds] : [],
     // Ensure mcpClients is a mutable array
     mcpClients: settings.mcpClients ? [...settings.mcpClients] : [],
+    // Ensure enabledToolIds is a mutable array
+    enabledToolIds: settings.enabledToolIds ? [...settings.enabledToolIds] : ['shell_command'],
     preferences: settings.preferences ? { ...settings.preferences } : {}
   };
 
@@ -797,6 +800,7 @@ export class SettingsRepository {
       defaultModel: defaultSelectedModel,
       selectedModelId: defaultSelectedModel,
       visibleModelIds: visibleModelIds.length > 0 ? visibleModelIds : [defaultSelectedModel],
+      enabledToolIds: ['shell_command'], // Enable shell_command tool by default
       preferences: {}
     };
 
@@ -916,6 +920,121 @@ export class SettingsRepository {
     } catch (error) {
       // console.error("Error getting visible model IDs:", error);
       return [];
+    }
+  }
+
+  /**
+   * Toggle a tool's enabled status
+   */
+  async toggleToolEnabled(toolId: string): Promise<Settings | null> {
+    try {
+      const settings = await this.getSettings();
+      const enabledToolIds = settings.enabledToolIds || [];
+      
+      // Toggle the tool's status
+      let updatedToolIds: string[];
+      if (enabledToolIds.includes(toolId)) {
+        // Remove the tool if it's currently enabled
+        updatedToolIds = enabledToolIds.filter(id => id !== toolId);
+      } else {
+        // Add the tool if it's currently disabled
+        updatedToolIds = [...enabledToolIds, toolId];
+      }
+      
+      // Update settings
+      return this.updateSettings({
+        enabledToolIds: updatedToolIds
+      });
+    } catch (error) {
+      console.error("Error toggling tool enabled status:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Enable a specific tool
+   */
+  async enableTool(toolId: string): Promise<Settings | null> {
+    try {
+      console.log(`[SettingsRepository] Enabling tool: ${toolId}`);
+      const settings = await this.getSettings();
+      const enabledToolIds = settings.enabledToolIds || [];
+      
+      console.log(`[SettingsRepository] Current enabled tools:`, enabledToolIds);
+      
+      // Only add if not already enabled
+      if (!enabledToolIds.includes(toolId)) {
+        console.log(`[SettingsRepository] Adding ${toolId} to enabled tools`);
+        const updatedSettings = await this.updateSettings({
+          enabledToolIds: [...enabledToolIds, toolId]
+        });
+        
+        console.log(`[SettingsRepository] After enabling, enabled tools:`, updatedSettings.enabledToolIds);
+        return updatedSettings;
+      }
+      
+      console.log(`[SettingsRepository] Tool ${toolId} already enabled`);
+      return toMutableSettings(settings);
+    } catch (error) {
+      console.error("Error enabling tool:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Disable a specific tool
+   */
+  async disableTool(toolId: string): Promise<Settings | null> {
+    try {
+      console.log(`[SettingsRepository] Disabling tool: ${toolId}`);
+      const settings = await this.getSettings();
+      const enabledToolIds = settings.enabledToolIds || [];
+      
+      console.log(`[SettingsRepository] Current enabled tools:`, enabledToolIds);
+      
+      // Only remove if currently enabled
+      if (enabledToolIds.includes(toolId)) {
+        console.log(`[SettingsRepository] Removing ${toolId} from enabled tools`);
+        const updatedSettings = await this.updateSettings({
+          enabledToolIds: enabledToolIds.filter(id => id !== toolId)
+        });
+        
+        console.log(`[SettingsRepository] After disabling, enabled tools:`, updatedSettings.enabledToolIds);
+        return updatedSettings;
+      }
+      
+      console.log(`[SettingsRepository] Tool ${toolId} already disabled`);
+      return toMutableSettings(settings);
+    } catch (error) {
+      console.error("Error disabling tool:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Get currently enabled tool IDs
+   */
+  async getEnabledToolIds(): Promise<string[]> {
+    try {
+      console.log(`[SettingsRepository] Getting enabled tool IDs`);
+      const settings = await this.getSettings();
+      if (settings && settings.enabledToolIds) {
+        if (Array.isArray(settings.enabledToolIds)) {
+          console.log(`[SettingsRepository] Found ${settings.enabledToolIds.length} enabled tools:`, settings.enabledToolIds);
+          return [...settings.enabledToolIds];
+        } else {
+          console.log(`[SettingsRepository] enabledToolIds is not an array:`, settings.enabledToolIds);
+          return [];
+        }
+      }
+      
+      // Default to shell_command if no tools are explicitly enabled
+      console.log(`[SettingsRepository] No enabledToolIds found, defaulting to ['shell_command']`);
+      return ['shell_command'];
+    } catch (error) {
+      console.error("Error getting enabled tool IDs:", error);
+      console.log(`[SettingsRepository] Error getting enabled tool IDs, defaulting to ['shell_command']`);
+      return ['shell_command']; // Default fallback
     }
   }
 }

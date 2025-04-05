@@ -104,7 +104,7 @@ export const MainLayout = memo(function MainLayout({ children }: { children?: Re
     <SidebarProvider defaultOpen={true}>
       <div className="flex h-screen w-full flex-col text-primary font-mono">
         <div className="relative flex h-full w-full flex-1 overflow-hidden z-0">
-          <div className="mt-[30px] relative flex h-full w-full flex-row overflow-hidden">
+          <div className="relative flex h-full w-full flex-row overflow-hidden">
             <Sidebar>
               <SidebarHeader className="h-[120px] mt-4">
                 <StableHeaderProvider onCreateThread={handleCreateThread}>
@@ -137,7 +137,7 @@ export const MainLayout = memo(function MainLayout({ children }: { children?: Re
             </Sidebar>
 
             <SidebarInset>
-              <div className="grid grid-rows-[auto_minmax(0,1fr)_auto] h-[calc(100vh-30px)]">
+              <div className="grid grid-rows-[auto_minmax(0,1fr)_auto] h-full">
                 {/* Remove ModelHeader */}
                 <div className="" />
 

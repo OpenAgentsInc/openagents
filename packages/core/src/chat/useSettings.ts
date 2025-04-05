@@ -190,6 +190,47 @@ export function useSettings() {
     }
   }, []);
 
+  // Tool management methods
+  const toggleToolEnabled = useCallback(async (toolId: string): Promise<Settings | null> => {
+    try {
+      return await settingsRepository.toggleToolEnabled(toolId);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error toggling tool enabled status:', error);
+      return null;
+    }
+  }, []);
+
+  const enableTool = useCallback(async (toolId: string): Promise<Settings | null> => {
+    try {
+      return await settingsRepository.enableTool(toolId);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error enabling tool:', error);
+      return null;
+    }
+  }, []);
+
+  const disableTool = useCallback(async (toolId: string): Promise<Settings | null> => {
+    try {
+      return await settingsRepository.disableTool(toolId);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error disabling tool:', error);
+      return null;
+    }
+  }, []);
+
+  const getEnabledToolIds = useCallback(async (): Promise<string[]> => {
+    try {
+      return await settingsRepository.getEnabledToolIds();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Error getting enabled tool IDs:', error);
+      return ['shell_command']; // Default to shell_command if there's an error
+    }
+  }, []);
+
   return {
     settings,
     isLoading,
@@ -203,11 +244,16 @@ export function useSettings() {
     getPreference,
     clearSettingsCache,
     resetSettings,
-    // New model grid methods
+    // Model management methods
     selectModel,
     showModel,
     hideModel,
     toggleModelVisibility,
-    getVisibleModelIds
+    getVisibleModelIds,
+    // Tool management methods
+    toggleToolEnabled,
+    enableTool,
+    disableTool,
+    getEnabledToolIds
   };
 }

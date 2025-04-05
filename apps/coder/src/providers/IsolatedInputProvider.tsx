@@ -4,7 +4,7 @@ import React, { createContext, useContext, useMemo, useRef, useCallback, useEffe
 interface InputContextType {
   input: string;
   handleInputChange: (e: any) => void;
-  handleSubmit: (e: any) => void;
+  handleSubmit: (e: any, options?: any) => void;
   stop: () => void;
   isGenerating: boolean;
 }

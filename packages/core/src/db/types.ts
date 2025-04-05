@@ -68,6 +68,7 @@ export interface Settings {
   visibleModelIds?: string[]; // Array of model IDs that should be visible in the dropdown
   preferences?: Record<string, any>;
   mcpClients?: MCPClientConfig[]; // MCP client configurations
+  enabledToolIds?: string[]; // Array of tool IDs that are enabled globally
 }
 
 /**

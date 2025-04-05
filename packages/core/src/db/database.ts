@@ -142,6 +142,10 @@ export async function createDatabase(): Promise<Database> {
               // Version 2 - no changes needed for threads, just keep the document
               2: function (oldDoc) {
                 return oldDoc;
+              },
+              // Version 3 - no changes needed for threads, just keep the document
+              3: function (oldDoc) {
+                return oldDoc;
               }
             }
           },
@@ -154,6 +158,10 @@ export async function createDatabase(): Promise<Database> {
               },
               // Version 2 - no changes needed for messages, just keep the document
               2: function (oldDoc) {
+                return oldDoc;
+              },
+              // Version 3 - no changes needed for messages, just keep the document
+              3: function (oldDoc) {
                 return oldDoc;
               }
             }
@@ -180,6 +188,14 @@ export async function createDatabase(): Promise<Database> {
                   ],
                   // Add empty array for MCP clients
                   mcpClients: []
+                };
+              },
+              // Migrate from version 2 to 3 - add enabledToolIds
+              3: function (oldDoc) {
+                return {
+                  ...oldDoc,
+                  // Add enabledToolIds with default (shell_command enabled)
+                  enabledToolIds: ['shell_command']
                 };
               }
             }
