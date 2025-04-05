@@ -74,94 +74,41 @@ export function ToolSelect({
         let clientInfoMap: Record<string, { id: string; name: string; tools?: string[] }> = {};
         
         try {
-          // In browser environment, handle appropriately
-          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-            // In development, use mock tools
-            mcpTools = {
-              'github_search': {
-                name: 'GitHub Search',
-                description: 'Search GitHub repositories',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    query: {
-                      type: 'string',
-                      description: 'The search query'
-                    }
-                  },
-                  required: ['query']
-                }
-              },
-              'github_repo': {
-                name: 'GitHub Repository Info',
-                description: 'Get information about a GitHub repository',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    owner: {
-                      type: 'string',
-                      description: 'Repository owner'
-                    },
-                    repo: {
-                      type: 'string',
-                      description: 'Repository name'
-                    }
-                  },
-                  required: ['owner', 'repo']
-                }
-              }
-            };
-            
-            // Add mock client info
-            clientInfoMap = {
-              'mock-github': {
-                id: 'mock-github',
-                name: 'GitHub MCP (Mock)',
-                tools: ['github_search', 'github_repo']
-              }
-            };
-          } else {
-            // Try to get real tools and client info
-            try {
-              // Try to refresh tools first
-              try {
-                console.log('[ToolSelect] Refreshing MCP tools before fetching...');
-                await refreshTools();
-              } catch (refreshError) {
-                console.warn('[ToolSelect] Error refreshing tools:', refreshError);
-              }
-              
-              // Now get the updated tools
-              const mcpClientsInfo = getMCPClients();
-              const { allTools: mcpToolsList, clientTools, configs, clients } = mcpClientsInfo;
-              
-              console.log('[ToolSelect] MCP Clients info:', {
-                clientsCount: Object.keys(clients).length,
-                toolsCount: Object.keys(mcpToolsList || {}).length,
-                clientToolsInfo: clientTools,
-                configsCount: Object.keys(configs).length
-              });
-              
-              mcpTools = mcpToolsList || {};
-              
-              // Create client info map for tracking which tools belong to which client
-              Object.entries(configs).forEach(([clientId, config]) => {
-                if (clientTools[clientId]) {
-                  clientInfoMap[clientId] = {
-                    id: clientId,
-                    name: config.name,
-                    tools: clientTools[clientId]
-                  };
-                  
-                  console.log(`[ToolSelect] Client ${config.name} has ${clientTools[clientId].length} tools`);
-                } else {
-                  console.log(`[ToolSelect] Client ${config.name} has no tools registered`);
-                }
-              });
-            } catch (error) {
-              console.warn("Error fetching MCP tools, using empty object:", error);
-            }
+          // Try to refresh tools first
+          try {
+            console.log('[ToolSelect] Refreshing MCP tools before fetching...');
+            await refreshTools();
+          } catch (refreshError) {
+            console.warn('[ToolSelect] Error refreshing tools:', refreshError);
           }
+          
+          // Now get the updated tools
+          const mcpClientsInfo = getMCPClients();
+          const { allTools: mcpToolsList, clientTools, configs, clients } = mcpClientsInfo;
+          
+          console.log('[ToolSelect] MCP Clients info:', {
+            clientsCount: Object.keys(clients).length,
+            toolsCount: Object.keys(mcpToolsList || {}).length,
+            clientToolsInfo: clientTools,
+            configsCount: Object.keys(configs).length
+          });
+          
+          mcpTools = mcpToolsList || {};
+          
+          // Create client info map for tracking which tools belong to which client
+          Object.entries(configs).forEach(([clientId, config]) => {
+            if (clientTools[clientId]) {
+              clientInfoMap[clientId] = {
+                id: clientId,
+                name: config.name,
+                tools: clientTools[clientId]
+              };
+              
+              console.log(`[ToolSelect] Client ${config.name} has ${clientTools[clientId].length} tools`);
+            } else {
+              console.log(`[ToolSelect] Client ${config.name} has no tools registered`);
+            }
+          });
         } catch (error) {
           console.error("Error setting up MCP tools:", error);
         }
