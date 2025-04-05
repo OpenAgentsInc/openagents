@@ -169,6 +169,13 @@ export const settingsSchema: RxJsonSchema<Settings> = {
         },
         required: ['id', 'name', 'enabled', 'type']
       }
+    },
+    enabledToolIds: {
+      type: 'array',
+      items: {
+        type: 'string',
+        maxLength: 100
+      }
     }
   },
   required: ['id']
