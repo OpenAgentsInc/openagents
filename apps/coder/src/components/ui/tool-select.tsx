@@ -43,6 +43,8 @@ export function ToolSelect({
   const [allTools, setAllTools] = useState<ToolDefinition[]>([]);
   const { getEnabledToolIds } = useSettings();
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>([]);
+  // Keep local state for selected tools to ensure UI updates immediately
+  const [localSelectedToolIds, setSelectedToolIds] = useState<string[]>(selectedToolIds);
 
   // Load all tools (built-in and MCP)
   useEffect(() => {
@@ -108,41 +110,53 @@ export function ToolSelect({
   // Toggle a tool's selection
   const toggleTool = (toolId: string) => {
     if (selectedToolIds.includes(toolId)) {
-      onChange(selectedToolIds.filter(id => id !== toolId));
+      const newSelection = selectedToolIds.filter(id => id !== toolId);
+      setSelectedToolIds(newSelection); // Update local state immediately for visual feedback
+      onChange(newSelection);
     } else {
-      onChange([...selectedToolIds, toolId]);
+      const newSelection = [...selectedToolIds, toolId];
+      setSelectedToolIds(newSelection); // Update local state immediately for visual feedback
+      onChange(newSelection);
     }
   };
 
   // Select all available tools
   const selectAllTools = () => {
-    onChange(availableTools.map(tool => tool.id));
+    const allToolIds = availableTools.map(tool => tool.id);
+    setSelectedToolIds(allToolIds); // Update local state immediately
+    onChange(allToolIds);
   };
 
   // Clear all selected tools
   const clearSelection = () => {
+    setSelectedToolIds([]); // Update local state immediately
     onChange([]);
   };
 
   // Check if all available tools are selected
   const allSelected = useMemo(() => {
     return availableTools.length > 0 && 
-      availableTools.every(tool => selectedToolIds.includes(tool.id));
-  }, [availableTools, selectedToolIds]);
+      availableTools.every(tool => localSelectedToolIds.includes(tool.id));
+  }, [availableTools, localSelectedToolIds]);
+
+  // Update our local state when props change
+  useEffect(() => {
+    setSelectedToolIds(selectedToolIds);
+  }, [selectedToolIds]);
 
   // Get display text for button
   const displayText = useMemo(() => {
-    if (selectedToolIds.length === 0) {
+    if (localSelectedToolIds.length === 0) {
       return placeholder;
-    } else if (selectedToolIds.length === 1) {
-      const tool = allTools.find(t => t.id === selectedToolIds[0]);
-      return tool ? tool.name : selectedToolIds[0];
+    } else if (localSelectedToolIds.length === 1) {
+      const tool = allTools.find(t => t.id === localSelectedToolIds[0]);
+      return tool ? tool.name : localSelectedToolIds[0];
     } else if (allSelected) {
       return "All tools enabled";
     } else {
-      return `${selectedToolIds.length} tools enabled`;
+      return `${localSelectedToolIds.length} tools enabled`;
     }
-  }, [selectedToolIds, allTools, placeholder, allSelected]);
+  }, [localSelectedToolIds, allTools, placeholder, allSelected]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -162,9 +176,9 @@ export function ToolSelect({
             <span className="overflow-hidden text-ellipsis">
               {displayText}
             </span>
-            {selectedToolIds.length > 0 && (
+            {localSelectedToolIds.length > 0 && (
               <Badge variant="secondary" className="ml-2">
-                {selectedToolIds.length}
+                {localSelectedToolIds.length}
               </Badge>
             )}
           </div>
@@ -212,7 +226,7 @@ export function ToolSelect({
               </div>
             ) : (
               availableTools.map((tool) => {
-                const isSelected = selectedToolIds.includes(tool.id);
+                const isSelected = localSelectedToolIds.includes(tool.id);
                 
                 return (
                   <CommandItem
