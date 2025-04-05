@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { ChatForm } from '@/components/ui/chat';
 import { MessageInput } from '@/components/ui/message-input';
 import { ModelWarningBanner } from './ModelWarningBanner';
@@ -8,6 +8,8 @@ import { cn } from "@/utils/tailwind";
 
 export const ChatInputArea = memo(function ChatInputArea() {
   const { isModelAvailable, selectedModelId, handleModelChange } = useModelContext();
+  // Track selected tools for this chat request
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>([]);
 
   // Now use the completely isolated input provider
   // This completely disconnects this component from the streaming context
@@ -30,14 +32,25 @@ export const ChatInputArea = memo(function ChatInputArea() {
     }
   }, [handleInputChange]);
 
+  // Handle tool selection changes
+  const handleToolsChange = useCallback((toolIds: string[]) => {
+    setSelectedToolIds(toolIds);
+  }, []);
+
   // Memoize the submit handler to prevent recreation on every render
   const memoizedHandleSubmit = useCallback((event?: { preventDefault?: () => void }) => {
     if (!isModelAvailable && event?.preventDefault) {
       event.preventDefault();
       return;
     }
-    handleSubmit(event);
-  }, [isModelAvailable, handleSubmit]);
+    
+    // Include the selected tools in the submission
+    const submissionOptions = {
+      selectedToolIds: selectedToolIds
+    };
+    
+    handleSubmit(event, submissionOptions);
+  }, [isModelAvailable, handleSubmit, selectedToolIds]);
 
   // Memoize the placeholder value
   const placeholderText = useMemo(() =>
@@ -98,6 +111,8 @@ export const ChatInputArea = memo(function ChatInputArea() {
       files: null,
       setFiles: () => { },
       stop: stableStop,
+      selectedToolIds,
+      handleToolsChange,
       isGenerating,
       disabled: !isModelAvailable,
       placeholder: placeholderText,

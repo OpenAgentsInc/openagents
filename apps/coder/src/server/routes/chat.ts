@@ -51,6 +51,9 @@ chatRoutes.post('/chat', async (c) => {
     // Extract the preferred provider if specified (for ambiguous models)
     const preferredProvider = body.preferredProvider;
     
+    // Extract selected tool IDs if provided
+    const selectedToolIds = body.selectedToolIds || [];
+    
     // Get model info
     const modelInfo = findModelInfo(modelId, preferredProvider);
     
@@ -129,11 +132,54 @@ chatRoutes.post('/chat', async (c) => {
     // Create shell command tool
     const shellCommandTool = createShellCommandTool();
     
-    // Combine all tools
-    const combinedTools = {
-      shell_command: shellCommandTool,
-      ...wrappedMCPTools
-    };
+    // Get all enabled tool IDs
+    const enabledToolIds = await getEnabledToolIds();
+    
+    // Combine all enabled tools
+    let combinedTools: Record<string, any> = {};
+    
+    // First add shell_command if it's enabled
+    if (enabledToolIds.includes('shell_command')) {
+      combinedTools.shell_command = shellCommandTool;
+    }
+    
+    // Then add enabled MCP tools
+    for (const [toolId, tool] of Object.entries(wrappedMCPTools)) {
+      if (enabledToolIds.includes(toolId)) {
+        combinedTools[toolId] = tool;
+      }
+    }
+    
+    // Filter tools based on user selection for this request
+    if (selectedToolIds.length > 0) {
+      const filteredTools: Record<string, any> = {};
+      for (const toolId of selectedToolIds) {
+        if (combinedTools[toolId]) {
+          filteredTools[toolId] = combinedTools[toolId];
+        }
+      }
+      combinedTools = filteredTools;
+    }
+    
+    // Helper to get enabled tool IDs
+    async function getEnabledToolIds(): Promise<string[]> {
+      try {
+        const settings = await getSettings();
+        return settings.enabledToolIds || ['shell_command'];
+      } catch (error) {
+        console.error("Error getting enabled tool IDs:", error);
+        return ['shell_command']; // Default fallback
+      }
+    }
+    
+    // Helper to get settings
+    async function getSettings() {
+      // Simple in-memory implementation for now
+      // In production, this would fetch from a database
+      return {
+        enabledToolIds: ['shell_command']
+      };
+    }
     
     // Configure streaming options
     const streamOptions = {

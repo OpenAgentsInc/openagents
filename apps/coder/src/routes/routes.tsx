@@ -10,6 +10,7 @@ import MCPClientsPage from "../pages/settings/MCPClientsPage";
 import PromptsPage from "../pages/settings/PromptsPage";
 import PreferencesPage from "../pages/settings/PreferencesPage";
 import DebugPage from "../pages/settings/DebugPage";
+import ToolsPage from "../pages/settings/ToolsPage";
 import ChangelogPage from "../pages/ChangelogPage";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { ChatStateProvider } from "@/providers/ChatStateProvider";
@@ -133,6 +134,12 @@ export const DebugSettingsRoute = createRoute({
   component: DebugPage,
 });
 
+export const ToolsSettingsRoute = createRoute({
+  getParentRoute: () => SettingsRoute,
+  path: "/tools",
+  component: ToolsPage,
+});
+
 // Add all routes to the route tree
 export const rootTree = RootRoute.addChildren([
   MainLayoutRoute.addChildren([
@@ -143,6 +150,7 @@ export const rootTree = RootRoute.addChildren([
     SettingsIndexRoute,
     ModelsSettingsRoute,
     ApiKeysSettingsRoute,
+    ToolsSettingsRoute,
     LocalModelsSettingsRoute,
     MCPClientsSettingsRoute,
     PromptsSettingsRoute,
