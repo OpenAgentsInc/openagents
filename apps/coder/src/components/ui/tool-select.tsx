@@ -55,10 +55,36 @@ export function ToolSelect({
         // Get MCP tools
         let mcpTools = {};
         try {
-          const { allTools: mcpToolsList } = getMCPClients();
-          mcpTools = mcpToolsList || {};
+          // In browser environment, just use empty object for MCP tools
+          if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+            // In development, use mock tools
+            mcpTools = {
+              'github_search': {
+                name: 'GitHub Search',
+                description: 'Search GitHub repositories',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    query: {
+                      type: 'string',
+                      description: 'The search query'
+                    }
+                  },
+                  required: ['query']
+                }
+              }
+            };
+          } else {
+            // Try to get real tools
+            try {
+              const { allTools: mcpToolsList } = getMCPClients();
+              mcpTools = mcpToolsList || {};
+            } catch (error) {
+              console.warn("Error fetching MCP tools, using empty object:", error);
+            }
+          }
         } catch (error) {
-          console.error("Error fetching MCP tools:", error);
+          console.error("Error setting up MCP tools:", error);
         }
         
         // Combine with built-in tools

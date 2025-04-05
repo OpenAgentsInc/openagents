@@ -3,10 +3,53 @@ import { experimental_createMCPClient } from "ai";
 import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
 // Import type only, don't import the actual repository
 import type { MCPClientConfig } from '@openagents/core/src/db/types';
-import fs from 'fs';
-import path from 'path';
-import { app } from 'electron';
 import { v4 as uuidv4 } from 'uuid';
+
+// Define mock interfaces for browser environment
+interface MockFS {
+  existsSync: (path: string) => boolean;
+  readFileSync: (path: string, encoding?: string) => string;
+  writeFileSync: (path: string, data: string, encoding?: string) => void;
+}
+
+interface MockPath {
+  join: (...paths: string[]) => string;
+}
+
+interface MockApp {
+  getPath: (name: string) => string;
+}
+
+// In browser environments, use mock objects
+let fsModule: MockFS = { 
+  existsSync: () => false,
+  readFileSync: () => "{}",
+  writeFileSync: () => {} 
+};
+let pathModule: MockPath = { join: (...args: string[]) => args.join('/') };
+let appModule: MockApp = { getPath: () => "" };
+
+// Only import node modules in non-browser environments
+if (typeof window === 'undefined') {
+  try {
+    // @ts-ignore - Dynamic import
+    fsModule = require('fs');
+    // @ts-ignore - Dynamic import
+    pathModule = require('path');
+    try {
+      // @ts-ignore - Dynamic import
+      const electron = require('electron');
+      if (electron && electron.app) {
+        // @ts-ignore - Type incompatibility but we're careful
+        appModule = electron.app;
+      }
+    } catch (e) {
+      console.warn("Electron not available");
+    }
+  } catch (e) {
+    console.warn("Node.js file system modules not available");
+  }
+}
 
 // Define the type for the MCP clients
 interface MCPClients {
@@ -62,17 +105,33 @@ const DEFAULT_MCP_CLIENTS: MCPClientConfig[] = [
 
 // Helper to get the config file path
 function getConfigFilePath(): string {
-  // Get the user data directory
-  const userDataPath = app.getPath('userData');
-  return path.join(userDataPath, 'mcp-clients.json');
+  try {
+    // In browser environment, return a dummy path
+    if (typeof window !== 'undefined') {
+      return '/mcp-clients.json';
+    }
+    
+    // Get the user data directory in Node.js environment
+    const userDataPath = appModule.getPath('userData');
+    return pathModule.join(userDataPath, 'mcp-clients.json');
+  } catch (error) {
+    console.warn('[MCP Clients] Error getting config file path:', error);
+    return 'mcp-clients.json';
+  }
 }
 
 // Load configurations from file
 function loadConfigsFromFile(): MCPClientConfig[] {
   try {
+    // In browser environment, return default configs
+    if (typeof window !== 'undefined') {
+      console.log('[MCP Clients] In browser environment, using default configs');
+      return [...DEFAULT_MCP_CLIENTS];
+    }
+    
     const configPath = getConfigFilePath();
-    if (fs.existsSync(configPath)) {
-      const configData = fs.readFileSync(configPath, 'utf8');
+    if (fsModule.existsSync(configPath)) {
+      const configData = fsModule.readFileSync(configPath, 'utf8');
       const parsedConfigs = JSON.parse(configData);
       if (Array.isArray(parsedConfigs)) {
         console.log('[MCP Clients] Loaded configurations from file');
@@ -90,8 +149,14 @@ function loadConfigsFromFile(): MCPClientConfig[] {
 // Save configurations to file
 function saveConfigsToFile(configs: MCPClientConfig[]): void {
   try {
+    // In browser environment, do nothing
+    if (typeof window !== 'undefined') {
+      console.log('[MCP Clients] In browser environment, skipping config save');
+      return;
+    }
+    
     const configPath = getConfigFilePath();
-    fs.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
+    fsModule.writeFileSync(configPath, JSON.stringify(configs, null, 2), 'utf8');
     console.log('[MCP Clients] Saved configurations to file');
   } catch (error) {
     console.error('[MCP Clients] Error saving configurations to file:', error);

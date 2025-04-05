@@ -164,21 +164,13 @@ chatRoutes.post('/chat', async (c) => {
     // Helper to get enabled tool IDs
     async function getEnabledToolIds(): Promise<string[]> {
       try {
-        const settings = await getSettings();
-        return settings.enabledToolIds || ['shell_command'];
+        // For server-side implementation, just return shell_command as enabled by default
+        // In a future version, this should fetch from the database
+        return ['shell_command'];
       } catch (error) {
         console.error("Error getting enabled tool IDs:", error);
         return ['shell_command']; // Default fallback
       }
-    }
-    
-    // Helper to get settings
-    async function getSettings() {
-      // Simple in-memory implementation for now
-      // In production, this would fetch from a database
-      return {
-        enabledToolIds: ['shell_command']
-      };
     }
     
     // Configure streaming options
