@@ -52,7 +52,9 @@ chatRoutes.post('/chat', async (c) => {
     const preferredProvider = body.preferredProvider;
     
     // Extract selected tool IDs if provided
+    console.log('[Server] FULL REQUEST BODY:', JSON.stringify(body, null, 2));
     const selectedToolIds = body.selectedToolIds || [];
+    console.log('[Server] Selected tool IDs from request body:', selectedToolIds);
     
     // Get model info
     const modelInfo = findModelInfo(modelId, preferredProvider);
@@ -150,8 +152,29 @@ chatRoutes.post('/chat', async (c) => {
       }
     }
     
+    // Handle special case: if selectedToolIds is explicitly an empty array ([]), the user wants NO tools
+    const isExplicitEmptySelection = 
+      body.hasOwnProperty('selectedToolIds') && 
+      Array.isArray(selectedToolIds) && 
+      selectedToolIds.length === 0;
+    
     // Filter tools based on user selection for this request
-    if (selectedToolIds && selectedToolIds.length > 0) {
+    if (isExplicitEmptySelection) {
+      // User explicitly selected NO tools - we should disable all tools
+      console.log('===============================================================');
+      console.log(`[Server] 🚫🚫🚫 ALL TOOLS DISABLED - User explicitly selected ZERO tools`);
+      console.log('===============================================================');
+      
+      // Clear all tools
+      combinedTools = {};
+      
+      console.log(`[Server] 🚫 Removed ALL tools from this request`);
+      console.log('===============================================================');
+      console.log(`[Server] 🔧 FINAL TOOL SELECTION: NONE (all tools disabled)`);
+      console.log('===============================================================');
+    }
+    else if (selectedToolIds && selectedToolIds.length > 0) {
+      // User selected specific tools
       console.log('===============================================================');
       console.log(`[Server] 🔧 TOOL FILTERING ACTIVE - User selected ${selectedToolIds.length} specific tools:`);
       console.log(`[Server] 🔧 Selected tools: ${JSON.stringify(selectedToolIds)}`);
@@ -229,12 +252,17 @@ chatRoutes.post('/chat', async (c) => {
     
     // Configure streaming options
     const streamOptions = {
-      // Only include tools if the model supports them
+      // Only include tools if the model supports them AND we have tools to include
       ...(provider.supportsTools && Object.keys(combinedTools).length > 0 
         ? { tools: combinedTools, toolCallStreaming: true } 
         : {}),
       temperature: body.temperature || 0.7
     };
+    
+    console.log(`[Server] Final stream options:`, JSON.stringify({
+      ...streamOptions,
+      tools: Object.keys(streamOptions.tools || {})
+    }, null, 2));
     
     try {
       // Create the stream

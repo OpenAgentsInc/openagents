@@ -516,33 +516,33 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
       }
     }
 
-    // If tools are explicitly selected, add them to the body options for the API call
+    // Prepare the options for submission
+    // We need to create a new options object that includes the selected tools
+    const submissionOptions = { ...options };
+    
+    // If tools are explicitly selected, add them to the options
     if (Array.isArray(selectedToolIds)) {
-      // Create a temporary handler that wraps the original submit
-      // with the selected tool IDs properly merged into the body options
       console.log('[usePersistentChat] Forwarding selected tool IDs to API:', selectedToolIds);
-
-      // Create a copy of the current options
-      const currentOptions = { ...customOptions };
       
-      // Modify the body to include selectedToolIds
-      currentOptions.body = {
-        ...currentOptions.body,
+      // Create the body if it doesn't exist
+      if (!submissionOptions.body) {
+        submissionOptions.body = {};
+      }
+      
+      // Set the selectedToolIds directly in the options we're about to submit
+      submissionOptions.body = {
+        ...submissionOptions.body,
         selectedToolIds: selectedToolIds,
       };
       
-      console.log('[usePersistentChat] Chat request body updated with selected tools:', 
-        selectedToolIds,
-        'Current body:', currentOptions.body);
-      
-      // Create a temporary useChat instance with the modified options
-      vercelChatState.body = currentOptions.body;
+      console.log('[usePersistentChat] FINAL SUBMISSION OPTIONS WITH TOOLS:', 
+        JSON.stringify(submissionOptions, null, 2));
     } else {
       console.log('[usePersistentChat] No selected tools provided, using defaults');
     }
 
-    // Call original handleSubmit to trigger the AI process
-    vercelChatState.handleSubmit(event, options);
+    // Call original handleSubmit with our modified options that include the tools
+    vercelChatState.handleSubmit(event, submissionOptions);
   };
 
   // Thread management functions
