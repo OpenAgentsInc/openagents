@@ -52,14 +52,25 @@ export function ToolSelect({
   className,
   disabled = false
 }: ToolSelectProps) {
+  // Component state
   const [open, setOpen] = useState(false);
   const [allTools, setAllTools] = useState<ToolDefinition[]>([]);
   const { getEnabledToolIds } = useSettings();
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>([]);
-  // Keep local state for selected tools to ensure UI updates immediately
-  const [localSelectedToolIds, setSelectedToolIds] = useState<string[]>(selectedToolIds);
+  
+  // CRITICAL: Use a ref to store selected tools to ensure UI updates properly
+  const [internalSelection, setInternalSelection] = useState<string[]>([]);
+  // Also maintain a separate copy of the selection for rendering 
+  const [forceRender, setForceRender] = useState<number>(0);
+  
   // Track expanded provider groups
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
+  
+  // Initialize with props on mount
+  useEffect(() => {
+    console.log('[ToolSelect] Setting initial selection:', selectedToolIds);
+    setInternalSelection(selectedToolIds || []);
+  }, []);
 
   // Load all tools (built-in and MCP)
   useEffect(() => {
@@ -195,83 +206,111 @@ export function ToolSelect({
     return result;
   }, [availableTools]);
 
-  // Toggle a tool's selection
+  // Toggle a tool's selection - completely rewritten
   const toggleTool = (toolId: string) => {
     console.log(`[ToolSelect] Toggling tool selection: ${toolId}`);
     
-    // Check current selection state
-    const isCurrentlySelected = localSelectedToolIds.includes(toolId);
-    console.log(`[ToolSelect] Tool ${toolId} is currently ${isCurrentlySelected ? 'selected' : 'not selected'}`);
+    // Check if already selected
+    const isSelected = internalSelection.includes(toolId);
+    console.log(`[ToolSelect] Tool ${toolId} is currently: ${isSelected ? 'SELECTED' : 'NOT SELECTED'}`);
     
-    // Create new selection based on current state
-    let newSelection;
-    if (isCurrentlySelected) {
-      // Remove the tool
-      newSelection = localSelectedToolIds.filter(id => id !== toolId);
-      console.log(`[ToolSelect] Removing tool from selection: ${toolId}`);
+    // Create a new array (never mutate the old one)
+    let newSelection: string[];
+    
+    if (isSelected) {
+      // Remove if selected
+      newSelection = internalSelection.filter(id => id !== toolId);
+      console.log(`[ToolSelect] REMOVING tool from selection`);
     } else {
-      // Add the tool
-      newSelection = [...localSelectedToolIds, toolId];
-      console.log(`[ToolSelect] Adding tool to selection: ${toolId}`);
+      // Add if not selected
+      newSelection = [...internalSelection, toolId];
+      console.log(`[ToolSelect] ADDING tool to selection`);
     }
     
-    console.log(`[ToolSelect] New selection:`, newSelection);
+    console.log(`[ToolSelect] New selection will be:`, newSelection);
     
-    // Force a re-render by creating a new array reference
-    // Update both local state and parent component
-    setSelectedToolIds([...newSelection]); 
-    onChange([...newSelection]);
+    // Update internal state
+    setInternalSelection(newSelection);
     
-    // Add extra debugging
+    // Explicitly tell React to rerender
+    setForceRender(prev => prev + 1);
+    
+    // Notify parent
+    onChange(newSelection);
+    
+    // Force a DOM update to be doubly sure
     setTimeout(() => {
-      console.log(`[ToolSelect] After update, localSelectedToolIds:`, localSelectedToolIds);
-    }, 0);
+      console.log('[ToolSelect] After update, selection is now:', 
+        newSelection,
+        'Tool selected?', !isSelected);
+    }, 10);
   };
 
   // Select all available tools
   const selectAllTools = () => {
     const allToolIds = availableTools.map(tool => tool.id);
-    setSelectedToolIds(allToolIds); // Update local state immediately
+    console.log('[ToolSelect] Selecting ALL tools:', allToolIds);
+    setInternalSelection(allToolIds);
+    setForceRender(prev => prev + 1);
     onChange(allToolIds);
   };
 
   // Clear all selected tools
   const clearSelection = () => {
-    setSelectedToolIds([]); // Update local state immediately
+    console.log('[ToolSelect] Clearing ALL tools');
+    setInternalSelection([]);
+    setForceRender(prev => prev + 1);
     onChange([]);
   };
 
   // Check if all available tools are selected
   const allSelected = useMemo(() => {
     return availableTools.length > 0 && 
-      availableTools.every(tool => localSelectedToolIds.includes(tool.id));
-  }, [availableTools, localSelectedToolIds]);
+      availableTools.every(tool => internalSelection.includes(tool.id));
+  }, [availableTools, internalSelection, forceRender]);
 
-  // Update local state when props change, but only if different
+  // Update internal state when props change
   useEffect(() => {
-    // Check if arrays are different to avoid unnecessary state updates
-    const isSameSelection = 
-      localSelectedToolIds.length === selectedToolIds.length && 
-      localSelectedToolIds.every(id => selectedToolIds.includes(id));
+    // Only update if props actually changed
+    const propsSelectionSet = new Set(selectedToolIds);
+    const currentSelectionSet = new Set(internalSelection);
     
-    if (!isSameSelection) {
-      setSelectedToolIds(selectedToolIds);
+    // Check if selection has changed
+    let changed = false;
+    
+    // Different lengths = definitely changed
+    if (propsSelectionSet.size !== currentSelectionSet.size) {
+      changed = true;
+    } else {
+      // Same length, check if every item in props is in current
+      for (const id of propsSelectionSet) {
+        if (!currentSelectionSet.has(id)) {
+          changed = true;
+          break;
+        }
+      }
     }
-  }, [selectedToolIds, localSelectedToolIds]);
+    
+    if (changed) {
+      console.log('[ToolSelect] Props selection changed, updating:', selectedToolIds);
+      setInternalSelection(selectedToolIds || []);
+      setForceRender(prev => prev + 1);
+    }
+  }, [selectedToolIds]);
 
   // Get display text for button
   const displayText = useMemo(() => {
-    if (localSelectedToolIds.length === 0) {
+    if (internalSelection.length === 0) {
       return placeholder;
-    } else if (localSelectedToolIds.length === 1) {
-      const tool = allTools.find(t => t.id === localSelectedToolIds[0]);
-      return tool ? tool.name : localSelectedToolIds[0];
+    } else if (internalSelection.length === 1) {
+      const tool = allTools.find(t => t.id === internalSelection[0]);
+      return tool ? tool.name : internalSelection[0];
     } else if (allSelected) {
       return "All tools enabled";
     } else {
-      return `${localSelectedToolIds.length} tools enabled`;
+      return `${internalSelection.length} tools enabled`;
     }
-  }, [localSelectedToolIds, allTools, placeholder, allSelected]);
+  }, [internalSelection, allTools, placeholder, allSelected, forceRender]);
 
   // Initialize expanded state when providers change
   const providerIds = useMemo(() => Object.keys(providerGroups), [providerGroups]);
@@ -309,11 +348,12 @@ export function ToolSelect({
     
     // Combine existing selection with all provider tools
     const newSelection = [...new Set([
-      ...localSelectedToolIds,
+      ...internalSelection,
       ...providerToolIds
     ])];
     
-    setSelectedToolIds(newSelection);
+    setInternalSelection(newSelection);
+    setForceRender(prev => prev + 1);
     onChange(newSelection);
   };
   
@@ -323,11 +363,12 @@ export function ToolSelect({
     const providerToolIds = providerTools.map(tool => tool.id);
     
     // Remove all provider tools from selection
-    const newSelection = localSelectedToolIds.filter(
+    const newSelection = internalSelection.filter(
       id => !providerToolIds.includes(id)
     );
     
-    setSelectedToolIds(newSelection);
+    setInternalSelection(newSelection);
+    setForceRender(prev => prev + 1);
     onChange(newSelection);
   };
   
@@ -335,13 +376,13 @@ export function ToolSelect({
   const areAllProviderToolsSelected = (providerId: string) => {
     const providerTools = providerGroups[providerId]?.tools || [];
     return providerTools.length > 0 && 
-      providerTools.every(tool => localSelectedToolIds.includes(tool.id));
+      providerTools.every(tool => internalSelection.includes(tool.id));
   };
   
   // Check if any tools in a provider are selected
   const areSomeProviderToolsSelected = (providerId: string) => {
     const providerTools = providerGroups[providerId]?.tools || [];
-    return providerTools.some(tool => localSelectedToolIds.includes(tool.id));
+    return providerTools.some(tool => internalSelection.includes(tool.id));
   };
 
   return (
@@ -362,9 +403,9 @@ export function ToolSelect({
             <span className="overflow-hidden text-ellipsis">
               {displayText}
             </span>
-            {localSelectedToolIds.length > 0 && (
+            {internalSelection.length > 0 && (
               <Badge variant="secondary" className="ml-2">
-                {localSelectedToolIds.length}
+                {internalSelection.length}
               </Badge>
             )}
           </div>
@@ -397,7 +438,7 @@ export function ToolSelect({
               size="sm" 
               className="text-xs font-mono"
               onClick={clearSelection}
-              disabled={selectedToolIds.length === 0}
+              disabled={internalSelection.length === 0}
             >
               Clear selection
             </Button>
@@ -445,7 +486,7 @@ export function ToolSelect({
                         {someSelected && (
                           <Badge variant={allSelected ? "default" : "outline"} className="ml-2 h-5 text-xs px-1.5">
                             {allSelected ? 'All' : `${provider.tools.filter(t => 
-                              localSelectedToolIds.includes(t.id)).length}/${provider.tools.length}`}
+                              internalSelection.includes(t.id)).length}/${provider.tools.length}`}
                           </Badge>
                         )}
                       </div>
@@ -477,7 +518,7 @@ export function ToolSelect({
                     {isExpanded && (
                       <div className="py-1">
                         {provider.tools.map((tool) => {
-                          const isSelected = localSelectedToolIds.includes(tool.id);
+                          const isSelected = internalSelection.includes(tool.id);
                           
                           return (
                             <div
@@ -492,10 +533,11 @@ export function ToolSelect({
                               <div className="flex flex-col gap-1 truncate">
                                 <div className="flex items-center gap-2">
                                   <div 
-                                    className="h-4 w-4 flex items-center justify-center border border-muted-foreground/40 rounded-sm"
+                                    className="h-4 w-4 flex items-center justify-center border border-muted-foreground/70 rounded-sm"
                                     style={{ 
                                       backgroundColor: isSelected ? 'var(--primary)' : 'transparent',
-                                      transition: 'background-color 0.15s ease-in-out'
+                                      transition: 'all 0.1s ease-in-out',
+                                      boxShadow: isSelected ? '0 0 0 1px rgba(var(--primary-rgb), 0.3)' : 'none'
                                     }}
                                   >
                                     {isSelected && <Check className="h-3 w-3 text-white" />}
