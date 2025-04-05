@@ -51,7 +51,7 @@ export const ChatInputArea = memo(function ChatInputArea() {
       event.preventDefault();
       return;
     }
-    
+
     // Get tools from session storage as a fallback
     let toolsToUse = selectedToolIds;
     try {
@@ -63,19 +63,19 @@ export const ChatInputArea = memo(function ChatInputArea() {
     } catch (e) {
       console.warn('[ChatInputArea] Error retrieving tools from session storage:', e);
     }
-    
+
     // Include the selected tools in the submission, with enhanced debugging
     const submissionOptions = {
       // IMPORTANT: This structure must match what the server expects
       // The selectedToolIds should be put directly in the body object for correct handling
-      
+
       // You can pass selectedToolIds in two ways:
       // 1. As options.body.selectedToolIds - which is how vercel/ai handles it
       // 2. Directly in the body object - which is what our server currently expects
-      
+
       // To ensure compatibility with both approaches, we'll include it in both places
       selectedToolIds: toolsToUse, // Direct placement for our server handler
-      
+
       // And still include it in body for the vercel/ai SDK handling
       body: {
         // Pass the tools that have been explicitly selected in the UI
@@ -84,16 +84,16 @@ export const ChatInputArea = memo(function ChatInputArea() {
         debug_tool_selection: true
       }
     };
-    
+
     // Add more detailed console logging for debugging
     console.log('[ChatInputArea] 🔧🔧🔧 Submitting with the following options:', {
       submissionOptions: submissionOptions,
       selectedToolIds: toolsToUse,
       toolsCount: toolsToUse ? toolsToUse.length : 0
     });
-    
+
     console.log('[ChatInputArea] Submitting with explicitly selected tools:', toolsToUse);
-    
+
     handleSubmit(event, submissionOptions);
   }, [isModelAvailable, handleSubmit, selectedToolIds]);
 
@@ -166,16 +166,15 @@ export const ChatInputArea = memo(function ChatInputArea() {
       isModelAvailable
     };
   }, [
-    input, isGenerating, isModelAvailable, placeholderText, 
+    input, isGenerating, isModelAvailable, placeholderText,
     selectedModelId, handleModelChange, stableOnChange, stableStop,
     // Include selectedToolIds in the dependency array to ensure props update when tools change
     selectedToolIds, handleToolsChange
   ]);
 
-  // Wrap the MessageInput render function in useCallback 
+  // Wrap the MessageInput render function in useCallback
   // It will now update whenever messageInputProps change, including tool selection changes
   const renderMessageInput = useCallback(({ files, setFiles }: { files: File[] | null, setFiles: React.Dispatch<React.SetStateAction<File[] | null>> }) => {
-    console.log('[ChatInputArea] Rendering MessageInput with tools:', selectedToolIds);
     return <MessageInput {...messageInputProps} />;
   }, [messageInputProps]);
 
