@@ -88,17 +88,9 @@ const mcpClients: MCPClients = {
 // Default MCP client configurations
 const DEFAULT_MCP_CLIENTS: MCPClientConfig[] = [
   {
-    id: 'remote-github',
-    name: 'Remote GitHub MCP',
-    enabled: true,
-    type: 'sse',
-    url: 'https://mcp-github.openagents.com/sse',
-    status: 'disconnected'
-  },
-  {
     id: 'local-github',
     name: 'Local GitHub MCP',
-    enabled: false,
+    enabled: true,
     type: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
@@ -240,53 +232,9 @@ async function initMCPClient(config: MCPClientConfig): Promise<any | null> {
   
   // Check if we're in a browser environment
   if (typeof window !== 'undefined') {
-    console.log(`[MCP Clients] Browser environment detected - using mock client for: ${config.name}`);
-    
-    // Update status to show we're using a mock
-    await updateClientStatus(config.id, 'connected', 'Using mock client in browser');
-    
-    // Return a mock client with necessary methods
-    return {
-      tools: async () => {
-        console.log(`[MCP Clients] Mock client ${config.name} returning mock tools`);
-        
-        // Return mock tools for browser environment testing
-        return {
-          'github_search': {
-            name: 'GitHub Search',
-            description: 'Search GitHub repositories',
-            parameters: {
-              type: 'object',
-              properties: {
-                query: {
-                  type: 'string',
-                  description: 'The search query'
-                }
-              },
-              required: ['query']
-            }
-          },
-          'github_repo': {
-            name: 'GitHub Repository Info',
-            description: 'Get information about a GitHub repository',
-            parameters: {
-              type: 'object',
-              properties: {
-                owner: {
-                  type: 'string',
-                  description: 'Repository owner'
-                },
-                repo: {
-                  type: 'string',
-                  description: 'Repository name'
-                }
-              },
-              required: ['owner', 'repo']
-            }
-          }
-        };
-      }
-    };
+    console.log(`[MCP Clients] Browser environment detected - cannot initialize ${config.type} client: ${config.name}`);
+    await updateClientStatus(config.id, 'error', 'Client cannot be initialized in browser environment');
+    return null;
   }
   
   // Check if MCP modules are available
@@ -445,15 +393,15 @@ export async function initMCPClients(): Promise<void> {
     // This prevents repeated errors during startup
     mcpClients.initialized = true;
     
-    // Initialize with default remote client as fallback
+    // Initialize with local GitHub client as fallback
     try {
-      const remoteConfig = DEFAULT_MCP_CLIENTS.find(c => c.id === 'remote-github');
-      if (remoteConfig && remoteConfig.enabled) {
-        console.log('[MCP Clients] Attempting to initialize default remote client as fallback');
-        const client = await initMCPClient(remoteConfig);
+      const localConfig = DEFAULT_MCP_CLIENTS.find(c => c.id === 'local-github');
+      if (localConfig && localConfig.enabled) {
+        console.log('[MCP Clients] Attempting to initialize local GitHub client as fallback');
+        const client = await initMCPClient(localConfig);
         if (client) {
-          mcpClients.clients['remote-github'] = client;
-          mcpClients.configs['remote-github'] = remoteConfig;
+          mcpClients.clients['local-github'] = client;
+          mcpClients.configs['local-github'] = localConfig;
           await refreshTools();
         }
       }
