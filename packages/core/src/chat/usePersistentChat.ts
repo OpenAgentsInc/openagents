@@ -529,7 +529,11 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         submissionOptions.body = {};
       }
       
-      // Set the selectedToolIds directly in the options we're about to submit
+      // Set the selectedToolIds in two places:
+      // 1. Directly in the options object for our server handler
+      submissionOptions.selectedToolIds = selectedToolIds;
+      
+      // 2. In the body object for the vercel/ai SDK
       submissionOptions.body = {
         ...submissionOptions.body,
         selectedToolIds: selectedToolIds,

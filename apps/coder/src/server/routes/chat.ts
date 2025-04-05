@@ -19,8 +19,10 @@ import {
   ChatError, 
   transformUnknownError, 
   formatErrorForStream,
-  ProviderType
+  ProviderType,
+  ToolError
 } from '../errors';
+import { transformToolError } from '@openagents/core/src/chat/errors';
 import { Provider, createProvider, detectProviderFromModel } from '../providers';
 import { streamManager } from '../streaming';
 import { createShellCommandTool } from '../tools/shell-command';
@@ -52,8 +54,57 @@ chatRoutes.post('/chat', async (c) => {
     const preferredProvider = body.preferredProvider;
     
     // Extract selected tool IDs if provided
-    console.log('[Server] FULL REQUEST BODY:', JSON.stringify(body, null, 2));
-    const selectedToolIds = body.selectedToolIds || [];
+    console.log('[Server] 🔍🔍🔍 FULL REQUEST BODY:', JSON.stringify(body, null, 2));
+    console.log('[Server] 🔍🔍🔍 Body Type:', typeof body);
+    console.log('[Server] 🔍🔍🔍 Has selectedToolIds property:', body.hasOwnProperty('selectedToolIds'));
+    
+    // Check if body properties might be nested
+    for (const key of Object.keys(body)) {
+      console.log(`[Server] 🔍 Body key: ${key}, type: ${typeof body[key]}`);
+      if (typeof body[key] === 'object' && body[key] !== null) {
+        console.log(`[Server] 🔍 Properties of ${key}:`, Object.keys(body[key]));
+        if (body[key] && body[key].hasOwnProperty('selectedToolIds')) {
+          console.log(`[Server] 🔍 Found selectedToolIds in ${key}:`, body[key].selectedToolIds);
+        }
+      }
+    }
+    
+    // Extract the selected tool IDs from the request body, considering all possible locations
+    // This handles both the direct body.selectedToolIds and the nested options.body.selectedToolIds formats
+    let selectedToolIds: string[] = [];
+    
+    // First check if it's directly in the body (simple case)
+    if (Array.isArray(body.selectedToolIds)) {
+      selectedToolIds = body.selectedToolIds;
+      console.log('[Server] ✅ Found selectedToolIds directly in body');
+    } 
+    // Next check various nested structures that might be used by different clients
+    else if (body.options && body.options.body && Array.isArray(body.options.body.selectedToolIds)) {
+      selectedToolIds = body.options.body.selectedToolIds;
+      console.log('[Server] ✅ Found selectedToolIds in options.body');
+    }
+    // Finally, look in any other object properties that might contain it
+    else {
+      for (const key of Object.keys(body)) {
+        if (typeof body[key] === 'object' && body[key] !== null) {
+          if (body[key].selectedToolIds && Array.isArray(body[key].selectedToolIds)) {
+            selectedToolIds = body[key].selectedToolIds;
+            console.log(`[Server] ✅ Found selectedToolIds in body.${key}`);
+            break;
+          }
+          // Check one level deeper if needed
+          for (const nestedKey of Object.keys(body[key] || {})) {
+            if (typeof body[key][nestedKey] === 'object' && body[key][nestedKey] !== null) {
+              if (body[key][nestedKey].selectedToolIds && Array.isArray(body[key][nestedKey].selectedToolIds)) {
+                selectedToolIds = body[key][nestedKey].selectedToolIds;
+                console.log(`[Server] ✅ Found selectedToolIds in body.${key}.${nestedKey}`);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
     console.log('[Server] Selected tool IDs from request body:', selectedToolIds);
     
     // Get model info
@@ -183,11 +234,41 @@ chatRoutes.post('/chat', async (c) => {
       // Start with empty tools object
       const filteredTools: Record<string, any> = {};
       
+      // For any MCP tools that aren't in combinedTools, check if we need to add them directly from MCP
+      // This is important - we need to get the tools directly from MCP for selected tools that might
+      // not have been added to combinedTools yet
+      const allMCPTools = getMCPTools();
+      
       // Only include tools that were explicitly selected by the user
       for (const toolId of selectedToolIds) {
+        // First check if the tool is already in our combined tools
         if (combinedTools[toolId]) {
-          console.log(`[Server] ✅ Including selected tool: ${toolId}`);
+          console.log(`[Server] ✅ Including selected tool from combinedTools: ${toolId}`);
           filteredTools[toolId] = combinedTools[toolId];
+        } 
+        // Next check if it's a valid MCP tool that we need to add
+        else if (allMCPTools[toolId]) {
+          console.log(`[Server] ✅ Including selected tool directly from MCP: ${toolId}`);
+          // Get the raw MCP tool
+          const rawTool = allMCPTools[toolId];
+          // Wrap it with error handling
+          const wrappedTool = {
+            ...rawTool,
+            // Add error handling to execute method
+            execute: async (...args: any[]) => {
+              try {
+                return await rawTool.execute(...args);
+              } catch (error) {
+                const toolError = error instanceof ToolError
+                  ? error
+                  : transformToolError(error, toolId);
+                console.error(`Error executing MCP tool ${toolId}:`, toolError);
+                throw toolError;
+              }
+            }
+          };
+          // Add to filtered tools
+          filteredTools[toolId] = wrappedTool;
         } else {
           console.log(`[Server] ❌ Selected tool not available: ${toolId}`);
         }
@@ -219,13 +300,28 @@ chatRoutes.post('/chat', async (c) => {
         // For server-side implementation, we need to respect the user's settings
         // rather than automatically including all MCP tools
         
-        // Try to fetch from settings repository
+        // Try to fetch from settings repository, but with better error handling
         try {
           // Import settings dynamically to avoid circular dependencies
-          const settingsModule = require('@openagents/core');
-          if (settingsModule && settingsModule.settingsRepository && typeof settingsModule.settingsRepository.getEnabledToolIds === 'function') {
+          // Use a safer try/catch approach to handle ESM vs CJS issues
+          let settingsRepository;
+          try {
+            const settingsModule = require('@openagents/core');
+            settingsRepository = settingsModule.settingsRepository;
+          } catch (requireError) {
+            console.warn('[Server] Could not require @openagents/core directly:', requireError);
+            // If that failed, try alternative approaches
+            try {
+              const { settingsRepository: repo } = require('@openagents/core/src/db/repositories/settings-repository');
+              settingsRepository = repo;
+            } catch (e) {
+              console.warn('[Server] Alternative import also failed:', e);
+            }
+          }
+          
+          if (settingsRepository && typeof settingsRepository.getEnabledToolIds === 'function') {
             console.log('[Server] Fetching enabled tool IDs from settings repository');
-            const enabledIds = await settingsModule.settingsRepository.getEnabledToolIds();
+            const enabledIds = await settingsRepository.getEnabledToolIds();
             
             // If we got valid enabled IDs from settings, use those
             if (Array.isArray(enabledIds) && enabledIds.length > 0) {
@@ -234,16 +330,21 @@ chatRoutes.post('/chat', async (c) => {
             } else {
               console.log('[Server] No enabled tool IDs found in settings, using default');
             }
+          } else {
+            console.warn('[Server] Settings repository not found or missing getEnabledToolIds method');
           }
         } catch (settingsError) {
           console.warn('[Server] Could not fetch tool IDs from settings repository:', settingsError);
         }
         
         // At a minimum, always include shell_command if available
-        const baseTools = ['shell_command'];
+        // Also include all MCP tools by default
+        const mcpTools = getMCPTools();
+        const allToolIds = ['shell_command', ...Object.keys(mcpTools)];
         
-        console.log('[Server] Using default tool set (shell_command only)');
-        return baseTools;
+        console.log(`[Server] Using enhanced default tool set (${allToolIds.length} tools)`);
+        console.log(`[Server] Available tools: ${allToolIds.join(', ')}`);
+        return allToolIds;
       } catch (error) {
         console.error("Error getting enabled tool IDs:", error);
         return ['shell_command']; // Default fallback
@@ -259,10 +360,20 @@ chatRoutes.post('/chat', async (c) => {
       temperature: body.temperature || 0.7
     };
     
-    console.log(`[Server] Final stream options:`, JSON.stringify({
+    console.log(`[Server] 🔧🔧🔧 Final stream options with tools:`, JSON.stringify({
       ...streamOptions,
       tools: Object.keys(streamOptions.tools || {})
     }, null, 2));
+    
+    // Extra debug information
+    console.log(`[Server] 🔧 Provider supports tools: ${provider.supportsTools}`);
+    console.log(`[Server] 🔧 Combined tools count: ${Object.keys(combinedTools).length}`);
+    
+    if (Object.keys(combinedTools).length > 0) {
+      console.log(`[Server] 🔧 Combined tools: ${Object.keys(combinedTools).join(', ')}`);
+    } else {
+      console.log(`[Server] ❌ No tools included in stream options!`);
+    }
     
     try {
       // Create the stream

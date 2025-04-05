@@ -324,18 +324,20 @@ async function initMCPClient(config: MCPClientConfig): Promise<any | null> {
  * Initialize MCP clients based on configured settings
  */
 export async function initMCPClients(): Promise<void> {
+  // Force reinitialization even if already initialized to make sure we always get the latest tools
   if (mcpClients.initialized) {
-    console.log('[MCP Clients] Already initialized, skipping');
+    console.log('[MCP Clients] Reinitializing all MCP clients to ensure latest tools are available');
     
-    // Log current state even when skipping
-    console.log('[MCP Clients] Current state:', {
+    // Log current state
+    console.log('[MCP Clients] Current state before reinitialization:', {
       clientsCount: Object.keys(mcpClients.clients).length,
       configsCount: Object.keys(mcpClients.configs).length,
       toolsCount: Object.keys(mcpClients.allTools).length,
       clientToolsInfo: mcpClients.clientTools
     });
     
-    return;
+    // First clean up existing clients
+    cleanupMCPClients();
   }
 
   console.log('[MCP Clients] Initializing MCP clients from settings...');

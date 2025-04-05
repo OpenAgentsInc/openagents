@@ -69,11 +69,13 @@ export function ToolSelect({
   // Track expanded provider groups
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
   
-  // Initialize with props on mount
+  // Initialize with props on mount and when props change
   useEffect(() => {
-    console.log('[ToolSelect] Setting initial selection:', selectedToolIds);
+    console.log('[ToolSelect] Setting selection from props:', selectedToolIds);
     setInternalSelection(selectedToolIds || []);
-  }, []);
+    // Force a rerender to ensure UI is updated
+    setForceRender(prev => prev + 1);
+  }, [selectedToolIds]);
 
   // Load all tools (built-in and MCP)
   const loadTools = useCallback(async () => {
@@ -81,6 +83,26 @@ export function ToolSelect({
       // Get globally enabled tool IDs
       const enabledIds = await getEnabledToolIds();
       setEnabledToolIds(enabledIds);
+      
+      // First try to trigger a refresh to ensure we have the latest tools
+      try {
+        console.log('[ToolSelect] Refreshing tools before fetch...');
+        const refreshResponse = await fetch('/api/mcp/tools/refresh', {
+          method: 'POST',
+        });
+        
+        if (refreshResponse.ok) {
+          console.log('[ToolSelect] Refresh successful, proceeding to fetch updated tools');
+          // Wait a moment for the tools to be fully refreshed
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } else {
+          const errorText = await refreshResponse.text();
+          console.warn('[ToolSelect] Tool refresh not successful, error:', errorText);
+          console.warn('[ToolSelect] Will try to fetch existing tools instead');
+        }
+      } catch (refreshError) {
+        console.warn('[ToolSelect] Error refreshing tools:', refreshError);
+      }
       
       // Get MCP tools from the server via API
       let mcpTools = {};
@@ -114,30 +136,14 @@ export function ToolSelect({
         // Log detailed client info
         Object.entries(clientInfoMap).forEach(([clientId, info]) => {
           console.log(`[ToolSelect] Client ${info.name} has ${info.tools?.length || 0} tools`);
+          if (info.tools) {
+            info.tools.forEach(toolId => {
+              console.log(`[ToolSelect] - Tool: ${toolId}`);
+            });
+          }
         });
       } catch (error) {
         console.error("[ToolSelect] Error fetching MCP tools from API:", error);
-        
-        // If API fails, try to use the client-side getMCPClients as fallback
-        // (this will only work in server-side environments)
-        try {
-          console.log('[ToolSelect] Falling back to direct client access...');
-          const mcpClientsInfo = getMCPClients();
-          mcpTools = mcpClientsInfo.allTools || {};
-          
-          // Create client info map from direct access
-          Object.entries(mcpClientsInfo.configs).forEach(([clientId, config]) => {
-            if (mcpClientsInfo.clientTools[clientId]) {
-              clientInfoMap[clientId] = {
-                id: clientId,
-                name: config.name,
-                tools: mcpClientsInfo.clientTools[clientId]
-              };
-            }
-          });
-        } catch (fallbackError) {
-          console.warn("[ToolSelect] Fallback also failed:", fallbackError);
-        }
       }
       
       // Combine with built-in tools
@@ -169,16 +175,54 @@ export function ToolSelect({
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to refresh MCP tools: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('[ToolSelect] Server error response:', errorText);
+        
+        // Try to parse the error for more details
+        let errorDetails = '';
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.details) {
+            errorDetails = `: ${errorJson.details}`;
+          } else if (errorJson.error) {
+            errorDetails = `: ${errorJson.error}`;
+          }
+        } catch (e) {
+          // If it's not JSON, use the raw text
+          if (errorText) {
+            errorDetails = `: ${errorText}`;
+          }
+        }
+        
+        throw new Error(`Failed to refresh MCP tools: ${response.status} ${response.statusText}${errorDetails}`);
       }
+      
+      // Parse the response to see what tools are available
+      const data = await response.json();
+      console.log('[ToolSelect] MCP tools refresh response:', data);
+      
+      if (data.tools && Array.isArray(data.tools)) {
+        console.log(`[ToolSelect] Available tools after refresh: ${data.tools.join(', ')}`);
+      }
+      
+      // Wait a moment to ensure the server has fully processed all tools
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Load the updated tools
       await loadTools();
       
       // We don't need to set lastRefreshed here since loadTools does it
       console.log('[ToolSelect] MCP tools refreshed successfully');
+      
+      // Show success message - with a more concise summary if there are lots of tools
+      const toolMessage = data.toolCount > 5 
+        ? `${data.tools?.slice(0, 5).join(', ')}... and ${data.toolCount - 5} more` 
+        : data.tools?.join(', ') || 'none';
+      
+      alert(`MCP tools refreshed successfully. Found ${data.toolCount} tools: ${toolMessage}`);
     } catch (error) {
       console.error('[ToolSelect] Error refreshing MCP tools:', error);
+      alert(`Error refreshing MCP tools: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setRefreshing(false);
     }
@@ -252,44 +296,48 @@ export function ToolSelect({
     return result;
   }, [availableTools]);
 
-  // Toggle a tool's selection - completely rewritten
+  // Toggle a tool's selection - enhanced with super reliable state handling
   const toggleTool = (toolId: string) => {
     console.log(`[ToolSelect] Toggling tool selection: ${toolId}`);
     
-    // Check if already selected
-    const isSelected = internalSelection.includes(toolId);
-    console.log(`[ToolSelect] Tool ${toolId} is currently: ${isSelected ? 'SELECTED' : 'NOT SELECTED'}`);
-    
-    // Create a new array (never mutate the old one)
-    let newSelection: string[];
-    
-    if (isSelected) {
-      // Remove if selected
-      newSelection = internalSelection.filter(id => id !== toolId);
-      console.log(`[ToolSelect] REMOVING tool from selection`);
-    } else {
-      // Add if not selected
-      newSelection = [...internalSelection, toolId];
-      console.log(`[ToolSelect] ADDING tool to selection`);
-    }
-    
-    console.log(`[ToolSelect] New selection will be:`, newSelection);
-    
-    // Update internal state
-    setInternalSelection(newSelection);
+    // Use a function to ensure we're working with the most up-to-date state
+    setInternalSelection(currentSelection => {
+      // Check if already selected
+      const isSelected = currentSelection.includes(toolId);
+      console.log(`[ToolSelect] Tool ${toolId} is currently: ${isSelected ? 'SELECTED' : 'NOT SELECTED'}`);
+      
+      // Create a new array (never mutate the old one)
+      let newSelection: string[];
+      
+      if (isSelected) {
+        // Remove if selected
+        newSelection = currentSelection.filter(id => id !== toolId);
+        console.log(`[ToolSelect] REMOVING tool from selection`);
+      } else {
+        // Add if not selected
+        newSelection = [...currentSelection, toolId];
+        console.log(`[ToolSelect] ADDING tool to selection`);
+      }
+      
+      console.log(`[ToolSelect] New selection will be:`, newSelection);
+      
+      // Schedule calling the onChange callback after state update
+      setTimeout(() => {
+        console.log(`[ToolSelect] Notifying parent of selection change`, newSelection);
+        onChange(newSelection);
+      }, 0);
+      
+      // Return the new selection
+      return newSelection;
+    });
     
     // Explicitly tell React to rerender
     setForceRender(prev => prev + 1);
     
-    // Notify parent
-    onChange(newSelection);
-    
     // Force a DOM update to be doubly sure
     setTimeout(() => {
-      console.log('[ToolSelect] After update, selection is now:', 
-        newSelection,
-        'Tool selected?', !isSelected);
-    }, 10);
+      console.log('[ToolSelect] After update, verified selection is:', internalSelection);
+    }, 50);
   };
 
   // Select all available tools

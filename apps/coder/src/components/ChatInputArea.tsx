@@ -64,17 +64,33 @@ export const ChatInputArea = memo(function ChatInputArea() {
       console.warn('[ChatInputArea] Error retrieving tools from session storage:', e);
     }
     
-    // Include the selected tools in the submission
+    // Include the selected tools in the submission, with enhanced debugging
     const submissionOptions = {
-      // Create a proper body object for the API request
+      // IMPORTANT: This structure must match what the server expects
+      // The selectedToolIds should be put directly in the body object for correct handling
+      
+      // You can pass selectedToolIds in two ways:
+      // 1. As options.body.selectedToolIds - which is how vercel/ai handles it
+      // 2. Directly in the body object - which is what our server currently expects
+      
+      // To ensure compatibility with both approaches, we'll include it in both places
+      selectedToolIds: toolsToUse, // Direct placement for our server handler
+      
+      // And still include it in body for the vercel/ai SDK handling
       body: {
         // Pass the tools that have been explicitly selected in the UI
-        // The server should use these specific tool IDs rather than all available tools
         selectedToolIds: toolsToUse,
         // Add a debug flag to trace the tool selection issues
         debug_tool_selection: true
       }
     };
+    
+    // Add more detailed console logging for debugging
+    console.log('[ChatInputArea] 🔧🔧🔧 Submitting with the following options:', {
+      submissionOptions: submissionOptions,
+      selectedToolIds: toolsToUse,
+      toolsCount: toolsToUse ? toolsToUse.length : 0
+    });
     
     console.log('[ChatInputArea] Submitting with explicitly selected tools:', toolsToUse);
     
