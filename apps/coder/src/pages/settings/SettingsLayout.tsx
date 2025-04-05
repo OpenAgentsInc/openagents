@@ -111,7 +111,7 @@ export default function SettingsLayout() {
                           </SidebarMenuButton>
                         </Link>
                       </SidebarMenuItem>
-                      
+
                       <SidebarMenuItem>
                         <Link to="/settings/mcp-clients">
                           <SidebarMenuButton
@@ -120,7 +120,7 @@ export default function SettingsLayout() {
                               "relative before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-5 before:w-1 before:bg-primary before:rounded-r-md" : ""}
                           >
                             <Server className="h-4 w-4" />
-                            <span>MCP Clients</span>
+                            <span>MCP Servers</span>
                           </SidebarMenuButton>
                         </Link>
                       </SidebarMenuItem>

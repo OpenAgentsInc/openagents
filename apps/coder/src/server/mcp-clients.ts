@@ -55,6 +55,7 @@ if (typeof window === 'undefined') {
 interface MCPClients {
   clients: Record<string, Awaited<ReturnType<typeof experimental_createMCPClient>> | null>;
   allTools: Record<string, any>; // Combined tools from all clients
+  clientTools: Record<string, string[]>; // Tools provided by each client
   configs: Record<string, MCPClientConfig>; // Configurations for each client
   initialized: boolean;
 }
@@ -63,6 +64,7 @@ interface MCPClients {
 const mcpClients: MCPClients = {
   clients: {},
   allTools: {},
+  clientTools: {}, // Track which tools belong to which client
   configs: {},
   initialized: false,
 };
@@ -240,6 +242,18 @@ async function initMCPClient(config: MCPClientConfig): Promise<Awaited<ReturnTyp
       // Update status
       await updateClientStatus(config.id, 'connected');
       console.log(`[MCP Clients] SSE client initialized successfully: ${config.name}`);
+      
+      // Immediately try to fetch tools after initialization
+      try {
+        const tools = await client.tools();
+        console.log(`[MCP Clients] SSE client ${config.name} tools fetched:`, {
+          toolCount: Object.keys(tools).length,
+          toolNames: Object.keys(tools).slice(0, 5)
+        });
+      } catch (toolError) {
+        console.warn(`[MCP Clients] Failed to fetch tools from SSE client ${config.name}:`, toolError);
+      }
+      
       return client;
     } 
     else if (config.type === 'stdio') {
@@ -260,6 +274,18 @@ async function initMCPClient(config: MCPClientConfig): Promise<Awaited<ReturnTyp
       // Update status
       await updateClientStatus(config.id, 'connected');
       console.log(`[MCP Clients] stdio client initialized successfully: ${config.name}`);
+      
+      // Immediately try to fetch tools after initialization
+      try {
+        const tools = await client.tools();
+        console.log(`[MCP Clients] stdio client ${config.name} tools fetched:`, {
+          toolCount: Object.keys(tools).length,
+          toolNames: Object.keys(tools).slice(0, 5)
+        });
+      } catch (toolError) {
+        console.warn(`[MCP Clients] Failed to fetch tools from stdio client ${config.name}:`, toolError);
+      }
+      
       return client;
     }
     
@@ -278,6 +304,15 @@ async function initMCPClient(config: MCPClientConfig): Promise<Awaited<ReturnTyp
 export async function initMCPClients(): Promise<void> {
   if (mcpClients.initialized) {
     console.log('[MCP Clients] Already initialized, skipping');
+    
+    // Log current state even when skipping
+    console.log('[MCP Clients] Current state:', {
+      clientsCount: Object.keys(mcpClients.clients).length,
+      configsCount: Object.keys(mcpClients.configs).length,
+      toolsCount: Object.keys(mcpClients.allTools).length,
+      clientToolsInfo: mcpClients.clientTools
+    });
+    
     return;
   }
 
@@ -320,6 +355,15 @@ export async function initMCPClients(): Promise<void> {
 
     mcpClients.initialized = true;
     console.log('[MCP Clients] Initialization complete');
+    
+    // Log final state after initialization
+    console.log('[MCP Clients] Final state after initialization:', {
+      clientsCount: Object.keys(mcpClients.clients).length,
+      clientsList: Object.keys(mcpClients.clients),
+      toolsCount: Object.keys(mcpClients.allTools).length,
+      toolsList: Object.keys(mcpClients.allTools),
+      clientToolsInfo: mcpClients.clientTools
+    });
   } catch (error) {
     console.error('[MCP Clients] Error during initialization:', error);
     
@@ -394,13 +438,29 @@ export async function reinitializeAllClients(): Promise<void> {
   try {
     console.log('[MCP Clients] Reinitializing all MCP clients...');
     
+    // Log current state before cleanup
+    console.log('[MCP Clients] State before reinitialization:', {
+      clientsCount: Object.keys(mcpClients.clients).length,
+      clientsList: Object.keys(mcpClients.clients),
+      toolsCount: Object.keys(mcpClients.allTools).length,
+      clientToolsInfo: mcpClients.clientTools
+    });
+    
     // Clean up existing clients
     cleanupMCPClients();
     
     // Reinitialize
     await initMCPClients();
     
-    console.log('[MCP Clients] Reinitialization complete');
+    // Log final state after reinitialization
+    console.log('[MCP Clients] Reinitialization complete. Final state:', {
+      clientsCount: Object.keys(mcpClients.clients).length,
+      clientsList: Object.keys(mcpClients.clients),
+      toolsCount: Object.keys(mcpClients.allTools).length,
+      toolsList: Object.keys(mcpClients.allTools).length > 0 ? 
+        Object.keys(mcpClients.allTools).slice(0, 5) : 'No tools',
+      clientToolsInfo: mcpClients.clientTools
+    });
   } catch (error) {
     console.error('[MCP Clients] Error reinitializing clients:', error);
   }
@@ -584,6 +644,9 @@ export async function getMCPClientConfigs(): Promise<MCPClientConfig[]> {
 export async function refreshTools(): Promise<Record<string, any>> {
   const tools: Record<string, any> = {};
 
+  // Reset client tools tracking
+  mcpClients.clientTools = {};
+  
   // Fetch tools from all initialized clients
   for (const [id, client] of Object.entries(mcpClients.clients)) {
     if (client) {
@@ -591,10 +654,23 @@ export async function refreshTools(): Promise<Record<string, any>> {
         const config = mcpClients.configs[id];
         console.log(`[MCP Clients] Fetching tools from client: ${config?.name || id}`);
         const clientTools = await client.tools();
+        
+        console.log(`[MCP Clients] Fetched tools from ${config?.name || id}:`, {
+          tools: Object.keys(clientTools),
+          count: Object.keys(clientTools).length,
+          sampleTool: Object.entries(clientTools)[0] || 'No tools available'
+        });
+        
+        // Track which tools belong to this client
+        mcpClients.clientTools[id] = Object.keys(clientTools);
+        
+        // Add tools to the combined tools object
         Object.assign(tools, clientTools);
         console.log(`[MCP Clients] Successfully fetched tools from client: ${config?.name || id}`);
       } catch (toolError) {
         console.error(`[MCP Clients] Error fetching tools from client ${id}:`, toolError);
+        // Initialize empty array if there was an error
+        mcpClients.clientTools[id] = [];
       }
     }
   }
@@ -618,6 +694,7 @@ export function cleanupMCPClients(): void {
   
   mcpClients.clients = {};
   mcpClients.allTools = {};
+  mcpClients.clientTools = {};
   mcpClients.initialized = false;
   // Keep the configs cache for reference, but mark all as disconnected
   

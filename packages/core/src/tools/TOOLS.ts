@@ -13,6 +13,8 @@ export interface ToolDefinition {
   schema: any;            // JSON schema defining the tool's parameters
   serverIdentifier: string; // ID used when communicating with server
   supportsModels?: string[]; // Optional list of model IDs that support this tool
+  providerId?: string;    // ID of the provider (MCP client) that provides this tool
+  providerName?: string;  // Name of the provider (MCP client) that provides this tool
 }
 
 /**
@@ -54,7 +56,10 @@ export function findToolById(id: string): ToolDefinition | undefined {
 /**
  * Utility function to extend the tools list with MCP tools
  */
-export function extendWithMCPTools(mcpTools: Record<string, any>): ToolDefinition[] {
+export function extendWithMCPTools(
+  mcpTools: Record<string, any>, 
+  mcpClients?: Record<string, { id: string; name: string; tools?: string[] }>
+): ToolDefinition[] {
   // Create a copy of the built-in tools
   const allTools = [...TOOLS];
 
@@ -65,6 +70,21 @@ export function extendWithMCPTools(mcpTools: Record<string, any>): ToolDefinitio
       continue;
     }
 
+    // Determine which provider this tool belongs to
+    let providerId = '';
+    let providerName = '';
+
+    if (mcpClients) {
+      for (const [clientId, clientInfo] of Object.entries(mcpClients)) {
+        // If client info has a list of its tools, check if this tool is in that list
+        if (clientInfo.tools && clientInfo.tools.includes(toolId)) {
+          providerId = clientId;
+          providerName = clientInfo.name;
+          break;
+        }
+      }
+    }
+
     // Convert MCP tool to our ToolDefinition format
     allTools.push({
       id: toolId,
@@ -72,7 +92,9 @@ export function extendWithMCPTools(mcpTools: Record<string, any>): ToolDefinitio
       description: toolDef.description || `MCP tool: ${toolId}`,
       type: 'mcp',
       schema: toolDef.parameters || {},
-      serverIdentifier: toolId
+      serverIdentifier: toolId,
+      providerId,
+      providerName
     });
   }
 
