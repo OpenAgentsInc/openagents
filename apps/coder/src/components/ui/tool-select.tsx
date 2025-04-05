@@ -182,7 +182,19 @@ export function ToolSelect({
 
   // Filter to only show globally enabled tools
   const availableTools = useMemo(() => {
-    return allTools.filter(tool => enabledToolIds.includes(tool.id));
+    // Debug logging
+    console.log('[ToolSelect] Filtering tools:');
+    console.log('  - All tools:', allTools.map(t => ({ id: t.id, provider: t.providerName || t.type })));
+    console.log('  - Enabled tool IDs:', enabledToolIds);
+    
+    // TEMPORARY FIX: Show all tools regardless of enabled status
+    // This is just for debugging - we'll fix it properly after
+    const filtered = allTools;
+    
+    // const filtered = allTools.filter(tool => enabledToolIds.includes(tool.id));
+    console.log('  - Filtered tools (showing all for debugging):', filtered.map(t => ({ id: t.id, provider: t.providerName || t.type })));
+    
+    return filtered;
   }, [allTools, enabledToolIds]);
   
   // Group tools by provider
