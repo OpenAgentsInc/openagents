@@ -48,8 +48,6 @@ export default defineConfig({
       "eventsource": path.resolve(__dirname, "./src/shims/eventsource.ts"),
       // Add shim for child_process (needed for AI/MCP modules)
       "child_process": path.resolve(__dirname, "./src/shims/child_process.ts"),
-      // Add shim for ai/mcp-stdio module
-      "ai/mcp-stdio": path.resolve(__dirname, "./src/shims/ai-mcp-stdio.ts"),
     },
   },
   optimizeDeps: {

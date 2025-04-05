@@ -1,41 +1,26 @@
 /**
- * Shimmed version of child_process for browser environments
+ * Empty shim for child_process in browser environments
  * 
- * This provides mock implementations of child_process functions
- * to prevent runtime errors in the browser
+ * Since we've now updated the code to conditionally import Node.js modules
+ * only in server environments, this shim is very minimal and serves as a placeholder
+ * to satisfy imports in browser environments.
  */
 
+// Just provide empty placeholder functions that do nothing
 export const spawn = () => {
-  console.warn('child_process.spawn is not available in browser environments');
-  // Return a dummy object that matches the basic shape of a ChildProcess
-  return {
-    on: () => {},
-    stdout: { on: () => {} },
-    stderr: { on: () => {} },
-    kill: () => {}
-  };
+  console.warn('child_process methods are not available in browser environments');
+  return { on: () => {}, stdout: { on: () => {} }, stderr: { on: () => {} }, kill: () => {} };
 };
 
 export const exec = () => {
-  console.warn('child_process.exec is not available in browser environments');
-  // Invoke callback with error
-  if (arguments.length > 1 && typeof arguments[arguments.length - 1] === 'function') {
-    const callback = arguments[arguments.length - 1];
-    callback(new Error('child_process.exec is not available in browser environments'));
-  }
+  console.warn('child_process methods are not available in browser environments');
 };
 
 export const execFile = () => {
-  console.warn('child_process.execFile is not available in browser environments');
-  // Invoke callback with error
-  if (arguments.length > 1 && typeof arguments[arguments.length - 1] === 'function') {
-    const callback = arguments[arguments.length - 1];
-    callback(new Error('child_process.execFile is not available in browser environments'));
-  }
+  console.warn('child_process methods are not available in browser environments');
 };
 
+// Export an empty object for any direct module imports
 export default {
-  spawn,
-  exec,
-  execFile
+  spawn, exec, execFile
 };

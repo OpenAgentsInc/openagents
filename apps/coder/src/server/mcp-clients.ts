@@ -1,6 +1,22 @@
 // apps/coder/src/server/mcp-clients.ts
-import { experimental_createMCPClient } from "ai";
-import { Experimental_StdioMCPTransport as StdioMCPTransport } from 'ai/mcp-stdio';
+// Conditionally import MCP modules only in Node.js environment
+let experimental_createMCPClient: any = null;
+let StdioMCPTransport: any = null;
+
+// Only attempt to import in Node.js environment
+if (typeof window === 'undefined') {
+  try {
+    // Dynamic require for Node.js environment only
+    const ai = require('ai');
+    experimental_createMCPClient = ai.experimental_createMCPClient;
+    
+    const mcpStdio = require('ai/mcp-stdio');
+    StdioMCPTransport = mcpStdio.Experimental_StdioMCPTransport;
+  } catch (e) {
+    console.warn('MCP modules could not be loaded:', e);
+  }
+}
+
 // Import type only, don't import the actual repository
 import type { MCPClientConfig } from '@openagents/core/src/db/types';
 import { v4 as uuidv4 } from 'uuid';
@@ -215,10 +231,68 @@ async function updateClientStatus(id: string, status: 'connected' | 'disconnecte
 /**
  * Initialize an individual MCP client based on configuration
  */
-async function initMCPClient(config: MCPClientConfig): Promise<Awaited<ReturnType<typeof experimental_createMCPClient>> | null> {
+async function initMCPClient(config: MCPClientConfig): Promise<any | null> {
   // Skip if disabled
   if (!config.enabled) {
     console.log(`[MCP Clients] Skipping disabled client: ${config.name}`);
+    return null;
+  }
+  
+  // Check if we're in a browser environment
+  if (typeof window !== 'undefined') {
+    console.log(`[MCP Clients] Browser environment detected - using mock client for: ${config.name}`);
+    
+    // Update status to show we're using a mock
+    await updateClientStatus(config.id, 'connected', 'Using mock client in browser');
+    
+    // Return a mock client with necessary methods
+    return {
+      tools: async () => {
+        console.log(`[MCP Clients] Mock client ${config.name} returning mock tools`);
+        
+        // Return mock tools for browser environment testing
+        return {
+          'github_search': {
+            name: 'GitHub Search',
+            description: 'Search GitHub repositories',
+            parameters: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  description: 'The search query'
+                }
+              },
+              required: ['query']
+            }
+          },
+          'github_repo': {
+            name: 'GitHub Repository Info',
+            description: 'Get information about a GitHub repository',
+            parameters: {
+              type: 'object',
+              properties: {
+                owner: {
+                  type: 'string',
+                  description: 'Repository owner'
+                },
+                repo: {
+                  type: 'string',
+                  description: 'Repository name'
+                }
+              },
+              required: ['owner', 'repo']
+            }
+          }
+        };
+      }
+    };
+  }
+  
+  // Check if MCP modules are available
+  if (!experimental_createMCPClient || (config.type === 'stdio' && !StdioMCPTransport)) {
+    console.error(`[MCP Clients] Cannot initialize client ${config.name}: MCP modules not available`);
+    await updateClientStatus(config.id, 'error', 'MCP modules not available');
     return null;
   }
   
