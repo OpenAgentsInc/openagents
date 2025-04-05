@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { 
   TOOLS, 
   ToolDefinition, 
@@ -12,7 +12,8 @@ import {
   Wrench, 
   AlertCircle, 
   CloudCog,
-  Server
+  Server,
+  RefreshCw
 } from "lucide-react";
 import { cn } from "@/utils/tailwind";
 import {
@@ -57,6 +58,8 @@ export function ToolSelect({
   const [allTools, setAllTools] = useState<ToolDefinition[]>([]);
   const { getEnabledToolIds } = useSettings();
   const [enabledToolIds, setEnabledToolIds] = useState<string[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   
   // CRITICAL: Use a ref to store selected tools to ensure UI updates properly
   const [internalSelection, setInternalSelection] = useState<string[]>([]);
@@ -73,70 +76,113 @@ export function ToolSelect({
   }, []);
 
   // Load all tools (built-in and MCP)
-  useEffect(() => {
-    const loadTools = async () => {
+  const loadTools = useCallback(async () => {
+    try {
+      // Get globally enabled tool IDs
+      const enabledIds = await getEnabledToolIds();
+      setEnabledToolIds(enabledIds);
+      
+      // Get MCP tools from the server via API
+      let mcpTools = {};
+      let clientInfoMap: Record<string, { id: string; name: string; tools?: string[] }> = {};
+      
       try {
-        // Get globally enabled tool IDs
-        const enabledIds = await getEnabledToolIds();
-        setEnabledToolIds(enabledIds);
+        console.log('[ToolSelect] Fetching MCP tools from server API...');
         
-        // Get MCP tools and clients
-        let mcpTools = {};
-        let clientInfoMap: Record<string, { id: string; name: string; tools?: string[] }> = {};
+        // Call the API endpoint we created
+        const response = await fetch('/api/mcp/tools');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch MCP tools: ${response.status} ${response.statusText}`);
+        }
         
+        // Parse the response
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(`API returned error: ${data.error}`);
+        }
+        
+        // Extract tools and client info
+        mcpTools = data.tools || {};
+        clientInfoMap = data.clientInfo || {};
+        
+        console.log('[ToolSelect] MCP tools fetched successfully:', {
+          toolsCount: Object.keys(mcpTools).length,
+          clientsCount: Object.keys(clientInfoMap).length,
+          toolSample: Object.keys(mcpTools).slice(0, 5)
+        });
+        
+        // Log detailed client info
+        Object.entries(clientInfoMap).forEach(([clientId, info]) => {
+          console.log(`[ToolSelect] Client ${info.name} has ${info.tools?.length || 0} tools`);
+        });
+      } catch (error) {
+        console.error("[ToolSelect] Error fetching MCP tools from API:", error);
+        
+        // If API fails, try to use the client-side getMCPClients as fallback
+        // (this will only work in server-side environments)
         try {
-          // Try to refresh tools first
-          try {
-            console.log('[ToolSelect] Refreshing MCP tools before fetching...');
-            await refreshTools();
-          } catch (refreshError) {
-            console.warn('[ToolSelect] Error refreshing tools:', refreshError);
-          }
-          
-          // Now get the updated tools
+          console.log('[ToolSelect] Falling back to direct client access...');
           const mcpClientsInfo = getMCPClients();
-          const { allTools: mcpToolsList, clientTools, configs, clients } = mcpClientsInfo;
+          mcpTools = mcpClientsInfo.allTools || {};
           
-          console.log('[ToolSelect] MCP Clients info:', {
-            clientsCount: Object.keys(clients).length,
-            toolsCount: Object.keys(mcpToolsList || {}).length,
-            clientToolsInfo: clientTools,
-            configsCount: Object.keys(configs).length
-          });
-          
-          mcpTools = mcpToolsList || {};
-          
-          // Create client info map for tracking which tools belong to which client
-          Object.entries(configs).forEach(([clientId, config]) => {
-            if (clientTools[clientId]) {
+          // Create client info map from direct access
+          Object.entries(mcpClientsInfo.configs).forEach(([clientId, config]) => {
+            if (mcpClientsInfo.clientTools[clientId]) {
               clientInfoMap[clientId] = {
                 id: clientId,
                 name: config.name,
-                tools: clientTools[clientId]
+                tools: mcpClientsInfo.clientTools[clientId]
               };
-              
-              console.log(`[ToolSelect] Client ${config.name} has ${clientTools[clientId].length} tools`);
-            } else {
-              console.log(`[ToolSelect] Client ${config.name} has no tools registered`);
             }
           });
-        } catch (error) {
-          console.error("Error setting up MCP tools:", error);
+        } catch (fallbackError) {
+          console.warn("[ToolSelect] Fallback also failed:", fallbackError);
         }
-        
-        // Combine with built-in tools
-        const combinedTools = extendWithMCPTools(mcpTools, clientInfoMap);
-        console.log(`[ToolSelect] Combined tools: ${combinedTools.length} tools (${Object.keys(mcpTools).length} MCP tools + ${TOOLS.length} built-in tools)`);
-        setAllTools(combinedTools);
-      } catch (error) {
-        console.error("Error loading tools:", error);
-        // Fallback to built-in tools only
-        setAllTools(TOOLS);
       }
-    };
-    
-    loadTools();
+      
+      // Combine with built-in tools
+      const combinedTools = extendWithMCPTools(mcpTools, clientInfoMap);
+      console.log(`[ToolSelect] Combined tools: ${combinedTools.length} tools (${Object.keys(mcpTools).length} MCP tools + ${TOOLS.length} built-in tools)`);
+      setAllTools(combinedTools);
+      setLastRefreshed(new Date());
+    } catch (error) {
+      console.error("Error loading tools:", error);
+      // Fallback to built-in tools only
+      setAllTools(TOOLS);
+    }
   }, [getEnabledToolIds]);
+  
+  // Run loadTools on component mount
+  useEffect(() => {
+    loadTools();
+  }, [loadTools]);
+  
+  // Function to refresh MCP tools from the server
+  const refreshMCPTools = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      console.log('[ToolSelect] Manually refreshing MCP tools...');
+      
+      // Call the refresh API endpoint
+      const response = await fetch('/api/mcp/tools/refresh', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to refresh MCP tools: ${response.status} ${response.statusText}`);
+      }
+      
+      // Load the updated tools
+      await loadTools();
+      
+      // We don't need to set lastRefreshed here since loadTools does it
+      console.log('[ToolSelect] MCP tools refreshed successfully');
+    } catch (error) {
+      console.error('[ToolSelect] Error refreshing MCP tools:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadTools]);
 
   // Filter to only show globally enabled tools
   const availableTools = useMemo(() => {
@@ -388,29 +434,45 @@ export function ToolSelect({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn(
-            "justify-between overflow-hidden text-ellipsis whitespace-nowrap",
-            className
-          )}
-          disabled={disabled}
-        >
-          <div className="flex items-center overflow-hidden">
-            <Wrench className="mr-2 h-4 w-4" />
-            <span className="overflow-hidden text-ellipsis">
-              {displayText}
-            </span>
-            {internalSelection.length > 0 && (
-              <Badge variant="secondary" className="ml-2">
-                {internalSelection.length}
-              </Badge>
+        <div className="flex w-full">
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn(
+              "flex-1 justify-between overflow-hidden text-ellipsis whitespace-nowrap rounded-r-none",
+              className
             )}
-          </div>
-          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+            disabled={disabled}
+          >
+            <div className="flex items-center overflow-hidden">
+              <Wrench className="mr-2 h-4 w-4" />
+              <span className="overflow-hidden text-ellipsis">
+                {displayText}
+              </span>
+              {internalSelection.length > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {internalSelection.length}
+                </Badge>
+              )}
+            </div>
+            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="rounded-l-none border-l-0"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              refreshMCPTools();
+            }}
+            disabled={refreshing || disabled}
+            title="Refresh MCP Tools"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </PopoverTrigger>
       <PopoverContent className="w-[350px] p-0 font-mono" align="start">
         <Command className="font-mono">
@@ -419,6 +481,15 @@ export function ToolSelect({
             <div className="flex flex-col items-center justify-center p-4 text-sm text-muted-foreground font-mono">
               <AlertCircle className="h-6 w-6 mb-2" />
               <p>No tools found.</p>
+              <Button 
+                className="mt-4" 
+                size="sm" 
+                onClick={refreshMCPTools}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`h-3 w-3 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh MCP Tools
+              </Button>
             </div>
           </CommandEmpty>
           
@@ -450,6 +521,15 @@ export function ToolSelect({
                 <AlertCircle className="h-6 w-6 mb-2" />
                 <p>No tools are enabled globally.</p>
                 <p className="text-xs mt-1">Enable tools in Settings → Tools.</p>
+                <Button 
+                  className="mt-4" 
+                  size="sm" 
+                  onClick={refreshMCPTools}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`h-3 w-3 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                  Refresh MCP Tools
+                </Button>
               </div>
             ) : (
               // Show tools grouped by provider
@@ -560,6 +640,31 @@ export function ToolSelect({
               })
             )}
           </CommandList>
+          
+          {/* Status footer */}
+          <div className="p-2 border-t flex items-center justify-between text-xs text-muted-foreground">
+            <div className="flex items-center">
+              {lastRefreshed ? (
+                <span>Last refreshed: {lastRefreshed.toLocaleTimeString()}</span>
+              ) : (
+                <span>Tool status: {refreshing ? 'Refreshing...' : 'Idle'}</span>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                refreshMCPTools();
+              }}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </Command>
       </PopoverContent>
     </Popover>
