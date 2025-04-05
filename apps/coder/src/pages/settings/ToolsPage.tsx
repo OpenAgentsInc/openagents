@@ -156,6 +156,9 @@ export default function ToolsPage() {
   // Handle toggling a tool's enabled status
   const handleToggleTool = async (toolId: string) => {
     try {
+      // Store the current state for the message
+      const willBeEnabled = !enabledToolIds.includes(toolId);
+      
       // Update UI state optimistically
       if (enabledToolIds.includes(toolId)) {
         setEnabledToolIds(prev => prev.filter(id => id !== toolId));
@@ -163,16 +166,31 @@ export default function ToolsPage() {
         setEnabledToolIds(prev => [...prev, toolId]);
       }
       
-      // Call the repository method
-      const result = await toggleToolEnabled(toolId);
+      // Log the action for debugging
+      console.log(`[ToolsPage] Toggling tool ${toolId} - Will be ${willBeEnabled ? 'enabled' : 'disabled'}`);
       
-      if (!result) {
-        throw new Error("Failed to toggle tool");
+      // Call the appropriate repository method based on the action
+      let result;
+      if (willBeEnabled) {
+        console.log(`[ToolsPage] Calling enableTool(${toolId})`);
+        result = await enableTool(toolId);
+      } else {
+        console.log(`[ToolsPage] Calling disableTool(${toolId})`);
+        result = await disableTool(toolId);
       }
       
+      if (!result) {
+        throw new Error(`Failed to ${willBeEnabled ? 'enable' : 'disable'} tool`);
+      }
+      
+      // Refresh enabled tool IDs after update
+      const updatedEnabledIds = await getEnabledToolIds();
+      console.log(`[ToolsPage] After toggle, enabled tools:`, updatedEnabledIds);
+      setEnabledToolIds(updatedEnabledIds);
+      
       // Successful update
-      toast.success(`Tool ${enabledToolIds.includes(toolId) ? "enabled" : "disabled"}`, {
-        description: `The ${toolId} tool has been ${enabledToolIds.includes(toolId) ? "enabled" : "disabled"}.`,
+      toast.success(`Tool ${willBeEnabled ? "enabled" : "disabled"}`, {
+        description: `The ${toolId} tool has been ${willBeEnabled ? "enabled" : "disabled"}.`,
         duration: 3000
       });
     } catch (error) {

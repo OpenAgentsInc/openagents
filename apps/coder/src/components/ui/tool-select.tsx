@@ -187,12 +187,16 @@ export function ToolSelect({
     console.log('  - All tools:', allTools.map(t => ({ id: t.id, provider: t.providerName || t.type })));
     console.log('  - Enabled tool IDs:', enabledToolIds);
     
-    // TEMPORARY FIX: Show all tools regardless of enabled status
-    // This is just for debugging - we'll fix it properly after
-    const filtered = allTools;
+    // Restore proper filtering but with detailed logging
+    const filtered = allTools.filter(tool => {
+      const isEnabled = enabledToolIds.includes(tool.id);
+      if (!isEnabled) {
+        console.log(`[ToolSelect] Tool not enabled: ${tool.id} (${tool.providerName || tool.type})`);
+      }
+      return isEnabled;
+    });
     
-    // const filtered = allTools.filter(tool => enabledToolIds.includes(tool.id));
-    console.log('  - Filtered tools (showing all for debugging):', filtered.map(t => ({ id: t.id, provider: t.providerName || t.type })));
+    console.log('  - Filtered tools:', filtered.map(t => ({ id: t.id, provider: t.providerName || t.type })));
     
     return filtered;
   }, [allTools, enabledToolIds]);
@@ -246,12 +250,17 @@ export function ToolSelect({
 
   // Toggle a tool's selection
   const toggleTool = (toolId: string) => {
+    console.log(`[ToolSelect] Toggling tool selection: ${toolId}`);
     if (localSelectedToolIds.includes(toolId)) {
       const newSelection = localSelectedToolIds.filter(id => id !== toolId);
+      console.log(`[ToolSelect] Removing tool from selection: ${toolId}`);
+      console.log(`[ToolSelect] New selection:`, newSelection);
       setSelectedToolIds(newSelection); // Update local state immediately for visual feedback
       onChange(newSelection);
     } else {
       const newSelection = [...localSelectedToolIds, toolId];
+      console.log(`[ToolSelect] Adding tool to selection: ${toolId}`);
+      console.log(`[ToolSelect] New selection:`, newSelection);
       setSelectedToolIds(newSelection); // Update local state immediately for visual feedback
       onChange(newSelection);
     }

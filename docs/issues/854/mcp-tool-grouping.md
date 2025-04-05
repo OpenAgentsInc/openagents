@@ -1,151 +1,122 @@
-# MCP Tool Grouping Implementation
+# MCP Tool Grouping and Selection Issues
 
-## Overview
+## Overview of the Problem
 
-This document outlines the implementation of MCP (Model Context Protocol) tool grouping in the OpenAgents tool selection interface. The feature organizes tools by their source provider, making it easier for users to understand where tools come from and to enable/disable all tools from a particular provider at once.
+We're experiencing issues with MCP tools not appearing in the tool selection dropdown, even though they show as enabled in the Tools settings page. Additionally, toggling tools on/off in the UI doesn't seem to persist their enabled/disabled state correctly.
 
-## Key Components
+## Current Implementation Issues
 
-### 1. Tool Definition Extension
+### 1. Browser Compatibility Issues
 
-Extended the `ToolDefinition` interface in `packages/core/src/tools/TOOLS.ts` to include provider information:
+The first major issue we identified was browser incompatibility with Node.js `require()` calls:
 
-```typescript
-export interface ToolDefinition {
-  // Existing fields
-  id: string;
-  name: string;
-  description: string;
-  type: 'builtin' | 'mcp';
-  schema: any;
-  serverIdentifier: string;
-  supportsModels?: string[];
-  
-  // New fields for provider tracking
-  providerId?: string;    // ID of the provider (MCP client) that provides this tool
-  providerName?: string;  // Name of the provider (MCP client) that provides this tool
-}
-```
+- The code in `ToolsPage.tsx` and `tool-select.tsx` was using Node.js-style `require()` calls to import modules dynamically
+- In browser environments (as opposed to Electron), `require()` is not defined, causing errors
+- This was preventing MCP tools from being loaded in browser environments
 
-### 2. MCP Client Tracking
+### 2. Tool Visibility Issues
 
-Modified `apps/coder/src/server/mcp-clients.ts` to track which tools belong to which MCP client:
+Even after fixing the browser compatibility issues, we still have issues with tools not appearing in the dropdown:
 
-```typescript
-interface MCPClients {
-  clients: Record<string, Awaited<ReturnType<typeof experimental_createMCPClient>> | null>;
-  allTools: Record<string, any>; // Combined tools from all clients
-  clientTools: Record<string, string[]>; // NEW: Tools provided by each client
-  configs: Record<string, MCPClientConfig>;
-  initialized: boolean;
-}
-```
+- When an MCP tool is enabled in the Tools settings page, it's not showing in the tool selection dropdown
+- The tool selection dropdown filters tools based on what's in the `enabledToolIds` array from the settings database
+- There seems to be a disconnection between:
+  1. The UI that enables/disables tools in the Tools settings page
+  2. The settings database that stores which tools are enabled/disabled
+  3. The tool selection dropdown that filters tools based on the enabled status
 
-Enhanced the `refreshTools()` function to track tool-to-client relationships:
+### 3. Toggling Tool Status
 
-```typescript
-// Track which tools belong to this client
-mcpClients.clientTools[id] = Object.keys(clientTools);
-```
+The UI for toggling tools on/off in either the Tools page or the dropdown doesn't seem to correctly update the tool's enabled status:
 
-### 3. Provider-Aware Tool Grouping
+- When clicking to enable/disable a tool, the UI changes but the state doesn't persist
+- This suggests issues with the `toggleToolEnabled`, `enableTool`, and `disableTool` functions in the `useSettings` hook
+- The database operations might not be completing successfully
 
-Updated the `extendWithMCPTools()` function to incorporate provider information:
+## Technical Deep Dive
 
-```typescript
-export function extendWithMCPTools(
-  mcpTools: Record<string, any>, 
-  mcpClients?: Record<string, { id: string; name: string; tools?: string[] }>
-): ToolDefinition[] {
-  // ...
-  
-  // Determine which provider this tool belongs to
-  let providerId = '';
-  let providerName = '';
+### Settings Repository and Tools Management
 
-  if (mcpClients) {
-    for (const [clientId, clientInfo] of Object.entries(mcpClients)) {
-      if (clientInfo.tools && clientInfo.tools.includes(toolId)) {
-        providerId = clientId;
-        providerName = clientInfo.name;
-        break;
-      }
-    }
-  }
-  
-  // Add provider info to the tool definition
-  allTools.push({
-    // ...other tool properties
-    providerId,
-    providerName
-  });
-  
-  // ...
-}
-```
+The following components are responsible for tool management:
 
-### 4. UI Implementation
+1. **`useSettings` hook**:
+   - Provides methods like `toggleToolEnabled`, `enableTool`, `disableTool`, and `getEnabledToolIds`
+   - These methods delegate to the `settingsRepository`
 
-#### 4.1 Settings Page (ToolsPage.tsx)
+2. **`settingsRepository`**:
+   - Stores and retrieves settings from the database, including enabled tool IDs
+   - The `enabledToolIds` array in the settings object tracks which tools are enabled
+   - Default only includes `shell_command`
 
-- Implemented collapsible provider groups in the settings page
-- Added provider-level actions to enable/disable all tools from a provider at once
-- Visual indicators showing which providers have enabled tools
-- Search functionality that works across all tools and providers
+3. **Tool Selection UI**:
+   - `ToolSelect` component in `tool-select.tsx` displays a dropdown of available tools
+   - Only shows tools that are in the `enabledToolIds` array
+   - Uses `getEnabledToolIds()` to fetch the list of enabled tools
 
-```tsx
-// Group tools by provider
-const providerGroups = useMemo(() => {
-  const result = {
-    builtin: {
-      name: "Built-in Tools",
-      id: "builtin",
-      tools: []
-    }
-  };
-  
-  allTools.forEach(tool => {
-    if (tool.type === 'builtin') {
-      result.builtin.tools.push(tool);
-    } else if (tool.providerId && tool.providerName) {
-      // Create or add to provider group
-      // ...
-    }
-  });
-  
-  return result;
-}, [allTools]);
-```
+4. **MCP Client Integration**:
+   - MCP tools are fetched from MCP clients via `getMCPClients()` and `refreshTools()`
+   - Tools are added to the system via `extendWithMCPTools()`
+   - When associating tools with providers, there's a check to match tool IDs with provider IDs
 
-#### 4.2 Tool Selection Dropdown (ToolSelect.tsx)
+### Attempted Fixes
 
-- Grouped tools by provider in the dropdown
-- Added provider-level selection actions (Select All / Clear)
-- Visual indicators for partially or fully selected provider groups
-- Improved search functionality that works with provider-grouped tools
+1. **Fixing Browser Compatibility**:
+   - Replaced Node.js `require()` calls with proper ES Module imports
+   - Updated imports in both `ToolsPage.tsx` and `tool-select.tsx`
+   - This resolved the "require is not defined" error
 
-## Benefits
+2. **Debug Logging**:
+   - Added detailed logging to track:
+     - What tools are available in the system
+     - Which tools are enabled according to settings
+     - What tools are being shown in the dropdown after filtering
 
-1. **Better Organization**: Tools are now logically grouped by their provider, making it easier to understand the source of each tool.
+3. **Temporary Fix for Dropdown Visibility**:
+   - Modified `tool-select.tsx` to show all tools regardless of enabled status
+   - This helps verify if MCP tools are being properly loaded but just not showing due to filtering
 
-2. **Bulk Actions**: Users can enable/disable all tools from a provider with a single click, improving efficiency.
+## Current Status
 
-3. **Visual Clarity**: Clear visual indicators show which providers have enabled tools and whether all or some tools in a provider are selected.
+As of the temporary fix, we can see:
 
-4. **Future-Proof**: The architecture supports multiple MCP clients, each potentially providing multiple tools.
+1. Built-in tools (shell_command) appear correctly
+2. Mock MCP tools (in development mode) appear correctly
+3. Real MCP tools from connected clients do appear in the tool list, but:
+   - They don't show in the filtered dropdown without our temporary fix
+   - Toggling their enabled status doesn't seem to work properly
 
-## User Experience
+## Next Steps for Resolution
 
-### Settings > Tools Page
+1. **Investigate Toggling Logic**:
+   - Debug the `toggleToolEnabled`, `enableTool`, and `disableTool` functions
+   - Add logging to trace the full path from UI action to database update
 
-- Shows collapsible sections for each provider (Built-in, GitHub MCP, etc.)
-- Users can expand/collapse provider sections
-- Provider sections show a count of tools and enabled status
-- Provider-level actions for enabling/disabling all tools
+2. **Fix Tool Persistence**:
+   - Ensure that enabling a tool properly adds it to the `enabledToolIds` array in settings
+   - Verify that database operations are completing successfully
 
-### Tool Selection Dropdown
+3. **Fix Tool Selection Dropdown**:
+   - Either continue with the temporary fix to show all tools
+   - Or fix the enablement process so tools properly appear after being enabled
 
-- Organized hierarchically by provider
-- Expandable provider sections with tool counts
-- Provider-level quick actions (Select All, Clear)
-- Visual indicators for selection state at both provider and tool levels
+4. **Testing Across Environments**:
+   - Test in both Electron and browser environments
+   - Verify that the fixed solution works consistently
+
+5. **Document the Final Solution**:
+   - Update the documentation with the complete solution
+   - Include information on how tool enablement works and how to debug issues
+
+## Possible Solutions
+
+1. **Fix Database Operations**:
+   - Ensure that `enableTool` and `disableTool` correctly update the database
+   - Add better error handling and user feedback when operations fail
+
+2. **Alternative Filtering Approach**:
+   - Consider changing the dropdown to show all tools but disable selection of tools that aren't enabled
+   - This would make it clearer which tools are available but need to be enabled
+
+3. **Simplified Tool Management**:
+   - Consider a more direct approach to tool management that doesn't rely on complex database operations
+   - Possibly use localStorage as a fallback when database operations fail

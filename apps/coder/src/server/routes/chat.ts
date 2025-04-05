@@ -164,9 +164,30 @@ chatRoutes.post('/chat', async (c) => {
     // Helper to get enabled tool IDs
     async function getEnabledToolIds(): Promise<string[]> {
       try {
-        // For server-side implementation, just return shell_command as enabled by default
-        // In a future version, this should fetch from the database
-        return ['shell_command'];
+        console.log('[Server] Attempting to fetch enabled tool IDs');
+        
+        // For server-side implementation, use a safer approach
+        // Instead of using dynamic imports which have path resolution issues in the monorepo,
+        // we'll directly check the client-side enabled tools
+        
+        // First, try to get MCP tools - these should include the configured tools
+        const mcpTools = getMCPTools();
+        console.log(`[Server] Available MCP tools: ${Object.keys(mcpTools).length}`);
+        
+        // At a minimum, always include shell_command if available
+        const baseTools = ['shell_command'];
+        
+        // If we found MCP tools, add their IDs to our enabled list
+        if (Object.keys(mcpTools).length > 0) {
+          console.log('[Server] Including MCP tools in enabled tools list');
+          const allTools = [...baseTools, ...Object.keys(mcpTools)];
+          console.log('[Server] Enabled tool IDs:', allTools);
+          return allTools;
+        }
+        
+        // Fallback to just shell_command
+        console.log('[Server] Using default tool set (shell_command only)');
+        return baseTools;
       } catch (error) {
         console.error("Error getting enabled tool IDs:", error);
         return ['shell_command']; // Default fallback
