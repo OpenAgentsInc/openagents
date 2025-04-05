@@ -94,8 +94,16 @@
     </div>
   </div>
 
-  <!-- Main app container -->
-  <div id="app" class="h-full w-full" style="display: none;"></div>
+  <!-- Main app container - Not display:none anymore to avoid black screen issues in production -->
+  <div id="app" class="h-full w-full">
+    <!-- Fallback content that will be replaced when React loads -->
+    <div style="display: flex; justify-content: center; align-items: center; height: 100vh; color: #777; font-family: system-ui, sans-serif;">
+      <div style="text-align: center;">
+        <p>Loading application content...</p>
+        <p style="font-size: 12px; margin-top: 10px;">If this message persists, please check the console for errors</p>
+      </div>
+    </div>
+  </div>
 
   <!-- Main application is loaded by the loader.js script, no inline script needed here -->
 </body>

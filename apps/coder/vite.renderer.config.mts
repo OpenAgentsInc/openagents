@@ -68,6 +68,10 @@ export default defineConfig({
   },
   // Add Node.js built-in modules for browser
   build: {
+    assetsInlineLimit: 0, // Don't inline any assets, keep all as URLs
+    minify: false, // Disable minification for easier debugging
+    sourcemap: true, // Enable sourcemaps in production for debugging
+    // Configure chunk naming for better error reporting
     rollupOptions: {
       plugins: [],
       // Add externals to fix the browser/node compatibility issues with MCP
@@ -89,9 +93,25 @@ export default defineConfig({
         // Add specific AI/MCP related modules
         'ai/mcp-stdio',
         'ai',
-      ]
+      ],
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          ui: [
+            '@/components/ui',
+            '@openagents/ui'
+          ],
+          utils: ['@/utils'],
+          vendors: [
+            // Third-party libraries that are unlikely to change
+            'uuid',
+            'lucide-react',
+            'tailwindcss',
+          ]
+        },
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+      },
     },
-    assetsInlineLimit: 0, // Don't inline any assets, keep all as URLs
   },
   server: {
     watch: {

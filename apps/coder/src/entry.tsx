@@ -162,7 +162,31 @@ window.addEventListener('unhandledrejection', (event) => {
 function initializeApp() {
   console.log('[Renderer] Starting application initialization...');
   
+  // Immediately ensure loader timeout is cleared when this runs
   try {
+    if (window.forceShowApp) {
+      console.log('[Renderer] Clearing forceShowApp timeout');
+      clearTimeout(window.forceShowApp);
+    }
+  } catch (e) {
+    console.warn('[Renderer] Error clearing forceShowApp timeout:', e);
+  }
+  
+  try {
+    // First ensure the app element is visible regardless of React mounting
+    // This helps in production where there might be delays
+    try {
+      const loader = document.getElementById('initial-loader');
+      const app = document.getElementById('app');
+      
+      if (loader) loader.style.display = 'none';
+      if (app) app.style.display = 'block';
+      
+      console.log('[Renderer] Preemptively showing app container');
+    } catch (visibilityError) {
+      console.error('[Renderer] Error updating visibility:', visibilityError);
+    }
+    
     // Mount the app to the DOM
     const container = document.getElementById('app');
     
@@ -187,16 +211,14 @@ function initializeApp() {
       
       // Hide the initial loader now that React is rendering
       if (typeof window.hideInitialLoader === 'function') {
-        console.log('[Renderer] Hiding initial loader');
+        console.log('[Renderer] Hiding initial loader via function');
         window.hideInitialLoader();
       } else {
-        console.log('[Renderer] hideInitialLoader function not found, trying direct DOM manipulation');
+        console.log('[Renderer] hideInitialLoader function not found, using direct DOM manipulation');
         try {
           const loader = document.getElementById('initial-loader');
-          const app = document.getElementById('app');
           
           if (loader) loader.style.display = 'none';
-          if (app) app.style.display = 'block';
         } catch (error) {
           console.error('[Renderer] Error hiding initial loader:', error);
         }
@@ -209,20 +231,33 @@ function initializeApp() {
   } catch (error) {
     console.error('[Renderer] Critical error during application initialization:', error);
     
-    // Display error on page
-    document.body.innerHTML = `
-      <div style="padding: 20px; font-family: monospace; background-color: #300; color: white; border: 1px solid #900; border-radius: 4px; margin: 20px;">
-        <h1 style="margin: 0 0 10px 0; font-size: 18px;">Critical Initialization Error</h1>
-        <p style="margin: 0">The application failed to initialize:</p>
-        <div style="background-color: #200; padding: 10px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; overflow: auto;">
-          ${error instanceof Error ? `${error.name}: ${error.message}\n\n${error.stack || ''}` : String(error)}
+    // Make sure app is visible despite error
+    try {
+      const loader = document.getElementById('initial-loader');
+      if (loader) loader.style.display = 'none';
+      
+      // Display error on page
+      document.body.innerHTML = `
+        <div style="padding: 20px; font-family: monospace; background-color: #300; color: white; border: 1px solid #900; border-radius: 4px; margin: 20px;">
+          <h1 style="margin: 0 0 10px 0; font-size: 18px;">Critical Initialization Error</h1>
+          <p style="margin: 0">The application failed to initialize:</p>
+          <div style="background-color: #200; padding: 10px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; overflow: auto;">
+            ${error instanceof Error ? `${error.name}: ${error.message}\n\n${error.stack || ''}` : String(error)}
+          </div>
+          <p style="margin: 10px 0 0 0">Check the console for more details.</p>
+          <button onclick="window.location.reload()" style="background-color: #822; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-top: 10px;">
+            Reload Application
+          </button>
         </div>
-        <p style="margin: 10px 0 0 0">Check the console for more details.</p>
-        <button onclick="window.location.reload()" style="background-color: #822; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-top: 10px;">
-          Reload Application
-        </button>
-      </div>
-    `;
+      `;
+    } catch (displayError) {
+      console.error('[Renderer] Failed to display error message:', displayError);
+      
+      // Last resort - make a simple error message
+      try {
+        document.body.innerHTML = '<div style="color: white; padding: 20px;">Critical error - check console and reload page</div>';
+      } catch (e) {}
+    }
   }
 }
 
