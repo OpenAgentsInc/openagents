@@ -23,7 +23,7 @@ export function createShellCommandTool() {
     parameters: z.object({
       command: z.string().describe("The shell command to execute")
     }),
-    description: "Execute a shell command",
+    description: "Execute shell commands on the local system",
     execute: async (args) => {
       console.log("Running command:", args.command);
 

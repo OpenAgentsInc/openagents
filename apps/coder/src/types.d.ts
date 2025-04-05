@@ -48,4 +48,23 @@ declare interface Window {
   themeMode: ThemeModeContext;
   electronWindow: ElectronWindow;
   commandExecution: CommandExecutionContext;
+  
+  // Loading helpers
+  loadingTimeout?: number;
+  hideInitialLoader?: () => void;
+  
+  // Electron API from preload
+  electronAPI?: {
+    ipcRenderer: {
+      send: (channel: string, ...args: any[]) => void;
+      invoke: (channel: string, ...args: any[]) => Promise<any>;
+      on: (channel: string, listener: (...args: any[]) => void) => void;
+      removeListener: (channel: string, listener: (...args: any[]) => void) => void;
+    };
+    openExternal: (url: string) => void;
+    platform: string;
+    getVersion: () => string;
+    isDev: boolean;
+    getAppPath: () => string;
+  };
 }

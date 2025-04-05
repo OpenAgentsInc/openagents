@@ -12,10 +12,24 @@ export default defineConfig({
     react(),
     // Add Node.js polyfills for browser environment
     nodePolyfills({
-      // To add specific polyfills, specify them here
-      include: ['url', 'util', 'events'],
+      // Include polyfills for all required Node.js modules in browser
+      include: [
+        'url', 
+        'util', 
+        'events', 
+        'stream', 
+        'path', 
+        'http', 
+        'https', 
+        'zlib', 
+        'querystring',
+        'buffer',
+        'crypto',
+        'os'
+      ],
       globals: {
         Buffer: true,
+        process: true,
       },
     }),
   ],
@@ -32,6 +46,8 @@ export default defineConfig({
       "@expo/vector-icons": path.resolve(__dirname, "./src/shims/expo-vector-icons.ts"),
       // Add shim for eventsource
       "eventsource": path.resolve(__dirname, "./src/shims/eventsource.ts"),
+      // Add shim for child_process (needed for AI/MCP modules)
+      "child_process": path.resolve(__dirname, "./src/shims/child_process.ts"),
     },
   },
   optimizeDeps: {
@@ -52,10 +68,50 @@ export default defineConfig({
   },
   // Add Node.js built-in modules for browser
   build: {
+    assetsInlineLimit: 0, // Don't inline any assets, keep all as URLs
+    minify: false, // Disable minification for easier debugging
+    sourcemap: true, // Enable sourcemaps in production for debugging
+    // Configure chunk naming for better error reporting
     rollupOptions: {
       plugins: [],
+      // Add externals to fix the browser/node compatibility issues with MCP
+      external: [
+        'child_process',
+        'fs',
+        'path',
+        'util',
+        'os',
+        'crypto',
+        'stream',
+        'events',
+        'buffer',
+        'querystring',
+        'url',
+        'http',
+        'https',
+        'zlib',
+        // Add specific AI/MCP related modules
+        'ai/mcp-stdio',
+        'ai',
+      ],
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          ui: [
+            '@/components/ui',
+            '@openagents/ui'
+          ],
+          utils: ['@/utils'],
+          vendors: [
+            // Third-party libraries that are unlikely to change
+            'uuid',
+            'lucide-react',
+            'tailwindcss',
+          ]
+        },
+        chunkFileNames: 'assets/js/[name]-[hash].js',
+      },
     },
-    assetsInlineLimit: 0, // Don't inline any assets, keep all as URLs
   },
   server: {
     watch: {

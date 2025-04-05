@@ -9,8 +9,13 @@ import {
   reinitializeAllClients,
   addMCPClient,
   updateMCPClient,
-  deleteMCPClient
+  deleteMCPClient,
+  getMCPClients,
+  cleanupMCPClients,
+  refreshTools,
+  initMCPClients
 } from '../mcp-clients';
+import { getMCPTools } from '../tools/mcp-tools';
 import { MCPClientConfig } from '@openagents/core/src/db/types';
 import { ChatError, SystemError } from '@openagents/core/src/chat/errors';
 
@@ -162,6 +167,171 @@ mcpRoutes.post('/refresh', async (c) => {
     
     return c.json({ 
       error: 'Failed to refresh MCP clients',
+      details: error instanceof Error ? error.message : String(error)
+    }, 500);
+  }
+});
+
+/**
+ * Get all MCP tools
+ * This endpoint is critical for the tool selection component to show available MCP tools
+ */
+mcpRoutes.get('/tools', async (c) => {
+  try {
+    console.log('[MCP API] Getting all MCP tools...');
+    
+    // Try to refresh tools first to get the latest
+    try {
+      // Check if clients need to be reinitialized first
+      const { clients } = getMCPClients();
+      if (Object.keys(clients).length === 0) {
+        console.log('[MCP API] No MCP clients found, attempting to reinitialize all clients first');
+        try {
+          await reinitializeAllClients();
+          console.log('[MCP API] Successfully reinitialized MCP clients');
+        } catch (reinitError) {
+          console.warn('[MCP API] Error reinitializing MCP clients:', reinitError);
+        }
+      }
+    
+      // Now refresh the tools
+      await refreshTools();
+    } catch (refreshError) {
+      console.warn('[MCP API] Error refreshing tools before getting them:', refreshError);
+      // Continue anyway to return what we have
+    }
+    
+    // Get all MCP tools from the server
+    const mcpTools = getMCPTools();
+    
+    // Get client information to associate tools with providers
+    const { clientTools, configs, clients, allTools } = getMCPClients();
+    
+    // Create client info map for the response
+    const clientInfoMap: Record<string, { id: string; name: string; tools: string[] }> = {};
+    
+    // Build the client info map from the data
+    Object.entries(clientTools).forEach(([clientId, toolIds]) => {
+      if (configs[clientId]) {
+        clientInfoMap[clientId] = {
+          id: clientId,
+          name: configs[clientId].name,
+          tools: toolIds
+        };
+      }
+    });
+    
+    // Log detailed MCP client information
+    console.log('[MCP API] MCP Client Status:');
+    console.log(`[MCP API] - Active clients: ${Object.keys(clients).length}`);
+    
+    Object.entries(configs).forEach(([clientId, config]) => {
+      console.log(`[MCP API] - Client ${config.name} (${clientId}): Status ${config.status || 'unknown'}`);
+      
+      if (clientTools[clientId]) {
+        console.log(`[MCP API]   Tools (${clientTools[clientId].length}): ${clientTools[clientId].join(', ')}`);
+      } else {
+        console.log(`[MCP API]   No tools registered for this client`);
+      }
+    });
+    
+    console.log('[MCP API] Found MCP tools:', {
+      toolCount: Object.keys(mcpTools).length,
+      clientCount: Object.keys(clientInfoMap).length,
+      toolSample: Object.keys(mcpTools).slice(0, 5)
+    });
+    
+    return c.json({ 
+      tools: mcpTools,
+      clientInfo: clientInfoMap,
+      success: true 
+    });
+  } catch (error) {
+    console.error('[MCP API] Error getting MCP tools:', error);
+    
+    return c.json({ 
+      error: 'Failed to get MCP tools',
+      details: error instanceof Error ? error.message : String(error)
+    }, 500);
+  }
+});
+
+/**
+ * Refresh all MCP tools
+ */
+mcpRoutes.post('/tools/refresh', async (c) => {
+  try {
+    console.log('[MCP API] Refreshing MCP tools...');
+    
+    // Enhanced tool refresh approach
+    try {
+      // Get current client state
+      console.log('[MCP API] Getting current MCP client state...');
+      const { clients, configs } = getMCPClients();
+      console.log(`[MCP API] Current client state: ${Object.keys(clients).length} clients, ${Object.keys(configs).length} configs`);
+
+      // First reinitialize all clients - with more aggressive approach if needed
+      try {
+        if (Object.keys(clients).length === 0) {
+          console.log('[MCP API] No clients initialized, using cleanup + full init approach');
+          // Force cleanup first to ensure clean state
+          cleanupMCPClients();
+          
+          // Then initialize from scratch
+          await initMCPClients();
+        } else {
+          // Standard reinitialization
+          console.log('[MCP API] Reinitializing all existing MCP clients...');
+          await reinitializeAllClients();
+        }
+        
+        console.log('[MCP API] All MCP clients reinitialized successfully');
+      } catch (initError) {
+        console.error('[MCP API] Error reinitializing clients:', initError);
+        
+        // More aggressive recovery attempt if reinitialization failed
+        try {
+          console.log('[MCP API] Attempting recovery with cleanup + fresh initialization');
+          cleanupMCPClients();
+          await initMCPClients();
+        } catch (recoveryError) {
+          console.error('[MCP API] Recovery attempt also failed:', recoveryError);
+        }
+      }
+      
+      // Then refresh tools
+      console.log('[MCP API] Refreshing tools from all clients...');
+      await refreshTools();
+      console.log('[MCP API] Tools refreshed successfully');
+    } catch (refreshError) {
+      console.error('[MCP API] Error refreshing tools:', refreshError);
+      // Continue despite error so we can at least return something
+    }
+    
+    // Get the refreshed tools
+    const mcpTools = getMCPTools();
+    
+    console.log('[MCP API] Current MCP tools:', {
+      toolCount: Object.keys(mcpTools).length,
+      toolSample: Object.keys(mcpTools).slice(0, 5)
+    });
+    
+    // Detailed logging of available tools
+    console.log('[MCP API] Available tools:');
+    Object.keys(mcpTools).forEach(toolId => {
+      console.log(`[MCP API] - Available tool: ${toolId} (${mcpTools[toolId]?.name || 'unnamed'})`);
+    });
+    
+    return c.json({ 
+      toolCount: Object.keys(mcpTools).length,
+      tools: Object.keys(mcpTools),
+      success: true 
+    });
+  } catch (error) {
+    console.error('[MCP API] Error refreshing MCP tools:', error);
+    
+    return c.json({ 
+      error: 'Failed to refresh MCP tools',
       details: error instanceof Error ? error.message : String(error)
     }, 500);
   }
