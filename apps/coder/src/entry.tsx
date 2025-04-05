@@ -164,9 +164,9 @@ function initializeApp() {
   
   // Immediately ensure loader timeout is cleared when this runs
   try {
-    if (window.forceShowApp) {
+    if ((window as any).forceShowApp) {
       console.log('[Renderer] Clearing forceShowApp timeout');
-      clearTimeout(window.forceShowApp);
+      clearTimeout((window as any).forceShowApp);
     }
   } catch (e) {
     console.warn('[Renderer] Error clearing forceShowApp timeout:', e);

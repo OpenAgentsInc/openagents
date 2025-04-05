@@ -12,7 +12,8 @@ import {
   deleteMCPClient,
   getMCPClients,
   cleanupMCPClients,
-  refreshTools
+  refreshTools,
+  initMCPClients
 } from '../mcp-clients';
 import { getMCPTools } from '../tools/mcp-tools';
 import { MCPClientConfig } from '@openagents/core/src/db/types';
@@ -181,6 +182,19 @@ mcpRoutes.get('/tools', async (c) => {
     
     // Try to refresh tools first to get the latest
     try {
+      // Check if clients need to be reinitialized first
+      const { clients } = getMCPClients();
+      if (Object.keys(clients).length === 0) {
+        console.log('[MCP API] No MCP clients found, attempting to reinitialize all clients first');
+        try {
+          await reinitializeAllClients();
+          console.log('[MCP API] Successfully reinitialized MCP clients');
+        } catch (reinitError) {
+          console.warn('[MCP API] Error reinitializing MCP clients:', reinitError);
+        }
+      }
+    
+      // Now refresh the tools
       await refreshTools();
     } catch (refreshError) {
       console.warn('[MCP API] Error refreshing tools before getting them:', refreshError);
@@ -251,15 +265,38 @@ mcpRoutes.post('/tools/refresh', async (c) => {
     
     // Enhanced tool refresh approach
     try {
-      console.log('[MCP API] Refreshing tools...');
-      // First try to reinitialize all clients
+      // Get current client state
+      console.log('[MCP API] Getting current MCP client state...');
+      const { clients, configs } = getMCPClients();
+      console.log(`[MCP API] Current client state: ${Object.keys(clients).length} clients, ${Object.keys(configs).length} configs`);
+
+      // First reinitialize all clients - with more aggressive approach if needed
       try {
-        console.log('[MCP API] Reinitializing all MCP clients...');
-        await reinitializeAllClients();
+        if (Object.keys(clients).length === 0) {
+          console.log('[MCP API] No clients initialized, using cleanup + full init approach');
+          // Force cleanup first to ensure clean state
+          cleanupMCPClients();
+          
+          // Then initialize from scratch
+          await initMCPClients();
+        } else {
+          // Standard reinitialization
+          console.log('[MCP API] Reinitializing all existing MCP clients...');
+          await reinitializeAllClients();
+        }
+        
         console.log('[MCP API] All MCP clients reinitialized successfully');
       } catch (initError) {
         console.error('[MCP API] Error reinitializing clients:', initError);
-        // Continue despite error
+        
+        // More aggressive recovery attempt if reinitialization failed
+        try {
+          console.log('[MCP API] Attempting recovery with cleanup + fresh initialization');
+          cleanupMCPClients();
+          await initMCPClients();
+        } catch (recoveryError) {
+          console.error('[MCP API] Recovery attempt also failed:', recoveryError);
+        }
       }
       
       // Then refresh tools

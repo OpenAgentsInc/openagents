@@ -21,6 +21,16 @@ export interface UsePersistentChatOptions extends UseChatOptions {
 }
 
 /**
+ * Extended submission options type to support our custom fields
+ */
+export interface SubmissionOptions {
+  selectedToolIds?: string[];
+  experimental_attachments?: FileList;
+  body?: Record<string, any>;
+  debug_tool_selection?: boolean;
+}
+
+/**
  * Return type for the usePersistentChat hook
  */
 export interface UsePersistentChatReturn {
@@ -518,7 +528,7 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
 
     // Prepare the options for submission
     // We need to create a new options object that includes the selected tools
-    const submissionOptions = { ...options };
+    const submissionOptions = { ...options } as SubmissionOptions;
     
     // If tools are explicitly selected, add them to the options
     if (Array.isArray(selectedToolIds)) {

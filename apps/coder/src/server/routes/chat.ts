@@ -308,21 +308,72 @@ chatRoutes.post('/chat', async (c) => {
         
         // Try to fetch from settings repository, but with better error handling
         try {
-          // Import settings dynamically to avoid circular dependencies
-          // Use a safer try/catch approach to handle ESM vs CJS issues
+          // Import settings - with improved ESM/CJS compatibility
           let settingsRepository;
+          
+          // First try dynamic import for ESM modules
           try {
-            const settingsModule = require('@openagents/core');
-            settingsRepository = settingsModule.settingsRepository;
-          } catch (requireError) {
-            console.warn('[Server] Could not require @openagents/core directly:', requireError);
-            // If that failed, try alternative approaches
-            try {
-              const { settingsRepository: repo } = require('@openagents/core/src/db/repositories/settings-repository');
-              settingsRepository = repo;
-            } catch (e) {
-              console.warn('[Server] Alternative import also failed:', e);
+            console.log('[Server] Attempting to import settings repository using import()');
+            const importedModule = await import('@openagents/core');
+            if (importedModule && importedModule.settingsRepository) {
+              settingsRepository = importedModule.settingsRepository;
+              console.log('[Server] Successfully imported settingsRepository using import()');
             }
+          } catch (importError) {
+            console.warn('[Server] Import using import() failed:', importError instanceof Error ? importError.message : String(importError));
+            
+            // If dynamic import fails, try require as fallback (for CJS)
+            try {
+              console.log('[Server] Attempting to require settings repository');
+              // Use a path that works in both dev and production
+              const path = require('path');
+              const fs = require('fs');
+              
+              // First check if we can find the core package
+              const possibleCorePaths = [
+                path.resolve(process.cwd(), 'node_modules/@openagents/core'),
+                path.resolve(process.cwd(), '../core'),
+                path.resolve(process.cwd(), '../../packages/core'),
+              ];
+              
+              let corePath = '';
+              for (const p of possibleCorePaths) {
+                if (fs.existsSync(p)) {
+                  corePath = p;
+                  console.log(`[Server] Found core package at: ${p}`);
+                  break;
+                }
+              }
+              
+              if (corePath) {
+                // Try to require the settings repository directly
+                const settingsPath = path.join(corePath, 'src/db/repositories/settings-repository');
+                if (fs.existsSync(settingsPath + '.js') || fs.existsSync(settingsPath + '/index.js')) {
+                  // Safe dynamic require with type assertion
+                  const settingsModule: any = require(settingsPath);
+                  if (settingsModule && settingsModule.settingsRepository) {
+                    settingsRepository = settingsModule.settingsRepository;
+                  }
+                  console.log('[Server] Successfully required settingsRepository');
+                } else {
+                  console.warn(`[Server] Could not find settings repository at ${settingsPath}`);
+                }
+              }
+            } catch (requireError) {
+              console.warn('[Server] Require fallback also failed:', requireError instanceof Error ? requireError.message : String(requireError));
+            }
+          }
+          
+          // Last resort: create a simple in-memory implementation
+          if (!settingsRepository) {
+            console.log('[Server] Creating in-memory settings repository fallback');
+            // Simple in-memory implementation
+            const enabledTools = new Set(['shell_command']);
+            settingsRepository = {
+              getEnabledToolIds: async () => Array.from(enabledTools),
+              enableTool: async (id: string) => { enabledTools.add(id); return true; },
+              disableTool: async (id: string) => { enabledTools.delete(id); return true; }
+            };
           }
           
           if (settingsRepository && typeof settingsRepository.getEnabledToolIds === 'function') {
