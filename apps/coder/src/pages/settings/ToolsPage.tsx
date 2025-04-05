@@ -69,43 +69,69 @@ export default function ToolsPage() {
           console.error('[ToolsPage] Error initializing MCP clients:', initError);
         }
         
-        // Get MCP tools and clients
+        // Get MCP tools from the server API endpoint instead of directly
         let mcpTools = {};
         let clientInfoMap: Record<string, { id: string; name: string; tools?: string[] }> = {};
         
         try {
-          const mcpClientsInfo = getMCPClients();
-          const { allTools: mcpToolsList, clientTools, configs, clients } = mcpClientsInfo;
+          // First try to refresh tools on the server
+          console.log('[ToolsPage] Refreshing MCP tools from server API...');
+          try {
+            const refreshResponse = await fetch('/api/mcp/tools/refresh', {
+              method: 'POST',
+            });
+            
+            if (refreshResponse.ok) {
+              console.log('[ToolsPage] Server refresh successful');
+              // Wait a moment for tools to be fully updated
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+              console.warn('[ToolsPage] Tool refresh returned error:', await refreshResponse.text());
+            }
+          } catch (refreshError) {
+            console.warn('[ToolsPage] Error refreshing tools:', refreshError);
+          }
           
-          console.log('[ToolsPage] MCP Clients: ', {
-            clientsCount: Object.keys(clients).length,
-            toolsCount: Object.keys(mcpToolsList || {}).length,
-            clientToolsInfo: clientTools,
-            configsCount: Object.keys(configs).length
+          // Now fetch the tools through the API endpoint
+          console.log('[ToolsPage] Fetching MCP tools from server API...');
+          const response = await fetch('/api/mcp/tools');
+          if (!response.ok) {
+            throw new Error(`Failed to fetch MCP tools: ${response.status} ${response.statusText}`);
+          }
+          
+          // Parse the response to get tools and client info
+          const data = await response.json();
+          
+          if (data.error) {
+            throw new Error(`API returned error: ${data.error}`);
+          }
+          
+          // Extract tools and client info
+          mcpTools = data.tools || {};
+          clientInfoMap = data.clientInfo || {};
+          
+          console.log('[ToolsPage] MCP tools fetched successfully:', {
+            toolsCount: Object.keys(mcpTools).length,
+            clientsCount: Object.keys(clientInfoMap).length,
+            toolSample: Object.keys(mcpTools).slice(0, 5)
           });
           
-          mcpTools = mcpToolsList || {};
-          
-          // Create client info map for tracking which tools belong to which client
-          Object.entries(configs).forEach(([clientId, config]) => {
-            if (clientTools[clientId]) {
-              clientInfoMap[clientId] = {
-                id: clientId,
-                name: config.name,
-                tools: clientTools[clientId]
-              };
-              
-              console.log(`[ToolsPage] Client ${config.name} has ${clientTools[clientId].length} tools`);
+          // Log client information
+          Object.entries(clientInfoMap).forEach(([clientId, info]) => {
+            console.log(`[ToolsPage] Client ${info.name} has ${info.tools?.length || 0} tools`);
+            if (info.tools && info.tools.length > 0) {
+              console.log(`[ToolsPage] Tools for ${info.name}: ${info.tools.slice(0, 5).join(', ')}${info.tools.length > 5 ? '...' : ''}`);
             } else {
-              console.log(`[ToolsPage] Client ${config.name} has no tools registered`);
+              console.log(`[ToolsPage] Client ${info.name} has no tools registered`);
             }
           });
         } catch (error) {
-          console.error("Error fetching MCP tools:", error);
+          console.error("[ToolsPage] Error fetching MCP tools from API:", error);
         }
         
         // Combine with built-in tools
         const combinedTools = extendWithMCPTools(mcpTools, clientInfoMap);
+        console.log(`[ToolsPage] Combined ${Object.keys(mcpTools).length} MCP tools with ${TOOLS.length} built-in tools = ${combinedTools.length} total tools`);
         
         // Initialize expanded state for each provider
         const providerIds = Array.from(
@@ -207,43 +233,53 @@ export default function ToolsPage() {
     }
   };
 
-  // Function to refresh MCP tools
+  // Function to refresh MCP tools using the server API
   const refreshMCPTools = async () => {
     try {
       setIsRefreshing(true);
       
-      // Re-initalize MCP clients to fetch fresh tools
+      console.log('[ToolsPage] Refreshing MCP tools via API...');
+      
+      // Call the refresh API endpoint
       try {
-        // First reinitialize clients to ensure proper connection
-        console.log('[ToolsPage] Reinitializing all MCP clients...');
-        await reinitializeAllClients();
-        console.log('[ToolsPage] All MCP clients reinitialized');
+        const refreshResponse = await fetch('/api/mcp/tools/refresh', {
+          method: 'POST',
+        });
         
-        // Then refresh tools
-        console.log('[ToolsPage] Refreshing MCP tools...');
-        const tools = await refreshTools();
-        console.log('[ToolsPage] MCP tools refreshed, count:', Object.keys(tools).length);
+        if (!refreshResponse.ok) {
+          const errorText = await refreshResponse.text();
+          console.error('[ToolsPage] Server error response:', errorText);
+          throw new Error(`Failed to refresh MCP tools: ${refreshResponse.status} ${refreshResponse.statusText}`);
+        }
         
-        // Log current state
-        const mcpClients = getMCPClients();
-        console.log('[ToolsPage] Current MCP state:', {
-          clients: Object.keys(mcpClients.clients),
-          toolsCount: Object.keys(mcpClients.allTools).length,
-          clientTools: mcpClients.clientTools
+        // Parse the response to see what tools are available
+        const data = await refreshResponse.json();
+        console.log('[ToolsPage] MCP tools refresh response:', data);
+        
+        if (data.tools && Array.isArray(data.tools)) {
+          console.log(`[ToolsPage] Available tools after refresh: ${data.tools.length > 10 ? 
+            data.tools.slice(0, 10).join(', ') + '...' : 
+            data.tools.join(', ')}`);
+        }
+        
+        // Toggle refresh state to trigger re-fetch of tools
+        setIsRefreshing(prev => !prev);
+        
+        toast.success("MCP tools refreshed", {
+          description: `Successfully refreshed ${data.toolCount || 0} tools from MCP clients.`,
+          duration: 3000
         });
       } catch (error) {
-        console.error("Error refreshing MCP clients and tools:", error);
+        console.error("[ToolsPage] Error refreshing MCP tools:", error);
+        toast.error("Failed to refresh tools", {
+          description: error instanceof Error ? error.message : "There was a problem refreshing MCP tools.",
+          duration: 4000
+        });
+      } finally {
+        setIsRefreshing(false);
       }
-      
-      // Toggle refresh state to trigger re-fetch
-      setIsRefreshing(false);
-      
-      toast.success("MCP tools refreshed", {
-        description: "Successfully refreshed tools from MCP clients.",
-        duration: 3000
-      });
     } catch (error) {
-      console.error("Error refreshing MCP tools:", error);
+      console.error("Error in refreshMCPTools:", error);
       setIsRefreshing(false);
       
       toast.error("Failed to refresh tools", {

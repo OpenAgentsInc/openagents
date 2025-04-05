@@ -300,6 +300,12 @@ chatRoutes.post('/chat', async (c) => {
         // For server-side implementation, we need to respect the user's settings
         // rather than automatically including all MCP tools
         
+        // First, get all available MCP tools to use as a reference
+        const mcpTools = getMCPTools();
+        const allPossibleToolIds = ['shell_command', ...Object.keys(mcpTools)];
+        
+        console.log(`[Server] Found ${allPossibleToolIds.length} possible tools (1 built-in + ${Object.keys(mcpTools).length} MCP tools)`);
+        
         // Try to fetch from settings repository, but with better error handling
         try {
           // Import settings dynamically to avoid circular dependencies
@@ -326,6 +332,33 @@ chatRoutes.post('/chat', async (c) => {
             // If we got valid enabled IDs from settings, use those
             if (Array.isArray(enabledIds) && enabledIds.length > 0) {
               console.log('[Server] Using enabled tool IDs from settings:', enabledIds);
+              
+              // But include any new tools that weren't in settings yet
+              // This ensures new MCP tools show up even if the settings haven't been updated
+              const knownToolIds = new Set(enabledIds);
+              const missingTools = allPossibleToolIds.filter(id => !knownToolIds.has(id));
+              
+              if (missingTools.length > 0) {
+                console.log(`[Server] Adding ${missingTools.length} new tools that weren't in settings yet:`, missingTools);
+                
+                // Add missing tools to the settings repository if possible
+                if (typeof settingsRepository.enableTool === 'function') {
+                  try {
+                    for (const toolId of missingTools) {
+                      await settingsRepository.enableTool(toolId);
+                      console.log(`[Server] Auto-enabled new tool: ${toolId}`);
+                    }
+                  } catch (e) {
+                    console.warn('[Server] Error auto-enabling new tools:', e);
+                  }
+                }
+                
+                // Return the combined list
+                const combinedTools = [...enabledIds, ...missingTools];
+                console.log(`[Server] Using combined tool list with ${combinedTools.length} tools`);
+                return combinedTools;
+              }
+              
               return enabledIds;
             } else {
               console.log('[Server] No enabled tool IDs found in settings, using default');
@@ -337,17 +370,24 @@ chatRoutes.post('/chat', async (c) => {
           console.warn('[Server] Could not fetch tool IDs from settings repository:', settingsError);
         }
         
-        // At a minimum, always include shell_command if available
-        // Also include all MCP tools by default
-        const mcpTools = getMCPTools();
-        const allToolIds = ['shell_command', ...Object.keys(mcpTools)];
-        
-        console.log(`[Server] Using enhanced default tool set (${allToolIds.length} tools)`);
-        console.log(`[Server] Available tools: ${allToolIds.join(', ')}`);
-        return allToolIds;
+        // If we got here, either there were no enabled tools in settings or we couldn't access settings
+        // Include all available tools by default
+        console.log(`[Server] Using enhanced default tool set with all available tools (${allPossibleToolIds.length} tools)`);
+        console.log(`[Server] Available tools: ${allPossibleToolIds.join(', ')}`);
+        return allPossibleToolIds;
       } catch (error) {
         console.error("Error getting enabled tool IDs:", error);
-        return ['shell_command']; // Default fallback
+        
+        // Even in error case, try to get MCP tools
+        try {
+          const mcpTools = getMCPTools();
+          const fallbackTools = ['shell_command', ...Object.keys(mcpTools)];
+          console.log(`[Server] Using ${fallbackTools.length} tools as error fallback`);
+          return fallbackTools;
+        } catch (e) {
+          console.error("Error getting fallback tool list:", e);
+          return ['shell_command']; // Absolute minimum fallback
+        }
       }
     }
     
