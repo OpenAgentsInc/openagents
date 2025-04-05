@@ -531,6 +531,10 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
         selectedToolIds: selectedToolIds,
       };
       
+      console.log('[usePersistentChat] Chat request body updated with selected tools:', 
+        selectedToolIds,
+        'Current body:', currentOptions.body);
+      
       // Create a temporary useChat instance with the modified options
       vercelChatState.body = currentOptions.body;
     } else {

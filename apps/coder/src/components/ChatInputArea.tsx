@@ -32,9 +32,17 @@ export const ChatInputArea = memo(function ChatInputArea() {
     }
   }, [handleInputChange]);
 
-  // Handle tool selection changes
+  // Handle tool selection changes - enhanced with better logging and state updates
   const handleToolsChange = useCallback((toolIds: string[]) => {
+    console.log('[ChatInputArea] Tool selection changed:', toolIds);
+    // Make sure we update the local state
     setSelectedToolIds(toolIds);
+    // Store in session storage for debugging
+    try {
+      sessionStorage.setItem('selected_tool_ids', JSON.stringify(toolIds));
+    } catch (e) {
+      console.warn('[ChatInputArea] Failed to store selected tools in session storage:', e);
+    }
   }, []);
 
   // Memoize the submit handler to prevent recreation on every render
@@ -44,16 +52,28 @@ export const ChatInputArea = memo(function ChatInputArea() {
       return;
     }
     
+    // Get tools from session storage as a fallback
+    let toolsToUse = selectedToolIds;
+    try {
+      const storedTools = sessionStorage.getItem('selected_tool_ids');
+      if (storedTools && (!toolsToUse || toolsToUse.length === 0)) {
+        toolsToUse = JSON.parse(storedTools);
+        console.log('[ChatInputArea] Retrieved tools from session storage:', toolsToUse);
+      }
+    } catch (e) {
+      console.warn('[ChatInputArea] Error retrieving tools from session storage:', e);
+    }
+    
     // Include the selected tools in the submission
     const submissionOptions = {
       // Pass the tools that have been explicitly selected in the UI
       // The server should use these specific tool IDs rather than all available tools
-      selectedToolIds: selectedToolIds,
+      selectedToolIds: toolsToUse,
       // Add a debug flag to trace the tool selection issues
       debug_tool_selection: true
     };
     
-    console.log('[ChatInputArea] Submitting with explicitly selected tools:', selectedToolIds);
+    console.log('[ChatInputArea] Submitting with explicitly selected tools:', toolsToUse);
     
     handleSubmit(event, submissionOptions);
   }, [isModelAvailable, handleSubmit, selectedToolIds]);
@@ -126,10 +146,17 @@ export const ChatInputArea = memo(function ChatInputArea() {
       handleModelChange,
       isModelAvailable
     };
-  }, [input, isGenerating, isModelAvailable, placeholderText, selectedModelId, handleModelChange, stableOnChange, stableStop]);
+  }, [
+    input, isGenerating, isModelAvailable, placeholderText, 
+    selectedModelId, handleModelChange, stableOnChange, stableStop,
+    // Include selectedToolIds in the dependency array to ensure props update when tools change
+    selectedToolIds, handleToolsChange
+  ]);
 
-  // Wrap the MessageInput render function in useMemo to prevent rerenders during streaming
+  // Wrap the MessageInput render function in useCallback 
+  // It will now update whenever messageInputProps change, including tool selection changes
   const renderMessageInput = useCallback(({ files, setFiles }: { files: File[] | null, setFiles: React.Dispatch<React.SetStateAction<File[] | null>> }) => {
+    console.log('[ChatInputArea] Rendering MessageInput with tools:', selectedToolIds);
     return <MessageInput {...messageInputProps} />;
   }, [messageInputProps]);
 

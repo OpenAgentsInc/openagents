@@ -311,8 +311,11 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
               {handleToolsChange && (
                 <div className={cn("w-auto min-w-[100px] flex-shrink-0", !isModelAvailable && "opacity-70")}>
                   <ToolSelect 
-                    selectedToolIds={selectedToolIds} 
-                    onChange={handleToolsChange} 
+                    selectedToolIds={selectedToolIds || []} 
+                    onChange={(toolIds) => {
+                      console.log('[MessageInput] Tool selection changed:', toolIds);
+                      handleToolsChange(toolIds);
+                    }} 
                     disabled={!isModelAvailable}
                   />
                 </div>

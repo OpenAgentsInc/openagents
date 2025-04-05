@@ -151,26 +151,41 @@ chatRoutes.post('/chat', async (c) => {
     }
     
     // Filter tools based on user selection for this request
-    if (selectedToolIds.length > 0) {
-      console.log('[Server] Filtering tools based on explicit user selection:', selectedToolIds);
+    if (selectedToolIds && selectedToolIds.length > 0) {
+      console.log('===============================================================');
+      console.log(`[Server] 🔧 TOOL FILTERING ACTIVE - User selected ${selectedToolIds.length} specific tools:`);
+      console.log(`[Server] 🔧 Selected tools: ${JSON.stringify(selectedToolIds)}`);
+      console.log('===============================================================');
       
+      // Start with empty tools object
       const filteredTools: Record<string, any> = {};
+      
+      // Only include tools that were explicitly selected by the user
       for (const toolId of selectedToolIds) {
         if (combinedTools[toolId]) {
-          console.log(`[Server] Including selected tool: ${toolId}`);
+          console.log(`[Server] ✅ Including selected tool: ${toolId}`);
           filteredTools[toolId] = combinedTools[toolId];
         } else {
-          console.log(`[Server] Selected tool not available: ${toolId}`);
+          console.log(`[Server] ❌ Selected tool not available: ${toolId}`);
         }
       }
       
+      // Log which tools are being excluded
+      const excludedTools = Object.keys(combinedTools).filter(id => !selectedToolIds.includes(id));
+      if (excludedTools.length > 0) {
+        console.log(`[Server] 🚫 Excluding ${excludedTools.length} tools that were not selected:`);
+        console.log(`[Server] 🚫 Excluded tools: ${JSON.stringify(excludedTools)}`);
+      }
+      
       // This is the important part - ONLY use the tools explicitly selected by the user
-      // rather than all enabled tools
       combinedTools = filteredTools;
       
-      console.log(`[Server] Final tool selection: ${Object.keys(combinedTools).join(', ')}`);
+      console.log('===============================================================');
+      console.log(`[Server] 🔧 FINAL TOOL SELECTION: ${Object.keys(combinedTools).join(', ')}`);
+      console.log('===============================================================');
     } else {
       console.log('[Server] No specific tools selected by user, using all enabled tools');
+      console.log(`[Server] Available tools: ${Object.keys(combinedTools).join(', ')}`);
     }
     
     // Helper to get enabled tool IDs
