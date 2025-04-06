@@ -100,7 +100,7 @@ export function ToolCall({ toolInvocations }: ToolCallProps) {
   );
 
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div className="flex flex-col items-start gap-2 !font-mono">
       {toolInvocations.map((invocation, index) => {
         // Use the state arrays instead of individual useState hooks
         const isResultDialogOpen = resultDialogStates[index];
@@ -206,7 +206,7 @@ export function ToolCall({ toolInvocations }: ToolCallProps) {
                           View Parameters
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto !font-mono">
                         <DialogHeader>
                           <DialogTitle>Input Parameters</DialogTitle>
                           <DialogDescription>
