@@ -20,21 +20,35 @@ app.route('/api/chat', chatRoutes);
 // Mount MCP routes
 app.route('/api/mcp', mcpRoutes);
 
-// Proxy agent requests to the agent service
+// For WebSocket connections, the Vite proxy will handle these directly
+// This route is kept for HTTP requests that might still go through the server
 app.all('/agents/*', async (c) => {
+  // Check if this is a WebSocket request (the upgrade header will be present)
+  const upgradeHeader = c.req.header('upgrade')?.toLowerCase();
+  
+  if (upgradeHeader === 'websocket') {
+    // For WebSocket requests, return a response that will cause the client
+    // to attempt a direct connection, which will be handled by Vite proxy
+    return new Response('WebSocket connections should use the Vite proxy', { 
+      status: 426, // Upgrade Required status
+      headers: {
+        'Upgrade': 'WebSocket',
+      }
+    });
+  }
+  
+  // For regular HTTP requests, proxy to the agent service
   const url = new URL(c.req.url);
-  // Forward requests to the agent service
-  const agentServiceUrl = "https://agents.openagents.com" // process.env.AGENT_SERVICE_URL || 'http://localhost:8787';
+  const agentServiceUrl = "https://agents.openagents.com";
   const targetUrl = `${agentServiceUrl}${url.pathname}${url.search}`;
-
+  
   try {
     // Create headers object from Hono request
     const requestHeaders = new Headers();
-
+    
     // Extract headers from the raw request
-    // Headers in Hono might be accessed differently depending on which adapter is used
     const rawHeaders = c.req.raw.headers;
-
+    
     // Try different ways to access headers
     if (typeof rawHeaders.get === 'function') {
       // If it's a Headers-like object
@@ -47,7 +61,7 @@ app.all('/agents/*', async (c) => {
         if (value) requestHeaders.set(key, Array.isArray(value) ? value.join(', ') : String(value));
       });
     }
-
+    
     const response = await fetch(targetUrl, {
       method: c.req.method,
       headers: requestHeaders,

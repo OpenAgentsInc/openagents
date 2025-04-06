@@ -125,12 +125,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
-      // Proxy agents requests to the appropriate endpoint
+      // Proxy agents requests directly to the production server
       '/agents': {
-        target: 'http://localhost:3001',
+        target: 'https://agents.openagents.com',
         changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path, // Pass the path unchanged
+        secure: true,
+        ws: true, // Enable WebSocket proxying
       },
     },
   },
