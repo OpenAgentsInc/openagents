@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useCallback, useState, useRef, useMemo } from 'react';
-import { usePersistentChat, type UIMessage, createUserFriendlyErrorMessage } from '@openagents/core';
+import React, { createContext, useContext, useCallback, useState, useRef, useMemo, useEffect } from 'react';
+import { type UIMessage, createUserFriendlyErrorMessage, useAgentChat, createAgentRouterProvider } from '@openagents/core';
 import { useModelContext } from './ModelProvider';
 import { useApiKeyContext } from './ApiKeyProvider';
 import { showNetworkErrorToast } from '@/components/ui/NetworkErrorNotification';
+import { Link } from '@tanstack/react-router';
 
 // Create separate contexts for different parts of the state
 // This allows components to only rerender when the parts they care about change
@@ -78,11 +79,89 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
 }) => {
   const { selectedModelId } = useModelContext();
   const { apiKeys } = useApiKeyContext();
+  const [error, setError] = useState<Error | null>(null);
 
   // State to force ThreadList rerender when creating a new thread
   const [threadListKey, setThreadListKey] = useState(Date.now());
 
-  // Use the persistence layer with the correct configuration
+  // Create the agent router provider
+  const agentRouterProvider = useMemo(() => {
+    try {
+      if (!apiKeys?.openrouter) {
+        throw new Error('OpenRouter API key is required. Please add your API key in Settings.');
+      }
+      return createAgentRouterProvider(selectedModelId, apiKeys.openrouter, {
+        baseURL: '/api/openrouter'
+      });
+    } catch (e) {
+      setError(e as Error);
+      return null;
+    }
+  }, [selectedModelId, apiKeys?.openrouter]);
+
+  // Create empty contexts if there's an error
+  const emptyContexts = {
+    messages: [],
+    isGenerating: false,
+    input: '',
+    handleInputChange: () => { },
+    handleSubmit: () => { },
+    stop: () => { },
+    currentThreadId: null,
+    handleSelectThread: () => { },
+    handleCreateThread: async () => { },
+    handleDeleteThread: () => { },
+    handleRenameThread: () => { },
+    threadListKey: Date.now(),
+  };
+
+  // If there's an error or no provider, provide empty contexts but still render children
+  if (error || !agentRouterProvider) {
+    const messageContextValue = { messages: [], isGenerating: false };
+    const threadContextValue = {
+      currentThreadId: null,
+      handleSelectThread: () => { },
+      handleCreateThread: async () => { },
+      handleDeleteThread: () => { },
+      handleRenameThread: () => { },
+      threadListKey: Date.now(),
+    };
+    const inputContextValue = {
+      input: '',
+      handleInputChange: (value: string) => { },
+      handleSubmit: (event?: { preventDefault?: () => void }) => { event?.preventDefault?.(); },
+      stop: () => { },
+      isGenerating: false,
+    };
+    const chatStateContextValue = { ...messageContextValue, ...threadContextValue, ...inputContextValue };
+
+    return (
+      <MessageContext.Provider value={messageContextValue}>
+        <ThreadContext.Provider value={threadContextValue}>
+          <InputContext.Provider value={inputContextValue}>
+            <ChatStateContext.Provider value={chatStateContextValue}>
+              {children}
+              {error && (
+                <div className="flex flex-col items-center justify-center h-full p-4">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md">
+                    <h3 className="text-red-800 font-semibold mb-2">Configuration Error</h3>
+                    <p className="text-red-600">{error.message}</p>
+                    <div className="flex items-center justify-center mt-4">
+                      <Link to="/settings/models" className="bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                        Go to Settings
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </ChatStateContext.Provider>
+          </InputContext.Provider>
+        </ThreadContext.Provider>
+      </MessageContext.Provider>
+    );
+  }
+
+  // Use our new agent chat hook
   const {
     messages,
     input,
@@ -97,7 +176,8 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     updateThread,
     append,
     setMessages,
-  } = usePersistentChat({
+  } = useAgentChat({
+    agentRouterProvider,
     // Use relative URL to work with any port (will be proxied if needed)
     api: `/api/chat`,
     // Configuration that we know works
@@ -109,8 +189,6 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
       // Include API keys from settings
       apiKeys: Object.keys(apiKeys).length > 0 ? apiKeys : undefined,
     },
-    // Log the request payload for debugging without onRequest
-
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'text/event-stream',
@@ -121,45 +199,10 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
     maxSteps: 50,
 
     // Handle errors from the AI SDK hook itself
-    // Remove the stream error handler since it's not working correctly
-
-    onError: (error) => {
-      // Log the complete error for debugging
+    onError: (error: Error) => {
       console.error('Chat hook onError:', error);
 
-      // Detailed error logging to diagnose the issue
-      console.log("%c COMPLETE RAW ERROR:", "background: red; color: white; font-size: 20px");
-      console.log(error);
-
-      if (error instanceof Error) {
-        console.log("%c ERROR MESSAGE:", "background: red; color: white");
-        console.log(error.message);
-        console.log("%c ERROR STACK:", "background: red; color: white");
-        console.log(error.stack);
-
-        console.log("%c ERROR CAUSE:", "background: red; color: white");
-        console.log((error as any).cause);
-
-        console.log("%c ERROR CODE:", "background: red; color: white");
-        console.log((error as any).code);
-
-        // Try to get ALL properties
-        console.log("%c ALL ERROR PROPERTIES:", "background: red; color: white");
-        console.log(Object.getOwnPropertyNames(error).map(prop => ({
-          property: prop,
-          value: (error as any)[prop]
-        })));
-      }
-
-      // CRITICAL: Don't use append in onError because it can trigger another error and cause infinite loops
-      // Instead, use direct state manipulation which is safe and won't trigger API calls
-
-      // Special handling for network issues
-      if (error instanceof Error && error.message === 'Failed to fetch') {
-        console.log("%c NETWORK ERROR DETECTED:", "background: red; color: white");
-        console.log("This is likely a network connectivity issue with the local API server");
-
-        // Create a more descriptive error message for the user
+      if (error.message === 'Failed to fetch') {
         const networkErrorMessage: UIMessage = {
           id: `error-${Date.now()}`,
           role: 'system',
@@ -170,579 +213,132 @@ export const ChatStateProvider: React.FC<ChatStateProviderProps> = ({
             type: 'text',
             text: "⚠️ Network Error: Unable to connect to AI service. Please check your network connection and try again."
           }]
-          // Remove isError as it's not in the UIMessage type
         };
 
-        // Show a toast notification to help the user
         showNetworkErrorToast(() => {
-          // Retry function logic would go here
           console.log("User requested connection retry");
         });
 
-        // Use direct state manipulation to avoid network calls
-        // Get current messages and append the network error message
         const currentMessages = [...messages, networkErrorMessage];
         setMessages(currentMessages);
         return;
       }
 
-      // Skip error handling for errors coming from append() itself to break the loop
-      if (error instanceof Error && error.message &&
-        (error.message.includes('append error') ||
-          error.stack?.includes('append'))) {
-        console.warn("Skipping recursive error handling to prevent infinite loop");
-        return;
-      }
+      // Create user-friendly error message
+      const userFriendlyError = createUserFriendlyErrorMessage(error);
+      const errorMessage: UIMessage = {
+        id: `error-${Date.now()}`,
+        role: 'system',
+        content: userFriendlyError,
+        createdAt: new Date(),
+        threadId: currentThreadId || undefined,
+        parts: [{
+          type: 'text',
+          text: userFriendlyError
+        }]
+      };
 
-      // Very simplified approach - just detect tool errors
-      let isToolError = error instanceof Error &&
-        (error.message.includes('Error executing tool') ||
-          (error.stack && error.stack.includes('Error executing tool')) ||
-          error.message.includes('Authentication Failed') ||
-          (error.stack && error.stack.includes('Authentication Failed')));
-
-      // Get user-friendly error message using utility function
-      // FINAL APPROACH: Just use the raw error message
-      // For context overflow errors or TypeValidationError, show the exact message
-      let userFriendlyError = "";
-
-      // CRITICAL: Check for AI_ToolExecutionError specifically
-      if ((error as any)?.name === 'AI_ToolExecutionError' ||
-        (error as any)?.cause?.name === 'MCPClientError') {
-        console.log("DETECTED DIRECT TOOL EXECUTION ERROR - HIGH PRIORITY");
-
-        // If it's a direct tool execution error, get the message directly
-        if ((error as any).message && (error as any).message.includes('Error executing tool')) {
-          userFriendlyError = (error as any).message;
-          console.log("USING DIRECT TOOL ERROR MESSAGE:", userFriendlyError);
-          // Continue to next part of function to format and display the error
-        }
-        else if ((error as any).cause?.message) {
-          userFriendlyError = (error as any).cause.message;
-          if (!userFriendlyError.includes('Error executing tool')) {
-            userFriendlyError = "Error executing tool: " + userFriendlyError;
-          }
-          console.log("USING CAUSE MESSAGE FOR TOOL ERROR:", userFriendlyError);
-          // Continue to next part of function to format and display the error
-        }
-      }
-
-      console.log("HANDLING ERROR:", error);
-
-      if (error instanceof Error) {
-        // First check for our custom isToolExecutionError property
-        if ((error as any).isToolExecutionError === true) {
-          console.log("CLIENT: DETECTED TOOL EXECUTION ERROR VIA CUSTOM PROPERTY");
-          userFriendlyError = error.message;
-          console.log("CLIENT: USING TOOL EXECUTION ERROR WITH CUSTOM PROPERTY:", userFriendlyError);
-        }
-        // Check for the special symbol that marks this as an AI_ToolExecutionError
-        else if (Object.getOwnPropertySymbols(error).some(sym =>
-          String(sym) === 'Symbol(vercel.ai.error.AI_ToolExecutionError)')) {
-          console.log("CLIENT: DETECTED AI_TOOL_EXECUTION_ERROR VIA SYMBOL");
-
-          // Directly use the message as it's the most reliable
-          userFriendlyError = error.message;
-          console.log("CLIENT: USING AI_TOOL_EXECUTION_ERROR MESSAGE:", userFriendlyError);
-        }
-        // Check if the error message directly contains tool execution error
-        else if (error.message && (
-          error.message.includes('Error executing tool') ||
-          error.message.includes('AI_ToolExecutionError') ||
-          error.message.includes('Authentication Failed')
-        )) {
-          console.log("CLIENT: DETECTED TOOL EXECUTION ERROR IN MESSAGE");
-          userFriendlyError = error.message;
-          console.log("CLIENT: USING DIRECT TOOL ERROR MESSAGE:", userFriendlyError);
-        }
-        // Check if the error stack includes tool execution error
-        else if (error.stack && (
-          error.stack.includes('Error executing tool') ||
-          error.stack.includes('AI_ToolExecutionError') ||
-          error.stack.includes('Authentication Failed')
-        )) {
-          // Extract the actual error message from the stack trace
-          console.log("CLIENT: DETECTED TOOL EXECUTION ERROR IN STACK");
-          const toolErrorMatch = error.stack.match(/Error executing tool[^:]*:(.*?)(\n|$)/);
-          if (toolErrorMatch && toolErrorMatch[1]) {
-            userFriendlyError = `Error executing tool${toolErrorMatch[1]}`;
-            console.log("CLIENT: EXTRACTED TOOL ERROR:", userFriendlyError);
-          } else {
-            // If we can't extract it, use what we have
-            userFriendlyError = error.message;
-            console.log("CLIENT: USING ERROR MESSAGE FOR TOOL ERROR:", userFriendlyError);
-          }
-        }
-        // Generic error message case - try to extract tool execution error
-        else if (error.message === "An error occurred." || error.message === "An error occurred") {
-          console.log("CLIENT: DETECTED GENERIC ERROR MESSAGE - CHECKING FOR TOOL ERROR IN CAUSE");
-
-          // Get the raw error object properties
-          const errorProps = Object.getOwnPropertyNames(error).map(prop => ({
-            property: prop,
-            value: (error as any)[prop]
-          }));
-
-          // Check if we have a actual tool execution error in any of the properties
-          // First look for the common patterns in all properties
-          let foundToolError = false;
-
-          // Check all properties for tool execution errors
-          for (const prop of errorProps) {
-            const value = prop.value;
-            if (typeof value === 'string' && (
-              value.includes('Error executing tool') ||
-              value.includes('Authentication Failed') ||
-              value.includes('Bad credentials'))) {
-              userFriendlyError = value;
-              console.log(`CLIENT: FOUND TOOL ERROR IN PROPERTY ${prop.property}:`, userFriendlyError);
-              foundToolError = true;
-              break;
-            }
-          }
-
-          // If not found, check for AI_ToolExecutionError in the cause
-          if (!foundToolError && (error as any).cause) {
-            const cause = (error as any).cause;
-
-            // Check if cause has message with tool error
-            if (cause.message && (
-              cause.message.includes('Error executing tool') ||
-              cause.message.includes('Authentication Failed') ||
-              cause.message.includes('Bad credentials'))) {
-              userFriendlyError = cause.message;
-              console.log("CLIENT: FOUND TOOL ERROR IN CAUSE.MESSAGE:", userFriendlyError);
-              foundToolError = true;
-            }
-            // Check if cause stack has tool error
-            else if (cause.stack && (
-              cause.stack.includes('Error executing tool') ||
-              cause.stack.includes('Authentication Failed') ||
-              cause.stack.includes('Bad credentials'))) {
-              // Try to extract the actual error from the stack trace
-              const match = cause.stack.match(/(Error executing tool[^:\n]+(:[^\n]+))/i);
-              if (match && match[1]) {
-                userFriendlyError = match[1];
-                console.log("CLIENT: EXTRACTED TOOL ERROR FROM CAUSE.STACK:", userFriendlyError);
-                foundToolError = true;
-              }
-            }
-          }
-
-          // If we didn't find a better error, use the original
-          if (!foundToolError) {
-            // CRITICAL FIX: Override the generic message with a better one for this specific error
-            if (error.message === "An error occurred." || error.message === "An error occurred") {
-              userFriendlyError = "Error executing tool: Authentication Failed: Bad credentials";
-              console.log("CLIENT: USING DEFAULT TOOL ERROR MESSAGE:", userFriendlyError);
-            } else {
-              userFriendlyError = error.message;
-              console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
-            }
-          }
-
-          // Try to extract a better error message from potential sources
-          const cause = (error as any).cause;
-          const data = (error as any).data;
-          const detail = (error as any).detail;
-          const errorData = (error as any).errorData;
-
-          // Check if we have a cause with better info
-          if (cause) {
-            console.log("CLIENT: FOUND CAUSE - TYPE:", typeof cause);
-
-            // Handle different cause types
-            if (typeof cause === 'object') {
-              // MCPClientError case
-              if (cause.name === 'MCPClientError' && cause.message) {
-                userFriendlyError = "Error executing tool: " + cause.message;
-                console.log("CLIENT: EXTRACTED MCP CLIENT ERROR MESSAGE:", userFriendlyError);
-              }
-              // General error with message
-              else if (cause.message) {
-                userFriendlyError = cause.message;
-                console.log("CLIENT: EXTRACTED CAUSE MESSAGE:", userFriendlyError);
-              }
-              // Check for nested cause
-              else if (cause.cause && typeof cause.cause === 'object' && cause.cause.message) {
-                userFriendlyError = cause.cause.message;
-                console.log("CLIENT: EXTRACTED NESTED CAUSE MESSAGE:", userFriendlyError);
-              }
-              // Last resort for object causes - stringify
-              else {
-                userFriendlyError = "Error executing tool: " + JSON.stringify(cause);
-                console.log("CLIENT: USING STRINGIFIED CAUSE:", userFriendlyError);
-              }
-            }
-            // String cause
-            else if (typeof cause === 'string') {
-              userFriendlyError = cause;
-              console.log("CLIENT: USING STRING CAUSE:", userFriendlyError);
-            }
-          }
-          // Check if we have detailed error info
-          else if (errorData) {
-            userFriendlyError = typeof errorData === 'string' ? errorData : JSON.stringify(errorData);
-            console.log("CLIENT: EXTRACTED ERROR DATA:", userFriendlyError);
-          }
-          // Check for HTTP error details
-          else if (detail) {
-            userFriendlyError = typeof detail === 'string' ? detail : JSON.stringify(detail);
-            console.log("CLIENT: EXTRACTED ERROR DETAIL:", userFriendlyError);
-          }
-          // Check for response data
-          else if (data) {
-            userFriendlyError = typeof data === 'string' ? data : JSON.stringify(data);
-            console.log("CLIENT: EXTRACTED ERROR RESPONSE DATA:", userFriendlyError);
-          }
-          // Try to extract from the stack trace - look for tool execution errors
-          else if (error.stack) {
-            const toolErrorMatch = error.stack.match(/Error executing tool[^:\n]+(:[^\n]+)/i);
-            if (toolErrorMatch && toolErrorMatch[1]) {
-              userFriendlyError = `Error executing tool${toolErrorMatch[1]}`;
-              console.log("CLIENT: EXTRACTED TOOL ERROR FROM STACK:", userFriendlyError);
-            } else {
-              // Just use the original message if nothing better is found
-              userFriendlyError = error.message;
-              console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
-            }
-          } else {
-            // Just use the original message if nothing better is found
-            userFriendlyError = error.message;
-            console.log("CLIENT: USING ORIGINAL ERROR MESSAGE:", userFriendlyError);
-          }
-        }
-        // Special case for AI_TypeValidationError with context overflow
-        else if (error.message.includes('AI_TypeValidationError') &&
-          (error.message.includes('context the overflows') || error.message.includes('context length of only'))) {
-
-          console.log("DETECTED TYPE VALIDATION ERROR WITH CONTEXT OVERFLOW");
-
-          // Extract from quotes the actual error message
-          const matches = error.message.match(/Type validation failed: Value: "([^"]+)"/);
-          if (matches && matches[1]) {
-            userFriendlyError = matches[1];
-            console.log("EXTRACTED CONTEXT OVERFLOW ERROR:", userFriendlyError);
-          } else {
-            // If we can't extract it, just use the raw message
-            userFriendlyError = error.message;
-          }
-        }
-        // Any context overflow error (non-TypeValidation)
-        else if (error.message.includes('context the overflows') || error.message.includes('context length of only')) {
-          userFriendlyError = error.message;
-        }
-        // Any AI_TypeValidationError
-        else if (error.message.includes('AI_TypeValidationError')) {
-          userFriendlyError = error.message;
-        }
-        // Default case - fallback to the utility
-        else {
-          userFriendlyError = error.message;
-        }
-      } else {
-        // For non-Error objects, convert to string
-        userFriendlyError = String(error);
-      }
-
-      try {
-        // Skip processing if error is undefined or not an expected type
-        if (!userFriendlyError) {
-          console.warn("Empty error message, skipping error handling");
-          return;
-        }
-
-        // If we have a generic error, always use our hardcoded error
-        if (userFriendlyError === "An error occurred." || userFriendlyError === "An error occurred") {
-          userFriendlyError = "Error executing tool: Authentication Failed: Bad credentials";
-          console.log("OVERRIDING GENERIC ERROR WITH TOOL ERROR:", userFriendlyError);
-          isToolError = true;
-        }
-
-        // FINAL FIX - For context overflow errors, show the exact raw message - WITHOUT ANY PREFIX
-        let errorContent;
-
-        console.log("FORMATTING CLIENT-SIDE ERROR:", userFriendlyError);
-
-        // Handle tool execution errors and authentication errors - show them exactly as received
-        if (userFriendlyError && (
-          userFriendlyError.includes('Error executing tool') ||
-          userFriendlyError.includes('Authentication Failed') ||
-          userFriendlyError.includes('Bad credentials') ||
-          userFriendlyError.includes('AI_ToolExecutionError')
-        )) {
-          console.log("DETECTED TOOL EXECUTION ERROR:", userFriendlyError);
-          // Show the exact error message without modification
-          errorContent = userFriendlyError;
-        }
-        // Check for context overflow errors - IMPORTANT: No prefix for these!
-        else if (userFriendlyError && (
-          userFriendlyError.includes('context the overflows') ||
-          userFriendlyError.includes('Trying to keep the first') ||
-          userFriendlyError.includes('context length of only')
-        )) {
-          // CRITICAL: Do not add any prefixes to context overflow errors
-          console.log("USING RAW CONTEXT OVERFLOW ERROR FROM SERVER:", userFriendlyError);
-          errorContent = userFriendlyError;
-        }
-        // For TypeValidationError with context overflow, extract the message
-        else if (userFriendlyError && userFriendlyError.includes('AI_TypeValidationError') &&
-          (userFriendlyError.includes('context the overflows') ||
-            userFriendlyError.includes('context length of only'))) {
-          // Extract the part inside quotes if possible
-          const match = userFriendlyError.match(/Value: "([^"]+)"/);
-          if (match && match[1]) {
-            errorContent = match[1];
-            console.log("EXTRACTED CLIENT VALIDATION ERROR:", errorContent);
-          } else {
-            errorContent = userFriendlyError;
-          }
-        }
-        // Handle streaming parse errors
-        else if (userFriendlyError && userFriendlyError.includes('Failed to parse stream string. Invalid code data.')) {
-          errorContent = "Error: No response from LLM. Check your API key.";
-          console.log("REPLACED STREAM PARSING ERROR WITH FRIENDLY MESSAGE");
-        }
-        // Other TypeValidationError errors
-        else if (userFriendlyError && userFriendlyError.includes('AI_TypeValidationError')) {
-          errorContent = userFriendlyError;
-        }
-        // Catch specific authentication errors
-        else if (userFriendlyError && userFriendlyError.includes('Authentication Failed: Bad credentials')) {
-          console.log("DETECTED AUTHENTICATION ERROR:", userFriendlyError);
-          errorContent = userFriendlyError;
-        }
-        else {
-          // Normal error formatting with prefix - but avoid adding redundant prefixes
-          if (userFriendlyError.startsWith('Error') ||
-            userFriendlyError.startsWith('⚠️') ||
-            userFriendlyError.startsWith('MODEL_ERROR')) {
-            // Don't add a prefix if one already exists
-            errorContent = userFriendlyError;
-            console.log("USING ERROR AS-IS (ALREADY HAS PREFIX):", userFriendlyError);
-          } else {
-            // Add a prefix for errors that don't have one
-            errorContent = `⚠️ Error: ${userFriendlyError}`;
-            console.log("ADDING PREFIX TO ERROR:", errorContent);
-          }
-        }
-
-        // Set a flag to directly mark this as a tool error if it contains our hardcoded tool error
-        const forcedToolError = userFriendlyError.includes("Error executing tool: Authentication Failed: Bad credentials");
-
-        // Create a new error message with parts to match UIMessage type
-        const errorSystemMessage = {
-          id: `error-${Date.now()}`,
-          role: 'system' as const,
-          content: errorContent,
-          createdAt: new Date(),
-          threadId: currentThreadId,
-          parts: [{ type: 'text' as const, text: errorContent }],
-          // Mark as an error if it's a tool execution error or contains authentication errors or is our forced tool error
-          isError: forcedToolError ||
-            errorContent.includes('Error executing tool') ||
-            errorContent.includes('Authentication Failed') ||
-            errorContent.includes('Bad credentials')
-        };
-
-        // Ultra simplified approach - just check if we have messages and add the error
-        if (Array.isArray(messages)) {
-          // Make a deep copy to ensure we don't lose any existing messages
-          const existingMessages = messages.map(msg => ({ ...msg }));
-
-          // Always add as a new message, never replace existing ones
-          const updatedMessages = [...existingMessages, errorSystemMessage];
-
-          console.log("APPENDING ERROR MESSAGE", {
-            isToolError,
-            errorContent,
-            existingMessageCount: existingMessages.length,
-            updatedCount: updatedMessages.length
-          });
-
-          // Double-check that we're not losing messages
-          if (updatedMessages.length > 0) {
-            console.log("CURRENT THREAD ID:", currentThreadId);
-            console.log("MESSAGES BEFORE UPDATE:", messages.map(m => ({ id: m.id, threadId: m.threadId })));
-            console.log("UPDATED MESSAGES:", updatedMessages.map(m => ({ id: m.id, threadId: m.threadId })));
-
-            // Use the most basic approach possible
-            try {
-              // Most basic approach - just directly append the error and hope for the best
-              console.log("APPENDING ERROR MESSAGE DIRECTLY");
-              append({
-                id: `error-${Date.now()}`,
-                role: 'system',
-                content: errorContent,
-                threadId: currentThreadId || undefined,
-                parts: [{ type: 'text', text: errorContent }]
-              });
-            } catch (err) {
-              console.error("Error appending error message:", err);
-              // As a fallback, try to use setMessages
-              try {
-                setMessages([...messages, errorSystemMessage]);
-              } catch (innerErr) {
-                console.error("Double error in error handler:", innerErr);
-              }
-            }
-          } else {
-            console.error("ERROR: Updated messages array is empty, not updating to avoid losing history");
-          }
-        } else {
-          // If messages somehow isn't an array, create a new array with just the error
-          console.warn("Messages was not an array when trying to add error message");
-          setMessages([errorSystemMessage]);
-        }
-
-      } catch (err) {
-        // Last resort - if we get an error trying to show an error, just log it
-        console.error("Critical error in error handler:", err);
-      }
+      const currentMessages = [...messages, errorMessage];
+      setMessages(currentMessages);
     }
   });
 
-  const handleCreateThread = useCallback(async (): Promise<void> => {
-    try {
-      // First update the key to force an immediate re-render of ThreadList
-      setThreadListKey(Date.now());
+  // Debug logging for useAgentChat state
+  useEffect(() => {
+    console.log('[ChatStateProvider] Current messages:', messages);
+    console.log('[ChatStateProvider] Current thread ID:', currentThreadId);
+    console.log('[ChatStateProvider] Is generating:', isGenerating);
+  }, [messages, currentThreadId, isGenerating]);
 
-      const thread = await createNewThread();
-
-      // Dispatch a custom event to focus the input
-      window.dispatchEvent(
-        new CustomEvent('new-chat', { detail: { fromButton: true, threadId: thread.id } })
-      );
-
-      // Force another update after thread creation
-      setThreadListKey(Date.now());
-
-      // No return value (void) to match the expected type signature
-    } catch (error) {
-      console.error("Failed to create new thread:", error);
-
-      // Check if this is a database error
-      if (error instanceof Error) {
-        // Check for DB9 error (ignoreDuplicate in production)
-        if (typeof error === 'object' && 'code' in error && error.code === 'DB9') {
-          // Dispatch a database error event
-          window.dispatchEvent(new CustomEvent('database-error', {
-            detail: { error }
-          }));
-
-          // Show a nicer error than alert
-          import('@/components/ui/database-error-notification').then(module => {
-            const { showDatabaseErrorToast } = module;
-            showDatabaseErrorToast(error);
-          });
-        } else {
-          // For other errors, show a simpler message
-          import('sonner').then(({ toast }) => {
-            toast.error("Database Error", {
-              description: "Could not create a new thread. Try again or check the debug console.",
-              action: {
-                label: "Debug Console",
-                onClick: () => window.location.href = '/settings/debug'
-              }
-            });
-          });
-        }
-      } else {
-        // Fallback to alert for non-Error objects
-        alert("Could not create a new thread. Database may be initializing. Please try again.");
-      }
-
-      throw error;
-    }
-  }, [createNewThread]);
-
+  // Thread management handlers
   const handleSelectThread = useCallback((threadId: string) => {
     switchThread(threadId);
   }, [switchThread]);
 
-  const handleDeleteThread = useCallback((threadId: string) => {
-    // Call the delete function from usePersistentChat
-    deleteThread(threadId).catch(error => {
-      console.error('Failed to delete thread:', error);
-    });
+  const handleCreateThread = useCallback(async () => {
+    await createNewThread();
+    setThreadListKey(Date.now());
+  }, [createNewThread]);
+
+  const handleDeleteThread = useCallback(async (threadId: string) => {
+    await deleteThread(threadId);
+    setThreadListKey(Date.now());
   }, [deleteThread]);
 
-  const handleRenameThread = useCallback((threadId: string, title: string) => {
-    updateThread(threadId, title).catch(error => {
-      console.error('Failed to rename thread:', error);
-    });
+  const handleRenameThread = useCallback(async (threadId: string, title: string) => {
+    await updateThread(threadId, title);
+    setThreadListKey(Date.now());
   }, [updateThread]);
 
-  // Process messages in a very simple way to prevent cascading rerenders
-  // This function should not do heavy processing - it's only for the main provider
-  const processedMessages = React.useMemo(() => {
-    // Add logging to see what messages we're processing
-    // console.log("PROCESSING MESSAGES FOR DISPLAY", {
-    //   count: messages.length,
-    //   ids: messages.map(m => m.id).join(',')
-    // });
+  // Create a wrapper for handleInputChange to match the expected type
+  const handleInputChangeWrapper = useCallback((value: string) => {
+    console.log('[ChatStateProvider] Input changed:', value);
+    handleInputChange({ target: { value } } as React.ChangeEvent<HTMLTextAreaElement>);
+  }, [handleInputChange]);
 
-    return messages.map(msg => ({
-      ...msg,
-      parts: msg.parts || [{
-        type: 'text' as const,
-        text: msg.content
-      }]
-    }));
-  }, [messages]);
+  // Create a wrapper for handleSubmit to prevent page refresh
+  const handleSubmitWrapper = useCallback((
+    event?: { preventDefault?: () => void },
+    options?: { experimental_attachments?: FileList }
+  ) => {
+    console.log('[ChatStateProvider] Submitting with options:', options);
+    console.log('[ChatStateProvider] Current input state:', input);
+    console.log('[ChatStateProvider] Current messages:', messages);
+    event?.preventDefault?.();
+    console.log('[ChatStateProvider] Calling handleSubmit from useAgentChat');
+    const result = handleSubmit(event, options);
+    console.log('[ChatStateProvider] handleSubmit result:', result);
+    return result;
+  }, [handleSubmit, input, messages]);
 
-  // Type-safe handleInputChange wrapper that adapts to the expected signature
-  const typeSafeHandleInputChange = (value: string) => {
-    // Create a synthetic event that mimics a change event
-    const syntheticEvent = {
-      target: { value }
-    } as React.ChangeEvent<HTMLTextAreaElement>;
+  // Create the separate context values
+  const messageContextValue = useMemo(() => {
+    console.log('[ChatStateProvider] Creating message context with:', { messages, isGenerating });
+    return {
+      messages,
+      isGenerating,
+    };
+  }, [messages, isGenerating]);
 
-    handleInputChange(syntheticEvent);
-  };
+  const threadContextValue = useMemo(() => {
+    console.log('[ChatStateProvider] Creating thread context with:', { currentThreadId });
+    return {
+      currentThreadId: currentThreadId || null,
+      handleSelectThread,
+      handleCreateThread,
+      handleDeleteThread,
+      handleRenameThread,
+      threadListKey,
+    };
+  }, [currentThreadId, handleSelectThread, handleCreateThread, handleDeleteThread, handleRenameThread, threadListKey]);
 
-  // Memoize context values to prevent unnecessary rerenders
-  // 1. Message context - will update during streaming
-  const messageContextValue = useMemo(() => ({
-    messages: processedMessages,
-    isGenerating
-  }), [processedMessages, isGenerating]);
+  const inputContextValue = useMemo(() => {
+    console.log('[ChatStateProvider] Creating input context with:', { input, isGenerating });
+    return {
+      input,
+      handleInputChange: handleInputChangeWrapper,
+      handleSubmit: handleSubmitWrapper,
+      stop,
+      isGenerating,
+    };
+  }, [input, handleInputChangeWrapper, handleSubmitWrapper, stop, isGenerating]);
 
-  // 2. Thread context - should not update during streaming
-  const threadContextValue = useMemo(() => ({
-    currentThreadId: currentThreadId || null,
-    handleSelectThread,
-    handleCreateThread,
-    handleDeleteThread,
-    handleRenameThread,
-    threadListKey
-  }), [currentThreadId, handleSelectThread, handleCreateThread, handleDeleteThread, handleRenameThread, threadListKey]);
-
-  // 3. Input context - should not update during streaming
-  const inputContextValue = useMemo(() => ({
-    input,
-    handleInputChange: typeSafeHandleInputChange,
-    handleSubmit,
-    stop,
-    isGenerating
-  }), [input, typeSafeHandleInputChange, handleSubmit, stop, isGenerating]);
-
-  // Combined legacy context for backward compatibility
-  const legacyContextValue = useMemo(() => ({
+  // Legacy combined context value
+  const chatStateContextValue = useMemo(() => ({
     ...messageContextValue,
     ...threadContextValue,
-    ...inputContextValue
+    ...inputContextValue,
   }), [messageContextValue, threadContextValue, inputContextValue]);
 
   return (
-    <ThreadContext.Provider value={threadContextValue}>
-      <InputContext.Provider value={inputContextValue}>
-        <MessageContext.Provider value={messageContextValue}>
-          <ChatStateContext.Provider value={legacyContextValue}>
+    <MessageContext.Provider value={messageContextValue}>
+      <ThreadContext.Provider value={threadContextValue}>
+        <InputContext.Provider value={inputContextValue}>
+          <ChatStateContext.Provider value={chatStateContextValue}>
             {children}
           </ChatStateContext.Provider>
-        </MessageContext.Provider>
-      </InputContext.Provider>
-    </ThreadContext.Provider>
+        </InputContext.Provider>
+      </ThreadContext.Provider>
+    </MessageContext.Provider>
   );
 };

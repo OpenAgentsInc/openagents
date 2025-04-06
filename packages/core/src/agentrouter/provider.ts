@@ -1,18 +1,27 @@
 /**
- * OpenRouter provider implementation
+ * Agent Router provider implementation using OpenRouter
  */
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { Provider } from './index';
+import { LanguageModel } from 'ai';
+
+export interface AgentRouterProvider {
+  id: string;
+  name: string;
+  model: LanguageModel;
+  headers: Record<string, string>;
+  contextWindowSize: number;
+  supportsTools: boolean;
+}
 
 /**
- * Create an OpenRouter provider
+ * Create an Agent Router provider using OpenRouter
  */
-export function createOpenRouterProvider(
+export function createAgentRouterProvider(
   modelId: string,
   apiKey: string,
   options: Record<string, any> = {}
-): Provider {
+): AgentRouterProvider {
   if (!apiKey) {
     throw new Error('OpenRouter API key is required');
   }
@@ -23,18 +32,15 @@ export function createOpenRouterProvider(
     baseURL: options.baseURL || "https://openrouter.ai/api/v1"
   });
 
-  // Set headers for OpenRouter - important for authentication and usage tracking
+  // Set headers for OpenRouter
   const headers = {
     'Authorization': `Bearer ${apiKey}`,
     'HTTP-Referer': 'https://openagents.com',
-    'X-Title': 'OpenAgents Coder'
+    'X-Title': 'OpenAgents Router'
   };
 
-  // Try to determine context window size from model ID
-  // This is approximate and should ideally be fetched from OpenRouter's API
-  let contextWindowSize = 8192; // Default for most models
-
-  // Adjust context window size based on recognized models
+  // Determine context window size from model ID
+  let contextWindowSize = 8192; // Default
   if (modelId.includes('claude-3')) {
     if (modelId.includes('opus')) {
       contextWindowSize = 200000;
@@ -43,7 +49,7 @@ export function createOpenRouterProvider(
     } else if (modelId.includes('haiku')) {
       contextWindowSize = 48000;
     }
-  } else if (modelId.includes('claude-2') || modelId.includes('claude-instant')) {
+  } else if (modelId.includes('claude-2')) {
     contextWindowSize = 100000;
   } else if (modelId.includes('gpt-4-turbo')) {
     contextWindowSize = 128000;
@@ -55,24 +61,14 @@ export function createOpenRouterProvider(
     contextWindowSize = 32000;
   }
 
-  // Try to determine if the model supports tools
-  // This is approximate and should ideally be fetched from OpenRouter's API
-  // const supportsTools =
-  //   modelId.includes('claude-3') ||
-  //   modelId.includes('gpt-4') ||
-  //   modelId.includes('gpt-3.5-turbo') ||
-  //   modelId.includes('mistral-large') ||
-  //   modelId.includes('claude-2.1') ||
-  //   modelId.includes('gemini');
-
-  const supportsTools = true;
+  const model = openRouter(modelId) as unknown as LanguageModel;
 
   return {
     id: modelId,
     name: modelId,
-    model: openRouter(modelId),
-    supportsTools,
+    model,
+    headers,
     contextWindowSize,
-    headers
+    supportsTools: true
   };
 }
