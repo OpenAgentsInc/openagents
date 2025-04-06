@@ -24,25 +24,45 @@ app.route('/api/mcp', mcpRoutes);
 app.all('/agents/*', async (c) => {
   const url = new URL(c.req.url);
   // Forward requests to the agent service
-  const agentServiceUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8787';
+  const agentServiceUrl = "https://agents.openagents.com/" // process.env.AGENT_SERVICE_URL || 'http://localhost:8787';
   const targetUrl = `${agentServiceUrl}${url.pathname}${url.search}`;
-  
+
   try {
+    // Create headers object from Hono request
+    const requestHeaders = new Headers();
+
+    // Extract headers from the raw request
+    // Headers in Hono might be accessed differently depending on which adapter is used
+    const rawHeaders = c.req.raw.headers;
+
+    // Try different ways to access headers
+    if (typeof rawHeaders.get === 'function') {
+      // If it's a Headers-like object
+      for (const [key, value] of rawHeaders.entries()) {
+        requestHeaders.set(key, value);
+      }
+    } else if (rawHeaders instanceof Object) {
+      // If it's a plain object
+      Object.entries(rawHeaders).forEach(([key, value]) => {
+        if (value) requestHeaders.set(key, Array.isArray(value) ? value.join(', ') : String(value));
+      });
+    }
+
     const response = await fetch(targetUrl, {
       method: c.req.method,
-      headers: c.req.headers,
+      headers: requestHeaders,
       body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? await c.req.arrayBuffer() : undefined,
     });
-    
-    const headers = new Headers();
-    response.headers.forEach((value, key) => {
-      headers.set(key, value);
+
+    const responseHeaders = new Headers();
+    response.headers.forEach((value: string, key: string) => {
+      responseHeaders.set(key, value);
     });
-    
+
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers,
+      headers: responseHeaders,
     });
   } catch (error) {
     console.error('Error proxying to agent service:', error);
