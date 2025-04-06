@@ -24,7 +24,7 @@ app.route('/api/mcp', mcpRoutes);
 app.all('/agents/*', async (c) => {
   const url = new URL(c.req.url);
   // Forward requests to the agent service
-  const agentServiceUrl = "https://agents.openagents.com/" // process.env.AGENT_SERVICE_URL || 'http://localhost:8787';
+  const agentServiceUrl = "https://agents.openagents.com" // process.env.AGENT_SERVICE_URL || 'http://localhost:8787';
   const targetUrl = `${agentServiceUrl}${url.pathname}${url.search}`;
 
   try {

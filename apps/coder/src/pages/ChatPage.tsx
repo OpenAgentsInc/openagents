@@ -3,7 +3,7 @@ import { useAgentChat } from "agents/ai-react";
 
 export default function ChatPage() {
   const agent = useAgent({
-    agent: "chat",
+    agent: "coderagent",
   });
 
   const {
