@@ -279,7 +279,7 @@ export const CodeBlock = React.memo(function CodeBlock({
       // Use Shiki if available
       try {
         const highlighter = highlighterRef.current;
-        
+
         // Ensure the highlighter exists
         if (!highlighter) {
           throw new Error('Highlighter is null');
@@ -301,7 +301,7 @@ export const CodeBlock = React.memo(function CodeBlock({
         return Promise.resolve();
       } catch (err) {
         // Fallback if Shiki highlighting fails for this line
-        console.log("Line highlighting fallback:", err);
+        // console.log("Line highlighting fallback:", err);
         lineElement.innerHTML = escapeHtml(lineText) || '&nbsp;';
         return Promise.resolve();
       }
