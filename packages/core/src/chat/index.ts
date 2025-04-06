@@ -6,3 +6,5 @@ export * from './useSettings';
 export * from './errorHandler';
 // export * from './models'; // This conflicts with MODELS
 export * from './constants';
+export { useAgentChat } from './useAgentChat';
+export type { UseAgentChatOptions, UseAgentChatReturn } from './useAgentChat';

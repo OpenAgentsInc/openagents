@@ -24,12 +24,8 @@ export const ChatInputArea = memo(function ChatInputArea() {
 
   // Memoize the onChange handler to prevent recreation on every render
   const handleOnChange = useCallback((e: string | React.ChangeEvent<HTMLTextAreaElement>) => {
-    // Handle both string and event types
-    if (typeof e === 'string') {
-      handleInputChange(e);
-    } else if (e && e.target) {
-      handleInputChange(e.target.value);
-    }
+    const value = typeof e === 'string' ? e : e.target.value;
+    handleInputChange(value);
   }, [handleInputChange]);
 
   // Handle tool selection changes - enhanced with better logging and state updates
@@ -47,8 +43,9 @@ export const ChatInputArea = memo(function ChatInputArea() {
 
   // Memoize the submit handler to prevent recreation on every render
   const memoizedHandleSubmit = useCallback((event?: { preventDefault?: () => void }) => {
-    if (!isModelAvailable && event?.preventDefault) {
-      event.preventDefault();
+    event?.preventDefault?.();
+
+    if (!isModelAvailable) {
       return;
     }
 
@@ -64,35 +61,14 @@ export const ChatInputArea = memo(function ChatInputArea() {
       console.warn('[ChatInputArea] Error retrieving tools from session storage:', e);
     }
 
-    // Include the selected tools in the submission, with enhanced debugging
+    // Include the selected tools in the submission
     const submissionOptions = {
-      // IMPORTANT: This structure must match what the server expects
-      // The selectedToolIds should be put directly in the body object for correct handling
-
-      // You can pass selectedToolIds in two ways:
-      // 1. As options.body.selectedToolIds - which is how vercel/ai handles it
-      // 2. Directly in the body object - which is what our server currently expects
-
-      // To ensure compatibility with both approaches, we'll include it in both places
-      selectedToolIds: toolsToUse, // Direct placement for our server handler
-
-      // And still include it in body for the vercel/ai SDK handling
+      selectedToolIds: toolsToUse,
       body: {
-        // Pass the tools that have been explicitly selected in the UI
         selectedToolIds: toolsToUse,
-        // Add a debug flag to trace the tool selection issues
         debug_tool_selection: true
       }
     };
-
-    // Add more detailed console logging for debugging
-    console.log('[ChatInputArea] 🔧🔧🔧 Submitting with the following options:', {
-      submissionOptions: submissionOptions,
-      selectedToolIds: toolsToUse,
-      toolsCount: toolsToUse ? toolsToUse.length : 0
-    });
-
-    console.log('[ChatInputArea] Submitting with explicitly selected tools:', toolsToUse);
 
     handleSubmit(event, submissionOptions);
   }, [isModelAvailable, handleSubmit, selectedToolIds]);

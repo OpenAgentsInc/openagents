@@ -1,9 +1,9 @@
-import { AGENTS, AgentName } from './AGENTS';
 import { generateObject } from 'ai';
 import { z } from 'zod';
+import { AGENTS, AgentName } from './AGENTS';
 import { AgentRouterProvider } from './provider';
 
-interface RoutedPrompt {
+export interface RoutedPrompt {
   agent_name: AgentName
   why: string
   instructions_for_agent: string
@@ -46,4 +46,11 @@ Select the most appropriate agent to handle this request.`,
     console.error('Error in agent routing:', error);
     return null;
   }
-}
+};
+
+// Export the provider
+export { createAgentRouterProvider } from './provider';
+export type { AgentRouterProvider } from './provider';
+
+// Export agent types and data
+export { AGENTS, type AgentName } from './AGENTS';

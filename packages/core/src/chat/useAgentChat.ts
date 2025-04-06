@@ -62,18 +62,27 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
   // Custom fetch function that intercepts requests and uses agent router
   const customFetch = async (url: string, init?: RequestInit) => {
     try {
+      console.log('[useAgentChat] Custom fetch called with:', { url, init });
+
       // Extract the user message from the request body
       const body = init?.body ? JSON.parse(init.body as string) : {};
+      console.log('[useAgentChat] Parsed request body:', body);
+
       const userMessage = body.messages?.[body.messages.length - 1]?.content;
+      console.log('[useAgentChat] Extracted user message:', userMessage);
 
       if (!userMessage) {
+        console.error('[useAgentChat] No user message found in request');
         throw new Error('No user message found in request');
       }
 
       // Route the message using our agent router
+      console.log('[useAgentChat] Routing message through agent router...');
       const routedResult = await inferRouted(agentRouterProvider, userMessage);
+      console.log('[useAgentChat] Agent router result:', routedResult);
 
       if (!routedResult) {
+        console.error('[useAgentChat] Failed to route message to an agent');
         throw new Error('Failed to route message to an agent');
       }
 
@@ -89,10 +98,12 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
         }),
         createdAt: new Date()
       };
+      console.log('[useAgentChat] Created response:', response);
 
       // Create a ReadableStream to simulate streaming
       const stream = new ReadableStream({
         start(controller) {
+          console.log('[useAgentChat] Starting stream with response');
           controller.enqueue(`data: ${JSON.stringify(response)}\n\n`);
           controller.close();
         }
@@ -104,7 +115,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
         }
       });
     } catch (error) {
-      console.error('Error in agent routing:', error);
+      console.error('[useAgentChat] Error in custom fetch:', error);
       return new Response(null, { status: 500 });
     }
   };
@@ -131,6 +142,7 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
   };
 
   const vercelChatState = useChat(customOptions);
+  console.log('[useAgentChat] Vercel chat state:', vercelChatState);
 
   // Initialize the database
   useEffect(() => {
@@ -139,8 +151,9 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
         const db = await getDatabase();
         await messageRepository.initialize(db);
         setDbInitialized(true);
+        console.log('[useAgentChat] Database initialized');
       } catch (error) {
-        console.error('Failed to initialize database:', error);
+        console.error('[useAgentChat] Failed to initialize database:', error);
       }
     };
 
@@ -203,15 +216,18 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
 
   // Convert Vercel messages to UI messages
   const uiMessages = vercelChatState.messages.map(fromVercelMessage);
+  console.log('[useAgentChat] Converted UI messages:', uiMessages);
 
   // Create a type-safe append function
   const append = async (message: UIMessage) => {
+    console.log('[useAgentChat] Appending message:', message);
     const vercelMessage = toVercelMessage(message);
     return vercelChatState.append(vercelMessage);
   };
 
   // Create a type-safe setMessages function
   const setUIMessages = (messages: UIMessage[]) => {
+    console.log('[useAgentChat] Setting messages:', messages);
     vercelChatState.setMessages(messages.map(toVercelMessage));
   };
 

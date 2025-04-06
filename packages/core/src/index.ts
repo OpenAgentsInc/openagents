@@ -119,3 +119,11 @@ export * from './utils/reactCompatibility';
 
 // Export tools-related functionality
 export * from './tools/TOOLS';
+
+// Export chat functionality
+export { useAgentChat } from './chat';
+export type { UseAgentChatOptions, UseAgentChatReturn } from './chat';
+
+// Export agent router functionality
+export { createAgentRouterProvider, inferRouted, AGENTS } from './agentrouter';
+export type { AgentRouterProvider, AgentName } from './agentrouter';
