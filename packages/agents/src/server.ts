@@ -16,11 +16,11 @@ export { CoderAgent };
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    if (!env.OPENROUTER_API_KEY) {
+    if (!env.AI) {
       console.error(
-        "OPENROUTER_API_KEY is not set, don't forget to set it using 'wrangler secret put OPENROUTER_API_KEY'"
+        "AI binding is not available. Make sure you have configured the AI binding in your wrangler.jsonc file."
       );
-      return new Response("OPENROUTER_API_KEY is not set", { status: 500 });
+      return new Response("AI binding is not available", { status: 500 });
     }
     
     return (
