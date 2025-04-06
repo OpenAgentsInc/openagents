@@ -20,6 +20,36 @@ app.route('/api/chat', chatRoutes);
 // Mount MCP routes
 app.route('/api/mcp', mcpRoutes);
 
+// Proxy agent requests to the agent service
+app.all('/agents/*', async (c) => {
+  const url = new URL(c.req.url);
+  // Forward requests to the agent service
+  const agentServiceUrl = process.env.AGENT_SERVICE_URL || 'http://localhost:8787';
+  const targetUrl = `${agentServiceUrl}${url.pathname}${url.search}`;
+  
+  try {
+    const response = await fetch(targetUrl, {
+      method: c.req.method,
+      headers: c.req.headers,
+      body: c.req.method !== 'GET' && c.req.method !== 'HEAD' ? await c.req.arrayBuffer() : undefined,
+    });
+    
+    const headers = new Headers();
+    response.headers.forEach((value, key) => {
+      headers.set(key, value);
+    });
+    
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } catch (error) {
+    console.error('Error proxying to agent service:', error);
+    return c.json({ error: 'Failed to connect to agent service' }, 502);
+  }
+});
+
 // Test endpoint for agent router
 app.post('/api/test-router', async (c) => {
   try {

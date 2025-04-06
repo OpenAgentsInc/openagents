@@ -125,6 +125,13 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Proxy agents requests to the appropriate endpoint
+      '/agents': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path, // Pass the path unchanged
+      },
     },
   },
 });
