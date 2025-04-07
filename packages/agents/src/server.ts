@@ -13,21 +13,20 @@ import { openai } from "@ai-sdk/openai";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
-// import { env } from "cloudflare:workers";
+import { createWorkersAI } from 'workers-ai-provider';
+import { env } from "cloudflare:workers";
 
-const model = openai("gpt-4o-2024-11-20");
-// Cloudflare AI Gateway
-// const openai = createOpenAI({
-//   apiKey: env.OPENAI_API_KEY,
-//   baseURL: env.GATEWAY_BASE_URL,
-// });
+const workersai = createWorkersAI({ binding: env.AI });
+// @ts-ignore
+const model = workersai("@cf/meta/llama-4-scout-17b-16e-instruct");
 
 // we use ALS to expose the agent context to the tools
-export const agentContext = new AsyncLocalStorage<Chat>();
+export const agentContext = new AsyncLocalStorage<Coder>();
+
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
  */
-export class Chat extends AIChatAgent<Env> {
+export class Coder extends AIChatAgent<Env> {
   /**
    * Handles incoming chat messages and manages the response stream
    * @param onFinish - Callback function executed when streaming completes
@@ -51,7 +50,7 @@ export class Chat extends AIChatAgent<Env> {
           // Stream the AI response using GPT-4
           const result = streamText({
             model,
-            system: `You are a helpful assistant that can do various tasks... 
+            system: `You are a helpful assistant that can do various tasks...
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
@@ -92,12 +91,6 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    if (!process.env.OPENAI_API_KEY) {
-      console.error(
-        "OPENAI_API_KEY is not set, don't forget to set it locally in .dev.vars, and use `wrangler secret bulk .dev.vars` to upload it to production"
-      );
-      return new Response("OPENAI_API_KEY is not set", { status: 500 });
-    }
     return (
       // Route the request to our agent or return 404 if not found
       (await routeAgentRequest(request, env)) ||

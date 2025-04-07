@@ -66,7 +66,7 @@ export default function Chat() {
   };
 
   const agent = useAgent({
-    agent: "chat",
+    agent: "coder",
   });
 
   const {
@@ -203,9 +203,8 @@ export default function Chat() {
                   className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`flex gap-2 max-w-[85%] ${
-                      isUser ? "flex-row-reverse" : "flex-row"
-                    }`}
+                    className={`flex gap-2 max-w-[85%] ${isUser ? "flex-row-reverse" : "flex-row"
+                      }`}
                   >
                     {showAvatar && !isUser ? (
                       <Avatar username={"AI"} />
@@ -221,23 +220,21 @@ export default function Chat() {
                               // biome-ignore lint/suspicious/noArrayIndexKey: it's fine here
                               <div key={i}>
                                 <Card
-                                  className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${
-                                    isUser
+                                  className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${isUser
                                       ? "rounded-br-none"
                                       : "rounded-bl-none border-assistant-border"
-                                  } ${
-                                    part.text.startsWith("scheduled message")
+                                    } ${part.text.startsWith("scheduled message")
                                       ? "border-accent/50"
                                       : ""
-                                  } relative`}
+                                    } relative`}
                                 >
                                   {part.text.startsWith(
                                     "scheduled message"
                                   ) && (
-                                    <span className="absolute -top-3 -left-2 text-base">
-                                      🕒
-                                    </span>
-                                  )}
+                                      <span className="absolute -top-3 -left-2 text-base">
+                                        🕒
+                                      </span>
+                                    )}
                                   <p className="text-sm whitespace-pre-wrap">
                                     {part.text.replace(
                                       /^scheduled message: /,
@@ -246,9 +243,8 @@ export default function Chat() {
                                   </p>
                                 </Card>
                                 <p
-                                  className={`text-xs text-muted-foreground mt-1 ${
-                                    isUser ? "text-right" : "text-left"
-                                  }`}
+                                  className={`text-xs text-muted-foreground mt-1 ${isUser ? "text-right" : "text-left"
+                                    }`}
                                 >
                                   {formatTime(
                                     new Date(m.createdAt as unknown as string)
