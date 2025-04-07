@@ -57,32 +57,44 @@ const scheduleTask = tool({
 
 ### listScheduledTasks
 
-This tool allows the agent to list all currently scheduled tasks, including their IDs, descriptions, next run times, and whether they are recurring (cron-based) or one-time tasks.
+This tool retrieves and displays information about all scheduled tasks using the agent's `getSchedules()` method.
 
 ```typescript
 const listScheduledTasks = tool({
   description: "A tool to list all currently scheduled tasks",
   parameters: z.object({}),
   execute: async () => {
-    // Get the agent context
+    // Get the agent from context
     const agent = agentContext.getStore();
     if (!agent) {
       throw new Error("No agent found");
     }
-    
+
     try {
-      // Get all scheduled tasks
-      const tasks = await agent.listScheduled();
-      
+      // Get the scheduled tasks using the correct agent method
+      const tasks = agent.getSchedules();
+      console.log("Retrieved scheduled tasks:", tasks);
+
       if (!tasks || tasks.length === 0) {
         return "No scheduled tasks found.";
       }
-      
+
       // Format the tasks for display
       const formattedTasks = tasks.map(task => {
-        const nextRun = new Date(task.next_run).toLocaleString();
-        return `ID: ${task.id}\nDescription: ${task.tag}\nNext Run: ${nextRun}\nCron: ${task.cron || 'One-time'}\n`;
-      }).join("\n");
+        let scheduledTime = "Unknown";
+        if (task.type === "scheduled") {
+          scheduledTime = new Date(task.date).toLocaleString();
+        } else if (task.type === "delayed") {
+          scheduledTime = `${task.delayInSeconds} seconds from creation`;
+        } else if (task.type === "cron") {
+          scheduledTime = `CRON: ${task.cron}`;
+        }
+        
+        return `Task ID: ${task.id}
+Description: ${task.description || "No description"}
+Type: ${task.type}
+Scheduled Time: ${scheduledTime}`;
+      }).join("\n\n");
       
       return `Scheduled Tasks:\n\n${formattedTasks}`;
     } catch (error) {
@@ -95,7 +107,7 @@ const listScheduledTasks = tool({
 
 ### deleteScheduledTask
 
-This tool allows the agent to delete a scheduled task by its ID. It's designed to be used after first listing the tasks to identify the task to delete.
+This tool deletes a specific scheduled task by ID using the agent's `deleteScheduled()` method.
 
 ```typescript
 const deleteScheduledTask = tool({
@@ -104,20 +116,29 @@ const deleteScheduledTask = tool({
     taskId: z.string().describe("The ID of the task to delete")
   }),
   execute: async ({ taskId }) => {
-    // Get the agent context
+    // Get the agent from context
     const agent = agentContext.getStore();
     if (!agent) {
       throw new Error("No agent found");
     }
-    
+
     try {
-      // Call the deleteScheduled method on the agent
-      const deleted = await agent.deleteScheduled(taskId);
+      // First check if the task exists
+      const tasks = agent.getSchedules({ id: taskId });
+      
+      if (!tasks || tasks.length === 0) {
+        return `No task found with ID: ${taskId}`;
+      }
+      
+      console.log(`Found task to delete:`, tasks[0]);
+      
+      // Delete the task
+      const deleted = agent.deleteScheduled(taskId);
       
       if (deleted) {
-        return `Successfully deleted scheduled task with ID: ${taskId}`;
+        return `Successfully deleted task with ID: ${taskId}`;
       } else {
-        return `No task found with ID: ${taskId}`;
+        return `Failed to delete task with ID: ${taskId}`;
       }
     } catch (error) {
       console.error("Error deleting scheduled task:", error);
@@ -127,13 +148,38 @@ const deleteScheduledTask = tool({
 });
 ```
 
-## Usage Flow
+## Implementation Details
 
-The typical usage flow for managing tasks is:
+### Schedule API
 
-1. **Create Task**: Use `scheduleTask` to create a new scheduled task
-2. **List Tasks**: Use `listScheduledTasks` to see all scheduled tasks and their IDs
-3. **Delete Task**: Use `deleteScheduledTask` with a specific ID to remove a task
+The implementation uses the agent's built-in scheduling API:
+
+1. **Task Creation**: The `agent.schedule()` method creates a new scheduled task.
+
+2. **Task Retrieval**: The `agent.getSchedules()` method retrieves all scheduled tasks, with optional filtering criteria.
+
+3. **Task Deletion**: The `agent.deleteScheduled()` method deletes a specific task by ID.
+
+### Task Data Structure
+
+Each task has the following structure:
+
+- `id`: Unique identifier for the task
+- `description`: Human-readable description of the task
+- `type`: Type of schedule ("scheduled", "delayed", or "cron")
+- Additional type-specific properties:
+  - For "scheduled" tasks: `date` (ISO date string)
+  - For "delayed" tasks: `delayInSeconds` (number)
+  - For "cron" tasks: `cron` (cron expression string)
+
+### Error Handling
+
+The tools include comprehensive error handling to manage common issues:
+
+- Missing agent context
+- Non-existent tasks for retrieval or deletion
+- Storage operation failures
+- Invalid schedule formats
 
 ## System Prompt Integration
 
@@ -142,18 +188,18 @@ These tools are integrated into the agent's system prompt to ensure the agent kn
 ```
 TASK SCHEDULING:
 - scheduleTask: Schedule a task to be executed at a later time
-- listScheduledTasks: List all currently scheduled tasks with their IDs and details
-- deleteScheduledTask: Delete a previously scheduled task by providing its ID
+- listScheduledTasks: List all currently scheduled tasks with their details
+- deleteScheduledTask: Delete a scheduled task by providing its ID
 
 If the user asks to schedule a task, use the scheduleTask tool.
 If the user asks to list scheduled tasks, use the listScheduledTasks tool.
-If the user asks to delete a scheduled task, use the deleteScheduledTask tool. 
-Suggest using listScheduledTasks first to find the task ID.
+If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
 ```
 
-## Implementation Notes
+## Usage Flow
 
-- The tools use the agent context to access the underlying Durable Object methods
-- Error handling is implemented at each step to provide clear feedback to users
-- The task listing provides formatted output for better readability
-- The tools work with the existing scheduling infrastructure in the Coder agent
+The typical usage flow for managing tasks is:
+
+1. **Create Task**: Use `scheduleTask` to create a new scheduled task
+2. **View Tasks**: Use `listScheduledTasks` to see all scheduled tasks and their IDs
+3. **Delete Task**: Use `deleteScheduledTask` with a specific ID to remove a task

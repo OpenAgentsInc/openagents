@@ -191,13 +191,13 @@ CODE OPERATIONS:
 
 TASK SCHEDULING:
 - scheduleTask: Schedule a task to be executed at a later time
-- listScheduledTasks: List all currently scheduled tasks with their IDs and details
-- deleteScheduledTask: Delete a previously scheduled task by providing its ID
+- listScheduledTasks: List all currently scheduled tasks with their details
+- deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
 
 If the user asks about GitHub or needs to work with GitHub repositories, use the appropriate GitHub tools.
 If the user asks to schedule a task, use the scheduleTask tool.
 If the user asks to list scheduled tasks, use the listScheduledTasks tool.
-If the user asks to delete a scheduled task, use the deleteScheduledTask tool. Suggest using listScheduledTasks first to find the task ID.
+If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
 `,
             messages: processedMessages,
             tools: this.combinedTools,

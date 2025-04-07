@@ -79,21 +79,30 @@ const listScheduledTasks = tool({
     if (!agent) {
       throw new Error("No agent found");
     }
-    
+
     try {
-      // Get all scheduled tasks
-      const tasks = await agent.listScheduled();
-      
+      // Get the scheduled tasks using the correct agent method
+      const tasks = agent.getSchedules();
+      console.log("Retrieved scheduled tasks:", tasks);
+
       if (!tasks || tasks.length === 0) {
         return "No scheduled tasks found.";
       }
-      
+
       // Format the tasks for display
       const formattedTasks = tasks.map(task => {
-        const nextRun = new Date(task.next_run).toLocaleString();
-        return `ID: ${task.id}\nDescription: ${task.tag}\nNext Run: ${nextRun}\nCron: ${task.cron || 'One-time'}\n`;
-      }).join("\n");
-      
+        let scheduledTime = "Unknown";
+        if (task.type === "scheduled") {
+          scheduledTime = new Date(task.time).toLocaleString();
+        } else if (task.type === "delayed") {
+          scheduledTime = `${task.delayInSeconds} seconds from creation`;
+        } else if (task.type === "cron") {
+          scheduledTime = `CRON: ${task.cron}`;
+        }
+
+        return `Task info: ${JSON.stringify(task)}`;
+      }).join("\n\n");
+
       return `Scheduled Tasks:\n\n${formattedTasks}`;
     } catch (error) {
       console.error("Error listing scheduled tasks:", error);
@@ -113,15 +122,24 @@ const deleteScheduledTask = tool({
     if (!agent) {
       throw new Error("No agent found");
     }
-    
+
     try {
-      // Call the deleteScheduled method on the agent
-      const deleted = await agent.deleteScheduled(taskId);
-      
-      if (deleted) {
-        return `Successfully deleted scheduled task with ID: ${taskId}`;
-      } else {
+      // First check if the task exists
+      const tasks = agent.getSchedules({ id: taskId });
+
+      if (!tasks || tasks.length === 0) {
         return `No task found with ID: ${taskId}`;
+      }
+
+      console.log(`Found task to delete:`, tasks[0]);
+
+      // Delete the task
+      const deleted = await agent.cancelSchedule(taskId);
+
+      if (deleted) {
+        return `Successfully deleted task with ID: ${taskId}`;
+      } else {
+        return `Failed to delete task with ID: ${taskId}`;
       }
     } catch (error) {
       console.error("Error deleting scheduled task:", error);
