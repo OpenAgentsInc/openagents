@@ -77,24 +77,57 @@ export async function loadGitHubTokenFromSettings(): Promise<void> {
   try {
     console.log('Loading GitHub token from settings...');
     
-    // Import settings repository dynamically to avoid circular dependencies
-    const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+    // In Node.js environments, we'll use environment variables or config files
+    // instead of trying to use the settings repository which requires a browser
+    const isNode = typeof window === 'undefined';
     
-    // Get GitHub token from settings
-    let githubToken: string | null;
-    try {
-      githubToken = await settingsRepository.getApiKey('github');
-      console.log(`GitHub token fetch result: ${githubToken ? 'Token found' : 'No token found'}`);
-    } catch (apiKeyError) {
-      console.error('Error fetching GitHub token from settings repository:', apiKeyError);
-      return;
+    let githubToken: string | null = null;
+    
+    if (isNode) {
+      console.log('Node.js environment detected, checking for token in environment variables');
+      
+      // Check process.env if available
+      if (typeof process !== 'undefined' && process.env) {
+        if (process.env.GITHUB_TOKEN) {
+          githubToken = process.env.GITHUB_TOKEN;
+          console.log('Found GitHub token in process.env.GITHUB_TOKEN');
+        } else if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
+          githubToken = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+          console.log('Found GitHub token in process.env.GITHUB_PERSONAL_ACCESS_TOKEN');
+        }
+      }
+      
+      // Check if a token might be in cloudflare environment
+      try {
+        // @ts-ignore - Cloudflare Workers env might be available
+        if (env && env.GITHUB_TOKEN) {
+          githubToken = env.GITHUB_TOKEN;
+          console.log('Found GitHub token in Cloudflare env.GITHUB_TOKEN');
+        }
+      } catch (e) {
+        // Ignore error when env is not available
+      }
+      
+      if (!githubToken) {
+        console.log('No GitHub token found in environment variables');
+      }
+    } else {
+      // In browser environments, use the settings repository
+      try {
+        const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+        githubToken = await settingsRepository.getApiKey('github');
+        console.log(`GitHub token fetch result: ${githubToken ? 'Token found' : 'No token found'}`);
+      } catch (apiKeyError) {
+        console.error('Error fetching GitHub token from settings repository:', apiKeyError);
+        return;
+      }
     }
     
     if (githubToken) {
-      console.log(`Found GitHub token in settings (length: ${githubToken.length}), updating MCP client`);
+      console.log(`Found GitHub token (length: ${githubToken.length}), updating MCP client`);
       await updateMCPGithubToken(githubToken);
     } else {
-      console.warn('No GitHub token found in settings, MCP GitHub operations will be limited');
+      console.warn('No GitHub token found, MCP GitHub operations will be limited');
     }
   } catch (error) {
     console.error('Failed to load GitHub token from settings:', error);

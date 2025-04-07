@@ -43,8 +43,20 @@ export class Coder extends AIChatAgent<Env> {
     // Handle GitHub token from settings if available
     // This is passed from the API request to the agent
     if (env.apiKeys && typeof env.apiKeys === 'object' && env.apiKeys.github) {
-      console.log("GitHub token found in API keys, setting in environment");
+      console.log(`GitHub token found in API keys (length: ${env.apiKeys.github.length}), setting in environment`);
       env.GITHUB_TOKEN = env.apiKeys.github;
+    } else {
+      console.log("No GitHub token found in API keys, checking other sources");
+      
+      // Check if token is available directly in the environment
+      if (env.GITHUB_TOKEN) {
+        console.log(`Found GitHub token directly in env.GITHUB_TOKEN (length: ${env.GITHUB_TOKEN.length})`);
+      } else if (typeof process !== 'undefined' && process.env && process.env.GITHUB_TOKEN) {
+        console.log(`Found GitHub token in process.env.GITHUB_TOKEN, copying to agent environment`);
+        env.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+      } else {
+        console.warn("No GitHub token found in any source, GitHub operations may be limited");
+      }
     }
     
     super(state, env);
@@ -52,10 +64,22 @@ export class Coder extends AIChatAgent<Env> {
     // Log environment variables
     console.log("Environment:", {
       hasEnv: !!env,
-      envKeys: env ? Object.keys(env) : [],
+      envKeys: env ? Object.keys(env).filter(key => !key.includes('SECRET') && !key.includes('KEY') && key !== 'GITHUB_TOKEN') : [],
       hasGithubToken: !!env?.GITHUB_TOKEN,
-      hasApiKeys: !!env?.apiKeys
+      githubTokenLength: env?.GITHUB_TOKEN?.length || 0,
+      hasApiKeys: !!env?.apiKeys,
+      apiKeyProviders: env?.apiKeys ? Object.keys(env.apiKeys) : []
     });
+    
+    // Log process environment if available (for debugging)
+    if (typeof process !== 'undefined' && process.env) {
+      console.log("Process environment:", {
+        hasProcessEnv: true,
+        processEnvKeys: Object.keys(process.env).filter(key => !key.includes('SECRET') && !key.includes('KEY') && key !== 'GITHUB_TOKEN'),
+        hasGithubToken: !!process.env.GITHUB_TOKEN,
+        githubTokenLength: process.env.GITHUB_TOKEN?.length || 0
+      });
+    }
     
     // Initialize with the base tools
     this.combinedTools = { ...tools };
@@ -72,9 +96,10 @@ export class Coder extends AIChatAgent<Env> {
       console.log("GitHub plugin added to plugins list");
       console.log(`Total plugins: ${this.plugins.length}`);
     } catch (pluginError) {
-      console.error("ERROR creating GitHub plugin:", pluginError);
-      if (pluginError.stack) {
-        console.error("Error stack:", pluginError.stack);
+      const error = pluginError as Error;
+      console.error("ERROR creating GitHub plugin:", error.message || String(pluginError));
+      if (error.stack) {
+        console.error("Error stack:", error.stack);
       }
     }
     
@@ -129,9 +154,10 @@ export class Coder extends AIChatAgent<Env> {
             console.warn(`Plugin ${plugin.name} did not provide any tools`);
           }
         } catch (pluginError) {
-          console.error(`ERROR initializing plugin ${plugin.name}:`, pluginError);
-          if (pluginError.stack) {
-            console.error("Error stack:", pluginError.stack);
+          const error = pluginError as Error;
+          console.error(`ERROR initializing plugin ${plugin.name}:`, error.message || String(pluginError));
+          if (error.stack) {
+            console.error("Error stack:", error.stack);
           }
         }
       }
@@ -140,8 +166,9 @@ export class Coder extends AIChatAgent<Env> {
       console.log(`=== PLUGIN INITIALIZATION COMPLETE ===`);
       console.log(`Total tools available: ${totalTools}`);
       console.log("Available tools:", Object.keys(this.combinedTools));
-    } catch (error) {
-      console.error("CRITICAL ERROR initializing plugins:", error);
+    } catch (err) {
+      const error = err as Error;
+      console.error("CRITICAL ERROR initializing plugins:", error.message || String(err));
       if (error.stack) {
         console.error("Error stack:", error.stack);
       }

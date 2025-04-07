@@ -49,23 +49,26 @@ function addLogEntry(entry: LogEntry): void {
       
       const logPrefix = `[${new Date(entry.timestamp).toISOString()}] [${entry.level.toUpperCase()}] [${entry.module}]`;
       
-      // Use the original console methods directly to avoid recursion
-      const originalConsole = (window as any).__originalConsole__;
-      if (originalConsole) {
-        switch (entry.level) {
-          case 'debug':
-            originalConsole.debug(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-            break;
-          case 'info':
-            originalConsole.info(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-            break;
-          case 'warn':
-            originalConsole.warn(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-            break;
-          case 'error':
-            originalConsole.error(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
-            break;
-        }
+      // Use native console for Node environment or browser without interception
+      const isBrowser = typeof window !== 'undefined';
+      const originalConsole = isBrowser && (window as any).__originalConsole__;
+      
+      // Use either the original console methods or direct console access
+      const logConsole = originalConsole || console;
+      
+      switch (entry.level) {
+        case 'debug':
+          logConsole.debug(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+          break;
+        case 'info':
+          logConsole.info(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+          break;
+        case 'warn':
+          logConsole.warn(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+          break;
+        case 'error':
+          logConsole.error(logPrefix, entry.message, entry.details !== undefined ? entry.details : '');
+          break;
       }
     } finally {
       isLoggingToConsole = false; // Reset flag

@@ -6,10 +6,10 @@
 // Helper function to make GitHub API requests
 async function callGitHubAPI(endpoint: string, options: RequestInit = {}, token?: string): Promise<any> {
   const url = `https://api.github.com${endpoint}`;
-  const headers = {
+  const headers: Record<string, string> = {
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'OpenAgentsInc-Coder-Agent',
-    ...options.headers
+    ...(options.headers as Record<string, string> || {})
   };
 
   // Add authorization if token is provided
@@ -74,7 +74,8 @@ export const directGitHubTools = {
         // In Workers environment, use atob for base64 decoding
         return atob(result.content.replace(/\n/g, ''));
       } catch (e) {
-        return `Error decoding content: ${e.message}`;
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return `Error decoding content: ${errorMessage}`;
       }
     }
     
@@ -100,6 +101,22 @@ export const directGitHubTools = {
       console.log(`Labels: ${labels ? JSON.stringify(labels) : 'none'}`);
       console.log(`Token provided: ${token ? 'Yes' : 'No'}`);
       
+      // Check if repository exists before attempting to create an issue
+      try {
+        console.log(`Validating repository ${owner}/${repo} exists...`);
+        await callGitHubAPI(`/repos/${owner}/${repo}`, { method: 'GET' }, token);
+        console.log(`Repository ${owner}/${repo} exists and is accessible.`);
+      } catch (repoError) {
+        console.error(`Repository validation failed for ${owner}/${repo}:`, repoError);
+        if (repoError instanceof Error && repoError.message.includes('404')) {
+          return JSON.stringify({
+            error: `Repository "${owner}/${repo}" not found. Please check that the repository exists and is spelled correctly. If this is a private repository, make sure your token has access to it.`
+          });
+        }
+        // Re-throw other errors to be handled below
+        throw repoError;
+      }
+      
       const requestBody = JSON.stringify({ title, body, labels });
       console.log(`Request body: ${requestBody}`);
       
@@ -121,16 +138,31 @@ export const directGitHubTools = {
       if (error instanceof Error) {
         if (error.message.includes('404')) {
           return JSON.stringify({
-            error: `Repository not found or token doesn't have access to ${owner}/${repo}. Check that the repository exists and your token has proper permissions.`
+            error: `Repository "${owner}/${repo}" not found or token doesn't have access to it. Please check the following:
+1. The repository name is spelled correctly
+2. The repository exists
+3. Your GitHub token has the 'repo' scope for private repositories
+4. You have write access to the repository`
           });
-        } else if (error.message.includes('401') || error.message.includes('403')) {
+        } else if (error.message.includes('401')) {
           return JSON.stringify({
-            error: `Authentication failed for creating issue in ${owner}/${repo}. Make sure you've added a GitHub token with 'repo' scope in Settings > API Keys.`
+            error: `GitHub authentication failed. Your token is invalid or expired. Please add a valid GitHub token in Settings > API Keys.`
+          });
+        } else if (error.message.includes('403')) {
+          return JSON.stringify({
+            error: `Access forbidden to repository "${owner}/${repo}". Your token doesn't have permission to create issues in this repository. Make sure your token has the 'repo' scope.`
+          });
+        } else if (error.message.includes('422')) {
+          return JSON.stringify({
+            error: `Validation error when creating issue in "${owner}/${repo}". The issue title or body may be invalid, or you might be missing required fields.`
           });
         }
       }
       
-      throw error;
+      // Return a generic error message instead of throwing
+      return JSON.stringify({
+        error: `Failed to create issue in ${owner}/${repo}: ${error instanceof Error ? error.message : String(error)}`
+      });
     }
   },
   

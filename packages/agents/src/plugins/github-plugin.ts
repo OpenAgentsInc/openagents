@@ -14,25 +14,73 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   private readonly gitHubTools: Record<string, any> = {};
   
   /**
+   * Helper method to safely access agent environment
+   * This avoids the protected env access issue
+   */
+  private getAgentEnv(): Record<string, any> | undefined {
+    if (!this.agent) return undefined;
+    
+    // Use a trick to access the protected env
+    // This is safe because we're not modifying anything, just reading
+    return (this.agent as any).env;
+  }
+  
+  /**
    * Gets the GitHub token from the agent environment or parameters
    * Prioritizes parameter token over environment token for flexibility
    */
   private getGitHubToken(paramToken?: string): string | undefined {
+    console.log("GitHub token search beginning...");
+    
     // First check if a token was passed directly to the method
     if (paramToken && paramToken.trim() !== '') {
-      console.log("Using GitHub token provided directly in the parameter");
+      console.log(`Using GitHub token provided directly in the parameter (length: ${paramToken.length})`);
       return paramToken;
+    } else {
+      console.log("No GitHub token provided as parameter");
     }
     
-    // If no parameter token, try to get from agent environment
-    const envToken = this.agent?.env?.GITHUB_TOKEN;
-    
-    if (envToken) {
-      console.log("Using GitHub token from agent environment");
-      return envToken;
+    // Check agent environment - we use agent private methods to access protected env
+    if (!this.agent) {
+      console.warn("Agent not initialized, cannot access environment for GitHub token");
+    } else {
+      try {
+        // Use getEnv() helper to safely access the protected env property
+        const env = this.getAgentEnv();
+        
+        if (!env) {
+          console.warn("Agent environment not available, cannot access GitHub token");
+        } else {
+          // Get token from agent environment
+          const envToken = env.GITHUB_TOKEN;
+          
+          if (envToken) {
+            console.log(`Using GitHub token from agent environment (length: ${envToken.length})`);
+            return envToken;
+          } else {
+            console.warn("No GitHub token found in agent environment");
+          }
+          
+          // Log all environment keys for debugging (without exposing secrets)
+          try {
+            console.log("Available environment keys:", Object.keys(env)
+              .filter(key => !key.includes('SECRET') && !key.includes('KEY') && key !== 'GITHUB_TOKEN'));
+          } catch (e) {
+            console.warn("Could not list environment keys");
+          }
+        }
+      } catch (error) {
+        console.warn("Error accessing agent environment:", error instanceof Error ? error.message : String(error));
+      }
     }
     
-    console.warn("No GitHub token found in parameters or agent environment. GitHub API access will be limited.");
+    // Check process environment as last resort
+    if (typeof process !== 'undefined' && process.env && process.env.GITHUB_TOKEN) {
+      console.log(`Using GitHub token from process.env.GITHUB_TOKEN (length: ${process.env.GITHUB_TOKEN.length})`);
+      return process.env.GITHUB_TOKEN;
+    }
+    
+    console.warn("⚠️ No GitHub token found in any location. GitHub API access will be limited to public repositories only.");
     return undefined;
   }
 
@@ -390,11 +438,26 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     console.log("=== GITHUB PLUGIN INITIALIZE METHOD CALLED ===");
     this.agent = agent;
     
+    // Use our helper to safely access the environment
+    const env = this.getAgentEnv();
+    
     // Log environment information
+    const hasEnv = !!env;
+    const hasGithubToken = !!(env && env.GITHUB_TOKEN);
+    const tokenLength = hasGithubToken ? env.GITHUB_TOKEN.length : 0;
+    
     console.log("Agent environment:", {
-      hasEnv: !!agent.env,
-      hasGithubToken: !!(agent.env && agent.env.GITHUB_TOKEN),
+      hasEnv,
+      hasGithubToken,
+      tokenLength,
+      envKeys: hasEnv ? Object.keys(env).filter(k => !k.includes('SECRET') && !k.includes('KEY')) : []
     });
+    
+    if (hasGithubToken) {
+      console.log(`GitHub token found in agent environment (length: ${tokenLength})`);
+    } else {
+      console.warn("No GitHub token found in agent environment. GitHub API calls will have limited functionality.");
+    }
     
     console.log("GitHub plugin initialization complete - using direct GitHub API");
   }
