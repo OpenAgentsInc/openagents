@@ -82,20 +82,22 @@ const DropdownMenu = ({
         children
           ? "radix-state-open:!text-neutral-950 dark:radix-state-open:!text-white text-neutral-500 focus-visible:opacity-100 dark:text-neutral-400"
           : buttonVariants(
-              buttonProps ?? {
-                variant: "ghost",
-                size: "default", // 'base',
-                // shape: 'square',
-                // interaction: 'none',
-                class:
-                  "radix-state-open:text-neutral-950 dark:radix-state-open:text-white focus-visible:opacity-100",
-              }
-            ),
+            buttonProps ?? {
+              variant: "ghost",
+              size: "default", // 'base',
+              // shape: 'square',
+              // interaction: 'none',
+              class:
+                "radix-state-open:text-neutral-950 dark:radix-state-open:text-white focus-visible:opacity-100",
+            }
+          ),
         className
       )}
       disabled={disabled}
     >
-      {children ?? <DotsThree weight="bold" />}
+      <div className="flex items-center">
+        {children ?? <DotsThree weight="bold" />}
+      </div>
     </DropdownMenuPrimitive.Trigger>
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
@@ -149,7 +151,7 @@ const DropdownMenu = ({
                         size: size === "sm" ? 16 : 20,
                       }}
                     >
-                      {item.icon}
+                      {item.icon && <div className="flex items-center">{item.icon}</div>}
                     </IconContext.Provider>
                   </a>
                 ) : (
@@ -169,7 +171,7 @@ const DropdownMenu = ({
                         size: size === "sm" ? 16 : 20,
                       }}
                     >
-                      {item.icon}
+                      {item.icon && <div className="flex items-center">{item.icon}</div>}
                     </IconContext.Provider>
                   </button>
                 )}

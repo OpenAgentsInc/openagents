@@ -1,6 +1,6 @@
 import { Tooltip } from "@/components/tooltip/Tooltip";
 import { useMenuNavigation } from "@/hooks/useMenuNavigation";
-import { cn } from "@/utils/tw";
+import { cn } from "@/lib/utils";
 import { IconContext } from "@phosphor-icons/react";
 import { useRef } from "react";
 
@@ -34,7 +34,9 @@ const MenuOption = ({
       )}
       onClick={onClick}
     >
-      <IconContext.Provider value={{ size: 18 }}>{icon}</IconContext.Provider>
+      <IconContext.Provider value={{ size: 18 }}>
+        <div className="flex items-center">{icon}</div>
+      </IconContext.Provider>
     </button>
   </Tooltip>
 );

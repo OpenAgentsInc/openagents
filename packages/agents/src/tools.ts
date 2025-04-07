@@ -4,6 +4,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
+import type { ToolExecutionOptions } from "ai";
 
 import { agentContext } from "./server";
 import {
@@ -68,6 +69,84 @@ const scheduleTask = tool({
     return `Task scheduled for type "${when.type}" : ${input}`;
   },
 });
+
+const listScheduledTasks = tool({
+  description: "A tool to list all currently scheduled tasks",
+  parameters: z.object({}),
+  execute: async () => {
+    // Get the agent from context
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+
+    try {
+      // Get the scheduled tasks using the correct agent method
+      const tasks = agent.getSchedules();
+      console.log("Retrieved scheduled tasks:", tasks);
+
+      if (!tasks || tasks.length === 0) {
+        return "No scheduled tasks found.";
+      }
+
+      // Format the tasks for display
+      const formattedTasks = tasks.map(task => {
+        let scheduledTime = "Unknown";
+        if (task.type === "scheduled") {
+          scheduledTime = new Date(task.time).toLocaleString();
+        } else if (task.type === "delayed") {
+          scheduledTime = `${task.delayInSeconds} seconds from creation`;
+        } else if (task.type === "cron") {
+          scheduledTime = `CRON: ${task.cron}`;
+        }
+
+        return `Task info: ${JSON.stringify(task)}`;
+      }).join("\n\n");
+
+      return `Scheduled Tasks:\n\n${formattedTasks}`;
+    } catch (error) {
+      console.error("Error listing scheduled tasks:", error);
+      return `Error listing scheduled tasks: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
+
+const deleteScheduledTask = tool({
+  description: "A tool to delete a previously scheduled task",
+  parameters: z.object({
+    taskId: z.string().describe("The ID of the task to delete")
+  }),
+  execute: async ({ taskId }) => {
+    // Get the agent from context
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+
+    try {
+      // First check if the task exists
+      const tasks = agent.getSchedules({ id: taskId });
+
+      if (!tasks || tasks.length === 0) {
+        return `No task found with ID: ${taskId}`;
+      }
+
+      console.log(`Found task to delete:`, tasks[0]);
+
+      // Delete the task
+      const deleted = await agent.cancelSchedule(taskId);
+
+      if (deleted) {
+        return `Successfully deleted task with ID: ${taskId}`;
+      } else {
+        return `Failed to delete task with ID: ${taskId}`;
+      }
+    } catch (error) {
+      console.error("Error deleting scheduled task:", error);
+      return `Error deleting scheduled task: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
 /**
  * Export all available tools
  * These will be provided to the AI model to describe available capabilities
@@ -76,6 +155,8 @@ export const tools = {
   getWeatherInformation,
   getLocalTime,
   scheduleTask,
+  listScheduledTasks,
+  deleteScheduledTask,
 };
 
 /**
@@ -84,7 +165,8 @@ export const tools = {
  * Each function here corresponds to a tool above that doesn't have an execute function
  */
 export const executions = {
-  getWeatherInformation: async ({ city }: { city: string }) => {
+  getWeatherInformation: async (args: unknown, context: ToolExecutionOptions) => {
+    const { city } = args as { city: string };
     console.log(`Getting weather information for ${city}`);
     return `The weather in ${city} is sunny`;
   },
