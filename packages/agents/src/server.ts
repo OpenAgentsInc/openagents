@@ -279,10 +279,46 @@ If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
 }
 
 /**
+ * Helper function to initialize global MCP GitHub token in worker environment
+ * This ensures GitHub token is set before any MCP clients are initialized
+ */
+async function initializeGlobalGitHubToken(env: Env): Promise<void> {
+  console.log("=== INITIALIZING GLOBAL GITHUB TOKEN IN WORKER ===");
+  
+  if (env.apiKeys && typeof env.apiKeys === 'object' && env.apiKeys.github) {
+    const githubToken = env.apiKeys.github;
+    console.log(`Setting global GitHub token from API keys (length: ${githubToken.length})`);
+    
+    // Set token in global environment (accessible to MCP clients)
+    if (env.GITHUB_PERSONAL_ACCESS_TOKEN === undefined) {
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+    } else {
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+    }
+    
+    // Ensure it's also set as GITHUB_TOKEN
+    if (env.GITHUB_TOKEN === undefined) {
+      env.GITHUB_TOKEN = githubToken;
+    } else {
+      env.GITHUB_TOKEN = githubToken;
+    }
+    
+    console.log("GitHub token initialized globally in worker environment");
+  } else {
+    console.warn("No GitHub token found in API keys, global token initialization skipped");
+  }
+  
+  console.log("=== GLOBAL GITHUB TOKEN INITIALIZATION COMPLETE ===");
+}
+
+/**
  * Worker entry point that routes incoming requests to the appropriate handler
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    // Initialize global GitHub token before handling any requests
+    await initializeGlobalGitHubToken(env);
+    
     // Route the request to our agent or return 404 if not found
     return (
       (await routeAgentRequest(request, env)) ||

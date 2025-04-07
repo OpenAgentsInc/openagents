@@ -79,6 +79,25 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       return process.env.GITHUB_TOKEN;
     }
     
+    // Check for Cloudflare worker GITHUB_PERSONAL_ACCESS_TOKEN (used by MCP)
+    try {
+      if (typeof this.agent !== 'undefined' && 
+          typeof (this.agent as any).env !== 'undefined' && 
+          (this.agent as any).env.GITHUB_PERSONAL_ACCESS_TOKEN) {
+        console.log(`Found GitHub token in agent env.GITHUB_PERSONAL_ACCESS_TOKEN (length: ${(this.agent as any).env.GITHUB_PERSONAL_ACCESS_TOKEN.length})`);
+        return (this.agent as any).env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      }
+      
+      // Check global env in Cloudflare worker environment
+      if (typeof globalThis !== 'undefined' && 
+          typeof (globalThis as any).GITHUB_PERSONAL_ACCESS_TOKEN !== 'undefined') {
+        console.log(`Found GitHub token in globalThis.GITHUB_PERSONAL_ACCESS_TOKEN (length: ${(globalThis as any).GITHUB_PERSONAL_ACCESS_TOKEN.length})`);
+        return (globalThis as any).GITHUB_PERSONAL_ACCESS_TOKEN;
+      }
+    } catch (error) {
+      console.warn("Error checking Cloudflare worker environment for tokens:", error);
+    }
+    
     console.warn("⚠️ No GitHub token found in any location. GitHub API access will be limited to public repositories only.");
     console.warn("Please add a GitHub token in the Settings > API Keys page to enable full GitHub functionality.");
     return undefined;
@@ -107,6 +126,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             const githubToken = this.getGitHubToken(token);
             // Use MCP tool
             console.log(`Using MCP tool for getting file contents from ${owner}/${repo}`);
+            console.log(`MCP call with GitHub token: ${githubToken ? 'token present' : 'NO TOKEN FOUND'}`);
+            if (!githubToken) {
+              console.warn('⚠️ GitHub API calls without a token will be limited to public repositories and may fail.');
+              console.warn('Please add a GitHub token in Settings > API Keys to enable full GitHub functionality.');
+            }
             return await this.callMCPTool('get_file_contents', { 
               owner, 
               repo, 
@@ -537,6 +561,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         ...params,
         token: params.token ? `[TOKEN LENGTH: ${params.token.length}]` : 'None'
       }));
+      
+      if (!params.token) {
+        console.warn('⚠️ No GitHub token provided for MCP call. This operation may fail if accessing private repositories.');
+        console.warn('⚠️ Please add a GitHub token in Settings > API Keys to enable full GitHub functionality.');
+      }
       
       // Make request to MCP bridge API
       const response = await fetch(`https://api.openagents.com/mcp/execute`, {
