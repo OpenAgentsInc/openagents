@@ -95,6 +95,37 @@ export class Coder extends AIChatAgent<Env> {
  */
 export default {
   async fetch(request: Request, env: Env) {
+    // Extract GitHub token from headers BEFORE routing the request
+    console.log("FETCH HANDLER: Checking request headers");
+    console.log(`FETCH HANDLER: Request URL: ${request.url}`);
+    console.log(`FETCH HANDLER: Request method: ${request.method}`);
+    
+    // Log all headers for debugging
+    const headerNames = [...request.headers.keys()];
+    console.log(`FETCH HANDLER: Headers found: ${headerNames.join(', ')}`);
+    
+    // Extract GitHub token from specific headers
+    const apiKey = request.headers.get('x-api-key');
+    console.log(`FETCH HANDLER: x-api-key header: ${apiKey ? `found (length: ${apiKey.length})` : 'not found'}`);
+    
+    const githubToken = request.headers.get('x-github-token');
+    console.log(`FETCH HANDLER: x-github-token header: ${githubToken ? `found (length: ${githubToken.length})` : 'not found'}`);
+    
+    // Initialize apiKeys in env if a token was found
+    if (githubToken && githubToken.trim() !== '') {
+      console.log("FETCH HANDLER: Using GitHub token from x-github-token header");
+      if (!env.apiKeys) env.apiKeys = {};
+      env.apiKeys.github = githubToken;
+      env.GITHUB_TOKEN = githubToken;
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+    } else if (apiKey && apiKey.trim() !== '') {
+      console.log("FETCH HANDLER: Using GitHub token from x-api-key header");
+      if (!env.apiKeys) env.apiKeys = {};
+      env.apiKeys.github = apiKey;
+      env.GITHUB_TOKEN = apiKey;
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = apiKey;
+    }
+    
     // Route the request to our agent or return 404 if not found
     return (
       (await routeAgentRequest(request, env)) ||
