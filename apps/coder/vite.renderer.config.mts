@@ -125,6 +125,14 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Proxy agents requests directly to the production server
+      '/agents': {
+        target: 'https://agents.openagents.com',
+        changeOrigin: true,
+        secure: true,
+        ws: true, // Enable WebSocket proxying
+        // No need to set CORS headers - let the server handle it
+      },
     },
   },
 });

@@ -60,7 +60,7 @@ const scheduleTask = tool({
             ? when.cron // cron
             : throwError("not a valid schedule input");
     try {
-      agent.schedule(input!, "executeScheduledTask", description);
+      agent.schedule(input!, "executeTask", description);
     } catch (error) {
       console.error("error scheduling task", error);
       return `Error scheduling task: ${error}`;

@@ -708,3 +708,42 @@ export const MODELS: Model[] = [
   //   "per_request_limits": null
   // }
 ]
+
+export const CLAUDE_MODELS = {
+  "anthropic/claude-3-opus-20240229": {
+    "id": "anthropic/claude-3-opus-20240229",
+    "name": "Claude 3 Opus",
+    "description": "Most powerful model, best at complex tasks",
+    "context_window": 200000,
+    "max_tokens": 4096,
+    "max_completion_tokens": 4096,
+    "pricing": {
+      "prompt": 0.015,
+      "completion": 0.075
+    }
+  },
+  "anthropic/claude-3-sonnet-20240229": {
+    "id": "anthropic/claude-3-sonnet-20240229",
+    "name": "Claude 3 Sonnet",
+    "description": "Excellent performance, faster and cheaper than Opus",
+    "context_window": 200000,
+    "max_tokens": 4096,
+    "max_completion_tokens": 4096,
+    "pricing": {
+      "prompt": 0.003,
+      "completion": 0.015
+    }
+  },
+  "anthropic/claude-3-haiku-20240307": {
+    "id": "anthropic/claude-3-haiku-20240307",
+    "name": "Claude 3 Haiku",
+    "description": "Fastest model, excellent for simple tasks",
+    "context_window": 48000,
+    "max_tokens": 4096,
+    "max_completion_tokens": 4096,
+    "pricing": {
+      "prompt": 0.0025,
+      "completion": 0.00125
+    }
+  }
+} as const;
