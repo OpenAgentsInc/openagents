@@ -56,11 +56,11 @@ const { /* ... */ } = useAgentChat({
 
 ### 3. Server Token Initialization (server.ts)
 
-The server now extracts tokens from HTTP headers and ensures they're available before MCP client creation:
+The server extracts tokens from both HTTP headers and request body, ensuring they're available before MCP client creation:
 
 ```typescript
 async function initializeGitHubToken(env: Env, request?: Request): Promise<void> {
-  // Extract GitHub token from request headers if available
+  // Extract GitHub token from request headers first
   if (request) {
     const apiKeyHeader = request.headers.get('x-api-key');
     const githubTokenHeader = request.headers.get('x-github-token');
@@ -74,10 +74,32 @@ async function initializeGitHubToken(env: Env, request?: Request): Promise<void>
     } else if (apiKeyHeader && apiKeyHeader.trim() !== '') {
       // Similar handling for x-api-key header
       // ...
+    } else {
+      // Try to extract token from request body if it's POST
+      if (request.method === 'POST') {
+        // Clone the request before reading the body
+        const clonedRequest = request.clone();
+        const contentType = request.headers.get('content-type') || '';
+        
+        if (contentType.includes('application/json')) {
+          const body = await clonedRequest.json();
+          
+          // Look for token in data.apiKeys.github (matches the React hook structure)
+          if (body && body.data && body.data.apiKeys && body.data.apiKeys.github) {
+            const githubToken = body.data.apiKeys.github;
+            
+            // Set token in all possible locations
+            env.apiKeys = env.apiKeys || {};
+            env.apiKeys.github = githubToken;
+            env.GITHUB_TOKEN = githubToken;
+            env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+          }
+        }
+      }
     }
   }
   
-  // If token is in apiKeys object from request data, ensure it's in all locations
+  // If token is already in apiKeys object from request data, ensure it's in all locations
   if (env.apiKeys && env.apiKeys.github) {
     env.GITHUB_TOKEN = env.apiKeys.github;
     env.GITHUB_PERSONAL_ACCESS_TOKEN = env.apiKeys.github;
