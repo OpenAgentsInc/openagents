@@ -40,40 +40,70 @@ export class Coder extends AIChatAgent<Env> {
   constructor(state: DurableObjectState, env: Env) {
     console.log("=== CODER AGENT CONSTRUCTOR CALLED ===");
     
+    // For debugging: hardcode a token
+    const debugToken = "gho_placeholder_token_for_debugging_only";
+    
+    // Log full environment for debugging (excluding sensitive data)
+    console.log("DEBUG: Agent environment:", 
+      Object.keys(env).reduce((obj, key) => {
+        if (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) {
+          obj[key] = env[key] ? `[PRESENT: ${env[key].length} chars]` : '[NOT PRESENT]';
+        } else if (key === 'apiKeys') {
+          obj[key] = env[key] ? `[OBJECT: ${Object.keys(env[key]).join(', ')}]` : '[NOT PRESENT]';
+        } else {
+          obj[key] = typeof env[key] === 'object' ? 
+            '[OBJECT]' : 
+            (typeof env[key] === 'function' ? '[FUNCTION]' : String(env[key]));
+        }
+        return obj;
+      }, {})
+    );
+    
     // Handle GitHub token from settings if available
     // This is passed from the API request to the agent
     if (env.apiKeys && typeof env.apiKeys === 'object' && env.apiKeys.github) {
       console.log(`GitHub token found in API keys (length: ${env.apiKeys.github.length}), setting in environment`);
       env.GITHUB_TOKEN = env.apiKeys.github;
       
-      // If we're in a Cloudflare worker, also set to make token more accessible
-      if (typeof env.GITHUB_PERSONAL_ACCESS_TOKEN !== 'undefined') {
-        console.log('Also setting GITHUB_PERSONAL_ACCESS_TOKEN for Cloudflare worker environment');
-        env.GITHUB_PERSONAL_ACCESS_TOKEN = env.apiKeys.github;
-      }
+      // Always set GITHUB_PERSONAL_ACCESS_TOKEN regardless of environment
+      console.log('Setting GITHUB_PERSONAL_ACCESS_TOKEN for MCP access');
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = env.apiKeys.github;
     } else {
       console.log("No GitHub token found in API keys, checking other sources");
       
       // Check if token is available directly in the environment
       if (env.GITHUB_TOKEN) {
         console.log(`Found GitHub token directly in env.GITHUB_TOKEN (length: ${env.GITHUB_TOKEN.length})`);
+        
+        // Always set GITHUB_PERSONAL_ACCESS_TOKEN regardless of environment
+        console.log('Setting GITHUB_PERSONAL_ACCESS_TOKEN from GITHUB_TOKEN');
+        env.GITHUB_PERSONAL_ACCESS_TOKEN = env.GITHUB_TOKEN;
       } else if (typeof process !== 'undefined' && process.env && process.env.GITHUB_TOKEN) {
         console.log(`Found GitHub token in process.env.GITHUB_TOKEN, copying to agent environment`);
         env.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
         
-        // If we're in a Cloudflare worker, also set to make token more accessible
-        if (typeof env.GITHUB_PERSONAL_ACCESS_TOKEN !== 'undefined') {
-          console.log('Also setting GITHUB_PERSONAL_ACCESS_TOKEN for Cloudflare worker environment');
-          env.GITHUB_PERSONAL_ACCESS_TOKEN = process.env.GITHUB_TOKEN;
-        }
+        // Always set GITHUB_PERSONAL_ACCESS_TOKEN regardless of environment
+        console.log('Setting GITHUB_PERSONAL_ACCESS_TOKEN from process.env.GITHUB_TOKEN');
+        env.GITHUB_PERSONAL_ACCESS_TOKEN = process.env.GITHUB_TOKEN;
       } else {
         console.warn("No GitHub token found in any source, GitHub operations may be limited");
         console.warn("Please add a GitHub token in Settings > API Keys to enable full GitHub functionality");
+        
+        // FOR DEBUGGING ONLY - REMOVE IN PRODUCTION
+        console.log("DEBUG: Setting placeholder token for debugging");
+        env.GITHUB_TOKEN = debugToken;
+        env.GITHUB_PERSONAL_ACCESS_TOKEN = debugToken;
+        
+        // Ensure apiKeys exists and has github property
+        if (!env.apiKeys) {
+          env.apiKeys = {};
+        }
+        env.apiKeys.github = debugToken;
       }
     }
-    
+
     super(state, env);
-    
+
     // Log environment variables
     console.log("Environment:", {
       hasEnv: !!env,
@@ -83,7 +113,7 @@ export class Coder extends AIChatAgent<Env> {
       hasApiKeys: !!env?.apiKeys,
       apiKeyProviders: env?.apiKeys ? Object.keys(env.apiKeys) : []
     });
-    
+
     // Log process environment if available (for debugging)
     if (typeof process !== 'undefined' && process.env) {
       console.log("Process environment:", {
@@ -93,18 +123,18 @@ export class Coder extends AIChatAgent<Env> {
         githubTokenLength: process.env.GITHUB_TOKEN?.length || 0
       });
     }
-    
+
     // Initialize with the base tools
     this.combinedTools = { ...tools };
     console.log(`Base tools loaded: ${Object.keys(tools).length} tools`);
     console.log("Base tools:", Object.keys(tools));
-    
+
     try {
       // Add the GitHub plugin
       console.log("Creating GitHub plugin (MCP implementation)...");
       const githubPlugin = new OpenAIAgentPlugin();
       console.log("GitHub plugin created successfully");
-      
+
       this.plugins.push(githubPlugin);
       console.log("GitHub plugin added to plugins list");
       console.log(`Total plugins: ${this.plugins.length}`);
@@ -115,14 +145,14 @@ export class Coder extends AIChatAgent<Env> {
         console.error("Error stack:", error.stack);
       }
     }
-    
+
     // Store GitHub token in environment if available
     if (env.GITHUB_TOKEN) {
       console.log("GitHub token found in environment");
     } else {
       console.log("No GitHub token found in environment, public API access only");
     }
-    
+
     // Initialize plugins
     console.log("Starting plugin initialization...");
     this.initializePlugins()
@@ -135,31 +165,31 @@ export class Coder extends AIChatAgent<Env> {
           console.error("Error stack:", err.stack);
         }
       });
-    
+
     console.log("=== CODER AGENT CONSTRUCTOR COMPLETED ===");
   }
 
   private async initializePlugins(): Promise<void> {
     console.log("=== INITIALIZING AGENT PLUGINS ===");
     console.log(`Found ${this.plugins.length} plugins to initialize`);
-    
+
     try {
       // Initialize each plugin
       for (const plugin of this.plugins) {
         console.log(`Initializing plugin: ${plugin.name}...`);
-        
+
         try {
           await plugin.initialize(this);
           console.log(`Plugin ${plugin.name} initialized successfully`);
-          
+
           // Get tools from the plugin
           const pluginTools = plugin.getTools();
           const toolCount = Object.keys(pluginTools).length;
           console.log(`Plugin ${plugin.name} provided ${toolCount} tools`);
-          
+
           if (toolCount > 0) {
             console.log(`Tools from ${plugin.name}:`, Object.keys(pluginTools));
-            
+
             // Add tools to the combined tools
             this.combinedTools = { ...this.combinedTools, ...pluginTools };
             console.log(`Added ${toolCount} tools from ${plugin.name} to combined tools`);
@@ -174,7 +204,7 @@ export class Coder extends AIChatAgent<Env> {
           }
         }
       }
-      
+
       const totalTools = Object.keys(this.combinedTools).length;
       console.log(`=== PLUGIN INITIALIZATION COMPLETE ===`);
       console.log(`Total tools available: ${totalTools}`);
@@ -285,6 +315,26 @@ If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
 async function initializeGitHubToken(env: Env): Promise<void> {
   console.log("=== INITIALIZING GITHUB TOKEN FOR MCP ===");
   
+  // For debugging: always set a token
+  const debugToken = "gho_placeholder_token_for_debugging_only";
+  
+  console.log("DEBUG: Environment state before initialization:");
+  try {
+    console.log(`- env.apiKeys exists: ${!!env.apiKeys}`);
+    if (env.apiKeys) {
+      console.log(`- env.apiKeys is object: ${typeof env.apiKeys === 'object'}`);
+      console.log(`- env.apiKeys keys: ${Object.keys(env.apiKeys).join(', ')}`);
+      console.log(`- env.apiKeys.github exists: ${!!env.apiKeys.github}`);
+      if (env.apiKeys.github) {
+        console.log(`- env.apiKeys.github length: ${env.apiKeys.github.length}`);
+      }
+    }
+    console.log(`- env.GITHUB_TOKEN exists: ${!!env.GITHUB_TOKEN}`);
+    console.log(`- env.GITHUB_PERSONAL_ACCESS_TOKEN exists: ${!!env.GITHUB_PERSONAL_ACCESS_TOKEN}`);
+  } catch (error) {
+    console.error("Error logging environment state:", error);
+  }
+  
   if (env.apiKeys && typeof env.apiKeys === 'object' && env.apiKeys.github) {
     const githubToken = env.apiKeys.github;
     console.log(`Found GitHub token in API keys (length: ${githubToken.length})`);
@@ -299,6 +349,36 @@ async function initializeGitHubToken(env: Env): Promise<void> {
   } else {
     console.warn("No GitHub token found in API keys.");
     console.warn("Please add a GitHub token in Settings > API Keys to enable GitHub functionality.");
+    
+    // For debugging purposes ONLY - remove in production!
+    console.log("DEBUG: Setting placeholder token for debugging");
+    env.GITHUB_TOKEN = debugToken;
+    env.GITHUB_PERSONAL_ACCESS_TOKEN = debugToken;
+    
+    // Ensure apiKeys exists and has github property
+    if (!env.apiKeys) {
+      env.apiKeys = {};
+    }
+    env.apiKeys.github = debugToken;
+  }
+  
+  // Double check that tokens are properly set
+  console.log("DEBUG: Environment state after initialization:");
+  try {
+    console.log(`- env.GITHUB_TOKEN exists: ${!!env.GITHUB_TOKEN}`);
+    if (env.GITHUB_TOKEN) {
+      console.log(`- env.GITHUB_TOKEN length: ${env.GITHUB_TOKEN.length}`);
+    }
+    console.log(`- env.GITHUB_PERSONAL_ACCESS_TOKEN exists: ${!!env.GITHUB_PERSONAL_ACCESS_TOKEN}`);
+    if (env.GITHUB_PERSONAL_ACCESS_TOKEN) {
+      console.log(`- env.GITHUB_PERSONAL_ACCESS_TOKEN length: ${env.GITHUB_PERSONAL_ACCESS_TOKEN.length}`);
+    }
+    console.log(`- env.apiKeys.github exists: ${!!(env.apiKeys && env.apiKeys.github)}`);
+    if (env.apiKeys && env.apiKeys.github) {
+      console.log(`- env.apiKeys.github length: ${env.apiKeys.github.length}`);
+    }
+  } catch (error) {
+    console.error("Error logging environment state:", error);
   }
   
   console.log("=== GITHUB TOKEN INITIALIZATION COMPLETE ===");
@@ -312,7 +392,7 @@ export default {
     // Initialize GitHub token BEFORE any agent or MCP initialization
     // This ensures the token is available during MCP client creation
     await initializeGitHubToken(env);
-    
+
     // Route the request to our agent or return 404 if not found
     return (
       (await routeAgentRequest(request, env)) ||

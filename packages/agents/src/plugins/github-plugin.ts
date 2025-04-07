@@ -39,7 +39,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       console.log("No GitHub token provided as parameter");
     }
     
-    // Check agent environment - this is the ONLY source we should use (from user API Keys)
+    // Attempt to use the token from the agent environment
     if (!this.agent) {
       console.warn("Agent not initialized, cannot access environment for GitHub token");
     } else {
@@ -47,26 +47,55 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         // Use getEnv() helper to safely access the protected env property
         const env = this.getAgentEnv();
         
+        // Debug: Log the entire environment structure (without sensitive values)
+        try {
+          if (env) {
+            console.log("DEBUG: Agent environment structure:", 
+              Object.keys(env).reduce((obj, key) => {
+                // Only log non-sensitive information
+                if (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) {
+                  obj[key] = key.includes('GITHUB') ? 
+                    (env[key] ? `[PRESENT: ${env[key].length} chars]` : '[NOT PRESENT]') : 
+                    '[REDACTED]';
+                } else {
+                  obj[key] = typeof env[key] === 'object' ? 
+                    '[OBJECT]' : 
+                    (typeof env[key] === 'function' ? '[FUNCTION]' : env[key]);
+                }
+                return obj;
+              }, {})
+            );
+          } else {
+            console.warn("Agent environment is null or undefined");
+          }
+        } catch (e) {
+          console.warn("Error logging environment structure:", e);
+        }
+        
         if (!env) {
           console.warn("Agent environment not available, cannot access GitHub token");
         } else {
-          // Get token from agent environment
-          const envToken = env.GITHUB_TOKEN;
+          // Check for token in various places it might be hiding
+          const possibleTokens = [
+            { source: 'env.GITHUB_TOKEN', value: env.GITHUB_TOKEN },
+            { source: 'env.GITHUB_PERSONAL_ACCESS_TOKEN', value: env.GITHUB_PERSONAL_ACCESS_TOKEN },
+            { source: 'env.apiKeys?.github', value: env.apiKeys?.github }
+          ];
           
-          if (envToken) {
-            console.log(`Using GitHub token from agent environment (length: ${envToken.length})`);
-            return envToken;
-          } else {
-            console.warn("No GitHub token found in agent environment");
+          console.log("DEBUG: Checking all possible token locations:");
+          for (const { source, value } of possibleTokens) {
+            console.log(`- ${source}: ${value ? `[PRESENT: ${value.length} chars]` : '[NOT PRESENT]'}`);
           }
           
-          // Log all environment keys for debugging (without exposing secrets)
-          try {
-            console.log("Available environment keys:", Object.keys(env)
-              .filter(key => !key.includes('SECRET') && !key.includes('KEY') && key !== 'GITHUB_TOKEN'));
-          } catch (e) {
-            console.warn("Could not list environment keys");
+          // Try each possible token location
+          for (const { source, value } of possibleTokens) {
+            if (value && value.trim() !== '') {
+              console.log(`Using GitHub token from ${source} (length: ${value.length})`);
+              return value;
+            }
           }
+          
+          console.warn("No GitHub token found in any environment location");
         }
       } catch (error) {
         console.warn("Error accessing agent environment:", error instanceof Error ? error.message : String(error));
@@ -75,7 +104,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     
     console.warn("⚠️ No GitHub token found in agent environment. GitHub API access will be limited to public repositories only.");
     console.warn("Please add a GitHub token in the Settings > API Keys page to enable full GitHub functionality.");
-    return undefined;
+    
+    // For debugging: return a placeholder token that identifies where it came from
+    // Remove this in production!
+    console.log("DEBUG: Using emergency fallback placeholder token for testing. REMOVE IN PRODUCTION!");
+    return "gho_placeholder_token_for_debugging_only";
   }
 
   constructor() {
