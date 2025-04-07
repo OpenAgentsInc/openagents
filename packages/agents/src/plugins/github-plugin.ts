@@ -523,8 +523,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       throw new Error("GitHub plugin not properly initialized");
     }
 
-    const MAX_RETRIES = 2; // Maximum number of retry attempts
-    const RETRY_DELAY = 2000; // Delay between retries in milliseconds
+    const MAX_RETRIES = 3; // Maximum number of retry attempts
+    const BASE_RETRY_DELAY = 2000; // Base delay between retries in milliseconds
+    
+    // Calculate exponential backoff delay (increases with each retry)
+    const retryDelay = Math.min(BASE_RETRY_DELAY * Math.pow(2, retryCount), 10000);
 
     try {
       // Log the MCP tool call
@@ -590,16 +593,27 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           });
         }
         
-        // Handle Cloudflare connection timeout errors with retry
+        // Handle Cloudflare connection timeout errors with exponential backoff retry
         if ((status === 522 || status === 524) && retryCount < MAX_RETRIES) {
-          console.log(`Connection timeout detected (${status}). Retrying after delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          console.log(`Connection timeout detected (${status}). Retrying after ${retryDelay}ms delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
+          
+          // Check if repo visibility could be an issue
+          if (!params.token && (toolName === 'get_file_contents' || toolName === 'list_issues')) {
+            console.warn(`No GitHub token provided and experiencing timeouts - this could indicate a private repository requiring authentication. If ${params.owner}/${params.repo} is private, please add a GitHub token in Settings > API Keys.`);
+          }
+          
+          // Wait before retrying with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          
           // Retry the request
           return this.callMCPTool(toolName, params, retryCount + 1);
         } else if (status === 522 || status === 524) {
+          // Check if this might be due to trying to access a private repo without a token
+          const noTokenMessage = !params.token ? 
+            ` This may also happen when trying to access a private repository without authentication. If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
+            
           return JSON.stringify({
-            error: `Connection timeout (${status}): The GitHub server is currently unavailable or not responding. This is typically a temporary issue. Please try again in a few minutes or try a different repository.`
+            error: `Connection timeout (${status}): The GitHub server is currently unavailable or not responding. This is typically a temporary issue. Please try again in a few minutes or try a different repository.${noTokenMessage}`
           });
         }
         
@@ -627,23 +641,34 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     } catch (error) {
       console.error(`Error executing MCP tool ${toolName}:`, error);
       
-      // Retry on network errors
+      // Retry on network errors with exponential backoff
       const errorMessage = error instanceof Error ? error.message : String(error);
       if ((errorMessage.includes('network') || 
            errorMessage.includes('fetch') || 
            errorMessage.includes('connection') ||
            errorMessage.includes('timeout')) && 
           retryCount < MAX_RETRIES) {
-        console.log(`Network error detected. Retrying after delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        console.log(`Network error detected. Retrying after ${retryDelay}ms delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
+        
+        // Check if repo visibility could be an issue
+        if (!params.token && params.owner && params.repo) {
+          console.warn(`No GitHub token provided and experiencing network errors - this might indicate a private repository requiring authentication. If ${params.owner}/${params.repo} is private, please add a GitHub token in Settings > API Keys.`);
+        }
+        
+        // Wait before retrying with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        
         // Retry the request
         return this.callMCPTool(toolName, params, retryCount + 1);
       }
       
       // Return a user-friendly error message as JSON
+      // Check if this might be due to trying to access a private repo without a token
+      const noTokenMessage = !params.token && params.owner && params.repo ? 
+        ` This may also happen when trying to access a private repository without authentication. If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
+      
       return JSON.stringify({
-        error: `Error calling GitHub service: ${errorMessage}. This might be a temporary issue. Please try again in a few minutes.`
+        error: `Error calling GitHub service: ${errorMessage}. This might be a temporary issue. Please try again in a few minutes.${noTokenMessage}`
       });
     }
   }
