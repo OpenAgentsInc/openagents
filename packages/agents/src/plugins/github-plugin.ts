@@ -6,7 +6,6 @@ import type { AgentPlugin } from './plugin-interface';
 import { AIChatAgent } from 'agents/ai-chat-agent';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { directGitHubTools } from './direct-github-tools';
 
 export class OpenAIAgentPlugin implements AgentPlugin {
   name = 'github';

@@ -88,7 +88,7 @@ export class Coder extends AIChatAgent<Env> {
     
     try {
       // Add the GitHub plugin
-      console.log("Creating GitHub plugin...");
+      console.log("Creating GitHub plugin (MCP implementation)...");
       const githubPlugin = new OpenAIAgentPlugin();
       console.log("GitHub plugin created successfully");
       
