@@ -22,7 +22,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
   // --- Theme Handling ---
@@ -36,11 +36,6 @@ export default function ChatPage() {
     }
     localStorage.setItem("theme", theme);
   }, [theme]);
-
-  // --- Initial Scroll ---
-  useEffect(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
 
   const toggleTheme = () => {
     const newTheme = theme === "dark" ? "light" : "dark";
@@ -75,6 +70,20 @@ export default function ChatPage() {
     }
   });
 
+  // --- Initial Scroll ---
+  useEffect(() => {
+    scrollToBottom();
+  }, [scrollToBottom]);
+
+  // --- Scroll on New Messages ---
+  useEffect(() => {
+    if (agentMessages.length > 0) {
+      // Use a small timeout to ensure content is rendered before scrolling
+      const timeoutId = setTimeout(scrollToBottom, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [agentMessages, scrollToBottom]);
+
   // --- Update latestError state if agentError from hook changes ---
   useEffect(() => {
     if (agentError) {
@@ -85,13 +94,6 @@ export default function ChatPage() {
       setLatestError(`Hook Error: ${errorString}`);
     }
   }, [agentError]);
-
-  // --- Scroll on New Messages ---
-  useEffect(() => {
-    if (agentMessages.length > 0) {
-      scrollToBottom();
-    }
-  }, [agentMessages, scrollToBottom]);
 
   const formatTime = (date: Date | string | undefined) => {
     if (!date) return '';
@@ -184,8 +186,8 @@ export default function ChatPage() {
         </div>
 
         {/* Messages Area */}
-        <ScrollArea className="flex-1 p-4 pb-24">
-          <div className="space-y-4">
+        <ScrollArea className="flex-1 p-4 pb-24 h-full">
+          <div className="space-y-4 min-h-full">
             {/* Welcome Message */}
             {agentMessages.length === 0 && !latestError && (
               <div className="h-[60vh] flex items-center justify-center">

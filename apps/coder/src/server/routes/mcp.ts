@@ -337,4 +337,55 @@ mcpRoutes.post('/tools/refresh', async (c) => {
   }
 });
 
+/**
+ * Execute an MCP tool directly
+ * This endpoint serves as a bridge between the Cloudflare Worker and the MCP tools
+ */
+mcpRoutes.post('/execute', async (c) => {
+  try {
+    const body = await c.req.json();
+    
+    // Validate request
+    if (!body.tool || !body.parameters) {
+      return c.json({ error: 'Tool name and parameters are required' }, 400);
+    }
+    
+    const toolName = body.tool;
+    const parameters = body.parameters;
+    
+    console.log(`[MCP API] Executing tool ${toolName} with parameters:`, parameters);
+    
+    // Get MCP tools
+    const mcpTools = getMCPTools();
+    
+    // Check if tool exists
+    if (!mcpTools[toolName]) {
+      return c.json({ error: `Tool ${toolName} not found` }, 404);
+    }
+    
+    // Execute the tool
+    try {
+      const result = await mcpTools[toolName].execute(parameters);
+      console.log(`[MCP API] Tool ${toolName} execution result:`, result);
+      
+      // Return the result
+      return c.json(result);
+    } catch (toolError) {
+      console.error(`[MCP API] Error executing tool ${toolName}:`, toolError);
+      
+      // Return error
+      return c.json({ 
+        error: `Tool execution failed: ${toolError instanceof Error ? toolError.message : String(toolError)}` 
+      }, 500);
+    }
+  } catch (error) {
+    console.error('[MCP API] Error processing tool execution request:', error);
+    
+    return c.json({ 
+      error: 'Failed to process tool execution request',
+      details: error instanceof Error ? error.message : String(error)
+    }, 500);
+  }
+});
+
 export default mcpRoutes;

@@ -20,7 +20,7 @@ interface Model {
   }
   top_provider?: {
     context_length: number
-    max_completion_tokens: number
+    max_completion_tokens: number | null
     is_moderated: boolean
   }
   architecture?: {
