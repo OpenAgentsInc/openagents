@@ -12,11 +12,18 @@ import {
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createWorkersAI } from 'workers-ai-provider';
+// import { createWorkersAI } from 'workers-ai-provider';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { env } from "cloudflare:workers";
 
-const workersai = createWorkersAI({ binding: env.AI });
-const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+// const workersai = createWorkersAI({ binding: env.AI });
+// const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+
+const google = createGoogleGenerativeAI({
+  apiKey: env.GOOGLE_API_KEY,
+});
+
+const model = google("gemini-2.5-pro-exp-03-25");
 
 // we use ALS to expose the agent context to the tools
 export const agentContext = new AsyncLocalStorage<Coder>();

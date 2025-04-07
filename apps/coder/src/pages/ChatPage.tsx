@@ -19,8 +19,6 @@ export default function ChatPage() {
   });
   const [showDebug, setShowDebug] = useState(false);
   const [latestError, setLatestError] = useState<string | null>(null);
-  // Simplified connection status: 'initializing', 'connected', 'error'
-  const [connectionStatus, setConnectionStatus] = useState<string>("initializing");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -49,21 +47,10 @@ export default function ChatPage() {
     setTheme(newTheme);
   };
 
-  // --- Direct Connection State ---
-  const [useDirectConnection, setUseDirectConnection] = useState(() => {
-    // Default to false (use proxy) if not set
-    return localStorage.getItem("useDirectConnection") === "true";
-  });
-
   // --- Initialize Agent ---
-  // The host parameter dictates the connection target.
-  // undefined = use relative path (handled by Vite proxy)
-  // "https://..." = use direct connection (WSS will be inferred)
   const agent = useAgent({
-    agent: "coder",
-    host: useDirectConnection ? "https://agents.openagents.com" : undefined
+    agent: "coder"
   });
-  console.log(`Initializing agent. Direct connection: ${useDirectConnection}, Host setting: ${useDirectConnection ? "https://agents.openagents.com" : "undefined (relative)"}`);
 
   // --- Agent Chat Hook ---
   const {
@@ -71,51 +58,22 @@ export default function ChatPage() {
     input: agentInput,
     handleInputChange: handleAgentInputChange,
     handleSubmit: handleAgentSubmit,
-    // addToolResult, // Removed if not used
     clearHistory,
-    error: agentError, // Capture error from the hook itself
+    error: agentError,
   } = useAgentChat({
-    agent, // Pass the initialized agent
-    maxSteps: 5, // Or your desired step limit
-    onFinish: () => {
-      console.log("Agent finished processing.");
-      // Assuming connection is stable if we finish successfully
-      if (connectionStatus !== 'error') {
-        setConnectionStatus("connected");
-      }
-    },
+    agent,
+    maxSteps: 5,
     onError: (error) => {
       console.error("Agent chat error caught by onError:", error);
       const errorString = typeof error === 'string'
         ? error
         : error instanceof Error
           ? `${error.name}: ${error.message}` + (error.cause ? `\nCause: ${error.cause}` : '') + (error.stack ? `\nStack: ${error.stack}` : '')
-          : JSON.stringify(error, Object.getOwnPropertyNames(error)); // Try to get more detail from non-Error objects
+          : JSON.stringify(error, Object.getOwnPropertyNames(error));
 
       setLatestError(`Agent Error: ${errorString}`);
-      setConnectionStatus("error"); // Set status to error on any agent communication failure
     }
   });
-
-  // --- Update Connection Status (Simplified) ---
-  useEffect(() => {
-    // If the agent object is created, assume we are 'connecting'
-    // The 'connected' or 'error' state will be set by callbacks/errors
-    if (agent && connectionStatus === 'initializing') {
-      setConnectionStatus("connecting");
-      // Basic assumption: if no error occurs quickly, mark as connected.
-      // onError will override this if needed.
-      const timer = setTimeout(() => {
-        if (connectionStatus === 'connecting') {
-          console.log("Assuming connection is stable after timeout.");
-          setConnectionStatus("connected");
-        }
-      }, 3000); // Give it 3 seconds to potentially fail
-
-      return () => clearTimeout(timer);
-    }
-  }, [agent, connectionStatus]); // Rerun if agent changes or status resets
-
 
   // --- Update latestError state if agentError from hook changes ---
   useEffect(() => {
@@ -125,10 +83,8 @@ export default function ChatPage() {
         ? `${agentError.name}: ${agentError.message}` + (agentError.stack ? `\nStack: ${agentError.stack}` : '')
         : JSON.stringify(agentError);
       setLatestError(`Hook Error: ${errorString}`);
-      setConnectionStatus("error");
     }
   }, [agentError]);
-
 
   // --- Scroll on New Messages ---
   useEffect(() => {
@@ -136,7 +92,6 @@ export default function ChatPage() {
       scrollToBottom();
     }
   }, [agentMessages, scrollToBottom]);
-
 
   const formatTime = (date: Date | string | undefined) => {
     if (!date) return '';
@@ -151,21 +106,25 @@ export default function ChatPage() {
 
   const handleClearHistory = () => {
     clearHistory();
-    setLatestError(null); // Also clear any displayed error
-    setConnectionStatus('initializing'); // Reset status on clear
-    // Re-initialize connection status check
-    if (agent) {
-      setConnectionStatus("connecting");
-      const timer = setTimeout(() => {
-        if (connectionStatus === 'connecting') {
-          console.log("Assuming connection is stable after history clear.");
-          setConnectionStatus("connected");
-        }
-      }, 3000);
-      // No need to return cleanup here as it's a one-off action
-    }
+    setLatestError(null);
   };
 
+  // Get connection status from agent
+  const connectionStatus = agent?.ws?.readyState;
+  const getConnectionStatusDisplay = () => {
+    if (!agent?.ws) return "initializing";
+    switch (agent.ws.readyState) {
+      case WebSocket.CONNECTING:
+        return "connecting";
+      case WebSocket.OPEN:
+        return "connected";
+      case WebSocket.CLOSING:
+      case WebSocket.CLOSED:
+        return "error";
+      default:
+        return "error";
+    }
+  };
 
   return (
     <div className="h-[100vh] pt-[30px] w-full flex justify-center items-center bg-fixed overflow-hidden">
@@ -182,24 +141,19 @@ export default function ChatPage() {
             <h2 className="font-semibold text-base mr-2">AI Chat Agent</h2>
             {/* Connection Status Indicator */}
             <div className="flex items-center">
-              {connectionStatus === "connecting" && (
+              {getConnectionStatusDisplay() === "connecting" && (
                 <span className="text-xs text-yellow-600 rounded-full px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800/50">
                   Connecting...
                 </span>
               )}
-              {connectionStatus === "error" && (
+              {getConnectionStatusDisplay() === "error" && (
                 <span className="text-xs text-red-600 rounded-full px-2 py-0.5 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50" title={latestError || 'Connection Error'}>
                   Error
                 </span>
               )}
-              {connectionStatus === "connected" && (
+              {getConnectionStatusDisplay() === "connected" && (
                 <span className="text-xs text-green-600 rounded-full px-2 py-0.5 bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800/50">
                   Connected
-                </span>
-              )}
-              {useDirectConnection && (
-                <span className="ml-1 text-xs text-blue-600 rounded-full px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800/50">
-                  Direct
                 </span>
               )}
             </div>
@@ -215,22 +169,6 @@ export default function ChatPage() {
               title="Toggle Debug View"
             >
               <span className="text-xs">Debug</span>
-            </Toggle>
-
-            <Toggle
-              size="sm"
-              pressed={useDirectConnection}
-              aria-label="Toggle direct connection"
-              title={useDirectConnection ? "Switch to Proxy Connection" : "Switch to Direct Connection"}
-              onClick={() => {
-                const nextValue = !useDirectConnection;
-                setUseDirectConnection(nextValue);
-                localStorage.setItem("useDirectConnection", String(nextValue));
-                // Force reload to apply the change correctly at initialization
-                window.location.reload();
-              }}
-            >
-              <span className="text-xs">Direct</span>
             </Toggle>
 
             <Button
