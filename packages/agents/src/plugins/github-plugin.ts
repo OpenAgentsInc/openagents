@@ -104,7 +104,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Getting file contents for ${owner}/${repo}/${path}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use MCP tool instead of direct GitHub API
+            // Use MCP tool
             console.log(`Using MCP tool for getting file contents from ${owner}/${repo}`);
             return await this.callMCPTool('get_file_contents', { 
               owner, 
@@ -216,7 +216,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Listing issues for ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use MCP tool instead of direct GitHub API
+            // Use MCP tool
             console.log(`Using MCP tool for listing issues in ${owner}/${repo}`);
             return await this.callMCPTool('list_issues', { 
               owner, 
@@ -248,7 +248,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Creating issue in ${owner}/${repo}: ${title}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use MCP tool instead of direct GitHub API
+            // Use MCP tool
             console.log(`Using MCP tool for creating issue in ${owner}/${repo}`);
             return await this.callMCPTool('create_issue', { 
               owner, 
@@ -278,7 +278,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Getting issue ${issue_number} from ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use MCP tool instead of direct GitHub API
+            // Use MCP tool
             console.log(`Using MCP tool for getting issue in ${owner}/${repo}`);
             return await this.callMCPTool('get_issue', { 
               owner, 
@@ -341,7 +341,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Listing pull requests for ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use MCP tool instead of direct GitHub API
+            // Use MCP tool
             console.log(`Using MCP tool for listing pull requests in ${owner}/${repo}`);
             return await this.callMCPTool('list_pull_requests', { 
               owner, 
@@ -459,7 +459,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Listing commits for ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use MCP tool instead of direct GitHub API
+            // Use MCP tool
             console.log(`Using MCP tool for listing commits in ${owner}/${repo}`);
             return await this.callMCPTool('list_commits', { 
               owner, 
