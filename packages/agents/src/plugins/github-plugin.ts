@@ -2,7 +2,7 @@
  * GitHub plugin for the Coder agent
  * Provides GitHub tools that can be used by the agent
  */
-import { AgentPlugin } from './plugin-interface';
+import type { AgentPlugin } from './plugin-interface';
 import { AIChatAgent } from 'agents/ai-chat-agent';
 import { tool } from 'ai';
 import { z } from 'zod';
@@ -150,7 +150,12 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       }
 
       const result = await response.json();
-      return result.text || JSON.stringify(result);
+      // Handle the result with proper type checking
+      if (result && typeof result === 'object' && 'text' in result && typeof result.text === 'string') {
+        return result.text;
+      } else {
+        return JSON.stringify(result);
+      }
     } catch (error) {
       console.error(`Error executing MCP tool ${toolName}:`, error);
       throw error;
