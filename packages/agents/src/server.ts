@@ -9,7 +9,6 @@ import {
   streamText,
   type StreamTextOnFinishCallback,
 } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -17,8 +16,7 @@ import { createWorkersAI } from 'workers-ai-provider';
 import { env } from "cloudflare:workers";
 
 const workersai = createWorkersAI({ binding: env.AI });
-// @ts-ignore
-const model = workersai("@cf/meta/llama-4-scout-17b-16e-instruct");
+const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
 
 // we use ALS to expose the agent context to the tools
 export const agentContext = new AsyncLocalStorage<Coder>();
