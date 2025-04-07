@@ -285,8 +285,47 @@ If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
  * Helper function to initialize GitHub token for MCP
  * This ensures GitHub token is available BEFORE MCP clients are created
  */
-async function initializeGitHubToken(env: Env): Promise<void> {
+async function initializeGitHubToken(env: Env, request?: Request): Promise<void> {
   console.log("=== INITIALIZING GITHUB TOKEN FOR MCP ===");
+  
+  // Extract GitHub token from request headers if available
+  if (request) {
+    console.log("Checking request headers for GitHub token...");
+    const apiKeyHeader = request.headers.get('x-api-key');
+    const githubTokenHeader = request.headers.get('x-github-token');
+    
+    if (githubTokenHeader && githubTokenHeader.trim() !== '') {
+      console.log(`Found GitHub token in x-github-token header (length: ${githubTokenHeader.length})`);
+      
+      // Initialize apiKeys object if it doesn't exist
+      if (!env.apiKeys) {
+        env.apiKeys = {};
+      }
+      
+      // Set token in all possible locations
+      env.apiKeys.github = githubTokenHeader;
+      env.GITHUB_TOKEN = githubTokenHeader;
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = githubTokenHeader;
+      
+      console.log("GitHub token from x-github-token header set in environment");
+    } else if (apiKeyHeader && apiKeyHeader.trim() !== '') {
+      console.log(`Found GitHub token in x-api-key header (length: ${apiKeyHeader.length})`);
+      
+      // Initialize apiKeys object if it doesn't exist
+      if (!env.apiKeys) {
+        env.apiKeys = {};
+      }
+      
+      // Set token in all possible locations
+      env.apiKeys.github = apiKeyHeader;
+      env.GITHUB_TOKEN = apiKeyHeader;
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = apiKeyHeader;
+      
+      console.log("GitHub token from x-api-key header set in environment");
+    } else {
+      console.log("No GitHub token found in request headers");
+    }
+  }
   
   console.log("Environment state before initialization:");
   try {
@@ -349,9 +388,14 @@ async function initializeGitHubToken(env: Env): Promise<void> {
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    // Log request information (without sensitive details)
+    console.log(`Received request: ${request.method} ${new URL(request.url).pathname}`);
+    console.log(`Request headers: ${[...request.headers.keys()].join(', ')}`);
+    
     // Initialize GitHub token BEFORE any agent or MCP initialization
     // This ensures the token is available during MCP client creation
-    await initializeGitHubToken(env);
+    // Pass the request to extract headers
+    await initializeGitHubToken(env, request);
 
     // Route the request to our agent or return 404 if not found
     return (
