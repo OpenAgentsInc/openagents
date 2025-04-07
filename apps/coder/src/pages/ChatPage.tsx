@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Toggle } from "@/components/ui/toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useApiKeyContext } from "@/providers/ApiKeyProvider";
 
 export default function ChatPage() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -42,11 +43,18 @@ export default function ChatPage() {
     setTheme(newTheme);
   };
 
+  // --- API Keys ---
+  const { apiKeys } = useApiKeyContext();
+
   // --- Initialize Agent ---
   const agent = useAgent({
-    agent: "coder"
+    agent: "coder",
+    headers: {
+      "x-api-key": apiKeys.github || "",
+      "x-github-token": apiKeys.github || "",
+    },
   });
-
+  
   // --- Agent Chat Hook ---
   const {
     messages: agentMessages,
@@ -56,6 +64,9 @@ export default function ChatPage() {
     clearHistory,
     error: agentError,
   } = useAgentChat({
+    data: {
+      apiKeys,
+    },
     agent,
     maxSteps: 5,
     onError: (error) => {
