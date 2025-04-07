@@ -23,8 +23,8 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "Chat",
-        "class_name": "Chat"
+        "name": "Coder",
+        "class_name": "Coder"
       }
     ]
   },
@@ -32,7 +32,7 @@
     {
       "tag": "v1",
       "new_sqlite_classes": [
-        "Chat"
+        "Coder"
       ]
     }
   ],
