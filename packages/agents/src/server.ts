@@ -189,8 +189,15 @@ CODE OPERATIONS:
 - githubSearchCode: Search for code across GitHub repositories
 - githubListCommits: List commits in a repository
 
+TASK SCHEDULING:
+- scheduleTask: Schedule a task to be executed at a later time
+- listScheduledTasks: List all currently scheduled tasks with their IDs and details
+- deleteScheduledTask: Delete a previously scheduled task by providing its ID
+
 If the user asks about GitHub or needs to work with GitHub repositories, use the appropriate GitHub tools.
-If the user asks to schedule a task, use the schedule tool to schedule the task.
+If the user asks to schedule a task, use the scheduleTask tool.
+If the user asks to list scheduled tasks, use the listScheduledTasks tool.
+If the user asks to delete a scheduled task, use the deleteScheduledTask tool. Suggest using listScheduledTasks first to find the task ID.
 `,
             messages: processedMessages,
             tools: this.combinedTools,

@@ -69,6 +69,66 @@ const scheduleTask = tool({
     return `Task scheduled for type "${when.type}" : ${input}`;
   },
 });
+
+const listScheduledTasks = tool({
+  description: "A tool to list all currently scheduled tasks",
+  parameters: z.object({}),
+  execute: async () => {
+    // Get the agent from context
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+    
+    try {
+      // Get all scheduled tasks
+      const tasks = await agent.listScheduled();
+      
+      if (!tasks || tasks.length === 0) {
+        return "No scheduled tasks found.";
+      }
+      
+      // Format the tasks for display
+      const formattedTasks = tasks.map(task => {
+        const nextRun = new Date(task.next_run).toLocaleString();
+        return `ID: ${task.id}\nDescription: ${task.tag}\nNext Run: ${nextRun}\nCron: ${task.cron || 'One-time'}\n`;
+      }).join("\n");
+      
+      return `Scheduled Tasks:\n\n${formattedTasks}`;
+    } catch (error) {
+      console.error("Error listing scheduled tasks:", error);
+      return `Error listing scheduled tasks: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
+
+const deleteScheduledTask = tool({
+  description: "A tool to delete a previously scheduled task",
+  parameters: z.object({
+    taskId: z.string().describe("The ID of the task to delete")
+  }),
+  execute: async ({ taskId }) => {
+    // Get the agent from context
+    const agent = agentContext.getStore();
+    if (!agent) {
+      throw new Error("No agent found");
+    }
+    
+    try {
+      // Call the deleteScheduled method on the agent
+      const deleted = await agent.deleteScheduled(taskId);
+      
+      if (deleted) {
+        return `Successfully deleted scheduled task with ID: ${taskId}`;
+      } else {
+        return `No task found with ID: ${taskId}`;
+      }
+    } catch (error) {
+      console.error("Error deleting scheduled task:", error);
+      return `Error deleting scheduled task: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
 /**
  * Export all available tools
  * These will be provided to the AI model to describe available capabilities
@@ -77,6 +137,8 @@ export const tools = {
   getWeatherInformation,
   getLocalTime,
   scheduleTask,
+  listScheduledTasks,
+  deleteScheduledTask,
 };
 
 /**
