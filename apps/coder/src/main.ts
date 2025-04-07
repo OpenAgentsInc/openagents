@@ -7,6 +7,7 @@ import { serve } from '@hono/node-server';
 import { Server } from 'http';
 import type { ServerType } from '@hono/node-server';
 import { initMCPClients, cleanupMCPClients } from './server/mcp-clients';
+import { initMCPGithubTokenSync } from './server/mcp-github-token';
 import { setApiPort } from './helpers/ipc/api-port/api-port-listeners';
 import registerListeners from './helpers/ipc/listeners-register';
 import { getDatabase, cleanupDatabase, getDbStatus } from './main/dbService'; // Import from new service
@@ -86,6 +87,16 @@ async function initializeMcpClients() {
   try {
     await initMCPClients();
     console.log('[Main Process] MCP clients initialized successfully.');
+    
+    // Initialize GitHub token sync after MCP clients are initialized
+    try {
+      console.log('[Main Process] Initializing GitHub token sync...');
+      await initMCPGithubTokenSync();
+      console.log('[Main Process] GitHub token sync initialized successfully.');
+    } catch (tokenError) {
+      console.error('[Main Process] Error initializing GitHub token sync:', tokenError);
+      // Non-fatal error, continue
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[Main Process] Error initializing MCP clients:', error);

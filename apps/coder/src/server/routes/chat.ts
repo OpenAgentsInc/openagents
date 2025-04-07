@@ -47,6 +47,9 @@ chatRoutes.post('/chat', async (c) => {
     // Extract API keys from request if provided
     const apiKeys = getApiKeys(body.apiKeys || {});
     
+    // Log API keys for debugging (without values)
+    console.log('[Server] API Keys providers:', Object.keys(apiKeys));
+    
     // Get the model ID
     const modelId = body.model;
     

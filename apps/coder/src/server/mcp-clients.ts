@@ -95,7 +95,8 @@ const DEFAULT_MCP_CLIENTS: MCPClientConfig[] = [
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
     env: {
-      GITHUB_PERSONAL_ACCESS_TOKEN: '<TOKEN_REQUIRED>'
+      // Token will be set dynamically from settings
+      GITHUB_PERSONAL_ACCESS_TOKEN: ''
     },
     status: 'disconnected'
   },

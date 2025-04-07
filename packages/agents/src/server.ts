@@ -39,13 +39,22 @@ export class Coder extends AIChatAgent<Env> {
 
   constructor(state: DurableObjectState, env: Env) {
     console.log("=== CODER AGENT CONSTRUCTOR CALLED ===");
+    
+    // Handle GitHub token from settings if available
+    // This is passed from the API request to the agent
+    if (env.apiKeys && typeof env.apiKeys === 'object' && env.apiKeys.github) {
+      console.log("GitHub token found in API keys, setting in environment");
+      env.GITHUB_TOKEN = env.apiKeys.github;
+    }
+    
     super(state, env);
     
     // Log environment variables
     console.log("Environment:", {
       hasEnv: !!env,
       envKeys: env ? Object.keys(env) : [],
-      hasGithubToken: !!env?.GITHUB_TOKEN
+      hasGithubToken: !!env?.GITHUB_TOKEN,
+      hasApiKeys: !!env?.apiKeys
     });
     
     // Initialize with the base tools

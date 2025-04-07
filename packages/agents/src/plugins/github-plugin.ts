@@ -12,6 +12,20 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   name = 'github';
   private agent: AIChatAgent<any> | null = null;
   private readonly gitHubTools: Record<string, any> = {};
+  
+  /**
+   * Gets the GitHub token from the agent environment or parameters
+   * Prioritizes parameter token over environment token for flexibility
+   */
+  private getGitHubToken(paramToken?: string): string | undefined {
+    // First check if a token was passed directly to the method
+    if (paramToken && paramToken.trim() !== '') {
+      return paramToken;
+    }
+    
+    // If no parameter token, try to get from agent environment
+    return this.agent?.env?.GITHUB_TOKEN;
+  }
 
   constructor() {
     console.log("=== INITIALIZING GITHUB PLUGIN (CONSTRUCTOR) ===");
@@ -26,15 +40,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           owner: z.string().describe("The repository owner (username or org)"),
           repo: z.string().describe("The repository name"),
           path: z.string().describe("Path to the file in the repository"),
-          branch: z.string().optional().describe("Branch name, defaults to main/master")
+          branch: z.string().optional().describe("Branch name, defaults to main/master"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, path, branch }) => {
+        execute: async ({ owner, repo, path, branch, token }) => {
           try {
             console.log(`Getting file contents for ${owner}/${repo}/${path}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
             // Use direct GitHub API
-            return await directGitHubTools.getFileContents(owner, repo, path, branch, token);
+            return await directGitHubTools.getFileContents(owner, repo, path, branch, githubToken);
           } catch (error) {
             console.error("Error getting file contents:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -52,11 +67,15 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           files: z.array(z.object({
             path: z.string().describe("File path in the repository"),
             content: z.string().describe("Content to write to the file")
-          })).describe("Array of files to push")
+          })).describe("Array of files to push"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, branch, message, files }) => {
+        execute: async ({ owner, repo, branch, message, files, token }) => {
           try {
-            return await this.callMCPTool('push_files', { owner, repo, branch, message, files });
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
+            // Pass token to MCP tool
+            return await this.callMCPTool('push_files', { owner, repo, branch, message, files, token: githubToken });
           } catch (error) {
             console.error("Error pushing files:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -69,11 +88,20 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         parameters: z.object({
           name: z.string().describe("The name of the repository"),
           description: z.string().optional().describe("Repository description"),
-          private: z.boolean().optional().describe("Whether the repository should be private")
+          private: z.boolean().optional().describe("Whether the repository should be private"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ name, description, private: isPrivate }) => {
+        execute: async ({ name, description, private: isPrivate, token }) => {
           try {
-            return await this.callMCPTool('create_repository', { name, description, private: isPrivate });
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
+            // Pass token to MCP tool
+            return await this.callMCPTool('create_repository', { 
+              name, 
+              description, 
+              private: isPrivate,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error creating repository:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -87,11 +115,21 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           owner: z.string().describe("The repository owner (username or org)"),
           repo: z.string().describe("The repository name"),
           branch: z.string().describe("The name of the new branch"),
-          from_branch: z.string().describe("The source branch to create from")
+          from_branch: z.string().describe("The source branch to create from"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, branch, from_branch }) => {
+        execute: async ({ owner, repo, branch, from_branch, token }) => {
           try {
-            return await this.callMCPTool('create_branch', { owner, repo, branch, from_branch });
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
+            // Pass token to MCP tool
+            return await this.callMCPTool('create_branch', { 
+              owner, 
+              repo, 
+              branch, 
+              from_branch,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error creating branch:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -107,15 +145,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           repo: z.string().describe("The repository name"),
           state: z.enum(['open', 'closed', 'all']).optional().describe("Issue state (open, closed, all)"),
           sort: z.enum(['created', 'updated', 'comments']).optional().describe("Sort field"),
-          direction: z.enum(['asc', 'desc']).optional().describe("Sort direction")
+          direction: z.enum(['asc', 'desc']).optional().describe("Sort direction"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, state, sort, direction }) => {
+        execute: async ({ owner, repo, state, sort, direction, token }) => {
           try {
             console.log(`Listing issues for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
             // Use direct GitHub API
-            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, token);
+            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, githubToken);
           } catch (error) {
             console.error("Error listing issues:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -130,15 +169,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           repo: z.string().describe("The repository name"),
           title: z.string().describe("Issue title"),
           body: z.string().describe("Issue description/body"),
-          labels: z.array(z.string()).optional().describe("Labels to apply to the issue")
+          labels: z.array(z.string()).optional().describe("Labels to apply to the issue"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, title, body, labels }) => {
+        execute: async ({ owner, repo, title, body, labels, token }) => {
           try {
             console.log(`Creating issue in ${owner}/${repo}: ${title}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
             // Use direct GitHub API
-            return await directGitHubTools.createIssue(owner, repo, title, body, labels, token);
+            return await directGitHubTools.createIssue(owner, repo, title, body, labels, githubToken);
           } catch (error) {
             console.error("Error creating issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -151,15 +191,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         parameters: z.object({
           owner: z.string().describe("The repository owner (username or org)"),
           repo: z.string().describe("The repository name"),
-          issue_number: z.number().describe("The issue number")
+          issue_number: z.number().describe("The issue number"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, issue_number }) => {
+        execute: async ({ owner, repo, issue_number, token }) => {
           try {
             console.log(`Getting issue ${issue_number} from ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
             // Use direct GitHub API
-            return await directGitHubTools.getIssue(owner, repo, issue_number, token);
+            return await directGitHubTools.getIssue(owner, repo, issue_number, githubToken);
           } catch (error) {
             console.error("Error getting issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -175,11 +216,23 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           issue_number: z.number().describe("The issue number"),
           title: z.string().optional().describe("New issue title"),
           body: z.string().optional().describe("New issue description"),
-          state: z.enum(['open', 'closed']).optional().describe("New issue state")
+          state: z.enum(['open', 'closed']).optional().describe("New issue state"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, issue_number, title, body, state }) => {
+        execute: async ({ owner, repo, issue_number, title, body, state, token }) => {
           try {
-            return await this.callMCPTool('update_issue', { owner, repo, issue_number, title, body, state });
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
+            // Pass token to MCP tool
+            return await this.callMCPTool('update_issue', { 
+              owner, 
+              repo, 
+              issue_number, 
+              title, 
+              body, 
+              state,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error updating issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -195,15 +248,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           repo: z.string().describe("The repository name"),
           state: z.enum(['open', 'closed', 'all']).optional().describe("PR state (open, closed, all)"),
           sort: z.enum(['created', 'updated', 'popularity', 'long-running']).optional().describe("Sort field"),
-          direction: z.enum(['asc', 'desc']).optional().describe("Sort direction")
+          direction: z.enum(['asc', 'desc']).optional().describe("Sort direction"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, state, sort, direction }) => {
+        execute: async ({ owner, repo, state, sort, direction, token }) => {
           try {
             console.log(`Listing pull requests for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
             // Use direct GitHub API
-            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, token);
+            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, githubToken);
           } catch (error) {
             console.error("Error listing pull requests:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -219,11 +273,23 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           title: z.string().describe("PR title"),
           body: z.string().describe("PR description"),
           head: z.string().describe("The branch containing your changes"),
-          base: z.string().describe("The branch you want to merge into")
+          base: z.string().describe("The branch you want to merge into"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, title, body, head, base }) => {
+        execute: async ({ owner, repo, title, body, head, base, token }) => {
           try {
-            return await this.callMCPTool('create_pull_request', { owner, repo, title, body, head, base });
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
+            // Pass token to MCP tool
+            return await this.callMCPTool('create_pull_request', { 
+              owner, 
+              repo, 
+              title, 
+              body, 
+              head, 
+              base,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error creating pull request:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -236,11 +302,20 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         parameters: z.object({
           owner: z.string().describe("The repository owner (username or org)"),
           repo: z.string().describe("The repository name"),
-          pull_number: z.number().describe("The pull request number")
+          pull_number: z.number().describe("The pull request number"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, pull_number }) => {
+        execute: async ({ owner, repo, pull_number, token }) => {
           try {
-            return await this.callMCPTool('get_pull_request', { owner, repo, pull_number });
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
+            // Pass token to MCP tool
+            return await this.callMCPTool('get_pull_request', { 
+              owner, 
+              repo, 
+              pull_number,
+              token: githubToken 
+            });
           } catch (error) {
             console.error("Error getting pull request:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -255,12 +330,19 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           query: z.string().describe("Search query"),
           language: z.string().optional().describe("Filter by language"),
           user: z.string().optional().describe("Filter by user/organization"),
-          repo: z.string().optional().describe("Filter by repository name")
+          repo: z.string().optional().describe("Filter by repository name"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ query, language, user, repo }) => {
+        execute: async ({ query, language, user, repo, token }) => {
           try {
             const searchQuery = `${query}${language ? ` language:${language}` : ''}${user ? ` user:${user}` : ''}${repo ? ` repo:${repo}` : ''}`;
-            return await this.callMCPTool('search_code', { q: searchQuery });
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
+            // Pass token to MCP tool
+            return await this.callMCPTool('search_code', { 
+              q: searchQuery,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error searching code:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -276,15 +358,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           repo: z.string().describe("The repository name"),
           sha: z.string().optional().describe("Branch or commit SHA"),
           page: z.number().optional().describe("Page number"),
-          perPage: z.number().optional().describe("Items per page")
+          perPage: z.number().optional().describe("Items per page"),
+          token: z.string().optional().describe("GitHub personal access token (optional)")
         }),
-        execute: async ({ owner, repo, sha, page, perPage }) => {
+        execute: async ({ owner, repo, sha, page, perPage, token }) => {
           try {
             console.log(`Listing commits for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Get GitHub token using our centralized method
+            const githubToken = this.getGitHubToken(token);
             // Use direct GitHub API
-            return await directGitHubTools.listCommits(owner, repo, sha, page, perPage, token);
+            return await directGitHubTools.listCommits(owner, repo, sha, page, perPage, githubToken);
           } catch (error) {
             console.error("Error listing commits:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -310,5 +393,58 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   getTools(): Record<string, any> {
     console.log("Getting GitHub tools - returning", Object.keys(this.gitHubTools).length, "tools");
     return this.gitHubTools;
+  }
+  
+  /**
+   * Call an MCP tool by making a fetch request to the MCP API
+   * This is a proxy method that bridges the Worker environment to the MCP service
+   * @param toolName Name of the MCP tool to call
+   * @param params Parameters to pass to the tool, including optional GitHub token
+   * @returns The result from the MCP tool
+   */
+  private async callMCPTool(toolName: string, params: any): Promise<string> {
+    if (!this.agent) {
+      throw new Error("GitHub plugin not properly initialized");
+    }
+
+    try {
+      // Make request to MCP bridge API
+      const response = await fetch(`https://api.openagents.com/mcp/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool: toolName,
+          parameters: params
+        })
+      });
+
+      // Handle specific error cases
+      if (!response.ok) {
+        const errorText = await response.text();
+        const status = response.status;
+        
+        // Handle authentication errors specially
+        if (status === 401 || status === 403) {
+          return `Authentication error: GitHub API returned ${status}. Please provide a valid GitHub token with appropriate permissions.`;
+        }
+        
+        // Handle rate limiting
+        if (status === 429) {
+          return `Rate limit exceeded: GitHub API rate limit reached. Please try again later or provide a GitHub token with higher rate limits.`;
+        }
+        
+        // Generic error for other cases
+        throw new Error(`MCP tool execution failed (${status}): ${errorText}`);
+      }
+
+      const result = await response.json();
+      return result.text || JSON.stringify(result);
+    } catch (error) {
+      console.error(`Error executing MCP tool ${toolName}:`, error);
+      // Return a user-friendly error message
+      return `Error: ${error instanceof Error ? error.message : String(error)}`;
+    }
   }
 }
