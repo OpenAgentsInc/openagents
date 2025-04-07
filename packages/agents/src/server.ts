@@ -100,13 +100,30 @@ export class Coder extends AIChatAgent<Env> {
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
-You can use GitHub tools to interact with GitHub in the following ways:
-- Repository management: List, get details, create repositories, and list branches
-- Issue tracking: List, view, create, and update issues
-- Pull requests: List and create pull requests
-- Content access: Get file contents, list commits, and view commit details
+You have access to GitHub tools that let you interact with GitHub repositories through the Model Context Protocol (MCP):
 
-If the user asks about GitHub or needs to work with GitHub repositories, use the GitHub tools.
+REPOSITORY OPERATIONS:
+- githubGetFile: Get the contents of a file from a repository
+- githubPushFiles: Push multiple files to a repository in a single commit
+- githubCreateRepository: Create a new GitHub repository
+- githubCreateBranch: Create a new branch in a repository
+
+ISSUE OPERATIONS:
+- githubListIssues: List issues in a repository with filtering options
+- githubCreateIssue: Create a new issue in a repository
+- githubGetIssue: Get details about a specific issue
+- githubUpdateIssue: Update an existing issue (title, body, state)
+
+PULL REQUEST OPERATIONS:
+- githubListPullRequests: List pull requests in a repository
+- githubCreatePullRequest: Create a new pull request
+- githubGetPullRequest: Get details about a specific pull request
+
+CODE OPERATIONS:
+- githubSearchCode: Search for code across GitHub repositories
+- githubListCommits: List commits in a repository
+
+If the user asks about GitHub or needs to work with GitHub repositories, use the appropriate GitHub tools.
 If the user asks to schedule a task, use the schedule tool to schedule the task.
 `,
             messages: processedMessages,
