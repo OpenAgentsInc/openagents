@@ -2,34 +2,34 @@
 
 ## Overview
 
-This document explains the implementation of GitHub token handling in the OpenAgents system, specifically focusing on the correct passing of tokens from the UI to the agent environment and then to MCP (Model Context Protocol) tools.
+This document explains the implementation of GitHub token handling in the OpenAgents system, specifically focusing on extracting tokens from WebSocket messages and making them available to MCP (Model Context Protocol) tools.
 
 ## Problem Statement
 
 GitHub tokens were not reliably passed from the user interface to the MCP tools, causing GitHub operations to fail with 522 timeout errors, even after tokens were configured in the API Keys settings page.
 
-## Root Cause
+## Root Cause Analysis
 
-1. **Initialization Timing Issue**: The MCP GitHub client was being initialized before the token was loaded from settings.
-2. **Inconsistent Token Access Paths**: Multiple code paths were used to access the token, with no clear precedence.
-3. **Missing Header Extraction**: Tokens passed via HTTP headers were not being extracted.
-4. **Token Fallback Mechanism**: The use of a placeholder debug token was masking the actual issue.
+After extensive debugging and logging, we discovered:
 
-## Implementation
+1. **Transport Method**: The GitHub token was being passed in the body of WebSocket messages, not as HTTP headers.
+2. **Message Structure**: The token was embedded within the `cf_agent_use_chat_request` message type sent over WebSocket.
+3. **Missing Extraction Point**: Previous implementations attempted to extract the token from HTTP headers or request body, but tokens were actually in WebSocket message data.
+4. **Token Access Timing**: The agent needed access to the token during tool execution.
 
-### 1. Token Flow Architecture
+## Implementation Solution
 
-GitHub tokens now flow through the system in this sequence:
+### 1. WebSocket Message Handling Architecture
+
+The token flow now follows this path:
 
 ```
-UI Settings → HTTP Headers & Request Data → Agent Environment → MCP Tools
+UI Settings → WebSocket Message Body → Agent Environment → AsyncLocalStorage Context → MCP Tools
 ```
 
 ### 2. UI Components (ChatPage.tsx)
 
-The token is retrieved from settings and passed in two ways:
-- As HTTP headers (`x-api-key` and `x-github-token`) during agent initialization
-- As a data property (`apiKeys.github`) in the agent chat hook
+The token is retrieved from the API Keys settings and passed in the request data:
 
 ```typescript
 // --- API Keys ---
@@ -54,62 +54,95 @@ const { /* ... */ } = useAgentChat({
 });
 ```
 
-### 3. Server Token Initialization (server.ts)
+### 3. WebSocket Message Parsing (server.ts)
 
-The server extracts tokens from both HTTP headers and request body, ensuring they're available before MCP client creation:
+The core of the solution is overriding the `onMessage` method in the Coder agent class to extract the token directly from WebSocket messages:
 
 ```typescript
-async function initializeGitHubToken(env: Env, request?: Request): Promise<void> {
-  // Extract GitHub token from request headers first
-  if (request) {
-    const apiKeyHeader = request.headers.get('x-api-key');
-    const githubTokenHeader = request.headers.get('x-github-token');
-    
-    if (githubTokenHeader && githubTokenHeader.trim() !== '') {
-      // Set token in all possible locations
-      env.apiKeys = env.apiKeys || {};
-      env.apiKeys.github = githubTokenHeader;
-      env.GITHUB_TOKEN = githubTokenHeader;
-      env.GITHUB_PERSONAL_ACCESS_TOKEN = githubTokenHeader;
-    } else if (apiKeyHeader && apiKeyHeader.trim() !== '') {
-      // Similar handling for x-api-key header
-      // ...
-    } else {
-      // Try to extract token from request body if it's POST
-      if (request.method === 'POST') {
-        // Clone the request before reading the body
-        const clonedRequest = request.clone();
-        const contentType = request.headers.get('content-type') || '';
+// Create a context for tools to access the GitHub token
+const toolContext = new AsyncLocalStorage<{
+  githubToken?: string;
+  tools: Record<string, any>;
+}>();
+
+export class Coder extends AIChatAgent<Env> {
+  /**
+   * Override onMessage to extract GitHub token from request body
+   */
+  override async onMessage(connection: Connection, message: WSMessage) {
+    if (typeof message === "string") {
+      let data: IncomingMessage;
+      try {
+        data = JSON.parse(message) as IncomingMessage;
         
-        if (contentType.includes('application/json')) {
-          const body = await clonedRequest.json();
-          
-          // Look for token in data.apiKeys.github (matches the React hook structure)
-          if (body && body.data && body.data.apiKeys && body.data.apiKeys.github) {
-            const githubToken = body.data.apiKeys.github;
+        if (data.type === "cf_agent_use_chat_request" && data.init.method === "POST") {
+          // Parse the request body
+          const { body } = data.init;
+          if (body) {
+            const requestData = JSON.parse(body as string);
             
-            // Set token in all possible locations
-            env.apiKeys = env.apiKeys || {};
-            env.apiKeys.github = githubToken;
-            env.GITHUB_TOKEN = githubToken;
-            env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+            // Extract token from different possible locations
+            const githubToken = 
+              requestData.githubToken || 
+              (requestData.data?.apiKeys?.github) || 
+              (requestData.apiKeys?.github);
+            
+            if (githubToken) {
+              // Set token in environment for the agent
+              const env = (this as any).env as Env;
+              if (env) {
+                if (!env.apiKeys) env.apiKeys = {};
+                env.apiKeys.github = githubToken;
+                env.GITHUB_TOKEN = githubToken;
+                env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+              }
+              
+              // Set up tool context with GitHub token
+              const context = {
+                githubToken,
+                tools,
+              };
+              
+              // Run the rest of the message handling with the tool context
+              return toolContext.run(context, async () => {
+                return super.onMessage(connection, message);
+              });
+            }
           }
         }
+      } catch (error) {
+        console.error("Error parsing message JSON:", error);
       }
     }
-  }
-  
-  // If token is already in apiKeys object from request data, ensure it's in all locations
-  if (env.apiKeys && env.apiKeys.github) {
-    env.GITHUB_TOKEN = env.apiKeys.github;
-    env.GITHUB_PERSONAL_ACCESS_TOKEN = env.apiKeys.github;
+    
+    return super.onMessage(connection, message);
   }
 }
 ```
 
-### 4. GitHub Plugin Token Access (github-plugin.ts)
+### 4. Tool Execution Context
 
-The plugin now has a clear precedence for token access:
+When handling chat messages, we check for and utilize the token from the AsyncLocalStorage context:
+
+```typescript
+async onChatMessage(onFinish: StreamTextOnFinishCallback<any>) {
+  // Get context with GitHub token if available
+  const context = toolContext.getStore();
+  if (context?.githubToken) {
+    console.log(`Using GitHub token from context (length: ${context.githubToken.length})`);
+  }
+  
+  // Create a streaming response with the agent context
+  return agentContext.run(this, async () => {
+    // Process messages and execute tools with GitHub token in context
+    // ...
+  });
+}
+```
+
+### 5. GitHub Plugin Token Access (github-plugin.ts)
+
+The GitHub plugin's `getGitHubToken` method has been simplified with clear token precedence:
 
 ```typescript
 private getGitHubToken(paramToken?: string): string | undefined {
@@ -137,21 +170,21 @@ private getGitHubToken(paramToken?: string): string | undefined {
   }
   
   // No token found
-  return undefined; // No more placeholder tokens
+  return undefined;
 }
 ```
 
-### 5. Key Improvements
+## Key Improvements
 
-1. **Removed Fallback Tokens**: Eliminated placeholder debug tokens to ensure failures are visible ("fail fast" approach).
-2. **Centralized Token Extraction**: All token handling happens in the `initializeGitHubToken` function.
-3. **Clear Prioritization**: Established a clear order of precedence for token sources.
-4. **Improved Logging**: Enhanced logging to track token flow and presence.
-5. **Multiple Passing Mechanisms**: Support for both header-based and data-based token passing.
+1. **Direct Message Extraction**: Extract token directly from WebSocket messages where it's actually being passed.
+2. **AsyncLocalStorage Context**: Use Node.js AsyncLocalStorage to make the token accessible during tool execution.
+3. **Enhanced Logging**: Detailed logging at each step for better debugging and transparency.
+4. **Removed Placeholder Tokens**: Eliminated debug tokens to ensure real failures are visible ("fail fast" approach).
+5. **Multiple Path Support**: Handle tokens passed through different paths in the message body.
 
 ## Error Handling
 
-Improved error messages now guide users to the proper resolution (adding a token in Settings):
+Improved error messages guide users to add tokens in the API Keys settings:
 
 ```typescript
 if (!tokenToSend) {
@@ -161,7 +194,7 @@ if (!tokenToSend) {
 }
 ```
 
-For authentication failures (HTTP 401/403):
+For authentication failures:
 ```typescript
 if (status === 401 || status === 403) {
   return JSON.stringify({
@@ -175,19 +208,20 @@ if (status === 401 || status === 403) {
 To test the GitHub token handling:
 
 1. Configure a token in the API Keys settings page
-2. Use a GitHub tool like `githubGetFile` to access a repository
-3. Check logs for token presence at each stage:
-   - Request headers extraction
-   - Agent environment initialization
-   - MCP tool invocation
-   - API request
+2. Connect to the agent via WebSocket
+3. Send a message that uses a GitHub tool
+4. Check logs for:
+   - Message parsing and token extraction
+   - Token presence in AsyncLocalStorage context
+   - Successful GitHub API operation
 
-## Troubleshooting
+## Debugging
 
-If GitHub operations fail:
+If GitHub operations still fail, the detailed logs should identify the issue location:
 
-1. Check logs for "No GitHub token found" warnings
-2. Verify token is configured in API Keys settings
-3. Confirm token has appropriate permissions for the operation
-4. Look for 401/403 errors that indicate authentication issues
-5. Check for 522/524 errors that may indicate connection issues
+1. `onMessage` parsing logs will show if the token extraction is working
+2. `onChatMessage` logs will show if the token is being accessed from the context
+3. GitHub plugin logs will show which token source is being used
+4. MCP tool execution logs will show if the token is being passed to API calls
+
+This approach directly addresses the core issue by focusing on the actual message transport mechanism rather than incorrect assumptions about where the token is passed.
