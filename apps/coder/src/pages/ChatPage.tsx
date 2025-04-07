@@ -60,7 +60,7 @@ export default function ChatPage() {
   // undefined = use relative path (handled by Vite proxy)
   // "https://..." = use direct connection (WSS will be inferred)
   const agent = useAgent({
-    agent: "coderagent",
+    agent: "coder",
     host: useDirectConnection ? "https://agents.openagents.com" : undefined
   });
   console.log(`Initializing agent. Direct connection: ${useDirectConnection}, Host setting: ${useDirectConnection ? "https://agents.openagents.com" : "undefined (relative)"}`);
@@ -78,11 +78,11 @@ export default function ChatPage() {
     agent, // Pass the initialized agent
     maxSteps: 5, // Or your desired step limit
     onFinish: () => {
-        console.log("Agent finished processing.");
-        // Assuming connection is stable if we finish successfully
-        if (connectionStatus !== 'error') {
-           setConnectionStatus("connected");
-        }
+      console.log("Agent finished processing.");
+      // Assuming connection is stable if we finish successfully
+      if (connectionStatus !== 'error') {
+        setConnectionStatus("connected");
+      }
     },
     onError: (error) => {
       console.error("Agent chat error caught by onError:", error);
@@ -107,8 +107,8 @@ export default function ChatPage() {
       // onError will override this if needed.
       const timer = setTimeout(() => {
         if (connectionStatus === 'connecting') {
-           console.log("Assuming connection is stable after timeout.");
-           setConnectionStatus("connected");
+          console.log("Assuming connection is stable after timeout.");
+          setConnectionStatus("connected");
         }
       }, 3000); // Give it 3 seconds to potentially fail
 
@@ -119,14 +119,14 @@ export default function ChatPage() {
 
   // --- Update latestError state if agentError from hook changes ---
   useEffect(() => {
-     if (agentError) {
-       console.error("Agent error from useAgentChat hook:", agentError);
-       const errorString = agentError instanceof Error
-         ? `${agentError.name}: ${agentError.message}` + (agentError.stack ? `\nStack: ${agentError.stack}`: '')
-         : JSON.stringify(agentError);
-       setLatestError(`Hook Error: ${errorString}`);
-       setConnectionStatus("error");
-     }
+    if (agentError) {
+      console.error("Agent error from useAgentChat hook:", agentError);
+      const errorString = agentError instanceof Error
+        ? `${agentError.name}: ${agentError.message}` + (agentError.stack ? `\nStack: ${agentError.stack}` : '')
+        : JSON.stringify(agentError);
+      setLatestError(`Hook Error: ${errorString}`);
+      setConnectionStatus("error");
+    }
   }, [agentError]);
 
 
@@ -141,29 +141,29 @@ export default function ChatPage() {
   const formatTime = (date: Date | string | undefined) => {
     if (!date) return '';
     try {
-        const d = typeof date === 'string' ? new Date(date) : date;
-        if (isNaN(d.getTime())) return ''; // Invalid date
-        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const d = typeof date === 'string' ? new Date(date) : date;
+      if (isNaN(d.getTime())) return ''; // Invalid date
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     } catch (e) {
-        return ''; // Handle potential errors during date parsing/formatting
+      return ''; // Handle potential errors during date parsing/formatting
     }
   };
 
   const handleClearHistory = () => {
-     clearHistory();
-     setLatestError(null); // Also clear any displayed error
-     setConnectionStatus('initializing'); // Reset status on clear
-     // Re-initialize connection status check
-     if (agent) {
-       setConnectionStatus("connecting");
-       const timer = setTimeout(() => {
-         if (connectionStatus === 'connecting') {
-           console.log("Assuming connection is stable after history clear.");
-           setConnectionStatus("connected");
-         }
-       }, 3000);
-       // No need to return cleanup here as it's a one-off action
-     }
+    clearHistory();
+    setLatestError(null); // Also clear any displayed error
+    setConnectionStatus('initializing'); // Reset status on clear
+    // Re-initialize connection status check
+    if (agent) {
+      setConnectionStatus("connecting");
+      const timer = setTimeout(() => {
+        if (connectionStatus === 'connecting') {
+          console.log("Assuming connection is stable after history clear.");
+          setConnectionStatus("connected");
+        }
+      }, 3000);
+      // No need to return cleanup here as it's a one-off action
+    }
   };
 
 
@@ -207,7 +207,7 @@ export default function ChatPage() {
 
           {/* Controls */}
           <div className="flex items-center gap-1">
-             <Toggle
+            <Toggle
               size="sm"
               pressed={showDebug}
               aria-label="Toggle debug mode"
@@ -246,7 +246,7 @@ export default function ChatPage() {
         </div>
 
         {/* Messages Area */}
-        <ScrollArea className="flex-1 p-4 pb-24"> 
+        <ScrollArea className="flex-1 p-4 pb-24">
           <div className="space-y-4">
             {/* Welcome Message */}
             {agentMessages.length === 0 && !latestError && (
@@ -272,7 +272,7 @@ export default function ChatPage() {
                 <pre className="text-xs overflow-auto whitespace-pre-wrap max-h-40">
                   {latestError}
                 </pre>
-                <button 
+                <button
                   className="mt-2 text-xs px-2 py-1 bg-red-200 dark:bg-red-800 rounded hover:bg-red-300 dark:hover:bg-red-700"
                   onClick={() => setLatestError(null)}
                 >
