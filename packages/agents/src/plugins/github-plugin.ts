@@ -1,6 +1,6 @@
 /**
- * GitHub plugin for the Coder agent - Direct GitHub API implementation
- * This version uses the GitHub API directly instead of going through MCP
+ * GitHub plugin for the Coder agent - MCP GitHub API implementation
+ * This version uses MCP tools for all GitHub operations
  */
 import type { AgentPlugin } from './plugin-interface';
 import { AIChatAgent } from 'agents/ai-chat-agent';
@@ -86,7 +86,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
 
   constructor() {
     console.log("=== INITIALIZING GITHUB PLUGIN (CONSTRUCTOR) ===");
-    console.log("Using direct GitHub API implementation instead of MCP");
+    console.log("Using MCP GitHub API implementation");
 
     // Define the GitHub tools that will be exposed to the agent
     this.gitHubTools = {
@@ -519,14 +519,17 @@ export class OpenAIAgentPlugin implements AgentPlugin {
    * @param params Parameters to pass to the tool, including optional GitHub token
    * @returns The result from the MCP tool
    */
-  private async callMCPTool(toolName: string, params: any): Promise<string> {
+  private async callMCPTool(toolName: string, params: any, retryCount = 0): Promise<string> {
     if (!this.agent) {
       throw new Error("GitHub plugin not properly initialized");
     }
 
+    const MAX_RETRIES = 2; // Maximum number of retry attempts
+    const RETRY_DELAY = 2000; // Delay between retries in milliseconds
+
     try {
       // Log the MCP tool call
-      console.log(`Calling MCP tool: ${toolName}`);
+      console.log(`Calling MCP tool: ${toolName}${retryCount > 0 ? ` (retry attempt ${retryCount})` : ''}`);
       console.log(`MCP tool parameters:`, JSON.stringify({
         ...params,
         token: params.token ? `[TOKEN LENGTH: ${params.token.length}]` : 'None'
@@ -588,6 +591,26 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           });
         }
         
+        // Handle Cloudflare connection timeout errors with retry
+        if ((status === 522 || status === 524) && retryCount < MAX_RETRIES) {
+          console.log(`Connection timeout detected (${status}). Retrying after delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          // Retry the request
+          return this.callMCPTool(toolName, params, retryCount + 1);
+        } else if (status === 522 || status === 524) {
+          return JSON.stringify({
+            error: `Connection timeout (${status}): The GitHub server is currently unavailable or not responding. This is typically a temporary issue. Please try again in a few minutes or try a different repository.`
+          });
+        }
+        
+        // Handle other Cloudflare errors
+        if (status >= 500 && status < 600) {
+          return JSON.stringify({
+            error: `Server error (${status}): There was an issue connecting to the GitHub service. This is typically a temporary problem. Please try again in a few minutes.`
+          });
+        }
+        
         // Generic error for other cases
         return JSON.stringify({
           error: `MCP tool execution failed (${status}): ${errorDetails}`
@@ -604,9 +627,24 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       return result.text || JSON.stringify(result);
     } catch (error) {
       console.error(`Error executing MCP tool ${toolName}:`, error);
+      
+      // Retry on network errors
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if ((errorMessage.includes('network') || 
+           errorMessage.includes('fetch') || 
+           errorMessage.includes('connection') ||
+           errorMessage.includes('timeout')) && 
+          retryCount < MAX_RETRIES) {
+        console.log(`Network error detected. Retrying after delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        // Retry the request
+        return this.callMCPTool(toolName, params, retryCount + 1);
+      }
+      
       // Return a user-friendly error message as JSON
       return JSON.stringify({
-        error: `Error calling GitHub service: ${error instanceof Error ? error.message : String(error)}`
+        error: `Error calling GitHub service: ${errorMessage}. This might be a temporary issue. Please try again in a few minutes.`
       });
     }
   }
