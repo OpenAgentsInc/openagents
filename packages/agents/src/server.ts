@@ -144,8 +144,8 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    // Route the request to our agent or return 404 if not found
     return (
-      // Route the request to our agent or return 404 if not found
       (await routeAgentRequest(request, env)) ||
       new Response("Not found", { status: 404 })
     );
