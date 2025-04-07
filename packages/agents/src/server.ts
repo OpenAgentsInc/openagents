@@ -100,8 +100,13 @@ export class Coder extends AIChatAgent<Env> {
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
-You can use GitHub tools to interact with repositories, issues, and pull requests.
-If the user asks for github information, use the github tools.
+You can use GitHub tools to interact with GitHub in the following ways:
+- Repository management: List, get details, create repositories, and list branches
+- Issue tracking: List, view, create, and update issues
+- Pull requests: List and create pull requests
+- Content access: Get file contents, list commits, and view commit details
+
+If the user asks about GitHub or needs to work with GitHub repositories, use the GitHub tools.
 If the user asks to schedule a task, use the schedule tool to schedule the task.
 `,
             messages: processedMessages,

@@ -15,7 +15,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   constructor() {
     // Define the GitHub tools that will be exposed to the agent
     this.gitHubTools = {
-      // List repositories
+      // Repository-related tools
       githubListRepos: tool({
         description: "List repositories for a GitHub user or organization",
         parameters: z.object({
@@ -32,7 +32,6 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }
       }),
 
-      // Get repository details
       githubGetRepo: tool({
         description: "Get details about a GitHub repository",
         parameters: z.object({
@@ -49,7 +48,40 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }
       }),
 
-      // List issues
+      githubCreateRepo: tool({
+        description: "Create a new GitHub repository",
+        parameters: z.object({
+          name: z.string().describe("The name of the repository"),
+          description: z.string().optional().describe("Repository description"),
+          private: z.boolean().optional().describe("Whether the repository should be private")
+        }),
+        execute: async ({ name, description, private: isPrivate }) => {
+          try {
+            return await this.callMCPTool('github_create_repo', { name, description, private: isPrivate });
+          } catch (error) {
+            console.error("Error creating GitHub repo:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
+      githubListBranches: tool({
+        description: "List branches in a GitHub repository",
+        parameters: z.object({
+          owner: z.string().describe("The repository owner (username or org)"),
+          repo: z.string().describe("The repository name")
+        }),
+        execute: async ({ owner, repo }) => {
+          try {
+            return await this.callMCPTool('github_list_branches', { owner, repo });
+          } catch (error) {
+            console.error("Error listing branches:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
+      // Issue-related tools
       githubListIssues: tool({
         description: "List issues in a GitHub repository",
         parameters: z.object({
@@ -68,7 +100,23 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }
       }),
 
-      // Create issue
+      githubGetIssue: tool({
+        description: "Get details about a specific GitHub issue",
+        parameters: z.object({
+          owner: z.string().describe("The repository owner (username or org)"),
+          repo: z.string().describe("The repository name"),
+          issue_number: z.number().describe("The issue number")
+        }),
+        execute: async ({ owner, repo, issue_number }) => {
+          try {
+            return await this.callMCPTool('github_get_issue', { owner, repo, issue_number });
+          } catch (error) {
+            console.error("Error getting GitHub issue:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
       githubCreateIssue: tool({
         description: "Create a new issue in a GitHub repository",
         parameters: z.object({
@@ -87,7 +135,70 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }
       }),
 
-      // Get file contents
+      githubUpdateIssue: tool({
+        description: "Update an existing issue in a GitHub repository",
+        parameters: z.object({
+          owner: z.string().describe("The repository owner (username or org)"),
+          repo: z.string().describe("The repository name"),
+          issue_number: z.number().describe("The issue number"),
+          title: z.string().optional().describe("New issue title"),
+          body: z.string().optional().describe("New issue description/body"),
+          state: z.enum(['open', 'closed']).optional().describe("New issue state")
+        }),
+        execute: async ({ owner, repo, issue_number, title, body, state }) => {
+          try {
+            return await this.callMCPTool('github_update_issue', { 
+              owner, repo, issue_number, title, body, state 
+            });
+          } catch (error) {
+            console.error("Error updating GitHub issue:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
+      // Pull request tools
+      githubListPullRequests: tool({
+        description: "List pull requests in a GitHub repository",
+        parameters: z.object({
+          owner: z.string().describe("The repository owner (username or org)"),
+          repo: z.string().describe("The repository name"),
+          state: z.enum(['open', 'closed', 'all']).optional().describe("PR state (open, closed, all)"),
+          limit: z.number().optional().describe("Maximum number of PRs to return")
+        }),
+        execute: async ({ owner, repo, state = 'open', limit = 10 }) => {
+          try {
+            return await this.callMCPTool('github_list_pull_requests', { owner, repo, state, limit });
+          } catch (error) {
+            console.error("Error listing GitHub PRs:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
+      githubCreatePullRequest: tool({
+        description: "Create a new pull request in a GitHub repository",
+        parameters: z.object({
+          owner: z.string().describe("The repository owner (username or org)"),
+          repo: z.string().describe("The repository name"),
+          title: z.string().describe("PR title"),
+          body: z.string().describe("PR description"),
+          head: z.string().describe("The branch containing your changes"),
+          base: z.string().describe("The branch you want to merge into")
+        }),
+        execute: async ({ owner, repo, title, body, head, base }) => {
+          try {
+            return await this.callMCPTool('github_create_pull_request', { 
+              owner, repo, title, body, head, base 
+            });
+          } catch (error) {
+            console.error("Error creating GitHub PR:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
+      // Content tools
       githubGetFileContents: tool({
         description: "Get contents of a file from a GitHub repository",
         parameters: z.object({
@@ -101,6 +212,41 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             return await this.callMCPTool('github_get_file_contents', { owner, repo, path, ref });
           } catch (error) {
             console.error("Error getting file contents:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
+      githubListCommits: tool({
+        description: "List commits in a GitHub repository",
+        parameters: z.object({
+          owner: z.string().describe("The repository owner (username or org)"),
+          repo: z.string().describe("The repository name"),
+          path: z.string().optional().describe("Filter commits by file path"),
+          limit: z.number().optional().describe("Maximum number of commits to return")
+        }),
+        execute: async ({ owner, repo, path, limit = 10 }) => {
+          try {
+            return await this.callMCPTool('github_list_commits', { owner, repo, path, limit });
+          } catch (error) {
+            console.error("Error listing GitHub commits:", error);
+            return `Error: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        }
+      }),
+
+      githubGetCommit: tool({
+        description: "Get details of a specific commit in a GitHub repository",
+        parameters: z.object({
+          owner: z.string().describe("The repository owner (username or org)"),
+          repo: z.string().describe("The repository name"),
+          ref: z.string().describe("Commit SHA")
+        }),
+        execute: async ({ owner, repo, ref }) => {
+          try {
+            return await this.callMCPTool('github_get_commit', { owner, repo, ref });
+          } catch (error) {
+            console.error("Error getting GitHub commit:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
           }
         }

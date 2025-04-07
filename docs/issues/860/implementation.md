@@ -22,13 +22,30 @@ This interface allows for easy addition of new plugins in the future.
 
 ### 2. GitHub Plugin Implementation
 
-Implemented the `OpenAIAgentPlugin` in `packages/agents/src/plugins/github-plugin.ts` which:
+Implemented the `OpenAIAgentPlugin` in `packages/agents/src/plugins/github-plugin.ts` which provides a comprehensive set of GitHub tools:
 
-- Provides GitHub tools like `githubListRepos`, `githubGetRepo`, `githubListIssues`, etc.
-- Uses a proxy mechanism to bridge the Cloudflare Worker environment to the MCP service
-- Implements robust error handling for tool execution
+#### Repository Management Tools:
+- `githubListRepos`: List repositories for a user or organization
+- `githubGetRepo`: Get details about a specific repository
+- `githubCreateRepo`: Create a new repository
+- `githubListBranches`: List branches in a repository
 
-The plugin defines tools using the AI SDK's tool format with Zod schemas for validation.
+#### Issue Management Tools:
+- `githubListIssues`: List issues in a repository
+- `githubGetIssue`: Get details about a specific issue
+- `githubCreateIssue`: Create a new issue
+- `githubUpdateIssue`: Update an existing issue
+
+#### Pull Request Tools:
+- `githubListPullRequests`: List pull requests in a repository
+- `githubCreatePullRequest`: Create a new pull request
+
+#### Content Access Tools:
+- `githubGetFileContents`: Get contents of a file
+- `githubListCommits`: List commits in a repository
+- `githubGetCommit`: Get details of a specific commit
+
+The plugin uses a proxy mechanism to bridge the Cloudflare Worker environment to the MCP service and implements robust error handling for tool execution. All tools are defined using the AI SDK's tool format with Zod schemas for validation.
 
 ### 3. MCP Execution Bridge
 
