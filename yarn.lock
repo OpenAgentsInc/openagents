@@ -16838,6 +16838,13 @@ workers-ai-provider@^0.2.0:
   dependencies:
     "@cloudflare/workers-types" "^4.20250313.0"
 
+workers-ai-provider@^0.3.0:
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/workers-ai-provider/-/workers-ai-provider-0.3.0.tgz#584d092f10830406b276ea0e267f2cb3f8425757"
+  integrity sha512-NCnwRJ0OVgyVIZwbHRmn+8A80vi4iXxnjvLaxn0CCYMsooVKgf52rEIcbap5FJNd7fx3nLOi2OgNKjqS1ipz5A==
+  dependencies:
+    "@cloudflare/workers-types" "^4.20250313.0"
+
 workers-mcp@^0.1.0-3:
   version "0.1.0-3"
   resolved "https://registry.yarnpkg.com/workers-mcp/-/workers-mcp-0.1.0-3.tgz#020f39c8ae3fe29daa78e7cd6a215a0da7c5c757"

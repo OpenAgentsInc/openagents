@@ -131,6 +131,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
         ws: true, // Enable WebSocket proxying
+        headers: {
+          'Origin': 'https://agents.openagents.com',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        },
       },
     },
   },

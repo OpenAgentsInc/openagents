@@ -4,7 +4,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
-import { coderAgentContext } from "./coder-agent";
+import { agentContext } from "./coder-agent";
 
 // HTTP client for calling MCP services
 // Since we can't directly import from chatserver due to package boundaries,
@@ -130,7 +130,7 @@ const setProjectContext = tool({
     path: z.string().optional().describe("The base path within the repository (optional)")
   }),
   execute: async ({ owner, repo, branch, path }) => {
-    const agent = coderAgentContext.getStore();
+    const agent = agentContext.getStore();
     if (!agent) {
       throw new Error("No agent context found");
     }
@@ -160,7 +160,7 @@ const getFileContents = tool({
   }),
   execute: async ({ owner, repo, path, ref }, options) => {
     // Get project context if owner or repo is not provided
-    const agent = coderAgentContext.getStore();
+    const agent = agentContext.getStore();
     if (!agent) {
       throw new Error("No agent context found");
     }
@@ -220,7 +220,7 @@ const searchCode = tool({
   }),
   execute: async ({ owner, repo, query, path }, options) => {
     // Get project context if owner or repo is not provided
-    const agent = coderAgentContext.getStore();
+    const agent = agentContext.getStore();
     if (!agent) {
       throw new Error("No agent context found");
     }
@@ -368,7 +368,7 @@ export const coderExecutions = {
     
     try {
       // Get project context if owner or repo is not provided
-      const agent = coderAgentContext.getStore();
+      const agent = agentContext.getStore();
       if (!agent) {
         throw new Error("No agent context found");
       }
@@ -414,7 +414,7 @@ export const coderExecutions = {
     
     try {
       // Get project context if owner or repo is not provided
-      const agent = coderAgentContext.getStore();
+      const agent = agentContext.getStore();
       if (!agent) {
         throw new Error("No agent context found");
       }

@@ -1,15 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { routeAgentRequest } from "agents";
 
-// Import our CoderAgent
-import { CoderAgent } from "./coder-agent";
-
-// We use ALS to expose the agent context to the tools
-export const agentContext = new AsyncLocalStorage<CoderAgent>();
+// Import our CoderAgent and the agent context
+import { CoderAgent, agentContext } from "./coder-agent";
 
 // Export the CoderAgent class for the Durable Object
 // IMPORTANT: This export name MUST match the class_name in wrangler.jsonc
-export { CoderAgent };
+export { CoderAgent, agentContext };
 
 /**
  * Worker entry point that routes incoming requests to the appropriate handler
