@@ -1,26 +1,37 @@
-// @ts-nocheck
-import { routeAgentRequest, type Schedule } from "agents";
-import { unstable_getSchedulePrompt } from "agents/schedule";
-import { AIChatAgent } from "agents/ai-chat-agent";
+// @ts-nocheck - Keeping this for now, but aim to resolve TS issues later
+
+// Core AI SDK imports
 import {
   createDataStreamResponse,
-  generateId,
+  generateId, // Keep if used in executeTask or elsewhere
   streamText,
-  type StreamTextOnFinishCallback,
-} from "ai";
-import { createWorkersAI } from "workers-ai-provider";
+  type StreamTextOnFinishCallback
+} from 'ai';
+
+// Agent-specific imports
+import { AIChatAgent } from "agents/ai-chat-agent";
+import { type Schedule } from "agents"; // Keep for executeTask
+import { unstable_getSchedulePrompt } from "agents/schedule"; // For system prompt
+
+// Cloudflare provider import
+import { createWorkersAI } from 'workers-ai-provider';
+
+// Tool handling imports (uncomment if using tools)
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
+
+// Context import
 import { AsyncLocalStorage } from "node:async_hooks";
 
-// we use ALS to expose the agent context to the tools
+// Maintain the AsyncLocalStorage for context if tools need agent access
 export const agentContext = new AsyncLocalStorage<CoderAgent>();
 
 /**
- * Chat Agent implementation that handles real-time AI chat interactions
+ * CoderAgent using Cloudflare Workers AI provider and streamText
  */
 export class CoderAgent extends AIChatAgent<Env> {
-  // Track the current repository/project context
+
+  // Keep project context if needed
   projectContext: {
     repoOwner?: string;
     repoName?: string;
@@ -28,168 +39,131 @@ export class CoderAgent extends AIChatAgent<Env> {
     path?: string;
   } = {};
 
-  /**
-   * Set the project context for this agent
-   */
-  async setProjectContext(context: {
-    repoOwner?: string;
-    repoName?: string;
-    branch?: string;
-    path?: string;
-  }) {
+  async setProjectContext(context: { /* ... */ }) {
+    // ... implementation from your original code
     console.log("Setting project context:", JSON.stringify(context));
     this.projectContext = { ...this.projectContext, ...context };
     console.log("Updated project context:", JSON.stringify(this.projectContext));
-
-    // Return the updated context to confirm success
-    return {
-      success: true,
-      context: this.projectContext
-    };
+    return { success: true, context: this.projectContext };
   }
+
 
   /**
    * Handles incoming chat messages and manages the response stream
    * @param onFinish - Callback function executed when streaming completes
    */
-  // biome-ignore lint/complexity/noBannedTypes: <explanation>
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
-    // Create a streaming response that handles both text and tool outputs
     return agentContext.run(this, async () => {
-      console.log("🔄 Starting execution in CoderAgent");
+      console.log("🔄 CoderAgent.onChatMessage: Creating data stream response.");
 
-      // Create a data stream response
       const dataStreamResponse = createDataStreamResponse({
         execute: async (dataStream) => {
           try {
-            console.log("🔄 Processing messages for", this.messages.length, "messages");
+            console.log(`🔄 Executing stream for ${this.messages.length} messages.`);
 
-            // Process any pending tool calls from previous messages
+            // --- 1. Get AI Binding ---
+            const AI = this.env.AI;
+            if (!AI) {
+              console.error("🔴 AI binding not available in environment.");
+              dataStream.write({ type: "error", error: "AI environment binding is missing." });
+              dataStream.close(); // Close stream on fatal error
+              return;
+            }
+
+            // --- 2. Initialize WorkersAI Provider ---
+            const workersai = createWorkersAI({ binding: AI });
+            // Choose your model
+            const model = workersai('@cf/meta/llama-4-scout-17b-16e-instruct');
+            // Or: const model = workersai('@cf/anthropic/claude-3-haiku-20240307');
+            console.log(`✅ Initialized Workers AI provider with model: ${model.modelId}`);
+
+            // --- 3. Process Messages & Tools (Re-enable if needed) ---
+            console.log("🔧 Processing tool calls (if any)...");
             const processedMessages = await processToolCalls({
               messages: this.messages,
-              dataStream,
+              dataStream, // For potential UI updates during tool execution
               tools,
               executions,
             });
+            // If NOT using tools yet, simplify:
+            // const processedMessages = this.messages;
+            console.log(`✉️ Using ${processedMessages.length} processed messages.`);
 
-            // Get the AI environment from the Durable Object's environment
-            const AI = this.env.AI;
 
-            if (!AI) {
-              console.error("AI binding not available");
-              throw new Error("AI binding not available");
-            }
+            // --- 4. Define System Prompt ---
+            const systemPrompt = `You are a helpful Coder assistant specialized in code and programming questions.
+${unstable_getSchedulePrompt({ date: new Date() })}
+If the user asks to schedule a task, use the schedule tool if appropriate.`;
 
-            // Initialize Workers AI provider with the binding
-            const workersai = createWorkersAI({ binding: AI });
-
-            // Select a reliable model
-            const model = workersai('@cf/meta/llama-4-scout-17b-16e-instruct');
-            console.log(`✅ Using model: @cf/meta/llama-4-scout-17b-16e-instruct`);
-
-            console.log("✅ Initialized Workers AI provider");
-
-            // Use streamText with the proper provider - much simpler and more reliable
-            const result = streamText({
-              model: model,
-              system: `You are a helpful assistant that can do various tasks.
-                      You're specialized in helping with code and programming questions.
-
-                      ${unstable_getSchedulePrompt({ date: new Date() })}
-
-                      If the user asks to schedule a task, use the schedule tool to schedule the task.`,
+            // --- 5. Call streamText ---
+            console.log("🚀 Calling streamText with AI model...");
+            const result = await streamText({
+              model: model, // Use the initialized workersai model
+              system: systemPrompt,
               messages: processedMessages,
-              tools,
-              onFinish,
+              tools: tools, // Pass tool definitions
+              onFinish: (result) => {
+                console.log("✅ streamText finished successfully.");
+                onFinish(result); // Call the original callback
+              },
               onError: (error) => {
-                // Log the error with details
-                console.error("❌ streamText encountered an error:", error);
-
-                // Create detailed error information for logging
-                const errorDetails = error instanceof Error
-                  ? { name: error.name, message: error.message, stack: error.stack }
-                  : { raw: String(error) };
-                console.error("❌ Error details:", JSON.stringify(errorDetails, null, 2));
-
+                // Handles errors *during* the streamText execution (e.g., API errors)
+                console.error("❌ Error during streamText execution:", error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                // Send structured error via the data stream
                 try {
-                  // Get user-friendly error message
-                  const errorMessage = error instanceof Error
-                    ? error.message
-                    : typeof error === 'string'
-                      ? error
-                      : JSON.stringify(error);
-
-                  // Send structured error using the data stream protocol format
-                  // This is important for the useAgentChat hook to properly handle errors
-                  dataStream.write({
-                    type: "error",
-                    error: `AI Stream Error: ${errorMessage}`
-                  });
-
-                  // Also send a user-friendly text message
-                  dataStream.write({
-                    type: "text",
-                    text: `\n\nI apologize, but I encountered an error: ${errorMessage}\n\nPlease try again with a simpler request.`
-                  });
-                } catch (writeError) {
-                  console.error("❌ Failed to write error message:", writeError);
+                  dataStream.write({ type: "error", error: `AI Stream Error: ${errorMessage}` });
+                } catch (writeErr) {
+                  console.error("Failed to write streamText error to dataStream:", writeErr);
                 }
               },
-              maxSteps: 10,
+              maxSteps: 10, // Control tool execution loops
             });
+            console.log("🏁 streamText call completed.");
 
-            // Merge the AI response with the data stream
-            console.log("🔄 Merging result stream");
+            // --- 6. Merge Result into Data Stream ---
+            console.log("🔗 Merging AI result stream into the main data stream...");
             await result.mergeIntoDataStream(dataStream);
-            console.log("✅ Successfully merged streams");
+            console.log("✅ Result stream merged.");
 
           } catch (error) {
-            // Catch critical errors during the execution setup
-            console.error("❌ Critical error in dataStream execute function:", error);
+            // Catches errors during setup (before streamText) or unexpected issues
+            console.error("❌ Critical error in CoderAgent execute block:", error);
             const errorMessage = error instanceof Error ? error.message : String(error);
-
             try {
-              // Send a structured error message back to the client
-              dataStream.write({
-                type: "error",
-                error: `Server Error: ${errorMessage}`
-              });
-
-              // Also send a user-friendly text message
-              dataStream.write({
-                type: "text",
-                text: "\n\nI apologize, but I encountered a system error. Please try again in a few moments."
-              });
+              // Send structured error via the data stream
+              dataStream.write({ type: "error", error: `Server Setup Error: ${errorMessage}` });
             } catch (writeError) {
-              console.error("❌ Failed to write critical error message to data stream:", writeError);
+              console.error("❌ Failed to write critical error to data stream:", writeError);
             }
           } finally {
-            // Ensure the data stream is closed properly, even if errors occurred
+            // Ensure the stream is always closed from the server-side
+            console.log("🚪 Closing data stream from server.");
             try {
-              // No need to explicitly close here as createDataStreamResponse handles it
-              // But we could if needed: dataStream.close();
+              dataStream.close();
             } catch (closeErr) {
-              // Ignore errors during close if it's already closed or errored
+              // May already be closed or errored, ignore
             }
           }
-        }
-      });
+        }, // End execute
+      }); // End createDataStreamResponse
 
       return dataStreamResponse;
-    });
-  }
+    }); // End agentContext.run
+  } // End onChatMessage
 
+  // Keep executeTask method for scheduled tasks functionality
   async executeTask(description: string, task: Schedule<string>) {
     console.log(`⚡ Executing scheduled task: ${description}`);
     await this.saveMessages([
       ...this.messages,
       {
-        id: generateId(),
-        role: "user",
+        id: generateId(), // Ensure generateId is imported or defined
+        role: "user", // Consider if 'system' role is more appropriate
         content: `Running scheduled task: ${description}`,
         createdAt: new Date(),
       },
     ]);
-    console.log("✅ Scheduled task message added to conversation history");
+    // Add logic here to actually perform the task or trigger another AI interaction
   }
 }
