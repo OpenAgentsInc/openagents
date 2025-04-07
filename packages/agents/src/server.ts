@@ -15,6 +15,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // import { createWorkersAI } from 'workers-ai-provider';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { env } from "cloudflare:workers";
+import { OpenAIAgentPlugin } from "./plugins/github-plugin";
+import type { AgentPlugin } from "./plugins/plugin-interface";
 
 // const workersai = createWorkersAI({ binding: env.AI });
 // const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
@@ -32,6 +34,45 @@ export const agentContext = new AsyncLocalStorage<Coder>();
  * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Coder extends AIChatAgent<Env> {
+  private plugins: AgentPlugin[] = [];
+  private combinedTools: Record<string, any>;
+
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env);
+    
+    // Initialize with the base tools
+    this.combinedTools = { ...tools };
+    
+    // Add the GitHub plugin
+    this.plugins.push(new OpenAIAgentPlugin());
+    
+    // Initialize plugins
+    this.initializePlugins().catch(err => 
+      console.error("Failed to initialize agent plugins:", err)
+    );
+  }
+  
+  private async initializePlugins(): Promise<void> {
+    try {
+      // Initialize each plugin
+      for (const plugin of this.plugins) {
+        await plugin.initialize(this);
+        
+        // Get tools from the plugin
+        const pluginTools = plugin.getTools();
+        
+        // Add tools to the combined tools
+        this.combinedTools = { ...this.combinedTools, ...pluginTools };
+        
+        console.log(`Initialized plugin: ${plugin.name} with ${Object.keys(pluginTools).length} tools`);
+      }
+      
+      console.log(`Total tools available: ${Object.keys(this.combinedTools).length}`);
+    } catch (error) {
+      console.error("Error initializing plugins:", error);
+    }
+  }
+
   /**
    * Handles incoming chat messages and manages the response stream
    * @param onFinish - Callback function executed when streaming completes
@@ -48,7 +89,7 @@ export class Coder extends AIChatAgent<Env> {
           const processedMessages = await processToolCalls({
             messages: this.messages,
             dataStream,
-            tools,
+            tools: this.combinedTools,
             executions,
           });
 
@@ -59,10 +100,12 @@ export class Coder extends AIChatAgent<Env> {
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
+You can use GitHub tools to interact with repositories, issues, and pull requests.
+If the user asks for github information, use the github tools.
 If the user asks to schedule a task, use the schedule tool to schedule the task.
 `,
             messages: processedMessages,
-            tools,
+            tools: this.combinedTools,
             onFinish,
             onError: (error) => {
               console.error("Error while streaming:", error);
