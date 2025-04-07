@@ -279,36 +279,29 @@ If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
 }
 
 /**
- * Helper function to initialize global MCP GitHub token in worker environment
- * This ensures GitHub token is set before any MCP clients are initialized
+ * Helper function to initialize GitHub token for MCP
+ * This ensures GitHub token is available BEFORE MCP clients are created
  */
-async function initializeGlobalGitHubToken(env: Env): Promise<void> {
-  console.log("=== INITIALIZING GLOBAL GITHUB TOKEN IN WORKER ===");
+async function initializeGitHubToken(env: Env): Promise<void> {
+  console.log("=== INITIALIZING GITHUB TOKEN FOR MCP ===");
   
   if (env.apiKeys && typeof env.apiKeys === 'object' && env.apiKeys.github) {
     const githubToken = env.apiKeys.github;
-    console.log(`Setting global GitHub token from API keys (length: ${githubToken.length})`);
+    console.log(`Found GitHub token in API keys (length: ${githubToken.length})`);
     
-    // Set token in global environment (accessible to MCP clients)
-    if (env.GITHUB_PERSONAL_ACCESS_TOKEN === undefined) {
-      env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
-    } else {
-      env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
-    }
+    // Set in Env for MCP client initialization
+    env.GITHUB_TOKEN = githubToken;
     
-    // Ensure it's also set as GITHUB_TOKEN
-    if (env.GITHUB_TOKEN === undefined) {
-      env.GITHUB_TOKEN = githubToken;
-    } else {
-      env.GITHUB_TOKEN = githubToken;
-    }
+    // The key issue was MCP client needs this specific env variable
+    env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
     
-    console.log("GitHub token initialized globally in worker environment");
+    console.log("GitHub token successfully set for MCP client initialization");
   } else {
-    console.warn("No GitHub token found in API keys, global token initialization skipped");
+    console.warn("No GitHub token found in API keys.");
+    console.warn("Please add a GitHub token in Settings > API Keys to enable GitHub functionality.");
   }
   
-  console.log("=== GLOBAL GITHUB TOKEN INITIALIZATION COMPLETE ===");
+  console.log("=== GITHUB TOKEN INITIALIZATION COMPLETE ===");
 }
 
 /**
@@ -316,8 +309,9 @@ async function initializeGlobalGitHubToken(env: Env): Promise<void> {
  */
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    // Initialize global GitHub token before handling any requests
-    await initializeGlobalGitHubToken(env);
+    // Initialize GitHub token BEFORE any agent or MCP initialization
+    // This ensures the token is available during MCP client creation
+    await initializeGitHubToken(env);
     
     // Route the request to our agent or return 404 if not found
     return (

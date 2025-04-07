@@ -39,7 +39,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       console.log("No GitHub token provided as parameter");
     }
     
-    // Check agent environment - we use agent private methods to access protected env
+    // Check agent environment - this is the ONLY source we should use (from user API Keys)
     if (!this.agent) {
       console.warn("Agent not initialized, cannot access environment for GitHub token");
     } else {
@@ -73,32 +73,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       }
     }
     
-    // Check process environment as last resort
-    if (typeof process !== 'undefined' && process.env && process.env.GITHUB_TOKEN) {
-      console.log(`Using GitHub token from process.env.GITHUB_TOKEN (length: ${process.env.GITHUB_TOKEN.length})`);
-      return process.env.GITHUB_TOKEN;
-    }
-    
-    // Check for Cloudflare worker GITHUB_PERSONAL_ACCESS_TOKEN (used by MCP)
-    try {
-      if (typeof this.agent !== 'undefined' && 
-          typeof (this.agent as any).env !== 'undefined' && 
-          (this.agent as any).env.GITHUB_PERSONAL_ACCESS_TOKEN) {
-        console.log(`Found GitHub token in agent env.GITHUB_PERSONAL_ACCESS_TOKEN (length: ${(this.agent as any).env.GITHUB_PERSONAL_ACCESS_TOKEN.length})`);
-        return (this.agent as any).env.GITHUB_PERSONAL_ACCESS_TOKEN;
-      }
-      
-      // Check global env in Cloudflare worker environment
-      if (typeof globalThis !== 'undefined' && 
-          typeof (globalThis as any).GITHUB_PERSONAL_ACCESS_TOKEN !== 'undefined') {
-        console.log(`Found GitHub token in globalThis.GITHUB_PERSONAL_ACCESS_TOKEN (length: ${(globalThis as any).GITHUB_PERSONAL_ACCESS_TOKEN.length})`);
-        return (globalThis as any).GITHUB_PERSONAL_ACCESS_TOKEN;
-      }
-    } catch (error) {
-      console.warn("Error checking Cloudflare worker environment for tokens:", error);
-    }
-    
-    console.warn("⚠️ No GitHub token found in any location. GitHub API access will be limited to public repositories only.");
+    console.warn("⚠️ No GitHub token found in agent environment. GitHub API access will be limited to public repositories only.");
     console.warn("Please add a GitHub token in the Settings > API Keys page to enable full GitHub functionality.");
     return undefined;
   }
@@ -543,20 +518,14 @@ export class OpenAIAgentPlugin implements AgentPlugin {
    * @param params Parameters to pass to the tool, including optional GitHub token
    * @returns The result from the MCP tool
    */
-  private async callMCPTool(toolName: string, params: any, retryCount = 0): Promise<string> {
+  private async callMCPTool(toolName: string, params: any): Promise<string> {
     if (!this.agent) {
       throw new Error("GitHub plugin not properly initialized");
     }
 
-    const MAX_RETRIES = 3; // Maximum number of retry attempts
-    const BASE_RETRY_DELAY = 2000; // Base delay between retries in milliseconds
-    
-    // Calculate exponential backoff delay (increases with each retry)
-    const retryDelay = Math.min(BASE_RETRY_DELAY * Math.pow(2, retryCount), 10000);
-
     try {
       // Log the MCP tool call
-      console.log(`Calling MCP tool: ${toolName}${retryCount > 0 ? ` (retry attempt ${retryCount})` : ''}`);
+      console.log(`Calling MCP tool: ${toolName}`);
       console.log(`MCP tool parameters:`, JSON.stringify({
         ...params,
         token: params.token ? `[TOKEN LENGTH: ${params.token.length}]` : 'None'
@@ -623,34 +592,21 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           });
         }
         
-        // Handle Cloudflare connection timeout errors with exponential backoff retry
-        if ((status === 522 || status === 524) && retryCount < MAX_RETRIES) {
-          console.log(`Connection timeout detected (${status}). Retrying after ${retryDelay}ms delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
-          
-          // Check if repo visibility could be an issue
-          if (!params.token && (toolName === 'get_file_contents' || toolName === 'list_issues')) {
-            console.warn(`No GitHub token provided and experiencing timeouts - this could indicate a private repository requiring authentication. If ${params.owner}/${params.repo} is private, please add a GitHub token in Settings > API Keys.`);
-          }
-          
-          // Wait before retrying with exponential backoff
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-          
-          // Retry the request
-          return this.callMCPTool(toolName, params, retryCount + 1);
-        } else if (status === 522 || status === 524) {
+        // Handle Cloudflare connection timeout errors (522/524)
+        if (status === 522 || status === 524) {
           // Check if this might be due to trying to access a private repo without a token
           const noTokenMessage = !params.token ? 
-            ` This may also happen when trying to access a private repository without authentication. If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
+            ` This may occur when trying to access a private repository without authentication. If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
             
           return JSON.stringify({
-            error: `Connection timeout (${status}): The GitHub server is currently unavailable or not responding. This is typically a temporary issue. Please try again in a few minutes or try a different repository.${noTokenMessage}`
+            error: `Connection timeout (${status}): GitHub API request timed out. ${noTokenMessage}`
           });
         }
         
         // Handle other Cloudflare errors
         if (status >= 500 && status < 600) {
           return JSON.stringify({
-            error: `Server error (${status}): There was an issue connecting to the GitHub service. This is typically a temporary problem. Please try again in a few minutes.`
+            error: `Server error (${status}): There was an issue connecting to the GitHub service.`
           });
         }
         
@@ -671,34 +627,13 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     } catch (error) {
       console.error(`Error executing MCP tool ${toolName}:`, error);
       
-      // Retry on network errors with exponential backoff
+      // Return a user-friendly error message as JSON without retry logic
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if ((errorMessage.includes('network') || 
-           errorMessage.includes('fetch') || 
-           errorMessage.includes('connection') ||
-           errorMessage.includes('timeout')) && 
-          retryCount < MAX_RETRIES) {
-        console.log(`Network error detected. Retrying after ${retryDelay}ms delay... (attempt ${retryCount + 1} of ${MAX_RETRIES})`);
-        
-        // Check if repo visibility could be an issue
-        if (!params.token && params.owner && params.repo) {
-          console.warn(`No GitHub token provided and experiencing network errors - this might indicate a private repository requiring authentication. If ${params.owner}/${params.repo} is private, please add a GitHub token in Settings > API Keys.`);
-        }
-        
-        // Wait before retrying with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        
-        // Retry the request
-        return this.callMCPTool(toolName, params, retryCount + 1);
-      }
-      
-      // Return a user-friendly error message as JSON
-      // Check if this might be due to trying to access a private repo without a token
       const noTokenMessage = !params.token && params.owner && params.repo ? 
-        ` This may also happen when trying to access a private repository without authentication. If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
+        ` If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
       
       return JSON.stringify({
-        error: `Error calling GitHub service: ${errorMessage}. This might be a temporary issue. Please try again in a few minutes.${noTokenMessage}`
+        error: `Error calling GitHub service: ${errorMessage}.${noTokenMessage}`
       });
     }
   }
