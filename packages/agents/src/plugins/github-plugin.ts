@@ -20,11 +20,20 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   private getGitHubToken(paramToken?: string): string | undefined {
     // First check if a token was passed directly to the method
     if (paramToken && paramToken.trim() !== '') {
+      console.log("Using GitHub token provided directly in the parameter");
       return paramToken;
     }
     
     // If no parameter token, try to get from agent environment
-    return this.agent?.env?.GITHUB_TOKEN;
+    const envToken = this.agent?.env?.GITHUB_TOKEN;
+    
+    if (envToken) {
+      console.log("Using GitHub token from agent environment");
+      return envToken;
+    }
+    
+    console.warn("No GitHub token found in parameters or agent environment. GitHub API access will be limited.");
+    return undefined;
   }
 
   constructor() {

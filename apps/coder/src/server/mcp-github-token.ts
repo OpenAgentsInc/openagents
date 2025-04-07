@@ -6,9 +6,11 @@
  * are reflected in MCP tool calls.
  */
 
-import { eventBus } from '../lib/events';
-import { getSettings } from '../lib/settings';
-import { mcpClients } from './mcp-clients';
+import { getMCPClients } from './mcp-clients';
+import type { SettingsRepository } from '@openagents/core/src/db/repositories/settings-repository';
+
+// Global handler for token change events
+let tokenChangeHandler: ((event: CustomEvent) => void) | null = null;
 
 /**
  * Updates the GitHub token in the MCP GitHub client
@@ -16,16 +18,55 @@ import { mcpClients } from './mcp-clients';
  */
 export async function updateMCPGithubToken(token?: string): Promise<void> {
   try {
-    if (!mcpClients.github) {
+    console.log(`Attempting to update GitHub token in MCP client (token provided: ${token ? 'yes' : 'no'})`);
+    
+    // Get the MCP clients
+    const mcpClients = getMCPClients();
+    
+    // Log MCP client state
+    console.log('MCP clients state:', {
+      initialized: mcpClients.initialized,
+      clientsCount: Object.keys(mcpClients.clients).length,
+      availableClients: Object.keys(mcpClients.clients),
+      hasGithubClient: !!mcpClients.clients['local-github']
+    });
+    
+    // Get the GitHub client
+    const githubClient = mcpClients.clients['local-github'];
+    
+    if (!githubClient) {
       console.warn('MCP GitHub client not initialized, cannot update token');
       return;
     }
 
     // Set the token in the MCP GitHub client environment
-    mcpClients.github.env.GITHUB_PERSONAL_ACCESS_TOKEN = token || '';
-    console.log('Updated GitHub token in MCP client');
+    console.log('GitHub client found, attempting to access transport environment...');
+    const transport = (githubClient as any).transport;
+    
+    if (!transport) {
+      console.warn('MCP GitHub client has no transport property');
+      return;
+    }
+    
+    console.log('Transport type:', transport.constructor ? transport.constructor.name : typeof transport);
+    
+    const process = transport.process;
+    if (!process) {
+      console.warn('MCP GitHub client transport has no process property');
+      return;
+    }
+    
+    const env = process.env;
+    if (env) {
+      const oldTokenPresent = !!env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      env.GITHUB_PERSONAL_ACCESS_TOKEN = token || '';
+      console.log(`Updated GitHub token in MCP client (previous token: ${oldTokenPresent ? 'present' : 'not present'}, new token: ${token ? 'present' : 'not present'})`);
+    } else {
+      console.warn('MCP GitHub client environment not available');
+    }
   } catch (error) {
     console.error('Failed to update GitHub token in MCP client:', error);
+    console.error('Error details:', error instanceof Error ? error.stack : String(error));
   }
 }
 
@@ -34,36 +75,112 @@ export async function updateMCPGithubToken(token?: string): Promise<void> {
  */
 export async function loadGitHubTokenFromSettings(): Promise<void> {
   try {
-    const settings = await getSettings();
-    const token = settings.apiKeys?.github;
+    console.log('Loading GitHub token from settings...');
     
-    if (token) {
-      console.log('Found GitHub token in settings, updating MCP client');
-      await updateMCPGithubToken(token);
+    // Import settings repository dynamically to avoid circular dependencies
+    const { settingsRepository } = await import('@openagents/core/src/db/repositories');
+    
+    // Get GitHub token from settings
+    let githubToken: string | null;
+    try {
+      githubToken = await settingsRepository.getApiKey('github');
+      console.log(`GitHub token fetch result: ${githubToken ? 'Token found' : 'No token found'}`);
+    } catch (apiKeyError) {
+      console.error('Error fetching GitHub token from settings repository:', apiKeyError);
+      return;
+    }
+    
+    if (githubToken) {
+      console.log(`Found GitHub token in settings (length: ${githubToken.length}), updating MCP client`);
+      await updateMCPGithubToken(githubToken);
     } else {
-      console.log('No GitHub token found in settings');
+      console.warn('No GitHub token found in settings, MCP GitHub operations will be limited');
     }
   } catch (error) {
     console.error('Failed to load GitHub token from settings:', error);
+    console.error('Error details:', error instanceof Error ? error.stack : String(error));
   }
+}
+
+/**
+ * Sets up a window event listener for API key changes
+ */
+function setupApiKeyChangeListener(): void {
+  // Remove existing listener if it exists
+  if (tokenChangeHandler) {
+    window.removeEventListener('api-key-changed', tokenChangeHandler as EventListener);
+  }
+  
+  // Create new handler
+  tokenChangeHandler = async (event: CustomEvent) => {
+    try {
+      const { provider, deleted } = event.detail;
+      
+      if (provider === 'github') {
+        console.log(`GitHub token ${deleted ? 'deleted' : 'changed'}, updating MCP client`);
+        
+        if (deleted) {
+          // Token was deleted
+          await updateMCPGithubToken('');
+        } else {
+          // Token was updated, load it from settings
+          await loadGitHubTokenFromSettings();
+        }
+      }
+    } catch (error) {
+      console.error('Error handling API key change event:', error);
+    }
+  };
+  
+  // Add the event listener
+  window.addEventListener('api-key-changed', tokenChangeHandler as EventListener);
+  console.log('Set up API key change listener for GitHub token');
 }
 
 /**
  * Initializes GitHub token synchronization with MCP
  * - Loads initial token from settings
- * - Sets up event listeners for token changes
+ * - Sets up event listeners for token changes (only in browser environment)
  */
 export function initMCPGithubTokenSync(): void {
+  console.log('=== INITIALIZING MCP GITHUB TOKEN SYNC ===');
+  
+  // Detect environment
+  const isNode = typeof window === 'undefined';
+  const isBrowser = !isNode;
+  
+  console.log(`Environment detected: ${isNode ? 'Node.js' : 'Browser'}`);
+  
+  // Log MCP clients state before initialization
+  try {
+    const mcpClients = getMCPClients();
+    console.log('Initial MCP clients state:', {
+      initialized: mcpClients.initialized,
+      clientsCount: Object.keys(mcpClients.clients).length,
+      availableClients: Object.keys(mcpClients.clients),
+      hasGithubClient: !!mcpClients.clients['local-github']
+    });
+  } catch (error) {
+    console.error('Error getting MCP clients state:', error);
+  }
+  
   // Load the initial token
-  loadGitHubTokenFromSettings().catch(console.error);
+  console.log('Loading GitHub token from settings...');
+  loadGitHubTokenFromSettings()
+    .then(() => {
+      console.log('GitHub token successfully loaded from settings');
+    })
+    .catch(error => {
+      console.error('Failed to load GitHub token from settings:', error);
+    });
   
-  // Listen for API key changes
-  eventBus.on('apiKeys:updated', async (keys) => {
-    if (keys && typeof keys === 'object' && 'github' in keys) {
-      console.log('GitHub token updated in settings, synchronizing with MCP');
-      await updateMCPGithubToken(keys.github as string);
-    }
-  });
+  // Set up API key change listener if in browser environment
+  if (isBrowser) {
+    console.log('Setting up API key change listener for browser environment');
+    setupApiKeyChangeListener();
+  } else {
+    console.log('Skipping API key change listener setup (Node.js environment)');
+  }
   
-  console.log('Initialized MCP GitHub token synchronization');
+  console.log('=== MCP GITHUB TOKEN SYNC INITIALIZATION COMPLETE ===');
 }

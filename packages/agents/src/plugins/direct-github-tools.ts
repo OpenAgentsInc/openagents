@@ -13,21 +13,53 @@ async function callGitHubAPI(endpoint: string, options: RequestInit = {}, token?
   };
 
   // Add authorization if token is provided
+  const hasToken = !!token;
   if (token) {
+    // GitHub API uses 'token' prefix, not 'Bearer'
     headers['Authorization'] = `token ${token}`;
+    console.log(`Using GitHub token for request to ${endpoint} (token length: ${token.length})`);
+  } else {
+    console.warn(`No GitHub token provided for request to ${endpoint}. API rate limits will be lower and private repositories will be inaccessible.`);
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers
-  });
+  try {
+    console.log(`Making GitHub API request to: ${url}`);
+    console.log(`Request method: ${options.method || 'GET'}`);
+    console.log(`Authorization header present: ${hasToken}`);
+    
+    const response = await fetch(url, {
+      ...options,
+      headers
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`GitHub API error (${response.status}): ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`GitHub API error (${response.status}) for ${url}:`, errorText);
+      
+      // Provide more specific error messages based on status code
+      if (response.status === 401) {
+        throw new Error(`GitHub authentication failed (401): The provided token is invalid or has expired.`);
+      } else if (response.status === 403) {
+        const resetTime = response.headers.get('X-RateLimit-Reset');
+        if (resetTime) {
+          const resetDate = new Date(parseInt(resetTime) * 1000);
+          throw new Error(`GitHub API rate limit exceeded (403): Rate limit will reset at ${resetDate.toLocaleString()}.`);
+        }
+        throw new Error(`GitHub API access forbidden (403): The token might not have the required permissions for this operation.`);
+      } else if (response.status === 404) {
+        throw new Error(`GitHub resource not found (404): The requested resource (${endpoint}) doesn't exist or the token doesn't have access to it.`);
+      } else if (response.status === 422) {
+        throw new Error(`GitHub validation failed (422): The request contains invalid parameters. Details: ${errorText}`);
+      } else {
+        throw new Error(`GitHub API error (${response.status}): ${errorText}`);
+      }
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error(`GitHub API call failed for ${url}:`, error);
+    throw error;
   }
-
-  return response.json();
 }
 
 export const directGitHubTools = {
@@ -61,15 +93,45 @@ export const directGitHubTools = {
   },
   
   async createIssue(owner: string, repo: string, title: string, body: string, labels?: string[], token?: string): Promise<string> {
-    const result = await callGitHubAPI(
-      `/repos/${owner}/${repo}/issues`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ title, body, labels })
-      },
-      token
-    );
-    return JSON.stringify(result);
+    try {
+      console.log(`Creating issue in repository ${owner}/${repo}`);
+      console.log(`Issue title: "${title}"`);
+      console.log(`Issue body length: ${body.length} characters`);
+      console.log(`Labels: ${labels ? JSON.stringify(labels) : 'none'}`);
+      console.log(`Token provided: ${token ? 'Yes' : 'No'}`);
+      
+      const requestBody = JSON.stringify({ title, body, labels });
+      console.log(`Request body: ${requestBody}`);
+      
+      const result = await callGitHubAPI(
+        `/repos/${owner}/${repo}/issues`,
+        {
+          method: 'POST',
+          body: requestBody
+        },
+        token
+      );
+      
+      console.log(`Issue created successfully, issue number: ${result.number}`);
+      return JSON.stringify(result);
+    } catch (error) {
+      console.error(`Error creating issue in ${owner}/${repo}:`, error);
+      
+      // Provide more useful error message
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          return JSON.stringify({
+            error: `Repository not found or token doesn't have access to ${owner}/${repo}. Check that the repository exists and your token has proper permissions.`
+          });
+        } else if (error.message.includes('401') || error.message.includes('403')) {
+          return JSON.stringify({
+            error: `Authentication failed for creating issue in ${owner}/${repo}. Make sure you've added a GitHub token with 'repo' scope in Settings > API Keys.`
+          });
+        }
+      }
+      
+      throw error;
+    }
   },
   
   async getIssue(owner: string, repo: string, issue_number: number, token?: string): Promise<string> {
