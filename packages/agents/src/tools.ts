@@ -4,6 +4,7 @@
  */
 import { tool } from "ai";
 import { z } from "zod";
+import type { ToolExecutionOptions } from "ai";
 
 import { agentContext } from "./server";
 import {
@@ -84,7 +85,7 @@ export const tools = {
  * Each function here corresponds to a tool above that doesn't have an execute function
  */
 export const executions = {
-  getWeatherInformation: async ({ city }: { city: string }) => {
+  getWeatherInformation: async ({ city }: { city: string }, context: ToolExecutionOptions) => {
     console.log(`Getting weather information for ${city}`);
     return `The weather in ${city} is sunny`;
   },
