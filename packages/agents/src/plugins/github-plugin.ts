@@ -14,101 +14,60 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   
   /**
    * Helper method to safely access agent environment
-   * This avoids the protected env access issue
    */
   private getAgentEnv(): Record<string, any> | undefined {
     if (!this.agent) return undefined;
-    
-    // Use a trick to access the protected env
-    // This is safe because we're not modifying anything, just reading
+    // Access the env stored by the base AIChatAgent class
     return (this.agent as any).env;
   }
   
   /**
-   * Gets the GitHub token from the agent environment or parameters
-   * Prioritizes parameter token over environment token for flexibility
+   * Gets the GitHub token from the agent's environment.
    */
   private getGitHubToken(paramToken?: string): string | undefined {
     console.log("GitHub token search beginning...");
     
-    // First check if a token was passed directly to the method
+    // 1. Prioritize token passed directly to the tool method
     if (paramToken && paramToken.trim() !== '') {
       console.log(`Using GitHub token provided directly in the parameter (length: ${paramToken.length})`);
       return paramToken;
     } else {
-      console.log("No GitHub token provided as parameter");
+      console.log("No GitHub token provided as parameter.");
     }
     
-    // Attempt to use the token from the agent environment
+    // 2. Attempt to use the token from the agent environment
     if (!this.agent) {
-      console.warn("Agent not initialized, cannot access environment for GitHub token");
-    } else {
-      try {
-        // Use getEnv() helper to safely access the protected env property
-        const env = this.getAgentEnv();
-        
-        // Debug: Log the entire environment structure (without sensitive values)
-        try {
-          if (env) {
-            console.log("DEBUG: Agent environment structure:", 
-              Object.keys(env).reduce((obj, key) => {
-                // Only log non-sensitive information
-                if (key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET')) {
-                  obj[key] = key.includes('GITHUB') ? 
-                    (env[key] ? `[PRESENT: ${env[key].length} chars]` : '[NOT PRESENT]') : 
-                    '[REDACTED]';
-                } else {
-                  obj[key] = typeof env[key] === 'object' ? 
-                    '[OBJECT]' : 
-                    (typeof env[key] === 'function' ? '[FUNCTION]' : env[key]);
-                }
-                return obj;
-              }, {})
-            );
-          } else {
-            console.warn("Agent environment is null or undefined");
-          }
-        } catch (e) {
-          console.warn("Error logging environment structure:", e);
-        }
-        
-        if (!env) {
-          console.warn("Agent environment not available, cannot access GitHub token");
-        } else {
-          // Check for token in various places it might be hiding
-          const possibleTokens = [
-            { source: 'env.GITHUB_TOKEN', value: env.GITHUB_TOKEN },
-            { source: 'env.GITHUB_PERSONAL_ACCESS_TOKEN', value: env.GITHUB_PERSONAL_ACCESS_TOKEN },
-            { source: 'env.apiKeys?.github', value: env.apiKeys?.github }
-          ];
-          
-          console.log("DEBUG: Checking all possible token locations:");
-          for (const { source, value } of possibleTokens) {
-            console.log(`- ${source}: ${value ? `[PRESENT: ${value.length} chars]` : '[NOT PRESENT]'}`);
-          }
-          
-          // Try each possible token location
-          for (const { source, value } of possibleTokens) {
-            if (value && value.trim() !== '') {
-              console.log(`Using GitHub token from ${source} (length: ${value.length})`);
-              return value;
-            }
-          }
-          
-          console.warn("No GitHub token found in any environment location");
-        }
-      } catch (error) {
-        console.warn("Error accessing agent environment:", error instanceof Error ? error.message : String(error));
-      }
+      console.warn("Agent not initialized, cannot access environment for GitHub token.");
+      return undefined;
     }
     
-    console.warn("⚠️ No GitHub token found in agent environment. GitHub API access will be limited to public repositories only.");
-    console.warn("Please add a GitHub token in the Settings > API Keys page to enable full GitHub functionality.");
+    const env = this.getAgentEnv();
+    if (!env) {
+      console.warn("Agent environment not available, cannot access GitHub token.");
+      return undefined;
+    }
     
-    // For debugging: return a placeholder token that identifies where it came from
-    // Remove this in production!
-    console.log("DEBUG: Using emergency fallback placeholder token for testing. REMOVE IN PRODUCTION!");
-    return "gho_placeholder_token_for_debugging_only";
+    // Check in standard locations, in order of precedence
+    if (env.GITHUB_TOKEN && typeof env.GITHUB_TOKEN === 'string' && env.GITHUB_TOKEN.trim() !== '') {
+      console.log(`Using GitHub token from env.GITHUB_TOKEN (length: ${env.GITHUB_TOKEN.length})`);
+      return env.GITHUB_TOKEN;
+    }
+    
+    if (env.GITHUB_PERSONAL_ACCESS_TOKEN && typeof env.GITHUB_PERSONAL_ACCESS_TOKEN === 'string' && env.GITHUB_PERSONAL_ACCESS_TOKEN.trim() !== '') {
+      console.log(`Using GitHub token from env.GITHUB_PERSONAL_ACCESS_TOKEN (length: ${env.GITHUB_PERSONAL_ACCESS_TOKEN.length})`);
+      return env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    }
+    
+    // Check apiKeys as final option
+    if (env.apiKeys && env.apiKeys.github && typeof env.apiKeys.github === 'string' && env.apiKeys.github.trim() !== '') {
+      console.log(`Using GitHub token from env.apiKeys.github (length: ${env.apiKeys.github.length})`);
+      return env.apiKeys.github;
+    }
+    
+    // No token found
+    console.warn("⚠️ No GitHub token found in parameter or agent environment. GitHub API access will be limited.");
+    console.warn("Please add a GitHub token in Settings > API Keys to enable full GitHub functionality.");
+    return undefined;
   }
 
   constructor() {
@@ -556,19 +515,23 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       throw new Error("GitHub plugin not properly initialized");
     }
 
+    // Extract the token to send (string or undefined)
+    const tokenToSend = params.token;
+
     try {
-      // Log the MCP tool call
       console.log(`Calling MCP tool: ${toolName}`);
-      console.log(`MCP tool parameters:`, JSON.stringify({
+      // Log parameters, showing token presence accurately
+      console.log(`MCP tool parameters being sent:`, JSON.stringify({
         ...params,
-        token: params.token ? `[TOKEN LENGTH: ${params.token.length}]` : 'None'
+        token: tokenToSend ? `[PRESENT, length: ${tokenToSend.length}]` : '[NOT PRESENT]'
       }));
-      
-      if (!params.token) {
-        console.warn('⚠️ No GitHub token provided for MCP call. This operation may fail if accessing private repositories.');
-        console.warn('⚠️ Please add a GitHub token in Settings > API Keys to enable full GitHub functionality.');
+
+      if (!tokenToSend) {
+        console.warn(`⚠️ No GitHub token is being sent for MCP tool ${toolName}.`);
+        console.warn(`⚠️ This operation may fail if accessing private repositories.`);
+        console.warn(`Please add a GitHub token in Settings > API Keys to enable full GitHub functionality.`);
       }
-      
+
       // Make request to MCP bridge API
       const response = await fetch(`https://api.openagents.com/mcp/execute`, {
         method: 'POST',
@@ -607,7 +570,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         // Handle authentication errors specially
         if (status === 401 || status === 403) {
           return JSON.stringify({
-            error: `Authentication error: GitHub API returned ${status}. Please add a GitHub token in Settings > API Keys page with appropriate permissions. Details: ${errorDetails}`
+            error: `Authentication error (${status}) from GitHub. A valid token with correct permissions is required. Please add a GitHub token in Settings > API Keys.`
           });
         }
         
@@ -628,11 +591,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         // Handle Cloudflare connection timeout errors (522/524)
         if (status === 522 || status === 524) {
           // Check if this might be due to trying to access a private repo without a token
-          const noTokenMessage = !params.token ? 
-            ` This may occur when trying to access a private repository without authentication. If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
-            
+          const noTokenMsg = !tokenToSend ? 
+            ` This often happens when accessing private resources without a token. Please ensure a token is configured in Settings > API Keys.` : '';
+              
           return JSON.stringify({
-            error: `Connection timeout (${status}): GitHub API request timed out. ${noTokenMessage}`
+            error: `Connection timeout (${status}) communicating with GitHub via MCP bridge.${noTokenMsg}`
           });
         }
         
@@ -662,11 +625,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       
       // Return a user-friendly error message as JSON without retry logic
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const noTokenMessage = !params.token && params.owner && params.repo ? 
-        ` If ${params.owner}/${params.repo} is a private repository, please add a GitHub token in Settings > API Keys.` : '';
+      const noTokenMsg = !tokenToSend && params.owner && params.repo ? 
+        ` If accessing a private repository, ensure a token is configured in Settings > API Keys.` : '';
       
       return JSON.stringify({
-        error: `Error calling GitHub service: ${errorMessage}.${noTokenMessage}`
+        error: `Failed to call MCP bridge for ${toolName}: ${errorMessage}.${noTokenMsg}`
       });
     }
   }
