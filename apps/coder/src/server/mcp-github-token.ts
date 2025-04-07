@@ -4,6 +4,9 @@
  * This module handles synchronizing GitHub tokens from the API Keys settings
  * to the MCP GitHub client. It ensures that any token changes in the settings
  * are reflected in MCP tool calls.
+ * 
+ * CRITICAL: This module must be initialized BEFORE MCP clients are created
+ * to ensure tokens are loaded and available during client initialization.
  */
 
 import { getMCPClients } from './mcp-clients';
@@ -12,6 +15,17 @@ import type { SettingsRepository } from '@openagents/core/src/db/repositories/se
 // Global handler for token change events
 let tokenChangeHandler: ((event: CustomEvent) => void) | null = null;
 
+// Internal cache of the GitHub token to make it available during MCP initialization
+let cachedGithubToken: string | null = null;
+
+/**
+ * Get the current GitHub token
+ * This allows the MCP client initialization to access the token directly
+ */
+export function getGithubToken(): string | null {
+  return cachedGithubToken;
+}
+
 /**
  * Updates the GitHub token in the MCP GitHub client
  * @param token The GitHub token to set
@@ -19,6 +33,10 @@ let tokenChangeHandler: ((event: CustomEvent) => void) | null = null;
 export async function updateMCPGithubToken(token?: string): Promise<void> {
   try {
     console.log(`Attempting to update GitHub token in MCP client (token provided: ${token ? 'yes' : 'no'})`);
+    
+    // Update the cached token first so it's available for client initialization
+    cachedGithubToken = token || null;
+    console.log(`Updated cached GitHub token: ${cachedGithubToken ? 'Token set' : 'No token'}`);
     
     // Get the MCP clients
     const mcpClients = getMCPClients();
@@ -35,7 +53,7 @@ export async function updateMCPGithubToken(token?: string): Promise<void> {
     const githubClient = mcpClients.clients['local-github'];
     
     if (!githubClient) {
-      console.warn('MCP GitHub client not initialized, cannot update token');
+      console.warn('MCP GitHub client not initialized, cannot update token in client yet. Token is cached for later use.');
       return;
     }
 
@@ -126,8 +144,11 @@ export async function loadGitHubTokenFromSettings(): Promise<void> {
     if (githubToken) {
       console.log(`Found GitHub token (length: ${githubToken.length}), updating MCP client`);
       await updateMCPGithubToken(githubToken);
+      console.log('GitHub token updated successfully');
     } else {
       console.warn('No GitHub token found, MCP GitHub operations will be limited');
+      // Clear the cached token
+      cachedGithubToken = null;
     }
   } catch (error) {
     console.error('Failed to load GitHub token from settings:', error);

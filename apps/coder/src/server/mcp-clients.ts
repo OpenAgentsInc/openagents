@@ -20,6 +20,7 @@ if (typeof window === 'undefined') {
 // Import type only, don't import the actual repository
 import type { MCPClientConfig } from '@openagents/core/src/db/types';
 import { v4 as uuidv4 } from 'uuid';
+import { getGithubToken } from './mcp-github-token';
 
 // Define mock interfaces for browser environment
 interface MockFS {
@@ -95,8 +96,9 @@ const DEFAULT_MCP_CLIENTS: MCPClientConfig[] = [
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
     env: {
-      // Token will be set dynamically from settings
-      GITHUB_PERSONAL_ACCESS_TOKEN: ''
+      // Token will be loaded from the cached token if available
+      // This ensures the token is available during initialization
+      GITHUB_PERSONAL_ACCESS_TOKEN: getGithubToken() || ''
     },
     status: 'disconnected'
   },
@@ -254,6 +256,16 @@ async function initMCPClient(config: MCPClientConfig): Promise<any | null> {
         throw new Error('URL is required for SSE type clients');
       }
       
+      // For GitHub clients, ensure we use the latest token
+      if (config.id === 'local-github') {
+        const cachedToken = getGithubToken();
+        if (cachedToken) {
+          console.log(`Using cached GitHub token (length: ${cachedToken.length}) for client initialization`);
+          if (!config.env) config.env = {};
+          config.env.GITHUB_PERSONAL_ACCESS_TOKEN = cachedToken;
+        }
+      }
+      
       const client = await experimental_createMCPClient({
         transport: {
           type: 'sse',
@@ -282,6 +294,16 @@ async function initMCPClient(config: MCPClientConfig): Promise<any | null> {
     else if (config.type === 'stdio') {
       if (!config.command) {
         throw new Error('Command is required for stdio type clients');
+      }
+      
+      // For GitHub clients, ensure we use the latest token
+      if (config.id === 'local-github') {
+        const cachedToken = getGithubToken();
+        if (cachedToken) {
+          console.log(`Using cached GitHub token (length: ${cachedToken.length}) for client initialization`);
+          if (!config.env) config.env = {};
+          config.env.GITHUB_PERSONAL_ACCESS_TOKEN = cachedToken;
+        }
       }
       
       const transport = new StdioMCPTransport({

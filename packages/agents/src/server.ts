@@ -45,6 +45,12 @@ export class Coder extends AIChatAgent<Env> {
     if (env.apiKeys && typeof env.apiKeys === 'object' && env.apiKeys.github) {
       console.log(`GitHub token found in API keys (length: ${env.apiKeys.github.length}), setting in environment`);
       env.GITHUB_TOKEN = env.apiKeys.github;
+      
+      // If we're in a Cloudflare worker, also set to make token more accessible
+      if (typeof env.GITHUB_PERSONAL_ACCESS_TOKEN !== 'undefined') {
+        console.log('Also setting GITHUB_PERSONAL_ACCESS_TOKEN for Cloudflare worker environment');
+        env.GITHUB_PERSONAL_ACCESS_TOKEN = env.apiKeys.github;
+      }
     } else {
       console.log("No GitHub token found in API keys, checking other sources");
       
@@ -54,8 +60,15 @@ export class Coder extends AIChatAgent<Env> {
       } else if (typeof process !== 'undefined' && process.env && process.env.GITHUB_TOKEN) {
         console.log(`Found GitHub token in process.env.GITHUB_TOKEN, copying to agent environment`);
         env.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+        
+        // If we're in a Cloudflare worker, also set to make token more accessible
+        if (typeof env.GITHUB_PERSONAL_ACCESS_TOKEN !== 'undefined') {
+          console.log('Also setting GITHUB_PERSONAL_ACCESS_TOKEN for Cloudflare worker environment');
+          env.GITHUB_PERSONAL_ACCESS_TOKEN = process.env.GITHUB_TOKEN;
+        }
       } else {
         console.warn("No GitHub token found in any source, GitHub operations may be limited");
+        console.warn("Please add a GitHub token in Settings > API Keys to enable full GitHub functionality");
       }
     }
     

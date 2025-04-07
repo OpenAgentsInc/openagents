@@ -85,10 +85,7 @@ async function initializeMcpClients() {
   console.time('initializeMcpClients');
   console.log('[Main Process] Initializing MCP clients...');
   try {
-    await initMCPClients();
-    console.log('[Main Process] MCP clients initialized successfully.');
-    
-    // Initialize GitHub token sync after MCP clients are initialized
+    // Initialize GitHub token sync BEFORE MCP clients are initialized
     try {
       console.log('[Main Process] Initializing GitHub token sync...');
       await initMCPGithubTokenSync();
@@ -97,6 +94,11 @@ async function initializeMcpClients() {
       console.error('[Main Process] Error initializing GitHub token sync:', tokenError);
       // Non-fatal error, continue
     }
+    
+    // Now initialize MCP clients after GitHub token sync
+    // This ensures the token will be available during client initialization
+    await initMCPClients();
+    console.log('[Main Process] MCP clients initialized successfully.');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[Main Process] Error initializing MCP clients:', error);

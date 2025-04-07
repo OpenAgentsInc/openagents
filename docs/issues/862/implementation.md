@@ -112,3 +112,11 @@ This document provides technical details of how GitHub token handling was implem
 - Implement more granular permission checking based on token scopes
 - Add telemetry for most common GitHub operations to optimize performance
 - Consider implementing local caching for frequently accessed repositories
+
+## Critical Implementation Notes
+
+1. **Initialization Order**: GitHub token sync **MUST** be initialized **BEFORE** MCP clients to ensure tokens are available during client creation
+2. **Token Caching**: Token is cached in memory to ensure it's available for MCP client initialization
+3. **Fallback Mechanisms**: Multiple token sources are checked (API keys, environment, process env)
+4. **Token Propagation**: Token is set in both agent environment AND Cloudflare worker environment
+5. **User Guidance**: Clear error messages instruct users how to add tokens when missing

@@ -80,6 +80,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     }
     
     console.warn("⚠️ No GitHub token found in any location. GitHub API access will be limited to public repositories only.");
+    console.warn("Please add a GitHub token in the Settings > API Keys page to enable full GitHub functionality.");
     return undefined;
   }
 
@@ -575,7 +576,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         // Handle authentication errors specially
         if (status === 401 || status === 403) {
           return JSON.stringify({
-            error: `Authentication error: GitHub API returned ${status}. Please provide a valid GitHub token with appropriate permissions. Details: ${errorDetails}`
+            error: `Authentication error: GitHub API returned ${status}. Please add a GitHub token in Settings > API Keys page with appropriate permissions. Details: ${errorDetails}`
           });
         }
         
