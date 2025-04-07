@@ -288,7 +288,7 @@ If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
 async function initializeGitHubToken(env: Env, request?: Request): Promise<void> {
   console.log("=== INITIALIZING GITHUB TOKEN FOR MCP ===");
   
-  // Extract GitHub token from request headers if available
+  // Extract GitHub token from request headers first
   if (request) {
     console.log("Checking request headers for GitHub token...");
     const apiKeyHeader = request.headers.get('x-api-key');
@@ -324,6 +324,42 @@ async function initializeGitHubToken(env: Env, request?: Request): Promise<void>
       console.log("GitHub token from x-api-key header set in environment");
     } else {
       console.log("No GitHub token found in request headers");
+      
+      // Try to extract token from request body if it's POST
+      if (request.method === 'POST') {
+        try {
+          // Clone the request before reading the body to avoid consuming it
+          const clonedRequest = request.clone();
+          const contentType = request.headers.get('content-type') || '';
+          
+          if (contentType.includes('application/json')) {
+            console.log("Checking request body for GitHub token...");
+            const body = await clonedRequest.json();
+            
+            // Look for token in data.apiKeys.github
+            if (body && body.data && body.data.apiKeys && body.data.apiKeys.github) {
+              const githubToken = body.data.apiKeys.github;
+              console.log(`Found GitHub token in request body data.apiKeys.github (length: ${githubToken.length})`);
+              
+              // Initialize apiKeys object if it doesn't exist
+              if (!env.apiKeys) {
+                env.apiKeys = {};
+              }
+              
+              // Set token in all possible locations
+              env.apiKeys.github = githubToken;
+              env.GITHUB_TOKEN = githubToken;
+              env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+              
+              console.log("GitHub token from request body set in environment");
+            } else {
+              console.log("No GitHub token found in request body");
+            }
+          }
+        } catch (error) {
+          console.log("Error parsing request body:", error instanceof Error ? error.message : String(error));
+        }
+      }
     }
   }
   
