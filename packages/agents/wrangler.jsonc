@@ -1,14 +1,12 @@
 /**
- * Wrangler configuration for OpenAgents Agents Service
- *
- * This configures the worker service that hosts our agents,
- * including the CoderAgent specialized for coding tasks.
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
-  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "agents",
   "main": "src/server.ts",
-  "compatibility_date": "2025-03-28",
+  "compatibility_date": "2025-02-04",
   "compatibility_flags": [
     "nodejs_compat",
     "nodejs_compat_populate_process_env"
@@ -19,57 +17,59 @@
       "custom_domain": true
     }
   ],
-  /**
-	 * Durable Objects for persisting agent state
-	 */
+  "assets": {
+    "directory": "public"
+  },
   "durable_objects": {
     "bindings": [
       {
-        "name": "coderagent",
-        "class_name": "CoderAgent"
+        "name": "Coder",
+        "class_name": "Coder"
       }
     ]
   },
-  /**
-	 * Migrations for Durable Objects
-	 */
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": [
-        "CoderAgent"
+        "Coder"
       ]
     }
   ],
-  /**
-	 * Enable observability for easier debugging
-	 */
   "observability": {
     "enabled": true
   },
   /**
-	 * Access to AI models
+	 * Smart Placement
+	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+	 */
+  // "placement": { "mode": "smart" },
+  /**
+	 * Bindings
+	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+	 * databases, object storage, AI inference, real-time communication and more.
+	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
 	 */
   "ai": {
     "binding": "AI"
-  },
-  /**
-	 * Environment variables needed for operation
-	 * These will be passed to the worker environment
-	 */
-  "vars": {
-    "AGENT_ENV": "production"
-  },
-  /**
-	 * Smart placement for optimal performance
-	 */
-  "placement": {
-    "mode": "smart"
   }
   /**
-	 * Notes:
-	 * 1. Use `wrangler secret put OPENROUTER_API_KEY` to set required API keys
-	 * 2. This agent service is designed to be called via service bindings from chatserver
-	 * 3. Service bindings are configured in the calling service's wrangler config
+	 * Environment Variables
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
 	 */
+  // "vars": { "MY_VARIABLE": "production_value" },
+  /**
+	 * Note: Use secrets to store sensitive data.
+	 * https://developers.cloudflare.com/workers/configuration/secrets/
+	 */
+  /**
+	 * Static Assets
+	 * https://developers.cloudflare.com/workers/static-assets/binding/
+	 */
+  // "assets": { "directory": "./public/", "binding": "ASSETS" },
+  /**
+	 * Service Bindings (communicate between multiple Workers)
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
+	 */
+  // "services": [{ "binding": "MY_SERVICE", "service": "my-service" }]
 }

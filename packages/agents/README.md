@@ -1,20 +1,8 @@
-# 🤖 OpenAgents Cloudflare Agents Implementation
+# 🤖 Chat Agent Starter Kit
 
 ![agents-header](https://github.com/user-attachments/assets/f6d99eeb-1803-4495-9c5e-3cf07a37b402)
 
-This package implements AI-powered chat agents using Cloudflare's Agent platform, specifically the [`agents`](https://www.npmjs.com/package/agents) SDK. It provides the backend server for OpenAgents, including WebSocket connections for real-time chat interactions.
-
-## ⚠️ Current Implementation Status
-
-**IMPORTANT:** We are currently experiencing an issue with the Durable Object binding for the CoderAgent. When clients attempt to connect via WebSocket, they receive:
-
-```
-TypeError: Cannot read properties of undefined (reading 'idFromName')
-```
-
-This indicates a configuration issue with the Cloudflare Worker's Durable Object bindings. For more details on this issue, see:
-- [/docs/issues/804/durable-object-binding-issue.md](/docs/issues/804/durable-object-binding-issue.md)
-- [/docs/issues/804/websocket-connection-fix.md](/docs/issues/804/websocket-connection-fix.md)
+A starter template for building AI-powered chat agents using Cloudflare's Agent platform, powered by [`agents`](https://www.npmjs.com/package/agents). This project provides a foundation for creating interactive chat experiences with AI, complete with a modern UI and tool integration capabilities.
 
 ## Features
 
@@ -50,7 +38,7 @@ npm install
 Create a `.dev.vars` file:
 
 ```env
-OPENROUTER_API_KEY=your_openai_api_key
+OPENAI_API_KEY=your_openai_api_key
 ```
 
 4. Run locally:

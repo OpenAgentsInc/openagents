@@ -60,9 +60,9 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
   const savedMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Custom fetch function that intercepts requests and uses agent router
-  const customFetch = async (url: string, init?: RequestInit) => {
+  const customFetch: typeof fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     try {
-      console.log('[useAgentChat] Custom fetch called with:', { url, init });
+      console.log('[useAgentChat] Custom fetch called with:', { input, init });
 
       // Extract the user message from the request body
       const body = init?.body ? JSON.parse(init.body as string) : {};
