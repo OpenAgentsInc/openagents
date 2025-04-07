@@ -1,34 +1,21 @@
 /**
- * GitHub plugin for the Coder agent using MCP
- * Provides GitHub tools that can be used by the agent via MCP protocol
+ * GitHub plugin for the Coder agent - Direct GitHub API implementation
+ * This version uses the GitHub API directly instead of going through MCP
  */
 import type { AgentPlugin } from './plugin-interface';
 import { AIChatAgent } from 'agents/ai-chat-agent';
 import { tool } from 'ai';
 import { z } from 'zod';
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { directGitHubTools } from './direct-github-tools';
 
 export class OpenAIAgentPlugin implements AgentPlugin {
   name = 'github';
   private agent: AIChatAgent<any> | null = null;
   private readonly gitHubTools: Record<string, any> = {};
-  private mcpClient: Client | null = null;
-  private mcpToolsMap: Record<string, any> = {};
-  private connected = false;
 
   constructor() {
-    // Initialize MCP client
-    this.mcpClient = new Client(
-      {
-        name: "coder-agent",
-        version: "1.0.0"
-      },
-      {
-        capabilities: {
-          tools: {}
-        }
-      }
-    );
+    console.log("=== INITIALIZING GITHUB PLUGIN (CONSTRUCTOR) ===");
+    console.log("Using direct GitHub API implementation instead of MCP");
 
     // Define the GitHub tools that will be exposed to the agent
     this.gitHubTools = {
@@ -43,7 +30,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }),
         execute: async ({ owner, repo, path, branch }) => {
           try {
-            return await this.callMCPTool('get_file_contents', { owner, repo, path, branch });
+            console.log(`Getting file contents for ${owner}/${repo}/${path}`);
+            // Get GitHub token if available
+            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Use direct GitHub API
+            return await directGitHubTools.getFileContents(owner, repo, path, branch, token);
           } catch (error) {
             console.error("Error getting file contents:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -120,7 +111,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }),
         execute: async ({ owner, repo, state, sort, direction }) => {
           try {
-            return await this.callMCPTool('list_issues', { owner, repo, state, sort, direction });
+            console.log(`Listing issues for ${owner}/${repo}`);
+            // Get GitHub token if available
+            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Use direct GitHub API
+            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, token);
           } catch (error) {
             console.error("Error listing issues:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -139,7 +134,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }),
         execute: async ({ owner, repo, title, body, labels }) => {
           try {
-            return await this.callMCPTool('create_issue', { owner, repo, title, body, labels });
+            console.log(`Creating issue in ${owner}/${repo}: ${title}`);
+            // Get GitHub token if available
+            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Use direct GitHub API
+            return await directGitHubTools.createIssue(owner, repo, title, body, labels, token);
           } catch (error) {
             console.error("Error creating issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -156,7 +155,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }),
         execute: async ({ owner, repo, issue_number }) => {
           try {
-            return await this.callMCPTool('get_issue', { owner, repo, issue_number });
+            console.log(`Getting issue ${issue_number} from ${owner}/${repo}`);
+            // Get GitHub token if available
+            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Use direct GitHub API
+            return await directGitHubTools.getIssue(owner, repo, issue_number, token);
           } catch (error) {
             console.error("Error getting issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -196,7 +199,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }),
         execute: async ({ owner, repo, state, sort, direction }) => {
           try {
-            return await this.callMCPTool('list_pull_requests', { owner, repo, state, sort, direction });
+            console.log(`Listing pull requests for ${owner}/${repo}`);
+            // Get GitHub token if available
+            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Use direct GitHub API
+            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, token);
           } catch (error) {
             console.error("Error listing pull requests:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -273,7 +280,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }),
         execute: async ({ owner, repo, sha, page, perPage }) => {
           try {
-            return await this.callMCPTool('list_commits', { owner, repo, sha, page, perPage });
+            console.log(`Listing commits for ${owner}/${repo}`);
+            // Get GitHub token if available
+            const token = this.agent?.env?.GITHUB_TOKEN;
+            // Use direct GitHub API
+            return await directGitHubTools.listCommits(owner, repo, sha, page, perPage, token);
           } catch (error) {
             console.error("Error listing commits:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -284,85 +295,20 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   }
 
   async initialize(agent: AIChatAgent<any>): Promise<void> {
+    console.log("=== GITHUB PLUGIN INITIALIZE METHOD CALLED ===");
     this.agent = agent;
     
-    try {
-      // Connect to MCP GitHub server
-      console.log("Connecting to MCP GitHub server...");
-      await this.mcpClient?.connect({
-        url: "https://mcp-github.openagents.com/sse"
-      });
-      
-      console.log("Successfully connected to MCP GitHub server");
-      this.connected = true;
-      
-      // Fetch available tools from MCP server
-      console.log("Fetching available MCP tools...");
-      const mcpTools = await this.mcpClient?.tools();
-      
-      if (mcpTools) {
-        // Store tool definitions for later use
-        this.mcpToolsMap = mcpTools;
-        console.log(`Fetched ${Object.keys(mcpTools).length} MCP tools`);
-      }
-    } catch (error) {
-      console.error("Error initializing MCP client:", error);
-      this.connected = false;
-    }
+    // Log environment information
+    console.log("Agent environment:", {
+      hasEnv: !!agent.env,
+      hasGithubToken: !!(agent.env && agent.env.GITHUB_TOKEN),
+    });
+    
+    console.log("GitHub plugin initialization complete - using direct GitHub API");
   }
 
   getTools(): Record<string, any> {
+    console.log("Getting GitHub tools - returning", Object.keys(this.gitHubTools).length, "tools");
     return this.gitHubTools;
-  }
-
-  /**
-   * Call an MCP tool with error handling
-   */
-  private async callMCPTool(toolName: string, params: any): Promise<string> {
-    if (!this.mcpClient || !this.connected) {
-      throw new Error("MCP client not initialized or not connected");
-    }
-
-    try {
-      console.log(`Calling MCP tool ${toolName} with params:`, params);
-      
-      // Call the MCP tool
-      const result = await this.mcpClient.callTool({
-        name: toolName,
-        arguments: params
-      });
-      
-      console.log(`MCP tool ${toolName} result:`, result);
-      
-      // Extract the text from the first content item
-      if (result?.content?.[0]?.type === 'text') {
-        return result.content[0].text;
-      }
-      
-      // Fallback to JSON stringifying the entire result
-      return JSON.stringify(result);
-    } catch (error) {
-      console.error(`Error executing MCP tool ${toolName}:`, error);
-      
-      // Try to reconnect if the error seems connection-related
-      if (!this.connected || error.message?.includes('connection')) {
-        try {
-          console.log("Attempting to reconnect to MCP server...");
-          await this.mcpClient?.connect({
-            url: "https://mcp-github.openagents.com/sse"
-          });
-          this.connected = true;
-          console.log("Successfully reconnected to MCP server");
-          
-          // Retry the call
-          return this.callMCPTool(toolName, params);
-        } catch (reconnectError) {
-          console.error("Failed to reconnect to MCP server:", reconnectError);
-          this.connected = false;
-        }
-      }
-      
-      throw error;
-    }
   }
 }

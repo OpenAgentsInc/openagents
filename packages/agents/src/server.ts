@@ -38,38 +38,104 @@ export class Coder extends AIChatAgent<Env> {
   private combinedTools: Record<string, any>;
 
   constructor(state: DurableObjectState, env: Env) {
+    console.log("=== CODER AGENT CONSTRUCTOR CALLED ===");
     super(state, env);
+    
+    // Log environment variables
+    console.log("Environment:", {
+      hasEnv: !!env,
+      envKeys: env ? Object.keys(env) : [],
+      hasGithubToken: !!env?.GITHUB_TOKEN
+    });
     
     // Initialize with the base tools
     this.combinedTools = { ...tools };
+    console.log(`Base tools loaded: ${Object.keys(tools).length} tools`);
+    console.log("Base tools:", Object.keys(tools));
     
-    // Add the GitHub plugin
-    this.plugins.push(new OpenAIAgentPlugin());
+    try {
+      // Add the GitHub plugin
+      console.log("Creating GitHub plugin...");
+      const githubPlugin = new OpenAIAgentPlugin();
+      console.log("GitHub plugin created successfully");
+      
+      this.plugins.push(githubPlugin);
+      console.log("GitHub plugin added to plugins list");
+      console.log(`Total plugins: ${this.plugins.length}`);
+    } catch (pluginError) {
+      console.error("ERROR creating GitHub plugin:", pluginError);
+      if (pluginError.stack) {
+        console.error("Error stack:", pluginError.stack);
+      }
+    }
+    
+    // Store GitHub token in environment if available
+    if (env.GITHUB_TOKEN) {
+      console.log("GitHub token found in environment");
+    } else {
+      console.log("No GitHub token found in environment, public API access only");
+    }
     
     // Initialize plugins
-    this.initializePlugins().catch(err => 
-      console.error("Failed to initialize agent plugins:", err)
-    );
+    console.log("Starting plugin initialization...");
+    this.initializePlugins()
+      .then(() => {
+        console.log("Agent plugins initialized successfully");
+      })
+      .catch(err => {
+        console.error("Failed to initialize agent plugins:", err);
+        if (err.stack) {
+          console.error("Error stack:", err.stack);
+        }
+      });
+    
+    console.log("=== CODER AGENT CONSTRUCTOR COMPLETED ===");
   }
-  
+
   private async initializePlugins(): Promise<void> {
+    console.log("=== INITIALIZING AGENT PLUGINS ===");
+    console.log(`Found ${this.plugins.length} plugins to initialize`);
+    
     try {
       // Initialize each plugin
       for (const plugin of this.plugins) {
-        await plugin.initialize(this);
+        console.log(`Initializing plugin: ${plugin.name}...`);
         
-        // Get tools from the plugin
-        const pluginTools = plugin.getTools();
-        
-        // Add tools to the combined tools
-        this.combinedTools = { ...this.combinedTools, ...pluginTools };
-        
-        console.log(`Initialized plugin: ${plugin.name} with ${Object.keys(pluginTools).length} tools`);
+        try {
+          await plugin.initialize(this);
+          console.log(`Plugin ${plugin.name} initialized successfully`);
+          
+          // Get tools from the plugin
+          const pluginTools = plugin.getTools();
+          const toolCount = Object.keys(pluginTools).length;
+          console.log(`Plugin ${plugin.name} provided ${toolCount} tools`);
+          
+          if (toolCount > 0) {
+            console.log(`Tools from ${plugin.name}:`, Object.keys(pluginTools));
+            
+            // Add tools to the combined tools
+            this.combinedTools = { ...this.combinedTools, ...pluginTools };
+            console.log(`Added ${toolCount} tools from ${plugin.name} to combined tools`);
+          } else {
+            console.warn(`Plugin ${plugin.name} did not provide any tools`);
+          }
+        } catch (pluginError) {
+          console.error(`ERROR initializing plugin ${plugin.name}:`, pluginError);
+          if (pluginError.stack) {
+            console.error("Error stack:", pluginError.stack);
+          }
+        }
       }
       
-      console.log(`Total tools available: ${Object.keys(this.combinedTools).length}`);
+      const totalTools = Object.keys(this.combinedTools).length;
+      console.log(`=== PLUGIN INITIALIZATION COMPLETE ===`);
+      console.log(`Total tools available: ${totalTools}`);
+      console.log("Available tools:", Object.keys(this.combinedTools));
     } catch (error) {
-      console.error("Error initializing plugins:", error);
+      console.error("CRITICAL ERROR initializing plugins:", error);
+      if (error.stack) {
+        console.error("Error stack:", error.stack);
+      }
     }
   }
 
