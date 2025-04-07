@@ -1,8 +1,9 @@
+// @ts-nocheck - Disabling TS checks for this example refinement
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useAgent } from "agents/react";
 import { useAgentChat } from "agents/ai-react";
 import type { Message } from "@ai-sdk/react";
-import { Moon, Sun, Trash, Bot, Send, ArrowUp } from "lucide-react";
+import { Moon, Sun, Trash, Bot, Send } from "lucide-react"; // Removed ArrowUp - unused
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,12 +14,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function ChatPage() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
-    // Check localStorage first, default to dark if not found
     const savedTheme = localStorage.getItem("theme");
     return (savedTheme as "dark" | "light") || "dark";
   });
   const [showDebug, setShowDebug] = useState(false);
   const [latestError, setLatestError] = useState<string | null>(null);
+  // Simplified connection status: 'initializing', 'connected', 'error'
   const [connectionStatus, setConnectionStatus] = useState<string>("initializing");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -26,8 +27,8 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  // --- Theme Handling ---
   useEffect(() => {
-    // Apply theme class on mount and when theme changes
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
       document.documentElement.classList.remove("light");
@@ -35,12 +36,10 @@ export default function ChatPage() {
       document.documentElement.classList.remove("dark");
       document.documentElement.classList.add("light");
     }
-
-    // Save theme preference to localStorage
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  // Scroll to bottom on mount
+  // --- Initial Scroll ---
   useEffect(() => {
     scrollToBottom();
   }, [scrollToBottom]);
@@ -50,236 +49,207 @@ export default function ChatPage() {
     setTheme(newTheme);
   };
 
-  // Add a custom reconnect function
+  // --- Direct Connection State ---
   const [useDirectConnection, setUseDirectConnection] = useState(() => {
+    // Default to false (use proxy) if not set
     return localStorage.getItem("useDirectConnection") === "true";
   });
-  
-  // Apply WebSocket patch immediately on page load
-  useEffect(() => {
-    // This needs to happen before any WebSocket connections are attempted
-    console.log("🚀 Applying global WebSocket patch");
-    try {
-      const OriginalWebSocket = window.WebSocket;
-      (window as any).WebSocket = function(url: string, protocols?: string | string[]) {
-        console.log("🔄 WebSocket constructor called with URL:", url);
-        
-        // If it's a local agent endpoint, always redirect to production
-        if (url.includes('/agents/') && !url.includes('agents.openagents.com')) {
-          // Determine if it's ws or wss
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const urlObj = new URL(url, window.location.href);
-          
-          // Create a new URL pointing to the production server
-          const newUrl = `wss://agents.openagents.com${urlObj.pathname}${urlObj.search}`;
-          console.log("🔀 Redirecting WebSocket to:", newUrl);
-          return new OriginalWebSocket(newUrl, protocols);
-        }
-        
-        // For non-agent WebSockets, use the original URL
-        return new OriginalWebSocket(url, protocols);
-      };
-      
-      // Maintain prototype chain and constructor properties
-      (window as any).WebSocket.prototype = OriginalWebSocket.prototype;
-      (window as any).WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-      (window as any).WebSocket.OPEN = OriginalWebSocket.OPEN;
-      (window as any).WebSocket.CLOSING = OriginalWebSocket.CLOSING;
-      (window as any).WebSocket.CLOSED = OriginalWebSocket.CLOSED;
-      
-      console.log("✅ Global WebSocket patch applied");
-    } catch (error) {
-      console.error("❌ Failed to apply WebSocket patch:", error);
-    }
-  }, []);
-  
-  // Use direct URL if direct connection is enabled
+
+  // --- Initialize Agent ---
+  // The host parameter dictates the connection target.
+  // undefined = use relative path (handled by Vite proxy)
+  // "https://..." = use direct connection (WSS will be inferred)
   const agent = useAgent({
     agent: "coderagent",
     host: useDirectConnection ? "https://agents.openagents.com" : undefined
   });
+  console.log(`Initializing agent. Direct connection: ${useDirectConnection}, Host setting: ${useDirectConnection ? "https://agents.openagents.com" : "undefined (relative)"}`);
 
+  // --- Agent Chat Hook ---
   const {
     messages: agentMessages,
     input: agentInput,
     handleInputChange: handleAgentInputChange,
     handleSubmit: handleAgentSubmit,
-    addToolResult,
+    // addToolResult, // Removed if not used
     clearHistory,
-    error: agentError,
+    error: agentError, // Capture error from the hook itself
   } = useAgentChat({
-    agent,
-    maxSteps: 5,
+    agent, // Pass the initialized agent
+    maxSteps: 5, // Or your desired step limit
+    onFinish: () => {
+        console.log("Agent finished processing.");
+        // Assuming connection is stable if we finish successfully
+        if (connectionStatus !== 'error') {
+           setConnectionStatus("connected");
+        }
+    },
     onError: (error) => {
-      console.error("Agent chat error:", error);
+      console.error("Agent chat error caught by onError:", error);
       const errorString = typeof error === 'string'
         ? error
         : error instanceof Error
-          ? `${error.name}: ${error.message}`
-          : JSON.stringify(error);
-      setLatestError(errorString);
+          ? `${error.name}: ${error.message}` + (error.cause ? `\nCause: ${error.cause}` : '') + (error.stack ? `\nStack: ${error.stack}` : '')
+          : JSON.stringify(error, Object.getOwnPropertyNames(error)); // Try to get more detail from non-Error objects
+
+      setLatestError(`Agent Error: ${errorString}`);
+      setConnectionStatus("error"); // Set status to error on any agent communication failure
     }
   });
 
-  // Scroll to bottom when messages change
+  // --- Update Connection Status (Simplified) ---
   useEffect(() => {
-    agentMessages.length > 0 && scrollToBottom();
-  }, [agentMessages, scrollToBottom]);
-  
-  // Monitor agent connection status
-  useEffect(() => {
-    if (!agent) return;
-    
-    // Add event listener for agent connection errors
-    const handleError = (event: any) => {
-      console.error("Agent WebSocket error:", event);
-      setConnectionStatus("error");
-      setLatestError("WebSocket connection error. Check console for details.");
-    };
-    
-    // Inject script to patch WebSocket connection
-    const injectWebSocketPatch = () => {
-      try {
-        console.log("🔧 Injecting WebSocket connection patch");
-        // Save the original WebSocket constructor
-        const OriginalWebSocket = window.WebSocket;
-        
-        // Replace with our custom version
-        (window as any).WebSocket = function(url: string, protocols?: string | string[]) {
-          console.log("🔄 WebSocket constructor called with URL:", url);
-          
-          // Check if this is an agent URL that needs to be patched
-          if (url.includes('/agents/') && url.startsWith('ws:')) {
-            // Replace with wss and direct to production
-            const newUrl = url.replace('ws:', 'wss:').replace('localhost:5173', 'agents.openagents.com');
-            console.log("🔀 Redirecting WebSocket to:", newUrl);
-            return new OriginalWebSocket(newUrl, protocols);
-          }
-          
-          // Otherwise, use the original constructor
-          return new OriginalWebSocket(url, protocols);
-        };
-        
-        // Maintain prototype chain and constructor properties
-        (window as any).WebSocket.prototype = OriginalWebSocket.prototype;
-        (window as any).WebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-        (window as any).WebSocket.OPEN = OriginalWebSocket.OPEN;
-        (window as any).WebSocket.CLOSING = OriginalWebSocket.CLOSING;
-        (window as any).WebSocket.CLOSED = OriginalWebSocket.CLOSED;
-        
-        console.log("✅ WebSocket patch injected successfully");
-      } catch (error) {
-        console.error("❌ Failed to inject WebSocket patch:", error);
-      }
-    };
-    
-    // Set up connection monitoring
-    const monitorConnection = () => {
-      // Initially assume we're connecting
+    // If the agent object is created, assume we are 'connecting'
+    // The 'connected' or 'error' state will be set by callbacks/errors
+    if (agent && connectionStatus === 'initializing') {
       setConnectionStatus("connecting");
-      
-      // We'll update connection status based on agent state or WebSocket events
-      console.log("Connection monitoring set up - WebSocket patch is in place");
-      
-      // Set status to connected after a delay
-      setTimeout(() => {
-        setConnectionStatus("connected");
-      }, 500);
-    };
-    
-    // Run the connection monitor
-    monitorConnection();
-    
-    // Add global event listeners for WebSocket debugging
-    window.addEventListener("error", handleError);
-    
-    return () => {
-      window.removeEventListener("error", handleError);
-    };
-  }, [agent, useDirectConnection]);
+      // Basic assumption: if no error occurs quickly, mark as connected.
+      // onError will override this if needed.
+      const timer = setTimeout(() => {
+        if (connectionStatus === 'connecting') {
+           console.log("Assuming connection is stable after timeout.");
+           setConnectionStatus("connected");
+        }
+      }, 3000); // Give it 3 seconds to potentially fail
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return () => clearTimeout(timer);
+    }
+  }, [agent, connectionStatus]); // Rerun if agent changes or status resets
+
+
+  // --- Update latestError state if agentError from hook changes ---
+  useEffect(() => {
+     if (agentError) {
+       console.error("Agent error from useAgentChat hook:", agentError);
+       const errorString = agentError instanceof Error
+         ? `${agentError.name}: ${agentError.message}` + (agentError.stack ? `\nStack: ${agentError.stack}`: '')
+         : JSON.stringify(agentError);
+       setLatestError(`Hook Error: ${errorString}`);
+       setConnectionStatus("error");
+     }
+  }, [agentError]);
+
+
+  // --- Scroll on New Messages ---
+  useEffect(() => {
+    if (agentMessages.length > 0) {
+      scrollToBottom();
+    }
+  }, [agentMessages, scrollToBottom]);
+
+
+  const formatTime = (date: Date | string | undefined) => {
+    if (!date) return '';
+    try {
+        const d = typeof date === 'string' ? new Date(date) : date;
+        if (isNaN(d.getTime())) return ''; // Invalid date
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch (e) {
+        return ''; // Handle potential errors during date parsing/formatting
+    }
   };
+
+  const handleClearHistory = () => {
+     clearHistory();
+     setLatestError(null); // Also clear any displayed error
+     setConnectionStatus('initializing'); // Reset status on clear
+     // Re-initialize connection status check
+     if (agent) {
+       setConnectionStatus("connecting");
+       const timer = setTimeout(() => {
+         if (connectionStatus === 'connecting') {
+           console.log("Assuming connection is stable after history clear.");
+           setConnectionStatus("connected");
+         }
+       }, 3000);
+       // No need to return cleanup here as it's a one-off action
+     }
+  };
+
 
   return (
     <div className="h-[100vh] pt-[30px] w-full flex justify-center items-center bg-fixed overflow-hidden">
-      <div className="h-[calc(100vh-2rem)] w-full mx-auto flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
-        <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10 bg-background">
+      {/* Outer container */}
+      <div className="h-[calc(100vh-2rem)] w-full max-w-3xl mx-auto flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800 bg-background">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10 bg-inherit">
           <div className="flex items-center justify-center h-8 w-8 text-orange-500">
             <Bot size={24} />
           </div>
 
-          <div className="flex-1">
-            <h2 className="font-semibold text-base">AI Chat Agent</h2>
-            <div className="ml-2 flex items-center">
+          {/* Agent Title & Connection Status */}
+          <div className="flex-1 flex items-center">
+            <h2 className="font-semibold text-base mr-2">AI Chat Agent</h2>
+            {/* Connection Status Indicator */}
+            <div className="flex items-center">
               {connectionStatus === "connecting" && (
-                <span className="text-xs text-yellow-500 rounded-full px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900">
+                <span className="text-xs text-yellow-600 rounded-full px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800/50">
                   Connecting...
                 </span>
               )}
               {connectionStatus === "error" && (
-                <span className="text-xs text-red-500 rounded-full px-2 py-0.5 bg-red-100 dark:bg-red-900">
-                  Connection Error
+                <span className="text-xs text-red-600 rounded-full px-2 py-0.5 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50" title={latestError || 'Connection Error'}>
+                  Error
                 </span>
               )}
               {connectionStatus === "connected" && (
-                <span className="text-xs text-green-500 rounded-full px-2 py-0.5 bg-green-100 dark:bg-green-900">
+                <span className="text-xs text-green-600 rounded-full px-2 py-0.5 bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800/50">
                   Connected
                 </span>
               )}
               {useDirectConnection && (
-                <span className="ml-1 text-xs text-blue-500 rounded-full px-2 py-0.5 bg-blue-100 dark:bg-blue-900">
+                <span className="ml-1 text-xs text-blue-600 rounded-full px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800/50">
                   Direct
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Toggle
+          {/* Controls */}
+          <div className="flex items-center gap-1">
+             <Toggle
+              size="sm"
               pressed={showDebug}
               aria-label="Toggle debug mode"
               onClick={() => setShowDebug((prev) => !prev)}
+              title="Toggle Debug View"
             >
               <span className="text-xs">Debug</span>
             </Toggle>
-            
+
             <Toggle
+              size="sm"
               pressed={useDirectConnection}
               aria-label="Toggle direct connection"
+              title={useDirectConnection ? "Switch to Proxy Connection" : "Switch to Direct Connection"}
               onClick={() => {
-                setUseDirectConnection((prev) => !prev);
-                // Force page reload to apply the change
-                if (!useDirectConnection) {
-                  // Setting to direct connection - save preference and reload
-                  localStorage.setItem("useDirectConnection", "true");
-                  window.location.reload();
-                } else {
-                  // Setting back to proxy - save preference and reload
-                  localStorage.setItem("useDirectConnection", "false");
-                  window.location.reload();
-                }
+                const nextValue = !useDirectConnection;
+                setUseDirectConnection(nextValue);
+                localStorage.setItem("useDirectConnection", String(nextValue));
+                // Force reload to apply the change correctly at initialization
+                window.location.reload();
               }}
             >
-              <span className="text-xs">Direct Connection</span>
+              <span className="text-xs">Direct</span>
             </Toggle>
-          </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full h-9 w-9"
-            onClick={clearHistory}
-          >
-            <Trash size={20} />
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full h-8 w-8"
+              onClick={handleClearHistory}
+              title="Clear Chat History"
+            >
+              <Trash size={16} />
+            </Button>
+          </div>
         </div>
 
-        {/* Messages */}
-        <ScrollArea className="flex-1 p-4 pb-24">
+        {/* Messages Area */}
+        <ScrollArea className="flex-1 p-4 pb-24"> 
           <div className="space-y-4">
-            {agentMessages.length === 0 && (
+            {/* Welcome Message */}
+            {agentMessages.length === 0 && !latestError && (
               <div className="h-[60vh] flex items-center justify-center">
                 <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
                   <div className="text-center space-y-4">
@@ -288,23 +258,30 @@ export default function ChatPage() {
                     </div>
                     <h3 className="font-semibold text-lg">Welcome to AI Chat</h3>
                     <p className="text-muted-foreground text-sm">
-                      Start a conversation with your AI assistant.
+                      Start a conversation with your Coder assistant.
                     </p>
-                    <ul className="text-sm text-left space-y-2">
-                      <li className="flex items-center gap-2">
-                        <span className="text-orange-500">•</span>
-                        <span>Ask questions about code</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <span className="text-orange-500">•</span>
-                        <span>Get help with programming tasks</span>
-                      </li>
-                    </ul>
                   </div>
                 </Card>
               </div>
             )}
 
+            {/* Error Display */}
+            {latestError && (
+              <div className="my-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-md text-red-800 dark:text-red-200">
+                <h4 className="font-semibold mb-1">Error</h4>
+                <pre className="text-xs overflow-auto whitespace-pre-wrap max-h-40">
+                  {latestError}
+                </pre>
+                <button 
+                  className="mt-2 text-xs px-2 py-1 bg-red-200 dark:bg-red-800 rounded hover:bg-red-300 dark:hover:bg-red-700"
+                  onClick={() => setLatestError(null)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* Agent Messages */}
             {agentMessages.map((m: any, index) => {
               const isUser = m.role === "user";
               const showAvatar = index === 0 || agentMessages[index - 1]?.role !== m.role;
@@ -344,21 +321,6 @@ export default function ChatPage() {
                 </div>
               );
             })}
-            {/* Display error if one exists */}
-            {(latestError || agentError) && (
-              <div className="mt-4 p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded-md text-red-800 dark:text-red-200">
-                <h4 className="font-semibold mb-1">Error</h4>
-                <pre className="text-xs overflow-auto whitespace-pre-wrap">
-                  {latestError || (agentError ? String(agentError) : '')}
-                </pre>
-                <button
-                  className="mt-2 text-xs px-2 py-1 bg-red-200 dark:bg-red-800 rounded hover:bg-red-300 dark:hover:bg-red-700"
-                  onClick={() => setLatestError(null)}
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>

@@ -83,8 +83,9 @@ export class CoderAgent extends AIChatAgent<Env> {
             // Initialize Workers AI provider with the binding
             const workersai = createWorkersAI({ binding: AI });
 
-            // Create model for Claude
+            // Select a reliable model
             const model = workersai('@cf/meta/llama-4-scout-17b-16e-instruct');
+            console.log(`✅ Using model: @cf/meta/llama-4-scout-17b-16e-instruct`);
 
             console.log("✅ Initialized Workers AI provider");
 
@@ -101,8 +102,14 @@ export class CoderAgent extends AIChatAgent<Env> {
               tools,
               onFinish,
               onError: (error) => {
-                // Log the error
-                console.error("❌ Error in streamText:", error);
+                // Log the error with details
+                console.error("❌ streamText encountered an error:", error);
+
+                // Create detailed error information for logging
+                const errorDetails = error instanceof Error
+                  ? { name: error.name, message: error.message, stack: error.stack }
+                  : { raw: String(error) };
+                console.error("❌ Error details:", JSON.stringify(errorDetails, null, 2));
 
                 try {
                   // Get user-friendly error message
@@ -112,7 +119,14 @@ export class CoderAgent extends AIChatAgent<Env> {
                       ? error
                       : JSON.stringify(error);
 
-                  // Send error message to user
+                  // Send structured error using the data stream protocol format
+                  // This is important for the useAgentChat hook to properly handle errors
+                  dataStream.write({
+                    type: "error",
+                    error: `AI Stream Error: ${errorMessage}`
+                  });
+
+                  // Also send a user-friendly text message
                   dataStream.write({
                     type: "text",
                     text: `\n\nI apologize, but I encountered an error: ${errorMessage}\n\nPlease try again with a simpler request.`
@@ -126,20 +140,36 @@ export class CoderAgent extends AIChatAgent<Env> {
 
             // Merge the AI response with the data stream
             console.log("🔄 Merging result stream");
-            result.mergeIntoDataStream(dataStream);
+            await result.mergeIntoDataStream(dataStream);
             console.log("✅ Successfully merged streams");
 
           } catch (error) {
-            console.error("❌ Critical error in execute function:", error);
+            // Catch critical errors during the execution setup
+            console.error("❌ Critical error in dataStream execute function:", error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
 
             try {
-              // User-friendly fallback for critical errors
+              // Send a structured error message back to the client
+              dataStream.write({
+                type: "error",
+                error: `Server Error: ${errorMessage}`
+              });
+
+              // Also send a user-friendly text message
               dataStream.write({
                 type: "text",
                 text: "\n\nI apologize, but I encountered a system error. Please try again in a few moments."
               });
             } catch (writeError) {
-              console.error("❌ Failed to write fallback message:", writeError);
+              console.error("❌ Failed to write critical error message to data stream:", writeError);
+            }
+          } finally {
+            // Ensure the data stream is closed properly, even if errors occurred
+            try {
+              // No need to explicitly close here as createDataStreamResponse handles it
+              // But we could if needed: dataStream.close();
+            } catch (closeErr) {
+              // Ignore errors during close if it's already closed or errored
             }
           }
         }
@@ -150,6 +180,7 @@ export class CoderAgent extends AIChatAgent<Env> {
   }
 
   async executeTask(description: string, task: Schedule<string>) {
+    console.log(`⚡ Executing scheduled task: ${description}`);
     await this.saveMessages([
       ...this.messages,
       {
@@ -159,5 +190,6 @@ export class CoderAgent extends AIChatAgent<Env> {
         createdAt: new Date(),
       },
     ]);
+    console.log("✅ Scheduled task message added to conversation history");
   }
 }
