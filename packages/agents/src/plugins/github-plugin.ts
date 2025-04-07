@@ -105,8 +105,15 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Getting file contents for ${owner}/${repo}/${path}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use direct GitHub API
-            return await directGitHubTools.getFileContents(owner, repo, path, branch, githubToken);
+            // Use MCP tool instead of direct GitHub API
+            console.log(`Using MCP tool for getting file contents from ${owner}/${repo}`);
+            return await this.callMCPTool('get_file_contents', { 
+              owner, 
+              repo, 
+              path,
+              branch,
+              token: githubToken 
+            });
           } catch (error) {
             console.error("Error getting file contents:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -210,8 +217,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Listing issues for ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use direct GitHub API
-            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, githubToken);
+            // Use MCP tool instead of direct GitHub API
+            console.log(`Using MCP tool for listing issues in ${owner}/${repo}`);
+            return await this.callMCPTool('list_issues', { 
+              owner, 
+              repo, 
+              state,
+              sort,
+              direction,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error listing issues:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -234,8 +249,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Creating issue in ${owner}/${repo}: ${title}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use direct GitHub API
-            return await directGitHubTools.createIssue(owner, repo, title, body, labels, githubToken);
+            // Use MCP tool instead of direct GitHub API
+            console.log(`Using MCP tool for creating issue in ${owner}/${repo}`);
+            return await this.callMCPTool('create_issue', { 
+              owner, 
+              repo, 
+              title, 
+              body, 
+              labels,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error creating issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -256,8 +279,14 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Getting issue ${issue_number} from ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use direct GitHub API
-            return await directGitHubTools.getIssue(owner, repo, issue_number, githubToken);
+            // Use MCP tool instead of direct GitHub API
+            console.log(`Using MCP tool for getting issue in ${owner}/${repo}`);
+            return await this.callMCPTool('get_issue', { 
+              owner, 
+              repo, 
+              issue_number,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error getting issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -313,8 +342,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Listing pull requests for ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use direct GitHub API
-            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, githubToken);
+            // Use MCP tool instead of direct GitHub API
+            console.log(`Using MCP tool for listing pull requests in ${owner}/${repo}`);
+            return await this.callMCPTool('list_pull_requests', { 
+              owner, 
+              repo, 
+              state,
+              sort,
+              direction,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error listing pull requests:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -423,8 +460,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
             console.log(`Listing commits for ${owner}/${repo}`);
             // Get GitHub token using our centralized method
             const githubToken = this.getGitHubToken(token);
-            // Use direct GitHub API
-            return await directGitHubTools.listCommits(owner, repo, sha, page, perPage, githubToken);
+            // Use MCP tool instead of direct GitHub API
+            console.log(`Using MCP tool for listing commits in ${owner}/${repo}`);
+            return await this.callMCPTool('list_commits', { 
+              owner, 
+              repo, 
+              sha,
+              page,
+              per_page: perPage,
+              token: githubToken
+            });
           } catch (error) {
             console.error("Error listing commits:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -459,7 +504,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       console.warn("No GitHub token found in agent environment. GitHub API calls will have limited functionality.");
     }
     
-    console.log("GitHub plugin initialization complete - using direct GitHub API");
+    console.log("GitHub plugin initialization complete - using MCP GitHub tools");
   }
 
   getTools(): Record<string, any> {
@@ -480,6 +525,13 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     }
 
     try {
+      // Log the MCP tool call
+      console.log(`Calling MCP tool: ${toolName}`);
+      console.log(`MCP tool parameters:`, JSON.stringify({
+        ...params,
+        token: params.token ? `[TOKEN LENGTH: ${params.token.length}]` : 'None'
+      }));
+      
       // Make request to MCP bridge API
       const response = await fetch(`https://api.openagents.com/mcp/execute`, {
         method: 'POST',
@@ -492,31 +544,70 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         })
       });
 
+      // Log response status
+      console.log(`MCP tool ${toolName} response status: ${response.status}`);
+
       // Handle specific error cases
       if (!response.ok) {
         const errorText = await response.text();
         const status = response.status;
         
+        console.error(`MCP tool ${toolName} error (${status}):`, errorText);
+        
+        // Try to parse the error response as JSON
+        let errorDetails = errorText;
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error) {
+            errorDetails = errorJson.error;
+          } else if (errorJson.message) {
+            errorDetails = errorJson.message;
+          }
+        } catch (e) {
+          // Not JSON, use as is
+        }
+        
         // Handle authentication errors specially
         if (status === 401 || status === 403) {
-          return `Authentication error: GitHub API returned ${status}. Please provide a valid GitHub token with appropriate permissions.`;
+          return JSON.stringify({
+            error: `Authentication error: GitHub API returned ${status}. Please provide a valid GitHub token with appropriate permissions. Details: ${errorDetails}`
+          });
         }
         
         // Handle rate limiting
         if (status === 429) {
-          return `Rate limit exceeded: GitHub API rate limit reached. Please try again later or provide a GitHub token with higher rate limits.`;
+          return JSON.stringify({
+            error: `Rate limit exceeded: GitHub API rate limit reached. Please try again later or provide a GitHub token with higher rate limits.`
+          });
+        }
+        
+        // Handle not found errors (usually wrong repo name)
+        if (status === 404) {
+          return JSON.stringify({
+            error: `Resource not found (404): The repository or resource couldn't be found. Please check that the repository exists and is spelled correctly.`
+          });
         }
         
         // Generic error for other cases
-        throw new Error(`MCP tool execution failed (${status}): ${errorText}`);
+        return JSON.stringify({
+          error: `MCP tool execution failed (${status}): ${errorDetails}`
+        });
       }
 
+      // Process successful response
       const result = await response.json();
+      console.log(`MCP tool ${toolName} successful response:`, 
+        typeof result === 'object' ? 
+          (result.text ? result.text.substring(0, 100) + "..." : JSON.stringify(result).substring(0, 100) + "...") 
+          : result);
+      
       return result.text || JSON.stringify(result);
     } catch (error) {
       console.error(`Error executing MCP tool ${toolName}:`, error);
-      // Return a user-friendly error message
-      return `Error: ${error instanceof Error ? error.message : String(error)}`;
+      // Return a user-friendly error message as JSON
+      return JSON.stringify({
+        error: `Error calling GitHub service: ${error instanceof Error ? error.message : String(error)}`
+      });
     }
   }
 }
