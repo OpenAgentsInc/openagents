@@ -3,7 +3,7 @@ import { routeAgentRequest, type Connection, type WSMessage } from "agents"
 import { AIChatAgent } from "agents/ai-chat-agent";
 import { streamText, tool, type StreamTextOnFinishCallback } from "ai";
 import { env } from "cloudflare:workers";
-import { z } from "zod";
+import { tools } from "./tools";
 import { GitHubContentSchema } from "../../../apps/mcp-github-server/src/common/types";
 
 async function githubRequest(url: string, options: { token?: string }) {
@@ -63,42 +63,9 @@ export class Coder extends AIChatAgent<Env> {
   }
 
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
-    console.log("onChatMessage");
-
-    // check if we have token here
-    if (this.githubToken) {
-      console.log("WE HAVE TOKEN HERE");
-    } else {
-      console.log("NO TOKEN HERE");
-    }
-
     const stream = streamText({
       toolCallStreaming: true,
-      tools: {
-        fetchGitHubFileContent: tool({
-          description: 'Fetch the content of a file from a GitHub repository',
-          parameters: z.object({
-            owner: z.string(),
-            repo: z.string(),
-            path: z.string(),
-            branch: z.string(),
-          }),
-          execute: async ({ owner, repo, path, branch }) => {
-            try {
-              const data = await getFileContents(owner, repo, path, branch, this.githubToken);
-              if (Array.isArray(data)) {
-                return `Error: The path "${path}" points to a directory, not a file`;
-              }
-              console.log("Successfully fetched file content for:", path);
-              return data.content;
-            } catch (error: any) {
-              console.error("Error in fetchGitHubFileContent:", error);
-              const message = error instanceof Error ? error.message : String(error);
-              return `Error fetching GitHub file: ${message}`;
-            }
-          }
-        })
-      },
+      tools,
       model,
       messages: [
         { role: 'system', content: 'You are Coder, a helpful assistant.' },
