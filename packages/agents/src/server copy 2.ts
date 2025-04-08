@@ -8,11 +8,27 @@ import {
   generateId,
   streamText,
   type StreamTextOnFinishCallback,
+  type ToolExecutionOptions,
 } from "ai";
 import { processToolCalls } from "./utils";
+import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
+// import { createWorkersAI } from 'workers-ai-provider';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { env } from "cloudflare:workers";
+import { OpenAIAgentPlugin } from "./plugins/github-plugin";
+import type { AgentPlugin } from "./plugins/plugin-interface";
+
+interface IncomingMessage {
+  type: string;
+  init: {
+    method: string;
+    body: string;
+  };
+}
+
+// const workersai = createWorkersAI({ binding: env.AI });
+// const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
 
 const google = createGoogleGenerativeAI({
   apiKey: env.GOOGLE_API_KEY,
@@ -28,18 +44,92 @@ export const agentContext = new AsyncLocalStorage<Coder>();
  */
 export class Coder extends AIChatAgent<Env> {
   githubToken?: string;
-  combinedTools?: Record<string, any>;
+  private plugins: AgentPlugin[] = [];
+  private combinedTools: Record<string, any> = {};
+
+  constructor(state: DurableObjectState, env: Env) {
+    console.log("=== CODER AGENT CONSTRUCTOR CALLED ===");
+    super(state, env);
+
+    // Initialize with the base tools
+    this.combinedTools = { ...tools };
+    console.log(`Base tools loaded: ${Object.keys(tools).length} tools`);
+
+    try {
+      // Add the GitHub plugin
+      console.log("Creating GitHub plugin...");
+      const githubPlugin = new OpenAIAgentPlugin();
+      console.log("GitHub plugin created successfully");
+
+      this.plugins.push(githubPlugin);
+      console.log(`Total plugins: ${this.plugins.length}`);
+    } catch (pluginError) {
+      console.error("ERROR creating GitHub plugin:", pluginError);
+    }
+
+    // Initialize plugins
+    console.log("Starting plugin initialization...");
+    this.initializePlugins()
+      .then(() => {
+        console.log("Agent plugins initialized successfully");
+      })
+      .catch(err => {
+        console.error("Failed to initialize agent plugins:", err);
+      });
+  }
+
+  private async initializePlugins(): Promise<void> {
+    console.log("=== INITIALIZING AGENT PLUGINS ===");
+    console.log(`Found ${this.plugins.length} plugins to initialize`);
+
+    try {
+      // Initialize each plugin
+      for (const plugin of this.plugins) {
+        console.log(`Initializing plugin: ${plugin.name}...`);
+
+        try {
+          await plugin.initialize(this);
+          console.log(`Plugin ${plugin.name} initialized successfully`);
+
+          // Get tools from the plugin
+          const pluginTools = plugin.getTools();
+          const toolCount = Object.keys(pluginTools).length;
+          console.log(`Plugin ${plugin.name} provided ${toolCount} tools`);
+
+          if (toolCount > 0) {
+            console.log(`Tools from ${plugin.name}:`, Object.keys(pluginTools));
+
+            // Add tools to the combined tools
+            this.combinedTools = { ...this.combinedTools, ...pluginTools };
+            console.log(`Added ${toolCount} tools from ${plugin.name} to combined tools`);
+          }
+        } catch (pluginError) {
+          console.error(`ERROR initializing plugin ${plugin.name}:`, pluginError);
+        }
+      }
+
+      const totalTools = Object.keys(this.combinedTools).length;
+      console.log(`=== PLUGIN INITIALIZATION COMPLETE ===`);
+      console.log(`Total tools available: ${totalTools}`);
+      console.log("Available tools:", Object.keys(this.combinedTools));
+    } catch (error) {
+      console.error("CRITICAL ERROR initializing plugins:", error);
+    }
+  }
 
   override async onMessage(connection: Connection, message: WSMessage) {
     console.log('[onMessage] Received message:', typeof message);
     console.log('[onMessage] Message content:', message);
 
     if (typeof message === "string") {
-      let data: any;
+      let data: IncomingMessage | any;
       try {
         data = JSON.parse(message);
+        console.log('[onMessage] Parsed message data:', data);
+
         // Handle different message types
         if (data.type === "cf_agent_use_chat_request" && data.init?.method === "POST") {
+          console.log('[onMessage] Processing chat request');
           const { body } = data.init;
           const requestData = JSON.parse(body as string);
           const { messages, githubToken } = requestData;
@@ -53,6 +143,7 @@ export class Coder extends AIChatAgent<Env> {
           this.githubToken = githubToken;
 
           // Run the rest of the message handling with the tool context
+          console.log('[onMessage] Running with agent context');
           return agentContext.run(this, async () => {
             console.log('[onMessage] Delegating to parent handler with tools context');
             return super.onMessage(connection, message);
@@ -84,7 +175,7 @@ export class Coder extends AIChatAgent<Env> {
             hasContext: !!context,
             hasGithubToken: !!context?.githubToken,
             hasTools: !!this.combinedTools,
-            availableTools: this.combinedTools ? Object.keys(this.combinedTools) : [],
+            availableTools: Object.keys(this.combinedTools),
             tokenPrefix: context?.githubToken ? context.githubToken.slice(0, 15) : 'none'
           });
 
@@ -92,9 +183,9 @@ export class Coder extends AIChatAgent<Env> {
           const processedMessages = await processToolCalls({
             messages: this.messages,
             dataStream,
-            tools: this.combinedTools || {},
+            tools: this.combinedTools,
             executions: {
-              // ...executions,
+              ...executions,
               // Pass token through the agent context instead
               getGithubToken: async () => context?.githubToken
             },
@@ -103,7 +194,7 @@ export class Coder extends AIChatAgent<Env> {
           // Stream the AI response using GPT-4
           const result = streamText({
             model,
-            system: `You are a coding assistant named Coder. Help the user with various software engineering tasks.
+            system: `You are a helpful assistant that can do various tasks...
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
@@ -137,7 +228,7 @@ TASK SCHEDULING:
 - deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
 `,
             messages: processedMessages,
-            tools: this.combinedTools || {},
+            tools: this.combinedTools,
             onFinish,
             onError: (error) => {
               console.error("Error while streaming:", error);
