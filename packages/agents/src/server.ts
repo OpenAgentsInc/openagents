@@ -1,7 +1,14 @@
-import { routeAgentRequest } from "agents"
-import type { Connection, WSMessage } from "agents";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { routeAgentRequest, type Connection, type WSMessage } from "agents"
 import { AIChatAgent } from "agents/ai-chat-agent";
-import type { StreamTextOnFinishCallback } from "ai";
+import { streamText, type StreamTextOnFinishCallback } from "ai";
+import { env } from "cloudflare:workers";
+
+const google = createGoogleGenerativeAI({
+  apiKey: env.GOOGLE_API_KEY,
+});
+
+const model = google("gemini-2.5-pro-exp-03-25");
 
 export class Coder extends AIChatAgent<Env> {
 
@@ -10,11 +17,23 @@ export class Coder extends AIChatAgent<Env> {
     return super.onMessage(connection, message);
   }
 
-  onChatMessage(onFinish: StreamTextOnFinishCallback<{}>): Promise<Response | undefined> {
+  onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
     console.log("onChatMessage");
-    return super.onChatMessage(onFinish);
-  }
+    // return super.onChatMessage(onFinish);
 
+    const stream = streamText({
+      model,
+      messages: [
+        {
+          role: "user",
+          content: "Hello, world!",
+        },
+      ],
+      onFinish,
+    });
+
+    return Promise.resolve(stream.toDataStreamResponse());
+  }
 
 }
 
