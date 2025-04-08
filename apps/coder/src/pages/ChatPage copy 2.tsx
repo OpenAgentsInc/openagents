@@ -1,3 +1,4 @@
+// @ts-nocheck - Disabling TS checks for this example refinement
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useAgent } from "agents/react";
 import { useAgentChat } from "agents/ai-react";
@@ -24,16 +25,58 @@ export default function ChatPage() {
   // --- Initialize Agent ---
   const agent = useAgent({ agent: "coder", name: "session-124" });
 
-  const agentMessages: any[] = []
-
   const { apiKeys } = useApiKeyContext();
 
+  // --- Agent Chat Hook ---
+  const {
+    messages: agentMessages,
+    input: agentInput,
+    handleInputChange: handleAgentInputChange,
+    handleSubmit: handleAgentSubmit,
+    clearHistory,
+    error: agentError,
+  } = useAgentChat({
+    body: {
+      githubToken: apiKeys['github'] || ''
+    },
+    agent,
+    // maxSteps: 5,
+    onError: (error) => {
+      console.error("Agent chat error caught by onError:", error);
+      const errorString = typeof error === 'string'
+        ? error
+        : error instanceof Error
+          ? `${error.name}: ${error.message}` + (error.cause ? `\nCause: ${error.cause}` : '') + (error.stack ? `\nStack: ${error.stack}` : '')
+          : JSON.stringify(error, Object.getOwnPropertyNames(error));
+
+      setLatestError(`Agent Error: ${errorString}`);
+    }
+  });
 
   // --- Initial Scroll ---
   useEffect(() => {
     scrollToBottom();
   }, [scrollToBottom]);
 
+  // --- Scroll on New Messages ---
+  useEffect(() => {
+    if (agentMessages.length > 0) {
+      // Use a small timeout to ensure content is rendered before scrolling
+      const timeoutId = setTimeout(scrollToBottom, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [agentMessages, scrollToBottom]);
+
+  // --- Update latestError state if agentError from hook changes ---
+  useEffect(() => {
+    if (agentError) {
+      console.error("Agent error from useAgentChat hook:", agentError);
+      const errorString = agentError instanceof Error
+        ? `${agentError.name}: ${agentError.message}` + (agentError.stack ? `\nStack: ${agentError.stack}` : '')
+        : JSON.stringify(agentError);
+      setLatestError(`Hook Error: ${errorString}`);
+    }
+  }, [agentError]);
 
   const formatTime = (date: Date | string | undefined) => {
     if (!date) return '';
@@ -46,6 +89,27 @@ export default function ChatPage() {
     }
   };
 
+  const handleClearHistory = () => {
+    clearHistory();
+    setLatestError(null);
+  };
+
+  // Get connection status from agent
+  const connectionStatus = agent?.ws?.readyState;
+  const getConnectionStatusDisplay = () => {
+    if (!agent?.ws) return "initializing";
+    switch (agent.ws.readyState) {
+      case WebSocket.CONNECTING:
+        return "connecting";
+      case WebSocket.OPEN:
+        return "connected";
+      case WebSocket.CLOSING:
+      case WebSocket.CLOSED:
+        return "error";
+      default:
+        return "error";
+    }
+  };
 
   return (
     <div className="h-[100vh] pt-[30px] w-full flex justify-center items-center bg-fixed overflow-hidden">
@@ -57,10 +121,51 @@ export default function ChatPage() {
             <Bot size={24} />
           </div>
 
+          {/* Agent Title & Connection Status */}
           <div className="flex-1 flex items-center">
-            <h2 className="font-semibold text-base mr-2">Coder 1</h2>
+            <h2 className="font-semibold text-base mr-2">AI Chat Agent</h2>
+            {/* Connection Status Indicator */}
+            <div className="flex items-center">
+              {getConnectionStatusDisplay() === "connecting" && (
+                <span className="text-xs text-yellow-600 rounded-full px-2 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800/50">
+                  Connecting...
+                </span>
+              )}
+              {getConnectionStatusDisplay() === "error" && (
+                <span className="text-xs text-red-600 rounded-full px-2 py-0.5 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50" title={latestError || 'Connection Error'}>
+                  Error
+                </span>
+              )}
+              {getConnectionStatusDisplay() === "connected" && (
+                <span className="text-xs text-green-600 rounded-full px-2 py-0.5 bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800/50">
+                  Connected
+                </span>
+              )}
+            </div>
           </div>
 
+          {/* Controls */}
+          <div className="flex items-center gap-1">
+            <Toggle
+              size="sm"
+              pressed={showDebug}
+              aria-label="Toggle debug mode"
+              onClick={() => setShowDebug((prev) => !prev)}
+              title="Toggle Debug View"
+            >
+              <span className="text-xs">Debug</span>
+            </Toggle>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full h-8 w-8"
+              onClick={handleClearHistory}
+              title="Clear Chat History"
+            >
+              <Trash size={16} />
+            </Button>
+          </div>
         </div>
 
         {/* Messages Area */}
@@ -74,7 +179,7 @@ export default function ChatPage() {
                     <div className="bg-orange-500/10 text-orange-500 rounded-full p-3 inline-flex">
                       <Bot size={24} />
                     </div>
-                    <h3 className="font-semibold text-lg">yo</h3>
+                    <h3 className="font-semibold text-lg">Welcome to AI Chat</h3>
                     <p className="text-muted-foreground text-sm">
                       Start a conversation with your Coder assistant.
                     </p>
@@ -145,7 +250,7 @@ export default function ChatPage() {
 
         {/* Input Area */}
         <form
-          // onSubmit={handleAgentSubmit}
+          onSubmit={handleAgentSubmit}
           className="p-3 bg-background absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800"
         >
           <div className="flex items-center gap-2">
@@ -153,14 +258,14 @@ export default function ChatPage() {
               <Input
                 placeholder="Type your message..."
                 className="pl-4 pr-10 py-2 w-full rounded-full"
-              // value={agentInput}
-              // onChange={handleAgentInputChange}
-              // onKeyDown={(e) => {
-              //   if (e.key === "Enter" && !e.shiftKey) {
-              //     e.preventDefault();
-              //     handleAgentSubmit(e as unknown as React.FormEvent);
-              //   }
-              // }}
+                value={agentInput}
+                onChange={handleAgentInputChange}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleAgentSubmit(e as unknown as React.FormEvent);
+                  }
+                }}
               />
             </div>
 
@@ -168,7 +273,7 @@ export default function ChatPage() {
               type="submit"
               size="icon"
               className="rounded-full h-10 w-10 flex-shrink-0"
-              disabled={true}
+              disabled={!agentInput.trim()}
             >
               <Send size={16} />
             </Button>
