@@ -6,6 +6,7 @@ import {
   generateId,
   streamText,
   type StreamTextOnFinishCallback,
+  type ToolExecutionOptions,
 } from "ai";
 import { processToolCalls } from "./utils";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -14,6 +15,7 @@ import { env } from "cloudflare:workers";
 import { tools as builtInTools, executions } from "./tools";
 
 import { MCPClientManager } from "agents/mcp/client";
+import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import type {
   Tool,
   Prompt,
@@ -50,6 +52,7 @@ export class Coder extends AIChatAgent<Env, State> {
 
   githubToken?: string;
   combinedTools?: Record<string, any>;
+  mcpExecutions?: Record<string, (args: any, context: ToolExecutionOptions) => Promise<unknown>>;
 
   /**
    * MCP STUFF
@@ -131,7 +134,13 @@ export class Coder extends AIChatAgent<Env, State> {
 
     // Update combinedTools while preserving existing tools
     const mcpToolsMap = mcpTools.reduce((acc, tool) => {
-      acc[tool.name] = tool;
+      // Convert MCP tool to match the AI tools system structure
+      acc[tool.name] = {
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters,
+        // No execute function - this makes it require confirmation
+      };
       return acc;
     }, {} as Record<string, any>);
 
@@ -147,7 +156,8 @@ export class Coder extends AIChatAgent<Env, State> {
       builtInTools: Object.keys(builtInTools),
       existingTools: Object.keys(existingTools),
       mcpTools: Object.keys(mcpToolsMap),
-      combinedTools: Object.keys(this.combinedTools)
+      combinedTools: Object.keys(this.combinedTools),
+      sampleTool: mcpTools[0] ? JSON.stringify(mcpTools[0], null, 2) : 'no tools'
     });
   }
 
@@ -278,6 +288,19 @@ export class Coder extends AIChatAgent<Env, State> {
             tools: allTools,
             executions: {
               ...executions,
+              // Handle MCP tool executions
+              ...Object.fromEntries(
+                this.state.tools.map(tool => [
+                  tool.name,
+                  async (args: any) => {
+                    return this.mcp.callTool({
+                      serverId: tool.serverId,
+                      name: tool.name,
+                      args
+                    }, CallToolResultSchema, {});
+                  }
+                ])
+              ),
               // Pass token through the agent context instead
               getGithubToken: async () => context?.githubToken
             } as typeof executions & { getGithubToken: () => Promise<string | undefined> },
