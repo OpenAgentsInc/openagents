@@ -1,15 +1,12 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useAgent } from "agents/react";
-import { useAgentChat } from "agents/ai-react";
-import type { Message } from "@ai-sdk/react";
-import { Moon, Sun, Trash, Bot, Send } from "lucide-react"; // Removed ArrowUp - unused
+import { Bot, Send } from "lucide-react"; // Removed ArrowUp - unused
 import { useApiKeyContext } from "../providers/ApiKeyProvider";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Toggle } from "@/components/ui/toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function ChatPage() {
@@ -22,7 +19,18 @@ export default function ChatPage() {
   }, []);
 
   // --- Initialize Agent ---
-  const agent = useAgent({ agent: "coder", name: "session-124" });
+  const agent = useAgent({
+    agent: "coder",
+    name: "session-124",
+    onStateUpdate: (state) => {
+      console.log('[useAgent]onStateUpdate', state)
+    }
+  });
+
+  // now lets just fucking explore what i can do with useAgent
+
+
+
 
   const agentMessages: any[] = []
 
