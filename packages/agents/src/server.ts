@@ -186,7 +186,11 @@ export class Coder extends AIChatAgent<Env, State> {
 
     console.log("[onChatMessage] System prompt:", systemPrompt);
 
+    console.log("[onChatMessage] Combined tools:", this.combinedTools);
+
     const stream = streamText({
+      // use combined tools
+      // tools: this.combinedTools,
       model,
       messages: [
         { role: "system", content: systemPrompt },
@@ -200,12 +204,31 @@ export class Coder extends AIChatAgent<Env, State> {
 
   // Helper method to generate a system prompt
   async generateSystemPrompt() {
-    // Query knowledge base or use static prompt
-    return `You are a helpful customer support agent.
-              Respond to customer inquiries based on the following guidelines:
-              - Be friendly and professional
-              - If you don't know an answer, say so
-              - Current company policies: ...`;
+    return `You are a coding assistant named Coder. Help the user with various software engineering tasks.
+
+${unstable_getSchedulePrompt({ date: new Date() })}
+
+You have access to a few built-in tools described below and a GitHub tool through a separate Model Context Protocol service.
+The GitHub token will be automatically provided to the tools that need it.
+
+<built-in-tools>
+- getWeatherInformation: Get weather information for a location
+- getLocalTime: Get the current time for a location
+- scheduleTask: Schedule a task to be executed at a later time
+- listScheduledTasks: List all currently scheduled tasks with their details
+- deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
+</built-in-tools>
+
+<github-tools>
+- get_file_contents: Get the contents of a file from a GitHub repository
+</github-tools>
+
+When using get_file_contents, you'll need:
+- owner: The repository owner
+- repo: The repository name
+- path: The path to the file
+- ref: (optional) The branch/commit/tag to get the file from
+`
   }
 }
 
