@@ -11,6 +11,7 @@ import { processToolCalls } from "./utils";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { env } from "cloudflare:workers";
+import { tools as builtInTools, executions } from "./tools";
 
 import { MCPClientManager } from "agents/mcp/client";
 import type {
@@ -77,6 +78,24 @@ export class Coder extends AIChatAgent<Env, State> {
       storage: this.ctx.storage,
     });
     console.log("MCPClientManager initialized");
+
+    // Initialize combinedTools with built-in tools
+    this.combinedTools = { ...builtInTools };
+
+    // Connect to MCP GitHub SSE server
+    this.addMcpServer("https://mcp-github.openagents.com/sse")
+      .then(async (authUrl) => {
+        console.log("Connected to MCP GitHub SSE server, auth URL:", authUrl);
+        console.log("Refreshing server data after connection...");
+        await this.refreshServerData();
+        console.log("Server data refresh complete, tool state:", {
+          combinedToolCount: this.combinedTools ? Object.keys(this.combinedTools).length : 0,
+          toolNames: this.combinedTools ? Object.keys(this.combinedTools) : []
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to connect to MCP GitHub SSE server:", error);
+      });
   }
 
   setServerState(id: string, state: Server) {
@@ -90,11 +109,45 @@ export class Coder extends AIChatAgent<Env, State> {
   }
 
   async refreshServerData() {
+    // Get latest MCP data
+    const mcpTools = this.mcp.listTools();
+    const mcpPrompts = this.mcp.listPrompts();
+    const mcpResources = this.mcp.listResources();
+
+    console.log("MCP data retrieved:", {
+      toolCount: mcpTools.length,
+      promptCount: mcpPrompts.length,
+      resourceCount: mcpResources.length,
+      toolNames: mcpTools.map(t => t.name)
+    });
+
+    // Update state with MCP data
     this.setState({
       ...this.state,
-      prompts: this.mcp.listPrompts(),
-      tools: this.mcp.listTools(),
-      resources: this.mcp.listResources(),
+      prompts: mcpPrompts,
+      tools: mcpTools,
+      resources: mcpResources,
+    });
+
+    // Update combinedTools while preserving existing tools
+    const mcpToolsMap = mcpTools.reduce((acc, tool) => {
+      acc[tool.name] = tool;
+      return acc;
+    }, {} as Record<string, any>);
+
+    const existingTools = this.combinedTools || {};
+
+    this.combinedTools = {
+      ...builtInTools,
+      ...existingTools,
+      ...mcpToolsMap
+    };
+
+    console.log("Tool state after refresh:", {
+      builtInTools: Object.keys(builtInTools),
+      existingTools: Object.keys(existingTools),
+      mcpTools: Object.keys(mcpToolsMap),
+      combinedTools: Object.keys(this.combinedTools)
     });
   }
 
@@ -106,6 +159,7 @@ export class Coder extends AIChatAgent<Env, State> {
       authUrl,
       state: this.mcp.mcpConnections[id].connectionState,
     });
+    console.log(`Server registered with ID: ${id}`);
     return authUrl ?? "";
   }
 
@@ -137,7 +191,8 @@ export class Coder extends AIChatAgent<Env, State> {
       return new Response(authUrl, { status: 200 });
     }
 
-    return new Response("Not found", { status: 404 });
+    // Delegate non-MCP requests to parent class
+    return super.onRequest(request);
   }
 
 
@@ -195,11 +250,24 @@ export class Coder extends AIChatAgent<Env, State> {
         execute: async (dataStream) => {
           // Get the current context with GitHub token
           const context = agentContext.getStore();
+
+          console.log("Current tool state:", {
+            hasBuiltInTools: !!builtInTools && Object.keys(builtInTools).length,
+            hasCombinedTools: !!this.combinedTools && Object.keys(this.combinedTools).length,
+            stateToolCount: this.state.tools.length,
+            builtInToolNames: Object.keys(builtInTools),
+            combinedToolNames: this.combinedTools ? Object.keys(this.combinedTools) : [],
+            stateToolNames: this.state.tools.map(t => t.name)
+          });
+
+          // Use the already combined tools instead of recreating the map
+          const allTools = this.combinedTools || {};
+
           console.log('[onChatMessage] Context retrieved:', {
             hasContext: !!context,
             hasGithubToken: !!context?.githubToken,
-            hasTools: !!this.combinedTools,
-            availableTools: this.combinedTools ? Object.keys(this.combinedTools) : [],
+            hasTools: !!allTools,
+            availableTools: Object.keys(allTools),
             tokenPrefix: context?.githubToken ? context.githubToken.slice(0, 15) : 'none'
           });
 
@@ -207,12 +275,12 @@ export class Coder extends AIChatAgent<Env, State> {
           const processedMessages = await processToolCalls({
             messages: this.messages,
             dataStream,
-            tools: this.combinedTools || {},
+            tools: allTools,
             executions: {
-              // ...executions,
+              ...executions,
               // Pass token through the agent context instead
               getGithubToken: async () => context?.githubToken
-            },
+            } as typeof executions & { getGithubToken: () => Promise<string | undefined> },
           });
 
           // Stream the AI response using GPT-4
@@ -235,7 +303,7 @@ TASK SCHEDULING:
 </built-in-tools>
 `,
             messages: processedMessages,
-            tools: this.combinedTools || {},
+            tools: allTools,
             onFinish,
             onError: (error) => {
               console.error("Error while streaming:", error);
