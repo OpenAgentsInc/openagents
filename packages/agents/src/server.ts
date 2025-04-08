@@ -203,8 +203,6 @@ export class Coder extends AIChatAgent<Env, State> {
               };
             }
           }
-            }
-          }
         });
         
         // Add the tool to our processed tools
@@ -318,13 +316,19 @@ export class Coder extends AIChatAgent<Env, State> {
     // Call the parent method first
     await super.onMessage(connection, message);
     
+    // Cast message to any to allow property access (avoid TypeScript errors)
+    const msg = message as any;
+    
     // Only check for githubToken in object messages
-    if (typeof message === 'object' && message !== null) {
+    if (typeof msg === 'object' && msg !== null) {
       // Try to extract token from data
       try {
-        if (message.data && message.data.githubToken) {
+        if (msg.data && msg.data.githubToken) {
           console.log("Found githubToken in message.data");
-          this.githubToken = message.data.githubToken;
+          this.githubToken = msg.data.githubToken;
+        } else if (msg.body && msg.body.githubToken) {
+          console.log("Found githubToken in message.body");
+          this.githubToken = msg.body.githubToken;
         }
       } catch (e) {
         console.error("Error extracting token:", e);
