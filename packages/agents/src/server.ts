@@ -136,6 +136,9 @@ export class Coder extends AIChatAgent<Env, State> {
           execute: (args: any, options?: any) => Promise<any>;
         };
         
+        // Get the token from the context for use in the closure
+        const coderAgent = this;
+        
         // Create a tool wrapper
         const toolWrapper = tool({
           // Use the original description and parameters
@@ -144,10 +147,31 @@ export class Coder extends AIChatAgent<Env, State> {
           // Simple execute function with clear error handling
           execute: async (args, options) => {
             try {
-              console.log(`Executing MCP tool ${name} with args:`, JSON.stringify(args));
+              // Make sure to include the GitHub token in the arguments if available
+              const githubToken = coderAgent.githubToken;
               
-              // Use the original tool's execute function
-              return await typedToolDef.execute(args, options);
+              // Debug token information safely
+              if (githubToken) {
+                const tokenPrefix = githubToken.substring(0, 8);
+                const tokenLength = githubToken.length;
+                console.log(`CODER_TOKEN_DEBUG: Token present for ${name}. Token starts with: ${tokenPrefix}..., length: ${tokenLength}`);
+              } else {
+                console.log(`CODER_TOKEN_DEBUG: No token available for ${name}`);
+              }
+              
+              // Add token to arguments
+              const argsWithToken = githubToken ? { ...args, token: githubToken } : args;
+              
+              // Log full arguments structure without token value (for security)
+              const argsForLogging = {...args};
+              if (argsWithToken.token) {
+                argsForLogging._hasToken = true;
+                argsForLogging._tokenLength = argsWithToken.token.length;
+              }
+              console.log(`Executing MCP tool ${name} with args:`, JSON.stringify(argsForLogging));
+              
+              // Use the original tool's execute function with token
+              return await typedToolDef.execute(argsWithToken, options);
             } catch (error: unknown) {
               // Create a user-friendly error message
               const errorMessage = error instanceof Error ? error.message : String(error);
@@ -157,8 +181,12 @@ export class Coder extends AIChatAgent<Env, State> {
               return {
                 error: `The GitHub tool "${name}" failed: ${errorMessage}`,
                 toolName: name,
-                // Include original args for context
-                args: args
+                // Include original args for context (without token for security)
+                args: args,
+                // Add a note about token if missing for write operations
+                tokenInfo: coderAgent.githubToken ? 
+                  "Token was provided but still encountered an error" : 
+                  "No GitHub token was provided. Some operations require authentication."
               };
             }
           }
@@ -226,8 +254,19 @@ export class Coder extends AIChatAgent<Env, State> {
   
   // Update the MCP client with a GitHub token if needed
   async updateGitHubToken(token: string) {
-    this.githubToken = token;
-    console.log("GitHub token updated");
+    // Verify token format and log safely
+    if (token && typeof token === 'string') {
+      const tokenPrefix = token.substring(0, 8);
+      const tokenLength = token.length;
+      console.log(`TOKEN_UPDATE: Valid token received. Starts with: ${tokenPrefix}..., length: ${tokenLength}`);
+      
+      // Set the token on the instance
+      this.githubToken = token;
+      console.log("GitHub token stored in agent instance");
+    } else {
+      console.log(`TOKEN_UPDATE: Invalid token received: ${token ? "non-string value" : "null or undefined"}`);
+      return;
+    }
     
     if (this.mcpClient) {
       try {
@@ -245,6 +284,14 @@ export class Coder extends AIChatAgent<Env, State> {
         
         // Refresh tools with the new authenticated client
         await this.refreshServerData();
+        
+        // Verify that token is available in the instance after refresh
+        if (this.githubToken) {
+          const tokenPrefix = this.githubToken.substring(0, 8);
+          console.log(`TOKEN_VERIFY: After refresh, token is still present. Prefix: ${tokenPrefix}...`);
+        } else {
+          console.log(`TOKEN_VERIFY: WARNING - Token is no longer present after refresh!`);
+        }
       } catch (error) {
         console.error("Failed to update MCP client with GitHub token:", error);
       }
@@ -253,6 +300,8 @@ export class Coder extends AIChatAgent<Env, State> {
   
   // Override the onMessage method to handle GitHub token updates
   override async onMessage(connection: Connection, message: WSMessage) {
+    console.log(`INCOMING_MESSAGE: Received message of type: ${typeof message}`);
+    
     // Call the parent method first
     await super.onMessage(connection, message);
     
@@ -260,12 +309,38 @@ export class Coder extends AIChatAgent<Env, State> {
     // Check if message is an object with a type property
     if (typeof message === 'object' && message !== null) {
       const chatMessage = message as any;
+      console.log(`MESSAGE_CONTENT: Message has type: ${chatMessage.type}, has data: ${!!chatMessage.data}`);
+      
       if (chatMessage.type === "cf_agent_use_chat_request" && chatMessage.data) {
         const data = chatMessage.data;
+        
+        // Check token in data
+        console.log(`TOKEN_CHECK: Message data has githubToken: ${!!data.githubToken}`);
+        console.log(`TOKEN_CHECK: Message data structure: ${JSON.stringify(Object.keys(data))}`);
+        
+        // If there's an API key section, check there as well
+        if (data.apiKeys) {
+          console.log(`API_KEYS: Message has apiKeys section with keys: ${JSON.stringify(Object.keys(data.apiKeys))}`);
+          console.log(`API_KEYS: Has GitHub key: ${!!data.apiKeys.github}`);
+          
+          // Try to get token from apiKeys.github first
+          if (data.apiKeys.github) {
+            console.log(`API_KEYS: Using GitHub token from apiKeys.github`);
+            await this.updateGitHubToken(data.apiKeys.github);
+            return;
+          }
+        }
+        
+        // Use direct githubToken if available
         if (data.githubToken) {
+          console.log(`TOKEN_FOUND: Using GitHub token from data.githubToken`);
           await this.updateGitHubToken(data.githubToken);
+        } else {
+          console.log(`TOKEN_MISSING: No GitHub token found in message data or apiKeys`);
         }
       }
+    } else {
+      console.log(`UNEXPECTED_MESSAGE: Message is not an object or is null. Type: ${typeof message}`);
     }
   }
 
