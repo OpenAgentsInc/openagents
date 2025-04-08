@@ -8,15 +8,39 @@ import {
   generateId,
   streamText,
   type StreamTextOnFinishCallback,
+  type ToolSet
 } from "ai";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
 // import { createWorkersAI } from 'workers-ai-provider';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+
+// Import the env from cloudflare workers with a proper type declaration
+// @ts-ignore
 import { env } from "cloudflare:workers";
 import { OpenAIAgentPlugin } from "./plugins/github-plugin";
 import type { AgentPlugin } from "./plugins/plugin-interface";
+
+// Define Cloudflare Worker types
+declare global {
+  interface DurableObjectState {
+    blockConcurrencyWhile(callback: () => Promise<void>): Promise<void>;
+    storage: {
+      get(key: string): Promise<any>;
+      put(key: string, value: any): Promise<void>;
+      delete(key: string): Promise<void>;
+    };
+  }
+  
+  interface ExecutionContext {
+    waitUntil(promise: Promise<any>): void;
+  }
+  
+  interface ExportedHandler<T> {
+    fetch(request: Request, env: T, ctx: ExecutionContext): Promise<Response>;
+  }
+}
 
 // Define types for incoming message
 interface IncomingMessage {
@@ -43,12 +67,13 @@ const google = createGoogleGenerativeAI({
 const model = google("gemini-2.5-pro-exp-03-25");
 
 // we use ALS to expose the agent context to the tools
-export const agentContext = new AsyncLocalStorage<Coder>();
+// Using any to bypass type checking issues with the AIChatAgent inheritance
+export const agentContext = new AsyncLocalStorage<any>();
 
 /**
  * Chat Agent implementation that handles real-time AI chat interactions
  */
-export class Coder extends AIChatAgent<Env> {
+export class Coder extends AIChatAgent<Env, any> {
   private plugins: AgentPlugin[] = [];
   private combinedTools: Record<string, any>;
   
@@ -224,7 +249,10 @@ export class Coder extends AIChatAgent<Env> {
 
   onRequest(request: Request): Promise<Response> {
     console.log("onRequest", request.url, request.method);
-    console.log("onRequest headers:", [...request.headers.keys()].join(', '));
+    // Headers iterator for compatibility
+    const headerNames: string[] = [];
+    request.headers.forEach((_, key) => headerNames.push(key));
+    console.log("onRequest headers:", headerNames.join(', '));
     console.log("onRequest x-api-key:", request.headers.get('x-api-key'));
     console.log("onRequest x-github-token:", request.headers.get('x-github-token'));
     return super.onRequest(request);
@@ -232,32 +260,40 @@ export class Coder extends AIChatAgent<Env> {
 
   /**
    * Handle chat messages with the GitHub token context
+   * @param onFinish Callback function when streaming completes
    */
-  async onChatMessage(onFinish: StreamTextOnFinishCallback<any>) {
+  override async onChatMessage(onFinish: StreamTextOnFinishCallback<ToolSet>): Promise<Response | undefined> {
     console.log("onChatMessage called");
     
-    // Get context with GitHub token if available
+    // Get context with GitHub token if available  
     const context = toolContext.getStore();
     if (context?.githubToken) {
       console.log(`Using GitHub token from context (length: ${context.githubToken.length})`);
+      
+      // Make sure token is also in environment
+      const env = (this as any).env as Env;
+      if (env) {
+        if (!env.apiKeys) env.apiKeys = {};
+        env.apiKeys.github = context.githubToken;
+        env.GITHUB_TOKEN = context.githubToken;
+        env.GITHUB_PERSONAL_ACCESS_TOKEN = context.githubToken;
+      }
     } else {
       console.log("No GitHub token available in context");
     }
     
-    // Create a streaming response that handles both text and tool outputs
-    return agentContext.run(this, async () => {
-      console.log("Running with agent context");
-      
-      const dataStreamResponse = createDataStreamResponse({
-        execute: async (dataStream) => {
-          // Process any pending tool calls from previous messages
-          // This handles human-in-the-loop confirmations for tools
-          const processedMessages = await processToolCalls({
-            messages: this.messages,
-            dataStream,
-            tools: this.combinedTools,
-            executions,
-          });
+    console.log("Creating data stream response");
+    // Create data stream response directly without AsyncLocalStorage
+    const dataStreamResponse = createDataStreamResponse({
+      execute: async (dataStream) => {
+        // Process any pending tool calls from previous messages
+        // This handles human-in-the-loop confirmations for tools
+        const processedMessages = await processToolCalls({
+          messages: this.messages,
+          dataStream,
+          tools: this.combinedTools,
+          executions,
+        });
 
           // Stream the AI response using the configured model
           const result = streamText({
@@ -301,7 +337,7 @@ If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
 `,
             messages: processedMessages,
             tools: this.combinedTools,
-            onFinish,
+            onFinish, // Use the onFinish parameter directly
             onError: (error) => {
               console.error("Error while streaming:", error);
             },
@@ -312,9 +348,9 @@ If the user asks to delete a scheduled task, use the deleteScheduledTask tool.
           result.mergeIntoDataStream(dataStream);
         },
       });
-
+      
+      // Return the data stream response directly
       return dataStreamResponse;
-    });
   }
 
   async executeTask(description: string, task: Schedule<string>) {

@@ -117,13 +117,16 @@ export async function loadGitHubTokenFromSettings(): Promise<void> {
       
       // Check if a token might be in cloudflare environment
       try {
-        // @ts-ignore - Cloudflare Workers env might be available
-        if (env && env.GITHUB_TOKEN) {
-          githubToken = env.GITHUB_TOKEN;
-          console.log('Found GitHub token in Cloudflare env.GITHUB_TOKEN');
+        // Access global or window objects to find Cloudflare env if available
+        const globalObj = typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : undefined;
+        const cloudflareEnv = globalObj && (globalObj as any).cloudflareEnv ? (globalObj as any).cloudflareEnv : undefined;
+                         
+        if (cloudflareEnv && cloudflareEnv.GITHUB_TOKEN) {
+          githubToken = cloudflareEnv.GITHUB_TOKEN;
+          console.log('Found GitHub token in Cloudflare environment');
         }
       } catch (e) {
-        // Ignore error when env is not available
+        // Ignore error when cloudflare env is not available
       }
       
       if (!githubToken) {

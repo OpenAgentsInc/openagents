@@ -90,7 +90,7 @@ const listScheduledTasks = tool({
       }
 
       // Format the tasks for display
-      const formattedTasks = tasks.map(task => {
+      const formattedTasks = tasks.map((task: any) => {
         let scheduledTime = "Unknown";
         if (task.type === "scheduled") {
           scheduledTime = new Date(task.time).toLocaleString();
