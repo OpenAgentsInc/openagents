@@ -13,13 +13,13 @@ const model = google("gemini-2.5-pro-exp-03-25");
 export class Coder extends AIChatAgent<Env> {
 
   onMessage(connection: Connection, message: WSMessage): Promise<void> {
-    console.log("onMessage", message);
+    const token = this.extractToken(message)
+    console.log("onMessage with token " + token);
     return super.onMessage(connection, message);
   }
 
   onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
     console.log("onChatMessage");
-    // return super.onChatMessage(onFinish);
 
     const stream = streamText({
       model,
@@ -33,6 +33,11 @@ export class Coder extends AIChatAgent<Env> {
     });
 
     return Promise.resolve(stream.toDataStreamResponse());
+  }
+
+  extractToken(message: WSMessage) {
+    console.log("dummy token extraction");
+    return "dummy-token";
   }
 
 }
