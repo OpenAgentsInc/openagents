@@ -44,7 +44,7 @@ export default function ChatPage() {
   };
 
   // --- Initialize Agent ---
-  const agent = useAgent({ agent: "coder", name: "session-123" });
+  const agent = useAgent({ agent: "coder", name: "session-124" });
 
   const { apiKeys } = useApiKeyContext();
 
@@ -61,7 +61,7 @@ export default function ChatPage() {
       githubToken: apiKeys['github'] || ''
     },
     agent,
-    maxSteps: 5,
+    // maxSteps: 5,
     onError: (error) => {
       console.error("Agent chat error caught by onError:", error);
       const errorString = typeof error === 'string'

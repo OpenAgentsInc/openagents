@@ -227,12 +227,12 @@ const deleteScheduledTask = tool({
  * These will be provided to the AI model to describe available capabilities
  */
 export const tools = {
-  // getWeatherInformation,
+  getWeatherInformation,
   // getLocalTime,
   // scheduleTask,
   // listScheduledTasks,
   // deleteScheduledTask,
-  fetchGitHubFileContent
+  // fetchGitHubFileContent
 };
 
 /**
