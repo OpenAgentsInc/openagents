@@ -182,27 +182,91 @@ export class Coder extends AIChatAgent<Env, State> {
               // Get fresh token value at execution time
               const githubToken = coderAgent.githubToken;
               
-              // Add GitHub token to arguments
-              const argsWithToken = githubToken ? { ...args, token: githubToken } : args;
+              // Debug token information safely
+              if (githubToken) {
+                const tokenPrefix = githubToken.substring(0, 8);
+                const tokenLength = githubToken.length;
+                console.log(`CODER_TOKEN_DEBUG: Token present for ${name}. Token starts with: ${tokenPrefix}..., length: ${tokenLength}`);
+              } else {
+                console.log(`CODER_TOKEN_DEBUG: No token available for ${name}, checking environment`);
+                
+                // Fallback to environment variable if token not in agent
+                const envToken = env.GITHUB_TOKEN;
+                if (envToken) {
+                  console.log(`TOOL_EXEC: Using environment token for ${name}`);
+                  // Update agent token for future use
+                  await coderAgent.updateGitHubToken(envToken);
+                }
+              }
               
-              // Simple logging
-              console.log(`Executing MCP tool ${name} with token: ${githubToken ? "YES" : "NO"}`);
+              // Always use the latest token from the agent after potential update
+              const finalToken = coderAgent.githubToken;
+              const argsWithToken = finalToken ? { ...args, token: finalToken } : args;
               
-              // Execute the tool with token included
+              // Log full arguments structure without token value (for security)
+              const argsForLogging = {...args};
+              if (argsWithToken.token) {
+                argsForLogging._hasToken = true;
+                argsForLogging._tokenLength = argsWithToken.token.length;
+              }
+              console.log(`Executing MCP tool ${name} with args:`, JSON.stringify(argsForLogging));
+              
+              // Ensure MCP client is connected before execution
+              try {
+                if (!coderAgent.mcpClient) {
+                  console.log(`TOOL_EXEC: MCP client missing, initializing before execution`);
+                  await coderAgent.refreshServerData();
+                }
+              } catch (initError) {
+                console.error(`TOOL_EXEC: Failed to initialize MCP client: ${initError}`);
+              }
+              
+              // Use the original tool's execute function with token
               return await typedToolDef.execute(argsWithToken, options);
             } catch (error: unknown) {
               // Create a user-friendly error message
               const errorMessage = error instanceof Error ? error.message : String(error);
               console.error(`MCP tool execution failed for ${name}: ${errorMessage}`);
               
-              // Return error to user
+              // Check for specific errors about token or connection
+              if (errorMessage.includes("Not connected") || errorMessage.includes("SSE Transport Error")) {
+                console.log(`CONNECTION_ERROR: Attempting to reconnect MCP client`);
+                try {
+                  // Try to reinitialize the client
+                  await coderAgent.refreshServerData();
+                  
+                  // Try the operation again with the refreshed client
+                  console.log(`RETRY: Retrying ${name} after reconnection`);
+                  const githubToken = coderAgent.githubToken;
+                  const argsWithToken = githubToken ? { ...args, token: githubToken } : args;
+                  return await typedToolDef.execute(argsWithToken, options);
+                } catch (retryError) {
+                  console.error(`RETRY_FAILED: Failed to retry operation: ${retryError}`);
+                }
+              }
+              
+              if (errorMessage.includes("authentication") || errorMessage.includes("Unauthorized") || 
+                  errorMessage.includes("Requires authentication") || errorMessage.includes("Not authenticated")) {
+                console.log(`AUTH_ERROR: Tool execution failed due to authentication issue`);
+                return {
+                  error: `GitHub authentication failed. Please provide a valid GitHub token with sufficient permissions.`,
+                  toolName: name,
+                  args: args,
+                  authenticationRequired: true
+                };
+              }
+              
+              // Return a clear error that can be shown to the user
               return {
                 error: `The GitHub tool "${name}" failed: ${errorMessage}`,
                 toolName: name,
-                args: args
+                // Include original args for context (without token for security)
+                args: args,
+                // Add a note about token if missing for write operations
+                tokenInfo: coderAgent.githubToken ? 
+                  "Token was provided but still encountered an error. The token may not have sufficient permissions." : 
+                  "No GitHub token was provided. Some operations require authentication."
               };
-            }
-          }
             }
           }
         });
@@ -315,21 +379,187 @@ export class Coder extends AIChatAgent<Env, State> {
   
   // Override the onMessage method to handle GitHub token updates
   override async onMessage(connection: Connection, message: WSMessage) {
+    console.log(`INCOMING_MESSAGE: Received message of type: ${typeof message}`);
+    
     // Call the parent method first
     await super.onMessage(connection, message);
     
-    // Only check for githubToken in object messages
-    if (typeof message === 'object' && message !== null) {
-      // Try to extract token from data
-      try {
-        if (message.data && message.data.githubToken) {
-          console.log("Found githubToken in message.data");
-          this.githubToken = message.data.githubToken;
+    // CRITICAL: When we look at the client code, we found that it's sending the token 
+    // as 'githubToken' in the 'body' property of the 'useAgentChat' hook:
+    //
+    // useAgentChat({
+    //   body: {
+    //     githubToken: apiKeys['github'] || ''
+    //   },
+    //   agent,
+    //   ...
+    // });
+    
+    try {
+      // First, try to use the message directly if it has a body with githubToken
+      if (typeof message === 'object' && message !== null && message.body) {
+        if (message.body.githubToken) {
+          console.log(`DIRECT_TOKEN: Found githubToken in message.body`);
+          await this.updateGitHubToken(message.body.githubToken);
+          return;
         }
-      } catch (e) {
-        console.error("Error extracting token:", e);
+      }
+      
+      // Next try to parse the message if it's a string (JSON)
+      let parsedMessage: any = message;
+      if (typeof message === 'string') {
+        try {
+          parsedMessage = JSON.parse(message);
+          console.log(`PARSED_MESSAGE: Successfully parsed message from string to object`);
+        } catch (e) {
+          console.log(`PARSE_ERROR: Failed to parse message as JSON: ${e}`);
+        }
+      }
+      
+      // Find the first use chat request in the message queue
+      if (typeof parsedMessage === 'object' && parsedMessage !== null) {
+        console.log(`MESSAGE_CONTENT: Message has keys: ${Object.keys(parsedMessage).join(', ')}`);
+        
+        // Look for body object at various levels
+        if (parsedMessage.body && typeof parsedMessage.body === 'object') {
+          console.log(`BODY_FOUND: Message has body object with keys: ${Object.keys(parsedMessage.body).join(', ')}`);
+          if (parsedMessage.body.githubToken) {
+            console.log(`BODY_TOKEN: Found githubToken in message.body`);
+            await this.updateGitHubToken(parsedMessage.body.githubToken);
+            return;
+          }
+        }
+        
+        // Check for direct data object with githubToken
+        if (parsedMessage.githubToken) {
+          console.log(`DIRECT_TOKEN: Found token in message.githubToken`);
+          await this.updateGitHubToken(parsedMessage.githubToken);
+          return;
+        }
+        
+        // Try other possible message structures
+        if (parsedMessage.type === "cf_agent_use_chat_request") {
+          console.log(`CF_AGENT: Processing cf_agent_use_chat_request message`);
+          
+          // Check for data.body structure
+          if (parsedMessage.data && parsedMessage.data.body && 
+              parsedMessage.data.body.githubToken) {
+            console.log(`DATA_BODY_TOKEN: Found token in message.data.body.githubToken`);
+            await this.updateGitHubToken(parsedMessage.data.body.githubToken);
+            return;
+          }
+          
+          // Check for direct data.githubToken
+          if (parsedMessage.data && parsedMessage.data.githubToken) {
+            console.log(`DATA_TOKEN: Found token in message.data.githubToken`);
+            await this.updateGitHubToken(parsedMessage.data.githubToken);
+            return;
+          }
+        }
+        
+        // Try to find init.body.githubToken (seen in logs)
+        if (parsedMessage.init && parsedMessage.init.body) {
+          const initBody = parsedMessage.init.body;
+          
+          // Try to parse init.body if it's a string
+          let bodyContent = initBody;
+          if (typeof initBody === 'string') {
+            try {
+              bodyContent = JSON.parse(initBody);
+              console.log(`INIT_BODY_PARSED: Successfully parsed init.body from string to object`);
+            } catch (e) {
+              console.log(`INIT_BODY_PARSE_ERROR: Could not parse init.body: ${e}`);
+            }
+          }
+          
+          // Check for githubToken in parsed body
+          if (typeof bodyContent === 'object' && bodyContent !== null && bodyContent.githubToken) {
+            console.log(`INIT_BODY_TOKEN: Found token in parsed init.body.githubToken`);
+            await this.updateGitHubToken(bodyContent.githubToken);
+            return;
+          }
+        }
+        
+        // Recursive search in all object properties
+        console.log(`DEEP_SEARCH: Performing deep search for githubToken in message...`);
+        const searchForToken = (obj: any, path = '') => {
+          if (typeof obj !== 'object' || obj === null) return;
+          
+          for (const [key, value] of Object.entries(obj)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            
+            if (key === 'githubToken' && typeof value === 'string' && value.length > 0) {
+              console.log(`TOKEN_FOUND: Found token at path: ${currentPath}`);
+              this.updateGitHubToken(value);
+              return true;
+            }
+            
+            if (typeof value === 'object' && value !== null) {
+              if (searchForToken(value, currentPath)) return true;
+            }
+          }
+          
+          return false;
+        };
+        
+        if (searchForToken(parsedMessage)) {
+          return; // Token found and updated
+        }
+      }
+      
+      console.log(`NO_TOKEN_FOUND: No token found in any message format. Checking environment...`);
+      
+      // Set hardcoded token for testing if no token was found and we're in development
+      if (!this.githubToken) {
+        // Use environment variable token if available
+        const envToken = env.GITHUB_TOKEN;
+        if (envToken) {
+          console.log(`USING_ENV_TOKEN: Using token from environment variables`);
+          await this.updateGitHubToken(envToken);
+        } else {
+          console.log(`NO_ENV_TOKEN: No environment token available`);
+        }
+      }
+    } catch (error) {
+      console.error(`MESSAGE_PROCESSING_ERROR: Error in onMessage: ${error}`);
+    }
+  }
+  
+  // Helper method to extract and process token from message data
+  private async processMessageData(data: any) {
+    if (!data || typeof data !== 'object') {
+      console.log(`INVALID_DATA: Data is not an object: ${typeof data}`);
+      return;
+    }
+    
+    console.log(`DATA_KEYS: Data has keys: ${Object.keys(data).join(', ')}`);
+    
+    // Check for API keys section
+    if (data.apiKeys && typeof data.apiKeys === 'object') {
+      console.log(`API_KEYS: Data has apiKeys with keys: ${Object.keys(data.apiKeys).join(', ')}`);
+      
+      if (data.apiKeys.github) {
+        console.log(`TOKEN_FOUND: Found token in data.apiKeys.github`);
+        await this.updateGitHubToken(data.apiKeys.github);
+        return;
       }
     }
+    
+    // Check for direct token property
+    if (data.githubToken) {
+      console.log(`TOKEN_FOUND: Found token in data.githubToken`);
+      await this.updateGitHubToken(data.githubToken);
+      return;
+    }
+    
+    // Check for token property
+    if (data.token) {
+      console.log(`TOKEN_FOUND: Found token in data.token`);
+      await this.updateGitHubToken(data.token);
+      return;
+    }
+    
+    console.log(`NO_TOKEN: No token found in data object`);
   }
 
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
