@@ -175,37 +175,37 @@ export class Coder extends AIChatAgent<Env, State> {
     return authUrl ?? "";
   }
 
-  async onRequest(request: Request): Promise<Response> {
-    if (this.mcp.isCallbackRequest(request)) {
-      try {
-        const { serverId } = await this.mcp.handleCallbackRequest(request);
-        this.setServerState(serverId, {
-          url: this.state.servers[serverId].url,
-          state: this.mcp.mcpConnections[serverId].connectionState,
-        });
-        await this.refreshServerData();
-        // Hack: autoclosing window because a redirect fails for some reason
-        // return Response.redirect('http://localhost:5173/', 301)
-        return new Response("<script>window.close();</script>", {
-          status: 200,
-          headers: { "content-type": "text/html" },
-        });
-        // biome-ignore lint/suspicious/noExplicitAny: just bubbling an error up
-      } catch (e: any) {
-        return new Response(e, { status: 401 });
-      }
-    }
+  // async onRequest(request: Request): Promise<Response> {
+  //   if (this.mcp.isCallbackRequest(request)) {
+  //     try {
+  //       const { serverId } = await this.mcp.handleCallbackRequest(request);
+  //       this.setServerState(serverId, {
+  //         url: this.state.servers[serverId].url,
+  //         state: this.mcp.mcpConnections[serverId].connectionState,
+  //       });
+  //       await this.refreshServerData();
+  //       // Hack: autoclosing window because a redirect fails for some reason
+  //       // return Response.redirect('http://localhost:5173/', 301)
+  //       return new Response("<script>window.close();</script>", {
+  //         status: 200,
+  //         headers: { "content-type": "text/html" },
+  //       });
+  //       // biome-ignore lint/suspicious/noExplicitAny: just bubbling an error up
+  //     } catch (e: any) {
+  //       return new Response(e, { status: 401 });
+  //     }
+  //   }
 
-    const reqUrl = new URL(request.url);
-    if (reqUrl.pathname.endsWith("add-mcp") && request.method === "POST") {
-      const mcpServer = (await request.json()) as { url: string };
-      const authUrl = await this.addMcpServer(mcpServer.url);
-      return new Response(authUrl, { status: 200 });
-    }
+  //   const reqUrl = new URL(request.url);
+  //   if (reqUrl.pathname.endsWith("add-mcp") && request.method === "POST") {
+  //     const mcpServer = (await request.json()) as { url: string };
+  //     const authUrl = await this.addMcpServer(mcpServer.url);
+  //     return new Response(authUrl, { status: 200 });
+  //   }
 
-    // Delegate non-MCP requests to parent class
-    return super.onRequest(request);
-  }
+  //   // Delegate non-MCP requests to parent class
+  //   return super.onRequest(request);
+  // }
 
 
   /**
