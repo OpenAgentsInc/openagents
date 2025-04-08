@@ -16,14 +16,26 @@ export const toolContext = new AsyncLocalStorage<Coder>();
 export class Coder extends AIChatAgent<Env> {
   protected githubToken?: string;
 
-  onMessage(connection: Connection, message: WSMessage): Promise<void> {
-    const token = this.extractToken(connection, message)
-    console.log("onMessage with token " + token);
+  async onMessage(connection: Connection, message: WSMessage): Promise<void> {
+    // Extract token first, without returning it
+    this.extractToken(connection, message);
+
+    // Don't log the token value directly
+    console.log("onMessage - token extracted");
+
+    // Call parent method
     return super.onMessage(connection, message);
   }
 
   onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
     console.log("onChatMessage");
+
+    // check if we have token here
+    if (this.githubToken) {
+      console.log("WE HAVE TOKEN HERE");
+    } else {
+      console.log("NO TOKEN HERE");
+    }
 
     const stream = streamText({
       model,
@@ -41,22 +53,29 @@ export class Coder extends AIChatAgent<Env> {
       try {
         data = JSON.parse(message)
       } catch (error) {
-        return 'token not here'
+        console.log("Failed to parse message as JSON");
+        return;
       }
 
-      if (data.type === "cf_agent_use_chat_request" && data.init.method === "POST") {
-        const body = data.init.body
-        const requestData = JSON.parse(body as string)
-        const githubToken = requestData.githubToken
+      if (data.type === "cf_agent_use_chat_request" && data.init?.method === "POST") {
+        const body = data.init.body;
+        try {
+          const requestData = JSON.parse(body as string);
+          const githubToken = requestData.githubToken;
 
-        // Save the token in the tool context
-        return toolContext.run(this, async () => {
-          this.githubToken = githubToken;
-          return githubToken;
-        });
+          if (githubToken) {
+            console.log(`Found githubToken in message, length: ${githubToken.length}`);
+            // Directly set the token on the instance
+            this.githubToken = githubToken;
+
+            // Store in the context for tools to access
+            toolContext.enterWith(this);
+          }
+        } catch (e) {
+          console.error("Error parsing body:", e);
+        }
       }
     }
-    return "dummy-token";
   }
 
 }
