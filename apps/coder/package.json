@@ -108,7 +108,7 @@
     "@tanstack/react-table": "^8.21.2",
     "@tanstack/router-devtools": "^1.114.21",
     "@vitejs/plugin-react": "^4.3.4",
-    "ai": "^4.2.9",
+    "ai": "^4.3.4",
     "babel-plugin-react-compiler": "^19.0.0-beta-bafa41b-20250307",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
