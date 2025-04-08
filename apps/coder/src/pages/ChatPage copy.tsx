@@ -44,7 +44,9 @@ export default function ChatPage() {
   };
 
   // --- Initialize Agent ---
-  const agent = useAgent({ agent: "coder", name: "session-123" });
+  const agent = useAgent({
+    agent: "coder"
+  });
 
   const { apiKeys } = useApiKeyContext();
 

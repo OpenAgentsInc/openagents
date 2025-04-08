@@ -1,6 +1,10 @@
-import EventSource from "eventsource";
+// Use native EventSource in browser
 import { Transport } from "./transport";
 import { JSONRPCMessage, JSONRPCMessageSchema } from "./types";
+
+// Use the native EventSource type
+type EventSourceType = typeof EventSource;
+const BrowserEventSource: EventSourceType = globalThis.EventSource;
 
 export class SseError extends Error {
   constructor(
@@ -54,7 +58,7 @@ export class SSEClientTransport implements Transport {
 
   private _start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this._eventSource = new EventSource(
+      this._eventSource = new BrowserEventSource(
         this._url.href,
         this._eventSourceInit
       );
