@@ -4,6 +4,47 @@ import { AIChatAgent } from "agents/ai-chat-agent";
 import { streamText, tool, type StreamTextOnFinishCallback } from "ai";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
+import { GitHubContentSchema } from "../../../apps/mcp-github-server/src/common/types";
+
+async function githubRequest(url: string, options: { token?: string }) {
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+  };
+  if (options.token) {
+    headers['Authorization'] = `Bearer ${options.token}`;
+  }
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`GitHub API error (${response.status}): ${error}`);
+  }
+  return response.json();
+}
+
+async function getFileContents(
+  owner: string,
+  repo: string,
+  path: string,
+  branch?: string,
+  token?: string
+) {
+  let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  if (branch) {
+    url += `?ref=${branch}`;
+  }
+
+  const response = await githubRequest(url, { token });
+  const data = GitHubContentSchema.parse(response);
+
+  // If it's a file, decode the content
+  if (!Array.isArray(data) && data.content) {
+    // Replace newlines and spaces that GitHub adds to base64
+    const cleanContent = data.content.replace(/\n/g, '');
+    data.content = atob(cleanContent);
+  }
+
+  return data;
+}
 
 const google = createGoogleGenerativeAI({
   apiKey: env.GOOGLE_API_KEY,
@@ -19,7 +60,7 @@ export class Coder extends AIChatAgent<Env> {
     return super.onMessage(connection, message);
   }
 
-  onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
+  async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
     console.log("onChatMessage");
 
     // check if we have token here
@@ -30,6 +71,7 @@ export class Coder extends AIChatAgent<Env> {
     }
 
     const stream = streamText({
+      toolCallStreaming: true,
       tools: {
         fetchGitHubFileContent: tool({
           description: 'Fetch the content of a file from a GitHub repository',
@@ -40,13 +82,12 @@ export class Coder extends AIChatAgent<Env> {
             branch: z.string(),
           }),
           execute: async ({ owner, repo, path, branch }) => {
-            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, {
-              headers: {
-                'Authorization': `Bearer ${this.githubToken}`
-              }
-            })
-            const data = await response.json() as { content: string }
-            return data.content
+            const data = await getFileContents(owner, repo, path, branch, this.githubToken);
+            if (Array.isArray(data)) {
+              throw new Error('Path points to a directory, not a file');
+            }
+            console.log("data", data);
+            return data.content;
           }
         })
       },
@@ -56,9 +97,10 @@ export class Coder extends AIChatAgent<Env> {
         ...this.messages
       ],
       onFinish,
+      maxSteps: 5
     });
 
-    return Promise.resolve(stream.toDataStreamResponse());
+    return stream.toDataStreamResponse();
   }
 
   extractToken(connection: Connection, message: WSMessage) {
