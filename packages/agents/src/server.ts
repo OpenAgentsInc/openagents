@@ -284,7 +284,7 @@ export class Coder extends AIChatAgent<Env, State> {
           });
 
           // Stream the AI response using GPT-4
-          const result = streamText({
+          const result = streamText<Record<string, any>>({
             model,
             system: `You are a coding assistant named Coder. Help the user with various software engineering tasks.
 
@@ -301,18 +301,42 @@ TASK SCHEDULING:
 - deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
 
 </built-in-tools>
+
+<github-tools>
+${this.state.tools.map(tool => `- ${tool.name}`).join('\n')}
+</github-tools>
 `,
             messages: processedMessages,
             tools: allTools,
-            onFinish,
-            onError: (error) => {
-              console.error("Error while streaming:", error);
+            onFinish: (result) => {
+              console.log("Stream finished successfully:", {
+                hasResult: !!result,
+                resultKeys: result ? Object.keys(result) : []
+              });
+              return onFinish(result as any);
+            },
+            onError: (error: unknown) => {
+              console.error("Error while streaming:", {
+                errorMessage: error instanceof Error ? error.message : String(error),
+                errorName: error instanceof Error ? error.name : undefined,
+                errorStack: error instanceof Error ? error.stack : undefined,
+                type: typeof error
+              });
             },
             maxSteps: 10,
           });
 
-          // Merge the AI response stream with tool execution outputs
-          result.mergeIntoDataStream(dataStream);
+          try {
+            // Merge the AI response stream with tool execution outputs
+            result.mergeIntoDataStream(dataStream);
+          } catch (error: unknown) {
+            console.error("Error merging streams:", {
+              errorMessage: error instanceof Error ? error.message : String(error),
+              errorName: error instanceof Error ? error.name : undefined,
+              errorStack: error instanceof Error ? error.stack : undefined,
+              type: typeof error
+            });
+          }
         },
       });
 
