@@ -1,4 +1,4 @@
-import { MessageList, UIMessage } from "@openagents/ui";
+import { UIMessage } from "@openagents/ui";
 
 export default function ChatPage() {
   const messages: UIMessage[] = [{
@@ -21,7 +21,16 @@ export default function ChatPage() {
     }]
   }]
   // const { messages } = useOpenAgent('coder')
+  console.log(messages)
   return (
-    <MessageList messages={messages} />
+    <div className="mt-10 flex flex-col gap-4">
+      {messages.map((message) => (
+        <div key={message.id}>
+          {message.parts.map((part, i) => (
+            <p key={part.type + i} className="text-white">{part.text ?? ""}</p>
+          ))}
+        </div>
+      ))}
+    </div>
   )
 }
