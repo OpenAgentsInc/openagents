@@ -3,6 +3,7 @@ import { routeAgentRequest, type Connection, type WSMessage } from "agents"
 import { AIChatAgent } from "agents/ai-chat-agent";
 import { streamText, type StreamTextOnFinishCallback } from "ai";
 import { env } from "cloudflare:workers";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const google = createGoogleGenerativeAI({
   apiKey: env.GOOGLE_API_KEY,
@@ -10,10 +11,12 @@ const google = createGoogleGenerativeAI({
 
 const model = google("gemini-2.5-pro-exp-03-25");
 
+export const toolContext = new AsyncLocalStorage<Coder>();
+
 export class Coder extends AIChatAgent<Env> {
 
   onMessage(connection: Connection, message: WSMessage): Promise<void> {
-    const token = this.extractToken(message)
+    const token = this.extractToken(connection, message)
     console.log("onMessage with token " + token);
     return super.onMessage(connection, message);
   }
@@ -23,20 +26,35 @@ export class Coder extends AIChatAgent<Env> {
 
     const stream = streamText({
       model,
-      messages: [
-        {
-          role: "user",
-          content: "Hello, world!",
-        },
-      ],
+      messages: this.messages,
       onFinish,
     });
 
     return Promise.resolve(stream.toDataStreamResponse());
   }
 
-  extractToken(message: WSMessage) {
+  extractToken(connection: Connection, message: WSMessage) {
     console.log("dummy token extraction");
+    if (typeof message === "string") {
+      let data: any
+      try {
+        data = JSON.parse(message)
+      } catch (error) {
+        return 'token not here'
+      }
+
+      if (data.type === "cf_agent_use_chat_request" && data.init.method === "POST") {
+        const body = data.init.body
+        const requestData = JSON.parse(body as string)
+        const githubToken = requestData.githubToken
+        return githubToken
+        // const context = { githubToken, tools: {} }
+
+        // return toolContext.run(this, async () => {
+        //   return super.onMessage(connection, message)
+        // })
+      }
+    }
     return "dummy-token";
   }
 
