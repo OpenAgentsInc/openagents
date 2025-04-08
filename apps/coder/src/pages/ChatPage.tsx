@@ -56,6 +56,9 @@ export default function ChatPage() {
     clearHistory,
     error: agentError,
   } = useAgentChat({
+    body: {
+      githubToken: "ghp_1234567890"
+    },
     agent,
     maxSteps: 5,
     onError: (error) => {
