@@ -5,6 +5,7 @@ import {
   createDataStreamResponse,
   generateId,
   streamText,
+  tool,
   type StreamTextOnFinishCallback,
   type ToolExecutionOptions,
 } from "ai";
@@ -20,6 +21,7 @@ import type {
   Prompt,
   Resource,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 export type Server = {
   url: string;
@@ -136,13 +138,33 @@ export class Coder extends AIChatAgent<Env, State> {
 
     // Update combinedTools while preserving existing tools
     const mcpToolsMap = filteredTools.reduce((acc, tool) => {
-      // Convert MCP tool to match the AI tools system structure
-      acc[tool.name] = {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-        // No execute function - this makes it require confirmation
-      };
+      if (tool.name === 'get_file_contents') {
+        console.log("MCP tool before:", tool);
+        acc[tool.name] = {
+          name: tool.name,
+          description: tool.description || `Execute the ${tool.name} MCP tool`,
+          parameters: {
+            _def: {
+              unknownKeys: "strip",
+              catchall: {
+                _def: {
+                  typeName: "ZodNever"
+                },
+                "~standard": {
+                  vendor: "zod",
+                  version: 1
+                }
+              },
+              typeName: "ZodObject"
+            },
+            "~standard": {
+              vendor: "zod",
+              version: 1
+            }
+          }
+        };
+        console.log("MCP tool after:", acc[tool.name]);
+      }
       return acc;
     }, {} as Record<string, any>);
 
@@ -191,6 +213,18 @@ export class Coder extends AIChatAgent<Env, State> {
     const stream = streamText({
       // use combined tools
       // tools: this.combinedTools,
+      tools: {
+        weather: tool({
+          description: 'Get the weather in a location',
+          parameters: z.object({
+            location: z.string().describe('The location to get the weather for'),
+          }),
+          execute: async ({ location }) => ({
+            location,
+            temperature: 72 + Math.floor(Math.random() * 21) - 10,
+          }),
+        }),
+      },
       model,
       messages: [
         { role: "system", content: systemPrompt },
@@ -207,27 +241,6 @@ export class Coder extends AIChatAgent<Env, State> {
     return `You are a coding assistant named Coder. Help the user with various software engineering tasks.
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
-
-You have access to a few built-in tools described below and a GitHub tool through a separate Model Context Protocol service.
-The GitHub token will be automatically provided to the tools that need it.
-
-<built-in-tools>
-- getWeatherInformation: Get weather information for a location
-- getLocalTime: Get the current time for a location
-- scheduleTask: Schedule a task to be executed at a later time
-- listScheduledTasks: List all currently scheduled tasks with their details
-- deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
-</built-in-tools>
-
-<github-tools>
-- get_file_contents: Get the contents of a file from a GitHub repository
-</github-tools>
-
-When using get_file_contents, you'll need:
-- owner: The repository owner
-- repo: The repository name
-- path: The path to the file
-- ref: (optional) The branch/commit/tag to get the file from
 `
   }
 }
