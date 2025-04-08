@@ -14,6 +14,7 @@ const model = google("gemini-2.5-pro-exp-03-25");
 export const toolContext = new AsyncLocalStorage<Coder>();
 
 export class Coder extends AIChatAgent<Env> {
+  protected githubToken?: string;
 
   onMessage(connection: Connection, message: WSMessage): Promise<void> {
     const token = this.extractToken(connection, message)
@@ -34,7 +35,7 @@ export class Coder extends AIChatAgent<Env> {
   }
 
   extractToken(connection: Connection, message: WSMessage) {
-    console.log("dummy token extraction");
+    console.log("extracting token from message");
     if (typeof message === "string") {
       let data: any
       try {
@@ -47,12 +48,12 @@ export class Coder extends AIChatAgent<Env> {
         const body = data.init.body
         const requestData = JSON.parse(body as string)
         const githubToken = requestData.githubToken
-        return githubToken
-        // const context = { githubToken, tools: {} }
 
-        // return toolContext.run(this, async () => {
-        //   return super.onMessage(connection, message)
-        // })
+        // Save the token in the tool context
+        return toolContext.run(this, async () => {
+          this.githubToken = githubToken;
+          return githubToken;
+        });
       }
     }
     return "dummy-token";
