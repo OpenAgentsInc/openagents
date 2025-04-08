@@ -206,25 +206,14 @@ export class Coder extends AIChatAgent<Env, State> {
     // Generate a system prompt based on knowledge base
     const systemPrompt = await this.generateSystemPrompt();
 
+    const tools = await this.generateTools();
+
     console.log("[onChatMessage] System prompt:", systemPrompt);
 
     console.log("[onChatMessage] Combined tools:", this.combinedTools);
 
     const stream = streamText({
-      // use combined tools
-      // tools: this.combinedTools,
-      tools: {
-        weather: tool({
-          description: 'Get the weather in a location',
-          parameters: z.object({
-            location: z.string().describe('The location to get the weather for'),
-          }),
-          execute: async ({ location }) => ({
-            location,
-            temperature: 72 + Math.floor(Math.random() * 21) - 10,
-          }),
-        }),
-      },
+      tools,
       model,
       messages: [
         { role: "system", content: systemPrompt },
@@ -242,6 +231,27 @@ export class Coder extends AIChatAgent<Env, State> {
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 `
+  }
+
+  async generateTools() {
+    // return this.combinedTools;
+
+    console.log("not using this but should i", this.combinedTools)
+    console.log(this.combinedTools)
+    console.log(this.mcp.listTools())
+
+    return {
+      weather: tool({
+        description: 'Get the weather in a location',
+        parameters: z.object({
+          location: z.string().describe('The location to get the weather for'),
+        }),
+        execute: async ({ location }) => ({
+          location,
+          temperature: 72 + Math.floor(Math.random() * 21) - 10,
+        }),
+      }),
+    }
   }
 }
 
