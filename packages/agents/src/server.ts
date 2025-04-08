@@ -1,9 +1,9 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { routeAgentRequest, type Connection, type WSMessage } from "agents"
 import { AIChatAgent } from "agents/ai-chat-agent";
-import { streamText, type StreamTextOnFinishCallback } from "ai";
+import { streamText, tool, type StreamTextOnFinishCallback } from "ai";
 import { env } from "cloudflare:workers";
-import { AsyncLocalStorage } from "node:async_hooks";
+import { z } from "zod";
 
 const google = createGoogleGenerativeAI({
   apiKey: env.GOOGLE_API_KEY,
@@ -11,19 +11,11 @@ const google = createGoogleGenerativeAI({
 
 const model = google("gemini-2.5-pro-exp-03-25");
 
-export const toolContext = new AsyncLocalStorage<Coder>();
-
 export class Coder extends AIChatAgent<Env> {
-  protected githubToken?: string;
+  public githubToken?: string;
 
   async onMessage(connection: Connection, message: WSMessage): Promise<void> {
-    // Extract token first, without returning it
     this.extractToken(connection, message);
-
-    // Don't log the token value directly
-    console.log("onMessage - token extracted");
-
-    // Call parent method
     return super.onMessage(connection, message);
   }
 
@@ -38,8 +30,31 @@ export class Coder extends AIChatAgent<Env> {
     }
 
     const stream = streamText({
+      tools: {
+        fetchGitHubFileContent: tool({
+          description: 'Fetch the content of a file from a GitHub repository',
+          parameters: z.object({
+            owner: z.string(),
+            repo: z.string(),
+            path: z.string(),
+            branch: z.string(),
+          }),
+          execute: async ({ owner, repo, path, branch }) => {
+            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, {
+              headers: {
+                'Authorization': `Bearer ${this.githubToken}`
+              }
+            })
+            const data = await response.json() as { content: string }
+            return data.content
+          }
+        })
+      },
       model,
-      messages: this.messages,
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant that can answer questions and help with tasks. In your message, tell the user if you DO or DO NOT have a github token set based on this (truncated) value: ' + this.githubToken?.slice(0, 18) },
+        ...this.messages
+      ],
       onFinish,
     });
 
@@ -67,9 +82,6 @@ export class Coder extends AIChatAgent<Env> {
             console.log(`Found githubToken in message, length: ${githubToken.length}`);
             // Directly set the token on the instance
             this.githubToken = githubToken;
-
-            // Store in the context for tools to access
-            toolContext.enterWith(this);
           }
         } catch (e) {
           console.error("Error parsing body:", e);
@@ -78,6 +90,10 @@ export class Coder extends AIChatAgent<Env> {
     }
   }
 
+  // Public method to get the GitHub token for tools
+  getGitHubToken(): string | undefined {
+    return this.githubToken;
+  }
 }
 
 

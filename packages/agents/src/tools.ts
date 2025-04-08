@@ -6,7 +6,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { ToolExecutionOptions } from "ai";
 
-import { agentContext } from "./server";
+import { Coder } from "./server";
 import {
   unstable_getSchedulePrompt,
   unstable_scheduleSchema,
@@ -40,18 +40,20 @@ const getLocalTime = tool({
 const scheduleTask = tool({
   description: "A tool to schedule a task to be executed at a later time",
   parameters: unstable_scheduleSchema,
-  execute: async ({ when, description }) => {
-    // we can now read the agent context from the ALS store
-    const agent = agentContext.getStore();
-    if (!agent) {
-      throw new Error("No agent found");
+  execute: async ({ when, description }, { agent }) => {
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
     }
+    
     function throwError(msg: string): string {
       throw new Error(msg);
     }
+    
     if (when.type === "no-schedule") {
       return "Not a valid schedule input";
     }
+    
     const input =
       when.type === "scheduled"
         ? when.date // scheduled
@@ -73,11 +75,10 @@ const scheduleTask = tool({
 const listScheduledTasks = tool({
   description: "A tool to list all currently scheduled tasks",
   parameters: z.object({}),
-  execute: async () => {
-    // Get the agent from context
-    const agent = agentContext.getStore();
-    if (!agent) {
-      throw new Error("No agent found");
+  execute: async (_, { agent }) => {
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
     }
 
     try {
@@ -116,11 +117,10 @@ const deleteScheduledTask = tool({
   parameters: z.object({
     taskId: z.string().describe("The ID of the task to delete")
   }),
-  execute: async ({ taskId }) => {
-    // Get the agent from context
-    const agent = agentContext.getStore();
-    if (!agent) {
-      throw new Error("No agent found");
+  execute: async ({ taskId }, { agent }) => {
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
     }
 
     try {
@@ -165,9 +165,21 @@ export const tools = {
  * Each function here corresponds to a tool above that doesn't have an execute function
  */
 export const executions = {
-  getWeatherInformation: async (args: unknown, context: ToolExecutionOptions & { githubToken?: string }) => {
+  getWeatherInformation: async (args: unknown, context: ToolExecutionOptions) => {
     const { city } = args as { city: string };
     console.log(`Getting weather information for ${city}`);
+    
+    // Log if we have an agent and if it's a Coder
+    if (context.agent) {
+      console.log("Has agent in execution context");
+      if (context.agent instanceof Coder) {
+        console.log("Agent is a Coder instance");
+        console.log(`GitHub token available: ${!!context.agent.githubToken}`);
+      }
+    } else {
+      console.log("No agent in execution context");
+    }
+    
     return `The weather in ${city} is sunny`;
   },
 };

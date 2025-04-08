@@ -41,7 +41,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     // 3. Check agent environment
     if (this.agent) {
       // Get the environment from the agent
-      const env = this.agent && (this.agent as any).env;
+      const env = this.getAgentEnv();
       if (env) {
         // Check standard environment variables
         if (env.GITHUB_TOKEN) {
@@ -65,6 +65,16 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     // No token found
     console.warn("No GitHub token found. Operations requiring authentication will fail.");
     return undefined;
+  }
+  
+  /**
+   * Gets the environment object from the agent if available
+   */
+  private getAgentEnv(): any {
+    if (!this.agent) return null;
+    
+    // Try to get the environment from the agent
+    return (this.agent as any).env;
   }
 
   constructor() {
@@ -343,39 +353,21 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     console.log("=== GITHUB PLUGIN INITIALIZE METHOD CALLED ===");
     this.agent = agent;
     
-    // Look for token in toolContext
-    try {
-      // Import the toolContext from server.ts
-      const { toolContext } = await import('../server.js');
-      if (toolContext) {
-        const context = toolContext.getStore();
-        if (context?.githubToken) {
-          console.log(`Using GitHub token from toolContext (length: ${context.githubToken.length})`);
-          this.githubToken = context.githubToken;
-        }
-      }
-    } catch (error) {
-      console.log("Could not access toolContext:", error);
-    }
-    
-    // If no token from context, try to get it from agent env
-    if (!this.githubToken) {
-      // Try to get token from agent properties
-      if ((agent as any).githubToken) {
-        this.githubToken = (agent as any).githubToken;
-        console.log(`Using GitHub token from agent.githubToken (length: ${this.githubToken.length})`);
-      } else {
-        // Get it from the environment
-        const env = this.getAgentEnv();
-        if (env) {
-          // Try all possible token locations
-          this.githubToken = env.GITHUB_TOKEN || 
-                            env.GITHUB_PERSONAL_ACCESS_TOKEN || 
-                            (env.apiKeys && env.apiKeys.github);
-                            
-          if (this.githubToken) {
-            console.log(`Using GitHub token from agent environment (length: ${this.githubToken.length})`);
-          }
+    // Try to get token from agent properties
+    if ((agent as any).githubToken) {
+      this.githubToken = (agent as any).githubToken;
+      console.log(`Using GitHub token from agent.githubToken (length: ${this.githubToken.length})`);
+    } else {
+      // Get it from the environment
+      const env = this.getAgentEnv();
+      if (env) {
+        // Try all possible token locations
+        this.githubToken = env.GITHUB_TOKEN || 
+                          env.GITHUB_PERSONAL_ACCESS_TOKEN || 
+                          (env.apiKeys && env.apiKeys.github);
+                          
+        if (this.githubToken) {
+          console.log(`Using GitHub token from agent environment (length: ${this.githubToken.length})`);
         }
       }
     }
