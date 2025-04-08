@@ -174,7 +174,74 @@ export class Coder extends AIChatAgent<Env, State> {
         execute: async (args) => {
           try {
             console.log(`DEBUG: Executing MCP tool ${mcpTool.name} with args:`, JSON.stringify(args));
-            // For now, return a mock response for demonstration
+            
+            // Implement actual GitHub API call for get_file_contents
+            if (mcpTool.name === 'get_file_contents') {
+              const { owner, repo, path, branch = 'main' } = args;
+              console.log(`GITHUB API: Fetching file ${path} from ${owner}/${repo} (branch: ${branch})`);
+              
+              try {
+                // Construct GitHub API URL
+                const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+                console.log(`GITHUB API URL: ${url}`);
+                
+                // Make the request
+                const response = await fetch(url, {
+                  headers: {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'User-Agent': 'OpenAgents-Coder'
+                  }
+                });
+                
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  console.error(`GITHUB API ERROR (${response.status}): ${errorText}`);
+                  return {
+                    error: `GitHub API returned ${response.status}: ${errorText}`
+                  };
+                }
+                
+                const data = await response.json();
+                
+                // GitHub returns file content as base64
+                if (data.content && data.encoding === 'base64') {
+                  console.log(`GITHUB API SUCCESS: Retrieved ${path}, size: ${data.size} bytes`);
+                  // Decode base64 content
+                  const content = atob(data.content.replace(/\\n/g, ''));
+                  return {
+                    content,
+                    name: data.name,
+                    path: data.path,
+                    sha: data.sha,
+                    size: data.size,
+                    url: data.html_url
+                  };
+                } else if (Array.isArray(data)) {
+                  // If it's a directory
+                  console.log(`GITHUB API SUCCESS: Retrieved directory listing with ${data.length} items`);
+                  return {
+                    isDirectory: true,
+                    items: data.map(item => ({
+                      name: item.name,
+                      path: item.path,
+                      type: item.type,
+                      size: item.size,
+                      url: item.html_url
+                    }))
+                  };
+                } else {
+                  console.log(`GITHUB API UNEXPECTED RESPONSE:`, JSON.stringify(data).substring(0, 500));
+                  return data;
+                }
+              } catch (fetchError) {
+                console.error(`GITHUB API FETCH ERROR: ${fetchError}`);
+                return {
+                  error: `Failed to fetch from GitHub: ${fetchError.message}`
+                };
+              }
+            }
+            
+            // For other tools, return a mock response
             return {
               success: true,
               tool: mcpTool.name,
