@@ -142,75 +142,83 @@ export class Coder extends AIChatAgent<Env> {
       }
     }
   }
+  
   /**
    * Override onMessage to extract GitHub token from request body
    */
   override async onMessage(connection: Connection, message: WSMessage) {
-    console.log("onMessage called with message type:", typeof message);
-    
     if (typeof message === "string") {
-      console.log("Parsing message as JSON");
       let data: IncomingMessage;
       try {
         data = JSON.parse(message) as IncomingMessage;
-        console.log("Message parsed successfully:", data.type);
+      } catch (error) {
+        return super.onMessage(connection, message);
+      }
+
+      if (
+        data.type === "cf_agent_use_chat_request" &&
+        data.init.method === "POST"
+      ) {
+        const { body } = data.init;
+        const requestData = JSON.parse(body as string);
+        const { messages, githubToken } = requestData;
         
-        if (data.type === "cf_agent_use_chat_request" && data.init.method === "POST") {
-          console.log("Processing chat request with body");
-          
-          try {
-            // Parse the request body
-            const { body } = data.init;
-            if (!body) {
-              console.log("No body found in request");
-            } else {
-              const requestData = JSON.parse(body as string);
-              console.log("Request data parsed from body:", Object.keys(requestData));
-              
-              // Extract token from different possible locations
-              const githubToken = 
-                requestData.githubToken || 
-                (requestData.data?.apiKeys?.github) || 
-                (requestData.apiKeys?.github);
-              
-              if (githubToken) {
-                console.log(`Found GitHub token in request body (length: ${githubToken.length})`);
-                
-                // Set token in environment for the agent
-                const env = (this as any).env as Env;
-                if (env) {
-                  console.log("Setting token in agent environment");
-                  if (!env.apiKeys) env.apiKeys = {};
-                  env.apiKeys.github = githubToken;
-                  env.GITHUB_TOKEN = githubToken;
-                  env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
-                }
-                
-                // Set up tool context with GitHub token
-                const context = {
-                  githubToken,
-                  tools,
-                };
-                
-                // Run the rest of the message handling with the tool context
-                console.log("Running message handler with GitHub token in context");
-                return toolContext.run(context, async () => {
-                  return super.onMessage(connection, message);
-                });
-              } else {
-                console.log("No GitHub token found in request body");
-              }
-            }
-          } catch (error) {
-            console.error("Error parsing request body:", error);
+        console.log("REQUEST DATA:", Object.keys(requestData));
+        console.log("GITHUB TOKEN:", githubToken ? `Found (length: ${githubToken.length})` : "Not found");
+        
+        if (githubToken) {
+          // Set token in environment variables
+          const env = (this as any).env as Env;
+          if (env) {
+            if (!env.apiKeys) env.apiKeys = {};
+            env.apiKeys.github = githubToken;
+            env.GITHUB_TOKEN = githubToken;
+            env.GITHUB_PERSONAL_ACCESS_TOKEN = githubToken;
+            console.log("Token set in environment variables");
           }
         }
-      } catch (error) {
-        console.error("Error parsing message JSON:", error);
+        
+        // Extract token from data.apiKeys.github if githubToken is not directly available
+        if (!githubToken && requestData.data?.apiKeys?.github) {
+          const dataToken = requestData.data.apiKeys.github;
+          console.log(`Found token in data.apiKeys.github (length: ${dataToken.length})`);
+          
+          // Set token in environment variables
+          const env = (this as any).env as Env;
+          if (env) {
+            if (!env.apiKeys) env.apiKeys = {};
+            env.apiKeys.github = dataToken;
+            env.GITHUB_TOKEN = dataToken;
+            env.GITHUB_PERSONAL_ACCESS_TOKEN = dataToken;
+            console.log("Token from data.apiKeys set in environment variables");
+          }
+          
+          // Set up tool context with GitHub token
+          const context = {
+            githubToken: dataToken,
+            tools,
+          };
+          
+          // Run the rest of the message handling with the tool context
+          return toolContext.run(context, async () => {
+            return super.onMessage(connection, message);
+          });
+        }
+
+        // Set up tool context with GitHub token if it's directly available
+        if (githubToken) {
+          const context = {
+            githubToken,
+            tools,
+          };
+
+          // Run the rest of the message handling with the tool context
+          return toolContext.run(context, async () => {
+            return super.onMessage(connection, message);
+          });
+        }
       }
     }
-    
-    console.log("Falling back to default message handler");
     return super.onMessage(connection, message);
   }
 
