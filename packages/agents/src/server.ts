@@ -70,7 +70,9 @@ export class Coder extends AIChatAgent<Env> {
         const { messages, githubToken } = requestData;
         console.log('[onMessage] Parsed request data:', {
           messageCount: messages?.length,
-          hasGithubToken: !!githubToken
+          hasGithubToken: !!githubToken,
+          // list the first 10 characters of the token
+          githubToken: githubToken?.slice(0, 15),
         });
 
         // Set up tool context with GitHub token

@@ -4,6 +4,7 @@ import { useAgent } from "agents/react";
 import { useAgentChat } from "agents/ai-react";
 import type { Message } from "@ai-sdk/react";
 import { Moon, Sun, Trash, Bot, Send } from "lucide-react"; // Removed ArrowUp - unused
+import { useApiKeyContext } from "../providers/ApiKeyProvider";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -47,6 +48,8 @@ export default function ChatPage() {
     agent: "coder"
   });
 
+  const { apiKeys } = useApiKeyContext();
+
   // --- Agent Chat Hook ---
   const {
     messages: agentMessages,
@@ -57,7 +60,7 @@ export default function ChatPage() {
     error: agentError,
   } = useAgentChat({
     body: {
-      githubToken: "ghp_1234567890"
+      githubToken: apiKeys['github'] || ''
     },
     agent,
     maxSteps: 5,
