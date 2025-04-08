@@ -48,24 +48,36 @@ export default function ChatPage() {
 
   // --- Initialize Agent ---
   const agent = useAgent({
+    options: {
+      headers: {
+        "x-api-key": "TEST KEY", // apiKeys.github || "",
+        "x-github-token": "TEST TOKEN", // apiKeys.github || "",
+      }
+    },
     agent: "coder",
     headers: {
-      "x-api-key": apiKeys.github || "",
-      "x-github-token": apiKeys.github || "",
+      "x-api-key": "TEST KEY", // apiKeys.github || "",
+      "x-github-token": "TEST TOKEN", // apiKeys.github || "",
     },
   });
-  
+
+
   // --- Agent Chat Hook ---
   const {
     messages: agentMessages,
     input: agentInput,
     handleInputChange: handleAgentInputChange,
-    handleSubmit: handleAgentSubmit,
+    append,
+    // handleSubmit: handleAgentSubmit,
     clearHistory,
     error: agentError,
   } = useAgentChat({
+
     data: {
-      apiKeys,
+      test: "TEST",
+      apiKeys: {
+        github: "TEST KEY",
+      },
     },
     agent,
     maxSteps: 5,
@@ -80,6 +92,20 @@ export default function ChatPage() {
       setLatestError(`Agent Error: ${errorString}`);
     }
   });
+
+  const handleAgentSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    append({
+      role: "user",
+      content: agentInput,
+    }, {
+      headers: {
+        "x-api-key": "TEST KEY", // apiKeys.github || "",
+        "x-github-token": "TEST TOKEN", // apiKeys.github || "",
+      },
+    });
+  }, [append, agentInput]);
+
 
   // --- Initial Scroll ---
   useEffect(() => {
