@@ -148,24 +148,74 @@ export class Coder extends AIChatAgent<Env, State> {
       // Convert the MCP tool to the format expected by Vercel AI SDK
       console.log(`DEBUG: Creating tool definition for ${mcpTool.name}`);
       
-      // Log schema details
-      const schemaDetails = mcpTool.parameters && typeof mcpTool.parameters === 'object' 
-        ? mcpTool.parameters 
-        : mcpTool.inputSchema;
+      // Log complete tool for debugging
+      console.log(`DEBUG: Full tool definition for ${mcpTool.name}:`, JSON.stringify(mcpTool, null, 2).substring(0, 1000));
+      
+      // Extract schema from inputSchema if available
+      const schemaDetails = mcpTool.inputSchema || {};
       console.log(`DEBUG: Schema details for ${mcpTool.name}:`, JSON.stringify(schemaDetails, null, 2).substring(0, 500));
       
-      // Create properties for the tool
+      // Create properties for the tool based on inputSchema
       const properties = {};
       
-      // If it's get_file_contents, create known parameters
-      if (mcpTool.name === 'get_file_contents') {
-        properties.owner = z.string().describe('Repository owner (username or organization)');
-        properties.repo = z.string().describe('Repository name');
-        properties.path = z.string().describe('Path to the file or directory');
-        properties.branch = z.string().optional().describe('Branch to get contents from');
+      // Extract required properties list
+      const requiredProps = schemaDetails.required || [];
+      console.log(`DEBUG: Required props for ${mcpTool.name}:`, requiredProps);
+      
+      // Parse schema properties if available
+      if (schemaDetails.properties && typeof schemaDetails.properties === 'object') {
+        Object.entries(schemaDetails.properties).forEach(([propName, propDef]: [string, any]) => {
+          console.log(`DEBUG: Processing property ${propName} for ${mcpTool.name}`);
+          
+          if (!propDef || typeof propDef !== 'object') {
+            properties[propName] = z.any();
+            return;
+          }
+          
+          const isRequired = requiredProps.includes(propName);
+          const description = propDef.description || `Parameter ${propName}`;
+          
+          // Create appropriate Zod schema based on type
+          let zodProp;
+          switch (propDef.type) {
+            case 'string':
+              zodProp = z.string().describe(description);
+              break;
+            case 'number':
+            case 'integer':
+              zodProp = z.number().describe(description);
+              break;
+            case 'boolean':
+              zodProp = z.boolean().describe(description);
+              break;
+            case 'array':
+              zodProp = z.array(z.any()).describe(description);
+              break;
+            case 'object':
+              zodProp = z.record(z.unknown()).describe(description);
+              break;
+            default:
+              zodProp = z.any().describe(description);
+          }
+          
+          // Make optional if not required
+          if (!isRequired) {
+            zodProp = zodProp.optional();
+          }
+          
+          properties[propName] = zodProp;
+        });
       } else {
-        // Default fallback
-        properties._fallback = z.any();
+        // Fallback for get_file_contents if schema isn't available
+        if (mcpTool.name === 'get_file_contents') {
+          properties.owner = z.string().describe('Repository owner (username or organization)');
+          properties.repo = z.string().describe('Repository name');
+          properties.path = z.string().describe('Path to the file or directory');
+          properties.branch = z.string().optional().describe('Branch to get contents from');
+        } else {
+          // Default fallback for other tools
+          properties._fallback = z.any();
+        }
       }
       
       acc[mcpTool.name] = tool({
@@ -175,68 +225,139 @@ export class Coder extends AIChatAgent<Env, State> {
           try {
             console.log(`DEBUG: Executing MCP tool ${mcpTool.name} with args:`, JSON.stringify(args));
             
-            // Implement actual GitHub API call for get_file_contents
+            // Use the MCP tool via mcpClientManager
             if (mcpTool.name === 'get_file_contents') {
-              const { owner, repo, path, branch = 'main' } = args;
-              console.log(`GITHUB API: Fetching file ${path} from ${owner}/${repo} (branch: ${branch})`);
+              const { owner, repo, path, branch } = args;
+              console.log(`MCP TOOL CALL: ${mcpTool.name} for file ${path} from ${owner}/${repo}`);
               
               try {
-                // Construct GitHub API URL
-                const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
-                console.log(`GITHUB API URL: ${url}`);
+                // Need to get the proper server ID from the tool
+                const serverId = mcpTool.serverId;
+                console.log(`MCP TOOL: Using server ID ${serverId} for tool ${mcpTool.name}`);
                 
-                // Make the request
-                const response = await fetch(url, {
-                  headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'User-Agent': 'OpenAgents-Coder'
+                // Create a tool call directly to the MCP infrastructure
+                const mcpClient = this.mcp;
+                
+                // Get server from the registry
+                const serverInfo = this.state.servers[serverId];
+                if (!serverInfo) {
+                  console.error(`MCP TOOL ERROR: No server info found for ID ${serverId}`);
+                  return {
+                    error: `No MCP server found with ID ${serverId} for tool ${mcpTool.name}`
+                  };
+                }
+                
+                console.log(`MCP TOOL: Server status for ${serverInfo.url}: ${serverInfo.state}`);
+                
+                // Get the appropriate client for this server
+                try {
+                  // Manually format arguments in the way the MCP client expects
+                  console.log(`MCP TOOL: Calling with args:`, JSON.stringify(args));
+                  
+                  // Call the tool using a direct client method - with defensive error handling
+                  try {
+                    // Get any GitHub token
+                    const token = this.githubToken || undefined;
+                    
+                    // Create object compatible with the direct method
+                    const result = await mcpClient.callTool(mcpTool.name, args, token);
+                    
+                    console.log(`MCP TOOL SUCCESS: ${mcpTool.name} returned`, 
+                      typeof result === 'object' ? JSON.stringify(result).substring(0, 500) : result);
+                    
+                    return result;
+                  } catch (callError) {
+                    console.error(`MCP TOOL CALL ERROR for ${mcpTool.name}:`, callError);
+                    // Fall back to direct GitHub API call if MCP call fails
+                    console.log(`MCP TOOL: Falling back to direct GitHub API call`);
+                    
+                    // Implement direct GitHub API call as fallback
+                    try {
+                      console.log(`GITHUB API FALLBACK: Fetching file ${path} from ${owner}/${repo} (branch: ${branch || 'main'})`);
+                      
+                      // Construct GitHub API URL
+                      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}${branch ? `?ref=${branch}` : ''}`;
+                      console.log(`GITHUB API URL: ${url}`);
+                      
+                      // Make the request
+                      const response = await fetch(url, {
+                        headers: {
+                          'Accept': 'application/vnd.github.v3+json',
+                          'User-Agent': 'OpenAgents-Coder'
+                        }
+                      });
+                      
+                      if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`GITHUB API ERROR (${response.status}): ${errorText}`);
+                        return {
+                          error: `GitHub API returned ${response.status}: ${errorText}`
+                        };
+                      }
+                      
+                      const data = await response.json();
+                      
+                      // GitHub returns file content as base64
+                      if (data.content && data.encoding === 'base64') {
+                        console.log(`GITHUB API SUCCESS: Retrieved ${path}, size: ${data.size} bytes`);
+                        // Decode base64 content - handle the replacement safely
+                        let content = '';
+                        try {
+                          // Remove newlines and decode
+                          const cleanedContent = data.content.replace(/\n/g, '');
+                          content = atob(cleanedContent);
+                        } catch (decodeError) {
+                          console.error(`GITHUB API DECODE ERROR: ${decodeError}`);
+                          content = `[Error decoding content: ${decodeError.message}]`;
+                        }
+                        
+                        return {
+                          content,
+                          name: data.name,
+                          path: data.path,
+                          sha: data.sha,
+                          size: data.size,
+                          url: data.html_url,
+                          note: "Retrieved via direct GitHub API (fallback)"
+                        };
+                      } else if (Array.isArray(data)) {
+                        // If it's a directory
+                        console.log(`GITHUB API SUCCESS: Retrieved directory listing with ${data.length} items`);
+                        return {
+                          isDirectory: true,
+                          items: data.map(item => ({
+                            name: item.name,
+                            path: item.path,
+                            type: item.type,
+                            size: item.size,
+                            url: item.html_url
+                          })),
+                          note: "Retrieved via direct GitHub API (fallback)"
+                        };
+                      } else {
+                        console.log(`GITHUB API UNEXPECTED RESPONSE:`, JSON.stringify(data).substring(0, 500));
+                        return {
+                          ...data,
+                          note: "Retrieved via direct GitHub API (fallback)"
+                        };
+                      }
+                    } catch (fallbackError) {
+                      console.error(`GITHUB API FALLBACK ERROR: ${fallbackError}`);
+                      return {
+                        error: `MCP tool call failed: ${callError.message}. Fallback also failed: ${fallbackError.message}`
+                      };
+                    }
                   }
-                });
-                
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  console.error(`GITHUB API ERROR (${response.status}): ${errorText}`);
+                } catch (clientError) {
+                  console.error(`MCP CLIENT ERROR for ${mcpTool.name}:`, clientError);
                   return {
-                    error: `GitHub API returned ${response.status}: ${errorText}`
+                    error: `Failed to get MCP client: ${clientError.message}`
                   };
                 }
-                
-                const data = await response.json();
-                
-                // GitHub returns file content as base64
-                if (data.content && data.encoding === 'base64') {
-                  console.log(`GITHUB API SUCCESS: Retrieved ${path}, size: ${data.size} bytes`);
-                  // Decode base64 content
-                  const content = atob(data.content.replace(/\\n/g, ''));
-                  return {
-                    content,
-                    name: data.name,
-                    path: data.path,
-                    sha: data.sha,
-                    size: data.size,
-                    url: data.html_url
-                  };
-                } else if (Array.isArray(data)) {
-                  // If it's a directory
-                  console.log(`GITHUB API SUCCESS: Retrieved directory listing with ${data.length} items`);
-                  return {
-                    isDirectory: true,
-                    items: data.map(item => ({
-                      name: item.name,
-                      path: item.path,
-                      type: item.type,
-                      size: item.size,
-                      url: item.html_url
-                    }))
-                  };
-                } else {
-                  console.log(`GITHUB API UNEXPECTED RESPONSE:`, JSON.stringify(data).substring(0, 500));
-                  return data;
-                }
-              } catch (fetchError) {
-                console.error(`GITHUB API FETCH ERROR: ${fetchError}`);
+              } catch (error) {
+                console.error(`MCP TOOL ERROR for ${mcpTool.name}:`, error);
                 return {
-                  error: `Failed to fetch from GitHub: ${fetchError.message}`
+                  error: `MCP tool execution failed: ${error.message}`
                 };
               }
             }
