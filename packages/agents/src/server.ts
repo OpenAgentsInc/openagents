@@ -52,7 +52,7 @@ export class Coder extends AIChatAgent<Env> {
       },
       model,
       messages: [
-        { role: 'system', content: 'You are a helpful assistant that can answer questions and help with tasks. In your message, tell the user if you DO or DO NOT have a github token set based on this (truncated) value: ' + this.githubToken?.slice(0, 18) },
+        { role: 'system', content: 'You are Coder, a helpful assistant.' },
         ...this.messages
       ],
       onFinish,
