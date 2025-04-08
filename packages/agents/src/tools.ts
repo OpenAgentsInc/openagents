@@ -165,7 +165,7 @@ export const tools = {
  * Each function here corresponds to a tool above that doesn't have an execute function
  */
 export const executions = {
-  getWeatherInformation: async (args: unknown, context: ToolExecutionOptions) => {
+  getWeatherInformation: async (args: unknown, context: ToolExecutionOptions & { githubToken?: string }) => {
     const { city } = args as { city: string };
     console.log(`Getting weather information for ${city}`);
     return `The weather in ${city} is sunny`;

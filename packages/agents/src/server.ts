@@ -42,6 +42,9 @@ export const agentContext = new AsyncLocalStorage<Coder>();
  * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Coder extends AIChatAgent<Env> {
+  githubToken?: string;
+  tools?: typeof tools;
+
   /**
    * Handles incoming chat messages and manages the response stream
    * @param onFinish - Callback function executed when streaming completes
@@ -76,16 +79,13 @@ export class Coder extends AIChatAgent<Env> {
         });
 
         // Set up tool context with GitHub token
-        const context = {
-          githubToken,
-          tools,
-        };
+        this.githubToken = githubToken;
+        this.tools = tools;
 
         // Run the rest of the message handling with the tool context
         console.log('[onMessage] Running with agent context');
         return agentContext.run(this, async () => {
-          const ctx = { githubToken, tools };
-          console.log('[onMessage] Delegating to parent handler');
+          console.log('[onMessage] Delegating to parent handler with tools context');
           return super.onMessage(connection, message);
         });
       }
@@ -100,13 +100,29 @@ export class Coder extends AIChatAgent<Env> {
     return agentContext.run(this, async () => {
       const dataStreamResponse = createDataStreamResponse({
         execute: async (dataStream) => {
+          // Get the current context with GitHub token
+          const context = agentContext.getStore();
+          const githubToken = context?.githubToken;
+
+          console.log('[onChatMessage] Context retrieved:', {
+            hasContext: !!context,
+            hasGithubToken: !!githubToken,
+            hasTools: !!context?.tools,
+            availableTools: context?.tools ? Object.keys(context.tools) : [],
+            tokenPrefix: githubToken ? githubToken.slice(0, 15) : 'none'
+          });
+
           // Process any pending tool calls from previous messages
           // This handles human-in-the-loop confirmations for tools
           const processedMessages = await processToolCalls({
             messages: this.messages,
             dataStream,
-            tools: {},
-            executions,
+            tools: context?.tools || {},
+            executions: {
+              ...executions,
+              // Add GitHub token to the executions context
+              githubToken
+            },
           });
 
           // Stream the AI response using GPT-4
@@ -120,7 +136,7 @@ You have access to GitHub tools that let you interact with GitHub repositories t
 
 `,
             messages: processedMessages,
-            tools: {},
+            tools: context?.tools || {},
             onFinish,
             onError: (error) => {
               console.error("Error while streaming:", error);
