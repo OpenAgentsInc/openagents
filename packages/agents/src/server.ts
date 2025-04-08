@@ -9,6 +9,7 @@ import { GitHubContentSchema } from "../../../apps/mcp-github-server/src/common/
 async function githubRequest(url: string, options: { token?: string }) {
   const headers: Record<string, string> = {
     'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'OpenAgents-GitHub-Client'
   };
   if (options.token) {
     headers['Authorization'] = `Bearer ${options.token}`;
@@ -16,6 +17,7 @@ async function githubRequest(url: string, options: { token?: string }) {
   const response = await fetch(url, { headers });
   if (!response.ok) {
     const error = await response.text();
+    console.error(`GitHub API error (${response.status}):`, error);
     throw new Error(`GitHub API error (${response.status}): ${error}`);
   }
   return response.json();
@@ -82,12 +84,18 @@ export class Coder extends AIChatAgent<Env> {
             branch: z.string(),
           }),
           execute: async ({ owner, repo, path, branch }) => {
-            const data = await getFileContents(owner, repo, path, branch, this.githubToken);
-            if (Array.isArray(data)) {
-              throw new Error('Path points to a directory, not a file');
+            try {
+              const data = await getFileContents(owner, repo, path, branch, this.githubToken);
+              if (Array.isArray(data)) {
+                return `Error: The path "${path}" points to a directory, not a file`;
+              }
+              console.log("Successfully fetched file content for:", path);
+              return data.content;
+            } catch (error: any) {
+              console.error("Error in fetchGitHubFileContent:", error);
+              const message = error instanceof Error ? error.message : String(error);
+              return `Error fetching GitHub file: ${message}`;
             }
-            console.log("data", data);
-            return data.content;
           }
         })
       },
