@@ -1,52 +1,12 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { routeAgentRequest, type Connection, type WSMessage } from "agents"
 import { AIChatAgent } from "agents/ai-chat-agent";
-import { streamText, tool, type StreamTextOnFinishCallback } from "ai";
+import { streamText, createDataStreamResponse, type StreamTextOnFinishCallback } from "ai";
 import { env } from "cloudflare:workers";
 import { tools } from "./tools";
-import { GitHubContentSchema } from "../../../apps/mcp-github-server/src/common/types";
+import { AsyncLocalStorage } from "node:async_hooks";
 
-async function githubRequest(url: string, options: { token?: string }) {
-  const headers: Record<string, string> = {
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'OpenAgents-GitHub-Client'
-  };
-  if (options.token) {
-    headers['Authorization'] = `Bearer ${options.token}`;
-  }
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`GitHub API error (${response.status}):`, error);
-    throw new Error(`GitHub API error (${response.status}): ${error}`);
-  }
-  return response.json();
-}
-
-async function getFileContents(
-  owner: string,
-  repo: string,
-  path: string,
-  branch?: string,
-  token?: string
-) {
-  let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-  if (branch) {
-    url += `?ref=${branch}`;
-  }
-
-  const response = await githubRequest(url, { token });
-  const data = GitHubContentSchema.parse(response);
-
-  // If it's a file, decode the content
-  if (!Array.isArray(data) && data.content) {
-    // Replace newlines and spaces that GitHub adds to base64
-    const cleanContent = data.content.replace(/\n/g, '');
-    data.content = atob(cleanContent);
-  }
-
-  return data;
-}
+export const agentContext = new AsyncLocalStorage<Coder>();
 
 const google = createGoogleGenerativeAI({
   apiKey: env.GOOGLE_API_KEY,
@@ -63,19 +23,26 @@ export class Coder extends AIChatAgent<Env> {
   }
 
   async onChatMessage(onFinish: StreamTextOnFinishCallback<{}>) {
-    const stream = streamText({
-      toolCallStreaming: true,
-      tools,
-      model,
-      messages: [
-        { role: 'system', content: 'You are Coder, a helpful assistant.' },
-        ...this.messages
-      ],
-      onFinish,
-      maxSteps: 5
-    });
+    return agentContext.run(this, async () => {
+      const dataStreamResponse = createDataStreamResponse({
+        execute: async (dataStream) => {
+          const stream = streamText({
+            toolCallStreaming: true,
+            tools,
+            model,
+            messages: [
+              { role: 'system', content: 'You are Coder, a helpful assistant. Use the provided tools to help the user.' },
+              ...this.messages
+            ],
+            onFinish,
+            maxSteps: 5
+          });
+          stream.mergeIntoDataStream(dataStream);
+        }
+      });
 
-    return stream.toDataStreamResponse();
+      return dataStreamResponse;
+    })
   }
 
   extractToken(connection: Connection, message: WSMessage) {
