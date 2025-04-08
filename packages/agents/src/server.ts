@@ -119,40 +119,44 @@ export class Coder extends AIChatAgent<Env> {
 
   override async onMessage(connection: Connection, message: WSMessage) {
     console.log('[onMessage] Received message:', typeof message);
+    console.log('[onMessage] Message content:', message);
 
     if (typeof message === "string") {
-      let data: IncomingMessage;
+      let data: IncomingMessage | any;
       try {
-        data = JSON.parse(message) as IncomingMessage;
-        console.log('[onMessage] Parsed message data:', { type: data.type, method: data.init.method });
+        data = JSON.parse(message);
+        console.log('[onMessage] Parsed message data:', data);
+
+        // Handle different message types
+        if (data.type === "cf_agent_use_chat_request" && data.init?.method === "POST") {
+          console.log('[onMessage] Processing chat request');
+          const { body } = data.init;
+          const requestData = JSON.parse(body as string);
+          const { messages, githubToken } = requestData;
+          console.log('[onMessage] Parsed request data:', {
+            messageCount: messages?.length,
+            hasGithubToken: !!githubToken,
+            githubToken: githubToken?.slice(0, 15),
+          });
+
+          // Update GitHub token
+          this.githubToken = githubToken;
+
+          // Run the rest of the message handling with the tool context
+          console.log('[onMessage] Running with agent context');
+          return agentContext.run(this, async () => {
+            console.log('[onMessage] Delegating to parent handler with tools context');
+            return super.onMessage(connection, message);
+          });
+        } else {
+          console.log('[onMessage] Non-chat request message received:', data.type);
+          // For other message types, pass to parent handler
+          return super.onMessage(connection, message);
+        }
       } catch (error) {
         console.error('[onMessage] Failed to parse message:', error);
+        console.error('[onMessage] Raw message:', message);
         return;
-      }
-
-      if (
-        data.type === "cf_agent_use_chat_request" &&
-        data.init.method === "POST"
-      ) {
-        console.log('[onMessage] Processing chat request');
-        const { body } = data.init;
-        const requestData = JSON.parse(body as string);
-        const { messages, githubToken } = requestData;
-        console.log('[onMessage] Parsed request data:', {
-          messageCount: messages?.length,
-          hasGithubToken: !!githubToken,
-          githubToken: githubToken?.slice(0, 15),
-        });
-
-        // Update GitHub token
-        this.githubToken = githubToken;
-
-        // Run the rest of the message handling with the tool context
-        console.log('[onMessage] Running with agent context');
-        return agentContext.run(this, async () => {
-          console.log('[onMessage] Delegating to parent handler with tools context');
-          return super.onMessage(connection, message);
-        });
       }
     }
     console.log('[onMessage] Falling back to parent handler');
