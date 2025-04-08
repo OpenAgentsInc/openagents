@@ -12,6 +12,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 export default function ChatPage() {
   const [showDebug, setShowDebug] = useState(false);
   const [latestError, setLatestError] = useState<string | null>(null);
+  const [agentInput, setAgentInput] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [agentMessages, setAgentMessages] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -22,26 +25,51 @@ export default function ChatPage() {
   const agent = useAgent({
     agent: "coder",
     name: "session-124",
-    onStateUpdate: (state) => {
-      console.log('[useAgent]onStateUpdate', state)
+    onStateUpdate: (state: any) => {
+      console.log('[useAgent]onStateUpdate', state);
+      if (state?.messages) {
+        setAgentMessages(state.messages);
+      }
     }
   });
 
-  // now lets just fucking explore what i can do with useAgent
+  const handleAgentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAgentInput(e.target.value);
+  };
 
+  const handleAgentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!agentInput.trim() || isStreaming) return;
 
+    const newMessage = {
+      id: Math.random().toString(36).slice(2),
+      role: "user",
+      content: agentInput.trim(),
+      createdAt: new Date()
+    };
 
+    setAgentInput("");
+    setIsStreaming(true);
+    scrollToBottom();
 
-  const agentMessages: any[] = []
+    try {
+      // Update agent state with new messages
+      agent.setState({
+        messages: [...agentMessages, newMessage]
+      });
+      setIsStreaming(false);
+    } catch (error) {
+      setLatestError(error instanceof Error ? error.message : String(error));
+      setIsStreaming(false);
+    }
+  };
 
   const { apiKeys } = useApiKeyContext();
-
 
   // --- Initial Scroll ---
   useEffect(() => {
     scrollToBottom();
   }, [scrollToBottom]);
-
 
   const formatTime = (date: Date | string | undefined) => {
     if (!date) return '';
@@ -53,7 +81,6 @@ export default function ChatPage() {
       return ''; // Handle potential errors during date parsing/formatting
     }
   };
-
 
   return (
     <div className="h-[100vh] pt-[30px] w-full flex justify-center items-center bg-fixed overflow-hidden">
@@ -153,7 +180,7 @@ export default function ChatPage() {
 
         {/* Input Area */}
         <form
-          // onSubmit={handleAgentSubmit}
+          onSubmit={handleAgentSubmit}
           className="p-3 bg-background absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800"
         >
           <div className="flex items-center gap-2">
@@ -161,14 +188,14 @@ export default function ChatPage() {
               <Input
                 placeholder="Type your message..."
                 className="pl-4 pr-10 py-2 w-full rounded-full"
-              // value={agentInput}
-              // onChange={handleAgentInputChange}
-              // onKeyDown={(e) => {
-              //   if (e.key === "Enter" && !e.shiftKey) {
-              //     e.preventDefault();
-              //     handleAgentSubmit(e as unknown as React.FormEvent);
-              //   }
-              // }}
+                value={agentInput}
+                onChange={handleAgentInputChange}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleAgentSubmit(e as unknown as React.FormEvent);
+                  }
+                }}
               />
             </div>
 
@@ -176,7 +203,7 @@ export default function ChatPage() {
               type="submit"
               size="icon"
               className="rounded-full h-10 w-10 flex-shrink-0"
-              disabled={true}
+              disabled={!agentInput.trim() || isStreaming}
             >
               <Send size={16} />
             </Button>
