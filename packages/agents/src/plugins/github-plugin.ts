@@ -12,6 +12,12 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   name = 'github';
   private agent: AIChatAgent<any> | null = null;
   private readonly gitHubTools: Record<string, any> = {};
+  private githubToken?: string;
+
+  private async callMCPTool(name: string, args: any): Promise<string> {
+    // For now, return error since we're using direct API
+    return `Error: ${name} not implemented in direct API mode`;
+  }
 
   constructor() {
     console.log("=== INITIALIZING GITHUB PLUGIN (CONSTRUCTOR) ===");
@@ -31,10 +37,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, path, branch }) => {
           try {
             console.log(`Getting file contents for ${owner}/${repo}/${path}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.getFileContents(owner, repo, path, branch, token);
+            return await directGitHubTools.getFileContents(owner, repo, path, branch, this.githubToken);
           } catch (error) {
             console.error("Error getting file contents:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -112,10 +115,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, state, sort, direction }) => {
           try {
             console.log(`Listing issues for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, token);
+            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, this.githubToken);
           } catch (error) {
             console.error("Error listing issues:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -135,10 +135,8 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, title, body, labels }) => {
           try {
             console.log(`Creating issue in ${owner}/${repo}: ${title}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.createIssue(owner, repo, title, body, labels, token);
+            console.log(`GitHub token: ${this.githubToken?.slice(0, 15)}`);
+            return await directGitHubTools.createIssue(owner, repo, title, body, labels, this.githubToken);
           } catch (error) {
             console.error("Error creating issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -156,10 +154,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, issue_number }) => {
           try {
             console.log(`Getting issue ${issue_number} from ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.getIssue(owner, repo, issue_number, token);
+            return await directGitHubTools.getIssue(owner, repo, issue_number, this.githubToken);
           } catch (error) {
             console.error("Error getting issue:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -200,10 +195,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, state, sort, direction }) => {
           try {
             console.log(`Listing pull requests for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, token);
+            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, this.githubToken);
           } catch (error) {
             console.error("Error listing pull requests:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -281,10 +273,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, sha, page, perPage }) => {
           try {
             console.log(`Listing commits for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.listCommits(owner, repo, sha, page, perPage, token);
+            return await directGitHubTools.listCommits(owner, repo, sha, page, perPage, this.githubToken);
           } catch (error) {
             console.error("Error listing commits:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -297,13 +286,13 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   async initialize(agent: AIChatAgent<any>): Promise<void> {
     console.log("=== GITHUB PLUGIN INITIALIZE METHOD CALLED ===");
     this.agent = agent;
-    
-    // Log environment information
-    console.log("Agent environment:", {
-      hasEnv: !!agent.env,
-      hasGithubToken: !!(agent.env && agent.env.GITHUB_TOKEN),
+    this.githubToken = (agent as any).githubToken;
+
+    // Log token status
+    console.log("GitHub plugin status:", {
+      hasToken: !!this.githubToken,
     });
-    
+
     console.log("GitHub plugin initialization complete - using direct GitHub API");
   }
 
