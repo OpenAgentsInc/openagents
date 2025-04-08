@@ -124,129 +124,48 @@ export class Coder extends AIChatAgent<Env, State> {
       
       console.log("MCP tools retrieved:", Object.keys(mcpTools));
       
-      // Filter to only use the get_file_contents tool for now
-      const filteredTools: Record<string, any> = {};
+      // Process all MCP tools
+      const processedTools: Record<string, any> = {};
       for (const [name, toolDef] of Object.entries(mcpTools)) {
-        if (name === 'get_file_contents') {
-          console.log(`Including MCP tool: ${name}`);
-          
-          // Type assertion for toolDef
-          const typedToolDef = toolDef as {
-            description: string;
-            parameters: any;
-            execute: (args: any, options?: any) => Promise<any>;
-          };
-          
-          // Add a custom wrapper for get_file_contents to include fallback
-          filteredTools[name] = tool({
-            // Use the original description and parameters
-            description: typedToolDef.description,
-            parameters: typedToolDef.parameters,
-            // Custom execute function with fallback
-            execute: async (args, options) => {
-              try {
-                console.log(`Executing MCP tool ${name} with args:`, JSON.stringify(args));
-                
-                // Try to use the original tool's execute function
-                return await typedToolDef.execute(args, options);
-              } catch (error: unknown) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                console.error(`MCP tool execution failed: ${errorMessage}`);
-                console.log(`Falling back to direct GitHub API call...`);
-                
-                // Implement GitHub API fallback
-                if (name === 'get_file_contents') {
-                  const { owner, repo, path, branch } = args;
-                  
-                  try {
-                    console.log(`GITHUB API FALLBACK: Fetching file ${path} from ${owner}/${repo} (branch: ${branch || 'main'})`);
-                    
-                    // Construct GitHub API URL
-                    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}${branch ? `?ref=${branch}` : ''}`;
-                    console.log(`GITHUB API URL: ${url}`);
-                    
-                    // Make the request
-                    const response = await fetch(url, {
-                      headers: {
-                        'Accept': 'application/vnd.github.v3+json',
-                        'User-Agent': 'OpenAgents-Coder'
-                      }
-                    });
-                    
-                    if (!response.ok) {
-                      const errorText = await response.text();
-                      console.error(`GITHUB API ERROR (${response.status}): ${errorText}`);
-                      return {
-                        error: `GitHub API returned ${response.status}: ${errorText}`
-                      };
-                    }
-                    
-                    // Type the response data
-                    const data: any = await response.json();
-                    
-                    // GitHub returns file content as base64
-                    if (data.content && data.encoding === 'base64') {
-                      console.log(`GITHUB API SUCCESS: Retrieved ${path}, size: ${data.size} bytes`);
-                      // Decode base64 content - handle the replacement safely
-                      let content = '';
-                      try {
-                        // Remove newlines and decode
-                        const cleanedContent = data.content.replace(/\n/g, '');
-                        content = atob(cleanedContent);
-                      } catch (decodeError: unknown) {
-                        const decodeErrorMessage = decodeError instanceof Error ? decodeError.message : String(decodeError);
-                        console.error(`GITHUB API DECODE ERROR: ${decodeErrorMessage}`);
-                        content = `[Error decoding content: ${decodeErrorMessage}]`;
-                      }
-                      
-                      return {
-                        content,
-                        name: data.name,
-                        path: data.path,
-                        sha: data.sha,
-                        size: data.size,
-                        url: data.html_url,
-                        note: "Retrieved via direct GitHub API (fallback)"
-                      };
-                    } else if (Array.isArray(data)) {
-                      // If it's a directory
-                      console.log(`GITHUB API SUCCESS: Retrieved directory listing with ${data.length} items`);
-                      return {
-                        isDirectory: true,
-                        items: data.map(item => ({
-                          name: item.name,
-                          path: item.path,
-                          type: item.type,
-                          size: item.size,
-                          url: item.html_url
-                        })),
-                        note: "Retrieved via direct GitHub API (fallback)"
-                      };
-                    } else {
-                      console.log(`GITHUB API UNEXPECTED RESPONSE:`, JSON.stringify(data).substring(0, 500));
-                      // Use a safe object spread
-                      return {
-                        ...(typeof data === 'object' ? data : {}),
-                        note: "Retrieved via direct GitHub API (fallback)"
-                      };
-                    }
-                  } catch (fallbackError: unknown) {
-                    const fallbackErrorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-                    console.error(`GITHUB API FALLBACK ERROR: ${fallbackErrorMessage}`);
-                    return {
-                      error: `MCP tool call failed: ${errorMessage}. Fallback also failed: ${fallbackErrorMessage}`
-                    };
-                  }
-                }
-                
-                // Return error for other tools
-                return {
-                  error: errorMessage
-                };
-              }
+        console.log(`Including MCP tool: ${name}`);
+        
+        // Type assertion for toolDef
+        const typedToolDef = toolDef as {
+          description: string;
+          parameters: any;
+          execute: (args: any, options?: any) => Promise<any>;
+        };
+        
+        // Create a tool wrapper
+        const toolWrapper = tool({
+          // Use the original description and parameters
+          description: typedToolDef.description,
+          parameters: typedToolDef.parameters,
+          // Simple execute function with clear error handling
+          execute: async (args, options) => {
+            try {
+              console.log(`Executing MCP tool ${name} with args:`, JSON.stringify(args));
+              
+              // Use the original tool's execute function
+              return await typedToolDef.execute(args, options);
+            } catch (error: unknown) {
+              // Create a user-friendly error message
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`MCP tool execution failed for ${name}: ${errorMessage}`);
+              
+              // Return a clear error that can be shown to the user
+              return {
+                error: `The GitHub tool "${name}" failed: ${errorMessage}`,
+                toolName: name,
+                // Include original args for context
+                args: args
+              };
             }
-          });
-        }
+          }
+        });
+        
+        // Add the tool to our processed tools
+        processedTools[name] = toolWrapper;
       }
 
       // Get the weather example tool and combine with MCP tools
@@ -264,22 +183,22 @@ export class Coder extends AIChatAgent<Env, State> {
       // Combine built-in tools with MCP tools
       this.combinedTools = {
         ...builtInTools,
-        ...filteredTools,
+        ...processedTools,
         weather: weatherTool // Always include the weather tool for testing
       };
 
       console.log("Tool state after refresh:", {
         builtInTools: Object.keys(builtInTools),
-        mcpTools: Object.keys(filteredTools),
+        mcpTools: Object.keys(processedTools),
         combinedTools: Object.keys(this.combinedTools)
       });
       
-      if (Object.keys(filteredTools).length > 0) {
+      if (Object.keys(processedTools).length > 0) {
         console.log("Sample MCP tool structure:", 
           JSON.stringify({
-            name: Object.keys(filteredTools)[0],
-            hasParameters: !!filteredTools[Object.keys(filteredTools)[0]].parameters,
-            hasExecute: !!filteredTools[Object.keys(filteredTools)[0]].execute
+            name: Object.keys(processedTools)[0],
+            hasParameters: !!processedTools[Object.keys(processedTools)[0]].parameters,
+            hasExecute: !!processedTools[Object.keys(processedTools)[0]].execute
           }, null, 2)
         );
       }
