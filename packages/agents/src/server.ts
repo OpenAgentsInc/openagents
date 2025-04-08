@@ -1,7 +1,5 @@
 import { routeAgentRequest, type Connection, type Schedule, type WSMessage } from "agents";
-
 import { unstable_getSchedulePrompt } from "agents/schedule";
-
 import { AIChatAgent } from "agents/ai-chat-agent";
 import {
   createDataStreamResponse,
@@ -29,6 +27,16 @@ export const agentContext = new AsyncLocalStorage<Coder>();
 export class Coder extends AIChatAgent<Env> {
   githubToken?: string;
   combinedTools?: Record<string, any>;
+
+  /**
+   * MCP STUFF
+   */
+
+
+
+  /**
+   * CHAT STUFF
+   */
 
   override async onMessage(connection: Connection, message: WSMessage) {
     console.log('[onMessage] Received message:', typeof message);
@@ -107,34 +115,17 @@ export class Coder extends AIChatAgent<Env> {
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
-You have access to GitHub tools that let you interact with GitHub repositories through the Model Context Protocol (MCP).
+You have access to a few built-in tools described below and a few GitHub tools through a separate Model Context Protocol service.
 The GitHub token will be automatically provided to the tools that need it.
 
-REPOSITORY OPERATIONS:
-- githubGetFile: Get the contents of a file from a repository
-- githubPushFiles: Push multiple files to a repository in a single commit
-- githubCreateRepository: Create a new GitHub repository
-- githubCreateBranch: Create a new branch in a repository
-
-ISSUE OPERATIONS:
-- githubListIssues: List issues in a repository with filtering options
-- githubCreateIssue: Create a new issue in a repository
-- githubGetIssue: Get details about a specific issue
-- githubUpdateIssue: Update an existing issue (title, body, state)
-
-PULL REQUEST OPERATIONS:
-- githubListPullRequests: List pull requests in a repository
-- githubCreatePullRequest: Create a new pull request
-- githubGetPullRequest: Get details about a specific pull request
-
-CODE OPERATIONS:
-- githubSearchCode: Search for code across GitHub repositories
-- githubListCommits: List commits in a repository
+<built-in-tools>
 
 TASK SCHEDULING:
 - scheduleTask: Schedule a task to be executed at a later time
 - listScheduledTasks: List all currently scheduled tasks with their details
 - deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
+
+</built-in-tools>
 `,
             messages: processedMessages,
             tools: this.combinedTools || {},
