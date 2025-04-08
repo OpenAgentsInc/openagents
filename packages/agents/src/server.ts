@@ -8,6 +8,7 @@ import {
   generateId,
   streamText,
   type StreamTextOnFinishCallback,
+  type ToolExecutionOptions,
 } from "ai";
 import { processToolCalls } from "./utils";
 import { tools, executions } from "./tools";
@@ -43,12 +44,78 @@ export const agentContext = new AsyncLocalStorage<Coder>();
  */
 export class Coder extends AIChatAgent<Env> {
   githubToken?: string;
-  tools?: typeof tools;
+  private plugins: AgentPlugin[] = [];
+  private combinedTools: Record<string, any>;
 
-  /**
-   * Handles incoming chat messages and manages the response stream
-   * @param onFinish - Callback function executed when streaming completes
-   */
+  constructor(state: DurableObjectState, env: Env) {
+    console.log("=== CODER AGENT CONSTRUCTOR CALLED ===");
+    super(state, env);
+
+    // Initialize with the base tools
+    this.combinedTools = { ...tools };
+    console.log(`Base tools loaded: ${Object.keys(tools).length} tools`);
+
+    try {
+      // Add the GitHub plugin
+      console.log("Creating GitHub plugin...");
+      const githubPlugin = new OpenAIAgentPlugin();
+      console.log("GitHub plugin created successfully");
+
+      this.plugins.push(githubPlugin);
+      console.log(`Total plugins: ${this.plugins.length}`);
+    } catch (pluginError) {
+      console.error("ERROR creating GitHub plugin:", pluginError);
+    }
+
+    // Initialize plugins
+    console.log("Starting plugin initialization...");
+    this.initializePlugins()
+      .then(() => {
+        console.log("Agent plugins initialized successfully");
+      })
+      .catch(err => {
+        console.error("Failed to initialize agent plugins:", err);
+      });
+  }
+
+  private async initializePlugins(): Promise<void> {
+    console.log("=== INITIALIZING AGENT PLUGINS ===");
+    console.log(`Found ${this.plugins.length} plugins to initialize`);
+
+    try {
+      // Initialize each plugin
+      for (const plugin of this.plugins) {
+        console.log(`Initializing plugin: ${plugin.name}...`);
+
+        try {
+          await plugin.initialize(this);
+          console.log(`Plugin ${plugin.name} initialized successfully`);
+
+          // Get tools from the plugin
+          const pluginTools = plugin.getTools();
+          const toolCount = Object.keys(pluginTools).length;
+          console.log(`Plugin ${plugin.name} provided ${toolCount} tools`);
+
+          if (toolCount > 0) {
+            console.log(`Tools from ${plugin.name}:`, Object.keys(pluginTools));
+
+            // Add tools to the combined tools
+            this.combinedTools = { ...this.combinedTools, ...pluginTools };
+            console.log(`Added ${toolCount} tools from ${plugin.name} to combined tools`);
+          }
+        } catch (pluginError) {
+          console.error(`ERROR initializing plugin ${plugin.name}:`, pluginError);
+        }
+      }
+
+      const totalTools = Object.keys(this.combinedTools).length;
+      console.log(`=== PLUGIN INITIALIZATION COMPLETE ===`);
+      console.log(`Total tools available: ${totalTools}`);
+      console.log("Available tools:", Object.keys(this.combinedTools));
+    } catch (error) {
+      console.error("CRITICAL ERROR initializing plugins:", error);
+    }
+  }
 
   override async onMessage(connection: Connection, message: WSMessage) {
     console.log('[onMessage] Received message:', typeof message);
@@ -74,13 +141,11 @@ export class Coder extends AIChatAgent<Env> {
         console.log('[onMessage] Parsed request data:', {
           messageCount: messages?.length,
           hasGithubToken: !!githubToken,
-          // list the first 10 characters of the token
           githubToken: githubToken?.slice(0, 15),
         });
 
-        // Set up tool context with GitHub token
+        // Update GitHub token
         this.githubToken = githubToken;
-        this.tools = tools;
 
         // Run the rest of the message handling with the tool context
         console.log('[onMessage] Running with agent context');
@@ -102,26 +167,23 @@ export class Coder extends AIChatAgent<Env> {
         execute: async (dataStream) => {
           // Get the current context with GitHub token
           const context = agentContext.getStore();
-          const githubToken = context?.githubToken;
-
           console.log('[onChatMessage] Context retrieved:', {
             hasContext: !!context,
-            hasGithubToken: !!githubToken,
-            hasTools: !!context?.tools,
-            availableTools: context?.tools ? Object.keys(context.tools) : [],
-            tokenPrefix: githubToken ? githubToken.slice(0, 15) : 'none'
+            hasGithubToken: !!context?.githubToken,
+            hasTools: !!this.combinedTools,
+            availableTools: Object.keys(this.combinedTools),
+            tokenPrefix: context?.githubToken ? context.githubToken.slice(0, 15) : 'none'
           });
 
           // Process any pending tool calls from previous messages
-          // This handles human-in-the-loop confirmations for tools
           const processedMessages = await processToolCalls({
             messages: this.messages,
             dataStream,
-            tools: context?.tools || {},
+            tools: this.combinedTools,
             executions: {
               ...executions,
-              // Add GitHub token to the executions context
-              githubToken
+              // Pass token through the agent context instead
+              getGithubToken: async () => context?.githubToken
             },
           });
 
@@ -132,11 +194,37 @@ export class Coder extends AIChatAgent<Env> {
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
-You have access to GitHub tools that let you interact with GitHub repositories through the Model Context Protocol (MCP):
+You have access to GitHub tools that let you interact with GitHub repositories through the Model Context Protocol (MCP).
+The GitHub token will be automatically provided to the tools that need it.
 
+REPOSITORY OPERATIONS:
+- githubGetFile: Get the contents of a file from a repository
+- githubPushFiles: Push multiple files to a repository in a single commit
+- githubCreateRepository: Create a new GitHub repository
+- githubCreateBranch: Create a new branch in a repository
+
+ISSUE OPERATIONS:
+- githubListIssues: List issues in a repository with filtering options
+- githubCreateIssue: Create a new issue in a repository
+- githubGetIssue: Get details about a specific issue
+- githubUpdateIssue: Update an existing issue (title, body, state)
+
+PULL REQUEST OPERATIONS:
+- githubListPullRequests: List pull requests in a repository
+- githubCreatePullRequest: Create a new pull request
+- githubGetPullRequest: Get details about a specific pull request
+
+CODE OPERATIONS:
+- githubSearchCode: Search for code across GitHub repositories
+- githubListCommits: List commits in a repository
+
+TASK SCHEDULING:
+- scheduleTask: Schedule a task to be executed at a later time
+- listScheduledTasks: List all currently scheduled tasks with their details
+- deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
 `,
             messages: processedMessages,
-            tools: context?.tools || {},
+            tools: this.combinedTools,
             onFinish,
             onError: (error) => {
               console.error("Error while streaming:", error);
