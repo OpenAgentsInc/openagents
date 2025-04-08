@@ -3,6 +3,9 @@ import { useState, useEffect, useCallback } from 'react';
 // import { Client } from "@modelcontextprotocol/sdk/client/index"
 // import { type JSONRPCMessage } from './mcp/types';
 
+
+export { useOpenAgent } from './agents/useOpenAgent';
+
 // Chat module exports
 export * from './chat/types'
 // export * from './chat/useChat'  // Removed
