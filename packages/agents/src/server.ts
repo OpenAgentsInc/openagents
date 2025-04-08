@@ -124,16 +124,20 @@ export class Coder extends AIChatAgent<Env, State> {
       toolNames: mcpTools.map(t => t.name)
     });
 
-    // Update state with MCP data
+    // For testing, only use the get_file_contents tool
+    const testTool = mcpTools.find(t => t.name === 'get_file_contents');
+    const filteredTools = testTool ? [testTool] : [];
+
+    // Update state with filtered MCP data
     this.setState({
       ...this.state,
       prompts: mcpPrompts,
-      tools: mcpTools,
+      tools: filteredTools, // Only use the test tool
       resources: mcpResources,
     });
 
     // Update combinedTools while preserving existing tools
-    const mcpToolsMap = mcpTools.reduce((acc, tool) => {
+    const mcpToolsMap = filteredTools.reduce((acc, tool) => {
       // Convert MCP tool to match the AI tools system structure
       acc[tool.name] = {
         name: tool.name,
@@ -144,20 +148,18 @@ export class Coder extends AIChatAgent<Env, State> {
       return acc;
     }, {} as Record<string, any>);
 
-    const existingTools = this.combinedTools || {};
-
+    // Only include built-in tools and our test tool
     this.combinedTools = {
       ...builtInTools,
-      ...existingTools,
       ...mcpToolsMap
     };
 
     console.log("Tool state after refresh:", {
       builtInTools: Object.keys(builtInTools),
-      existingTools: Object.keys(existingTools),
       mcpTools: Object.keys(mcpToolsMap),
       combinedTools: Object.keys(this.combinedTools),
-      sampleTool: mcpTools[0] ? JSON.stringify(mcpTools[0], null, 2) : 'no tools'
+      sampleTool: filteredTools[0] ? JSON.stringify(filteredTools[0], null, 2) : 'no tools',
+      toolParameters: filteredTools[0] ? JSON.stringify(filteredTools[0].parameters, null, 2) : 'no parameters'
     });
   }
 
@@ -293,11 +295,39 @@ export class Coder extends AIChatAgent<Env, State> {
                 this.state.tools.map(tool => [
                   tool.name,
                   async (args: any) => {
-                    return this.mcp.callTool({
+                    console.log("Executing MCP tool:", {
+                      toolName: tool.name,
                       serverId: tool.serverId,
-                      name: tool.name,
-                      args
-                    }, CallToolResultSchema, {});
+                      args: JSON.stringify(args, null, 2),
+                      hasConnection: !!this.mcp.mcpConnections[tool.serverId]
+                    });
+
+                    try {
+                      const result = await this.mcp.callTool({
+                        serverId: tool.serverId,
+                        name: tool.name,
+                        args
+                      }, CallToolResultSchema, {});
+
+                      console.log("MCP tool execution result:", {
+                        toolName: tool.name,
+                        success: true,
+                        resultType: typeof result,
+                        resultPreview: JSON.stringify(result).slice(0, 100)
+                      });
+
+                      return result;
+                    } catch (error) {
+                      console.error("MCP tool execution error:", {
+                        toolName: tool.name,
+                        error: error instanceof Error ? {
+                          message: error.message,
+                          name: error.name,
+                          stack: error.stack
+                        } : error
+                      });
+                      throw error;
+                    }
                   }
                 ])
               ),
@@ -307,36 +337,62 @@ export class Coder extends AIChatAgent<Env, State> {
           });
 
           // Stream the AI response using GPT-4
+          console.log("Starting stream text with:", {
+            messageCount: processedMessages.length,
+            toolCount: Object.keys(allTools).length,
+            systemPromptLength: this.state.tools.length
+          });
+
           const result = streamText<Record<string, any>>({
             model,
             system: `You are a coding assistant named Coder. Help the user with various software engineering tasks.
 
 ${unstable_getSchedulePrompt({ date: new Date() })}
 
-You have access to a few built-in tools described below and a few GitHub tools through a separate Model Context Protocol service.
+You have access to a few built-in tools described below and a GitHub tool through a separate Model Context Protocol service.
 The GitHub token will be automatically provided to the tools that need it.
 
 <built-in-tools>
-
-TASK SCHEDULING:
+- getWeatherInformation: Get weather information for a location
+- getLocalTime: Get the current time for a location
 - scheduleTask: Schedule a task to be executed at a later time
 - listScheduledTasks: List all currently scheduled tasks with their details
 - deleteScheduledTask: Delete a scheduled task (note: only one task can be scheduled at a time)
-
 </built-in-tools>
 
 <github-tools>
-${this.state.tools.map(tool => `- ${tool.name}`).join('\n')}
+- get_file_contents: Get the contents of a file from a GitHub repository
 </github-tools>
+
+When using get_file_contents, you'll need:
+- owner: The repository owner
+- repo: The repository name
+- path: The path to the file
+- ref: (optional) The branch/commit/tag to get the file from
 `,
             messages: processedMessages,
             tools: allTools,
             onFinish: (result) => {
               console.log("Stream finished successfully:", {
                 hasResult: !!result,
-                resultKeys: result ? Object.keys(result) : []
+                resultKeys: result ? Object.keys(result) : [],
+                resultPreview: result ? JSON.stringify(result).slice(0, 100) : 'no result'
               });
-              return onFinish(result as any);
+
+              try {
+                const finalResult = onFinish(result as any);
+                console.log("onFinish callback completed successfully");
+                return finalResult;
+              } catch (error) {
+                console.error("Error in onFinish callback:", {
+                  error: error instanceof Error ? {
+                    message: error.message,
+                    name: error.name,
+                    stack: error.stack
+                  } : error
+                });
+                throw error;
+              }
             },
             onError: (error: unknown) => {
               // Improved error handling and logging
