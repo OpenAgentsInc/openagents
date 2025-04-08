@@ -339,12 +339,17 @@ ${this.state.tools.map(tool => `- ${tool.name}`).join('\n')}
               return onFinish(result as any);
             },
             onError: (error: unknown) => {
-              console.error("Error while streaming:", {
-                errorMessage: error instanceof Error ? error.message : String(error),
-                errorName: error instanceof Error ? error.name : undefined,
-                errorStack: error instanceof Error ? error.stack : undefined,
-                type: typeof error
-              });
+              // Improved error handling and logging
+              const errorDetails = {
+                message: error instanceof Error ? error.message :
+                  typeof error === 'object' && error !== null ? JSON.stringify(error) :
+                    String(error),
+                name: error instanceof Error ? error.name : typeof error,
+                stack: error instanceof Error ? error.stack : undefined,
+                raw: error // For debugging
+              };
+
+              console.error("Streaming error:", errorDetails);
             },
             maxSteps: 10,
           });
@@ -353,12 +358,17 @@ ${this.state.tools.map(tool => `- ${tool.name}`).join('\n')}
             // Merge the AI response stream with tool execution outputs
             result.mergeIntoDataStream(dataStream);
           } catch (error: unknown) {
-            console.error("Error merging streams:", {
-              errorMessage: error instanceof Error ? error.message : String(error),
-              errorName: error instanceof Error ? error.name : undefined,
-              errorStack: error instanceof Error ? error.stack : undefined,
-              type: typeof error
-            });
+            // Improved error handling and logging
+            const errorDetails = {
+              message: error instanceof Error ? error.message :
+                typeof error === 'object' && error !== null ? JSON.stringify(error) :
+                  String(error),
+              name: error instanceof Error ? error.name : typeof error,
+              stack: error instanceof Error ? error.stack : undefined,
+              raw: error // For debugging
+            };
+
+            console.error("Stream merging error:", errorDetails);
           }
         },
       });
