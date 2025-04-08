@@ -7,6 +7,9 @@
   "name": "mcp-github",
   "main": "src/index.ts",
   "compatibility_date": "2025-03-10",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "routes": [
     {
       "pattern": "mcp-github.openagents.com",
@@ -31,10 +34,6 @@
   },
   "observability": {
     "enabled": true
-  },
-  "assets": {
-    "directory": "./static/",
-    "binding": "ASSETS"
   },
   /**
 	 * Smart Placement
