@@ -18,24 +18,31 @@ function MessageList({ messages }: { messages: OpenAgent['messages'] }) {
             if (part.type === 'tool-invocation') {
               const { toolInvocation } = part;
               return (
-                <div key={`${message.id}-${index}`} className="my-2 p-3 bg-muted rounded-md">
-                  <div className="font-medium">
-                    Tool: {toolInvocation.toolName}
+                <div key={`${message.id}-${index}`} className="my-2 p-3 bg-muted/50 rounded-md border border-border">
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-primary">
+                      {toolInvocation.toolName}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {toolInvocation.state === 'call' ? '(Calling...)' : '(Result)'}
+                    </div>
                   </div>
                   {toolInvocation.state === 'call' && (
-                    <div className="mt-1">
+                    <div className="mt-2">
                       <div className="text-sm text-muted-foreground">Arguments:</div>
-                      <pre className="mt-1 text-sm bg-background p-2 rounded">
+                      <pre className="mt-1 text-sm bg-background/50 p-2 rounded border border-border/50">
                         {JSON.stringify(toolInvocation.args, null, 2)}
                       </pre>
                     </div>
                   )}
                   {toolInvocation.state === 'result' && (
-                    <div className="mt-1">
+                    <div className="mt-2">
                       <div className="text-sm text-muted-foreground">Result:</div>
-                      <pre className="mt-1 text-sm bg-background p-2 rounded">
-                        {JSON.stringify(toolInvocation.result, null, 2)}
-                      </pre>
+                      <div className="mt-1 text-sm bg-background/50 p-2 rounded border border-border/50">
+                        {typeof toolInvocation.result === 'string'
+                          ? toolInvocation.result
+                          : JSON.stringify(toolInvocation.result, null, 2)}
+                      </div>
                     </div>
                   )}
                 </div>

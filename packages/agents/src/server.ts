@@ -1,12 +1,13 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Agent, routeAgentRequest, unstable_callable } from "agents"
-import { streamText, createDataStreamResponse, type UIMessage, generateId, type Message, generateText } from "ai";
+import { streamText, createDataStreamResponse, type UIMessage, generateId, type Message, generateText, type CoreMessage, type ToolInvocation } from "ai";
 import { env } from "cloudflare:workers";
 import { tools } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createWorkersAI } from 'workers-ai-provider';
 import { z } from "zod";
 import { createGroq } from '@ai-sdk/groq';
+import type { UIPart } from "@openagents/core/src/chat/types";
 
 const groq = createGroq({
   apiKey: env.GROQ_API_KEY,
@@ -50,34 +51,81 @@ export class Coder extends Agent<Env, CoderState> {
     const stateMessages = this.state.messages || [];
     const incomingMessages = Array.isArray(messages) ? messages : [];
 
-    // Combine existing state messages with any new incoming messages
-    const currentMessages = [...stateMessages, ...incomingMessages];
+    // Convert messages to a format the model can handle
+    const processedMessages = [...stateMessages, ...incomingMessages].map(msg => {
+      // If the message has tool invocations, we need to convert them to a format the model understands
+      if (msg.parts?.some(part => part.type === 'tool-invocation')) {
+        // Group tool invocations by toolCallId
+        const toolCallsById = new Map();
+
+        msg.parts.forEach(part => {
+          if (part.type === 'tool-invocation') {
+            const { toolInvocation } = part;
+            const existing = toolCallsById.get(toolInvocation.toolCallId) || {};
+            if (toolInvocation.state === 'call') {
+              toolCallsById.set(toolInvocation.toolCallId, {
+                ...existing,
+                call: toolInvocation
+              });
+            } else if (toolInvocation.state === 'result') {
+              toolCallsById.set(toolInvocation.toolCallId, {
+                ...existing,
+                result: toolInvocation
+              });
+            }
+          }
+        });
+
+        // Only include complete tool calls (those with both call and result)
+        const newParts = [];
+        for (const [_, { call, result }] of toolCallsById) {
+          if (call && result) {
+            newParts.push({
+              type: 'text' as const,
+              text: `Tool ${call.toolName} was called with ${JSON.stringify(call.args)} and returned: ${result.result}`
+            });
+          }
+        }
+
+        return {
+          ...msg,
+          parts: newParts.length > 0 ? newParts : msg.parts
+        };
+      }
+      return msg;
+    });
 
     const result = await generateText({
-      system: `You are a helpful assistant. If the user asks you to do something, use one of your tools. Otherwise respond with a helpful answer.
+      system: `You are a helpful assistant with access to tools. When a user asks about weather, ALWAYS use the getWeatherInformation tool - do not make up responses or refuse to help.
 
-      Your tools:
-      - getWeatherInformation: show the weather in a given city to the user`,
+      Example interaction:
+      User: "what's the weather in austin"
+      Assistant: Let me check the weather for you.
+      [Uses getWeatherInformation tool with city="austin"]
+
+      Never say you can't help or that you don't have access to weather data - you have the getWeatherInformation tool.`,
       model,
-      messages: currentMessages,
+      messages: processedMessages,
       maxTokens: 2500,
-      temperature: 0.9,
+      temperature: 0.7,
       tools: {
         getWeatherInformation: {
-          description: "show the weather in a given city to the user",
-          parameters: z.object({ city: z.string() }),
+          description: "Get the current weather for a city. ALWAYS use this tool when asked about weather.",
+          parameters: z.object({
+            city: z.string().describe("The name of the city to get weather for")
+          }),
           execute: async ({ city }) => {
             console.log(`Getting weather information for ${city}`);
-            return `The weather in ${city} is sunny`;
+            return `The weather in ${city} is sunny and 75°F`;
           },
         },
       },
       maxSteps: 5,
-      // toolChoice: 'none'
-    })
+      toolChoice: "auto"
+    });
 
     // Create message parts array to handle both text and tool calls
-    const messageParts = [];
+    const messageParts: UIPart[] = [];
 
     // Add text part if there is text content
     if (result.text) {
@@ -87,50 +135,52 @@ export class Coder extends Agent<Env, CoderState> {
       });
     }
 
-    // Add tool call parts if there are any
+    // Add tool calls and their results together
     if (result.toolCalls && result.toolCalls.length > 0) {
-      result.toolCalls.forEach(toolCall => {
+      for (const toolCall of result.toolCalls) {
+        const toolResult = result.toolResults?.find(r => r.toolCallId === toolCall.toolCallId);
+
+        // Add the tool call
         messageParts.push({
           type: 'tool-invocation' as const,
           toolInvocation: {
-            state: 'call',
+            state: 'call' as const,
             toolCallId: toolCall.toolCallId,
-            toolName: toolCall.toolName,
+            toolName: toolCall.toolName as "getWeatherInformation",
             args: toolCall.args
           }
         });
-      });
-    }
 
-    // Add tool results if there are any
-    if (result.toolResults && result.toolResults.length > 0) {
-      result.toolResults.forEach(toolResult => {
-        messageParts.push({
-          type: 'tool-invocation' as const,
-          toolInvocation: {
-            state: 'result',
-            toolCallId: toolResult.toolCallId,
-            toolName: toolResult.toolName,
-            result: toolResult.result
-          }
-        });
-      });
+        // Immediately add its result if available
+        if (toolResult) {
+          messageParts.push({
+            type: 'tool-invocation' as const,
+            toolInvocation: {
+              state: 'result' as const,
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName as "getWeatherInformation",
+              args: toolCall.args,
+              result: toolResult.result
+            }
+          });
+        }
+      }
     }
 
     // Update state with the new message containing all parts
     this.setState({
       messages: [
-        ...currentMessages,  // Preserve all existing messages
+        ...stateMessages,
         {
           id: generateId(),
-          role: 'assistant',
-          content: result.text,
+          role: 'assistant' as const,
+          content: result.text || '',
+          createdAt: new Date(),
           parts: messageParts
         }
       ]
     });
 
-    // Return empty object since we're not using streams anymore
     return {};
   }
 }
