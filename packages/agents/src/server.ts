@@ -40,7 +40,7 @@ export class Coder extends Agent<Env, CoderState> {
   })
   async setGithubToken(token: string) {
     this.githubToken = token;
-    
+
     // If tools are already loaded, re-wrap them with the new token
     if (Object.keys(this.tools).length > 0 && this.mcpClient) {
       console.log("Re-wrapping existing tools with new token");
@@ -56,13 +56,13 @@ export class Coder extends Agent<Env, CoderState> {
   async getGithubToken() {
     return this.githubToken;
   }
-  
+
   /**
    * Helper method to wrap a tool with authentication
    */
   private wrapTool(rawToolDefinition: any): any {
     console.log(`Wrapping tool: ${rawToolDefinition.name}`);
-    
+
     // Ensure the raw definition has the expected structure
     if (!rawToolDefinition.name || !rawToolDefinition.description || !rawToolDefinition.parameters) {
       console.error("Invalid raw tool definition:", rawToolDefinition);
@@ -98,9 +98,9 @@ export class Coder extends Agent<Env, CoderState> {
             arguments: args, // Pass the original arguments
             headers: headers // Pass the constructed headers
           });
-          
+
           console.log(`Wrapped tool ${rawToolDefinition.name} execution successful.`);
-          
+
           // The result from callTool likely needs parsing/checking
           if (result?.content?.[0]?.type === 'text') {
             try {
@@ -110,7 +110,7 @@ export class Coder extends Agent<Env, CoderState> {
               return { error: "Failed to parse response from tool server." };
             }
           }
-          
+
           return result; // Return raw result if not expected format
         } catch (error) {
           console.error(`Error executing wrapped tool ${rawToolDefinition.name} via mcpClient:`, error);
@@ -119,7 +119,7 @@ export class Coder extends Agent<Env, CoderState> {
       }
     };
   }
-  
+
   /**
    * Helper method to wrap all tools and set them on the client
    */
@@ -140,6 +140,7 @@ export class Coder extends Agent<Env, CoderState> {
     // Store the WRAPPED tools on the agent instance
     this.tools = wrappedTools;
     console.log(`Loaded and wrapped ${Object.keys(this.tools).length} tools.`);
+    return wrappedTools;
   }
 
   @unstable_callable({
@@ -166,9 +167,9 @@ export class Coder extends Agent<Env, CoderState> {
     console.log(`Received ${Object.keys(rawTools).length} raw tool definitions.`);
 
     // Wrap and set the tools
-    this.wrapAndSetTools(rawTools);
+    const tools = this.wrapAndSetTools(rawTools);
 
-    return { success: true }; // Return success
+    return { success: true, tools }; // Return success
   }
 
   @unstable_callable({
@@ -178,27 +179,25 @@ export class Coder extends Agent<Env, CoderState> {
   async infer() {
     return agentContext.run(this, async () => {
       // If there are no tools, load them
-      if (Object.keys(this.tools).length === 0) {
-        await this.loadMCPTools()
-      }
+      const loaded = await this.loadMCPTools()
+      const tools = loaded.tools
+
+      const stringListOfAllToolNames = Object.keys(tools).join(", ")
+      console.log("Loaded tools: " + stringListOfAllToolNames)
 
       // Get current state messages
       const messages = this.state.messages || [];
 
       const result = await generateText({
-        system: `You are a helpful assistant with access to tools. When a user asks about weather, ALWAYS use the getWeatherInformation tool - do not make up responses or refuse to help.
+        system: `You are a helpful assistant with access to tools. Tell the user which tools you have access to.
 
-      Example interaction:
-      User: "what's the weather in austin"
-      Assistant: Let me check the weather for you.
-      [Uses getWeatherInformation tool with city="austin"]
-
-      Never say you can't help or that you don't have access to weather data - you have the getWeatherInformation tool.`,
+      Your tools are: ${stringListOfAllToolNames}
+    `,
         model,
         messages,
         maxTokens: 2500,
         temperature: 0.7,
-        tools: this.tools, // Use the wrapped tools directly
+        tools,
         maxSteps: 5,
         toolChoice: "auto"
       });
