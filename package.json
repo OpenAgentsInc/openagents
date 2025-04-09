@@ -15,6 +15,7 @@
     "d": "yarn workspace @openagents/chatserver deploy && yarn workspace @openagents/agents deploy",
     "d:chat": "yarn workspace @openagents/chatserver deploy",
     "d:agents": "yarn workspace @openagents/agents deploy",
+    "d:mcp": "yarn workspace @openagents/mcp-github-server deploy",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
     "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
@@ -23,9 +24,12 @@
     "clean:onyx": "yarn clean && yarn workspace @openagents/onyx prebuild:clean"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.0.2",
     "@types/react": "19.0.0",
     "prettier": "^3.5.3",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vite": "^6.2.5",
+    "wrangler": "^4.9.0"
   },
   "resolutions": {
     "react-native": "0.76.7",

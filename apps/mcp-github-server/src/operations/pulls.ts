@@ -160,7 +160,8 @@ export const GetPullRequestReviewsSchema = z.object({
 
 // Function implementations
 export async function createPullRequest(
-  params: z.infer<typeof CreatePullRequestSchema>
+  params: z.infer<typeof CreatePullRequestSchema>,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof GitHubPullRequestSchema>> {
   const { owner, repo, ...options } = CreatePullRequestSchema.parse(params);
 
@@ -169,6 +170,7 @@ export async function createPullRequest(
     {
       method: "POST",
       body: options,
+      token: authOptions?.token
     }
   );
 
@@ -178,10 +180,12 @@ export async function createPullRequest(
 export async function getPullRequest(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof GitHubPullRequestSchema>> {
   const response = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`,
+    { token: authOptions?.token }
   );
   return GitHubPullRequestSchema.parse(response);
 }
@@ -189,7 +193,8 @@ export async function getPullRequest(
 export async function listPullRequests(
   owner: string,
   repo: string,
-  options: Omit<z.infer<typeof ListPullRequestsSchema>, 'owner' | 'repo'>
+  options: Omit<z.infer<typeof ListPullRequestsSchema>, 'owner' | 'repo'>,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof GitHubPullRequestSchema>[]> {
   const url = new URL(`https://api.github.com/repos/${owner}/${repo}/pulls`);
 
@@ -201,7 +206,7 @@ export async function listPullRequests(
   if (options.per_page) url.searchParams.append('per_page', options.per_page.toString());
   if (options.page) url.searchParams.append('page', options.page.toString());
 
-  const response = await githubRequest(url.toString());
+  const response = await githubRequest(url.toString(), { token: authOptions?.token });
   return z.array(GitHubPullRequestSchema).parse(response);
 }
 
@@ -209,13 +214,15 @@ export async function createPullRequestReview(
   owner: string,
   repo: string,
   pullNumber: number,
-  options: Omit<z.infer<typeof CreatePullRequestReviewSchema>, 'owner' | 'repo' | 'pull_number'>
+  options: Omit<z.infer<typeof CreatePullRequestReviewSchema>, 'owner' | 'repo' | 'pull_number'>,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof PullRequestReviewSchema>> {
   const response = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`,
     {
       method: 'POST',
       body: options,
+      token: authOptions?.token
     }
   );
   return PullRequestReviewSchema.parse(response);
@@ -225,13 +232,15 @@ export async function mergePullRequest(
   owner: string,
   repo: string,
   pullNumber: number,
-  options: Omit<z.infer<typeof MergePullRequestSchema>, 'owner' | 'repo' | 'pull_number'>
+  options: Omit<z.infer<typeof MergePullRequestSchema>, 'owner' | 'repo' | 'pull_number'>,
+  authOptions?: { token?: string }
 ): Promise<any> {
   return githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/merge`,
     {
       method: 'PUT',
       body: options,
+      token: authOptions?.token
     }
   );
 }
@@ -239,10 +248,12 @@ export async function mergePullRequest(
 export async function getPullRequestFiles(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof PullRequestFileSchema>[]> {
   const response = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/files`
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/files`,
+    { token: authOptions?.token }
   );
   return z.array(PullRequestFileSchema).parse(response);
 }
@@ -251,13 +262,15 @@ export async function updatePullRequestBranch(
   owner: string,
   repo: string,
   pullNumber: number,
-  expectedHeadSha?: string
+  expectedHeadSha?: string,
+  authOptions?: { token?: string }
 ): Promise<void> {
   await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/update-branch`,
     {
       method: "PUT",
       body: expectedHeadSha ? { expected_head_sha: expectedHeadSha } : undefined,
+      token: authOptions?.token
     }
   );
 }
@@ -265,10 +278,12 @@ export async function updatePullRequestBranch(
 export async function getPullRequestComments(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof PullRequestCommentSchema>[]> {
   const response = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/comments`
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/comments`,
+    { token: authOptions?.token }
   );
   return z.array(PullRequestCommentSchema).parse(response);
 }
@@ -276,10 +291,12 @@ export async function getPullRequestComments(
 export async function getPullRequestReviews(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof PullRequestReviewSchema>[]> {
   const response = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`
+    `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`,
+    { token: authOptions?.token }
   );
   return z.array(PullRequestReviewSchema).parse(response);
 }
@@ -287,15 +304,17 @@ export async function getPullRequestReviews(
 export async function getPullRequestStatus(
   owner: string,
   repo: string,
-  pullNumber: number
+  pullNumber: number,
+  authOptions?: { token?: string }
 ): Promise<z.infer<typeof CombinedStatusSchema>> {
   // First get the PR to get the head SHA
-  const pr = await getPullRequest(owner, repo, pullNumber);
+  const pr = await getPullRequest(owner, repo, pullNumber, authOptions);
   const sha = pr.head.sha;
 
   // Then get the combined status for that SHA
   const response = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`
+    `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/status`,
+    { token: authOptions?.token }
   );
   return CombinedStatusSchema.parse(response);
 }

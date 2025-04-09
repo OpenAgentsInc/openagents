@@ -1,8 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
-// import { SSEClientTransport } from './mcp/sse'
-// import { Client } from "@modelcontextprotocol/sdk/client/index"
-// import { type JSONRPCMessage } from './mcp/types';
-
+export { type OpenAgent, useOpenAgent } from './agents/useOpenAgent';
 // Chat module exports
 export * from './chat/types'
 // export * from './chat/useChat'  // Removed

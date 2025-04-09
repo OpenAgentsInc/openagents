@@ -27,7 +27,7 @@ export const ApiKeyProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (!settings) return;
 
       const { settingsRepository } = await import('@openagents/core/src/db/repositories');
-      const providers = ['openrouter', 'anthropic', 'openai', 'google', 'ollama', 'lmstudio'];
+      const providers = ['openrouter', 'anthropic', 'openai', 'google', 'ollama', 'lmstudio', 'github'];
       const keys: Record<string, string> = {};
 
       for (const provider of providers) {

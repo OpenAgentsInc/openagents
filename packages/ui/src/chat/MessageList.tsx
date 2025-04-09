@@ -10,6 +10,7 @@ interface MessageListProps {
 
 export const MessageList = ({ messages }: MessageListProps) => {
   const visibleMessages = messages.filter(message => message.role !== 'system')
+  console.log('visibleMessages', visibleMessages)
 
   return (
     <ScrollView
@@ -74,6 +75,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     maxWidth: '80%',
     padding: 12,
+    backgroundColor: '#333', // Add background for all messages
   },
   userMessageContainer: {
     alignSelf: 'flex-end',

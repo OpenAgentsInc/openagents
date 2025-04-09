@@ -32,14 +32,14 @@ export const SearchCodeSchema = SearchOptions;
 export const SearchUsersSchema = SearchUsersOptions;
 export const SearchIssuesSchema = SearchIssuesOptions;
 
-export async function searchCode(params: z.infer<typeof SearchCodeSchema>) {
-  return githubRequest(buildUrl("https://api.github.com/search/code", params));
+export async function searchCode(params: z.infer<typeof SearchCodeSchema>, authOptions?: { token?: string }) {
+  return githubRequest(buildUrl("https://api.github.com/search/code", params), { token: authOptions?.token });
 }
 
-export async function searchIssues(params: z.infer<typeof SearchIssuesSchema>) {
-  return githubRequest(buildUrl("https://api.github.com/search/issues", params));
+export async function searchIssues(params: z.infer<typeof SearchIssuesSchema>, authOptions?: { token?: string }) {
+  return githubRequest(buildUrl("https://api.github.com/search/issues", params), { token: authOptions?.token });
 }
 
-export async function searchUsers(params: z.infer<typeof SearchUsersSchema>) {
-  return githubRequest(buildUrl("https://api.github.com/search/users", params));
+export async function searchUsers(params: z.infer<typeof SearchUsersSchema>, authOptions?: { token?: string }) {
+  return githubRequest(buildUrl("https://api.github.com/search/users", params), { token: authOptions?.token });
 }

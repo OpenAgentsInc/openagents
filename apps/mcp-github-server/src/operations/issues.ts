@@ -52,32 +52,38 @@ export const UpdateIssueOptionsSchema = z.object({
   state: z.enum(["open", "closed"]).optional(),
 });
 
-export async function getIssue(owner: string, repo: string, issue_number: number) {
-  return githubRequest(`https://api.github.com/repos/${owner}/${repo}/issues/${issue_number}`);
+export async function getIssue(owner: string, repo: string, issue_number: number, authOptions?: { token?: string }) {
+  return githubRequest(`https://api.github.com/repos/${owner}/${repo}/issues/${issue_number}`, {
+    token: authOptions?.token
+  });
 }
 
 export async function addIssueComment(
   owner: string,
   repo: string,
   issue_number: number,
-  body: string
+  body: string,
+  authOptions?: { token?: string }
 ) {
   return githubRequest(`https://api.github.com/repos/${owner}/${repo}/issues/${issue_number}/comments`, {
     method: "POST",
     body: { body },
+    token: authOptions?.token
   });
 }
 
 export async function createIssue(
   owner: string,
   repo: string,
-  options: z.infer<typeof CreateIssueOptionsSchema>
+  options: z.infer<typeof CreateIssueOptionsSchema>,
+  authOptions?: { token?: string }
 ) {
   return githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/issues`,
     {
       method: "POST",
       body: options,
+      token: authOptions?.token
     }
   );
 }
@@ -85,7 +91,8 @@ export async function createIssue(
 export async function listIssues(
   owner: string,
   repo: string,
-  options: Omit<z.infer<typeof ListIssuesOptionsSchema>, "owner" | "repo">
+  options: Omit<z.infer<typeof ListIssuesOptionsSchema>, "owner" | "repo">,
+  authOptions?: { token?: string }
 ) {
   const urlParams: Record<string, string | undefined> = {
     direction: options.direction,
@@ -98,7 +105,8 @@ export async function listIssues(
   };
 
   return githubRequest(
-    buildUrl(`https://api.github.com/repos/${owner}/${repo}/issues`, urlParams)
+    buildUrl(`https://api.github.com/repos/${owner}/${repo}/issues`, urlParams),
+    { token: authOptions?.token }
   );
 }
 
@@ -106,13 +114,15 @@ export async function updateIssue(
   owner: string,
   repo: string,
   issue_number: number,
-  options: Omit<z.infer<typeof UpdateIssueOptionsSchema>, "owner" | "repo" | "issue_number">
+  options: Omit<z.infer<typeof UpdateIssueOptionsSchema>, "owner" | "repo" | "issue_number">,
+  authOptions?: { token?: string }
 ) {
   return githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/issues/${issue_number}`,
     {
       method: "PATCH",
       body: options,
+      token: authOptions?.token
     }
   );
 }

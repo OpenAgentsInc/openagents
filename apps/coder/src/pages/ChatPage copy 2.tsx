@@ -14,10 +14,6 @@ import { Toggle } from "@/components/ui/toggle";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function ChatPage() {
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    const savedTheme = localStorage.getItem("theme");
-    return (savedTheme as "dark" | "light") || "dark";
-  });
   const [showDebug, setShowDebug] = useState(false);
   const [latestError, setLatestError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -26,27 +22,8 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, []);
 
-  // --- Theme Handling ---
-  useEffect(() => {
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-      document.documentElement.classList.remove("light");
-    } else {
-      document.documentElement.classList.remove("dark");
-      document.documentElement.classList.add("light");
-    }
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-  };
-
   // --- Initialize Agent ---
-  const agent = useAgent({
-    agent: "coder"
-  });
+  const agent = useAgent({ agent: "coder", name: "session-124" });
 
   const { apiKeys } = useApiKeyContext();
 
@@ -63,7 +40,7 @@ export default function ChatPage() {
       githubToken: apiKeys['github'] || ''
     },
     agent,
-    maxSteps: 5,
+    // maxSteps: 5,
     onError: (error) => {
       console.error("Agent chat error caught by onError:", error);
       const errorString = typeof error === 'string'

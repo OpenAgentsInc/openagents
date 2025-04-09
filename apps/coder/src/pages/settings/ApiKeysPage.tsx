@@ -31,7 +31,7 @@ export default function ApiKeysPage() {
   } = useSettings();
 
   // Only include Anthropic and OpenRouter
-  const providers = ["anthropic", "openrouter", "google"];
+  const providers = ["anthropic", "openrouter", "google", "github"];
 
   // API keys state
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
@@ -125,6 +125,10 @@ export default function ApiKeysPage() {
         return "Anthropic provides Claude models with exceptional reasoning capabilities.";
       case "openrouter":
         return "OpenRouter provides access to many AI models from different providers.";
+      case "github":
+        return "GitHub token is used for repository access and code-related features.";
+      case "google":
+        return "Google provides access to Gemini and other AI models.";
       default:
         return "";
     }

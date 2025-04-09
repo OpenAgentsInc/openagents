@@ -14,13 +14,15 @@ export async function listCommits(
   repo: string,
   page?: number,
   perPage?: number,
-  sha?: string
+  sha?: string,
+  authOptions?: { token?: string }
 ) {
   return githubRequest(
     buildUrl(`https://api.github.com/repos/${owner}/${repo}/commits`, {
       page: page?.toString(),
       per_page: perPage?.toString(),
       sha
-    })
+    }),
+    { token: authOptions?.token }
   );
 }

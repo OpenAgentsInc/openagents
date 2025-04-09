@@ -101,14 +101,15 @@ export async function createOrUpdateFile(
   content: string,
   message: string,
   branch: string,
-  sha?: string
+  sha?: string,
+  authOptions?: { token?: string }
 ) {
   const encodedContent = btoa(content);
 
   let currentSha = sha;
   if (!currentSha) {
     try {
-      const existingFile = await getFileContents(owner, repo, path, branch);
+      const existingFile = await getFileContents(owner, repo, path, branch, authOptions?.token);
       if (!Array.isArray(existingFile)) {
         currentSha = existingFile.sha;
       }
@@ -128,6 +129,7 @@ export async function createOrUpdateFile(
   const response = await githubRequest(url, {
     method: "PUT",
     body,
+    token: authOptions?.token
   });
 
   return GitHubCreateUpdateFileResponseSchema.parse(response);
@@ -137,7 +139,8 @@ async function createTree(
   owner: string,
   repo: string,
   files: FileOperation[],
-  baseTree?: string
+  baseTree?: string,
+  authOptions?: { token?: string }
 ) {
   const tree = files.map((file) => ({
     path: file.path,
@@ -154,6 +157,7 @@ async function createTree(
         tree,
         base_tree: baseTree,
       },
+      token: authOptions?.token
     }
   );
 
@@ -165,7 +169,8 @@ async function createCommit(
   repo: string,
   message: string,
   tree: string,
-  parents: string[]
+  parents: string[],
+  authOptions?: { token?: string }
 ) {
   const response = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/git/commits`,
@@ -176,6 +181,7 @@ async function createCommit(
         tree,
         parents,
       },
+      token: authOptions?.token
     }
   );
 
@@ -186,7 +192,8 @@ async function updateReference(
   owner: string,
   repo: string,
   ref: string,
-  sha: string
+  sha: string,
+  authOptions?: { token?: string }
 ) {
   const response = await githubRequest(
     `https://api.github.com/repos/${owner}/${repo}/git/refs/${ref}`,
@@ -196,6 +203,7 @@ async function updateReference(
         sha,
         force: true,
       },
+      token: authOptions?.token
     }
   );
 
@@ -207,16 +215,18 @@ export async function pushFiles(
   repo: string,
   branch: string,
   files: FileOperation[],
-  message: string
+  message: string,
+  authOptions?: { token?: string }
 ) {
   const refResponse = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`
+    `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${branch}`,
+    { token: authOptions?.token }
   );
 
   const ref = GitHubReferenceSchema.parse(refResponse);
   const commitSha = ref.object.sha;
 
-  const tree = await createTree(owner, repo, files, commitSha);
-  const commit = await createCommit(owner, repo, message, tree.sha, [commitSha]);
-  return await updateReference(owner, repo, `heads/${branch}`, commit.sha);
+  const tree = await createTree(owner, repo, files, commitSha, authOptions);
+  const commit = await createCommit(owner, repo, message, tree.sha, [commitSha], authOptions);
+  return await updateReference(owner, repo, `heads/${branch}`, commit.sha, authOptions);
 }
