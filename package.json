@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "website": "yarn workspace @openagents/website dev",
     "chat:deploy": "yarn workspace @openagents/chatserver deploy",
     "coder": "yarn workspace @openagents/coder start",
     "onyx": "yarn workspace @openagents/onyx ios",
