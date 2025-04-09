@@ -8,7 +8,11 @@ export function AgentChat({ agent }: { agent: OpenAgent }) {
         {agent.messages.map((message) => (
           <div key={message.id}>
             {message.parts.map((part) => (
-              <p key={part.type}>{part.text}</p>
+              <p key={part.type}>
+                {part.type === 'text' && part.text}
+                {part.type === 'reasoning' && part.reasoning}
+                {part.type === 'file' && part.data}
+              </p>
             ))}
           </div>
         ))}
