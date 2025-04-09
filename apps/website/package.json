@@ -9,7 +9,8 @@
     "deploy": "yarn build && wrangler deploy",
     "dev": "react-router dev",
     "preview": "yarn build && vite preview",
-    "typecheck": "yarn cf-typegen && react-router typegen && tsc -b"
+    "typecheck": "yarn cf-typegen && react-router typegen && tsc -b",
+    "t": "tsc --noEmit"
   },
   "dependencies": {
     "isbot": "^5.1.17",
