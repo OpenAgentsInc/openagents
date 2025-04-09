@@ -9,6 +9,7 @@ export type OpenAgent = {
   messages: UIMessage[];
   setMessages: (messages: UIMessage[]) => void;
   handleSubmit: (message: string) => void;
+  infer: () => Promise<any>;
 }
 
 // later get this from the agents package
@@ -44,9 +45,14 @@ export function useOpenAgent(agentType: AgentType): OpenAgent {
     })
   }
 
+  const infer = async () => {
+    return await cloudflareAgent.call('infer', [agentState?.messages || []])
+  }
+
   return {
     messages: agentState?.messages || [],
     setMessages: (messages) => cloudflareAgent.setState({ messages }),
-    handleSubmit
+    handleSubmit,
+    infer
   };
 }
