@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 // import { type JSONRPCMessage } from './mcp/types';
 
 
-export { useOpenAgent } from './agents/useOpenAgent';
+export { OpenAgent, useOpenAgent } from './agents/useOpenAgent';
 
 // Chat module exports
 export * from './chat/types'

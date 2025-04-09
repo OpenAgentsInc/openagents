@@ -23,7 +23,12 @@ const demoMessages: UIMessage[] = [{
   }]
 }]
 
-export function useOpenAgent(agentType: AgentType) {
+export type OpenAgent = {
+  messages: UIMessage[];
+  setMessages: (messages: UIMessage[]) => void;
+}
+
+export function useOpenAgent(agentType: AgentType): OpenAgent {
   const [messages, setMessages] = useState<UIMessage[]>(demoMessages);
 
   return { messages, setMessages };
