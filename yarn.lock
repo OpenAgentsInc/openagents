@@ -1102,22 +1102,6 @@
   resolved "https://registry.npmjs.org/@cloudflare/unenv-preset/-/unenv-preset-2.3.1.tgz"
   integrity sha512-Xq57Qd+ADpt6hibcVBO0uLG9zzRgyRhfCUgBT9s+g3+3Ivg5zDyVgLFy40ES1VdNcu8rPNSivm9A+kGP5IVaPg==
 
-"@cloudflare/vite-plugin@^0.5.4":
-  version "1.0.3"
-  resolved "https://registry.yarnpkg.com/@cloudflare/vite-plugin/-/vite-plugin-1.0.3.tgz#dc21199738de987bd238c0ecf110cd7a507894d9"
-  integrity sha512-Vescpz/Je9S+iit72Muoe8CLUMTuNcm08KhrovZfjROrDqIt/vb+jkxJpXNDyCjOhRGjnIIjQ8J8tzE6eb8Gag==
-  dependencies:
-    "@cloudflare/unenv-preset" "2.3.1"
-    "@hattip/adapter-node" "^0.0.49"
-    "@rollup/plugin-replace" "^6.0.1"
-    get-port "^7.1.0"
-    miniflare "4.20250408.0"
-    picocolors "^1.1.1"
-    tinyglobby "^0.2.12"
-    unenv "2.0.0-rc.15"
-    wrangler "4.9.1"
-    ws "8.18.0"
-
 "@cloudflare/vite-plugin@^1.0.2":
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/@cloudflare/vite-plugin/-/vite-plugin-1.0.2.tgz#31a8dd588a383200fad66dab6f0ecdd1dfd485d0"
@@ -1132,6 +1116,22 @@
     tinyglobby "^0.2.12"
     unenv "2.0.0-rc.15"
     wrangler "4.9.0"
+    ws "8.18.0"
+
+"@cloudflare/vite-plugin@^1.0.3":
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/@cloudflare/vite-plugin/-/vite-plugin-1.0.3.tgz#dc21199738de987bd238c0ecf110cd7a507894d9"
+  integrity sha512-Vescpz/Je9S+iit72Muoe8CLUMTuNcm08KhrovZfjROrDqIt/vb+jkxJpXNDyCjOhRGjnIIjQ8J8tzE6eb8Gag==
+  dependencies:
+    "@cloudflare/unenv-preset" "2.3.1"
+    "@hattip/adapter-node" "^0.0.49"
+    "@rollup/plugin-replace" "^6.0.1"
+    get-port "^7.1.0"
+    miniflare "4.20250408.0"
+    picocolors "^1.1.1"
+    tinyglobby "^0.2.12"
+    unenv "2.0.0-rc.15"
+    wrangler "4.9.1"
     ws "8.18.0"
 
 "@cloudflare/vitest-pool-workers@^0.8.8":
@@ -5290,11 +5290,6 @@
   dependencies:
     undici-types "~6.19.2"
 
-"@types/prop-types@*":
-  version "15.7.14"
-  resolved "https://registry.yarnpkg.com/@types/prop-types/-/prop-types-15.7.14.tgz#1433419d73b2a7ebfc6918dcefd2ec0d5cd698f2"
-  integrity sha512-gNMvNH49DJ7OJYv+KAKn0Xp45p8PLl6zo2YnvDIbTd4J6MER2BmWN49TG7n9LvkyihINxeKW8+3bfS2yDC9dzQ==
-
 "@types/qs@*":
   version "6.9.18"
   resolved "https://registry.npmjs.org/@types/qs/-/qs-6.9.18.tgz"
@@ -5332,26 +5327,11 @@
   dependencies:
     "@types/react" "*"
 
-"@types/react@*", "@types/react@19.0.0":
+"@types/react@*", "@types/react@19.0.0", "@types/react@^19.0.12", "@types/react@~18.3.12":
   version "19.0.0"
   resolved "https://registry.npmjs.org/@types/react/-/react-19.0.0.tgz"
   integrity sha512-MY3oPudxvMYyesqs/kW1Bh8y9VqSmf+tzqw3ae8a9DZW68pUe3zAdHeI1jc6iAysuRdACnVknHP8AhwD4/dxtg==
   dependencies:
-    csstype "^3.0.2"
-
-"@types/react@^19.0.12":
-  version "19.1.0"
-  resolved "https://registry.yarnpkg.com/@types/react/-/react-19.1.0.tgz#73c43ad9bc43496ca8184332b111e2aef63fc9da"
-  integrity sha512-UaicktuQI+9UKyA4njtDOGBD/67t8YEBt2xdfqu8+gP9hqPUPsiXlNPcpS2gVdjmis5GKPG3fCxbQLVgxsQZ8w==
-  dependencies:
-    csstype "^3.0.2"
-
-"@types/react@~18.3.12":
-  version "18.3.20"
-  resolved "https://registry.yarnpkg.com/@types/react/-/react-18.3.20.tgz#b0dccda9d2f1bc24d2a04b1d0cb5d0b9a3576ad3"
-  integrity sha512-IPaCZN7PShZK/3t6Q87pfTkRm6oLTd4vztyoj+cbHUF1g3FfVb2tFIL79uCRKEfv16AhqDMBywP2VW3KIZUvcg==
-  dependencies:
-    "@types/prop-types" "*"
     csstype "^3.0.2"
 
 "@types/responselike@^1.0.0":
