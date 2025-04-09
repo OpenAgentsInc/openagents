@@ -110,7 +110,7 @@ export function AgentChat({ agent, githubToken }: { agent: OpenAgent, githubToke
   const handleMessageSubmit = async (message: string) => {
     try {
       await agent.handleSubmit(message);
-      await agent.infer();
+      await agent.infer(githubToken);
     } catch (error) {
       console.error("Error during message submission or inference:", error);
     }
@@ -143,7 +143,7 @@ export function AgentChat({ agent, githubToken }: { agent: OpenAgent, githubToke
         <button
           onClick={async () => {
             try {
-              await agent.infer();
+              await agent.infer(githubToken);
             } catch (error) {
               console.error("Error during inference:", error);
             }

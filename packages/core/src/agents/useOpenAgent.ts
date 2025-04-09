@@ -48,6 +48,7 @@ export function useOpenAgent(agentType: AgentType): OpenAgent {
   }
 
   const infer = async (token: string) => {
+    console.log('infer', token)
     return await cloudflareAgent.call('infer', [token])
   }
 
