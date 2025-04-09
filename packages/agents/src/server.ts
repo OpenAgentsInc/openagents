@@ -9,7 +9,9 @@ import { createWorkersAI } from 'workers-ai-provider';
 export const agentContext = new AsyncLocalStorage<Coder>();
 
 const workersai = createWorkersAI({ binding: env.AI });
-const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+// @ts-ignore
+const model = workersai("@cf/meta/llama-4-scout-17b-16e-instruct");
+// const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
 
 // const google = createGoogleGenerativeAI({
 //   apiKey: env.GOOGLE_API_KEY,
