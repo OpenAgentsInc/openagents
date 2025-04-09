@@ -6,6 +6,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
+import { ThemeProvider } from "@/components/theme-provider";
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -31,6 +32,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                function getTheme() {
+                  const storageKey = "openagents-ui-theme";
+                  const defaultTheme = "dark";
+
+                  try {
+                    const theme = localStorage.getItem(storageKey) || defaultTheme;
+                    if (theme === "system") {
+                      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+                    }
+                    return theme;
+                  } catch (e) {
+                    return defaultTheme;
+                  }
+                }
+
+                document.documentElement.classList.add(getTheme());
+              })();
+            `,
+          }}
+        />
       </head>
       <body>
         {children}
@@ -42,7 +67,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  return (
+    <ThemeProvider defaultTheme="dark" storageKey="openagents-ui-theme">
+      <Outlet />
+    </ThemeProvider>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
