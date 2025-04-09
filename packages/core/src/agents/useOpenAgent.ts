@@ -9,7 +9,9 @@ export type OpenAgent = {
   messages: UIMessage[];
   setMessages: (messages: UIMessage[]) => void;
   handleSubmit: (message: string) => void;
-  infer: () => Promise<any>;
+  infer: (token: string) => Promise<any>;
+  setGithubToken: (token: string) => Promise<void>;
+  getGithubToken: () => Promise<string>;
 }
 
 // later get this from the agents package
@@ -45,14 +47,24 @@ export function useOpenAgent(agentType: AgentType): OpenAgent {
     })
   }
 
-  const infer = async () => {
-    return await cloudflareAgent.call('infer', [agentState?.messages || []])
+  const infer = async (token: string) => {
+    return await cloudflareAgent.call('infer', [token])
+  }
+
+  const setGithubToken = async (token: string) => {
+    return await cloudflareAgent.call('setGithubToken', [token])
+  }
+
+  const getGithubToken = async () => {
+    return await cloudflareAgent.call('getGithubToken')
   }
 
   return {
     messages: agentState?.messages || [],
     setMessages: (messages) => cloudflareAgent.setState({ messages }),
     handleSubmit,
-    infer
+    infer,
+    setGithubToken,
+    getGithubToken
   };
 }

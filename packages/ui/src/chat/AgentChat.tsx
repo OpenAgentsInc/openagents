@@ -102,7 +102,11 @@ function MessageInput({ onSubmit }: { onSubmit: (message: string) => void }) {
   )
 }
 
-export function AgentChat({ agent }: { agent: OpenAgent }) {
+export function AgentChat({ agent, githubToken }: { agent: OpenAgent, githubToken: string }) {
+
+  // lets add buttons to call those callables
+
+
   const handleMessageSubmit = async (message: string) => {
     try {
       await agent.handleSubmit(message);
@@ -115,6 +119,27 @@ export function AgentChat({ agent }: { agent: OpenAgent }) {
   return (
     <div className="h-full flex flex-col relative">
       <div className="absolute top-2 right-2 flex gap-2" style={{ marginTop: '50px' }}>
+
+        <button
+          onClick={async () => {
+            await agent.setGithubToken(githubToken);
+          }}
+          className="p-2 hover:bg-muted rounded-full bg-primary text-primary-foreground"
+          title="Set github token"
+        >
+          Set github token
+        </button>
+
+        <button
+          onClick={async () => {
+            const token = await agent.getGithubToken();
+            console.log('github token', token);
+          }}
+          className="p-2 hover:bg-muted rounded-full bg-primary text-primary-foreground"
+          title="Get github token"
+        >
+          Get github token
+        </button>
         <button
           onClick={async () => {
             try {

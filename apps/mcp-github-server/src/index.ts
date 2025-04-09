@@ -261,22 +261,79 @@ export class MyMCP extends McpAgent {
     ];
 
     for (const tool of tools) {
-      this.server.tool(tool.name, tool.schema.shape, async (params: Record<string, unknown>) => {
+      this.server.tool(tool.name, tool.schema.shape, async (params: any, extra: any) => {
         const validatedParams = tool.schema.parse(params);
+
+        // Extract token from multiple possible sources
+        let token: string | undefined;
+        let authHeader: string | null = null;  // Declare at outer scope
+        try {
+          // 1. Try X-GitHub-Token header first (our custom header)
+          const githubHeader = extra?.request?.headers?.get('X-GitHub-Token');
+          if (githubHeader) {
+            token = githubHeader;
+            if (token) {
+              console.log('Token extracted from X-GitHub-Token header:', token.substring(0, 8) + '...');
+            }
+          }
+
+          // 2. Try Authorization header next
+          if (!token) {
+            authHeader = extra?.request?.headers?.get('Authorization');
+            console.log('Auth header present:', !!authHeader);
+            if (authHeader?.startsWith('Bearer ')) {
+              token = authHeader.substring(7);
+              if (token) {
+                console.log('Token extracted from Authorization header:', token.substring(0, 8) + '...');
+              }
+            }
+          }
+
+          // 3. Try params._meta.token next (from MCP client)
+          if (!token && params?._meta?.token) {
+            token = params._meta.token;
+            if (token) {
+              console.log('Token extracted from _meta.token:', token.substring(0, 8) + '...');
+            }
+          }
+
+          // 4. Finally try params.token (direct parameter)
+          if (!token && params?.token) {
+            token = params.token;
+            if (token) {
+              console.log('Token extracted from params.token:', token.substring(0, 8) + '...');
+            }
+          }
+
+          // Log final token state with more detail
+          if (token) {
+            console.log(`✅ GitHub token found (${token.substring(0, 8)}...) for tool: ${tool.name}`);
+            console.log('Token source:',
+              extra?.request?.headers?.get('X-GitHub-Token') ? 'X-GitHub-Token header' :
+                authHeader?.startsWith('Bearer ') ? 'Authorization header' :
+                  params?._meta?.token ? '_meta.token' :
+                    params?.token ? 'params.token' : 'unknown'
+            );
+          } else {
+            console.warn(`⚠️ No GitHub token found for tool: ${tool.name}. This may cause API rate limits or authentication errors.`);
+          }
+        } catch (e) {
+          console.error('Error accessing token sources:', e);
+        }
+
         const context: ToolContext = {
-          token: (params as { token?: string }).token,
+          token
         };
 
         // Temporarily replace githubRequest with token-aware version
         const originalRequest = globalThis.githubRequest;
         try {
           console.log(`🔧 Executing GitHub tool: ${tool.name}`);
-          console.log(`📊 Tool parameters: ${JSON.stringify(validatedParams).substring(0, 200)}`);
-          console.log(`🔑 GitHub token present: ${!!context.token}`);
-          
+          console.log(`📊 Tool parameters:`, JSON.stringify(validatedParams, null, 2).substring(0, 200));
+
           globalThis.githubRequest = withToken(context.token);
           const result = await tool.handler(validatedParams as any);
-          
+
           console.log(`✅ Tool ${tool.name} execution successful`);
           return {
             content: [{
@@ -286,17 +343,17 @@ export class MyMCP extends McpAgent {
           };
         } catch (error) {
           console.error(`❌ Tool execution error for ${tool.name}:`, error);
-          
+
           // Improved error handling for specific GitHub errors
           let errorResponse: any = {
             error: error instanceof Error ? error.message : String(error)
           };
-          
+
           // For operations that fail without a token to public repositories
-          if (tool.name.startsWith('get_') && !context.token && 
-              (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
+          if (tool.name.startsWith('get_') && !context.token &&
+            (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
             console.log(`🔄 Error might be due to GitHub rate limits or auth requirements`);
-            
+
             errorResponse = {
               error: "GitHub API access error",
               details: {
@@ -307,7 +364,7 @@ export class MyMCP extends McpAgent {
               }
             };
           }
-          
+
           return {
             content: [{
               type: "text" as const,
@@ -326,20 +383,42 @@ export default {
   fetch: async (request: Request, env: any, ctx: any) => {
     const url = new URL(request.url);
 
+    // Extract token from multiple sources
+    const urlToken = url.searchParams.get('token');  // Try URL parameter first
+    const authHeader = request.headers.get('Authorization');
+    const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    const token = urlToken || headerToken || null;
+
+    console.log("Incoming request to MCP server");
+    console.log("Token present:", !!token);
+    if (token) {
+      console.log("Token found:", token.substring(0, 8) + "...");
+    }
+
     // Handle the homepage route
     if (url.pathname === "/") {
       return new Response("It works! Test via the MCP inspector (explained at https://modelcontextprotocol.io/docs/tools/inspector) by connecting to http://mcp-github.openagents.com/sse", {
-        headers: { "Content-Type": "text/plain" },
+        headers: {
+          "Content-Type": "text/plain",
+          ...(token && { "X-GitHub-Token": token })  // Pass token through response headers
+        },
       });
     }
 
     // Handle the SSE route
-    return MyMCP.mount("/sse", {
+    const response = await MyMCP.mount("/sse", {
       corsOptions: {
         origin: "*",
         methods: "GET,POST",
         headers: "*",
-      },
+      }
     }).fetch(request, env, ctx);
+
+    // Add token to response headers if present
+    if (token) {
+      response.headers.set("X-GitHub-Token", token);
+    }
+
+    return response;
   }
 };
