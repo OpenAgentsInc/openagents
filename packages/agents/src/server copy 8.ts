@@ -1,8 +1,12 @@
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Agent, routeAgentRequest, unstable_callable } from "agents"
-import { type UIMessage, generateId, generateText, experimental_createMCPClient as createMCPClient, type ToolSet } from "ai";
+import { streamText, createDataStreamResponse, type UIMessage, generateId, type Message, generateText, type CoreMessage, type ToolInvocation } from "ai";
 import { env } from "cloudflare:workers";
 import { tools } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createWorkersAI } from 'workers-ai-provider';
+import { z } from "zod";
+import { createGroq } from '@ai-sdk/groq';
 import type { UIPart } from "@openagents/core/src/chat/types";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
@@ -12,7 +16,25 @@ const openrouter = createOpenRouter({
 
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");
 
+// const groq = createGroq({
+//   apiKey: env.GROQ_API_KEY,
+//   // custom settings
+// });
+
+// const model = groq("meta-llama/llama-4-scout-17b-16e-instruct");
+
 export const agentContext = new AsyncLocalStorage<Coder>();
+
+// const workersai = createWorkersAI({ binding: env.AI });
+// @ts-ignore
+// const model = workersai("@cf/meta/llama-4-scout-17b-16e-instruct");
+// const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
+
+// const google = createGoogleGenerativeAI({
+//   apiKey: env.GOOGLE_API_KEY,
+// });
+
+// const model = google("gemini-2.5-pro-exp-03-25");
 
 interface CoderState {
   messages: UIMessage[];
@@ -23,50 +45,15 @@ interface CoderState {
  */
 export class Coder extends Agent<Env, CoderState> {
   // Define initial state
-  mcpClient?: Awaited<ReturnType<typeof createMCPClient>>;
   initialState: CoderState = {
     messages: []
   };
-
-  tools: ToolSet = {};
-
-  @unstable_callable({
-    description: "Load MCP tools for the agent",
-    streaming: false
-  })
-  async loadMCPTools(url: string = "https://mcp-github.openagents.com") {
-
-    console.log("Loading MCP tools from " + url)
-
-    // Create MCP client with a simplified transport configuration
-    this.mcpClient = await createMCPClient({
-      transport: {
-        type: "sse" as const,
-        url
-      },
-      name: "coder-mcp"
-    });
-
-    this.tools = await this.mcpClient.tools()
-
-    console.log("Loaded MCP tools: " + Object.keys(this.tools).length)
-
-    return {
-      success: true
-    };
-  }
 
   @unstable_callable({
     description: "Generate an AI response based on the current messages",
     streaming: true
   })
   async infer() {
-
-    // If there are no tools, load them
-    if (Object.keys(this.tools).length === 0) {
-      await this.loadMCPTools()
-    }
-
     // Get current state messages
     const messages = this.state.messages || [];
 
@@ -83,7 +70,7 @@ export class Coder extends Agent<Env, CoderState> {
       messages,
       maxTokens: 2500,
       temperature: 0.7,
-      tools: this.tools,
+      tools,
       maxSteps: 5,
       toolChoice: "auto"
     });
