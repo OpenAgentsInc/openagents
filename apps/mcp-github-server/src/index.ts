@@ -36,48 +36,53 @@ export class MyMCP extends McpAgent {
         name: "create_or_update_file",
         description: "Create or update a single file in a GitHub repository",
         schema: files.CreateOrUpdateFileSchema,
-        handler: async (params: z.infer<typeof files.CreateOrUpdateFileSchema>) => {
+        handler: async (params: z.infer<typeof files.CreateOrUpdateFileSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, path, content, message, branch, sha } = params;
-          return files.createOrUpdateFile(owner, repo, path, content, message, branch, sha);
+          return files.createOrUpdateFile(owner, repo, path, content, message, branch, sha, { token });
         },
       },
       {
         name: "get_file_contents",
         description: "Get the contents of a file or directory from a GitHub repository",
         schema: files.GetFileContentsSchema,
-        handler: async (params: z.infer<typeof files.GetFileContentsSchema>) => {
+        handler: async (params: z.infer<typeof files.GetFileContentsSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, path, branch } = params;
-          return files.getFileContents(owner, repo, path, branch);
+          return files.getFileContents(owner, repo, path, branch, token);
         },
       },
       {
         name: "push_files",
         description: "Push multiple files to a GitHub repository in a single commit",
         schema: files.PushFilesSchema,
-        handler: async (params: z.infer<typeof files.PushFilesSchema>) => {
+        handler: async (params: z.infer<typeof files.PushFilesSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, branch, files: filesList, message } = params;
-          return files.pushFiles(owner, repo, branch, filesList, message);
+          return files.pushFiles(owner, repo, branch, filesList, message, { token });
         },
       },
       {
         name: "search_repositories",
         description: "Search for GitHub repositories",
         schema: repository.SearchRepositoriesSchema,
-        handler: repository.searchRepositories,
+        handler: async (params: z.infer<typeof repository.SearchRepositoriesSchema>, { token }: { token?: string } = {}) => {
+          const { query, page, perPage } = params;
+          return repository.searchRepositories(query, page, perPage, { token });
+        },
       },
       {
         name: "create_repository",
         description: "Create a new GitHub repository in your account",
         schema: repository.CreateRepositoryOptionsSchema,
-        handler: repository.createRepository,
+        handler: async (params: z.infer<typeof repository.CreateRepositoryOptionsSchema>, { token }: { token?: string } = {}) => {
+          return repository.createRepository(params, { token });
+        },
       },
       {
         name: "fork_repository",
         description: "Fork a GitHub repository to your account or specified organization",
         schema: repository.ForkRepositorySchema,
-        handler: async (params: z.infer<typeof repository.ForkRepositorySchema>) => {
+        handler: async (params: z.infer<typeof repository.ForkRepositorySchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, organization } = params;
-          return repository.forkRepository(owner, repo, organization);
+          return repository.forkRepository(owner, repo, organization, { token });
         },
       },
       {
@@ -218,36 +223,42 @@ export class MyMCP extends McpAgent {
         name: "search_code",
         description: "Search for code across GitHub repositories",
         schema: search.SearchCodeSchema,
-        handler: search.searchCode,
+        handler: async (params: z.infer<typeof search.SearchCodeSchema>, { token }: { token?: string } = {}) => {
+          return search.searchCode(params, { token });
+        },
       },
       {
         name: "search_issues",
         description: "Search for issues and pull requests across GitHub repositories",
         schema: search.SearchIssuesSchema,
-        handler: search.searchIssues,
+        handler: async (params: z.infer<typeof search.SearchIssuesSchema>, { token }: { token?: string } = {}) => {
+          return search.searchIssues(params, { token });
+        },
       },
       {
         name: "search_users",
         description: "Search for users on GitHub",
         schema: search.SearchUsersSchema,
-        handler: search.searchUsers,
+        handler: async (params: z.infer<typeof search.SearchUsersSchema>, { token }: { token?: string } = {}) => {
+          return search.searchUsers(params, { token });
+        },
       },
       {
         name: "list_commits",
         description: "Get list of commits of a branch in a GitHub repository",
         schema: commits.ListCommitsSchema,
-        handler: async (params: z.infer<typeof commits.ListCommitsSchema>) => {
+        handler: async (params: z.infer<typeof commits.ListCommitsSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, sha, page, perPage } = params;
-          return commits.listCommits(owner, repo, page, perPage, sha);
+          return commits.listCommits(owner, repo, page, perPage, sha, { token });
         },
       },
       {
         name: "create_branch",
         description: "Create a new branch in a GitHub repository",
         schema: branches.CreateBranchSchema,
-        handler: async (params: z.infer<typeof branches.CreateBranchSchema>) => {
+        handler: async (params: z.infer<typeof branches.CreateBranchSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, branch: newBranch, from_branch } = params;
-          return branches.createBranchFromRef(owner, repo, newBranch, from_branch);
+          return branches.createBranchFromRef(owner, repo, newBranch, from_branch, { token });
         },
       }
     ];
