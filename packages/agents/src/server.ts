@@ -46,7 +46,9 @@ export class Coder extends Agent<Env, CoderState> {
 
     const result = await generateText({
       model,
-      messages: currentMessages
+      messages: currentMessages,
+      maxTokens: 2500,
+      temperature: 0.9
     })
 
     // Add a simple dummy response
