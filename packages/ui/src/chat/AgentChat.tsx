@@ -55,14 +55,28 @@ function MessageInput({ onSubmit }: { onSubmit: (message: string) => void }) {
 export function AgentChat({ agent }: { agent: OpenAgent }) {
   return (
     <div className="h-full flex flex-col relative">
-      <button
-        onClick={() => agent.setMessages([])}
-        className="absolute top-2 right-2 p-2 hover:bg-muted rounded-full"
-        style={{ marginTop: '50px' }}
-        title="Clear chat"
-      >
-        <Trash size={20} />
-      </button>
+      <div className="absolute top-2 right-2 flex gap-2" style={{ marginTop: '50px' }}>
+        <button
+          onClick={async () => {
+            try {
+              await agent.infer();
+            } catch (error) {
+              console.error("Error during inference:", error);
+            }
+          }}
+          className="p-2 hover:bg-muted rounded-full bg-primary text-primary-foreground"
+          title="Run inference"
+        >
+          Infer
+        </button>
+        <button
+          onClick={() => agent.setMessages([])}
+          className="p-2 hover:bg-muted rounded-full"
+          title="Clear chat"
+        >
+          <Trash size={20} />
+        </button>
+      </div>
       <MessageList messages={agent.messages} />
       <MessageInput onSubmit={agent.handleSubmit} />
     </div>
