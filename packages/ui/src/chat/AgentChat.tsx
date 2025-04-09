@@ -1,5 +1,6 @@
 import { type OpenAgent } from "@openagents/core"
 import { useState, type FormEvent } from "react"
+import { Trash } from "lucide-react"
 
 function MessageList({ messages }: { messages: OpenAgent['messages'] }) {
   return (
@@ -52,14 +53,18 @@ function MessageInput({ onSubmit }: { onSubmit: (message: string) => void }) {
 }
 
 export function AgentChat({ agent }: { agent: OpenAgent }) {
-  const handleSubmit = (message: string) => {
-    agent.handleSubmit(message)
-  }
-
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
+      <button
+        onClick={() => agent.setMessages([])}
+        className="absolute top-2 right-2 p-2 hover:bg-muted rounded-full"
+        style={{ marginTop: '50px' }}
+        title="Clear chat"
+      >
+        <Trash size={20} />
+      </button>
       <MessageList messages={agent.messages} />
-      <MessageInput onSubmit={handleSubmit} />
+      <MessageInput onSubmit={agent.handleSubmit} />
     </div>
   )
 }
