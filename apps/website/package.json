@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "react-router build",
-    "cf-typegen": "wrangler types",
+    "types": "wrangler types",
     "deploy": "yarn build && wrangler deploy",
     "dev": "react-router dev",
     "preview": "yarn build && vite preview",

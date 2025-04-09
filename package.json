@@ -17,6 +17,7 @@
     "d:chat": "yarn workspace @openagents/chatserver deploy",
     "d:agents": "yarn workspace @openagents/agents deploy",
     "d:mcp": "yarn workspace @openagents/mcp-github-server deploy",
+    "d:website": "yarn workspace @openagents/website deploy",
     "t": "yarn workspaces run t",
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
     "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
