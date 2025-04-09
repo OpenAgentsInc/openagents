@@ -22,17 +22,7 @@ type RequestOptions = {
   token?: string;
 };
 
-// Wrap the githubRequest function to include the token from context
-const withToken = (token?: string) => {
-  return (url: string, options: RequestOptions = {}) => {
-    return githubRequest(url, { ...options, token });
-  };
-};
-
-// Declare the global githubRequest to allow overriding
-declare global {
-  var githubRequest: (url: string, options?: RequestOptions) => Promise<unknown>;
-}
+// No need for global withToken wrapper or global declaration anymore
 
 export class MyMCP extends McpAgent {
   server = new McpServer({
@@ -94,132 +84,134 @@ export class MyMCP extends McpAgent {
         name: "create_issue",
         description: "Create a new issue in a GitHub repository",
         schema: issues.CreateIssueSchema,
-        handler: async (params: z.infer<typeof issues.CreateIssueSchema>) => {
+        handler: async (params: z.infer<typeof issues.CreateIssueSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, ...options } = params;
-          return issues.createIssue(owner, repo, options);
+          return issues.createIssue(owner, repo, options, { token });
         },
       },
       {
         name: "list_issues",
         description: "List issues in a GitHub repository with filtering options",
         schema: issues.ListIssuesOptionsSchema,
-        handler: async (params: z.infer<typeof issues.ListIssuesOptionsSchema>) => {
+        handler: async (params: z.infer<typeof issues.ListIssuesOptionsSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, ...options } = params;
-          return issues.listIssues(owner, repo, options);
+          return issues.listIssues(owner, repo, options, { token });
         },
       },
       {
         name: "update_issue",
         description: "Update an existing issue in a GitHub repository",
         schema: issues.UpdateIssueOptionsSchema,
-        handler: async (params: z.infer<typeof issues.UpdateIssueOptionsSchema>) => {
+        handler: async (params: z.infer<typeof issues.UpdateIssueOptionsSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, issue_number, ...options } = params;
-          return issues.updateIssue(owner, repo, issue_number, options);
+          return issues.updateIssue(owner, repo, issue_number, options, { token });
         },
       },
       {
         name: "add_issue_comment",
         description: "Add a comment to an existing issue",
         schema: issues.IssueCommentSchema,
-        handler: async (params: z.infer<typeof issues.IssueCommentSchema>) => {
+        handler: async (params: z.infer<typeof issues.IssueCommentSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, issue_number, body } = params;
-          return issues.addIssueComment(owner, repo, issue_number, body);
+          return issues.addIssueComment(owner, repo, issue_number, body, { token });
         },
       },
       {
         name: "get_issue",
         description: "Get details of a specific issue in a GitHub repository",
         schema: issues.GetIssueSchema,
-        handler: async (params: z.infer<typeof issues.GetIssueSchema>) => {
+        handler: async (params: z.infer<typeof issues.GetIssueSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, issue_number } = params;
-          return issues.getIssue(owner, repo, issue_number);
+          return issues.getIssue(owner, repo, issue_number, { token });
         },
       },
       {
         name: "create_pull_request",
         description: "Create a new pull request in a GitHub repository",
         schema: pulls.CreatePullRequestSchema,
-        handler: pulls.createPullRequest,
+        handler: async (params: z.infer<typeof pulls.CreatePullRequestSchema>, { token }: { token?: string } = {}) => {
+          return pulls.createPullRequest(params, { token });
+        },
       },
       {
         name: "get_pull_request",
         description: "Get details of a specific pull request",
         schema: pulls.GetPullRequestSchema,
-        handler: async (params: z.infer<typeof pulls.GetPullRequestSchema>) => {
+        handler: async (params: z.infer<typeof pulls.GetPullRequestSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number } = params;
-          return pulls.getPullRequest(owner, repo, pull_number);
+          return pulls.getPullRequest(owner, repo, pull_number, { token });
         },
       },
       {
         name: "list_pull_requests",
         description: "List and filter repository pull requests",
         schema: pulls.ListPullRequestsSchema,
-        handler: async (params: z.infer<typeof pulls.ListPullRequestsSchema>) => {
+        handler: async (params: z.infer<typeof pulls.ListPullRequestsSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, ...options } = params;
-          return pulls.listPullRequests(owner, repo, options);
+          return pulls.listPullRequests(owner, repo, options, { token });
         },
       },
       {
         name: "create_pull_request_review",
         description: "Create a review on a pull request",
         schema: pulls.CreatePullRequestReviewSchema,
-        handler: async (params: z.infer<typeof pulls.CreatePullRequestReviewSchema>) => {
+        handler: async (params: z.infer<typeof pulls.CreatePullRequestReviewSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number, ...options } = params;
-          return pulls.createPullRequestReview(owner, repo, pull_number, options);
+          return pulls.createPullRequestReview(owner, repo, pull_number, options, { token });
         },
       },
       {
         name: "merge_pull_request",
         description: "Merge a pull request",
         schema: pulls.MergePullRequestSchema,
-        handler: async (params: z.infer<typeof pulls.MergePullRequestSchema>) => {
+        handler: async (params: z.infer<typeof pulls.MergePullRequestSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number, ...options } = params;
-          return pulls.mergePullRequest(owner, repo, pull_number, options);
+          return pulls.mergePullRequest(owner, repo, pull_number, options, { token });
         },
       },
       {
         name: "get_pull_request_files",
         description: "Get the list of files changed in a pull request",
         schema: pulls.GetPullRequestFilesSchema,
-        handler: async (params: z.infer<typeof pulls.GetPullRequestFilesSchema>) => {
+        handler: async (params: z.infer<typeof pulls.GetPullRequestFilesSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number } = params;
-          return pulls.getPullRequestFiles(owner, repo, pull_number);
+          return pulls.getPullRequestFiles(owner, repo, pull_number, { token });
         },
       },
       {
         name: "get_pull_request_status",
         description: "Get the combined status of all status checks for a pull request",
         schema: pulls.GetPullRequestStatusSchema,
-        handler: async (params: z.infer<typeof pulls.GetPullRequestStatusSchema>) => {
+        handler: async (params: z.infer<typeof pulls.GetPullRequestStatusSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number } = params;
-          return pulls.getPullRequestStatus(owner, repo, pull_number);
+          return pulls.getPullRequestStatus(owner, repo, pull_number, { token });
         },
       },
       {
         name: "update_pull_request_branch",
         description: "Update a pull request branch with the latest changes from the base branch",
         schema: pulls.UpdatePullRequestBranchSchema,
-        handler: async (params: z.infer<typeof pulls.UpdatePullRequestBranchSchema>) => {
+        handler: async (params: z.infer<typeof pulls.UpdatePullRequestBranchSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number, expected_head_sha } = params;
-          return pulls.updatePullRequestBranch(owner, repo, pull_number, expected_head_sha);
+          return pulls.updatePullRequestBranch(owner, repo, pull_number, expected_head_sha, { token });
         },
       },
       {
         name: "get_pull_request_comments",
         description: "Get the review comments on a pull request",
         schema: pulls.GetPullRequestCommentsSchema,
-        handler: async (params: z.infer<typeof pulls.GetPullRequestCommentsSchema>) => {
+        handler: async (params: z.infer<typeof pulls.GetPullRequestCommentsSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number } = params;
-          return pulls.getPullRequestComments(owner, repo, pull_number);
+          return pulls.getPullRequestComments(owner, repo, pull_number, { token });
         },
       },
       {
         name: "get_pull_request_reviews",
         description: "Get the reviews on a pull request",
         schema: pulls.GetPullRequestReviewsSchema,
-        handler: async (params: z.infer<typeof pulls.GetPullRequestReviewsSchema>) => {
+        handler: async (params: z.infer<typeof pulls.GetPullRequestReviewsSchema>, { token }: { token?: string } = {}) => {
           const { owner, repo, pull_number } = params;
-          return pulls.getPullRequestReviews(owner, repo, pull_number);
+          return pulls.getPullRequestReviews(owner, repo, pull_number, { token });
         },
       },
       {
@@ -264,75 +256,23 @@ export class MyMCP extends McpAgent {
       this.server.tool(tool.name, tool.schema.shape, async (params: any, extra: any) => {
         const validatedParams = tool.schema.parse(params);
 
-        // Extract token from multiple possible sources
+        // Extract token ONLY from Authorization header sent by the client wrapper
         let token: string | undefined;
-        let authHeader: string | null = null;  // Declare at outer scope
-        try {
-          // 1. Try X-GitHub-Token header first (our custom header)
-          const githubHeader = extra?.request?.headers?.get('X-GitHub-Token');
-          if (githubHeader) {
-            token = githubHeader;
-            if (token) {
-              console.log('Token extracted from X-GitHub-Token header:', token.substring(0, 8) + '...');
-            }
-          }
-
-          // 2. Try Authorization header next
-          if (!token) {
-            authHeader = extra?.request?.headers?.get('Authorization');
-            console.log('Auth header present:', !!authHeader);
-            if (authHeader?.startsWith('Bearer ')) {
-              token = authHeader.substring(7);
-              if (token) {
-                console.log('Token extracted from Authorization header:', token.substring(0, 8) + '...');
-              }
-            }
-          }
-
-          // 3. Try params._meta.token next (from MCP client)
-          if (!token && params?._meta?.token) {
-            token = params._meta.token;
-            if (token) {
-              console.log('Token extracted from _meta.token:', token.substring(0, 8) + '...');
-            }
-          }
-
-          // 4. Finally try params.token (direct parameter)
-          if (!token && params?.token) {
-            token = params.token;
-            if (token) {
-              console.log('Token extracted from params.token:', token.substring(0, 8) + '...');
-            }
-          }
-
-          // Log final token state with more detail
-          if (token) {
-            console.log(`✅ GitHub token found (${token.substring(0, 8)}...) for tool: ${tool.name}`);
-            console.log('Token source:',
-              extra?.request?.headers?.get('X-GitHub-Token') ? 'X-GitHub-Token header' :
-                authHeader?.startsWith('Bearer ') ? 'Authorization header' :
-                  params?._meta?.token ? '_meta.token' :
-                    params?.token ? 'params.token' : 'unknown'
-            );
-          } else {
-            console.warn(`⚠️ No GitHub token found for tool: ${tool.name}. This may cause API rate limits or authentication errors.`);
-          }
-        } catch (e) {
-          console.error('Error accessing token sources:', e);
+        const authHeader = extra?.request?.headers?.get('Authorization');
+        if (authHeader?.startsWith('Bearer ')) {
+          token = authHeader.substring(7);
+          console.log(`🔑 Token found in Authorization header for tool ${tool.name}`);
+        } else {
+          console.log(`⚠️ No Authorization header token found for tool ${tool.name}`);
         }
 
-        const context: ToolContext = {
-          token
-        };
-
-        // Temporarily replace githubRequest with token-aware version
-        const originalRequest = globalThis.githubRequest;
         try {
           console.log(`🔧 Executing GitHub tool: ${tool.name}`);
-          console.log(`📊 Tool parameters:`, JSON.stringify(validatedParams, null, 2).substring(0, 200));
+          console.log(`📊 Tool parameters (keys): ${Object.keys(validatedParams)}`);
+          console.log(`🔑 Passing token to handler: ${!!token}`);
 
-          globalThis.githubRequest = withToken(context.token);
-          const result = await tool.handler(validatedParams as any);
+          // Call the handler, passing the extracted token
+          const result = await tool.handler(validatedParams, { token });
 
           console.log(`✅ Tool ${tool.name} execution successful`);
           return {
@@ -350,7 +290,7 @@ export class MyMCP extends McpAgent {
           };
 
           // For operations that fail without a token to public repositories
-          if (tool.name.startsWith('get_') && !context.token &&
+          if (tool.name.startsWith('get_') && !token && 
             (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
             console.log(`🔄 Error might be due to GitHub rate limits or auth requirements`);
 
@@ -371,8 +311,6 @@ export class MyMCP extends McpAgent {
               text: JSON.stringify(errorResponse)
             }]
           };
-        } finally {
-          globalThis.githubRequest = originalRequest;
         }
       });
     }
@@ -382,43 +320,25 @@ export class MyMCP extends McpAgent {
 export default {
   fetch: async (request: Request, env: any, ctx: any) => {
     const url = new URL(request.url);
-
-    // Extract token from multiple sources
-    const urlToken = url.searchParams.get('token');  // Try URL parameter first
-    const authHeader = request.headers.get('Authorization');
-    const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    const token = urlToken || headerToken || null;
-
-    console.log("Incoming request to MCP server");
-    console.log("Token present:", !!token);
-    if (token) {
-      console.log("Token found:", token.substring(0, 8) + "...");
-    }
+    console.log("Incoming request to MCP server:", request.method, url.pathname);
 
     // Handle the homepage route
     if (url.pathname === "/") {
       return new Response("It works! Test via the MCP inspector (explained at https://modelcontextprotocol.io/docs/tools/inspector) by connecting to http://mcp-github.openagents.com/sse", {
         headers: {
-          "Content-Type": "text/plain",
-          ...(token && { "X-GitHub-Token": token })  // Pass token through response headers
+          "Content-Type": "text/plain"
         },
       });
     }
 
-    // Handle the SSE route
-    const response = await MyMCP.mount("/sse", {
+    // Handle the SSE route - directly pass to mount/fetch
+    return MyMCP.mount("/sse", {
+      binding: "MCP_GITHUB", // Use appropriate binding name
       corsOptions: {
         origin: "*",
         methods: "GET,POST",
         headers: "*",
       }
     }).fetch(request, env, ctx);
-
-    // Add token to response headers if present
-    if (token) {
-      response.headers.set("X-GitHub-Token", token);
-    }
-
-    return response;
   }
 };
