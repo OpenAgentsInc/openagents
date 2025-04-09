@@ -45,13 +45,16 @@ export class Coder extends Agent<Env, CoderState> {
     const currentMessages = [...stateMessages, ...incomingMessages];
 
     const result = await generateText({
+      system: "You are a helpful assistant. Respond directly to the user's questions without using any tools unless specifically asked about the weather.",
       model,
       messages: currentMessages,
       maxTokens: 2500,
-      temperature: 0.9
+      temperature: 0.9,
+      toolChoice: 'none',  // Disable automatic tool usage
+      tools: tools  // Keep tools available but don't use them by default
     })
 
-    // Add a simple dummy response
+    // Add the response to messages
     this.setState({
       messages: [
         ...currentMessages,  // Preserve all existing messages

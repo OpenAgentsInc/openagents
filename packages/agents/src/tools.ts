@@ -22,6 +22,10 @@ import { agentContext } from "./server";
 const getWeatherInformation = tool({
   description: "show the weather in a given city to the user",
   parameters: z.object({ city: z.string() }),
+  execute: async ({ city }) => {
+    console.log(`Getting weather information for ${city}`);
+    return `The weather in ${city} is sunny`;
+  },
   // Omitting execute function makes this tool require human confirmation
 });
 
