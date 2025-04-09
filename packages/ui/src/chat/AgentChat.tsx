@@ -6,14 +6,57 @@ function MessageList({ messages }: { messages: OpenAgent['messages'] }) {
   return (
     <div className="flex-1 overflow-y-auto w-full" style={{ paddingTop: '50px' }}>
       {messages.map((message) => (
-        <div key={message.id}>
-          {message.parts.map((part) => (
-            <p key={part.type}>
-              {part.type === 'text' && part.text}
-              {part.type === 'reasoning' && part.reasoning}
-              {part.type === 'file' && part.data}
-            </p>
-          ))}
+        <div key={message.id} className={`p-4 ${message.role === 'user' ? 'bg-muted' : ''}`}>
+          {message.parts.map((part, index) => {
+            if (part.type === 'text') {
+              return (
+                <p key={`${message.id}-${index}`} className="whitespace-pre-wrap">
+                  {part.text}
+                </p>
+              );
+            }
+            if (part.type === 'tool-invocation') {
+              const { toolInvocation } = part;
+              return (
+                <div key={`${message.id}-${index}`} className="my-2 p-3 bg-muted rounded-md">
+                  <div className="font-medium">
+                    Tool: {toolInvocation.toolName}
+                  </div>
+                  {toolInvocation.state === 'call' && (
+                    <div className="mt-1">
+                      <div className="text-sm text-muted-foreground">Arguments:</div>
+                      <pre className="mt-1 text-sm bg-background p-2 rounded">
+                        {JSON.stringify(toolInvocation.args, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  {toolInvocation.state === 'result' && (
+                    <div className="mt-1">
+                      <div className="text-sm text-muted-foreground">Result:</div>
+                      <pre className="mt-1 text-sm bg-background p-2 rounded">
+                        {JSON.stringify(toolInvocation.result, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            if (part.type === 'reasoning') {
+              return (
+                <p key={`${message.id}-${index}`} className="text-muted-foreground italic">
+                  {part.reasoning}
+                </p>
+              );
+            }
+            if (part.type === 'file') {
+              return (
+                <pre key={`${message.id}-${index}`} className="mt-1 text-sm bg-background p-2 rounded">
+                  {part.data}
+                </pre>
+              );
+            }
+            return null;
+          })}
         </div>
       ))}
     </div>
