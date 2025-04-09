@@ -34,7 +34,7 @@ export class Coder extends Agent<Env, CoderState> {
     description: "Load MCP tools for the agent",
     streaming: false
   })
-  async loadMCPTools(url: string = "https://mcp-github.openagents.com") {
+  async loadMCPTools(url: string = "https://mcp-github.openagents.com/sse") {
 
     console.log("Loading MCP tools from " + url)
 
@@ -46,6 +46,8 @@ export class Coder extends Agent<Env, CoderState> {
       },
       name: "coder-mcp"
     });
+
+    console.log("MCP client created")
 
     this.tools = await this.mcpClient.tools()
 

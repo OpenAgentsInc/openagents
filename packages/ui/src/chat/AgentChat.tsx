@@ -103,6 +103,15 @@ function MessageInput({ onSubmit }: { onSubmit: (message: string) => void }) {
 }
 
 export function AgentChat({ agent }: { agent: OpenAgent }) {
+  const handleMessageSubmit = async (message: string) => {
+    try {
+      await agent.handleSubmit(message);
+      await agent.infer();
+    } catch (error) {
+      console.error("Error during message submission or inference:", error);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col relative">
       <div className="absolute top-2 right-2 flex gap-2" style={{ marginTop: '50px' }}>
@@ -128,7 +137,7 @@ export function AgentChat({ agent }: { agent: OpenAgent }) {
         </button>
       </div>
       <MessageList messages={agent.messages} />
-      <MessageInput onSubmit={agent.handleSubmit} />
+      <MessageInput onSubmit={handleMessageSubmit} />
     </div>
   )
 }
