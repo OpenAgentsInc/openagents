@@ -1,4 +1,4 @@
-import { Message as VercelMessage } from 'ai/react';
+import { type Message as VercelMessage } from 'ai/react';
 import { v4 as uuidv4 } from 'uuid';
 
 export type IdGenerator = () => string;
