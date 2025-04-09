@@ -8,13 +8,20 @@ import { createWorkersAI } from 'workers-ai-provider';
 import { z } from "zod";
 import { createGroq } from '@ai-sdk/groq';
 import type { UIPart } from "@openagents/core/src/chat/types";
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
-const groq = createGroq({
-  apiKey: env.GROQ_API_KEY,
-  // custom settings
-});
+const openrouter = createOpenRouter({
+  apiKey: env.OPENROUTER_API_KEY,
+})
 
-const model = groq("meta-llama/llama-4-scout-17b-16e-instruct");
+const model = openrouter("google/gemini-2.5-pro-preview-03-25");
+
+// const groq = createGroq({
+//   apiKey: env.GROQ_API_KEY,
+//   // custom settings
+// });
+
+// const model = groq("meta-llama/llama-4-scout-17b-16e-instruct");
 
 export const agentContext = new AsyncLocalStorage<Coder>();
 
