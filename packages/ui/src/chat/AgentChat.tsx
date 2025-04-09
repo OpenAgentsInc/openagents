@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react"
 
 function MessageList({ messages }: { messages: OpenAgent['messages'] }) {
   return (
-    <div className="flex-1 overflow-y-auto w-full">
+    <div className="flex-1 overflow-y-auto w-full" style={{ paddingTop: '50px' }}>
       {messages.map((message) => (
         <div key={message.id}>
           {message.parts.map((part) => (
