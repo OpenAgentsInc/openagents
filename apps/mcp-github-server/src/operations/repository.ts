@@ -26,10 +26,11 @@ export const ForkRepositorySchema = z.object({
 export type CreateRepositoryOptions = z.infer<typeof CreateRepositoryOptionsSchema>;
 
 // Function implementations
-export async function createRepository(options: CreateRepositoryOptions) {
+export async function createRepository(options: CreateRepositoryOptions, authOptions?: { token?: string }) {
   const response = await githubRequest("https://api.github.com/user/repos", {
     method: "POST",
     body: options,
+    token: authOptions?.token
   });
   return GitHubRepositorySchema.parse(response);
 }
@@ -37,27 +38,29 @@ export async function createRepository(options: CreateRepositoryOptions) {
 export async function searchRepositories(
   query: string,
   page: number = 1,
-  perPage: number = 30
+  perPage: number = 30,
+  authOptions?: { token?: string }
 ) {
   const url = new URL("https://api.github.com/search/repositories");
   url.searchParams.append("q", query);
   url.searchParams.append("page", page.toString());
   url.searchParams.append("per_page", perPage.toString());
 
-  const response = await githubRequest(url.toString());
+  const response = await githubRequest(url.toString(), { token: authOptions?.token });
   return GitHubSearchResponseSchema.parse(response);
 }
 
 export async function forkRepository(
   owner: string,
   repo: string,
-  organization?: string
+  organization?: string,
+  authOptions?: { token?: string }
 ) {
   const url = organization
     ? `https://api.github.com/repos/${owner}/${repo}/forks?organization=${organization}`
     : `https://api.github.com/repos/${owner}/${repo}/forks`;
 
-  const response = await githubRequest(url, { method: "POST" });
+  const response = await githubRequest(url, { method: "POST", token: authOptions?.token });
   return GitHubRepositorySchema.extend({
     parent: GitHubRepositorySchema,
     source: GitHubRepositorySchema,

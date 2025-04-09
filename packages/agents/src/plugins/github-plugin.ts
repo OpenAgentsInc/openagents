@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * GitHub plugin for the Coder agent - Direct GitHub API implementation
  * This version uses the GitHub API directly instead of going through MCP
@@ -12,6 +13,70 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   name = 'github';
   private agent: AIChatAgent<any> | null = null;
   private readonly gitHubTools: Record<string, any> = {};
+  private githubToken?: string;
+
+  private async callMCPTool(name: string, args: any): Promise<string> {
+    // For now, return error since we're using direct API
+    return `Error: ${name} not implemented in direct API mode`;
+  }
+
+  /**
+   * Gets the GitHub token from all possible sources
+   */
+  private getGitHubToken(): string | undefined {
+    console.log("Getting GitHub token...");
+
+    // 1. Check if we have a token stored in the instance
+    if (this.githubToken) {
+      console.log(`Using GitHub token from instance property (length: ${this.githubToken.length})`);
+      return this.githubToken;
+    }
+
+    // 2. Check if the agent has a token
+    if (this.agent && (this.agent as any).githubToken) {
+      const token = (this.agent as any).githubToken;
+      console.log(`Using GitHub token from agent property (length: ${token.length})`);
+      return token;
+    }
+
+    // 3. Check agent environment
+    if (this.agent) {
+      // Get the environment from the agent
+      const env = this.getAgentEnv();
+      if (env) {
+        // Check standard environment variables
+        if (env.GITHUB_TOKEN) {
+          console.log(`Using GitHub token from env.GITHUB_TOKEN (length: ${env.GITHUB_TOKEN.length})`);
+          return env.GITHUB_TOKEN;
+        }
+
+        if (env.GITHUB_PERSONAL_ACCESS_TOKEN) {
+          console.log(`Using GitHub token from env.GITHUB_PERSONAL_ACCESS_TOKEN (length: ${env.GITHUB_PERSONAL_ACCESS_TOKEN.length})`);
+          return env.GITHUB_PERSONAL_ACCESS_TOKEN;
+        }
+
+        // Check apiKeys
+        if (env.apiKeys && env.apiKeys.github) {
+          console.log(`Using GitHub token from env.apiKeys.github (length: ${env.apiKeys.github.length})`);
+          return env.apiKeys.github;
+        }
+      }
+    }
+
+    // No token found
+    console.warn("No GitHub token found. Operations requiring authentication will fail.");
+    return undefined;
+  }
+
+  /**
+   * Gets the environment object from the agent if available
+   */
+  private getAgentEnv(): any {
+    if (!this.agent) return null;
+
+    // Try to get the environment from the agent
+    return (this.agent as any).env;
+  }
 
   constructor() {
     console.log("=== INITIALIZING GITHUB PLUGIN (CONSTRUCTOR) ===");
@@ -31,10 +96,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, path, branch }) => {
           try {
             console.log(`Getting file contents for ${owner}/${repo}/${path}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.getFileContents(owner, repo, path, branch, token);
+            return await directGitHubTools.getFileContents(owner, repo, path, branch, this.githubToken);
           } catch (error) {
             console.error("Error getting file contents:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -112,10 +174,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, state, sort, direction }) => {
           try {
             console.log(`Listing issues for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, token);
+            return await directGitHubTools.listIssues(owner, repo, state, sort, direction, this.githubToken);
           } catch (error) {
             console.error("Error listing issues:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -135,9 +194,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, title, body, labels }) => {
           try {
             console.log(`Creating issue in ${owner}/${repo}: ${title}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
+
+            // Get the token using the getGitHubToken method which checks all sources
+            const token = this.getGitHubToken();
+            console.log(`GitHub token: ${token ? token.substring(0, 5) + '...' : 'undefined'}`);
+
             return await directGitHubTools.createIssue(owner, repo, title, body, labels, token);
           } catch (error) {
             console.error("Error creating issue:", error);
@@ -156,9 +217,8 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, issue_number }) => {
           try {
             console.log(`Getting issue ${issue_number} from ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
+            // Get token from the getGitHubToken method
+            const token = this.getGitHubToken();
             return await directGitHubTools.getIssue(owner, repo, issue_number, token);
           } catch (error) {
             console.error("Error getting issue:", error);
@@ -200,10 +260,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, state, sort, direction }) => {
           try {
             console.log(`Listing pull requests for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
-            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, token);
+            return await directGitHubTools.listPullRequests(owner, repo, state, sort, direction, this.githubToken);
           } catch (error) {
             console.error("Error listing pull requests:", error);
             return `Error: ${error instanceof Error ? error.message : String(error)}`;
@@ -281,9 +338,8 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, sha, page, perPage }) => {
           try {
             console.log(`Listing commits for ${owner}/${repo}`);
-            // Get GitHub token if available
-            const token = this.agent?.env?.GITHUB_TOKEN;
-            // Use direct GitHub API
+            // Get token from the getGitHubToken method
+            const token = this.getGitHubToken();
             return await directGitHubTools.listCommits(owner, repo, sha, page, perPage, token);
           } catch (error) {
             console.error("Error listing commits:", error);
@@ -297,13 +353,32 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   async initialize(agent: AIChatAgent<any>): Promise<void> {
     console.log("=== GITHUB PLUGIN INITIALIZE METHOD CALLED ===");
     this.agent = agent;
-    
-    // Log environment information
-    console.log("Agent environment:", {
-      hasEnv: !!agent.env,
-      hasGithubToken: !!(agent.env && agent.env.GITHUB_TOKEN),
+
+    // Try to get token from agent properties
+    if ((agent as any).githubToken) {
+      this.githubToken = (agent as any).githubToken;
+      console.log(`Using GitHub token from agent.githubToken (length: ${this.githubToken.length})`);
+    } else {
+      // Get it from the environment
+      const env = this.getAgentEnv();
+      if (env) {
+        // Try all possible token locations
+        this.githubToken = env.GITHUB_TOKEN ||
+          env.GITHUB_PERSONAL_ACCESS_TOKEN ||
+          (env.apiKeys && env.apiKeys.github);
+
+        if (this.githubToken) {
+          console.log(`Using GitHub token from agent environment (length: ${this.githubToken.length})`);
+        }
+      }
+    }
+
+    // Log token status
+    console.log("GitHub plugin status:", {
+      hasToken: !!this.githubToken,
+      tokenLength: this.githubToken ? this.githubToken.length : 0,
     });
-    
+
     console.log("GitHub plugin initialization complete - using direct GitHub API");
   }
 

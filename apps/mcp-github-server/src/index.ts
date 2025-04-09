@@ -273,10 +273,10 @@ export class MyMCP extends McpAgent {
           console.log(`🔧 Executing GitHub tool: ${tool.name}`);
           console.log(`📊 Tool parameters: ${JSON.stringify(validatedParams).substring(0, 200)}`);
           console.log(`🔑 GitHub token present: ${!!context.token}`);
-          
+
           globalThis.githubRequest = withToken(context.token);
           const result = await tool.handler(validatedParams as any);
-          
+
           console.log(`✅ Tool ${tool.name} execution successful`);
           return {
             content: [{
@@ -286,17 +286,17 @@ export class MyMCP extends McpAgent {
           };
         } catch (error) {
           console.error(`❌ Tool execution error for ${tool.name}:`, error);
-          
+
           // Improved error handling for specific GitHub errors
           let errorResponse: any = {
             error: error instanceof Error ? error.message : String(error)
           };
-          
+
           // For operations that fail without a token to public repositories
-          if (tool.name.startsWith('get_') && !context.token && 
-              (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
+          if (tool.name.startsWith('get_') && !context.token &&
+            (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
             console.log(`🔄 Error might be due to GitHub rate limits or auth requirements`);
-            
+
             errorResponse = {
               error: "GitHub API access error",
               details: {
@@ -307,7 +307,7 @@ export class MyMCP extends McpAgent {
               }
             };
           }
-          
+
           return {
             content: [{
               type: "text" as const,

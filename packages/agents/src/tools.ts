@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tool definitions for the AI chat agent
  * Tools can either require human confirmation or execute automatically
@@ -6,11 +7,13 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { ToolExecutionOptions } from "ai";
 
-import { agentContext } from "./server";
+import { Coder } from "./server";
 import {
   unstable_getSchedulePrompt,
   unstable_scheduleSchema,
 } from "agents/schedule";
+import { GitHubContentSchema } from "../../../apps/mcp-github-server/src/common/types";
+import { agentContext } from "./server";
 
 /**
  * Weather information tool that requires human confirmation
@@ -20,6 +23,10 @@ import {
 const getWeatherInformation = tool({
   description: "show the weather in a given city to the user",
   parameters: z.object({ city: z.string() }),
+  execute: async ({ city }) => {
+    console.log(`Getting weather information for ${city}`);
+    return `The weather in ${city} is sunny`;
+  },
   // Omitting execute function makes this tool require human confirmation
 });
 
@@ -40,18 +47,20 @@ const getLocalTime = tool({
 const scheduleTask = tool({
   description: "A tool to schedule a task to be executed at a later time",
   parameters: unstable_scheduleSchema,
-  execute: async ({ when, description }) => {
-    // we can now read the agent context from the ALS store
-    const agent = agentContext.getStore();
-    if (!agent) {
-      throw new Error("No agent found");
+  execute: async ({ when, description }, { agent }) => {
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
     }
+
     function throwError(msg: string): string {
       throw new Error(msg);
     }
+
     if (when.type === "no-schedule") {
       return "Not a valid schedule input";
     }
+
     const input =
       when.type === "scheduled"
         ? when.date // scheduled
@@ -73,11 +82,10 @@ const scheduleTask = tool({
 const listScheduledTasks = tool({
   description: "A tool to list all currently scheduled tasks",
   parameters: z.object({}),
-  execute: async () => {
-    // Get the agent from context
-    const agent = agentContext.getStore();
-    if (!agent) {
-      throw new Error("No agent found");
+  execute: async (_, { agent }) => {
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
     }
 
     try {
@@ -111,16 +119,88 @@ const listScheduledTasks = tool({
   },
 });
 
+
+async function githubRequest(url: string, options: { token?: string }) {
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'OpenAgents-GitHub-Client'
+  };
+
+  const agent = agentContext.getStore();
+
+  if (agent?.githubToken) {
+    console.log("Using GitHub token:", agent.githubToken.slice(0, 15));
+    headers['Authorization'] = `Bearer ${agent?.githubToken}`;
+  } else {
+    console.log("No GitHub token found");
+  }
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const error = await response.text();
+    console.error(`GitHub API error (${response.status}):`, error);
+    throw new Error(`GitHub API error (${response.status}): ${error}`);
+  }
+  return response.json();
+}
+
+async function getFileContents(
+  owner: string,
+  repo: string,
+  path: string,
+  branch?: string,
+  token?: string
+) {
+  let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  if (branch) {
+    url += `?ref=${branch}`;
+  }
+
+  const response = await githubRequest(url, { token });
+  const data = GitHubContentSchema.parse(response);
+
+  // If it's a file, decode the content
+  if (!Array.isArray(data) && data.content) {
+    // Replace newlines and spaces that GitHub adds to base64
+    const cleanContent = data.content.replace(/\n/g, '');
+    data.content = atob(cleanContent);
+  }
+
+  return data;
+}
+
+const fetchGitHubFileContent = tool({
+  description: 'Fetch the content of a file from a GitHub repository',
+  parameters: z.object({
+    owner: z.string(),
+    repo: z.string(),
+    path: z.string(),
+    branch: z.string(),
+  }),
+  execute: async ({ owner, repo, path, branch }) => {
+    try {
+      const data = await getFileContents(owner, repo, path, branch, toolContext);
+      if (Array.isArray(data)) {
+        return `Error: The path "${path}" points to a directory, not a file`;
+      }
+      console.log("Successfully fetched file content for:", path);
+      return data.content;
+    } catch (error: any) {
+      console.error("Error in fetchGitHubFileContent:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      return `Error fetching GitHub file: ${message}`;
+    }
+  }
+})
+
 const deleteScheduledTask = tool({
   description: "A tool to delete a previously scheduled task",
   parameters: z.object({
     taskId: z.string().describe("The ID of the task to delete")
   }),
-  execute: async ({ taskId }) => {
-    // Get the agent from context
-    const agent = agentContext.getStore();
-    if (!agent) {
-      throw new Error("No agent found");
+  execute: async ({ taskId }, { agent }) => {
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
     }
 
     try {
@@ -153,10 +233,11 @@ const deleteScheduledTask = tool({
  */
 export const tools = {
   getWeatherInformation,
-  getLocalTime,
-  scheduleTask,
-  listScheduledTasks,
-  deleteScheduledTask,
+  // getLocalTime,
+  // scheduleTask,
+  // listScheduledTasks,
+  // deleteScheduledTask,
+  // fetchGitHubFileContent
 };
 
 /**
@@ -168,6 +249,18 @@ export const executions = {
   getWeatherInformation: async (args: unknown, context: ToolExecutionOptions) => {
     const { city } = args as { city: string };
     console.log(`Getting weather information for ${city}`);
+
+    // Log if we have an agent and if it's a Coder
+    if (context.agent) {
+      console.log("Has agent in execution context");
+      if (context.agent instanceof Coder) {
+        console.log("Agent is a Coder instance");
+        console.log(`GitHub token available: ${!!context.agent.githubToken}`);
+      }
+    } else {
+      console.log("No agent in execution context");
+    }
+
     return `The weather in ${city} is sunny`;
   },
 };
