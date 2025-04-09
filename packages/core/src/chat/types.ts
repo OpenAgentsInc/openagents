@@ -1,6 +1,5 @@
 import { Message as VercelMessage } from 'ai/react';
 import { v4 as uuidv4 } from 'uuid';
-import { DeepReadonlyObject } from '../types';
 
 export type IdGenerator = () => string;
 
@@ -328,7 +327,7 @@ export interface UIMessage {
 export function toVercelMessage(message: UIMessage): BaseMessage {
   // Create a safe copy of parts array, defaulting to empty if missing
   const partsArray = message.parts || [];
-  
+
   // Filter out step-start parts which shouldn't be sent to Vercel
   const parts = partsArray.filter(part =>
     part.type !== 'step-start'
@@ -351,7 +350,7 @@ export function toVercelMessage(message: UIMessage): BaseMessage {
 export function fromVercelMessage(message: VercelMessage): UIMessage {
   // Create a timestamp preserving the original if provided, otherwise use current time
   const timestamp = message.createdAt ? new Date(message.createdAt) : new Date();
-  
+
   return {
     id: message.id || uuidv4(),
     role: message.role,
