@@ -39,5 +39,4 @@
     "wrangler": "4.9.1"
   },
   "_comment": "React and React-DOM resolutions were removed to allow workspaces like core, coder, and ui to use React 19.x which is needed for the `use()` hook in agents SDK. Keep react-native locked to prevent onyx app dependency issues.",
-  "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af"
 }
