@@ -1,4 +1,5 @@
 import { UIMessage } from "@openagents/ui";
+import { useAgent } from "agents/react";
 import { useState } from "react";
 
 type AgentType = 'coder';
@@ -30,6 +31,11 @@ export type OpenAgent = {
 
 export function useOpenAgent(agentType: AgentType): OpenAgent {
   const [messages, setMessages] = useState<UIMessage[]>(demoMessages);
+
+  const cloudflareAgent = useAgent({
+    name: 'coder1234',
+    agent: 'coder'
+  })
 
   return { messages, setMessages };
 }

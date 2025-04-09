@@ -34,6 +34,7 @@ function MessageInput({ onSubmit }: { onSubmit: (message: string) => void }) {
       <div className="max-w-3xl mx-auto flex gap-2">
         <input
           type="text"
+          autoFocus
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Type your message..."
