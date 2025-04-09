@@ -57,50 +57,6 @@ export class Coder extends Agent<Env, CoderState> {
     // Get current state messages
     const messages = this.state.messages || [];
 
-    // Convert messages to a format the model can handle
-    const processedMessages = messages.map(msg => {
-      // If the message has tool invocations, we need to convert them to a format the model understands
-      if (msg.parts?.some(part => part.type === 'tool-invocation')) {
-        // Group tool invocations by toolCallId
-        const toolCallsById = new Map();
-
-        msg.parts.forEach(part => {
-          if (part.type === 'tool-invocation') {
-            const { toolInvocation } = part;
-            const existing = toolCallsById.get(toolInvocation.toolCallId) || {};
-            if (toolInvocation.state === 'call') {
-              toolCallsById.set(toolInvocation.toolCallId, {
-                ...existing,
-                call: toolInvocation
-              });
-            } else if (toolInvocation.state === 'result') {
-              toolCallsById.set(toolInvocation.toolCallId, {
-                ...existing,
-                result: toolInvocation
-              });
-            }
-          }
-        });
-
-        // Only include complete tool calls (those with both call and result)
-        const newParts = [];
-        for (const [_, { call, result }] of toolCallsById) {
-          if (call && result) {
-            newParts.push({
-              type: 'text' as const,
-              text: `Tool ${call.toolName} was called with ${JSON.stringify(call.args)} and returned: ${result.result}`
-            });
-          }
-        }
-
-        return {
-          ...msg,
-          parts: newParts.length > 0 ? newParts : msg.parts
-        };
-      }
-      return msg;
-    });
-
     const result = await generateText({
       system: `You are a helpful assistant with access to tools. When a user asks about weather, ALWAYS use the getWeatherInformation tool - do not make up responses or refuse to help.
 
@@ -111,7 +67,7 @@ export class Coder extends Agent<Env, CoderState> {
 
       Never say you can't help or that you don't have access to weather data - you have the getWeatherInformation tool.`,
       model,
-      messages: processedMessages,
+      messages,
       maxTokens: 2500,
       temperature: 0.7,
       tools,
