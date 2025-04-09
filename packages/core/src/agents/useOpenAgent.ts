@@ -52,12 +52,14 @@ export function useOpenAgent(agentType: AgentType): OpenAgent {
     return await cloudflareAgent.call('infer', [token])
   }
 
-  const setGithubToken = async (token: string) => {
-    return await cloudflareAgent.call('setGithubToken', [token])
+  const setGithubToken = async (token: string): Promise<void> => {
+    await cloudflareAgent.call('setGithubToken', [token])
+    return
   }
 
-  const getGithubToken = async () => {
-    return await cloudflareAgent.call('getGithubToken')
+  const getGithubToken = async (): Promise<string> => {
+    const result = await cloudflareAgent.call('getGithubToken')
+    return result as string
   }
 
   return {
