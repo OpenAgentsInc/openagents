@@ -1,6 +1,8 @@
 import { type OpenAgent } from "@openagents/core"
 import { useState, type FormEvent } from "react"
 import { Trash } from "lucide-react"
+// Workaround for TypeScript JSX compatibility
+const TrashIcon = Trash as unknown as React.FC<{ size: number }>
 
 function MessageList({ messages }: { messages: OpenAgent['messages'] }) {
   return (
@@ -158,7 +160,7 @@ export function AgentChat({ agent, githubToken }: { agent: OpenAgent, githubToke
           className="p-2 hover:bg-muted rounded-full"
           title="Clear chat"
         >
-          <Trash size={20} />
+          <TrashIcon size={20} />
         </button>
       </div>
       <MessageList messages={agent.messages} />

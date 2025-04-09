@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Agent, routeAgentRequest, type Connection, type Schedule, type WSMessage } from "agents"
 import { AIChatAgent } from "agents/ai-chat-agent";

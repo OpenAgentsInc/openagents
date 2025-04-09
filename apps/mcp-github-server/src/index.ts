@@ -283,7 +283,8 @@ export class MyMCP extends McpAgent {
           console.log(`🔑 Passing token to handler: ${!!token}`);
 
           // Call the handler, passing the extracted token
-          const result = await tool.handler(validatedParams, { token });
+          // Need to cast validatedParams and token to any due to type incompatibility across different tool schemas
+          const result = await tool.handler(validatedParams as any, { token } as any);
 
           console.log(`✅ Tool ${tool.name} execution successful`);
           return {
