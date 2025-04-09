@@ -331,7 +331,8 @@ export class MyMCP extends McpAgent {
 export default {
   fetch: async (request: Request, env: any, ctx: any) => {
     const url = new URL(request.url);
-    console.log("Incoming request to MCP server:", request.method, url.pathname);
+
+    console.log("Incoming request to MCP server");
 
     // Handle the homepage route
     if (url.pathname === "/") {
@@ -342,14 +343,15 @@ export default {
       });
     }
 
-    // Handle the SSE route - directly pass to mount/fetch
-    return MyMCP.mount("/sse", {
-      binding: "MCP_GITHUB", // Use appropriate binding name
+    // Handle the SSE route
+    const response = await MyMCP.mount("/sse", {
       corsOptions: {
         origin: "*",
         methods: "GET,POST",
         headers: "*",
       }
     }).fetch(request, env, ctx);
+
+    return response;
   }
 };
