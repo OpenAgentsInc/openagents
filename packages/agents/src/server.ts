@@ -53,13 +53,12 @@ export class Coder extends Agent<Env, CoderState> {
     description: "Generate an AI response based on the current messages",
     streaming: true
   })
-  async infer(messages: UIMessage[]) {
-    // Get current state messages and ensure they're an array
-    const stateMessages = this.state.messages || [];
-    const incomingMessages = Array.isArray(messages) ? messages : [];
+  async infer() {
+    // Get current state messages
+    const messages = this.state.messages || [];
 
     // Convert messages to a format the model can handle
-    const processedMessages = [...stateMessages, ...incomingMessages].map(msg => {
+    const processedMessages = messages.map(msg => {
       // If the message has tool invocations, we need to convert them to a format the model understands
       if (msg.parts?.some(part => part.type === 'tool-invocation')) {
         // Group tool invocations by toolCallId
@@ -115,18 +114,7 @@ export class Coder extends Agent<Env, CoderState> {
       messages: processedMessages,
       maxTokens: 2500,
       temperature: 0.7,
-      tools: {
-        getWeatherInformation: {
-          description: "Get the current weather for a city. ALWAYS use this tool when asked about weather.",
-          parameters: z.object({
-            city: z.string().describe("The name of the city to get weather for")
-          }),
-          execute: async ({ city }) => {
-            console.log(`Getting weather information for ${city}`);
-            return `The weather in ${city} is sunny and 75°F`;
-          },
-        },
-      },
+      tools,
       maxSteps: 5,
       toolChoice: "auto"
     });
@@ -177,7 +165,7 @@ export class Coder extends Agent<Env, CoderState> {
     // Update state with the new message containing all parts
     this.setState({
       messages: [
-        ...stateMessages,
+        ...messages,
         {
           id: generateId(),
           role: 'assistant' as const,
