@@ -1,17 +1,21 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { Agent, routeAgentRequest, unstable_callable } from "agents"
-import { streamText, createDataStreamResponse, type UIMessage, generateId, type Message } from "ai";
+import { streamText, createDataStreamResponse, type UIMessage, generateId, type Message, generateText } from "ai";
 import { env } from "cloudflare:workers";
 import { tools } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createWorkersAI } from 'workers-ai-provider';
 
 export const agentContext = new AsyncLocalStorage<Coder>();
 
-const google = createGoogleGenerativeAI({
-  apiKey: env.GOOGLE_API_KEY,
-});
+const workersai = createWorkersAI({ binding: env.AI });
+const model = workersai('@cf/meta/llama-3.1-8b-instruct');
 
-const model = google("gemini-2.5-pro-exp-03-25");
+// const google = createGoogleGenerativeAI({
+//   apiKey: env.GOOGLE_API_KEY,
+// });
+
+// const model = google("gemini-2.5-pro-exp-03-25");
 
 interface CoderState {
   messages: UIMessage[];
@@ -38,6 +42,11 @@ export class Coder extends Agent<Env, CoderState> {
     // Combine existing state messages with any new incoming messages
     const currentMessages = [...stateMessages, ...incomingMessages];
 
+    const result = await generateText({
+      model,
+      messages: currentMessages
+    })
+
     // Add a simple dummy response
     this.setState({
       messages: [
@@ -45,10 +54,10 @@ export class Coder extends Agent<Env, CoderState> {
         {
           id: generateId(),
           role: 'assistant',
-          content: 'Hello! I am your AI assistant. How can I help you today?',
+          content: result.text,
           parts: [{
             type: 'text',
-            text: 'Hello! I am your AI assistant. How can I help you today?'
+            text: result.text
           }]
         }
       ]
