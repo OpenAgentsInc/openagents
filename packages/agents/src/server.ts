@@ -78,13 +78,20 @@ export class Coder extends Agent<Env, CoderState> {
 
     console.log("MCP client created", this.githubToken ? "with token in URL and auth header" : "without token")
 
-    this.tools = await this.mcpClient.tools()
+    const newTools = await this.mcpClient.tools()
+
+    this.tools = newTools
 
     console.log("Loaded MCP tools: " + Object.keys(this.tools).length)
 
     return {
-      success: true
+      success: true,
+      tools: newTools
     };
+  }
+
+  giveMeTheRightToolsNow() {
+    return this.tools;
   }
 
   @unstable_callable({
@@ -114,7 +121,7 @@ export class Coder extends Agent<Env, CoderState> {
         messages,
         maxTokens: 2500,
         temperature: 0.7,
-        tools: this.tools,
+        tools: this.giveMeTheRightToolsNow(),
         maxSteps: 5,
         toolChoice: "auto"
       });
