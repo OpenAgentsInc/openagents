@@ -53,8 +53,7 @@ function MessageInput({ onSubmit }: { onSubmit: (message: string) => void }) {
 
 export function AgentChat({ agent }: { agent: OpenAgent }) {
   const handleSubmit = (message: string) => {
-    // TODO: Implement message submission logic
-    console.log("Sending message:", message)
+    agent.handleSubmit(message)
   }
 
   return (
