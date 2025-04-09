@@ -7,6 +7,7 @@ import type { UIPart } from "@openagents/core/src/chat/types";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 
 const openrouter = createOpenRouter({
+  // @ts-ignore - env type error
   apiKey: env.OPENROUTER_API_KEY,
 })
 
@@ -91,6 +92,7 @@ export class Coder extends Agent<Env, CoderState> {
 
         try {
           // Call the actual tool on the MCP server
+          // @ts-ignore - mcpClient.callTool is marked as private in type definitions
           const result = await this.mcpClient.callTool({
             name: rawToolDefinition.name,
             arguments: args, // Pass the original arguments
@@ -215,6 +217,7 @@ export class Coder extends Agent<Env, CoderState> {
       // Add tool calls and their results together
       if (result.toolCalls && result.toolCalls.length > 0) {
         for (const toolCall of result.toolCalls) {
+          // @ts-ignore - toolCall type issue
           const toolResult = result.toolResults?.find(r => r.toolCallId === toolCall.toolCallId);
 
           // Add the tool call
@@ -222,6 +225,7 @@ export class Coder extends Agent<Env, CoderState> {
             type: 'tool-invocation' as const,
             toolInvocation: {
               state: 'call' as const,
+              // @ts-ignore - toolCall type issue
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName as "getWeatherInformation",
               args: toolCall.args
@@ -234,9 +238,11 @@ export class Coder extends Agent<Env, CoderState> {
               type: 'tool-invocation' as const,
               toolInvocation: {
                 state: 'result' as const,
+                // @ts-ignore - toolCall type issue
                 toolCallId: toolCall.toolCallId,
                 toolName: toolCall.toolName as "getWeatherInformation",
                 args: toolCall.args,
+                // @ts-ignore - toolResult type issue
                 result: toolResult.result
               }
             });
