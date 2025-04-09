@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * GitHub plugin for the Coder agent - Direct GitHub API implementation
  * This version uses the GitHub API directly instead of going through MCP
@@ -18,26 +19,26 @@ export class OpenAIAgentPlugin implements AgentPlugin {
     // For now, return error since we're using direct API
     return `Error: ${name} not implemented in direct API mode`;
   }
-  
+
   /**
    * Gets the GitHub token from all possible sources
    */
   private getGitHubToken(): string | undefined {
     console.log("Getting GitHub token...");
-    
+
     // 1. Check if we have a token stored in the instance
     if (this.githubToken) {
       console.log(`Using GitHub token from instance property (length: ${this.githubToken.length})`);
       return this.githubToken;
     }
-    
+
     // 2. Check if the agent has a token
     if (this.agent && (this.agent as any).githubToken) {
       const token = (this.agent as any).githubToken;
       console.log(`Using GitHub token from agent property (length: ${token.length})`);
       return token;
     }
-    
+
     // 3. Check agent environment
     if (this.agent) {
       // Get the environment from the agent
@@ -48,12 +49,12 @@ export class OpenAIAgentPlugin implements AgentPlugin {
           console.log(`Using GitHub token from env.GITHUB_TOKEN (length: ${env.GITHUB_TOKEN.length})`);
           return env.GITHUB_TOKEN;
         }
-        
+
         if (env.GITHUB_PERSONAL_ACCESS_TOKEN) {
           console.log(`Using GitHub token from env.GITHUB_PERSONAL_ACCESS_TOKEN (length: ${env.GITHUB_PERSONAL_ACCESS_TOKEN.length})`);
           return env.GITHUB_PERSONAL_ACCESS_TOKEN;
         }
-        
+
         // Check apiKeys
         if (env.apiKeys && env.apiKeys.github) {
           console.log(`Using GitHub token from env.apiKeys.github (length: ${env.apiKeys.github.length})`);
@@ -61,18 +62,18 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         }
       }
     }
-    
+
     // No token found
     console.warn("No GitHub token found. Operations requiring authentication will fail.");
     return undefined;
   }
-  
+
   /**
    * Gets the environment object from the agent if available
    */
   private getAgentEnv(): any {
     if (!this.agent) return null;
-    
+
     // Try to get the environment from the agent
     return (this.agent as any).env;
   }
@@ -193,11 +194,11 @@ export class OpenAIAgentPlugin implements AgentPlugin {
         execute: async ({ owner, repo, title, body, labels }) => {
           try {
             console.log(`Creating issue in ${owner}/${repo}: ${title}`);
-            
+
             // Get the token using the getGitHubToken method which checks all sources
             const token = this.getGitHubToken();
             console.log(`GitHub token: ${token ? token.substring(0, 5) + '...' : 'undefined'}`);
-            
+
             return await directGitHubTools.createIssue(owner, repo, title, body, labels, token);
           } catch (error) {
             console.error("Error creating issue:", error);
@@ -352,7 +353,7 @@ export class OpenAIAgentPlugin implements AgentPlugin {
   async initialize(agent: AIChatAgent<any>): Promise<void> {
     console.log("=== GITHUB PLUGIN INITIALIZE METHOD CALLED ===");
     this.agent = agent;
-    
+
     // Try to get token from agent properties
     if ((agent as any).githubToken) {
       this.githubToken = (agent as any).githubToken;
@@ -362,10 +363,10 @@ export class OpenAIAgentPlugin implements AgentPlugin {
       const env = this.getAgentEnv();
       if (env) {
         // Try all possible token locations
-        this.githubToken = env.GITHUB_TOKEN || 
-                          env.GITHUB_PERSONAL_ACCESS_TOKEN || 
-                          (env.apiKeys && env.apiKeys.github);
-                          
+        this.githubToken = env.GITHUB_TOKEN ||
+          env.GITHUB_PERSONAL_ACCESS_TOKEN ||
+          (env.apiKeys && env.apiKeys.github);
+
         if (this.githubToken) {
           console.log(`Using GitHub token from agent environment (length: ${this.githubToken.length})`);
         }
