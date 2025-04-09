@@ -42,15 +42,6 @@
   --sidebar-ring: oklch(0.705 0.015 286.067);
 }
 
-html,
-body {
-  @apply bg-white dark:bg-black !font-mono;
-
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
-  }
-}
-
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -128,6 +119,6 @@ body {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground !font-mono;
   }
 }
