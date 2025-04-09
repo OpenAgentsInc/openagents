@@ -5,12 +5,21 @@ import { env } from "cloudflare:workers";
 import { tools } from "./tools";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createWorkersAI } from 'workers-ai-provider';
+import { z } from "zod";
+import { createGroq } from '@ai-sdk/groq';
+
+const groq = createGroq({
+  apiKey: env.GROQ_API_KEY,
+  // custom settings
+});
+
+const model = groq("meta-llama/llama-4-scout-17b-16e-instruct");
 
 export const agentContext = new AsyncLocalStorage<Coder>();
 
-const workersai = createWorkersAI({ binding: env.AI });
+// const workersai = createWorkersAI({ binding: env.AI });
 // @ts-ignore
-const model = workersai("@cf/meta/llama-4-scout-17b-16e-instruct");
+// const model = workersai("@cf/meta/llama-4-scout-17b-16e-instruct");
 // const model = workersai("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
 
 // const google = createGoogleGenerativeAI({
@@ -50,8 +59,17 @@ export class Coder extends Agent<Env, CoderState> {
       messages: currentMessages,
       maxTokens: 2500,
       temperature: 0.9,
-      tools,
-      // maxSteps: 5,
+      tools: {
+        getWeatherInformation: {
+          description: "show the weather in a given city to the user",
+          parameters: z.object({ city: z.string() }),
+          execute: async ({ city }) => {
+            console.log(`Getting weather information for ${city}`);
+            return `The weather in ${city} is sunny`;
+          },
+        },
+      },
+      maxSteps: 5,
       // toolChoice: 'none'
     })
 
