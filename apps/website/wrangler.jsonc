@@ -48,10 +48,11 @@
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
 	 */
-  "services": [
-    {
-      "binding": "AGENT_SERVICE",
-      "service": "agents"
-    }
-  ]
+  // Default environment (used for production `wrangler deploy`)
+  // "services": [
+  //   {
+  //     "binding": "AGENT_SERVICE",
+  //     "service": "agents" // Ensure this matches the deployed agents worker name
+  //   }
+  // ],
 }

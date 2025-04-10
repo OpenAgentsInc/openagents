@@ -55,22 +55,105 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-
-  const agent = useAgent({
-    name: agentId,
-    agent: 'coder',
-    host: 'wss://agents.openagents.com',
-    onStateUpdate: (state: AgentState) => {
-      if (state.messages) {
-        setMessages(state.messages);
-      }
-      console.log("STATE:", state);
-    }
-  });
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Create and configure agent - this should trigger a WebSocket connection
+  const agent = useAgent({
+    name: agentId,
+    agent: 'coder', // The type of agent to connect to
+    host: 'agents.openagents.com', // WebSocket server address
+
+    // WebSocket event handlers
+    onMessage: (message) => {
+      console.log("WebSocket message received:", message.data);
+      try {
+        // Try to parse the message data as JSON
+        const data = JSON.parse(message.data);
+        console.log("Parsed WebSocket message:", data);
+      } catch (e) {
+        console.log("Raw message (not JSON):", message.data);
+      }
+    },
+
+    onOpen: () => {
+      console.log("WebSocket connection established successfully");
+      setConnectionStatus('connected');
+      setConnectionError(null);
+    },
+
+    onClose: (event) => {
+      console.log("WebSocket connection closed", event.code, event.reason);
+      setConnectionStatus('closed');
+      setConnectionError(`Connection closed: ${event.reason || 'Unknown reason'} (code: ${event.code})`);
+    },
+
+    onError: (error) => {
+      console.error("WebSocket connection error:", error);
+      setConnectionStatus('error');
+      setConnectionError(error.message || 'Unknown error');
+    },
+
+    // Agent state update handler
+    onStateUpdate: (state: AgentState) => {
+      console.log("Agent state updated:", state);
+      if (state.messages) {
+        setMessages(state.messages);
+      }
+    }
+  });
+
+  useEffect(() => {
+    console.log("Agent created:", agent);
+
+    // Check if agent.connection exists and log its state
+    if (agent && agent.connection) {
+      console.log("WebSocket connection state:", agent.connection.readyState);
+    } else {
+      console.warn("No WebSocket connection available on agent object");
+    }
+  }, [agent]);
+
+  // Effect to check connection status after component mounts
+  useEffect(() => {
+    if (!agent) return;
+
+    // Check connection status after a short delay
+    const timer = setTimeout(() => {
+      if (connectionStatus === 'connecting') {
+        console.log("WebSocket connection is still pending after timeout");
+        setConnectionStatus('error');
+        setConnectionError('Connection timeout - unable to establish WebSocket connection');
+      }
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [agent, connectionStatus]);
+
+  // Separate effect for pinging to avoid race conditions
+  useEffect(() => {
+    if (!agent || connectionStatus !== 'connected') return;
+
+    // We only want to ping once when the connection is first established
+    const pingTimeout = setTimeout(() => {
+      try {
+        if (typeof agent.ping === 'function') {
+          console.log("Sending ping to agent");
+          agent.ping();
+        } else {
+          console.log("No ping method available on agent");
+        }
+      } catch (error) {
+        console.error("Error sending ping:", error);
+      }
+    }, 500); // Short delay to ensure everything is initialized
+
+    return () => clearTimeout(pingTimeout);
+  }, [agent, connectionStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,10 +170,16 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
     setMessages(prev => [...prev, userMessage]);
     setInput("");
 
-    // Update agent state
-    await agent.setState({
-      messages: [...messages, userMessage]
-    });
+    try {
+      console.log("Updating agent state with message:", userMessage);
+      // Update agent state
+      await agent.setState({
+        messages: [...messages, userMessage]
+      });
+      console.log("Agent state updated successfully");
+    } catch (error) {
+      console.error("Error updating agent state:", error);
+    }
   };
 
   if (!mounted) {
@@ -104,7 +193,43 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Chat with Agent</CardTitle>
-          <CardDescription>Ask your agent questions about code</CardDescription>
+          <CardDescription>
+            Ask your agent questions about code
+            {connectionStatus && (
+              <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${connectionStatus === 'connected'
+                  ? 'bg-green-100 text-green-800'
+                  : connectionStatus === 'connecting'
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                {connectionStatus === 'connected'
+                  ? '● Connected'
+                  : connectionStatus === 'connecting'
+                    ? '● Connecting...'
+                    : '● Connection Error'}
+              </span>
+            )}
+          </CardDescription>
+          {connectionError && (
+            <div className="mt-2 p-2 bg-red-50 text-red-700 text-sm rounded-md flex justify-between items-center">
+              <span>{connectionError}</span>
+              {(connectionStatus === 'error' || connectionStatus === 'closed') && (
+                <button
+                  onClick={() => {
+                    // Reset connection status
+                    setConnectionStatus('connecting');
+                    setConnectionError(null);
+
+                    // Force page reload to reconnect
+                    window.location.reload();
+                  }}
+                  className="ml-2 px-2 py-1 bg-primary text-primary-foreground rounded text-xs"
+                >
+                  Reconnect
+                </button>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           <div className="h-[400px] overflow-y-auto mb-4 space-y-4">
@@ -135,7 +260,13 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
             />
             <button
               type="submit"
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!input.trim() || connectionStatus !== 'connected'}
+              title={
+                connectionStatus !== 'connected'
+                  ? 'Cannot send message: WebSocket connection not established'
+                  : 'Send message'
+              }
             >
               Send
             </button>
