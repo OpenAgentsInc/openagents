@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react"
+import React, { createContext, useContext, useEffect, useState, useRef } from "react"
 
 type Theme = "dark" | "light" | "system"
 
@@ -26,15 +26,40 @@ export function ThemeProvider({
   storageKey = "vite-ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(() => getTheme(storageKey, defaultTheme))
-
+  // Always use "dark" as the initial theme for hydration consistency
+  const initialTheme = "dark";
+  
+  // After hydration, we'll get the actual theme from localStorage
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+  
+  // Track if we're hydrated
+  const hasHydrated = useRef(false);
+  
+  // Initialize theme after first render (after hydration)
   useEffect(() => {
-    const root = window.document.documentElement
-    const currentTheme = getTheme(storageKey, defaultTheme)
-
-    root.classList.remove("light", "dark")
-    root.classList.add(currentTheme)
-  }, [theme, storageKey, defaultTheme])
+    if (!hasHydrated.current) {
+      hasHydrated.current = true;
+      
+      // Now we can safely get the user's preferred theme
+      const userTheme = getTheme(storageKey, defaultTheme);
+      if (userTheme !== initialTheme) {
+        setTheme(userTheme);
+      }
+    }
+  }, [storageKey, defaultTheme]);
+  
+  // Handle theme changes (only after initial hydration)
+  useEffect(() => {
+    if (hasHydrated.current && typeof window !== 'undefined') {
+      const root = window.document.documentElement;
+      const resolvedTheme = theme === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+        : theme;
+        
+      root.classList.remove("light", "dark");
+      root.classList.add(resolvedTheme);
+    }
+  }, [theme])
 
   const value = {
     theme,
@@ -65,11 +90,27 @@ export const useTheme = () => {
 export function getTheme(storageKey: string = "vite-ui-theme", defaultTheme: Theme = "system"): Theme {
   if (typeof window === 'undefined') return defaultTheme;
 
-  const theme = localStorage.getItem(storageKey) as Theme || defaultTheme;
-
-  if (theme === "system") {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  // Use the initial theme for consistency if available
+  if (window.__INITIAL_THEME__ && !Array.isArray(window.__INITIAL_THEME__)) {
+    return window.__INITIAL_THEME__ as Theme;
   }
 
-  return theme;
+  try {
+    const theme = localStorage.getItem(storageKey) as Theme || defaultTheme;
+
+    if (theme === "system") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+
+    return theme;
+  } catch (e) {
+    return defaultTheme;
+  }
+}
+
+// Add TypeScript declaration for the global window object
+declare global {
+  interface Window {
+    __INITIAL_THEME__?: string;
+  }
 }
