@@ -69,9 +69,9 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
     agent: 'coder',
     host: 'agents.openagents.com', // Standard format without protocol prefix
     path: 'agents', // Must NOT start with a slash according to PartySocket requirements
-    room: agentId, // Required by PartySocket for room identification
+    // room: agentId, // Required by PartySocket for room identification
     debug: true, // Enable verbose logging
-    
+
     // WebSocket event handlers with improved logging
     onMessage: (message) => {
       console.log("WebSocket message received:", message.data);
@@ -82,28 +82,28 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
         console.log("Raw message (not JSON):", message.data);
       }
     },
-    
+
     onOpen: () => {
       console.log("🎉 WebSocket connection established successfully");
       setConnectionStatus('connected');
       setConnectionError(null);
     },
-    
+
     onClose: (event) => {
       console.log("WebSocket connection closed", event.code, event.reason);
       setConnectionStatus('closed');
       setConnectionError(`Connection closed: ${event.reason || 'Unknown reason'} (code: ${event.code})`);
     },
-    
+
     onError: (error) => {
       console.error("WebSocket connection error:", error);
       let errorMessage = 'Unknown error';
-      
+
       if (error) {
         if (error.message) errorMessage = error.message;
         if (error.code) errorMessage += ` (Code: ${error.code})`;
       }
-      
+
       console.error("Connection details:", {
         errorMessage,
         agentId,
@@ -111,11 +111,11 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
         path: 'agents',
         room: agentId
       });
-      
+
       setConnectionStatus('error');
       setConnectionError(errorMessage);
     },
-    
+
     // Agent state update handler
     onStateUpdate: (state: AgentState) => {
       console.log("Agent state updated:", state);
@@ -128,7 +128,7 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
   // Connection timeout check
   useEffect(() => {
     if (!agent) return;
-    
+
     const timer = setTimeout(() => {
       if (connectionStatus === 'connecting') {
         console.log("Connection timeout after 5 seconds");
@@ -136,7 +136,7 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
         setConnectionError('Connection timeout - WebSocket connection not established after 5 seconds');
       }
     }, 5000);
-    
+
     return () => clearTimeout(timer);
   }, [agent, connectionStatus]);
 
@@ -158,23 +158,23 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
 
     try {
       console.log("Sending message to agent:", userMessage);
-      
+
       // Update agent state with new message
       await agent.setState({
         messages: [...messages, userMessage]
       });
-      
+
       console.log("Message sent successfully");
-      
+
       // Optional: Add loading state here if needed
       // setMessages(prev => [...prev, { role: 'assistant', content: '...', id: 'loading', createdAt: Date.now() }]);
-      
+
     } catch (error) {
       console.error("Error sending message:", error);
-      
+
       // Show error in UI
       setConnectionError(`Failed to send message: ${error.message || 'Unknown error'}`);
-      
+
       // Optionally revert the message if it failed to send
       // setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
     }
@@ -194,38 +194,37 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
           <CardDescription>
             Ask your agent questions about code
             <div className="mt-2">
-              <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                connectionStatus === 'connected' 
-                  ? 'bg-green-100 text-green-800' 
+              <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${connectionStatus === 'connected'
+                  ? 'bg-green-100 text-green-800'
                   : connectionStatus === 'connecting'
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-red-100 text-red-800'
-              }`}>
-                {connectionStatus === 'connected' 
-                  ? '● Connected' 
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                {connectionStatus === 'connected'
+                  ? '● Connected'
                   : connectionStatus === 'connecting'
-                  ? '● Connecting...'
-                  : '● Connection Error'}
+                    ? '● Connecting...'
+                    : '● Connection Error'}
               </div>
-              
+
               <div className="text-xs text-muted-foreground mt-2">
                 <div className="grid grid-cols-2 gap-1">
                   <span>WebSocket Host:</span>
                   <span className="font-medium">agents.openagents.com</span>
-                  
+
                   <span>WebSocket Path:</span>
                   <span className="font-medium">agents</span>
-                  
+
                   <span>Agent ID:</span>
                   <span className="font-medium">{agentId}</span>
-                  
+
                   <span>Agent Type:</span>
                   <span className="font-medium">coder</span>
                 </div>
               </div>
             </div>
           </CardDescription>
-          
+
           {connectionError && (
             <div className="mt-2 p-2 bg-red-50 text-red-700 text-sm rounded-md flex justify-between items-center">
               <span>{connectionError}</span>
@@ -243,7 +242,7 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
             </div>
           )}
         </CardHeader>
-        
+
         <CardContent>
           <div className="h-[400px] overflow-y-auto mb-4 space-y-4">
             {messages.length === 0 && (
@@ -254,18 +253,17 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
                 </div>
               </div>
             )}
-            
+
             {messages.map((message, index) => (
               <div
                 key={message.id || index}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    message.role === 'user'
-                    ? 'bg-primary text-primary-foreground ml-auto'
-                    : 'bg-muted'
-                  }`}
+                  className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
+                      ? 'bg-primary text-primary-foreground ml-auto'
+                      : 'bg-muted'
+                    }`}
                 >
                   <p className="whitespace-pre-wrap text-sm">{message.content}</p>
                   {message.createdAt && (
@@ -284,8 +282,8 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
-                connectionStatus === 'connected' 
-                  ? 'Type your message...' 
+                connectionStatus === 'connected'
+                  ? 'Type your message...'
                   : 'Waiting for connection...'
               }
               className="flex-1 px-3 py-2 rounded-md border bg-background"
