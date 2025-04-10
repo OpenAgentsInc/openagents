@@ -160,11 +160,16 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
       console.log("Sending message to agent:", userMessage);
 
       // Update agent state with new message
-      await agent.setState({
+      agent.setState({
         messages: [...messages, userMessage]
       });
 
       console.log("Message sent successfully");
+
+      const token = "placeholder"
+      await agent.call('infer', [token])
+
+      console.log('called infer')
 
       // Optional: Add loading state here if needed
       // setMessages(prev => [...prev, { role: 'assistant', content: '...', id: 'loading', createdAt: Date.now() }]);
@@ -195,10 +200,10 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
             Ask your agent questions about code
             <div className="mt-2">
               <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${connectionStatus === 'connected'
-                  ? 'bg-green-100 text-green-800'
-                  : connectionStatus === 'connecting'
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-red-100 text-red-800'
+                ? 'bg-green-100 text-green-800'
+                : connectionStatus === 'connecting'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-red-100 text-red-800'
                 }`}>
                 {connectionStatus === 'connected'
                   ? '● Connected'
@@ -261,8 +266,8 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
               >
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
-                      ? 'bg-primary text-primary-foreground ml-auto'
-                      : 'bg-muted'
+                    ? 'bg-primary text-primary-foreground ml-auto'
+                    : 'bg-muted'
                     }`}
                 >
                   <p className="whitespace-pre-wrap text-sm">{message.content}</p>
