@@ -60,13 +60,45 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
 
   useEffect(() => {
     setMounted(true);
+
+    // Check if WebSocket is supported in this environment
+    if (typeof WebSocket !== 'undefined') {
+      console.log("WebSocket is supported in this environment");
+      try {
+        // Try creating a test WebSocket to verify connectivity
+        const testSocket = new WebSocket('wss://agents.openagents.com');
+
+        testSocket.onopen = () => {
+          console.log("Test WebSocket connection successful");
+          testSocket.close();
+        };
+
+        testSocket.onerror = (error) => {
+          console.error("Test WebSocket connection failed:", error);
+        };
+      } catch (error) {
+        console.error("Error creating test WebSocket:", error);
+      }
+    } else {
+      console.error("WebSocket is not supported in this environment");
+    }
   }, []);
 
-  // Create and configure agent - this should trigger a WebSocket connection
+  // Create and configure agent with WebSocket connection
+  console.log("Initializing agent with WebSocket connection");
+  
+  // The issue might be with the protocol in PartySocket, so let's try different formats
+  // According to Cloudflare's docs, the WebSocket URL should be based on the worker route
+  // Use the route pattern from wrangler.jsonc: "agents.openagents.com"
   const agent = useAgent({
     name: agentId,
-    agent: 'coder', // The type of agent to connect to
-    host: 'agents.openagents.com', // WebSocket server address
+    agent: 'coder',
+    // Try with no protocol prefix - let PartySocket add it
+    host: 'agents.openagents.com',
+    // Add more parameters that might be expected by the Agents API
+    room: agentId, // Required by PartySocket
+    query: { clientId: agentId }, // Add query params
+    debug: true, // Enable debug mode for connection diagnostics
 
     // WebSocket event handlers
     onMessage: (message) => {
@@ -94,8 +126,24 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
 
     onError: (error) => {
       console.error("WebSocket connection error:", error);
+
+      // Get more detailed error information
+      let errorMessage = 'Unknown error';
+      if (error) {
+        if (error.message) errorMessage = error.message;
+        if (error.code) errorMessage += ` (Code: ${error.code})`;
+      }
+
+      console.error("Detailed error:", {
+        errorObject: error,
+        errorMessage,
+        agentId,
+        host: 'agents.openagents.com',
+        room: agentId
+      });
+
       setConnectionStatus('error');
-      setConnectionError(error.message || 'Unknown error');
+      setConnectionError(errorMessage);
     },
 
     // Agent state update handler
@@ -107,21 +155,12 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
     }
   });
 
-  useEffect(() => {
-    console.log("Agent created:", agent);
+  console.log("Agent created:", agent);
 
-    // Check if agent.connection exists and log its state
-    if (agent && agent.connection) {
-      console.log("WebSocket connection state:", agent.connection.readyState);
-    } else {
-      console.warn("No WebSocket connection available on agent object");
-    }
-  }, [agent]);
-
-  // Effect to check connection status after component mounts
+  // Check connection status after component mounts
   useEffect(() => {
     if (!agent) return;
-
+    
     // Check connection status after a short delay
     const timer = setTimeout(() => {
       if (connectionStatus === 'connecting') {
@@ -130,30 +169,92 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
         setConnectionError('Connection timeout - unable to establish WebSocket connection');
       }
     }, 5000);
-
+    
     return () => clearTimeout(timer);
   }, [agent, connectionStatus]);
-
-  // Separate effect for pinging to avoid race conditions
+  
+  // Add a fallback approach if connection fails
   useEffect(() => {
-    if (!agent || connectionStatus !== 'connected') return;
-
-    // We only want to ping once when the connection is first established
-    const pingTimeout = setTimeout(() => {
-      try {
-        if (typeof agent.ping === 'function') {
-          console.log("Sending ping to agent");
-          agent.ping();
-        } else {
-          console.log("No ping method available on agent");
-        }
-      } catch (error) {
-        console.error("Error sending ping:", error);
-      }
-    }, 500); // Short delay to ensure everything is initialized
-
-    return () => clearTimeout(pingTimeout);
-  }, [agent, connectionStatus]);
+    // If connection fails with error status, try alternative connection approach
+    if (connectionStatus === 'error' && agent) {
+      const fallbackTimer = setTimeout(() => {
+        console.log("Connection failed, trying alternative approaches");
+        
+        // Try multiple WebSocket URL formats to find one that works
+        const attemptConnection = async () => {
+          const urlFormats = [
+            'wss://agents.openagents.com',
+            'wss://agents.openagents.com/',
+            'wss://agents.openagents.com/ws',
+            'wss://agents.openagents.com/agent',
+            'wss://agents.openagents.com/connect'
+          ];
+          
+          console.log("Testing these WebSocket URL formats:", urlFormats);
+          
+          for (const url of urlFormats) {
+            try {
+              console.log(`Trying WebSocket connection to: ${url}`);
+              const socket = new WebSocket(url);
+              
+              // Create a promise to handle the connection attempt
+              const result = await new Promise((resolve) => {
+                // Set a timeout to avoid waiting too long
+                const timeout = setTimeout(() => {
+                  socket.close();
+                  resolve({ success: false, url, reason: 'timeout' });
+                }, 3000);
+                
+                socket.onopen = () => {
+                  clearTimeout(timeout);
+                  socket.close();
+                  resolve({ success: true, url });
+                };
+                
+                socket.onerror = () => {
+                  clearTimeout(timeout);
+                  resolve({ success: false, url, reason: 'error' });
+                };
+              });
+              
+              if (result.success) {
+                console.log(`🎉 Successful WebSocket connection to: ${result.url}`);
+                setConnectionError(`Direct WebSocket works with: ${result.url}, but agent connection still failing. Check developer console for details.`);
+                
+                // Try to reconnect the agent with this URL format
+                if (agent.updateProperties && agent.reconnect) {
+                  console.log("Attempting to reconnect agent with the working URL");
+                  try {
+                    const parsedUrl = new URL(result.url);
+                    agent.updateProperties({
+                      host: parsedUrl.host,
+                      path: parsedUrl.pathname || '/',
+                    });
+                    agent.reconnect();
+                  } catch (e) {
+                    console.error("Failed to update agent properties:", e);
+                  }
+                }
+                
+                return;
+              } else {
+                console.log(`❌ Failed WebSocket connection to: ${result.url} (${result.reason})`);
+              }
+            } catch (error) {
+              console.error(`Error testing WebSocket URL ${url}:`, error);
+            }
+          }
+          
+          console.error("All WebSocket connection attempts failed");
+          setConnectionError("All WebSocket connection attempts failed. The server may be unavailable.");
+        };
+        
+        attemptConnection();
+      }, 3000);
+      
+      return () => clearTimeout(fallbackTimer);
+    }
+  }, [agent, connectionStatus, agentId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,20 +296,27 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
           <CardTitle>Chat with Agent</CardTitle>
           <CardDescription>
             Ask your agent questions about code
-            {connectionStatus && (
-              <span className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${connectionStatus === 'connected'
-                  ? 'bg-green-100 text-green-800'
+            <div className="mt-2">
+              <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                connectionStatus === 'connected' 
+                  ? 'bg-green-100 text-green-800' 
                   : connectionStatus === 'connecting'
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                {connectionStatus === 'connected'
-                  ? '● Connected'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-red-100 text-red-800'
+              }`}>
+                {connectionStatus === 'connected' 
+                  ? '● Connected' 
                   : connectionStatus === 'connecting'
-                    ? '● Connecting...'
-                    : '● Connection Error'}
-              </span>
-            )}
+                  ? '● Connecting...'
+                  : '● Connection Error'}
+              </div>
+              
+              <div className="text-xs text-muted-foreground mt-2">
+                WebSocket Host: agents.openagents.com<br/>
+                Agent ID: {agentId}<br/>
+                Agent Type: coder
+              </div>
+            </div>
           </CardDescription>
           {connectionError && (
             <div className="mt-2 p-2 bg-red-50 text-red-700 text-sm rounded-md flex justify-between items-center">
@@ -218,14 +326,28 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
                   onClick={() => {
                     // Reset connection status
                     setConnectionStatus('connecting');
-                    setConnectionError(null);
-
-                    // Force page reload to reconnect
-                    window.location.reload();
+                    setConnectionError('Attempting to reconnect...');
+                    
+                    // Try to directly reconnect without page reload
+                    if (agent && agent.reconnect) {
+                      console.log("Attempting direct reconnection without reload");
+                      agent.reconnect();
+                      
+                      // Set a timeout to reload the page if reconnection fails
+                      setTimeout(() => {
+                        if (connectionStatus !== 'connected') {
+                          console.log("Reconnection still not successful, reloading page");
+                          window.location.reload();
+                        }
+                      }, 5000);
+                    } else {
+                      // Force page reload to reconnect if reconnect method not available
+                      window.location.reload();
+                    }
                   }}
                   className="ml-2 px-2 py-1 bg-primary text-primary-foreground rounded text-xs"
                 >
-                  Reconnect
+                  Try Reconnect
                 </button>
               )}
             </div>
