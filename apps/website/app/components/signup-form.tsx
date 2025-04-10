@@ -66,9 +66,9 @@ export function SignupForm({
           },
           onSuccess: () => {
             setSuccess(true)
-            // Wait a moment to show the success message before redirecting
+            // Wait a moment to show the success message before redirecting to home
             setTimeout(() => {
-              navigate("/login")
+              navigate("/")
             }, 1500)
           },
           onError: (ctx) => {
@@ -147,7 +147,7 @@ export function SignupForm({
               {/* Display success message */}
               {success && (
                 <div className="p-3 rounded-md bg-green-500/10 text-green-600 dark:text-green-400 text-sm">
-                  Account created successfully! Redirecting to login...
+                  Account created successfully! Redirecting to home page...
                 </div>
               )}
               
