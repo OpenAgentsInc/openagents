@@ -121,7 +121,6 @@ export default function AgentDetails() {
           <Card>
             <CardHeader>
               <CardTitle>Agent Purpose</CardTitle>
-              <CardDescription>What this agent was created to do</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="whitespace-pre-wrap">{agent.purpose}</p>
