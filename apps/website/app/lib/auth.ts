@@ -20,6 +20,9 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     enabled: true,
     autoSignIn: true, // Auto sign in user after successful sign up
   },
+  
+  // Enable debug mode for more detailed logs
+  debug: true,
 });
 
 // Add a console log to see the structure of the auth object during initialization
