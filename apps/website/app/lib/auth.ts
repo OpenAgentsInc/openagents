@@ -1,19 +1,43 @@
 import { betterAuth } from "better-auth";
-// Remove direct import of better-sqlite3
-// import Database from "better-sqlite3"; 
-import { LibsqlDialect } from "@libsql/kysely-libsql"; // Use LibSQL for CF Workers compatibility
+import { createClient } from "@libsql/client/web";
+import { LibsqlDialect } from "@libsql/kysely-libsql";
 
-// Configure the LibSQL dialect for Turso or local SQLite via env vars
-const dialect = new LibsqlDialect({
-  url: process.env.TURSO_DATABASE_URL!,
-  authToken: process.env.TURSO_AUTH_TOKEN!,
-});
+// Properly access environment variables based on Cloudflare Workers context
+function getEnv(key: string): string {
+  // First check if we're in a Workers environment with 'env' context
+  // @ts-ignore - Access potential Cloudflare env
+  if (typeof globalThis.process === 'undefined' && typeof env !== 'undefined') {
+    // @ts-ignore - Cloudflare Worker context
+    return env[key] || '';
+  }
+  // Fallback to node process.env
+  return process.env[key] || '';
+}
 
-export const auth: ReturnType<typeof betterAuth> = betterAuth({
-  // For development, using local SQLite via LibSQL (requires wrangler dev --local or similar setup)
-  // database: new Database("./sqlite.db"), 
+// Create a Turso client that works in the Cloudflare Workers environment
+function createTursoClient() {
+  const url = getEnv('TURSO_URL') || getEnv('TURSO_DATABASE_URL');
+  const authToken = getEnv('TURSO_AUTH_TOKEN');
+  
+  if (!url) {
+    console.error('Missing Turso URL configuration');
+    throw new Error('Missing Turso URL configuration');
+  }
+  
+  // Configure the LibSQL dialect for Cloudflare Workers
+  return new LibsqlDialect({
+    url,
+    authToken: authToken || undefined,
+    // Use fetch API from global
+    fetch: (url, options) => fetch(url, options),
+  });
+}
 
-  // Use the LibSQL dialect for both development (local) and production (Cloudflare)
+// Create the dialect instance
+const dialect = createTursoClient();
+
+export const auth = betterAuth({
+  // Use the LibSQL dialect configured for Cloudflare Workers
   database: {
     dialect,
     type: "sqlite", // Kysely needs the base type hint
@@ -28,12 +52,12 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   // Social Providers (configure via environment variables)
   socialProviders: {
     github: {
-      clientId: process.env.GITHUB_CLIENT_ID || "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET || "",
-    },
+      clientId: getEnv('GITHUB_CLIENT_ID'),
+      clientSecret: getEnv('GITHUB_CLIENT_SECRET'),
+    }, 
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      clientId: getEnv('GOOGLE_CLIENT_ID'),
+      clientSecret: getEnv('GOOGLE_CLIENT_SECRET'),
     },
   },
 })
