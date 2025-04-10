@@ -29,7 +29,9 @@ This is a React Router v7 (formerly known as Remix) app using a Cloudflare Worke
 ## Routing
 - Routes are defined in `app/routes.ts` using React Router v7's route configuration
 - Route components should be placed in `app/routes/` directory
-- Use the `index()` function for index routes
+- Use the `index()` function for index routes (e.g., `index("routes/home.tsx")`)
+- Use the `route()` function for path routes (e.g., `route("spawn", "routes/spawn.tsx")`)
+- Each route component should have a matching type file in `routes/+types/` directory
 - Page components should export a default component and optional loader/action functions
 - Use nested routes for layouts (parent routes act as layout components)
 - Follow RRv7 conventions for data loading with `loader` and mutations with `action`
