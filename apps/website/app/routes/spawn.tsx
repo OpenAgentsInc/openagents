@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { Form } from "react-router";
+import { useState, useEffect } from "react";
+import { Form, useNavigate } from "react-router";
 import type { ActionFunctionArgs } from "react-router";
 import type { Route } from "./+types/spawn";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
+import { useAgentStore } from "~/lib/store";
 
 export function meta({ }: Route.MetaArgs) {
   return [
@@ -19,19 +20,48 @@ export async function action({ request }: ActionFunctionArgs) {
   const githubToken = formData.get("githubToken") as string;
   const agentPurpose = formData.get("agentPurpose") as string;
 
-  // Here you would handle the form submission
+  // Here you would handle the form submission with server-side logic
   console.log({ githubToken, agentPurpose });
 
-  // For now, just return the values
-  return { success: true, data: { githubToken, agentPurpose } };
+  // In a real implementation, you'd communicate with your agent service here
+  // For example: const result = await agentService.createAgent(githubToken, agentPurpose);
+  
+  // For now, simulate success
+  return { 
+    success: true, 
+    data: { 
+      id: `agent-${Date.now()}`,
+      purpose: agentPurpose 
+    } 
+  };
 }
 
 export default function Spawn() {
+  const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const { agentPurpose, setGithubToken, setAgentPurpose } = useAgentStore();
+  
+  // Form state
+  const [githubToken, setGithubTokenLocal] = useState("");
+  const [purpose, setPurpose] = useState("");
+  
+  // Load initial purpose from store
+  useEffect(() => {
+    if (agentPurpose) {
+      setPurpose(agentPurpose);
+    }
+  }, [agentPurpose]);
+  
   const handleSubmit = (e: React.FormEvent) => {
     setIsSubmitting(true);
-    // Form will be handled by the action function
+    
+    // Save to Zustand store (browser-only)
+    if (isBrowser) {
+      setGithubToken(githubToken);
+      setAgentPurpose(purpose);
+    }
+    
+    // Form will also be handled by the action function
   };
 
   return (
@@ -70,6 +100,8 @@ export default function Spawn() {
                 placeholder="github_pat_*********************************"
                 required
                 autoComplete="new-password"
+                value={githubToken}
+                onChange={(e) => setGithubTokenLocal(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
                 Create a <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">fine-grained GitHub token</a> with only the permissions this agent needs. Your token will not be stored.
@@ -84,6 +116,8 @@ export default function Spawn() {
                 placeholder="Describe what you want this agent to help you with..."
                 rows={5}
                 required
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
                 Be specific about what you want the agent to work on. You'll be able to modify this later.
