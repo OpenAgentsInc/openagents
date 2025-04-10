@@ -7,6 +7,7 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
 import { useAgentStore } from "~/lib/store";
+import { Header } from "~/components/header";
 
 export function meta({ }: Route.MetaArgs) {
   return [
@@ -77,11 +78,12 @@ export default function Spawn() {
       if (actionData.success && actionData.data?.id) {
         const agentId = actionData.data.id;
         
-        // Add agent to store
+        // Add agent to store with the ID timestamp to avoid hydration issues
+        const createdAt = parseInt(agentId.split('-')[1], 36);
         useAgentStore.getState().addAgent({
           id: agentId,
           purpose: actionData.data.purpose,
-          createdAt: Date.now()
+          createdAt: createdAt || 0
         });
         
         // Reset isSubmitting
@@ -136,16 +138,10 @@ export default function Spawn() {
 
   return (
     <>
-      <header className="w-full p-4 border-b">
-        <div className="max-w-7xl mx-auto flex items-center">
-          <a href="/" className="text-lg font-semibold hover:text-primary transition-colors">
-            OpenAgents
-          </a>
-        </div>
-      </header>
+      <Header showNewAgentButton={false} />
 
-      <main className="w-full max-w-2xl mx-auto p-8 pt-16">
-        <h1 className="text-4xl font-bold mb-12">Spawn a coding agent</h1>
+      <main className="w-full max-w-2xl mx-auto p-8 pt-24">
+        <h1 className="text-3xl font-bold mb-8">Spawn a coding agent</h1>
 
         <div className="space-y-10">
           <Form

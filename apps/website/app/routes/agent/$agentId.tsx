@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { Link, useLoaderData, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
 import { useAgentStore } from "~/lib/store";
+import { Header } from "~/components/header";
 
 // Use the Agent type locally to avoid import issues
 interface Agent {
@@ -11,85 +12,87 @@ interface Agent {
   createdAt: number;
 }
 
-export function meta({ params, data }: Route.MetaArgs) {
-  const agent = data as Agent | null;
+export function meta({ params }: Route.MetaArgs) {
   return [
-    { title: agent ? `Agent: ${agent.id}` : "Agent Not Found - OpenAgents" },
-    { name: "description", content: agent?.purpose || "Agent details not found" },
+    { title: `Agent: ${params.agentId}` },
+    { name: "description", content: "View agent details" },
   ];
 }
 
-// Load agent data
+// Load agent data - server-side only returns ID for safety
 export async function loader({ params }: LoaderFunctionArgs) {
   const { agentId } = params;
   
-  // Note: In a real app, you would fetch agent data from an API
-  // For now, we'll return null and let the client-side handle it
-  return null;
+  // For security, don't try to load agents on the server
+  // Just return the ID and let client-side handle data lookup
+  return { id: agentId };
 }
 
 export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
-  const loaderData = useLoaderData<Agent | null>();
   
-  // Get agent from store
-  const { getAgent, agents } = useAgentStore();
+  // Client-side only state
+  const [agent, setAgent] = useState<Agent | null>(null);
+  const [loading, setLoading] = useState(true);
   
-  // Find agent in store (will be available client-side)
-  const agent = getAgent(agentId || "");
+  // Get agent from store - client-side only
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const { getAgent } = useAgentStore.getState();
+      const foundAgent = getAgent(agentId || "");
+      setAgent(foundAgent || null);
+      setLoading(false);
+    }
+  }, [agentId]);
   
-  // If no agent is found, show not found message
-  if (!agent) {
+  // Agent not found view (shared between server and client)
+  const NotFoundView = () => (
+    <>
+      <Header />
+      
+      <main className="w-full max-w-2xl mx-auto p-8 pt-24 text-center">
+        <h1 className="text-3xl font-bold mb-6">Agent Not Found</h1>
+        <p className="mb-8">We couldn't find an agent with ID: {agentId}</p>
+        <a 
+          href="/spawn" 
+          className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90"
+        >
+          Spawn a New Agent
+        </a>
+      </main>
+    </>
+  );
+
+  // Loading view
+  if (loading) {
     return (
       <>
-        <header className="w-full p-4 border-b">
-          <div className="max-w-7xl mx-auto flex items-center">
-            <Link to="/" className="text-lg font-semibold hover:text-primary transition-colors">
-              OpenAgents
-            </Link>
-          </div>
-        </header>
+        <Header />
         
-        <main className="w-full max-w-2xl mx-auto p-8 pt-16 text-center">
-          <h1 className="text-4xl font-bold mb-6">Agent Not Found</h1>
-          <p className="mb-8">We couldn't find an agent with ID: {agentId}</p>
-          <Link 
-            to="/spawn" 
-            className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          >
-            Spawn a New Agent
-          </Link>
+        <main className="w-full max-w-2xl mx-auto p-8 pt-24 text-center">
+          <h1 className="text-3xl font-bold mb-6">Loading...</h1>
         </main>
       </>
     );
   }
+  
+  // If no agent is found, show not found message
+  if (!agent) {
+    return <NotFoundView />;
+  }
 
-  // Format date from timestamp
-  const formattedDate = new Date(agent.createdAt).toLocaleString();
+  // Format date from timestamp - on client only
+  const formattedDate = new Date(agent.createdAt || 0).toLocaleString();
   
   return (
     <>
-      <header className="w-full p-4 border-b">
-        <div className="max-w-7xl mx-auto flex items-center">
-          <Link to="/" className="text-lg font-semibold hover:text-primary transition-colors">
-            OpenAgents
-          </Link>
-        </div>
-      </header>
+      <Header />
       
-      <main className="w-full max-w-2xl mx-auto p-8 pt-16">
-        <div className="flex justify-between items-start mb-8">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">Agent: {agent.id}</h1>
-            <p className="text-muted-foreground">Created on {formattedDate}</p>
-          </div>
-          <Link 
-            to="/spawn" 
-            className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          >
-            New Agent
-          </Link>
+      <main className="w-full max-w-2xl mx-auto p-8 pt-24">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Agent: {agent.id}</h1>
+          <p className="text-muted-foreground">Created on {formattedDate}</p>
         </div>
         
         <div className="space-y-6">
@@ -114,3 +117,6 @@ export default function AgentDetails() {
     </>
   );
 }
+
+// Use React hooks only in component body
+import { useState } from "react";
