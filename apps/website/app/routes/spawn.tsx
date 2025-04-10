@@ -77,7 +77,7 @@ export default function Spawn() {
               required
             />
             <p className="text-xs text-muted-foreground">
-              Be specific about what you want the agent to work on.
+              Be specific about what you want the agent to work on. You'll be able to modify this later.
             </p>
           </div>
 
