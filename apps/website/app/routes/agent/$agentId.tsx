@@ -14,6 +14,20 @@ import { useState } from "react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 
+// Message type definition
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  id?: string;
+  createdAt?: number;
+}
+
+// Agent state type
+interface AgentState {
+  messages?: Message[];
+  [key: string]: any;
+}
+
 // Use the Agent type locally to avoid import issues
 interface Agent {
   id: string;
@@ -39,30 +53,102 @@ export async function loader({ params }: LoaderFunctionArgs) {
 
 function ClientOnly({ agentId, children }: { agentId: string, children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
 
   const agent = useAgent({
     name: agentId,
-    agent: 'coder'
-  })
-
-  console.log(agent);
+    agent: 'coder',
+    host: 'wss://agents.openagents.com',
+    onStateUpdate: (state: AgentState) => {
+      if (state.messages) {
+        setMessages(state.messages);
+      }
+      console.log("STATE:", state);
+    }
+  });
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || !agent) return;
+
+    // Add user message
+    const userMessage = {
+      role: 'user' as const,
+      content: input,
+      id: Date.now().toString(),
+      createdAt: Date.now(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInput("");
+
+    // Update agent state
+    await agent.setState({
+      messages: [...messages, userMessage]
+    });
+  };
+
   if (!mounted) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <div className="flex flex-col h-full">
+      {children}
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Chat with Agent</CardTitle>
+          <CardDescription>Ask your agent questions about code</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[400px] overflow-y-auto mb-4 space-y-4">
+            {messages.map((message, index) => (
+              <div
+                key={message.id || index}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
+                    ? 'bg-primary text-primary-foreground ml-auto'
+                    : 'bg-muted'
+                    }`}
+                >
+                  <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type your message..."
+              className="flex-1 px-3 py-2 rounded-md border bg-background"
+            />
+            <button
+              type="submit"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              Send
+            </button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
-
-  const [loading, setLoading] = useState(true);
 
   return (
     <>
@@ -81,10 +167,7 @@ function AgentContent({ agentId }: { agentId: string }) {
   // Move all client-side code here
   const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState<Agent | null>(null);
-  const [githubToken, setGithubToken] = useState<string>("");
   const agentStore = useAgentStore();
-
-  // Temporarily removed useOpenAgent due to build errors
 
   useEffect(() => {
     // Initialize agent here
@@ -99,9 +182,6 @@ function AgentContent({ agentId }: { agentId: string }) {
 
         if (foundAgent) {
           setAgent(foundAgent);
-          setGithubToken(agentStore.githubToken);
-
-          // Token setting logic temporarily removed
         }
 
         setLoading(false);
@@ -155,22 +235,6 @@ function AgentContent({ agentId }: { agentId: string }) {
           </CardHeader>
           <CardContent>
             <p className="whitespace-pre-wrap">{agent.purpose}</p>
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle>Conversation</CardTitle>
-            <CardDescription>Chat with your coding agent</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="h-[600px]">
-              <div className="p-4 text-center">
-                <p>Agent ID: {agentId}</p>
-                <p>GitHub Token: {githubToken ? "✓ Set" : "Not set"}</p>
-                <p>Chat functionality will be available soon</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>
