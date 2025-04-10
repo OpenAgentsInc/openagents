@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Form, useNavigate } from "react-router";
+import { Form, useNavigate, useActionData, redirect } from "react-router";
 import type { ActionFunctionArgs } from "react-router";
 import type { Route } from "./+types/spawn";
 import { Button } from "~/components/ui/button";
@@ -23,10 +23,16 @@ export async function action({ request }: ActionFunctionArgs) {
   // Here you would handle the form submission with server-side logic
   console.log({ githubToken, agentPurpose });
 
+  // Validate the form data
+  if (!githubToken || !agentPurpose) {
+    return { success: false, error: "GitHub Token and Agent Purpose are required" };
+  }
+
   // In a real implementation, you'd communicate with your agent service here
   // For example: const result = await agentService.createAgent(githubToken, agentPurpose);
   
-  // For now, simulate success
+  // For now, simulate success and return form data
+  // Important: Don't return the GitHub token for security
   return { 
     success: true, 
     data: { 
@@ -37,6 +43,13 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function Spawn() {
+  // Get action data from the form submission
+  const actionData = useActionData<{ 
+    success: boolean; 
+    error?: string; 
+    data?: { id: string; purpose: string } 
+  }>();
+  
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { agentPurpose, setGithubToken, setAgentPurpose } = useAgentStore();
@@ -44,6 +57,7 @@ export default function Spawn() {
   // Form state
   const [githubToken, setGithubTokenLocal] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [error, setError] = useState<string | null>(null);
   
   // Load initial purpose from store
   useEffect(() => {
@@ -52,16 +66,30 @@ export default function Spawn() {
     }
   }, [agentPurpose]);
   
-  const handleSubmit = (e: React.FormEvent) => {
+  // Handle form submission success or error
+  useEffect(() => {
+    if (actionData) {
+      if (actionData.success) {
+        // Reset isSubmitting
+        setIsSubmitting(false);
+        
+        // Can navigate to agent details page or display success message
+        // navigate(`/agent/${actionData.data?.id}`);
+      } else if (actionData.error) {
+        setError(actionData.error);
+        setIsSubmitting(false);
+      }
+    }
+  }, [actionData, navigate]);
+  
+  // Handle client-side form submission updates
+  const handleBeforeSubmit = () => {
+    setError(null);
     setIsSubmitting(true);
     
-    // Save to Zustand store (browser-only)
-    if (isBrowser) {
-      setGithubToken(githubToken);
-      setAgentPurpose(purpose);
-    }
-    
-    // Form will also be handled by the action function
+    // Save to Zustand store
+    setGithubToken(githubToken);
+    setAgentPurpose(purpose);
   };
 
   return (
@@ -78,7 +106,11 @@ export default function Spawn() {
         <h1 className="text-4xl font-bold mb-12">Spawn a coding agent</h1>
 
         <div className="space-y-10">
-          <Form method="post" onSubmit={handleSubmit} className="space-y-8">
+          <Form 
+            method="post" 
+            className="space-y-8"
+            onSubmit={handleBeforeSubmit}
+            preventScrollReset>
             {/* Hidden username field for accessibility */}
             <div className="sr-only">
               <Label htmlFor="username">GitHub Username</Label>
@@ -124,6 +156,20 @@ export default function Spawn() {
               </p>
             </div>
 
+            {/* Display any validation errors */}
+            {error && (
+              <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                {error}
+              </div>
+            )}
+            
+            {/* Display success message if form was submitted successfully */}
+            {actionData?.success && (
+              <div className="p-3 rounded-md bg-green-500/10 text-green-600 dark:text-green-400 text-sm">
+                Agent created successfully! ID: {actionData.data?.id}
+              </div>
+            )}
+            
             <Button
               type="submit"
               className="w-full mt-4"
