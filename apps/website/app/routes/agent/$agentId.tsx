@@ -11,7 +11,6 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
-import { Button } from "~/components/ui/button";
 import { AgentChat } from "@openagents/ui";
 import { useState } from "react";
 
@@ -50,21 +49,7 @@ export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
 
-  const [agent, setAgent] = useState<Agent>({
-    messages: [],
-    setMessages: () => { },
-    handleSubmit: () => Promise.resolve(),
-    infer: () => Promise.resolve(),
-    loading: false,
-    error: null,
-    setGithubToken: () => Promise.resolve(),
-    getGithubToken: () => Promise.resolve(""),
-    createdAt: 0,
-    purpose: "",
-    id: agentId || ""
-  });
-
-  // Client-side only state
+  const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
   const [githubToken, setGithubToken] = useState<string>("");
 
@@ -73,13 +58,15 @@ export default function AgentDetails() {
     if (typeof window !== 'undefined') {
       const store = useAgentStore.getState();
       const foundAgent = store.getAgent(agentId || "");
-      setAgent(foundAgent || agent);
+      if (foundAgent) {
+        setAgent(foundAgent);
+      }
 
       // Get GitHub token from store
       setGithubToken(store.githubToken);
       setLoading(false);
     }
-  }, [agentId, agent]);
+  }, [agentId]);
 
   // Agent not found view (shared between server and client)
   const NotFoundView = () => (
@@ -148,21 +135,6 @@ export default function AgentDetails() {
             </CardHeader>
             <CardContent className="p-0">
               <AgentChat agent={agent} githubToken={githubToken} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Actions</CardTitle>
-              <CardDescription>Work with this coding agent</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Button variant="secondary" className="w-full">
-                Start Conversation
-              </Button>
-              <Button variant="secondary" className="w-full">
-                Manage Repositories
-              </Button>
             </CardContent>
           </Card>
         </div>
