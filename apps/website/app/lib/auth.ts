@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { createClient } from "@libsql/client/web";
+// import { createClient } from "@libsql/client/web";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 
 // Properly access environment variables based on Cloudflare Workers context
@@ -18,12 +18,12 @@ function getEnv(key: string): string {
 function createTursoClient() {
   const url = getEnv('TURSO_URL') || getEnv('TURSO_DATABASE_URL');
   const authToken = getEnv('TURSO_AUTH_TOKEN');
-  
+
   if (!url) {
     console.error('Missing Turso URL configuration');
     throw new Error('Missing Turso URL configuration');
   }
-  
+
   // Configure the LibSQL dialect for Cloudflare Workers
   return new LibsqlDialect({
     url,
@@ -54,7 +54,7 @@ export const auth = betterAuth({
     github: {
       clientId: getEnv('GITHUB_CLIENT_ID'),
       clientSecret: getEnv('GITHUB_CLIENT_SECRET'),
-    }, 
+    },
     google: {
       clientId: getEnv('GOOGLE_CLIENT_ID'),
       clientSecret: getEnv('GOOGLE_CLIENT_SECRET'),
