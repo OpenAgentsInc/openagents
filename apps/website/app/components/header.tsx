@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Plus } from "lucide-react";
+import { AgentDropdown } from "~/components/agent-dropdown";
 
 export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boolean }) {
   return (
@@ -10,7 +11,9 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
           OpenAgents
         </Link>
         
-        <div className="h-full flex items-center">
+        <div className="h-full flex items-center gap-2">
+          <AgentDropdown />
+          
           {showNewAgentButton ? (
             <Button variant="outline" asChild>
               <Link to="/spawn" className="flex items-center gap-2">
