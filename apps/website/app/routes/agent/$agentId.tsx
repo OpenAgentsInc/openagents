@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
@@ -10,7 +10,6 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
-import { useState } from "react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 
@@ -57,95 +56,94 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
   const [input, setInput] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [directSocketWorking, setDirectSocketWorking] = useState<boolean | null>(null);
 
+  // First, test a direct WebSocket connection to verify basic connectivity
   useEffect(() => {
     setMounted(true);
-
-    // Check if WebSocket is supported in this environment
-    if (typeof WebSocket !== 'undefined') {
-      console.log("WebSocket is supported in this environment");
-      try {
-        // Try creating a test WebSocket to verify connectivity
-        const testSocket = new WebSocket('wss://agents.openagents.com');
-
-        testSocket.onopen = () => {
-          console.log("Test WebSocket connection successful");
-          testSocket.close();
-        };
-
-        testSocket.onerror = (error) => {
-          console.error("Test WebSocket connection failed:", error);
-        };
-      } catch (error) {
-        console.error("Error creating test WebSocket:", error);
-      }
-    } else {
+    console.log("Testing direct WebSocket connection to wss://agents.openagents.com/agents");
+    
+    if (typeof WebSocket === 'undefined') {
       console.error("WebSocket is not supported in this environment");
+      setDirectSocketWorking(false);
+      return;
+    }
+    
+    try {
+      // Try with the suggested path /agents
+      const testSocket = new WebSocket('wss://agents.openagents.com/agents');
+      
+      testSocket.onopen = () => {
+        console.log("✅ Direct WebSocket connection successful");
+        setDirectSocketWorking(true);
+        testSocket.close();
+      };
+      
+      testSocket.onerror = (error) => {
+        console.error("❌ Direct WebSocket connection failed:", error);
+        setDirectSocketWorking(false);
+      };
+    } catch (error) {
+      console.error("Error creating test WebSocket:", error);
+      setDirectSocketWorking(false);
     }
   }, []);
 
-  // Create and configure agent with WebSocket connection
+  // Standard agent configuration with clear debugging
   console.log("Initializing agent with WebSocket connection");
-  
-  // The issue might be with the protocol in PartySocket, so let's try different formats
-  // According to Cloudflare's docs, the WebSocket URL should be based on the worker route
-  // Use the route pattern from wrangler.jsonc: "agents.openagents.com"
   const agent = useAgent({
     name: agentId,
     agent: 'coder',
-    // Try with no protocol prefix - let PartySocket add it
-    host: 'agents.openagents.com',
-    // Add more parameters that might be expected by the Agents API
-    room: agentId, // Required by PartySocket
-    query: { clientId: agentId }, // Add query params
-    debug: true, // Enable debug mode for connection diagnostics
-
-    // WebSocket event handlers
+    host: 'agents.openagents.com', // Standard format without protocol prefix
+    path: '/agents', // Use the path suggested in console
+    room: agentId, // Required by PartySocket for room identification
+    debug: true, // Enable verbose logging
+    
+    // WebSocket event handlers with improved logging
     onMessage: (message) => {
       console.log("WebSocket message received:", message.data);
       try {
-        // Try to parse the message data as JSON
         const data = JSON.parse(message.data);
-        console.log("Parsed WebSocket message:", data);
+        console.log("Parsed message data:", data);
       } catch (e) {
         console.log("Raw message (not JSON):", message.data);
       }
     },
-
+    
     onOpen: () => {
-      console.log("WebSocket connection established successfully");
+      console.log("🎉 WebSocket connection established successfully");
       setConnectionStatus('connected');
       setConnectionError(null);
     },
-
+    
     onClose: (event) => {
       console.log("WebSocket connection closed", event.code, event.reason);
       setConnectionStatus('closed');
       setConnectionError(`Connection closed: ${event.reason || 'Unknown reason'} (code: ${event.code})`);
     },
-
+    
     onError: (error) => {
       console.error("WebSocket connection error:", error);
-
-      // Get more detailed error information
       let errorMessage = 'Unknown error';
+      
       if (error) {
         if (error.message) errorMessage = error.message;
         if (error.code) errorMessage += ` (Code: ${error.code})`;
       }
-
-      console.error("Detailed error:", {
-        errorObject: error,
+      
+      console.error("Connection details:", {
         errorMessage,
         agentId,
         host: 'agents.openagents.com',
-        room: agentId
+        path: '/agents',
+        room: agentId,
+        directSocketWorking
       });
-
+      
       setConnectionStatus('error');
       setConnectionError(errorMessage);
     },
-
+    
     // Agent state update handler
     onStateUpdate: (state: AgentState) => {
       console.log("Agent state updated:", state);
@@ -155,131 +153,58 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
     }
   });
 
-  console.log("Agent created:", agent);
-
-  // Check connection status after component mounts
+  // Connection timeout check
   useEffect(() => {
     if (!agent) return;
     
-    // Check connection status after a short delay
     const timer = setTimeout(() => {
       if (connectionStatus === 'connecting') {
-        console.log("WebSocket connection is still pending after timeout");
+        console.log("Connection timeout after 5 seconds");
         setConnectionStatus('error');
-        setConnectionError('Connection timeout - unable to establish WebSocket connection');
+        setConnectionError('Connection timeout - WebSocket connection not established after 5 seconds');
       }
     }, 5000);
     
     return () => clearTimeout(timer);
   }, [agent, connectionStatus]);
-  
-  // Add a fallback approach if connection fails
-  useEffect(() => {
-    // If connection fails with error status, try alternative connection approach
-    if (connectionStatus === 'error' && agent) {
-      const fallbackTimer = setTimeout(() => {
-        console.log("Connection failed, trying alternative approaches");
-        
-        // Try multiple WebSocket URL formats to find one that works
-        const attemptConnection = async () => {
-          const urlFormats = [
-            'wss://agents.openagents.com',
-            'wss://agents.openagents.com/',
-            'wss://agents.openagents.com/ws',
-            'wss://agents.openagents.com/agent',
-            'wss://agents.openagents.com/connect'
-          ];
-          
-          console.log("Testing these WebSocket URL formats:", urlFormats);
-          
-          for (const url of urlFormats) {
-            try {
-              console.log(`Trying WebSocket connection to: ${url}`);
-              const socket = new WebSocket(url);
-              
-              // Create a promise to handle the connection attempt
-              const result = await new Promise((resolve) => {
-                // Set a timeout to avoid waiting too long
-                const timeout = setTimeout(() => {
-                  socket.close();
-                  resolve({ success: false, url, reason: 'timeout' });
-                }, 3000);
-                
-                socket.onopen = () => {
-                  clearTimeout(timeout);
-                  socket.close();
-                  resolve({ success: true, url });
-                };
-                
-                socket.onerror = () => {
-                  clearTimeout(timeout);
-                  resolve({ success: false, url, reason: 'error' });
-                };
-              });
-              
-              if (result.success) {
-                console.log(`🎉 Successful WebSocket connection to: ${result.url}`);
-                setConnectionError(`Direct WebSocket works with: ${result.url}, but agent connection still failing. Check developer console for details.`);
-                
-                // Try to reconnect the agent with this URL format
-                if (agent.updateProperties && agent.reconnect) {
-                  console.log("Attempting to reconnect agent with the working URL");
-                  try {
-                    const parsedUrl = new URL(result.url);
-                    agent.updateProperties({
-                      host: parsedUrl.host,
-                      path: parsedUrl.pathname || '/',
-                    });
-                    agent.reconnect();
-                  } catch (e) {
-                    console.error("Failed to update agent properties:", e);
-                  }
-                }
-                
-                return;
-              } else {
-                console.log(`❌ Failed WebSocket connection to: ${result.url} (${result.reason})`);
-              }
-            } catch (error) {
-              console.error(`Error testing WebSocket URL ${url}:`, error);
-            }
-          }
-          
-          console.error("All WebSocket connection attempts failed");
-          setConnectionError("All WebSocket connection attempts failed. The server may be unavailable.");
-        };
-        
-        attemptConnection();
-      }, 3000);
-      
-      return () => clearTimeout(fallbackTimer);
-    }
-  }, [agent, connectionStatus, agentId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !agent) return;
 
-    // Add user message
+    // Add user message with proper timestamps and ID
     const userMessage = {
       role: 'user' as const,
-      content: input,
-      id: Date.now().toString(),
+      content: input.trim(),
+      id: `user-${Date.now()}`,
       createdAt: Date.now(),
     };
 
+    // Update local state immediately for responsive UI
     setMessages(prev => [...prev, userMessage]);
     setInput("");
 
     try {
-      console.log("Updating agent state with message:", userMessage);
-      // Update agent state
+      console.log("Sending message to agent:", userMessage);
+      
+      // Update agent state with new message
       await agent.setState({
         messages: [...messages, userMessage]
       });
-      console.log("Agent state updated successfully");
+      
+      console.log("Message sent successfully");
+      
+      // Optional: Add loading state here if needed
+      // setMessages(prev => [...prev, { role: 'assistant', content: '...', id: 'loading', createdAt: Date.now() }]);
+      
     } catch (error) {
-      console.error("Error updating agent state:", error);
+      console.error("Error sending message:", error);
+      
+      // Show error in UI
+      setConnectionError(`Failed to send message: ${error.message || 'Unknown error'}`);
+      
+      // Optionally revert the message if it failed to send
+      // setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
     }
   };
 
@@ -312,61 +237,85 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
               </div>
               
               <div className="text-xs text-muted-foreground mt-2">
-                WebSocket Host: agents.openagents.com<br/>
-                Agent ID: {agentId}<br/>
-                Agent Type: coder
+                <div className="grid grid-cols-2 gap-1">
+                  <span>WebSocket Host:</span>
+                  <span className="font-medium">agents.openagents.com</span>
+                  
+                  <span>WebSocket Path:</span>
+                  <span className="font-medium">/agents</span>
+                  
+                  <span>Agent ID:</span>
+                  <span className="font-medium">{agentId}</span>
+                  
+                  <span>Agent Type:</span>
+                  <span className="font-medium">coder</span>
+                  
+                  <span>Direct WS Test:</span>
+                  <span className="font-medium">
+                    {directSocketWorking === null 
+                      ? 'Testing...' 
+                      : directSocketWorking 
+                        ? '✅ Working' 
+                        : '❌ Failed'}
+                  </span>
+                </div>
               </div>
             </div>
           </CardDescription>
+          
           {connectionError && (
             <div className="mt-2 p-2 bg-red-50 text-red-700 text-sm rounded-md flex justify-between items-center">
               <span>{connectionError}</span>
               {(connectionStatus === 'error' || connectionStatus === 'closed') && (
                 <button
                   onClick={() => {
-                    // Reset connection status
-                    setConnectionStatus('connecting');
-                    setConnectionError('Attempting to reconnect...');
-                    
-                    // Try to directly reconnect without page reload
-                    if (agent && agent.reconnect) {
-                      console.log("Attempting direct reconnection without reload");
-                      agent.reconnect();
-                      
-                      // Set a timeout to reload the page if reconnection fails
-                      setTimeout(() => {
-                        if (connectionStatus !== 'connected') {
-                          console.log("Reconnection still not successful, reloading page");
-                          window.location.reload();
-                        }
-                      }, 5000);
-                    } else {
-                      // Force page reload to reconnect if reconnect method not available
-                      window.location.reload();
-                    }
+                    console.log("Reloading page to reconnect");
+                    window.location.reload();
                   }}
                   className="ml-2 px-2 py-1 bg-primary text-primary-foreground rounded text-xs"
                 >
-                  Try Reconnect
+                  Reload to Reconnect
                 </button>
               )}
             </div>
           )}
+          
+          {directSocketWorking === true && connectionStatus !== 'connected' && (
+            <div className="mt-2 p-2 bg-yellow-50 text-yellow-700 text-sm rounded-md">
+              <span>Direct WebSocket connection works, but agent connection is failing. The agent service might not be handling WebSocket connections correctly.</span>
+            </div>
+          )}
         </CardHeader>
+        
         <CardContent>
           <div className="h-[400px] overflow-y-auto mb-4 space-y-4">
+            {messages.length === 0 && (
+              <div className="h-full flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <p>No messages yet</p>
+                  <p className="text-xs mt-1">Start by sending a message below</p>
+                </div>
+              </div>
+            )}
+            
             {messages.map((message, index) => (
               <div
                 key={message.id || index}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
+                  className={`max-w-[80%] rounded-lg p-3 ${
+                    message.role === 'user'
                     ? 'bg-primary text-primary-foreground ml-auto'
                     : 'bg-muted'
-                    }`}
+                  }`}
                 >
                   <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                  {message.createdAt && (
+                    <div className="text-xs opacity-70 mt-1">
+                      {new Date(message.createdAt).toLocaleTimeString()}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -377,8 +326,13 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your message..."
+              placeholder={
+                connectionStatus === 'connected' 
+                  ? 'Type your message...' 
+                  : 'Waiting for connection...'
+              }
               className="flex-1 px-3 py-2 rounded-md border bg-background"
+              disabled={connectionStatus !== 'connected'}
             />
             <button
               type="submit"
