@@ -1,5 +1,7 @@
 # OpenAgents Website Development Guide
 
+This is a React Router v7 (formerly known as Remix) app using a Cloudflare Workers template.
+
 ## Build & Run Commands
 - Start dev server: `yarn dev`
 - Build for production: `yarn build`
@@ -23,6 +25,14 @@
 - Use the `ThemeProvider` for theme management
 - Use the `useTheme` hook to access/modify theme settings
 - Prefer utility functions from `app/lib/utils.ts` (e.g., `cn()` for class merging)
+
+## Routing
+- Routes are defined in `app/routes.ts` using React Router v7's route configuration
+- Route components should be placed in `app/routes/` directory
+- Use the `index()` function for index routes
+- Page components should export a default component and optional loader/action functions
+- Use nested routes for layouts (parent routes act as layout components)
+- Follow RRv7 conventions for data loading with `loader` and mutations with `action`
 
 ## Cloudflare Workers
 - Remember this app uses Cloudflare Workers for deployment
