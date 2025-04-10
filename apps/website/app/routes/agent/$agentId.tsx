@@ -4,6 +4,15 @@ import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
 import { useAgentStore } from "~/lib/store";
 import { Header } from "~/components/header";
+import { 
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter
+} from "~/components/ui/card";
+import { Button } from "~/components/ui/button";
 
 // Use the Agent type locally to avoid import issues
 interface Agent {
@@ -96,22 +105,30 @@ export default function AgentDetails() {
         </div>
         
         <div className="space-y-6">
-          <div className="p-6 border rounded-lg bg-card">
-            <h2 className="text-xl font-semibold mb-4">Agent Purpose</h2>
-            <p className="whitespace-pre-wrap">{agent.purpose}</p>
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Agent Purpose</CardTitle>
+              <CardDescription>What this agent was created to do</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap">{agent.purpose}</p>
+            </CardContent>
+          </Card>
           
-          <div className="p-6 border rounded-lg bg-card">
-            <h2 className="text-xl font-semibold mb-4">Actions</h2>
-            <div className="space-y-4">
-              <button className="w-full flex items-center justify-center h-10 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors">
+          <Card>
+            <CardHeader>
+              <CardTitle>Actions</CardTitle>
+              <CardDescription>Work with this coding agent</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Button variant="secondary" className="w-full">
                 Start Conversation
-              </button>
-              <button className="w-full flex items-center justify-center h-10 px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 transition-colors">
+              </Button>
+              <Button variant="secondary" className="w-full">
                 Manage Repositories
-              </button>
-            </div>
-          </div>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </main>
     </>

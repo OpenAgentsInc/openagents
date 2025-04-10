@@ -28,7 +28,7 @@ export async function action({ request }: ActionFunctionArgs) {
   if (!githubToken || !agentPurpose) {
     return { success: false, error: "GitHub Token and Agent Purpose are required" };
   }
-  
+
   // Validate GitHub token format
   if (!githubToken.startsWith('github_pat_')) {
     return { success: false, error: "GitHub Token must begin with 'github_pat_'" };
@@ -77,7 +77,7 @@ export default function Spawn() {
     if (actionData) {
       if (actionData.success && actionData.data?.id) {
         const agentId = actionData.data.id;
-        
+
         // Add agent to store with the ID timestamp to avoid hydration issues
         const createdAt = parseInt(agentId.split('-')[1], 36);
         useAgentStore.getState().addAgent({
@@ -85,10 +85,10 @@ export default function Spawn() {
           purpose: actionData.data.purpose,
           createdAt: createdAt || 0
         });
-        
+
         // Reset isSubmitting
         setIsSubmitting(false);
-        
+
         // Navigate to agent details page
         setTimeout(() => {
           navigate(`/agent/${agentId}`);
@@ -106,31 +106,31 @@ export default function Spawn() {
       setError("GitHub Token is required");
       return false;
     }
-    
+
     if (!githubToken.startsWith('github_pat_')) {
       setError("GitHub Token must begin with 'github_pat_'");
       return false;
     }
-    
+
     if (!purpose) {
       setError("Agent Purpose is required");
       return false;
     }
-    
+
     return true;
   };
-  
+
   // Handle client-side form submission updates
   const handleBeforeSubmit = () => {
     setError(null);
-    
+
     // Client-side validation
     if (!validateForm()) {
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     // Save to Zustand store
     setGithubToken(githubToken);
     setAgentPurpose(purpose);
@@ -141,7 +141,7 @@ export default function Spawn() {
       <Header showNewAgentButton={false} />
 
       <main className="w-full max-w-2xl mx-auto p-8 pt-24">
-        <h1 className="text-3xl font-bold mb-8">Spawn a coding agent</h1>
+        <h1 className="text-3xl font-bold mb-8 select-none">Spawn a coding agent</h1>
 
         <div className="space-y-10">
           <Form
