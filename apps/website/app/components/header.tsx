@@ -15,12 +15,17 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
           <AgentDropdown />
 
           {showNewAgentButton ? (
-            <Button variant="outline" asChild>
-              <Link to="/spawn" className="flex items-center gap-2">
-                <Plus size={16} />
-                <span>Spawn coding agent</span>
-              </Link>
-            </Button>
+            <>
+              <Button variant="outline" asChild>
+                <Link to="/spawn" className="flex items-center gap-2">
+                  <Plus size={16} />
+                  <span>Spawn coding agent</span>
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link to="/login">Login</Link>
+              </Button>
+            </>
           ) : (
             <div className="h-9"></div> // Placeholder to maintain header height
           )}
