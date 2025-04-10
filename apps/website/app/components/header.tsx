@@ -6,7 +6,6 @@ import { signOut, useSession } from "~/lib/auth-client";
 
 export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boolean }) {
   const { data: session, isPending } = useSession();
-  console.log("session", session);
 
   const handleSignOut = async () => {
     await signOut({
