@@ -23,11 +23,8 @@ export default defineConfig(({ mode, command }) => ({ // Use function form for m
   // --- SSR Configuration ---
   ssr: {
     // Attempt to externalize modules incompatible with Workers/SSR build
-    // NOTE: 'better-sqlite3' CANNOT run in standard workers.
-    // It must only be used server-side OUTSIDE the worker, or replaced (e.g., with D1).
-    // If used only in loaders/actions NOT intended for the edge, ensure it's handled correctly.
     external: [
-      "better-sqlite3", // Must be external, cannot be bundled for worker
+      // "better-sqlite3", // Removed as the dependency itself is removed
       // Add other known Node.js-specific or problematic CJS modules if needed
     ],
     // Try to bundle these if they cause issues when externalized,
