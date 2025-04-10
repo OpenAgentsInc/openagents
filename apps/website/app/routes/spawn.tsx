@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ActionFunctionArgs, Form } from "react-router";
+import { Form } from "react-router";
+import type { ActionFunctionArgs } from "react-router";
 import type { Route } from "./+types/spawn";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -47,6 +48,7 @@ export default function Spawn() {
               type="password" 
               placeholder="ghp_***********************************"
               required
+              autoComplete="new-password"
             />
             <p className="text-xs text-muted-foreground">
               Your GitHub token is required to access repositories. It will not be stored.
