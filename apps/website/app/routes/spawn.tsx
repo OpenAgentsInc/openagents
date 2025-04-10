@@ -7,7 +7,7 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
 
-export function meta({}: Route.MetaArgs) {
+export function meta({ }: Route.MetaArgs) {
   return [
     { title: "Spawn Agent - OpenAgents" },
     { name: "description", content: "Spawn a new coding agent" },
@@ -21,7 +21,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   // Here you would handle the form submission
   console.log({ githubToken, agentPurpose });
-  
+
   // For now, just return the values
   return { success: true, data: { githubToken, agentPurpose } };
 }
@@ -37,28 +37,28 @@ export default function Spawn() {
   return (
     <main className="w-full max-w-2xl mx-auto p-8">
       <h1 className="text-4xl font-bold mb-6">Spawn a coding agent</h1>
-      
+
       <div className="space-y-6">
         <Form method="post" onSubmit={handleSubmit} className="space-y-4">
           {/* Hidden username field for accessibility */}
           <div className="sr-only">
             <Label htmlFor="username">GitHub Username</Label>
-            <Input 
+            <Input
               id="username"
-              name="username" 
-              type="text" 
+              name="username"
+              type="text"
               autoComplete="username"
               tabIndex={-1}
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="githubToken">GitHub Token</Label>
-            <Input 
+            <Input
               id="githubToken"
-              name="githubToken" 
-              type="password" 
-              placeholder="ghp_***********************************"
+              name="githubToken"
+              type="password"
+              placeholder="github_pat_*********************************"
               required
               autoComplete="new-password"
             />
@@ -66,12 +66,12 @@ export default function Spawn() {
               Create a <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">fine-grained GitHub token</a> with only the permissions this agent needs. Your token will not be stored.
             </p>
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="agentPurpose">Agent Purpose</Label>
-            <Textarea 
+            <Textarea
               id="agentPurpose"
-              name="agentPurpose" 
+              name="agentPurpose"
               placeholder="Describe what you want this agent to help you with..."
               rows={5}
               required
@@ -80,9 +80,9 @@ export default function Spawn() {
               Be specific about what you want the agent to work on.
             </p>
           </div>
-          
-          <Button 
-            type="submit" 
+
+          <Button
+            type="submit"
             className="w-full mt-4"
             disabled={isSubmitting}
           >
