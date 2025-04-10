@@ -13,6 +13,7 @@
     "t": "tsc --noEmit"
   },
   "dependencies": {
+    "@openagents/core": "*",
     "@radix-ui/react-slot": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
