@@ -57,13 +57,13 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Set up component
+  // Set up component and log initialization only once
   useEffect(() => {
     setMounted(true);
-  }, []);
+    console.log("Initializing agent with WebSocket connection for agent:", agentId);
+  }, [agentId]);
 
   // Standard agent configuration with clear debugging
-  console.log("Initializing agent with WebSocket connection");
   const agent = useAgent({
     name: agentId,
     agent: 'coder',
