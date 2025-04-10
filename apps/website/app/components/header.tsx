@@ -39,58 +39,23 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
               <Button variant="outline" size="sm" disabled>
                 Loading...
               </Button>
-<<<<<<< HEAD
             ) : session?.user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="secondary" size="sm">
-                    <User className="mr-2 h-4 w-4" />
-                    {session.user.name || session.user.email}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {/* Add links to profile/settings pages here if they exist */}
-                  {/* <DropdownMenuItem asChild><Link to="/profile">Profile</Link></DropdownMenuItem> */}
-                  {/* <DropdownMenuItem asChild><Link to="/settings">Settings</Link></DropdownMenuItem> */}
-                  {/* <DropdownMenuSeparator /> */}
-                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
-                    Log out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex items-center gap-2">
+                <div className="text-sm mr-2">
+                  {session.user.name || session.user.email}
+                </div>
+                <Button variant="ghost" onClick={handleSignOut}>
+                  Logout
+                </Button>
+              </div>
             ) : (
-              <Button asChild variant="secondary" size="sm">
+              <Button variant="ghost" asChild>
                 <Link to="/login">Login</Link>
               </Button>
             )}
           </nav>
-=======
-
-              {isPending ? (
-            <div className="h-9 flex items-center">Loading...</div>
-          ) : session?.user ? (
-            <div className="flex items-center gap-2">
-              <div className="text-sm mr-2">
-                {session.user.name || session.user.email}
-              </div>
-              <Button variant="ghost" onClick={handleSignOut}>
-                Logout
-              </Button>
-            </div>
-          ) : (
-            <Button variant="ghost" asChild>
-              <Link to="/login">Login</Link>
-            </Button>
-          )}
-        </>
-        ) : (
-        <div className="h-9"></div> // Placeholder to maintain header height
-          )}
->>>>>>> d8b50a04e (hmm)
+        </div>
       </div>
-    </div>
-    </header >
+    </header>
   );
 }
