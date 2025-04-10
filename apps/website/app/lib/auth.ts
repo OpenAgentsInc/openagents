@@ -1,30 +1,31 @@
 import { betterAuth } from "better-auth";
-import Database from "better-sqlite3";
+// Remove direct import of better-sqlite3
+// import Database from "better-sqlite3"; 
+import { LibsqlDialect } from "@libsql/kysely-libsql"; // Use LibSQL for CF Workers compatibility
 
-// In a production environment, you would use LibSQL for CF Workers compatibility
-// import { LibsqlDialect } from "@libsql/kysely-libsql"; 
-// const dialect = new LibsqlDialect({
-//   url: process.env.TURSO_DATABASE_URL!,
-//   authToken: process.env.TURSO_AUTH_TOKEN!,
-// });
+// Configure the LibSQL dialect for Turso or local SQLite via env vars
+const dialect = new LibsqlDialect({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN!,
+});
 
 export const auth: ReturnType<typeof betterAuth> = betterAuth({
-  // For development, using local SQLite
-  database: new Database("./sqlite.db"),
-  
-  // For production with Cloudflare Workers, you'd use:
-  // database: {
-  //   dialect,
-  //   type: "sqlite",
-  // },
-  
+  // For development, using local SQLite via LibSQL (requires wrangler dev --local or similar setup)
+  // database: new Database("./sqlite.db"), 
+
+  // Use the LibSQL dialect for both development (local) and production (Cloudflare)
+  database: {
+    dialect,
+    type: "sqlite", // Kysely needs the base type hint
+  },
+
   // Email & Password Authentication
   emailAndPassword: {
     enabled: true,
     // autoSignIn: true, // Default: sign in user after successful sign up
   },
-  
-  // Social Providers (uncomment and configure as needed)
+
+  // Social Providers (configure via environment variables)
   socialProviders: {
     github: {
       clientId: process.env.GITHUB_CLIENT_ID || "",
