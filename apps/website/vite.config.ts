@@ -6,34 +6,31 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   plugins: [
-    cloudflare({ viteEnvironment: { name: "ssr" } }),
-    tailwindcss(),
-    reactRouter(),
-    tsconfigPaths(),
-    // Handle RxDB issues with a virtual module
+    // Handle external modules with a pre plugin
     {
-      name: 'rxdb-ssr-compat',
+      name: 'external-modules',
       enforce: 'pre',
       resolveId(id) {
-        if (id.includes('rxdb') || id.includes('@openagents/core')) {
+        // Handle all problematic modules
+        if (id === 'react-native' || 
+            id.startsWith('react-native/') || 
+            id === 'react-native-markdown-display' ||
+            id.startsWith('rxdb/')) {
           return '\0empty-module';
         }
         return null;
       },
       load(id) {
         if (id === '\0empty-module') {
-          return 'export default {}; export const useOpenAgent = () => ({});';
+          return 'export default {}; export function useOpenAgent() { return {}; }';
         }
         return null;
       }
-    }
-  ],
-  optimizeDeps: {
-    exclude: ['rxdb', '@openagents/core']
-  },
-  build: {
-    rollupOptions: {
-      external: ['rxdb', '@openagents/core']
-    }
-  }
+    },
+    
+    cloudflare({ viteEnvironment: { name: "ssr" } }),
+    tailwindcss(),
+    reactRouter(),
+    tsconfigPaths()
+  ]
 });

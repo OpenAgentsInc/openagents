@@ -58,7 +58,7 @@ const useAgentStore = create<AgentState>()(
             removeItem: () => {},
           }
         }
-        return sessionStorage
+        return localStorage
       }),
       // Only persist agentPurpose and agents, not the token
       partialize: (state) => ({ 

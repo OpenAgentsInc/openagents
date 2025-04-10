@@ -10,22 +10,14 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
-import { useOpenAgent } from "@openagents/core";
 import { useState } from "react";
+import { useAgentStore } from "~/lib/store";
 
 // Use the Agent type locally to avoid import issues
 interface Agent {
   id: string;
   purpose: string;
   createdAt: number;
-  messages: any[];
-  setMessages: (messages: any[]) => void;
-  handleSubmit: (message: string) => Promise<void>;
-  infer: (token: string) => Promise<void>;
-  loading: boolean;
-  error: Error | null;
-  setGithubToken: (token: string) => Promise<void>;
-  getGithubToken: () => Promise<string>;
 }
 
 export function meta({ params }: Route.MetaArgs) {
@@ -79,14 +71,30 @@ export default function AgentDetails() {
 function AgentContent({ agentId }: { agentId: string }) {
   // Move all client-side code here
   const [loading, setLoading] = useState(true);
-  const { state, messages, setMessages, handleSubmit, infer, setGithubToken, getGithubToken } = useOpenAgent(agentId);
   const [agent, setAgent] = useState<Agent | null>(null);
-  const [githubToken] = useState<string>("");
+  const [githubToken, setGithubToken] = useState<string>("");
+  const agentStore = useAgentStore();
+  
+  // Temporarily removed useOpenAgent due to build errors
 
   useEffect(() => {
     // Initialize agent here
     const initAgent = async () => {
       try {
+        console.log('Loading agent with ID:', agentId);
+        console.log('Available agents:', agentStore.agents);
+        
+        // Get agent from Zustand store
+        const foundAgent = agentStore.getAgent(agentId);
+        console.log('Found agent:', foundAgent);
+        
+        if (foundAgent) {
+          setAgent(foundAgent);
+          setGithubToken(agentStore.githubToken);
+          
+          // Token setting logic temporarily removed
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error('Failed to initialize agent:', error);
@@ -95,7 +103,7 @@ function AgentContent({ agentId }: { agentId: string }) {
     };
 
     initAgent();
-  }, [agentId]);
+  }, [agentId, agentStore]);
 
   // Agent not found view
   const NotFoundView = () => (
@@ -149,7 +157,9 @@ function AgentContent({ agentId }: { agentId: string }) {
           <CardContent className="p-0">
             <div className="h-[600px]">
               <div className="p-4 text-center">
-                Chat functionality will be available soon
+                <p>Agent ID: {agentId}</p>
+                <p>GitHub Token: {githubToken ? "✓ Set" : "Not set"}</p>
+                <p>Chat functionality will be available soon</p>
               </div>
             </div>
           </CardContent>
