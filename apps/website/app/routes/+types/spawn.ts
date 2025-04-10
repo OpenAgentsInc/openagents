@@ -1,4 +1,4 @@
-import type { Location, Params, LoaderFunctionArgs } from "react-router";
+import type { Location, Params, LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 
 export namespace Route {
   export interface MetaArgs {
@@ -8,4 +8,5 @@ export namespace Route {
   }
 
   export type LoaderArgs = LoaderFunctionArgs;
+  export type ActionArgs = ActionFunctionArgs;
 }
