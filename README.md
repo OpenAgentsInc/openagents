@@ -10,6 +10,8 @@ Initial focus is Coder, our desktop app intended to be a drop-in replacement for
 
 ## Running Coder locally
 
+Main branch not stable. Basic functionality usable at [15edaaca8ac](https://github.com/OpenAgentsInc/openagents/tree/15edaaca8ac601ac1c1f1a2d816465b375780a42)
+
 ```bash
 git clone git@github.com:OpenAgentsInc/openagents.git
 cd openagents
