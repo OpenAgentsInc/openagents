@@ -5,5 +5,6 @@ export default [
   route("spawn", "routes/spawn.tsx"),
   route("login", "routes/login.tsx"),
   route("signup", "routes/signup.tsx"),
-  route("agent/:agentId", "routes/agent/$agentId.tsx")
+  route("agent/:agentId", "routes/agent/$agentId.tsx"),
+  route("api/auth/*", "routes/api.auth.$.tsx")
 ] satisfies RouteConfig;

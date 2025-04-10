@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react"
-import { Form, useActionData, useNavigate } from "react-router"
+import { useState } from "react"
+import { useNavigate } from "react-router"
 import { cn } from "~/lib/utils"
 import { Button } from "~/components/ui/button"
 import {
@@ -12,6 +12,7 @@ import {
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
 import { Link } from "react-router"
+import { signUp } from "~/lib/auth-client"
 
 export function SignupForm({
   className,
@@ -21,28 +22,15 @@ export function SignupForm({
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   const navigate = useNavigate()
-  const actionData = useActionData<{
-    success?: boolean;
-    error?: string;
-  }>()
   
-  // Handle redirect after successful signup
-  useEffect(() => {
-    if (actionData?.success) {
-      // Wait a moment to show the success message before redirecting
-      const timer = setTimeout(() => {
-        navigate("/login");
-      }, 1500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [actionData, navigate]);
-
-  const handleBeforeSubmit = () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setError(null)
+    setSuccess(false)
     
     // Basic validation
     if (!email || !password || !confirmPassword) {
@@ -61,6 +49,45 @@ export function SignupForm({
     }
     
     setIsSubmitting(true)
+    
+    try {
+      // Use authClient directly as requested
+      const { data, error: signupError } = await signUp.email(
+        {
+          email,
+          password,
+          // Add a name since it's required by the schema
+          name: email.split('@')[0], // Use part of email as name
+          callbackURL: "/"
+        },
+        {
+          onRequest: () => {
+            // Already handling with isSubmitting state
+          },
+          onSuccess: () => {
+            setSuccess(true)
+            // Wait a moment to show the success message before redirecting
+            setTimeout(() => {
+              navigate("/login")
+            }, 1500)
+          },
+          onError: (ctx) => {
+            console.error("Signup error:", ctx.error)
+            setError(ctx.error.message || "Failed to create account")
+            setIsSubmitting(false)
+          }
+        }
+      )
+      
+      if (signupError) {
+        setError(signupError.message || "Failed to create account")
+        setIsSubmitting(false)
+      }
+    } catch (error) {
+      console.error("Signup exception:", error)
+      setError(error instanceof Error ? error.message : "An unknown error occurred")
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -73,18 +100,15 @@ export function SignupForm({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Form 
-            method="post" 
+          <form 
             className="space-y-8"
-            onSubmit={handleBeforeSubmit}
-            preventScrollReset
+            onSubmit={handleSubmit}
           >
             <div className="flex flex-col gap-6">
               <div className="grid gap-3">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
-                  name="email"
                   type="email"
                   placeholder="m@example.com"
                   required
@@ -96,7 +120,6 @@ export function SignupForm({
                 <Label htmlFor="password">Password</Label>
                 <Input 
                   id="password" 
-                  name="password" 
                   type="password" 
                   required 
                   value={password}
@@ -107,7 +130,6 @@ export function SignupForm({
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <Input 
                   id="confirmPassword" 
-                  name="confirmPassword" 
                   type="password" 
                   required 
                   value={confirmPassword}
@@ -115,22 +137,15 @@ export function SignupForm({
                 />
               </div>
               
-              {/* Display validation errors */}
+              {/* Display validation/API errors */}
               {error && (
                 <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
                   {error}
                 </div>
               )}
               
-              {/* Display API errors */}
-              {actionData?.error && (
-                <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  {actionData.error}
-                </div>
-              )}
-              
               {/* Display success message */}
-              {actionData?.success && (
+              {success && (
                 <div className="p-3 rounded-md bg-green-500/10 text-green-600 dark:text-green-400 text-sm">
                   Account created successfully! Redirecting to login...
                 </div>
@@ -144,9 +159,30 @@ export function SignupForm({
                 >
                   {isSubmitting ? "Creating Account..." : "Create Account"}
                 </Button>
-                <Button variant="outline" className="w-full">
-                  Sign up with Google
+                {/* Social signup buttons will be implemented later
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setIsSubmitting(true);
+                      // Use better-auth client directly for social sign-up
+                      await signUp.social({
+                        provider: "github", 
+                        callbackURL: "/",
+                      });
+                    } catch (error) {
+                      console.error("Social signup error:", error);
+                      setError(error instanceof Error ? error.message : "Failed to sign up");
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Sign up with GitHub
                 </Button>
+                */}
               </div>
             </div>
             <div className="mt-4 text-center text-sm">
@@ -155,7 +191,7 @@ export function SignupForm({
                 Log in
               </Link>
             </div>
-          </Form>
+          </form>
         </CardContent>
       </Card>
     </div>

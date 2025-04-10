@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Form, useActionData, useNavigate, Link } from "react-router"
+import { useNavigate, Link } from "react-router"
 import { cn } from "~/lib/utils"
 import { Button } from "~/components/ui/button"
 import {
@@ -11,6 +11,7 @@ import {
 } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
+import { signIn } from "~/lib/auth-client"
 
 export function LoginForm({
   className,
@@ -22,12 +23,9 @@ export function LoginForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   
   const navigate = useNavigate()
-  const actionData = useActionData<{
-    success?: boolean;
-    error?: string;
-  }>()
 
-  const handleBeforeSubmit = () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setError(null)
     
     // Basic validation
@@ -37,6 +35,40 @@ export function LoginForm({
     }
     
     setIsSubmitting(true)
+    
+    try {
+      // Use authClient.signIn directly as requested
+      const { data, error: signInError } = await signIn.email(
+        {
+          email,
+          password,
+          callbackURL: "/"
+        },
+        {
+          onRequest: () => {
+            // Already handling with isSubmitting state
+          },
+          onSuccess: () => {
+            // Redirect to dashboard or home page
+            navigate("/")
+          },
+          onError: (ctx) => {
+            console.error("Login error:", ctx.error)
+            setError(ctx.error.message || "Invalid email or password")
+            setIsSubmitting(false)
+          }
+        }
+      )
+      
+      if (signInError) {
+        setError(signInError.message || "Invalid email or password")
+        setIsSubmitting(false)
+      }
+    } catch (error) {
+      console.error("Login exception:", error)
+      setError(error instanceof Error ? error.message : "An unknown error occurred")
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -49,18 +81,15 @@ export function LoginForm({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Form 
-            method="post" 
+          <form 
             className="space-y-8"
-            onSubmit={handleBeforeSubmit}
-            preventScrollReset
+            onSubmit={handleSubmit}
           >
             <div className="flex flex-col gap-6">
               <div className="grid gap-3">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
-                  name="email"
                   type="email"
                   placeholder="m@example.com"
                   required
@@ -80,7 +109,6 @@ export function LoginForm({
                 </div>
                 <Input 
                   id="password" 
-                  name="password"
                   type="password" 
                   required 
                   value={password}
@@ -88,17 +116,10 @@ export function LoginForm({
                 />
               </div>
               
-              {/* Display validation errors */}
+              {/* Display validation/API errors */}
               {error && (
                 <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
                   {error}
-                </div>
-              )}
-              
-              {/* Display API errors */}
-              {actionData?.error && (
-                <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  {actionData.error}
                 </div>
               )}
               
@@ -110,9 +131,30 @@ export function LoginForm({
                 >
                   {isSubmitting ? "Logging in..." : "Login"}
                 </Button>
-                <Button variant="outline" className="w-full" type="button">
-                  Login with Google
+                {/* Social login buttons will be implemented later 
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setIsSubmitting(true);
+                      // Use better-auth client for social sign-in
+                      await signIn.social({
+                        provider: "github",
+                        callbackURL: "/",
+                      });
+                    } catch (error) {
+                      console.error("Social login error:", error);
+                      setError(error instanceof Error ? error.message : "Failed to login");
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Login with GitHub
                 </Button>
+                */}
               </div>
             </div>
             <div className="mt-4 text-center text-sm">
@@ -121,7 +163,7 @@ export function LoginForm({
                 Sign up
               </Link>
             </div>
-          </Form>
+          </form>
         </CardContent>
       </Card>
     </div>
