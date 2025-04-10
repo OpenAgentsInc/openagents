@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Plus } from "lucide-react";
 import { AgentDropdown } from "~/components/agent-dropdown";
-import { signOut, useSession } from "@/lib/auth-client";
+import { signOut, useSession } from "~/lib/auth-client";
 
 export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boolean }) {
   const { data: session, isPending } = useSession();
@@ -26,17 +26,20 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
         </Link>
 
         <div className="h-full flex items-center gap-2">
-          <AgentDropdown />
+          {/* Only show agent-related UI if user is logged in */}
+          {!isPending && session?.user && (
+            <>
+              <AgentDropdown />
 
-          {showNewAgentButton ? (
-            <Button variant="outline" asChild>
-              <Link to="/spawn" className="flex items-center gap-2">
-                <Plus size={16} />
-                <span>Spawn coding agent</span>
-              </Link>
-            </Button>
-          ) : (
-            <div className="h-9"></div> // Placeholder to maintain header height
+              {showNewAgentButton && (
+                <Button variant="outline" asChild>
+                  <Link to="/spawn" className="flex items-center gap-2">
+                    <Plus size={16} />
+                    <span>Spawn coding agent</span>
+                  </Link>
+                </Button>
+              )}
+            </>
           )}
 
           {isPending ? (
