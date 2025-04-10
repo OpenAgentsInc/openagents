@@ -1,7 +1,6 @@
-import { UIMessage } from "@openagents/ui";
 import { useAgent } from "agents/react";
 import { useState } from "react";
-import { generateId } from "ai";
+import { generateId, UIMessage } from "ai";
 
 type AgentType = 'coder';
 
