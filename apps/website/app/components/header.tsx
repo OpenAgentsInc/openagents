@@ -1,20 +1,23 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Button } from "~/components/ui/button";
-import { useSession, signOut } from "~/lib/auth-client"; // Import useSession and signOut
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "~/components/ui/dropdown-menu";
-import { User } from "lucide-react";
+import { Plus } from "lucide-react";
+import { AgentDropdown } from "~/components/agent-dropdown";
+import { useSession, signOut } from "~/lib/auth-client";
 
-export function Header() {
-  const { data: session, isPending } = useSession(); // Get session state
+export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boolean }) {
+  const { data: session, isPending } = useSession();
 
   const handleSignOut = async () => {
     await signOut({
       fetchOptions: {
-        // Redirect to home page on successful sign out
-        onSuccess: () => window.location.replace("/"), 
+        onSuccess: () => {
+          window.location.href = "/";
+        }
       }
     });
   };
+
+  console.log("Current user session:", session);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -36,6 +39,7 @@ export function Header() {
               <Button variant="outline" size="sm" disabled>
                 Loading...
               </Button>
+<<<<<<< HEAD
             ) : session?.user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -62,8 +66,31 @@ export function Header() {
               </Button>
             )}
           </nav>
-        </div>
+=======
+
+              {isPending ? (
+            <div className="h-9 flex items-center">Loading...</div>
+          ) : session?.user ? (
+            <div className="flex items-center gap-2">
+              <div className="text-sm mr-2">
+                {session.user.name || session.user.email}
+              </div>
+              <Button variant="ghost" onClick={handleSignOut}>
+                Logout
+              </Button>
+            </div>
+          ) : (
+            <Button variant="ghost" asChild>
+              <Link to="/login">Login</Link>
+            </Button>
+          )}
+        </>
+        ) : (
+        <div className="h-9"></div> // Placeholder to maintain header height
+          )}
+>>>>>>> d8b50a04e (hmm)
       </div>
-    </header>
+    </div>
+    </header >
   );
 }
