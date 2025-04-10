@@ -20,14 +20,10 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     enabled: true,
     autoSignIn: true, // Auto sign in user after successful sign up
   },
-  
+
   // Enable debug mode for more detailed logs
-  debug: true,
+  // debug: true,
 });
-
-// Add a console log to see the structure of the auth object during initialization
-console.log("Auth initialization - Available methods:", Object.keys(auth));
-
 
 // // import { betterAuth } from "better-auth/react";
 // import { createAuthClient } from "better-auth/react"; // Use the React client
