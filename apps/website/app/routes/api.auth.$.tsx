@@ -1,10 +1,11 @@
-import { auth } from '@/lib/auth'
+import { auth } from '~/lib/auth'
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router"
+import { toRemixHandler } from "better-auth/remix" // Use the Remix helper
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  return auth.handler(request)
+  return toRemixHandler(auth)(request)
 }
 
 export async function action({ request }: ActionFunctionArgs) {
-  return auth.handler(request)
+  return toRemixHandler(auth)(request)
 }
