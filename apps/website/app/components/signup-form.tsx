@@ -12,6 +12,7 @@ import {
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
 import { Link } from "react-router"
+import { signUp } from "~/lib/auth-client"
 
 export function SignupForm({
   className,
@@ -144,9 +145,30 @@ export function SignupForm({
                 >
                   {isSubmitting ? "Creating Account..." : "Create Account"}
                 </Button>
-                <Button variant="outline" className="w-full">
-                  Sign up with Google
+                {/* Social signup buttons will be implemented later
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setIsSubmitting(true);
+                      // Use better-auth client directly for social sign-up
+                      await signUp.social({
+                        provider: "github", 
+                        callbackURL: "/",
+                      });
+                    } catch (error) {
+                      console.error("Social signup error:", error);
+                      setError(error instanceof Error ? error.message : "Failed to sign up");
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Sign up with GitHub
                 </Button>
+                */}
               </div>
             </div>
             <div className="mt-4 text-center text-sm">

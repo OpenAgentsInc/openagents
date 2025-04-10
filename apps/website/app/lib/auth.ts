@@ -7,12 +7,23 @@ const dialect = new LibsqlDialect({
   authToken: env.TURSO_AUTH_TOKEN || "",
 })
 
+// Export the initialized auth instance with proper type definition
+// Ensure we use the correct structure for methods
 export const auth: ReturnType<typeof betterAuth> = betterAuth({
   database: {
     dialect,
-    type: "sqlite"
-  }
+    type: "sqlite",
+  },
+
+  // Email & Password Authentication
+  emailAndPassword: {
+    enabled: true,
+    autoSignIn: true, // Auto sign in user after successful sign up
+  },
 });
+
+// Add a console log to see the structure of the auth object during initialization
+console.log("Auth initialization - Available methods:", Object.keys(auth));
 
 
 // // import { betterAuth } from "better-auth/react";

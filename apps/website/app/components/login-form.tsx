@@ -11,6 +11,7 @@ import {
 } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
+import { signIn } from "~/lib/auth-client"
 
 export function LoginForm({
   className,
@@ -110,9 +111,30 @@ export function LoginForm({
                 >
                   {isSubmitting ? "Logging in..." : "Login"}
                 </Button>
-                <Button variant="outline" className="w-full" type="button">
-                  Login with Google
+                {/* Social login buttons will be implemented later 
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setIsSubmitting(true);
+                      // Use better-auth client for social sign-in
+                      await signIn.social({
+                        provider: "github",
+                        callbackURL: "/",
+                      });
+                    } catch (error) {
+                      console.error("Social login error:", error);
+                      setError(error instanceof Error ? error.message : "Failed to login");
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Login with GitHub
                 </Button>
+                */}
               </div>
             </div>
             <div className="mt-4 text-center text-sm">

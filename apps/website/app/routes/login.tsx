@@ -3,6 +3,7 @@ import { Header } from "~/components/header"
 import type { Route } from "./+types/login"
 import { redirect } from "react-router"
 import type { ActionFunctionArgs } from "react-router"
+import { auth } from "~/lib/auth"
 
 export function meta({ }: Route.MetaArgs) {
   return [
@@ -22,28 +23,41 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    // In a real implementation with better-auth, we would use:
-    // import { auth } from "~/lib/auth";
-    // const { data, error } = await auth.api.signIn.email({ 
-    //   email, 
-    //   password,
-    //   callbackURL: "/"
-    // });
+    // Debug auth object structure
+    console.log("Auth object structure for login:", Object.keys(auth));
     
-    // Note: In the front-end, the signIn function from better-auth/react would be used:
-    // import { signIn } from "~/lib/auth-client";
-    // const { data, error } = await signIn.email({ email, password, callbackURL: "/" });
+    // Use better-auth to sign in with proper checking
+    if (typeof auth.signIn !== 'function') {
+      console.error("Auth methods:", Object.keys(auth));
+      throw new Error("Auth signIn method is not available");
+    }
     
-    // For the demo, simulate successful login
-    const success = true;
+    // Call the signIn method directly
+    const result = await auth.signIn({
+      email,
+      password,
+      // Redirect to home page after successful login
+      callbackURL: "/"
+    });
     
-    if (success) {
-      // Redirect to home page after login
+    console.log("Login result:", result);
+    
+    if (result.error) {
+      console.error("Login error:", result.error);
+      return { 
+        success: false, 
+        error: result.error.message || "Invalid email or password" 
+      };
+    }
+    
+    if (result.data) {
+      // Login was successful, redirect to home page
       return redirect("/");
     } else {
-      return { success: false, error: "Invalid email or password" };
+      return { success: false, error: "Login failed" };
     }
   } catch (error) {
+    console.error("Login exception:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "An unknown error occurred"

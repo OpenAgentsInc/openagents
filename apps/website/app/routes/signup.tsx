@@ -3,6 +3,7 @@ import { Header } from "~/components/header"
 import type { Route } from "./+types/signup"
 import { redirect } from "react-router"
 import type { ActionFunctionArgs } from "react-router"
+import { auth } from "~/lib/auth"
 
 export function meta({ }: Route.MetaArgs) {
   return [
@@ -31,33 +32,54 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-    // In a real implementation with better-auth, we would use:
-    // import { auth } from "~/lib/auth";
-    // const { data, error } = await auth.api.signUp.email({ 
-    //   email, 
-    //   password,
-    //   // optional name or other profile fields
-    // });
+    // Debug auth object structure
+    console.log("Auth object structure:", Object.keys(auth));
     
-    // Note: In the front-end, the signUp function from better-auth/react would be used:
-    // import { signUp } from "~/lib/auth-client";
-    // const { data, error } = await signUp.email({ email, password });
+    // Use better-auth to create the account with proper checking
+    if (typeof auth.signUp !== 'function') {
+      console.error("Auth methods:", Object.keys(auth));
+      throw new Error("Auth signUp method is not available");
+    }
     
-    // Simulate successful signup
-    const success = true;
+    // Call the signUp method directly - it should be on the auth object itself
+    const result = await auth.signUp({
+      email,
+      password,
+      // Additional fields could be added here if needed
+      // name: formData.get("name") as string,
+    });
     
-    if (success) {
-      // In a real implementation, we might:
-      // 1. Auto-sign in the user (if enabled in better-auth config)
-      // 2. Redirect to login or dashboard
-      // 3. Send a verification email
+    console.log("Signup result:", result);
+    
+    if (result.error) {
+      console.error("Signup error:", result.error);
+      return { 
+        success: false, 
+        error: result.error.message || "Failed to create account" 
+      };
+    }
+    
+    // Check if auto sign-in is enabled in the better-auth config
+    if (result.data) {
+      // Get the session to see if user was auto-signed in
+      const session = await auth.getSession({
+        headers: request.headers,
+      });
       
-      // For this demo, just return success and redirect from the client side
-      return { success: true };
+      console.log("Session after signup:", session);
+      
+      if (session?.user) {
+        // User was auto-signed in, redirect to home or dashboard
+        return redirect("/");
+      } else {
+        // User was not auto-signed in, return success to redirect to login
+        return { success: true };
+      }
     } else {
       return { success: false, error: "Failed to create account" };
     }
   } catch (error) {
+    console.error("Signup exception:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "An unknown error occurred"
