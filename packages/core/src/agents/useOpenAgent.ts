@@ -5,6 +5,7 @@ import { generateId, UIMessage } from "ai";
 type AgentType = 'coder';
 
 export type OpenAgent = {
+  state: AgentState;
   messages: UIMessage[];
   setMessages: (messages: UIMessage[]) => void;
   handleSubmit: (message: string) => void;
@@ -18,14 +19,12 @@ type AgentState = {
   messages: UIMessage[];
 }
 
-export function useOpenAgent(agentType: AgentType): OpenAgent {
-  // const [messages, setMessages] = useState<UIMessage[]>(demoMessages);
-
-  const [agentState, setAgentState] = useState<AgentState>({ messages: [] })
+export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
+  const [state, setAgentState] = useState<AgentState>({ messages: [] })
 
   const cloudflareAgent = useAgent({
-    name: `${agentType}1234`,
-    agent: agentType,
+    name: `${type}-${id}`,
+    agent: type,
     onStateUpdate: (state: AgentState) => {
       // update local state
       setAgentState(state)
@@ -34,7 +33,7 @@ export function useOpenAgent(agentType: AgentType): OpenAgent {
 
   const handleSubmit = (message: string) => {
     cloudflareAgent.setState({
-      messages: [...(agentState?.messages || []), {
+      messages: [...(state?.messages || []), {
         id: generateId(),
         role: 'user',
         content: message,
@@ -62,7 +61,8 @@ export function useOpenAgent(agentType: AgentType): OpenAgent {
   }
 
   return {
-    messages: agentState?.messages || [],
+    state,
+    messages: state?.messages || [],
     setMessages: (messages) => cloudflareAgent.setState({ messages }),
     handleSubmit,
     infer,
