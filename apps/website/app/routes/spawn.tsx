@@ -35,61 +35,71 @@ export default function Spawn() {
   };
 
   return (
-    <main className="w-full max-w-2xl mx-auto p-8">
-      <h1 className="text-4xl font-bold mb-6">Spawn a coding agent</h1>
+    <>
+      <header className="w-full p-4 border-b">
+        <div className="max-w-7xl mx-auto flex items-center">
+          <a href="/" className="text-lg font-semibold hover:text-primary transition-colors">
+            OpenAgents
+          </a>
+        </div>
+      </header>
 
-      <div className="space-y-6">
-        <Form method="post" onSubmit={handleSubmit} className="space-y-4">
-          {/* Hidden username field for accessibility */}
-          <div className="sr-only">
-            <Label htmlFor="username">GitHub Username</Label>
-            <Input
-              id="username"
-              name="username"
-              type="text"
-              autoComplete="username"
-              tabIndex={-1}
-            />
-          </div>
+      <main className="w-full max-w-2xl mx-auto p-8 pt-16">
+        <h1 className="text-4xl font-bold mb-12">Spawn a coding agent</h1>
 
-          <div className="space-y-2">
-            <Label htmlFor="githubToken">GitHub Token</Label>
-            <Input
-              id="githubToken"
-              name="githubToken"
-              type="password"
-              placeholder="github_pat_*********************************"
-              required
-              autoComplete="new-password"
-            />
-            <p className="text-xs text-muted-foreground">
-              Create a <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">fine-grained GitHub token</a> with only the permissions this agent needs. Your token will not be stored.
-            </p>
-          </div>
+        <div className="space-y-10">
+          <Form method="post" onSubmit={handleSubmit} className="space-y-8">
+            {/* Hidden username field for accessibility */}
+            <div className="sr-only">
+              <Label htmlFor="username">GitHub Username</Label>
+              <Input
+                id="username"
+                name="username"
+                type="text"
+                autoComplete="username"
+                tabIndex={-1}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="agentPurpose">Agent Purpose</Label>
-            <Textarea
-              id="agentPurpose"
-              name="agentPurpose"
-              placeholder="Describe what you want this agent to help you with..."
-              rows={5}
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              Be specific about what you want the agent to work on. You'll be able to modify this later.
-            </p>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="githubToken">GitHub Token</Label>
+              <Input
+                id="githubToken"
+                name="githubToken"
+                type="password"
+                placeholder="github_pat_*********************************"
+                required
+                autoComplete="new-password"
+              />
+              <p className="text-xs text-muted-foreground">
+                Create a <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">fine-grained GitHub token</a> with only the permissions this agent needs. Your token will not be stored.
+              </p>
+            </div>
 
-          <Button
-            type="submit"
-            className="w-full mt-4"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Creating Agent..." : "Spawn Agent"}
-          </Button>
-        </Form>
-      </div>
-    </main>
+            <div className="space-y-2">
+              <Label htmlFor="agentPurpose">Agent Purpose</Label>
+              <Textarea
+                id="agentPurpose"
+                name="agentPurpose"
+                placeholder="Describe what you want this agent to help you with..."
+                rows={5}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Be specific about what you want the agent to work on. You'll be able to modify this later.
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full mt-4"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Creating Agent..." : "Spawn Agent"}
+            </Button>
+          </Form>
+        </div>
+      </main>
+    </>
   );
 }
