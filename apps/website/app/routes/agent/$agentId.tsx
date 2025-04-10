@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
-import { useAgentStore } from "~/lib/store";
 import { Header } from "~/components/header";
 import {
   Card,
@@ -11,7 +10,7 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
-import { AgentChat } from "@openagents/ui";
+import { useOpenAgent } from "@openagents/core";
 import { useState } from "react";
 
 // Use the Agent type locally to avoid import issues
@@ -45,58 +44,76 @@ export async function loader({ params }: LoaderFunctionArgs) {
   return { id: agentId };
 }
 
+function ClientOnly({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
+
+  return <>{children}</>;
+}
+
 export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
-
-  const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [githubToken, setGithubToken] = useState<string>("");
 
-  // Get agent and token from store - client-side only
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const store = useAgentStore.getState();
-      const foundAgent = store.getAgent(agentId || "");
-      if (foundAgent) {
-        setAgent(foundAgent);
-      }
-
-      // Get GitHub token from store
-      setGithubToken(store.githubToken);
-      setLoading(false);
-    }
-  }, [agentId]);
-
-  // Agent not found view (shared between server and client)
-  const NotFoundView = () => (
+  return (
     <>
       <Header />
 
-      <main className="w-full max-w-2xl mx-auto p-8 pt-24 text-center">
-        <h1 className="text-3xl font-bold mb-6">Agent Not Found</h1>
-        <p className="mb-8">We couldn't find an agent with ID: {agentId}</p>
-        <a
-          href="/spawn"
-          className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90"
-        >
-          Spawn a New Agent
-        </a>
+      <main className="w-full max-w-2xl mx-auto p-8 pt-24">
+        <ClientOnly>
+          <AgentContent agentId={agentId || ""} />
+        </ClientOnly>
       </main>
     </>
+  );
+}
+
+function AgentContent({ agentId }: { agentId: string }) {
+  // Move all client-side code here
+  const [loading, setLoading] = useState(true);
+  const { state, messages, setMessages, handleSubmit, infer, setGithubToken, getGithubToken } = useOpenAgent(agentId);
+  const [agent, setAgent] = useState<Agent | null>(null);
+  const [githubToken] = useState<string>("");
+
+  useEffect(() => {
+    // Initialize agent here
+    const initAgent = async () => {
+      try {
+        setLoading(false);
+      } catch (error) {
+        console.error('Failed to initialize agent:', error);
+        setLoading(false);
+      }
+    };
+
+    initAgent();
+  }, [agentId]);
+
+  // Agent not found view
+  const NotFoundView = () => (
+    <div className="text-center">
+      <h1 className="text-3xl font-bold mb-6">Agent Not Found</h1>
+      <p className="mb-8">We couldn't find an agent with ID: {agentId}</p>
+      <a
+        href="/spawn"
+        className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90"
+      >
+        Spawn a New Agent
+      </a>
+    </div>
   );
 
   // Loading view
   if (loading) {
-    return (
-      <>
-        <Header />
-
-        <main className="w-full max-w-2xl mx-auto p-8 pt-24 text-center">
-          <h1 className="text-3xl font-bold mb-6">Loading...</h1>
-        </main>
-      </>
-    );
+    return <h1 className="text-3xl font-bold mb-6 text-center">Loading...</h1>;
   }
 
   // If no agent is found, show not found message
@@ -108,36 +125,36 @@ export default function AgentDetails() {
   const formattedDate = new Date(agent.createdAt || 0).toLocaleString();
 
   return (
-    <>
-      <Header />
+    <div className="space-y-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">Agent: {agent.id}</h1>
+        <p className="text-muted-foreground">Created on {formattedDate}</p>
+      </div>
 
-      <main className="w-full max-w-2xl mx-auto p-8 pt-24">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Agent: {agent.id}</h1>
-          <p className="text-muted-foreground">Created on {formattedDate}</p>
-        </div>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Agent Purpose</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap">{agent.purpose}</p>
+          </CardContent>
+        </Card>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Agent Purpose</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-wrap">{agent.purpose}</p>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle>Conversation</CardTitle>
-              <CardDescription>Chat with your coding agent</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <AgentChat agent={agent} githubToken={githubToken} />
-            </CardContent>
-          </Card>
-        </div>
-      </main>
-    </>
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle>Conversation</CardTitle>
+            <CardDescription>Chat with your coding agent</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="h-[600px]">
+              <div className="p-4 text-center">
+                Chat functionality will be available soon
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
