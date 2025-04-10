@@ -1,158 +1,115 @@
-import React from 'react'
-import { StyleSheet } from 'react-native'
-import { UIMessage } from './types'
-import { ToolCall } from './ToolCall'
-import { View, Text, ScrollView, Markdown } from '@openagents/core'
+// For demo purposes, we'll define our own types instead of using OpenAgent
+export interface MessagePart {
+  type: 'text' | 'tool-invocation' | 'reasoning' | 'file';
+  text?: string;
+  reasoning?: string;
+  data?: string;
+  toolInvocation?: {
+    toolName: string;
+    state: 'call' | 'result';
+    args?: any;
+    result?: any;
+  };
+}
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  parts: MessagePart[];
+}
 
 interface MessageListProps {
-  messages: UIMessage[]
+  messages?: Message[];
 }
 
-export const MessageList = ({ messages }: MessageListProps) => {
-  const visibleMessages = messages.filter(message => message.role !== 'system')
-  console.log('visibleMessages', visibleMessages)
+// Demo messages for testing
+const demoMessages: Message[] = [
+  {
+    id: '1',
+    role: 'user',
+    parts: [
+      {
+        type: 'text',
+        text: 'Hello, can you help me with my code?'
+      }
+    ]
+  },
+  {
+    id: '2',
+    role: 'assistant',
+    parts: [
+      {
+        type: 'text',
+        text: 'Of course! I\'d be happy to help. What would you like to know?'
+      }
+    ]
+  }
+];
 
+export function MessageList({ messages = demoMessages }: MessageListProps) {
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {visibleMessages.map((message) => (
-        <View
-          key={message.id}
-          style={[
-            styles.messageContainer,
-            message.role === 'user' && styles.userMessageContainer,
-          ]}
-        >
-          {message.parts.map((part, index) => {
+    <div className="flex-1 overflow-y-auto w-full" style={{ paddingTop: '50px' }}>
+      {messages.map((message) => (
+        <div key={message.id} className={`p-4 ${message.role === 'user' ? 'bg-muted' : ''}`}>
+          {message.parts.map((part: MessagePart, index: number) => {
             if (part.type === 'text') {
-              return message.role === 'user' ? (
-                <Text
-                  key={`${message.id}-${index}`}
-                  style={[
-                    styles.messageText,
-                    styles.userMessageText,
-                  ]}
-                >
+              return (
+                <p key={`${message.id}-${index}`} className="whitespace-pre-wrap">
                   {part.text}
-                </Text>
-              ) : (
-                <Markdown
-                  key={`${message.id}-${index}`}
-                  style={markdownStyles}
-                >
-                  {part.text}
-                </Markdown>
-              )
+                </p>
+              );
             }
             if (part.type === 'tool-invocation') {
+              const { toolInvocation } = part;
               return (
-                <ToolCall
-                  key={`${message.id}-${index}`}
-                  toolInvocation={part.toolInvocation}
-                />
-              )
+                <div key={`${message.id}-${index}`} className="my-2 p-3 bg-muted/50 rounded-md border border-border">
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-primary">
+                      {toolInvocation?.toolName}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {toolInvocation?.state === 'call' ? '(Calling...)' : '(Result)'}
+                    </div>
+                  </div>
+                  {toolInvocation?.state === 'call' && (
+                    <div className="mt-2">
+                      <div className="text-sm text-muted-foreground">Arguments:</div>
+                      <pre className="mt-1 text-sm bg-background/50 p-2 rounded border border-border/50">
+                        {JSON.stringify(toolInvocation.args, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  {toolInvocation?.state === 'result' && (
+                    <div className="mt-2">
+                      <div className="text-sm text-muted-foreground">Result:</div>
+                      <div className="mt-1 text-sm bg-background/50 p-2 rounded border border-border/50">
+                        {typeof toolInvocation.result === 'string'
+                          ? toolInvocation.result
+                          : JSON.stringify(toolInvocation.result, null, 2)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
             }
-            // Add handling for other part types as needed
-            return null
+            if (part.type === 'reasoning') {
+              return (
+                <p key={`${message.id}-${index}`} className="text-muted-foreground italic">
+                  {part.reasoning}
+                </p>
+              );
+            }
+            if (part.type === 'file') {
+              return (
+                <pre key={`${message.id}-${index}`} className="mt-1 text-sm bg-background p-2 rounded">
+                  {part.data}
+                </pre>
+              );
+            }
+            return null;
           })}
-        </View>
+        </div>
       ))}
-    </ScrollView>
+    </div>
   )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 80, // Height that matches input container + padding
-  },
-  messageContainer: {
-    marginVertical: 8,
-    maxWidth: '80%',
-    padding: 12,
-    backgroundColor: '#333', // Add background for all messages
-  },
-  userMessageContainer: {
-    alignSelf: 'flex-end',
-    backgroundColor: 'transparent',
-    borderColor: '#fff',
-    borderWidth: 1,
-  },
-  messageText: {
-    color: '#fff',
-    fontSize: 14,
-    fontFamily: 'Berkeley Mono',
-  },
-  userMessageText: {
-    textAlign: 'right',
-  },
-})
-
-const markdownStyles = StyleSheet.create({
-  body: {
-    color: '#fff',
-    fontSize: 14,
-    fontFamily: 'Berkeley Mono',
-  },
-  code_inline: {
-    backgroundColor: '#333',
-    color: '#fff',
-    fontFamily: 'Berkeley Mono',
-    padding: 4,
-    borderRadius: 4,
-  },
-  code_block: {
-    backgroundColor: '#333',
-    padding: 8,
-    borderRadius: 4,
-    fontFamily: 'Berkeley Mono',
-  },
-  fence: {
-    backgroundColor: '#333',
-    padding: 8,
-    borderRadius: 4,
-    fontFamily: 'Berkeley Mono',
-  },
-  link: {
-    color: '#58a6ff',
-    textDecorationLine: 'underline' as const,
-  },
-  list_item: {
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  bullet_list: {
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  ordered_list: {
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  heading1: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-    color: '#fff',
-  },
-  heading2: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-    color: '#fff',
-  },
-  heading3: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-    color: '#fff',
-  }
-})
