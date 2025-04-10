@@ -12,6 +12,7 @@ import {
 } from "~/components/ui/card";
 import { useState } from "react";
 import { useAgentStore } from "~/lib/store";
+import { useAgent } from "agents/react";
 
 // Use the Agent type locally to avoid import issues
 interface Agent {
@@ -36,8 +37,15 @@ export async function loader({ params }: LoaderFunctionArgs) {
   return { id: agentId };
 }
 
-function ClientOnly({ children }: { children: React.ReactNode }) {
+function ClientOnly({ agentId, children }: { agentId: string, children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
+
+  const agent = useAgent({
+    name: agentId,
+    agent: 'coder'
+  })
+
+  console.log(agent);
 
   useEffect(() => {
     setMounted(true);
@@ -53,6 +61,7 @@ function ClientOnly({ children }: { children: React.ReactNode }) {
 export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
+
   const [loading, setLoading] = useState(true);
 
   return (
@@ -60,7 +69,7 @@ export default function AgentDetails() {
       <Header />
 
       <main className="w-full max-w-2xl mx-auto p-8 pt-24">
-        <ClientOnly>
+        <ClientOnly agentId={agentId || ""}>
           <AgentContent agentId={agentId || ""} />
         </ClientOnly>
       </main>
@@ -74,7 +83,7 @@ function AgentContent({ agentId }: { agentId: string }) {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [githubToken, setGithubToken] = useState<string>("");
   const agentStore = useAgentStore();
-  
+
   // Temporarily removed useOpenAgent due to build errors
 
   useEffect(() => {
@@ -83,18 +92,18 @@ function AgentContent({ agentId }: { agentId: string }) {
       try {
         console.log('Loading agent with ID:', agentId);
         console.log('Available agents:', agentStore.agents);
-        
+
         // Get agent from Zustand store
         const foundAgent = agentStore.getAgent(agentId);
         console.log('Found agent:', foundAgent);
-        
+
         if (foundAgent) {
           setAgent(foundAgent);
           setGithubToken(agentStore.githubToken);
-          
+
           // Token setting logic temporarily removed
         }
-        
+
         setLoading(false);
       } catch (error) {
         console.error('Failed to initialize agent:', error);
