@@ -11,3 +11,6 @@
 .wrangler
 .dev.vars*
 
+# Database
+*.db
+*.sqlite

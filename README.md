@@ -29,7 +29,8 @@ Then click settings icon bottom right > API Keys > Add Anthropic and/or OpenRout
   │   ├── chatserver/         # AI SDK chat API
   │   ├── coder/              # Coding agent desktop app
   │   ├── mcp-github-server/  # Remote MCP server with GitHub tools
-  │   └── onyx/               # Onyx mobile app & bitcoin wallet
+  │   ├── onyx/               # Onyx mobile app & bitcoin wallet
+  │   └── website/            # Web client (React Router/Vite/Cloudflare)
   ├── packages/               # Shared libraries/components
   │   ├── agents/             # Agent definitions
   │   ├── core/               # Shared core logic
