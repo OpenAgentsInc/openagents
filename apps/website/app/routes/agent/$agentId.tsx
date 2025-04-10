@@ -56,37 +56,10 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
   const [input, setInput] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [directSocketWorking, setDirectSocketWorking] = useState<boolean | null>(null);
 
-  // First, test a direct WebSocket connection to verify basic connectivity
+  // Set up component
   useEffect(() => {
     setMounted(true);
-    console.log("Testing direct WebSocket connection to wss://agents.openagents.com/agents");
-    
-    if (typeof WebSocket === 'undefined') {
-      console.error("WebSocket is not supported in this environment");
-      setDirectSocketWorking(false);
-      return;
-    }
-    
-    try {
-      // Try with the suggested path /agents
-      const testSocket = new WebSocket('wss://agents.openagents.com/agents');
-      
-      testSocket.onopen = () => {
-        console.log("✅ Direct WebSocket connection successful");
-        setDirectSocketWorking(true);
-        testSocket.close();
-      };
-      
-      testSocket.onerror = (error) => {
-        console.error("❌ Direct WebSocket connection failed:", error);
-        setDirectSocketWorking(false);
-      };
-    } catch (error) {
-      console.error("Error creating test WebSocket:", error);
-      setDirectSocketWorking(false);
-    }
   }, []);
 
   // Standard agent configuration with clear debugging
@@ -95,7 +68,7 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
     name: agentId,
     agent: 'coder',
     host: 'agents.openagents.com', // Standard format without protocol prefix
-    path: '/agents', // Use the path suggested in console
+    path: 'agents', // Must NOT start with a slash according to PartySocket requirements
     room: agentId, // Required by PartySocket for room identification
     debug: true, // Enable verbose logging
     
@@ -135,9 +108,8 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
         errorMessage,
         agentId,
         host: 'agents.openagents.com',
-        path: '/agents',
-        room: agentId,
-        directSocketWorking
+        path: 'agents',
+        room: agentId
       });
       
       setConnectionStatus('error');
@@ -242,22 +214,13 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
                   <span className="font-medium">agents.openagents.com</span>
                   
                   <span>WebSocket Path:</span>
-                  <span className="font-medium">/agents</span>
+                  <span className="font-medium">agents</span>
                   
                   <span>Agent ID:</span>
                   <span className="font-medium">{agentId}</span>
                   
                   <span>Agent Type:</span>
                   <span className="font-medium">coder</span>
-                  
-                  <span>Direct WS Test:</span>
-                  <span className="font-medium">
-                    {directSocketWorking === null 
-                      ? 'Testing...' 
-                      : directSocketWorking 
-                        ? '✅ Working' 
-                        : '❌ Failed'}
-                  </span>
                 </div>
               </div>
             </div>
@@ -277,12 +240,6 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
                   Reload to Reconnect
                 </button>
               )}
-            </div>
-          )}
-          
-          {directSocketWorking === true && connectionStatus !== 'connected' && (
-            <div className="mt-2 p-2 bg-yellow-50 text-yellow-700 text-sm rounded-md">
-              <span>Direct WebSocket connection works, but agent connection is failing. The agent service might not be handling WebSocket connections correctly.</span>
             </div>
           )}
         </CardHeader>
