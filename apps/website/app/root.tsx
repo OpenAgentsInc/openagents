@@ -25,8 +25,12 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  // For server-side rendering, always use "dark" theme to match client expectation
+  // This is crucial for hydration matching
+  const defaultTheme = "dark";
+  
   return (
-    <html lang="en">
+    <html lang="en" className={defaultTheme}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -36,22 +40,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
-                function getTheme() {
+                try {
                   const storageKey = "openagents-ui-theme";
                   const defaultTheme = "dark";
-
-                  try {
-                    const theme = localStorage.getItem(storageKey) || defaultTheme;
-                    if (theme === "system") {
-                      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-                    }
-                    return theme;
-                  } catch (e) {
-                    return defaultTheme;
-                  }
+                  
+                  // Don't change the theme class initially - this avoids hydration mismatch
+                  // The ThemeProvider will handle theme changes after hydration
+                  
+                  // Store the initial theme for later use
+                  window.__INITIAL_THEME__ = defaultTheme;
+                } catch (e) {
+                  console.error("Error in theme initialization", e);
                 }
-
-                document.documentElement.classList.add(getTheme());
               })();
             `,
           }}

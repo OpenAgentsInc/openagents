@@ -34,6 +34,7 @@
     "wrangler": "^4.9.0"
   },
   "resolutions": {
+    "agents": "0.0.59",
     "react-native": "0.76.7",
     "@types/react": "19.0.0",
     "wrangler": "4.9.1"

@@ -22,24 +22,17 @@
   },
   "peerDependencies": {
     "react": ">=19.0.0",
-    "react-dom": ">=19.0.0",
-    "react-native": ">=0.70.0"
+    "react-dom": ">=19.0.0"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.0",
-    "lucide-react": "^0.484.0",
-    "lucide-react-native": "^0.484.0",
-    "react-native-markdown-display": "^7.0.2",
-    "react-native-svg": "^15.11.2",
-    "react-native-web": "^0.19.10"
+    "lucide-react": "^0.484.0"
   },
   "devDependencies": {
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",
-    "@types/react-native": "~0.72.8",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-native": "0.76.7",
     "tsup": "^8.0.2",
     "typescript": "^5.3.3"
   }

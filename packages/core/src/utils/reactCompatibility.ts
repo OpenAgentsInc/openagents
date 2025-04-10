@@ -73,16 +73,6 @@ import {
   Switch as RNSwitch,
 } from 'react-native';
 
-// Try to import other common third-party components that need compatibility
-let RNMarkdown: any;
-try {
-  // This is wrapped in try/catch because the module might not be available in all environments
-  RNMarkdown = require('react-native-markdown-display').default;
-} catch (e) {
-  // Create a placeholder component if the module is not available
-  RNMarkdown = (props: any) => null;
-}
-
 // Create React 19 compatible versions of common React Native components
 export const View = createReactComponent(RNView);
 export const Text = createReactComponent(RNText);
@@ -101,5 +91,13 @@ export const Image = createReactComponent(RNImage);
 export const TouchableHighlight = createReactComponent(RNTouchableHighlight);
 export const Switch = createReactComponent(RNSwitch);
 
-// Third-party components
-export const Markdown = createReactComponent(RNMarkdown);
+// Create a placeholder/fallback Markdown component for web
+export const Markdown = createReactComponent(
+  (props: any) => {
+    // Simple fallback that just renders the children or markdown text as plain text
+    return React.createElement('div', {
+      className: 'markdown-content',
+      style: { whiteSpace: 'pre-wrap' }
+    }, props.children || props.content || '');
+  }
+);

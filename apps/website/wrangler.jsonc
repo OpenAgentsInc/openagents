@@ -6,6 +6,9 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "website",
   "compatibility_date": "2025-04-04",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "main": "./workers/app.ts",
   "observability": {
     "enabled": true
@@ -45,5 +48,11 @@
 	 * Service Bindings (communicate between multiple Workers)
 	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
 	 */
-  // "services": [{ "binding": "MY_SERVICE", "service": "my-service" }]
+  // Default environment (used for production `wrangler deploy`)
+  // "services": [
+  //   {
+  //     "binding": "AGENT_SERVICE",
+  //     "service": "agents" // Ensure this matches the deployed agents worker name
+  //   }
+  // ],
 }
