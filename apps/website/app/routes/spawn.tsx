@@ -40,6 +40,18 @@ export default function Spawn() {
       
       <div className="space-y-6">
         <Form method="post" onSubmit={handleSubmit} className="space-y-4">
+          {/* Hidden username field for accessibility */}
+          <div className="sr-only">
+            <Label htmlFor="username">GitHub Username</Label>
+            <Input 
+              id="username"
+              name="username" 
+              type="text" 
+              autoComplete="username"
+              tabIndex={-1}
+            />
+          </div>
+          
           <div className="space-y-2">
             <Label htmlFor="githubToken">GitHub Token</Label>
             <Input 
@@ -51,7 +63,7 @@ export default function Spawn() {
               autoComplete="new-password"
             />
             <p className="text-xs text-muted-foreground">
-              Your GitHub token is required to access repositories. It will not be stored.
+              Create a <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">fine-grained GitHub token</a> with only the permissions this agent needs. Your token will not be stored.
             </p>
           </div>
           
