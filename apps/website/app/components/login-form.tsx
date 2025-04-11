@@ -21,21 +21,21 @@ export function LoginForm({
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  
+
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    
+
     // Basic validation
     if (!email || !password) {
       setError("Email and password are required")
       return
     }
-    
+
     setIsSubmitting(true)
-    
+
     try {
       // Use authClient.signIn directly as requested
       const { data, error: signInError } = await signIn.email(
@@ -59,7 +59,7 @@ export function LoginForm({
           }
         }
       )
-      
+
       if (signInError) {
         setError(signInError.message || "Invalid email or password")
         setIsSubmitting(false)
@@ -81,7 +81,7 @@ export function LoginForm({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form 
+          <form
             className="space-y-8"
             onSubmit={handleSubmit}
           >
@@ -108,35 +108,34 @@ export function LoginForm({
                     Forgot your password?
                   </a>
                 </div>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  required 
+                <Input
+                  id="password"
+                  type="password"
+                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                 />
               </div>
-              
+
               {/* Display validation/API errors */}
               {error && (
                 <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
                   {error}
                 </div>
               )}
-              
+
               <div className="flex flex-col gap-3">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="w-full"
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? "Logging in..." : "Login"}
                 </Button>
-                {/* Social login buttons will be implemented later 
-                <Button 
-                  variant="outline" 
-                  className="w-full" 
+                <Button
+                  variant="outline"
+                  className="w-full"
                   type="button"
                   onClick={async () => {
                     try {
@@ -156,7 +155,7 @@ export function LoginForm({
                 >
                   Login with GitHub
                 </Button>
-                */}
+
               </div>
             </div>
             <div className="mt-4 text-center text-sm">
