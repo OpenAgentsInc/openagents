@@ -26,6 +26,15 @@ export class Coder extends Agent<Env, CoderState> {
 
   onMessage(connection: Connection, message: WSMessage) {
     console.log("Message received:", message);
+
+    const parsedMessage = JSON.parse(message);
+    const githubToken = parsedMessage.githubToken;
+    const userMessage = parsedMessage.userMessage;
+
+    console.log("githubToken: ", githubToken);
+    console.log("userMessage: ", userMessage);
+
+    this.infer(githubToken)
   }
 
   @unstable_callable({

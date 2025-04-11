@@ -166,14 +166,19 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
         messages: [...messages, userMessage]
       });
 
+      agent.send(JSON.stringify({
+        githubToken: githubToken,
+        userMessage: userMessage
+      }))
+
       console.log("Message sent successfully");
 
       // Use the githubToken prop passed from the loader
       console.log("Using GitHub token:", githubToken ? "Token present" : "No token");
 
-      await agent.call('infer', [githubToken])
+      // await agent.call('infer', githubToken)
 
-      console.log('called infer')
+      // console.log('called infer')
 
       // Optional: Add loading state here if needed
       // setMessages(prev => [...prev, { role: 'assistant', content: '...', id: 'loading', createdAt: Date.now() }]);
