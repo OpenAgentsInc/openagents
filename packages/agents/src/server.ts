@@ -4,7 +4,8 @@ import { env } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { UIPart } from "@openagents/core/src/chat/types";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { getFileContentsTool, type ToolContext } from "@openagents/core";
+import { type ToolContext } from "@openagents/core/src/tools/toolContext";
+import { getFileContentsTool } from "@openagents/core/src/tools/github/getFileContents";
 
 const openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY })
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");
@@ -15,8 +16,7 @@ interface CoderState {
   messages: UIMessage[];
 }
 
-/**
- * Chat Agent implementation that handles real-time AI chat interactions
+/** * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Coder extends Agent<Env, CoderState> {
   initialState: CoderState = {
@@ -42,6 +42,8 @@ export class Coder extends Agent<Env, CoderState> {
       const tools = {
         get_file_contents: getFileContentsTool(toolContext)
       }
+
+      console.log("got tool context: ", toolContext);
 
       const result = await generateText({
         system: `You are a helpful assistant. Help the user with their GitHub repository.`,
