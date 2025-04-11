@@ -4,6 +4,7 @@ import { env } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { UIPart } from "@openagents/core/src/chat/types";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { getFileContentsTool, type ToolContext } from "@openagents/core";
 
 const openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY })
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");
@@ -31,20 +32,25 @@ export class Coder extends Agent<Env, CoderState> {
     description: "Generate an AI response based on the current messages",
     streaming: true
   })
-  async infer() {
+  async infer(githubToken: string) {
+    console.log("Infer called with token:", githubToken);
     return agentContext.run(this, async () => {
       // Get current state messages
       const messages = this.state.messages || [];
 
+      const toolContext: ToolContext = { githubToken }
+      const tools = {
+        get_file_contents: getFileContentsTool(toolContext)
+      }
+
       const result = await generateText({
-        system: `You are a helpful assistant.`,
+        system: `You are a helpful assistant. Help the user with their GitHub repository.`,
         model,
         messages,
+        tools,
         maxTokens: 2500,
         temperature: 0.7,
-        // tools,
-        // maxSteps: 5,
-        // toolChoice: "auto"
+        maxSteps: 5,
       });
 
       // Create message parts array to handle both text and tool calls
