@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { useLoaderData, useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
 import { Header } from "~/components/header";
@@ -42,20 +42,22 @@ export function meta({ params }: Route.MetaArgs) {
 }
 
 // Load agent data - server-side only returns ID for safety
-export async function loader({ params }: LoaderFunctionArgs) {
+export async function loader({ params, context }: LoaderFunctionArgs) {
   const { agentId } = params;
+  const { env } = context.cloudflare;
 
   // For security, don't try to load agents on the server
   // Just return the ID and let client-side handle data lookup
-  return { id: agentId };
+  return { id: agentId, githubToken: env.GITHUB_TOKEN };
 }
 
-function ClientOnly({ agentId, children }: { agentId: string, children: React.ReactNode }) {
+function ClientOnly({ agentId, children, githubToken }: { agentId: string, children: React.ReactNode, githubToken: string }) {
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const agentStore = useAgentStore();
 
   // Set up component and log initialization only once
   useEffect(() => {
@@ -166,8 +168,10 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
 
       console.log("Message sent successfully");
 
-      const token = "placeholder"
-      await agent.call('infer', [token])
+      // Use the githubToken prop passed from the loader
+      console.log("Using GitHub token:", githubToken ? "Token present" : "No token");
+
+      await agent.call('infer', [githubToken])
 
       console.log('called infer')
 
@@ -316,13 +320,14 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
 export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
+  const { githubToken } = useLoaderData<typeof loader>();
 
   return (
     <>
       <Header />
 
       <main className="w-full max-w-2xl mx-auto p-8 pt-24">
-        <ClientOnly agentId={agentId || ""}>
+        <ClientOnly agentId={agentId || ""} githubToken={githubToken}>
           <AgentContent agentId={agentId || ""} />
         </ClientOnly>
       </main>
