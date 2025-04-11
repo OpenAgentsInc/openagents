@@ -25,15 +25,8 @@ export class Coder extends Agent<Env, CoderState> {
   tools: ToolSet = {};
 
   onMessage(connection: Connection, message: WSMessage) {
-    console.log("Message received:", message);
-
-    const parsedMessage = JSON.parse(message);
+    const parsedMessage = JSON.parse(message as string);
     const githubToken = parsedMessage.githubToken;
-    const userMessage = parsedMessage.userMessage;
-
-    console.log("githubToken: ", githubToken);
-    console.log("userMessage: ", userMessage);
-
     this.infer(githubToken)
   }
 
@@ -42,7 +35,6 @@ export class Coder extends Agent<Env, CoderState> {
     streaming: true
   })
   async infer(githubToken: string) {
-    console.log("Infer called with token:", githubToken);
     return agentContext.run(this, async () => {
       // Get current state messages
       const messages = this.state.messages || [];
@@ -51,8 +43,6 @@ export class Coder extends Agent<Env, CoderState> {
       const tools = {
         get_file_contents: getFileContentsTool(toolContext)
       }
-
-      console.log("got tool context: ", toolContext);
 
       const result = await generateText({
         system: `You are a helpful assistant. Help the user with their GitHub repository.`,
