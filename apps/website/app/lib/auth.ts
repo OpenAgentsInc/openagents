@@ -10,6 +10,13 @@ const dialect = new LibsqlDialect({
 // Export the initialized auth instance with proper type definition
 // Ensure we use the correct structure for methods
 export const auth: ReturnType<typeof betterAuth> = betterAuth({
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["google", "github"]
+    }
+  },
+
   database: {
     dialect,
     type: "sqlite",
