@@ -13,7 +13,7 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   account: {
     accountLinking: {
       enabled: true,
-      trustedProviders: ["google", "github"]
+      trustedProviders: ["github"]
     }
   },
 
