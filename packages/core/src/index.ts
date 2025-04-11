@@ -17,9 +17,9 @@ export * from './mcp/sse'
 export * from './utils/commandExecutor'
 export * from './utils/commandParser'
 export * from './utils/setupElectronCommandExecutor'
-export * from './utils/reactCompatibility'
 export * from './utils/logManager'
 export * from './utils/generateId'
+export * from './tools'
 
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
@@ -111,8 +111,6 @@ export function getCurrentUrl() {
 }
 */
 
-// Export React compatibility utilities
-export * from './utils/reactCompatibility';
 
 // Export tools-related functionality
 export * from './tools/TOOLS';

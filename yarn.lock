@@ -17168,7 +17168,7 @@ universal-user-agent@^6.0.0:
 
 universal-user-agent@^7.0.2:
   version "7.0.2"
-  resolved "https://registry.npmjs.org/universal-user-agent/-/universal-user-agent-7.0.2.tgz"
+  resolved "https://registry.yarnpkg.com/universal-user-agent/-/universal-user-agent-7.0.2.tgz#52e7d0e9b3dc4df06cc33cb2b9fd79041a54827e"
   integrity sha512-0JCqzSKnStlRRQfCdowvqy3cy0Dvtlb8xecj/H8JFZuCze4rwjPZQOgvFvn0Ws/usCHQFGpyr+pB9adaGwXn4Q==
 
 universalify@^0.1.0:

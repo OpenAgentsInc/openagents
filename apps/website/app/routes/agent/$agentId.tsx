@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { useLoaderData, useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
 import { Header } from "~/components/header";
@@ -42,20 +42,22 @@ export function meta({ params }: Route.MetaArgs) {
 }
 
 // Load agent data - server-side only returns ID for safety
-export async function loader({ params }: LoaderFunctionArgs) {
+export async function loader({ params, context }: LoaderFunctionArgs) {
   const { agentId } = params;
+  const { env } = context.cloudflare;
 
   // For security, don't try to load agents on the server
   // Just return the ID and let client-side handle data lookup
-  return { id: agentId };
+  return { id: agentId, githubToken: env.GITHUB_TOKEN };
 }
 
-function ClientOnly({ agentId, children }: { agentId: string, children: React.ReactNode }) {
+function ClientOnly({ agentId, children, githubToken }: { agentId: string, children: React.ReactNode, githubToken: string }) {
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const agentStore = useAgentStore();
 
   // Set up component and log initialization only once
   useEffect(() => {
@@ -160,11 +162,23 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
       console.log("Sending message to agent:", userMessage);
 
       // Update agent state with new message
-      await agent.setState({
+      agent.setState({
         messages: [...messages, userMessage]
       });
 
+      agent.send(JSON.stringify({
+        githubToken: githubToken,
+        userMessage: userMessage
+      }))
+
       console.log("Message sent successfully");
+
+      // Use the githubToken prop passed from the loader
+      console.log("Using GitHub token:", githubToken ? "Token present" : "No token");
+
+      // await agent.call('infer', githubToken)
+
+      // console.log('called infer')
 
       // Optional: Add loading state here if needed
       // setMessages(prev => [...prev, { role: 'assistant', content: '...', id: 'loading', createdAt: Date.now() }]);
@@ -195,10 +209,10 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
             Ask your agent questions about code
             <div className="mt-2">
               <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${connectionStatus === 'connected'
-                  ? 'bg-green-100 text-green-800'
-                  : connectionStatus === 'connecting'
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-red-100 text-red-800'
+                ? 'bg-green-100 text-green-800'
+                : connectionStatus === 'connecting'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-red-100 text-red-800'
                 }`}>
                 {connectionStatus === 'connected'
                   ? '● Connected'
@@ -261,8 +275,8 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
               >
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
-                      ? 'bg-primary text-primary-foreground ml-auto'
-                      : 'bg-muted'
+                    ? 'bg-primary text-primary-foreground ml-auto'
+                    : 'bg-muted'
                     }`}
                 >
                   <p className="whitespace-pre-wrap text-sm">{message.content}</p>
@@ -311,13 +325,14 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
 export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
+  const { githubToken } = useLoaderData<typeof loader>();
 
   return (
     <>
       <Header />
 
       <main className="w-full max-w-2xl mx-auto p-8 pt-24">
-        <ClientOnly agentId={agentId || ""}>
+        <ClientOnly agentId={agentId || ""} githubToken={githubToken}>
           <AgentContent agentId={agentId || ""} />
         </ClientOnly>
       </main>
