@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { oauth2Provider } from "better-auth/plugins";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import { env } from "cloudflare:workers"
 
@@ -13,7 +14,7 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   account: {
     accountLinking: {
       enabled: true,
-      trustedProviders: ["github"]
+      trustedProviders: ["github", "consentkeys"]
     }
   },
 
@@ -34,6 +35,37 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
       clientSecret: env.GITHUB_CLIENT_SECRET,
     },
   },
+
+  plugins: [
+    oauth2Provider({
+      providers: {
+        consentkeys: {
+          type: "oauth2",
+          clientId: env.CONSENTKEYS_CLIENT_ID, 
+          clientSecret: env.CONSENTKEYS_CLIENT_SECRET,
+          issuer: "https://consentkeys.openagents.com",
+          authorization: {
+            url: "https://consentkeys.openagents.com/api/auth/oauth2/authorize",
+            params: { scope: "openid profile email" }
+          },
+          token: {
+            url: "https://consentkeys.openagents.com/api/auth/oauth2/token"
+          },
+          userinfo: {
+            url: "https://consentkeys.openagents.com/api/auth/oauth2/userinfo"
+          },
+          profile: (profile: any) => {
+            return {
+              id: profile.sub,
+              name: profile.name,
+              email: profile.email,
+              image: profile.picture
+            };
+          }
+        }
+      }
+    })
+  ],
 
   // Enable debug mode for more detailed logs
   debug: true,
