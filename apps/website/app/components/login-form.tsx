@@ -11,7 +11,7 @@ import {
 } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
-import { authClient, signIn } from "~/lib/auth-client"
+import { signIn } from "~/lib/auth-client"
 
 export function LoginForm({
   className,
@@ -162,12 +162,8 @@ export function LoginForm({
                   onClick={async () => {
                     try {
                       setIsSubmitting(true);
-                      // Use OAuth2 sign-in for ConsentKeys
-                      // await signIn.oauth2({
-                      //   providerId: "consentkeys",
-                      //   callbackURL: "/",
-                      // });
-                      await authClient.oauth2.login({
+                      // Use the oauth2 method for generic OAuth providers
+                      await signIn.oauth2({
                         providerId: "consentkeys",
                         callbackURL: "/",
                       });
