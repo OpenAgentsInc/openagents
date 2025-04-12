@@ -191,9 +191,9 @@ export function SignupForm({
                   onClick={async () => {
                     try {
                       setIsSubmitting(true);
-                      // Use OAuth2 sign-up for ConsentKeys
+                      // Use the oauth2 method for generic OAuth providers
                       await signUp.oauth2({
-                        providerId: "consentkeys", 
+                        providerId: "consentkeys",
                         callbackURL: "/",
                       });
                     } catch (error) {
