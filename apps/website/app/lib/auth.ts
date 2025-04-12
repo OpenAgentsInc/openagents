@@ -34,35 +34,21 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
       clientId: env.GITHUB_CLIENT_ID,
       clientSecret: env.GITHUB_CLIENT_SECRET,
     },
-    consentkeys: {
-      type: "oauth2",
-      clientId: env.CONSENTKEYS_CLIENT_ID,
-      clientSecret: env.CONSENTKEYS_CLIENT_SECRET,
-      issuer: "https://consentkeys.openagents.com",
-      authorization: {
-        url: "https://consentkeys.openagents.com/api/auth/oauth2/authorize",
-        params: { scope: "openid profile email" }
-      },
-      token: {
-        url: "https://consentkeys.openagents.com/api/auth/oauth2/token"
-      },
-      userinfo: {
-        url: "https://consentkeys.openagents.com/api/auth/oauth2/userinfo"
-      },
-      profile: (profile: any) => {
-        return {
-          id: profile.sub,
-          name: profile.name,
-          email: profile.email,
-          image: profile.picture
-        };
-      }
-    },
   },
 
   plugins: [
     oidcProvider({
-      loginPage: "/login"
+      loginPage: "/login",
+      metadata: {
+        issuer: "https://consentkeys.openagents.com",
+        authorization_endpoint: "https://consentkeys.openagents.com/api/auth/oauth2/authorize",
+        token_endpoint: "https://consentkeys.openagents.com/api/auth/oauth2/token",
+        userinfo_endpoint: "https://consentkeys.openagents.com/api/auth/oauth2/userinfo",
+        scopes_supported: ["openid", "profile", "email"],
+        response_types_supported: ["code"],
+        response_modes_supported: ["query"],
+        grant_types_supported: ["authorization_code"],
+      }
     })
   ],
 
