@@ -153,7 +153,7 @@ export function LoginForm({
                   }}
                   disabled={isSubmitting}
                 >
-                  Login with GitHub
+                  Log in with GitHub
                 </Button>
                 <Button
                   variant="outline"
@@ -162,9 +162,9 @@ export function LoginForm({
                   onClick={async () => {
                     try {
                       setIsSubmitting(true);
-                      // Use OAuth2 sign-in for ConsentKeys
-                      await signIn.oauth2({
-                        providerId: "consentkeys",
+                      // Use social sign-in for ConsentKeys
+                      await signIn.social({
+                        provider: "consentkeys",
                         callbackURL: "/",
                       });
                     } catch (error) {
@@ -175,7 +175,7 @@ export function LoginForm({
                   }}
                   disabled={isSubmitting}
                 >
-                  Sign in with ConsentKeys
+                  Log in with ConsentKeys
                 </Button>
               </div>
             </div>

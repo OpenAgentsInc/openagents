@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { oauth2Provider } from "better-auth/plugins";
+import { oidcProvider } from "better-auth/plugins";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import { env } from "cloudflare:workers"
 
@@ -37,7 +37,7 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   },
 
   plugins: [
-    oauth2Provider({
+    oidcProvider({
       providers: {
         consentkeys: {
           type: "oauth2",

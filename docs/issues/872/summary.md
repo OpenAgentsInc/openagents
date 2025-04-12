@@ -1,16 +1,16 @@
-# ConsentKeys OAuth Integration Summary
+# ConsentKeys OIDC Integration Summary
 
 ## Overview
-This document outlines the implementation of OAuth authentication using the ConsentKeys OIDC provider for the OpenAgents platform. The integration enables users to sign in and sign up using their ConsentKeys accounts.
+This document outlines the implementation of OIDC authentication using the ConsentKeys OIDC provider for the OpenAgents platform. The integration enables users to sign in and sign up using their ConsentKeys accounts.
 
 ## Implementation Details
 
-### 1. OAuth2 Provider Configuration
+### 1. OIDC Provider Configuration
 
-Added ConsentKeys as an OAuth2 provider in `apps/website/app/lib/auth.ts`:
+Added ConsentKeys as an OIDC provider in `apps/website/app/lib/auth.ts`:
 
 ```typescript
-import { oauth2Provider } from "better-auth/plugins";
+import { oidcProvider } from "better-auth/plugins";
 
 // ...
 
@@ -27,7 +27,7 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   // ...
 
   plugins: [
-    oauth2Provider({
+    oidcProvider({
       providers: {
         consentkeys: {
           type: "oauth2",
@@ -75,9 +75,9 @@ Added a "Sign in with ConsentKeys" button to the login form in `apps/website/app
   onClick={async () => {
     try {
       setIsSubmitting(true);
-      // Use OAuth2 sign-in for ConsentKeys
-      await signIn.oauth2({
-        providerId: "consentkeys",
+      // Use social sign-in for ConsentKeys
+      await signIn.social({
+        provider: "consentkeys",
         callbackURL: "/",
       });
     } catch (error) {
@@ -104,9 +104,9 @@ Added a "Sign up with ConsentKeys" button to the signup form in `apps/website/ap
   onClick={async () => {
     try {
       setIsSubmitting(true);
-      // Use OAuth2 sign-up for ConsentKeys
-      await signUp.oauth2({
-        providerId: "consentkeys", 
+      // Use social sign-up for ConsentKeys
+      await signUp.social({
+        provider: "consentkeys", 
         callbackURL: "/",
       });
     } catch (error) {

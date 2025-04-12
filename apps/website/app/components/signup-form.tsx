@@ -191,9 +191,9 @@ export function SignupForm({
                   onClick={async () => {
                     try {
                       setIsSubmitting(true);
-                      // Use OAuth2 sign-up for ConsentKeys
-                      await signUp.oauth2({
-                        providerId: "consentkeys", 
+                      // Use social sign-up for ConsentKeys
+                      await signUp.social({
+                        provider: "consentkeys", 
                         callbackURL: "/",
                       });
                     } catch (error) {
