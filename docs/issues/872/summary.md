@@ -7,10 +7,12 @@ This document outlines the implementation of OIDC authentication using the Conse
 
 ### 1. Server-Side Configuration
 
-Added ConsentKeys as an OIDC provider in `apps/website/app/lib/auth.ts`:
+Added ConsentKeys as an OAuth2 provider in `apps/website/app/lib/auth.ts`:
 
 ```typescript
+import { betterAuth } from "better-auth";
 import { oidcProvider } from "better-auth/plugins";
+import { env } from "cloudflare:workers";
 
 // ...
 
@@ -26,34 +28,40 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
   
   // ...
 
+  socialProviders: {
+    github: {
+      clientId: env.GITHUB_CLIENT_ID,
+      clientSecret: env.GITHUB_CLIENT_SECRET,
+    },
+    consentkeys: {
+      type: "oauth2",
+      clientId: env.CONSENTKEYS_CLIENT_ID,
+      clientSecret: env.CONSENTKEYS_CLIENT_SECRET,
+      issuer: "https://consentkeys.openagents.com",
+      authorization: {
+        url: "https://consentkeys.openagents.com/api/auth/oauth2/authorize",
+        params: { scope: "openid profile email" }
+      },
+      token: {
+        url: "https://consentkeys.openagents.com/api/auth/oauth2/token"
+      },
+      userinfo: {
+        url: "https://consentkeys.openagents.com/api/auth/oauth2/userinfo"
+      },
+      profile: (profile: any) => {
+        return {
+          id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture
+        };
+      }
+    },
+  },
+  
   plugins: [
     oidcProvider({
-      providers: {
-        consentkeys: {
-          type: "oauth2",
-          clientId: env.CONSENTKEYS_CLIENT_ID, 
-          clientSecret: env.CONSENTKEYS_CLIENT_SECRET,
-          issuer: "https://consentkeys.openagents.com",
-          authorization: {
-            url: "https://consentkeys.openagents.com/api/auth/oauth2/authorize",
-            params: { scope: "openid profile email" }
-          },
-          token: {
-            url: "https://consentkeys.openagents.com/api/auth/oauth2/token"
-          },
-          userinfo: {
-            url: "https://consentkeys.openagents.com/api/auth/oauth2/userinfo"
-          },
-          profile: (profile: any) => {
-            return {
-              id: profile.sub,
-              name: profile.name,
-              email: profile.email,
-              image: profile.picture
-            };
-          }
-        }
-      }
+      loginPage: "/login"
     })
   ],
   
@@ -63,15 +71,15 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
 
 ### 2. Client-Side Configuration
 
-Added the OAuth2 client plugin to `apps/website/app/lib/auth-client.ts`:
+Added the generic OAuth client plugin to `apps/website/app/lib/auth-client.ts`:
 
 ```typescript
-import { createAuthClient } from "better-auth/react";
-import { oauth2Client } from "better-auth/plugins"; // Import OAuth2 client plugin
+import { createAuthClient } from "better-auth/react"; // Use the React client
+import { genericOAuthClient } from "better-auth/client/plugins"; // Import OAuth2 client plugin
 
 export const authClient: ReturnType<typeof createAuthClient> = createAuthClient({
   plugins: [
-    oauth2Client(), // Add OAuth2 client plugin
+    genericOAuthClient(), // Add OAuth2 client plugin
   ],
 });
 ```
