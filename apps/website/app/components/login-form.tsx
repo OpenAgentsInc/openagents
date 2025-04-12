@@ -11,7 +11,7 @@ import {
 } from "~/components/ui/card"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
-import { signIn } from "~/lib/auth-client"
+import { authClient, signIn } from "~/lib/auth-client"
 
 export function LoginForm({
   className,
@@ -153,9 +153,34 @@ export function LoginForm({
                   }}
                   disabled={isSubmitting}
                 >
-                  Login with GitHub
+                  Log in with GitHub
                 </Button>
-
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setIsSubmitting(true);
+                      // Use OAuth2 sign-in for ConsentKeys
+                      // await signIn.oauth2({
+                      //   providerId: "consentkeys",
+                      //   callbackURL: "/",
+                      // });
+                      await authClient.oauth2.login({
+                        providerId: "consentkeys",
+                        callbackURL: "/",
+                      });
+                    } catch (error) {
+                      console.error("ConsentKeys login error:", error);
+                      setError(error instanceof Error ? error.message : "Failed to login with ConsentKeys");
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Log in with ConsentKeys
+                </Button>
               </div>
             </div>
             <div className="mt-4 text-center text-sm">

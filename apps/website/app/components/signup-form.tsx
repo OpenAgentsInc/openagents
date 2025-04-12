@@ -162,7 +162,6 @@ export function SignupForm({
                 >
                   {isSubmitting ? "Creating Account..." : "Create Account"}
                 </Button>
-                {/* Social signup buttons will be implemented later
                 <Button 
                   variant="outline" 
                   className="w-full"
@@ -185,7 +184,28 @@ export function SignupForm({
                 >
                   Sign up with GitHub
                 </Button>
-                */}
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setIsSubmitting(true);
+                      // Use OAuth2 sign-up for ConsentKeys
+                      await signUp.oauth2({
+                        providerId: "consentkeys", 
+                        callbackURL: "/",
+                      });
+                    } catch (error) {
+                      console.error("ConsentKeys signup error:", error);
+                      setError(error instanceof Error ? error.message : "Failed to sign up with ConsentKeys");
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Sign up with ConsentKeys
+                </Button>
               </div>
             </div>
             <div className="mt-4 text-center text-sm">

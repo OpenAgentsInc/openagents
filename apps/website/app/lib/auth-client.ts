@@ -1,8 +1,10 @@
 import { createAuthClient } from "better-auth/react"; // Use the React client
+import { genericOAuthClient } from "better-auth/client/plugins"
 
 export const authClient: ReturnType<typeof createAuthClient> = createAuthClient({
-  // baseURL: "http://localhost:xxxx", // Optional: Only needed if client/server domains differ
-  // plugins: [], // Add client plugins here if used (e.g., twoFactorClient())
+  plugins: [
+    genericOAuthClient(), // Add OAuth2 client plugin
+  ],
 });
 
 // Export specific methods for convenience
