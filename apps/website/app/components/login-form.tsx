@@ -162,9 +162,9 @@ export function LoginForm({
                   onClick={async () => {
                     try {
                       setIsSubmitting(true);
-                      // Use social sign-in for ConsentKeys
-                      await signIn.social({
-                        provider: "consentkeys",
+                      // Use OAuth2 sign-in for ConsentKeys
+                      await signIn.oauth2({
+                        providerId: "consentkeys",
                         callbackURL: "/",
                       });
                     } catch (error) {

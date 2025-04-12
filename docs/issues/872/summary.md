@@ -5,7 +5,7 @@ This document outlines the implementation of OIDC authentication using the Conse
 
 ## Implementation Details
 
-### 1. OIDC Provider Configuration
+### 1. Server-Side Configuration
 
 Added ConsentKeys as an OIDC provider in `apps/website/app/lib/auth.ts`:
 
@@ -61,7 +61,22 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
 });
 ```
 
-### 2. UI Updates
+### 2. Client-Side Configuration
+
+Added the OAuth2 client plugin to `apps/website/app/lib/auth-client.ts`:
+
+```typescript
+import { createAuthClient } from "better-auth/react";
+import { oauth2Client } from "better-auth/plugins"; // Import OAuth2 client plugin
+
+export const authClient: ReturnType<typeof createAuthClient> = createAuthClient({
+  plugins: [
+    oauth2Client(), // Add OAuth2 client plugin
+  ],
+});
+```
+
+### 3. UI Updates
 
 #### Login Form
 
@@ -75,9 +90,9 @@ Added a "Sign in with ConsentKeys" button to the login form in `apps/website/app
   onClick={async () => {
     try {
       setIsSubmitting(true);
-      // Use social sign-in for ConsentKeys
-      await signIn.social({
-        provider: "consentkeys",
+      // Use OAuth2 sign-in for ConsentKeys
+      await signIn.oauth2({
+        providerId: "consentkeys",
         callbackURL: "/",
       });
     } catch (error) {
@@ -104,9 +119,9 @@ Added a "Sign up with ConsentKeys" button to the signup form in `apps/website/ap
   onClick={async () => {
     try {
       setIsSubmitting(true);
-      // Use social sign-up for ConsentKeys
-      await signUp.social({
-        provider: "consentkeys", 
+      // Use OAuth2 sign-up for ConsentKeys
+      await signUp.oauth2({
+        providerId: "consentkeys", 
         callbackURL: "/",
       });
     } catch (error) {
