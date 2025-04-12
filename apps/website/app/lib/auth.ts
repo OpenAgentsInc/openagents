@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { oidcProvider } from "better-auth/plugins";
+import { genericOAuth } from "better-auth/plugins";
 import { LibsqlDialect } from "@libsql/kysely-libsql";
 import { env } from "cloudflare:workers"
 
@@ -8,9 +8,14 @@ const dialect = new LibsqlDialect({
   authToken: env.TURSO_AUTH_TOKEN || "",
 })
 
-// Export the initialized auth instance with proper type definition
-// Ensure we use the correct structure for methods
-export const auth: ReturnType<typeof betterAuth> = betterAuth({
+// Export the initialized auth instance with a more specific type
+// This avoids the portability issue while preventing type conflicts
+type BetterAuthInstance = {
+  handler: (request: Request) => Promise<Response>;
+  api: any; // Using 'any' for the api property to avoid type conflicts
+};
+
+export const auth: BetterAuthInstance = betterAuth({
   account: {
     accountLinking: {
       enabled: true,
@@ -36,19 +41,27 @@ export const auth: ReturnType<typeof betterAuth> = betterAuth({
     },
   },
 
+  // Use the genericOAuth plugin for ConsentKeys instead of defining it as a social provider
   plugins: [
-    oidcProvider({
-      loginPage: "/login",
-      metadata: {
-        issuer: "https://consentkeys.openagents.com",
-        authorization_endpoint: "https://consentkeys.openagents.com/api/auth/oauth2/authorize",
-        token_endpoint: "https://consentkeys.openagents.com/api/auth/oauth2/token",
-        userinfo_endpoint: "https://consentkeys.openagents.com/api/auth/oauth2/userinfo",
-        scopes_supported: ["openid", "profile", "email"],
-        response_types_supported: ["code"],
-        response_modes_supported: ["query"],
-        grant_types_supported: ["authorization_code"],
-      }
+    genericOAuth({
+      config: [{
+        providerId: "consentkeys",
+        clientId: env.CONSENTKEYS_CLIENT_ID || "",
+        clientSecret: env.CONSENTKEYS_CLIENT_SECRET || "",
+        authorizationUrl: "https://consentkeys.openagents.com/api/auth/oauth2/authorize",
+        tokenUrl: "https://consentkeys.openagents.com/api/auth/oauth2/token",
+        userInfoUrl: "https://consentkeys.openagents.com/api/auth/oauth2/userinfo",
+        scopes: ["openid", "profile", "email"],
+        responseType: "code",
+        mapProfileToUser: (profile: Record<string, any>) => {
+          return {
+            id: profile.sub,
+            name: profile.name,
+            email: profile.email,
+            image: profile.picture
+          };
+        }
+      }]
     })
   ],
 
