@@ -62,6 +62,7 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 function ClientOnly({ agentId, children, githubToken }: { agentId: string, children: React.ReactNode, githubToken: string }) {
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [rawState, setRawState] = useState<any>(null);
@@ -153,6 +154,45 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       }
     }
   });
+  
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || !agent) return;
+
+    // Add user message with proper timestamps and ID
+    const userMessage = {
+      role: 'user' as const,
+      content: input.trim(),
+      id: `user-${Date.now()}`,
+      createdAt: new Date(),
+    };
+
+    // Update local state immediately for responsive UI
+    setMessages(prev => [...prev, userMessage]);
+    setInput("");
+
+    try {
+      console.log("Sending message to agent:", userMessage);
+
+      // Update agent state with new message
+      agent.setState({
+        messages: [...messages, userMessage]
+      });
+
+      agent.send(JSON.stringify({
+        githubToken: githubToken,
+        userMessage: userMessage
+      }));
+
+      console.log("Message sent successfully");
+    } catch (error) {
+      console.error("Error sending message:", error);
+      
+      // Show error in UI
+      setConnectionError(`Failed to send message: ${error.message || 'Unknown error'}`);
+    }
+  };
 
   // Connection timeout check
   useEffect(() => {
@@ -237,8 +277,8 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       </div>
       
       {/* Main Message Area */}
-      <div className="flex-1 p-4 overflow-y-auto">
-        <div className="max-w-4xl mx-auto">
+      <div className="flex-1 p-4 overflow-y-auto flex flex-col">
+        <div className="flex-1 max-w-4xl mx-auto w-full mb-4">
           {/* Messages with proper client-only handling */}
           {messages.length > 0 ? (
             <ClientOnlyMessageList
@@ -263,6 +303,27 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               No messages yet
             </div>
           )}
+        </div>
+        
+        {/* Input form */}
+        <div className="max-w-4xl mx-auto w-full">
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type a message..."
+              disabled={connectionStatus !== 'connected'}
+              className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
+            />
+            <button 
+              type="submit"
+              disabled={connectionStatus !== 'connected' || !input.trim()}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </form>
         </div>
       </div>
     </div>
