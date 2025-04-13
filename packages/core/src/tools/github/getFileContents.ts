@@ -8,7 +8,7 @@ export const GetFileContentsSchema = z.object({
   owner: z.string().describe("Repository owner (username or organization)"),
   repo: z.string().describe("Repository name"),
   path: z.string().describe("Path to the file or directory"),
-  branch: z.string().optional().describe("Branch to get contents from"),
+  branch: z.string().describe("Branch to get contents from"),
 });
 
 // Function implementations
@@ -16,10 +16,16 @@ export async function getFileContents(
   owner: string,
   repo: string,
   path: string,
-  branch?: string,
+  branch: string,
   token?: string
 ) {
   let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+  console.log('in getFileContents with token', token);
+
+  console.log("Getting file contents for", url);
+  console.log("Checking we have token", token?.slice(0, 13));
+
   if (branch) {
     url += `?ref=${branch}`;
   }
@@ -42,6 +48,7 @@ export const getFileContentsTool = (context: ToolContext) => tool({
   parameters: GetFileContentsSchema,
   execute: async (args) => {
     const { owner, repo, path, branch } = args;
+    console.log('in getFileContentsToolwith context', context.githubToken);
     return getFileContents(owner, repo, path, branch, context.githubToken);
   },
 });
