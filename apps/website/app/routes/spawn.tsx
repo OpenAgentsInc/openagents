@@ -8,6 +8,11 @@ import { Label } from "~/components/ui/label";
 import { Textarea } from "~/components/ui/textarea";
 import { useAgentStore } from "~/lib/store";
 import { Header } from "~/components/header";
+import { GitHubTokenInput } from "~/components/github-token-input";
+import { AlertCircle } from "lucide-react";
+
+// Constants
+const TOKEN_STORAGE_KEY = "github_token";
 
 export function meta({ }: Route.MetaArgs) {
   return [
@@ -18,27 +23,17 @@ export function meta({ }: Route.MetaArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
-  const githubToken = formData.get("githubToken") as string;
   const agentPurpose = formData.get("agentPurpose") as string;
 
   // Here you would handle the form submission with server-side logic
-  console.log({ githubToken, agentPurpose });
+  console.log({ agentPurpose });
 
   // Validate the form data
-  if (!githubToken || !agentPurpose) {
-    return { success: false, error: "GitHub Token and Agent Purpose are required" };
+  if (!agentPurpose) {
+    return { success: false, error: "Agent Purpose is required" };
   }
-
-  // Validate GitHub token format
-  if (!githubToken.startsWith('github_pat_')) {
-    return { success: false, error: "GitHub Token must begin with 'github_pat_'" };
-  }
-
-  // In a real implementation, you'd communicate with your agent service here
-  // For example: const result = await agentService.createAgent(githubToken, agentPurpose);
 
   // For now, simulate success and return form data
-  // Important: Don't return the GitHub token for security
   return {
     success: true,
     data: {
@@ -58,12 +53,30 @@ export default function Spawn() {
 
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { agentPurpose, setGithubToken, setAgentPurpose } = useAgentStore();
+  const { agentPurpose, setAgentPurpose } = useAgentStore();
 
   // Form state
-  const [githubToken, setGithubTokenLocal] = useState("");
   const [purpose, setPurpose] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [hasGithubToken, setHasGithubToken] = useState(false);
+
+  // Check for GitHub token on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      setHasGithubToken(!!storedToken);
+      
+      // Listen for token changes
+      const handleTokenChange = () => {
+        setHasGithubToken(!!localStorage.getItem(TOKEN_STORAGE_KEY));
+      };
+      
+      window.addEventListener('github-token-changed', handleTokenChange);
+      return () => {
+        window.removeEventListener('github-token-changed', handleTokenChange);
+      };
+    }
+  }, []);
 
   // Load initial purpose from store
   useEffect(() => {
@@ -102,13 +115,8 @@ export default function Spawn() {
 
   // Client-side validation
   const validateForm = () => {
-    if (!githubToken) {
-      setError("GitHub Token is required");
-      return false;
-    }
-
-    if (!githubToken.startsWith('github_pat_')) {
-      setError("GitHub Token must begin with 'github_pat_'");
+    if (!hasGithubToken) {
+      setError("A GitHub token is required. Please add one in the GitHub Token section.");
       return false;
     }
 
@@ -132,7 +140,6 @@ export default function Spawn() {
     setIsSubmitting(true);
 
     // Save to Zustand store
-    setGithubToken(githubToken);
     setAgentPurpose(purpose);
   };
 
@@ -144,6 +151,24 @@ export default function Spawn() {
         <h1 className="text-3xl font-bold mb-8 select-none">Spawn a coding agent</h1>
 
         <div className="space-y-10">
+          {/* GitHub Token Input */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-medium select-none">GitHub Token</h2>
+            <GitHubTokenInput />
+
+            {!hasGithubToken && (
+              <div className="flex gap-2 items-start p-3 text-sm rounded border border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-800 text-amber-800 dark:text-amber-400">
+                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium">GitHub Token Required</p>
+                  <p className="text-xs mt-1">
+                    A GitHub token is required to create an agent. Your token is stored securely in your browser.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           <Form
             method="post"
             className="space-y-8"
@@ -159,24 +184,6 @@ export default function Spawn() {
                 autoComplete="username"
                 tabIndex={-1}
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="githubToken">GitHub Token</Label>
-              <Input
-                id="githubToken"
-                name="githubToken"
-                type="password"
-                placeholder="github_pat_*********************************"
-                pattern="^github_pat_.*"
-                required
-                autoComplete="new-password"
-                value={githubToken}
-                onChange={(e) => setGithubTokenLocal(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Create a <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">fine-grained GitHub token</a> with only the permissions this agent needs. Your token will not be stored.
-              </p>
             </div>
 
             <div className="space-y-2">
@@ -212,7 +219,7 @@ export default function Spawn() {
             <Button
               type="submit"
               className="w-full mt-4"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !hasGithubToken}
             >
               {isSubmitting ? "Creating Agent..." : "Spawn Agent"}
             </Button>

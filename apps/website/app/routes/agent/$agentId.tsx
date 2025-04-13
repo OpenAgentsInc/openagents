@@ -14,12 +14,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger
 } from "~/components/ui/collapsible";
-import { ChevronDown, ChevronUp, AlertCircle, CheckCircle, ArrowUp } from "lucide-react";
+import { ChevronDown, AlertCircle, CheckCircle, ArrowUp } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 import { Label } from "~/components/ui/label";
 import { ClientOnlyMessageList } from "~/components/ui/client-only-message-list";
 import { AgentList } from "~/components/agent-list";
+import { GitHubTokenInput } from "~/components/github-token-input";
 
 // Message type definition
 interface Message {
@@ -42,6 +43,8 @@ interface Agent {
   createdAt: number;
 }
 
+const TOKEN_STORAGE_KEY = "github_token";
+
 export function meta({ params }: Route.MetaArgs) {
   return [
     { title: `Agent: ${params.agentId}` },
@@ -50,16 +53,15 @@ export function meta({ params }: Route.MetaArgs) {
 }
 
 // Load agent data - server-side only returns ID for safety
-export async function loader({ params, context }: LoaderFunctionArgs) {
+export async function loader({ params }: LoaderFunctionArgs) {
   const { agentId } = params;
-  const { env } = context.cloudflare;
-
+  
   // For security, don't try to load agents on the server
   // Just return the ID and let client-side handle data lookup
-  return { id: agentId, githubToken: env.GITHUB_TOKEN };
+  return { id: agentId };
 }
 
-function ClientOnly({ agentId, children, githubToken }: { agentId: string, children: React.ReactNode, githubToken: string }) {
+function ClientOnly({ agentId, children }: { agentId: string, children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -67,6 +69,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [rawState, setRawState] = useState<any>(null);
   const [agentData, setAgentData] = useState<Agent | null>(null);
+  const [githubToken, setGithubToken] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const agentStore = useAgentStore();
 
@@ -80,6 +83,21 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
     if (foundAgent) {
       setAgentData(foundAgent);
     }
+    
+    // Load GitHub token from localStorage
+    const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (storedToken) {
+      setGithubToken(storedToken);
+    }
+
+    // Listen for GitHub token changes
+    const handleTokenChange = () => {
+      console.log("GitHub token changed, updating token");
+      const updatedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      setGithubToken(updatedToken);
+    };
+
+    window.addEventListener('github-token-changed', handleTokenChange);
 
     // Clean up function to handle component unmounting
     return () => {
@@ -88,6 +106,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       setRawState(null);
       setConnectionStatus('connecting');
       setConnectionError(null);
+      window.removeEventListener('github-token-changed', handleTokenChange);
     };
   }, [agentId, agentStore]);
 
@@ -221,6 +240,8 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
     return null;
   }
 
+  const missingToken = !githubToken;
+
   return (
     <div className="flex h-full">
       {/* Left Sidebar */}
@@ -270,6 +291,17 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
         </div>
 
         <div className="p-4">
+          {/* GitHub Token Input */}
+          <GitHubTokenInput />
+
+          {/* Token missing warning */}
+          {missingToken && (
+            <div className="mb-4 p-3 text-xs rounded border border-amber-200 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-800 text-amber-800 dark:text-amber-400">
+              <div className="font-semibold mb-1">GitHub Token Required</div>
+              <div>Please add your GitHub token above to use GitHub tools with this agent.</div>
+            </div>
+          )}
+
           {/* Connection error details */}
           {connectionError && (
             <div className="mb-4 p-3 text-xs rounded border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800 text-red-800 dark:text-red-400">
@@ -324,13 +356,13 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type a message..."
-                disabled={connectionStatus !== 'connected'}
+                placeholder={!githubToken ? "Add GitHub token to chat" : "Type a message..."}
+                disabled={connectionStatus !== 'connected' || !githubToken}
                 className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
               />
               <button
                 type="submit"
-                disabled={connectionStatus !== 'connected' || !input.trim()}
+                disabled={connectionStatus !== 'connected' || !input.trim() || !githubToken}
                 className="p-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ArrowUp className="h-5 w-5" />
@@ -346,12 +378,11 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
 export default function AgentDetails() {
   // Get agent ID from URL
   const { agentId } = useParams();
-  const { githubToken } = useLoaderData<typeof loader>();
 
   return (
     <>
       <main className="w-full mx-auto h-screen">
-        <ClientOnly agentId={agentId || ""} githubToken={githubToken} />
+        <ClientOnly agentId={agentId || ""} />
       </main>
     </>
   );
