@@ -17,13 +17,14 @@ import {
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
+import { MessageList } from "~/components/ui/message-list";
 
-// Message type definition
+// Message type definition 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
-  id?: string;
-  createdAt?: number;
+  id: string;
+  createdAt?: Date;
 }
 
 // Agent state type
@@ -127,7 +128,10 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       console.log("Agent state updated:", state);
       setRawState(state);
       if (state.messages) {
-        setMessages(state.messages);
+        setMessages(state.messages.map(msg => ({
+          ...msg,
+          id: msg.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        })));
       }
     }
   });
@@ -188,22 +192,16 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       
       <Card>
         <CardHeader>
-          <Collapsible className="w-full" defaultOpen={false}>
-            <div className="flex items-center justify-between">
-              <CardTitle>Messages</CardTitle>
-              <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
-                <ChevronDown className="h-4 w-4" />
-              </CollapsibleTrigger>
-            </div>
-            <CollapsibleContent>
-              <CardContent className="pt-4">
-                <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
-                  {JSON.stringify(messages, null, 2)}
-                </pre>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
+          <CardTitle>Messages</CardTitle>
         </CardHeader>
+        <CardContent>
+          <MessageList 
+            messages={messages.map(msg => ({
+              ...msg,
+              createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
+            }))} 
+          />
+        </CardContent>
       </Card>
     </div>
   );
