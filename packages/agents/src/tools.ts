@@ -233,11 +233,11 @@ const deleteScheduledTask = tool({
  */
 export const tools = {
   getWeatherInformation,
-  // getLocalTime,
-  // scheduleTask,
-  // listScheduledTasks,
-  // deleteScheduledTask,
-  // fetchGitHubFileContent
+  getLocalTime,
+  scheduleTask,
+  listScheduledTasks,
+  deleteScheduledTask,
+  fetchGitHubFileContent
 };
 
 /**
