@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tool definitions for the AI chat agent
  * Tools can either require human confirmation or execute automatically
@@ -168,30 +167,6 @@ async function getFileContents(
   return data;
 }
 
-const fetchGitHubFileContent = tool({
-  description: 'Fetch the content of a file from a GitHub repository',
-  parameters: z.object({
-    owner: z.string(),
-    repo: z.string(),
-    path: z.string(),
-    branch: z.string(),
-  }),
-  execute: async ({ owner, repo, path, branch }) => {
-    try {
-      const data = await getFileContents(owner, repo, path, branch, toolContext);
-      if (Array.isArray(data)) {
-        return `Error: The path "${path}" points to a directory, not a file`;
-      }
-      console.log("Successfully fetched file content for:", path);
-      return data.content;
-    } catch (error: any) {
-      console.error("Error in fetchGitHubFileContent:", error);
-      const message = error instanceof Error ? error.message : String(error);
-      return `Error fetching GitHub file: ${message}`;
-    }
-  }
-})
-
 const deleteScheduledTask = tool({
   description: "A tool to delete a previously scheduled task",
   parameters: z.object({
@@ -237,7 +212,7 @@ export const tools = {
   scheduleTask,
   listScheduledTasks,
   deleteScheduledTask,
-  fetchGitHubFileContent
+  // fetchGitHubFileContent
 };
 
 /**

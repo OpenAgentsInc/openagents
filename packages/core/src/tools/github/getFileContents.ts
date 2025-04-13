@@ -20,6 +20,10 @@ export async function getFileContents(
   token?: string
 ) {
   let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+  console.log("Getting file contents for", url);
+  console.log("Checking we have token", token?.slice(0, 13));
+
   if (branch) {
     url += `?ref=${branch}`;
   }
