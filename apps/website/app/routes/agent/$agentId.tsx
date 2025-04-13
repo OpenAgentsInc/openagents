@@ -54,9 +54,9 @@ export async function loader({ params, context }: LoaderFunctionArgs) {
 function ClientOnly({ agentId, children, githubToken }: { agentId: string, children: React.ReactNode, githubToken: string }) {
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [rawState, setRawState] = useState<any>(null);
   const agentStore = useAgentStore();
 
   // Set up component and log initialization only once
@@ -69,10 +69,9 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   const agent = useAgent({
     name: agentId,
     agent: 'coder',
-    host: 'agents.openagents.com', // Standard format without protocol prefix
-    path: 'agents', // Must NOT start with a slash according to PartySocket requirements
-    // room: agentId, // Required by PartySocket for room identification
-    debug: true, // Enable verbose logging
+    host: 'agents.openagents.com',
+    path: 'agents',
+    debug: true,
 
     // WebSocket event handlers with improved logging
     onMessage: (message) => {
@@ -121,6 +120,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
     // Agent state update handler
     onStateUpdate: (state: AgentState) => {
       console.log("Agent state updated:", state);
+      setRawState(state);
       if (state.messages) {
         setMessages(state.messages);
       }
@@ -142,58 +142,6 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
     return () => clearTimeout(timer);
   }, [agent, connectionStatus]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !agent) return;
-
-    // Add user message with proper timestamps and ID
-    const userMessage = {
-      role: 'user' as const,
-      content: input.trim(),
-      id: `user-${Date.now()}`,
-      createdAt: Date.now(),
-    };
-
-    // Update local state immediately for responsive UI
-    setMessages(prev => [...prev, userMessage]);
-    setInput("");
-
-    try {
-      console.log("Sending message to agent:", userMessage);
-
-      // Update agent state with new message
-      agent.setState({
-        messages: [...messages, userMessage]
-      });
-
-      agent.send(JSON.stringify({
-        githubToken: githubToken,
-        userMessage: userMessage
-      }))
-
-      console.log("Message sent successfully");
-
-      // Use the githubToken prop passed from the loader
-      console.log("Using GitHub token:", githubToken ? "Token present" : "No token");
-
-      // await agent.call('infer', githubToken)
-
-      // console.log('called infer')
-
-      // Optional: Add loading state here if needed
-      // setMessages(prev => [...prev, { role: 'assistant', content: '...', id: 'loading', createdAt: Date.now() }]);
-
-    } catch (error) {
-      console.error("Error sending message:", error);
-
-      // Show error in UI
-      setConnectionError(`Failed to send message: ${error.message || 'Unknown error'}`);
-
-      // Optionally revert the message if it failed to send
-      // setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
-    }
-  };
-
   if (!mounted) {
     return null;
   }
@@ -201,121 +149,37 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   return (
     <div className="flex flex-col h-full">
       {children}
-
-      <Card className="mt-6">
+      
+      <Card className="mb-4">
         <CardHeader>
-          <CardTitle>Chat with Agent</CardTitle>
-          <CardDescription>
-            Ask your agent questions about code
-            <div className="mt-2">
-              <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${connectionStatus === 'connected'
-                ? 'bg-green-100 text-green-800'
-                : connectionStatus === 'connecting'
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-red-100 text-red-800'
-                }`}>
-                {connectionStatus === 'connected'
-                  ? '● Connected'
-                  : connectionStatus === 'connecting'
-                    ? '● Connecting...'
-                    : '● Connection Error'}
-              </div>
-
-              <div className="text-xs text-muted-foreground mt-2">
-                <div className="grid grid-cols-2 gap-1">
-                  <span>WebSocket Host:</span>
-                  <span className="font-medium">agents.openagents.com</span>
-
-                  <span>WebSocket Path:</span>
-                  <span className="font-medium">agents</span>
-
-                  <span>Agent ID:</span>
-                  <span className="font-medium">{agentId}</span>
-
-                  <span>Agent Type:</span>
-                  <span className="font-medium">coder</span>
-                </div>
-              </div>
-            </div>
-          </CardDescription>
-
+          <CardTitle>Connection Status: {connectionStatus}</CardTitle>
           {connectionError && (
-            <div className="mt-2 p-2 bg-red-50 text-red-700 text-sm rounded-md flex justify-between items-center">
-              <span>{connectionError}</span>
-              {(connectionStatus === 'error' || connectionStatus === 'closed') && (
-                <button
-                  onClick={() => {
-                    console.log("Reloading page to reconnect");
-                    window.location.reload();
-                  }}
-                  className="ml-2 px-2 py-1 bg-primary text-primary-foreground rounded text-xs"
-                >
-                  Reload to Reconnect
-                </button>
-              )}
-            </div>
+            <CardDescription className="text-red-500">
+              Error: {connectionError}
+            </CardDescription>
           )}
         </CardHeader>
-
+      </Card>
+      
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>Agent State</CardTitle>
+        </CardHeader>
         <CardContent>
-          <div className="h-[400px] overflow-y-auto mb-4 space-y-4">
-            {messages.length === 0 && (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <p>No messages yet</p>
-                  <p className="text-xs mt-1">Start by sending a message below</p>
-                </div>
-              </div>
-            )}
-
-            {messages.map((message, index) => (
-              <div
-                key={message.id || index}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
-                    ? 'bg-primary text-primary-foreground ml-auto'
-                    : 'bg-muted'
-                    }`}
-                >
-                  <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-                  {message.createdAt && (
-                    <div className="text-xs opacity-70 mt-1">
-                      {new Date(message.createdAt).toLocaleTimeString()}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                connectionStatus === 'connected'
-                  ? 'Type your message...'
-                  : 'Waiting for connection...'
-              }
-              className="flex-1 px-3 py-2 rounded-md border bg-background"
-              disabled={connectionStatus !== 'connected'}
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!input.trim() || connectionStatus !== 'connected'}
-              title={
-                connectionStatus !== 'connected'
-                  ? 'Cannot send message: WebSocket connection not established'
-                  : 'Send message'
-              }
-            >
-              Send
-            </button>
-          </form>
+          <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md">
+            {JSON.stringify(rawState, null, 2)}
+          </pre>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Messages</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md">
+            {JSON.stringify(messages, null, 2)}
+          </pre>
         </CardContent>
       </Card>
     </div>
@@ -329,9 +193,7 @@ export default function AgentDetails() {
 
   return (
     <>
-      <Header />
-
-      <main className="w-full max-w-2xl mx-auto p-8 pt-24">
+      <main className="w-full mx-auto p-4">
         <ClientOnly agentId={agentId || ""} githubToken={githubToken}>
           <AgentContent agentId={agentId || ""} />
         </ClientOnly>
@@ -341,13 +203,11 @@ export default function AgentDetails() {
 }
 
 function AgentContent({ agentId }: { agentId: string }) {
-  // Move all client-side code here
   const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState<Agent | null>(null);
   const agentStore = useAgentStore();
 
   useEffect(() => {
-    // Initialize agent here
     const initAgent = async () => {
       try {
         console.log('Loading agent with ID:', agentId);
@@ -371,50 +231,24 @@ function AgentContent({ agentId }: { agentId: string }) {
     initAgent();
   }, [agentId, agentStore]);
 
-  // Agent not found view
-  const NotFoundView = () => (
-    <div className="text-center">
-      <h1 className="text-3xl font-bold mb-6">Agent Not Found</h1>
-      <p className="mb-8">We couldn't find an agent with ID: {agentId}</p>
-      <a
-        href="/spawn"
-        className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90"
-      >
-        Spawn a New Agent
-      </a>
-    </div>
-  );
-
-  // Loading view
   if (loading) {
-    return <h1 className="text-3xl font-bold mb-6 text-center">Loading...</h1>;
+    return <Card><CardContent>Loading agent data...</CardContent></Card>;
   }
 
-  // If no agent is found, show not found message
   if (!agent) {
-    return <NotFoundView />;
+    return <Card><CardContent>Agent not found: {agentId}</CardContent></Card>;
   }
-
-  // Format date from timestamp - on client only
-  const formattedDate = new Date(agent.createdAt || 0).toLocaleString();
 
   return (
-    <div className="space-y-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Agent: {agent.id}</h1>
-        <p className="text-muted-foreground">Created on {formattedDate}</p>
-      </div>
-
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Agent Purpose</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="whitespace-pre-wrap">{agent.purpose}</p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Agent Raw Data</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md">
+          {JSON.stringify(agent, null, 2)}
+        </pre>
+      </CardContent>
+    </Card>
   );
 }
