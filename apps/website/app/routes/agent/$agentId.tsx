@@ -167,15 +167,16 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
     <div className="flex h-full">
       {/* Left Sidebar */}
       <div className="w-80 border-r overflow-y-auto flex flex-col">
-        {/* Connection status at top */}
-        <div className={`px-4 py-2 ${
-          connectionStatus === 'connected' 
-            ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400' 
-            : connectionStatus === 'error' 
-              ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400' 
-              : 'bg-amber-100 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400'
-        }`}>
-          <div className="flex items-center gap-2">
+        {/* Connection status bar */}
+        <div className="flex flex-col">
+          {/* Status indicator with background */}
+          <div className={`px-4 py-2 flex items-center gap-2 ${
+            connectionStatus === 'connected' 
+              ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400' 
+              : connectionStatus === 'error' 
+                ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400' 
+                : 'bg-amber-100 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400'
+          }`}>
             {connectionStatus === 'connected' ? (
               <CheckCircle className="h-4 w-4" />
             ) : (
@@ -188,9 +189,9 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
             </Label>
           </div>
           
-          {/* Agent details right below connection status */}
+          {/* Agent details in normal background */}
           {agentData && connectionStatus === 'connected' && (
-            <div className="mt-1 text-xs text-foreground opacity-80 font-mono pl-6">
+            <div className="px-4 py-2 text-xs text-foreground opacity-80 font-mono border-b">
               <div>ID: {agentData.id}</div>
               <div>Purpose: {agentData.purpose}</div>
               <div>Created: {new Date(agentData.createdAt).toLocaleString()}</div>
