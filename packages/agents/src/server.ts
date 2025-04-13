@@ -26,7 +26,6 @@ export class Coder extends Agent<Env, CoderState> {
   tools: ToolSet = {};
 
   async executeTask(description: string, task: Schedule<string>) {
-
     this.setState({
       messages: [
         ...this.state.messages,
@@ -44,7 +43,7 @@ export class Coder extends Agent<Env, CoderState> {
         },
       ],
     });
-
+    // now infer based on this message
   }
 
   onMessage(connection: Connection, message: WSMessage) {
@@ -61,7 +60,13 @@ export class Coder extends Agent<Env, CoderState> {
   async infer(githubToken: string) {
     return agentContext.run(this, async () => {
       // Get current state messages
-      const messages = this.state.messages || [];
+      let messages = this.state.messages || [];
+
+      // If there's more than 10 messages, take the first 3 and last 5
+      if (messages.length > 10) {
+        messages = messages.slice(0, 3).concat(messages.slice(-5));
+        console.log("Truncated messages to first 3 and last 5", messages);
+      }
 
       const toolContext: ToolContext = { githubToken }
       const tools = {
