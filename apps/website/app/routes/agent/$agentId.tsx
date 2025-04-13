@@ -14,7 +14,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger
 } from "~/components/ui/collapsible";
-import { ChevronDown, ChevronUp, AlertCircle, CheckCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertCircle, CheckCircle, ArrowUp } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 import { Label } from "~/components/ui/label";
@@ -283,55 +283,60 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
         </div>
       </div>
 
-      {/* Main Message Area */}
-      <div className="flex-1 p-4 overflow-y-auto flex flex-col">
-        <div className="flex-1 max-w-4xl mx-auto w-full mb-4">
-          {/* Messages with proper client-only handling */}
-          {messages.length > 0 ? (
-            <ClientOnlyMessageList
-              messages={messages.map(msg => ({
-                ...msg,
-                createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
-              }))}
-              showTimeStamps={false}
-              isTyping={connectionStatus === 'connecting'}
-            />
-          ) : connectionStatus === 'connecting' ? (
-            <div className="p-12 text-muted-foreground text-center border rounded-lg">
-              <div className="flex items-center justify-center space-x-2">
-                <div className="animate-bounce">•</div>
-                <div className="animate-bounce animation-delay-150">•</div>
-                <div className="animate-bounce animation-delay-300">•</div>
+      {/* Main Chat Container */}
+      <div className="flex-1 grid grid-rows-[1fr_auto] max-h-full">
+        {/* Messages Area with Auto-scroll */}
+        <div className="overflow-y-auto">
+          <div className="px-4 py-4 max-w-4xl mx-auto w-full h-full">
+            {/* Messages with proper client-only handling */}
+            {messages.length > 0 ? (
+              <ClientOnlyMessageList
+                messages={messages.map(msg => ({
+                  ...msg,
+                  createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
+                }))}
+                showTimeStamps={false}
+                isTyping={connectionStatus === 'connecting'} 
+              />
+            ) : connectionStatus === 'connecting' ? (
+              <div className="p-12 text-muted-foreground text-center border rounded-lg">
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="animate-bounce">•</div>
+                  <div className="animate-bounce animation-delay-150">•</div>
+                  <div className="animate-bounce animation-delay-300">•</div>
+                </div>
+                <div className="mt-2">Connecting...</div>
               </div>
-              <div className="mt-2">Connecting...</div>
-            </div>
-          ) : (
-            <div className="p-12 text-muted-foreground text-center border rounded-lg">
-              No messages yet
-            </div>
-          )}
+            ) : (
+              <div className="p-12 text-muted-foreground text-center border rounded-lg">
+                No messages yet
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Input form */}
-        <div className="max-w-4xl mx-auto w-full">
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type a message..."
-              disabled={connectionStatus !== 'connected'}
-              className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
-            />
-            <button
-              type="submit"
-              disabled={connectionStatus !== 'connected' || !input.trim()}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
-          </form>
+        
+        {/* Fixed Input Area */}
+        <div className="border-t bg-background py-3 px-4">
+          <div className="max-w-4xl mx-auto w-full">
+            <form onSubmit={handleSubmit} className="flex items-center gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Type a message..."
+                disabled={connectionStatus !== 'connected'}
+                className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
+              />
+              <button
+                type="submit"
+                disabled={connectionStatus !== 'connected' || !input.trim()}
+                className="p-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ArrowUp className="h-5 w-5" />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
