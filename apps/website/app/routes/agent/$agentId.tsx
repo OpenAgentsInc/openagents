@@ -21,7 +21,7 @@ import { Label } from "~/components/ui/label";
 import { ClientOnlyMessageList } from "~/components/ui/client-only-message-list";
 import { AgentList } from "~/components/agent-list";
 
-// Message type definition 
+// Message type definition
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -73,13 +73,13 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   useEffect(() => {
     setMounted(true);
     console.log("Initializing agent with WebSocket connection for agent:", agentId);
-    
+
     // Get agent from Zustand store
     const foundAgent = agentStore.getAgent(agentId);
     if (foundAgent) {
       setAgentData(foundAgent);
     }
-    
+
     // Clean up function to handle component unmounting
     return () => {
       // Reset states when navigating away
@@ -154,7 +154,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       }
     }
   });
-  
+
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,7 +188,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       console.log("Message sent successfully");
     } catch (error) {
       console.error("Error sending message:", error);
-      
+
       // Show error in UI
       setConnectionError(`Failed to send message: ${error.message || 'Unknown error'}`);
     }
@@ -220,32 +220,31 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
         {/* Connection status bar */}
         <div className="flex flex-col">
           {/* Status indicator with background */}
-          <div className={`px-4 py-2 flex items-center gap-2 ${
-            connectionStatus === 'connected' 
-              ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400' 
-              : connectionStatus === 'error' 
-                ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400' 
+          <div className={`px-4 py-2 flex items-center gap-2 ${connectionStatus === 'connected'
+              ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400'
+              : connectionStatus === 'error'
+                ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400'
                 : 'bg-amber-100 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400'
-          }`}>
+            }`}>
             {connectionStatus === 'connected' ? (
               <CheckCircle className="h-4 w-4" />
             ) : (
               <AlertCircle className="h-4 w-4" />
             )}
             <Label className="font-medium">
-              {connectionStatus === 'connected' ? 'Connected' : 
-               connectionStatus === 'connecting' ? 'Connecting...' : 
-               connectionStatus === 'closed' ? 'Disconnected' : 'Connection Error'}
+              {connectionStatus === 'connected' ? 'Connected' :
+                connectionStatus === 'connecting' ? 'Connecting...' :
+                  connectionStatus === 'closed' ? 'Disconnected' : 'Connection Error'}
             </Label>
           </div>
-          
+
           {/* Agent details in normal background */}
           {agentData && connectionStatus === 'connected' && (
             <div className="px-4 py-2 text-xs text-foreground opacity-80 font-mono border-b">
               <div>ID: {agentData.id}</div>
               <div>Purpose: {agentData.purpose}</div>
               <div>Created: {new Date(agentData.createdAt).toLocaleString()}</div>
-              
+
               <Collapsible className="w-full mt-1">
                 <CollapsibleTrigger className="text-xs flex items-center gap-1 text-foreground underline opacity-70 hover:opacity-100">
                   <ChevronDown className="h-3 w-3" /> View agent state
@@ -261,7 +260,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
             </div>
           )}
         </div>
-        
+
         <div className="p-4">
           {/* Connection error details */}
           {connectionError && (
@@ -270,12 +269,12 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               <div>{connectionError}</div>
             </div>
           )}
-          
+
           {/* Agent list */}
           <AgentList currentAgentId={agentId} />
         </div>
       </div>
-      
+
       {/* Main Message Area */}
       <div className="flex-1 p-4 overflow-y-auto flex flex-col">
         <div className="flex-1 max-w-4xl mx-auto w-full mb-4">
@@ -287,7 +286,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
                 createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
               }))}
               showTimeStamps={false}
-              isTyping={connectionStatus === 'connecting'} 
+              isTyping={connectionStatus === 'connecting'}
             />
           ) : connectionStatus === 'connecting' ? (
             <div className="p-12 text-muted-foreground text-center border rounded-lg">
@@ -304,11 +303,12 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
             </div>
           )}
         </div>
-        
+
         {/* Input form */}
         <div className="max-w-4xl mx-auto w-full">
           <form onSubmit={handleSubmit} className="flex gap-2">
             <input
+              autoFocus
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -316,7 +316,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               disabled={connectionStatus !== 'connected'}
               className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary bg-background"
             />
-            <button 
+            <button
               type="submit"
               disabled={connectionStatus !== 'connected' || !input.trim()}
               className="px-4 py-2 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
