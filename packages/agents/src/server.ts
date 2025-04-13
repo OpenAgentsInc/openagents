@@ -15,13 +15,15 @@ export const agentContext = new AsyncLocalStorage<Coder>();
 
 interface CoderState {
   messages: UIMessage[];
+  githubToken?: string;
 }
 
 /** * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Coder extends Agent<Env, CoderState> {
   initialState: CoderState = {
-    messages: []
+    messages: [],
+    githubToken: undefined
   };
   tools: ToolSet = {};
 
@@ -44,21 +46,30 @@ export class Coder extends Agent<Env, CoderState> {
       ],
     });
     // now infer based on this message
+    await this.infer();
   }
 
   onMessage(connection: Connection, message: WSMessage) {
     const parsedMessage = JSON.parse(message as string);
     console.log("IN ON MESSAGE AND HAVE PARSED MESSAGE", parsedMessage);
     const githubToken = parsedMessage.githubToken;
-    this.infer(githubToken)
+    // Store the githubToken in state
+    this.setState({
+      ...this.state,
+      githubToken
+    });
+    this.infer()
   }
 
   @unstable_callable({
     description: "Generate an AI response based on the current messages",
     streaming: true
   })
-  async infer(githubToken: string) {
+  async infer(githubToken?: string) {
     return agentContext.run(this, async () => {
+      // Use githubToken from state if not provided as parameter
+      const token = githubToken || this.state.githubToken;
+
       // Get current state messages
       let messages = this.state.messages || [];
 
@@ -68,7 +79,7 @@ export class Coder extends Agent<Env, CoderState> {
         console.log("Truncated messages to first 3 and last 5", messages);
       }
 
-      const toolContext: ToolContext = { githubToken }
+      const toolContext: ToolContext = { githubToken: token }
       const tools = {
         get_file_contents: getFileContentsTool(toolContext),
         add_issue_comment: addIssueCommentTool(toolContext),
@@ -80,7 +91,7 @@ export class Coder extends Agent<Env, CoderState> {
         model,
         messages,
         tools,
-        maxTokens: 2500,
+        maxTokens: 5000,
         temperature: 0.7,
         maxSteps: 5,
       });
