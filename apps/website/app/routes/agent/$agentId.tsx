@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLoaderData, useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
@@ -67,6 +67,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [rawState, setRawState] = useState<any>(null);
   const [agentData, setAgentData] = useState<Agent | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const agentStore = useAgentStore();
 
   // Set up component and log initialization only once
@@ -209,6 +210,13 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
     return () => clearTimeout(timer);
   }, [agent, connectionStatus]);
 
+  // Focus input when connected
+  useEffect(() => {
+    if (connectionStatus === 'connected' && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [connectionStatus, mounted]);
+
   if (!mounted) {
     return null;
   }
@@ -308,7 +316,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
         <div className="max-w-4xl mx-auto w-full">
           <form onSubmit={handleSubmit} className="flex gap-2">
             <input
-              autoFocus
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
