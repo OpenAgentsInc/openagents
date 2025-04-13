@@ -28,7 +28,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // For server-side rendering, always use "dark" theme to match client expectation
   // This is crucial for hydration matching
   const defaultTheme = "dark";
-  
+
   return (
     <html lang="en" className={defaultTheme}>
       <head>
@@ -43,10 +43,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 try {
                   const storageKey = "openagents-ui-theme";
                   const defaultTheme = "dark";
-                  
+
                   // Don't change the theme class initially - this avoids hydration mismatch
                   // The ThemeProvider will handle theme changes after hydration
-                  
+
                   // Store the initial theme for later use
                   window.__INITIAL_THEME__ = defaultTheme;
                 } catch (e) {

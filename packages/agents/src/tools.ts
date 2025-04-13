@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tool definitions for the AI chat agent
  * Tools can either require human confirmation or execute automatically
@@ -120,77 +119,52 @@ const listScheduledTasks = tool({
 });
 
 
-async function githubRequest(url: string, options: { token?: string }) {
-  const headers: Record<string, string> = {
-    'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'OpenAgents-GitHub-Client'
-  };
+// async function githubRequest(url: string, options: { token?: string }) {
+//   const headers: Record<string, string> = {
+//     'Accept': 'application/vnd.github.v3+json',
+//     'User-Agent': 'OpenAgents-GitHub-Client'
+//   };
 
-  const agent = agentContext.getStore();
+//   if (options.token) {
+//     headers['Authorization'] = `Bearer ${options.token}`;
+//     console.log("Using GitHub token:", options.token.slice(0, 15));
+//   } else {
+//     console.log("No GitHub token found");
+//   }
 
-  if (agent?.githubToken) {
-    console.log("Using GitHub token:", agent.githubToken.slice(0, 15));
-    headers['Authorization'] = `Bearer ${agent?.githubToken}`;
-  } else {
-    console.log("No GitHub token found");
-  }
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    const error = await response.text();
-    console.error(`GitHub API error (${response.status}):`, error);
-    throw new Error(`GitHub API error (${response.status}): ${error}`);
-  }
-  return response.json();
-}
+//   const response = await fetch(url, { headers });
+//   if (!response.ok) {
+//     const error = await response.text();
+//     console.error(`GitHub API error (${response.status}):`, error);
+//     throw new Error(`GitHub API error (${response.status}): ${error}`);
+//   }
+//   return response.json();
+// }
 
-async function getFileContents(
-  owner: string,
-  repo: string,
-  path: string,
-  branch?: string,
-  token?: string
-) {
-  let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-  if (branch) {
-    url += `?ref=${branch}`;
-  }
+// async function getFileContents(
+//   owner: string,
+//   repo: string,
+//   path: string,
+//   branch?: string,
+//   token?: string
+// ) {
+//   let url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+//   if (branch) {
+//     url += `?ref=${branch}`;
+//   }
 
-  const response = await githubRequest(url, { token });
-  const data = GitHubContentSchema.parse(response);
+//   const response = await githubRequest(url, { token });
+//   const data = GitHubContentSchema.parse(response);
 
-  // If it's a file, decode the content
-  if (!Array.isArray(data) && data.content) {
-    // Replace newlines and spaces that GitHub adds to base64
-    const cleanContent = data.content.replace(/\n/g, '');
-    data.content = atob(cleanContent);
-  }
+//   // If it's a file, decode the content
+//   if (!Array.isArray(data) && data.content) {
+//     // Replace newlines and spaces that GitHub adds to base64
+//     const cleanContent = data.content.replace(/\n/g, '');
+//     data.content = atob(cleanContent);
+//   }
 
-  return data;
-}
-
-const fetchGitHubFileContent = tool({
-  description: 'Fetch the content of a file from a GitHub repository',
-  parameters: z.object({
-    owner: z.string(),
-    repo: z.string(),
-    path: z.string(),
-    branch: z.string(),
-  }),
-  execute: async ({ owner, repo, path, branch }) => {
-    try {
-      const data = await getFileContents(owner, repo, path, branch, toolContext);
-      if (Array.isArray(data)) {
-        return `Error: The path "${path}" points to a directory, not a file`;
-      }
-      console.log("Successfully fetched file content for:", path);
-      return data.content;
-    } catch (error: any) {
-      console.error("Error in fetchGitHubFileContent:", error);
-      const message = error instanceof Error ? error.message : String(error);
-      return `Error fetching GitHub file: ${message}`;
-    }
-  }
-})
+//   return data;
+// }
 
 const deleteScheduledTask = tool({
   description: "A tool to delete a previously scheduled task",
@@ -233,10 +207,10 @@ const deleteScheduledTask = tool({
  */
 export const tools = {
   getWeatherInformation,
-  // getLocalTime,
-  // scheduleTask,
-  // listScheduledTasks,
-  // deleteScheduledTask,
+  getLocalTime,
+  scheduleTask,
+  listScheduledTasks,
+  deleteScheduledTask,
   // fetchGitHubFileContent
 };
 

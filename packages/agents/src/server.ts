@@ -7,6 +7,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { type ToolContext } from "@openagents/core/src/tools/toolContext";
 import { getFileContentsTool } from "@openagents/core/src/tools/github/getFileContents";
 import { addIssueCommentTool } from "@openagents/core/src/tools/github/addIssueComment";
+import { tools as availableTools } from "./tools";
 const openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY })
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");
 
@@ -26,6 +27,7 @@ export class Coder extends Agent<Env, CoderState> {
 
   onMessage(connection: Connection, message: WSMessage) {
     const parsedMessage = JSON.parse(message as string);
+    console.log("IN ON MESSAGE AND HAVE PARSED MESSAGE", parsedMessage);
     const githubToken = parsedMessage.githubToken;
     this.infer(githubToken)
   }
@@ -42,7 +44,8 @@ export class Coder extends Agent<Env, CoderState> {
       const toolContext: ToolContext = { githubToken }
       const tools = {
         get_file_contents: getFileContentsTool(toolContext),
-        add_issue_comment: addIssueCommentTool(toolContext)
+        add_issue_comment: addIssueCommentTool(toolContext),
+        ...availableTools
       }
 
       const result = await generateText({
