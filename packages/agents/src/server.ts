@@ -34,12 +34,12 @@ export class Coder extends Agent<Env, CoderState> {
         {
           id: generateId(),
           role: "user",
-          content: `Running scheduled task: ${description}`,
+          content: `This is a scheduled notice for you to now execute the following task: ${description}`,
           createdAt: new Date(),
           parts: [
             {
               type: "text",
-              text: `Running scheduled task: ${description}`
+              text: `This is a scheduled notice for you to now execute the following task: ${description}`
             }
           ],
         },
