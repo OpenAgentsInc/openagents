@@ -249,6 +249,15 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               showTimeStamps={false}
               isTyping={connectionStatus === 'connecting'} 
             />
+          ) : connectionStatus === 'connecting' ? (
+            <div className="p-12 text-muted-foreground text-center border rounded-lg">
+              <div className="flex items-center justify-center space-x-2">
+                <div className="animate-bounce">•</div>
+                <div className="animate-bounce animation-delay-150">•</div>
+                <div className="animate-bounce animation-delay-300">•</div>
+              </div>
+              <div className="mt-2">Connecting...</div>
+            </div>
           ) : (
             <div className="p-12 text-muted-foreground text-center border rounded-lg">
               No messages yet
