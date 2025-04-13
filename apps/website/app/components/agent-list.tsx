@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { User } from "lucide-react";
+import { Bot } from "lucide-react";
 import type { Agent } from "~/lib/store";
 import { useAgentStore } from "~/lib/store";
 
@@ -46,7 +46,7 @@ export function AgentList({ currentAgentId }: { currentAgentId: string }) {
                 : "hover:bg-muted"
             }`}
           >
-            <User size={14} />
+            <Bot size={14} />
             <span className="truncate">
               {agent.purpose.length > 25
                 ? `${agent.purpose.substring(0, 25)}...`
