@@ -46,7 +46,10 @@ const getLocalTime = tool({
 const scheduleTask = tool({
   description: "A tool to schedule a task to be executed at a later time",
   parameters: unstable_scheduleSchema,
-  execute: async ({ when, description }, { agent }) => {
+  execute: async ({ when, description }) => {
+
+    const agent = agentContext.getStore();
+
     // Get agent from context parameter
     if (!agent || !(agent instanceof Coder)) {
       throw new Error("No agent found or agent is not a Coder instance");
@@ -81,7 +84,8 @@ const scheduleTask = tool({
 const listScheduledTasks = tool({
   description: "A tool to list all currently scheduled tasks",
   parameters: z.object({}),
-  execute: async (_, { agent }) => {
+  execute: async (_) => {
+    const agent = agentContext.getStore();
     // Get agent from context parameter
     if (!agent || !(agent instanceof Coder)) {
       throw new Error("No agent found or agent is not a Coder instance");
@@ -171,7 +175,8 @@ const deleteScheduledTask = tool({
   parameters: z.object({
     taskId: z.string().describe("The ID of the task to delete")
   }),
-  execute: async ({ taskId }, { agent }) => {
+  execute: async ({ taskId }) => {
+    const agent = agentContext.getStore();
     // Get agent from context parameter
     if (!agent || !(agent instanceof Coder)) {
       throw new Error("No agent found or agent is not a Coder instance");

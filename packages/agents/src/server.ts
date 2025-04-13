@@ -1,4 +1,4 @@
-import { Agent, routeAgentRequest, unstable_callable, type Connection, type WSMessage } from "agents"
+import { Agent, routeAgentRequest, unstable_callable, type Connection, type Schedule, type WSMessage } from "agents"
 import { type UIMessage, generateId, generateText, experimental_createMCPClient as createMCPClient, type ToolSet } from "ai";
 import { env } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -24,6 +24,28 @@ export class Coder extends Agent<Env, CoderState> {
     messages: []
   };
   tools: ToolSet = {};
+
+  async executeTask(description: string, task: Schedule<string>) {
+
+    this.setState({
+      messages: [
+        ...this.state.messages,
+        {
+          id: generateId(),
+          role: "user",
+          content: `Running scheduled task: ${description}`,
+          createdAt: new Date(),
+          parts: [
+            {
+              type: "text",
+              text: `Running scheduled task: ${description}`
+            }
+          ],
+        },
+      ],
+    });
+
+  }
 
   onMessage(connection: Connection, message: WSMessage) {
     const parsedMessage = JSON.parse(message as string);
