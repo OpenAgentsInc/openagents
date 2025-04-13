@@ -155,45 +155,48 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {children}
+    <div className="flex h-full">
+      {/* Left Sidebar */}
+      <div className="w-80 p-4 border-r overflow-y-auto">
+        {children}
+        
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Connection Status: {connectionStatus}</CardTitle>
+            {connectionError && (
+              <CardDescription className="text-red-500">
+                Error: {connectionError}
+              </CardDescription>
+            )}
+          </CardHeader>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <Collapsible className="w-full" defaultOpen={false}>
+              <div className="flex items-center justify-between">
+                <CardTitle>Agent State</CardTitle>
+                <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
+                  <ChevronDown className="h-4 w-4" />
+                </CollapsibleTrigger>
+              </div>
+              <CollapsibleContent>
+                <CardContent className="pt-4">
+                  <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
+                    {JSON.stringify(rawState, null, 2)}
+                  </pre>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
+          </CardHeader>
+        </Card>
+      </div>
       
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle>Connection Status: {connectionStatus}</CardTitle>
-          {connectionError && (
-            <CardDescription className="text-red-500">
-              Error: {connectionError}
-            </CardDescription>
-          )}
-        </CardHeader>
-      </Card>
-      
-      <Card className="mb-4">
-        <CardHeader>
-          <Collapsible className="w-full" defaultOpen={false}>
-            <div className="flex items-center justify-between">
-              <CardTitle>Agent State</CardTitle>
-              <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
-                <ChevronDown className="h-4 w-4" />
-              </CollapsibleTrigger>
-            </div>
-            <CollapsibleContent>
-              <CardContent className="pt-4">
-                <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
-                  {JSON.stringify(rawState, null, 2)}
-                </pre>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </CardHeader>
-      </Card>
-      
-      <Card>
-        <CardHeader>
-          <CardTitle>Messages</CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Main Message Area */}
+      <div className="flex-1 p-4 overflow-y-auto">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-2xl font-bold mb-4">Conversation</h2>
+          
           {/* Client-side only rendering of messages */}
           {typeof window !== 'undefined' && 
             mounted && 
@@ -202,7 +205,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               {messages.map((message, index) => (
                 <div 
                   key={message.id || index}
-                  className={`p-4 rounded-lg ${message.role === 'user' ? 'bg-primary text-primary-foreground ml-8' : 'bg-muted text-foreground mr-8'}`}
+                  className={`p-4 rounded-lg ${message.role === 'user' ? 'bg-primary text-primary-foreground ml-12' : 'bg-muted text-foreground mr-12'}`}
                 >
                   <div className="text-sm mb-1 opacity-70">
                     {message.role === 'user' ? 'You' : 'Assistant'}
@@ -214,14 +217,15 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               ))}
             </div>
           )}
+          
           {/* Fallback for no messages */}
           {(!messages || messages.length === 0) && (
-            <div className="p-4 text-muted-foreground text-center">
+            <div className="p-12 text-muted-foreground text-center border rounded-lg">
               No messages yet
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
@@ -233,7 +237,7 @@ export default function AgentDetails() {
 
   return (
     <>
-      <main className="w-full mx-auto p-4">
+      <main className="w-full mx-auto h-screen">
         <ClientOnly agentId={agentId || ""} githubToken={githubToken}>
           <AgentContent agentId={agentId || ""} />
         </ClientOnly>
@@ -272,28 +276,40 @@ function AgentContent({ agentId }: { agentId: string }) {
   }, [agentId, agentStore]);
 
   if (loading) {
-    return <Card><CardContent>Loading agent data...</CardContent></Card>;
+    return <div className="p-4">Loading agent data...</div>;
   }
 
   if (!agent) {
-    return <Card><CardContent>Agent not found: {agentId}</CardContent></Card>;
+    return <div className="p-4">Agent not found: {agentId}</div>;
   }
 
   return (
-    <Card>
+    <Card className="mb-4">
       <CardHeader>
         <Collapsible className="w-full" defaultOpen={false}>
           <div className="flex items-center justify-between">
-            <CardTitle>Agent Raw Data</CardTitle>
+            <CardTitle>Agent Details</CardTitle>
             <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
               <ChevronDown className="h-4 w-4" />
             </CollapsibleTrigger>
           </div>
           <CollapsibleContent>
             <CardContent className="pt-4">
-              <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
-                {JSON.stringify(agent, null, 2)}
-              </pre>
+              <div className="mb-2">
+                <span className="font-medium">ID:</span> {agent.id}
+              </div>
+              <div className="mb-2">
+                <span className="font-medium">Purpose:</span> {agent.purpose}
+              </div>
+              <div className="mb-2">
+                <span className="font-medium">Created:</span> {new Date(agent.createdAt).toLocaleString()}
+              </div>
+              <div className="mt-4 pt-2 border-t">
+                <div className="font-medium mb-1">Raw Data:</div>
+                <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96 text-xs">
+                  {JSON.stringify(agent, null, 2)}
+                </pre>
+              </div>
             </CardContent>
           </CollapsibleContent>
         </Collapsible>
