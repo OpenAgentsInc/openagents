@@ -63,13 +63,20 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'error' | 'closed'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [rawState, setRawState] = useState<any>(null);
+  const [agentData, setAgentData] = useState<Agent | null>(null);
   const agentStore = useAgentStore();
 
   // Set up component and log initialization only once
   useEffect(() => {
     setMounted(true);
     console.log("Initializing agent with WebSocket connection for agent:", agentId);
-  }, [agentId]);
+    
+    // Get agent from Zustand store
+    const foundAgent = agentStore.getAgent(agentId);
+    if (foundAgent) {
+      setAgentData(foundAgent);
+    }
+  }, [agentId, agentStore]);
 
   // Standard agent configuration with clear debugging
   const agent = useAgent({
@@ -160,28 +167,50 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       {/* Left Sidebar */}
       <div className="w-80 border-r overflow-y-auto flex flex-col">
         {/* Connection status at top */}
-        <div className={`px-4 py-2 flex items-center gap-2 ${
+        <div className={`px-4 py-2 ${
           connectionStatus === 'connected' 
             ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400' 
             : connectionStatus === 'error' 
               ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400' 
               : 'bg-amber-100 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400'
         }`}>
-          {connectionStatus === 'connected' ? (
-            <CheckCircle className="h-4 w-4" />
-          ) : (
-            <AlertCircle className="h-4 w-4" />
+          <div className="flex items-center gap-2">
+            {connectionStatus === 'connected' ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : (
+              <AlertCircle className="h-4 w-4" />
+            )}
+            <Label className="font-medium">
+              {connectionStatus === 'connected' ? 'Connected' : 
+               connectionStatus === 'connecting' ? 'Connecting...' : 
+               connectionStatus === 'closed' ? 'Disconnected' : 'Connection Error'}
+            </Label>
+          </div>
+          
+          {/* Agent details right below connection status */}
+          {agentData && connectionStatus === 'connected' && (
+            <div className="mt-1 text-xs text-foreground opacity-80 font-mono pl-6">
+              <div>ID: {agentData.id}</div>
+              <div>Purpose: {agentData.purpose}</div>
+              <div>Created: {new Date(agentData.createdAt).toLocaleString()}</div>
+              
+              <Collapsible className="w-full mt-1">
+                <CollapsibleTrigger className="text-xs flex items-center gap-1 text-foreground underline opacity-70 hover:opacity-100">
+                  <ChevronDown className="h-3 w-3" /> View agent state
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="pt-2">
+                    <pre className="bg-muted text-foreground p-2 overflow-auto whitespace-pre-wrap rounded-md max-h-96 text-xs mt-1">
+                      {JSON.stringify(rawState, null, 2)}
+                    </pre>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           )}
-          <Label className="font-medium">
-            {connectionStatus === 'connected' ? 'Connected' : 
-             connectionStatus === 'connecting' ? 'Connecting...' : 
-             connectionStatus === 'closed' ? 'Disconnected' : 'Connection Error'}
-          </Label>
         </div>
         
         <div className="p-4">
-          {children}
-          
           {/* Connection error details */}
           {connectionError && (
             <div className="mb-4 p-3 text-xs rounded border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800 text-red-800 dark:text-red-400">
@@ -189,26 +218,6 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               <div>{connectionError}</div>
             </div>
           )}
-          
-          <Card>
-          <CardHeader>
-            <Collapsible className="w-full" defaultOpen={false}>
-              <div className="flex items-center justify-between">
-                <CardTitle>Agent State</CardTitle>
-                <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
-                  <ChevronDown className="h-4 w-4" />
-                </CollapsibleTrigger>
-              </div>
-              <CollapsibleContent>
-                <CardContent className="pt-4">
-                  <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
-                    {JSON.stringify(rawState, null, 2)}
-                  </pre>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </CardHeader>
-        </Card>
         </div>
       </div>
       
@@ -258,82 +267,8 @@ export default function AgentDetails() {
   return (
     <>
       <main className="w-full mx-auto h-screen">
-        <ClientOnly agentId={agentId || ""} githubToken={githubToken}>
-          <AgentContent agentId={agentId || ""} />
-        </ClientOnly>
+        <ClientOnly agentId={agentId || ""} githubToken={githubToken} />
       </main>
     </>
-  );
-}
-
-function AgentContent({ agentId }: { agentId: string }) {
-  const [loading, setLoading] = useState(true);
-  const [agent, setAgent] = useState<Agent | null>(null);
-  const agentStore = useAgentStore();
-
-  useEffect(() => {
-    const initAgent = async () => {
-      try {
-        console.log('Loading agent with ID:', agentId);
-        console.log('Available agents:', agentStore.agents);
-
-        // Get agent from Zustand store
-        const foundAgent = agentStore.getAgent(agentId);
-        console.log('Found agent:', foundAgent);
-
-        if (foundAgent) {
-          setAgent(foundAgent);
-        }
-
-        setLoading(false);
-      } catch (error) {
-        console.error('Failed to initialize agent:', error);
-        setLoading(false);
-      }
-    };
-
-    initAgent();
-  }, [agentId, agentStore]);
-
-  if (loading) {
-    return <div className="p-4">Loading agent data...</div>;
-  }
-
-  if (!agent) {
-    return <div className="p-4">Agent not found: {agentId}</div>;
-  }
-
-  return (
-    <Card className="mb-4">
-      <CardHeader>
-        <Collapsible className="w-full" defaultOpen={false}>
-          <div className="flex items-center justify-between">
-            <CardTitle>Agent Details</CardTitle>
-            <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
-              <ChevronDown className="h-4 w-4" />
-            </CollapsibleTrigger>
-          </div>
-          <CollapsibleContent>
-            <CardContent className="pt-4">
-              <div className="mb-2">
-                <span className="font-medium">ID:</span> {agent.id}
-              </div>
-              <div className="mb-2">
-                <span className="font-medium">Purpose:</span> {agent.purpose}
-              </div>
-              <div className="mb-2">
-                <span className="font-medium">Created:</span> {new Date(agent.createdAt).toLocaleString()}
-              </div>
-              <div className="mt-4 pt-2 border-t">
-                <div className="font-medium mb-1">Raw Data:</div>
-                <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96 text-xs">
-                  {JSON.stringify(agent, null, 2)}
-                </pre>
-              </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Collapsible>
-      </CardHeader>
-    </Card>
   );
 }
