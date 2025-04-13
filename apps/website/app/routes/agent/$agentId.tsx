@@ -18,6 +18,7 @@ import { ChevronDown, ChevronUp, AlertCircle, CheckCircle } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 import { Label } from "~/components/ui/label";
+import { ClientOnlyMessageList } from "~/components/ui/client-only-message-list";
 
 // Message type definition 
 interface Message {
@@ -226,29 +227,17 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold mb-4">Conversation</h2>
           
-          {/* Client-side only rendering of messages */}
-          {typeof window !== 'undefined' && 
-            mounted && 
-            messages.length > 0 && (
-            <div className="space-y-4">
-              {messages.map((message, index) => (
-                <div 
-                  key={message.id || index}
-                  className={`p-4 rounded-lg ${message.role === 'user' ? 'bg-primary text-primary-foreground ml-12' : 'bg-muted text-foreground mr-12'}`}
-                >
-                  <div className="text-sm mb-1 opacity-70">
-                    {message.role === 'user' ? 'You' : 'Assistant'}
-                  </div>
-                  <div className="whitespace-pre-wrap">
-                    {message.content}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          {/* Fallback for no messages */}
-          {(!messages || messages.length === 0) && (
+          {/* Messages with proper client-only handling */}
+          {messages.length > 0 ? (
+            <ClientOnlyMessageList
+              messages={messages.map(msg => ({
+                ...msg,
+                createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
+              }))}
+              showTimeStamps={false}
+              isTyping={connectionStatus === 'connecting'} 
+            />
+          ) : (
             <div className="p-12 text-muted-foreground text-center border rounded-lg">
               No messages yet
             </div>

@@ -1,7 +1,4 @@
-import React, { Suspense } from "react"
-import Markdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-
+import React, { Suspense, useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 import { CopyButton } from "@/components/ui/copy-button"
 
@@ -10,13 +7,37 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer({ children }: MarkdownRendererProps) {
+  const [Component, setComponent] = useState<React.FC<any> | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    // Only load react-markdown on the client side
+    setIsMounted(true);
+    const loadMarkdown = async () => {
+      const [ReactMarkdown, remarkGfm] = await Promise.all([
+        import('react-markdown').then(m => m.default),
+        import('remark-gfm').then(m => m.default)
+      ]);
+      
+      setComponent(() => (props: any) => (
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS} {...props} />
+      ));
+    };
+    
+    loadMarkdown();
+  }, []);
+  
+  // Return placeholder during SSR or while loading
+  if (!isMounted || !Component) {
+    return <div className="space-y-3 whitespace-pre-wrap">{children}</div>;
+  }
+  
+  // Render the markdown once the component is available
   return (
     <div className="space-y-3">
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
-        {children}
-      </Markdown>
+      <Component>{children}</Component>
     </div>
-  )
+  );
 }
 
 interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
@@ -24,54 +45,87 @@ interface HighlightedPre extends React.HTMLAttributes<HTMLPreElement> {
   language: string
 }
 
-const HighlightedPre = React.memo(
-  async ({ children, language, ...props }: HighlightedPre) => {
-    const { codeToTokens, bundledLanguages } = await import("shiki")
+// Client-only code block highlighting
+const HighlightedPre = React.memo(({ children, language, ...props }: HighlightedPre) => {
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-    if (!(language in bundledLanguages)) {
-      return <pre {...props}>{children}</pre>
-    }
-
-    const { tokens } = await codeToTokens(children, {
-      lang: language as keyof typeof bundledLanguages,
-      defaultColor: false,
-      themes: {
-        light: "github-light",
-        dark: "github-dark",
-      },
-    })
-
-    return (
-      <pre {...props}>
-        <code>
-          {tokens.map((line, lineIndex) => (
-            <>
-              <span key={lineIndex}>
-                {line.map((token, tokenIndex) => {
-                  const style =
-                    typeof token.htmlStyle === "string"
-                      ? undefined
-                      : token.htmlStyle
-
-                  return (
-                    <span
-                      key={tokenIndex}
-                      className="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"
-                      style={style}
-                    >
-                      {token.content}
-                    </span>
-                  )
-                })}
-              </span>
-              {lineIndex !== tokens.length - 1 && "\n"}
-            </>
-          ))}
-        </code>
-      </pre>
-    )
+  useEffect(() => {
+    let isMounted = true;
+    
+    const loadHighlighter = async () => {
+      try {
+        const { codeToTokens, bundledLanguages } = await import("shiki");
+        
+        if (!bundledLanguages[language] || !isMounted) {
+          setIsLoading(false);
+          return;
+        }
+        
+        const result = await codeToTokens(children, {
+          lang: language as keyof typeof bundledLanguages,
+          defaultColor: false,
+          themes: {
+            light: "github-light",
+            dark: "github-dark",
+          },
+        });
+        
+        if (isMounted) {
+          setTokens(result.tokens);
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error("Failed to highlight code:", error);
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    
+    loadHighlighter();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [children, language]);
+  
+  if (isLoading) {
+    return <pre {...props}><code>{children}</code></pre>;
   }
-)
+  
+  if (!tokens.length) {
+    return <pre {...props}><code>{children}</code></pre>;
+  }
+
+  return (
+    <pre {...props}>
+      <code>
+        {tokens.map((line, lineIndex) => (
+          <React.Fragment key={lineIndex}>
+            <span>
+              {line.map((token: any, tokenIndex: number) => {
+                const style =
+                  typeof token.htmlStyle === "string"
+                    ? undefined
+                    : token.htmlStyle
+
+                return (
+                  <span
+                    key={tokenIndex}
+                    className="text-shiki-light bg-shiki-light-bg dark:text-shiki-dark dark:bg-shiki-dark-bg"
+                    style={style}
+                  >
+                    {token.content}
+                  </span>
+                )
+              })}
+            </span>
+            {lineIndex !== tokens.length - 1 && "\n"}
+          </React.Fragment>
+        ))}
+      </code>
+    </pre>
+  )
+})
 HighlightedPre.displayName = "HighlightedCode"
 
 interface CodeBlockProps extends React.HTMLAttributes<HTMLPreElement> {
@@ -86,6 +140,12 @@ const CodeBlock = ({
   language,
   ...restProps
 }: CodeBlockProps) => {
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  
   const code =
     typeof children === "string"
       ? children
@@ -96,19 +156,23 @@ const CodeBlock = ({
     className
   )
 
+  // Simple pre rendering for SSR
+  if (!isMounted) {
+    return (
+      <div className="group/code relative mb-4">
+        <pre className={preClass} {...restProps}>
+          <code>{code}</code>
+        </pre>
+      </div>
+    );
+  }
+
+  // Client-side rendering with highlighting
   return (
     <div className="group/code relative mb-4">
-      <Suspense
-        fallback={
-          <pre className={preClass} {...restProps}>
-            {children}
-          </pre>
-        }
-      >
-        <HighlightedPre language={language} className={preClass}>
-          {code}
-        </HighlightedPre>
-      </Suspense>
+      <HighlightedPre language={language} className={preClass}>
+        {code}
+      </HighlightedPre>
 
       <div className="invisible absolute right-2 top-2 flex space-x-1 rounded-lg p-1 opacity-0 transition-all duration-200 group-hover/code:visible group-hover/code:opacity-100">
         <CopyButton content={code} copyMessage="Copied code to clipboard" />
