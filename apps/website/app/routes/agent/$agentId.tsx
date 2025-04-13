@@ -19,6 +19,7 @@ import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 import { Label } from "~/components/ui/label";
 import { ClientOnlyMessageList } from "~/components/ui/client-only-message-list";
+import { AgentList } from "~/components/agent-list";
 
 // Message type definition 
 interface Message {
@@ -77,6 +78,15 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
     if (foundAgent) {
       setAgentData(foundAgent);
     }
+    
+    // Clean up function to handle component unmounting
+    return () => {
+      // Reset states when navigating away
+      setMessages([]);
+      setRawState(null);
+      setConnectionStatus('connecting');
+      setConnectionError(null);
+    };
   }, [agentId, agentStore]);
 
   // Standard agent configuration with clear debugging
@@ -220,14 +230,15 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
               <div>{connectionError}</div>
             </div>
           )}
+          
+          {/* Agent list */}
+          <AgentList currentAgentId={agentId} />
         </div>
       </div>
       
       {/* Main Message Area */}
       <div className="flex-1 p-4 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-4">Conversation</h2>
-          
           {/* Messages with proper client-only handling */}
           {messages.length > 0 ? (
             <ClientOnlyMessageList
