@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useLoaderData, useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
-import { Header } from "~/components/header";
 import {
   Card,
   CardHeader,
@@ -10,6 +9,12 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger
+} from "~/components/ui/collapsible";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 
@@ -163,24 +168,42 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
       
       <Card className="mb-4">
         <CardHeader>
-          <CardTitle>Agent State</CardTitle>
+          <Collapsible className="w-full" defaultOpen={false}>
+            <div className="flex items-center justify-between">
+              <CardTitle>Agent State</CardTitle>
+              <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
+                <ChevronDown className="h-4 w-4" />
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent>
+              <CardContent className="pt-4">
+                <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
+                  {JSON.stringify(rawState, null, 2)}
+                </pre>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
         </CardHeader>
-        <CardContent>
-          <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md">
-            {JSON.stringify(rawState, null, 2)}
-          </pre>
-        </CardContent>
       </Card>
       
       <Card>
         <CardHeader>
-          <CardTitle>Messages</CardTitle>
+          <Collapsible className="w-full" defaultOpen={false}>
+            <div className="flex items-center justify-between">
+              <CardTitle>Messages</CardTitle>
+              <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
+                <ChevronDown className="h-4 w-4" />
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent>
+              <CardContent className="pt-4">
+                <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
+                  {JSON.stringify(messages, null, 2)}
+                </pre>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
         </CardHeader>
-        <CardContent>
-          <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md">
-            {JSON.stringify(messages, null, 2)}
-          </pre>
-        </CardContent>
       </Card>
     </div>
   );
@@ -242,13 +265,22 @@ function AgentContent({ agentId }: { agentId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Agent Raw Data</CardTitle>
+        <Collapsible className="w-full" defaultOpen={false}>
+          <div className="flex items-center justify-between">
+            <CardTitle>Agent Raw Data</CardTitle>
+            <CollapsibleTrigger className="p-1 rounded-md hover:bg-muted">
+              <ChevronDown className="h-4 w-4" />
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent>
+            <CardContent className="pt-4">
+              <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md max-h-96">
+                {JSON.stringify(agent, null, 2)}
+              </pre>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </CardHeader>
-      <CardContent>
-        <pre className="bg-muted text-foreground p-4 overflow-auto whitespace-pre-wrap rounded-md">
-          {JSON.stringify(agent, null, 2)}
-        </pre>
-      </CardContent>
     </Card>
   );
 }
