@@ -17,7 +17,6 @@ import {
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
-import { MessageList } from "~/components/ui/message-list";
 
 // Message type definition 
 interface Message {
@@ -195,12 +194,32 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
           <CardTitle>Messages</CardTitle>
         </CardHeader>
         <CardContent>
-          <MessageList 
-            messages={messages.map(msg => ({
-              ...msg,
-              createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
-            }))} 
-          />
+          {/* Client-side only rendering of messages */}
+          {typeof window !== 'undefined' && 
+            mounted && 
+            messages.length > 0 && (
+            <div className="space-y-4">
+              {messages.map((message, index) => (
+                <div 
+                  key={message.id || index}
+                  className={`p-4 rounded-lg ${message.role === 'user' ? 'bg-primary text-primary-foreground ml-8' : 'bg-muted text-foreground mr-8'}`}
+                >
+                  <div className="text-sm mb-1 opacity-70">
+                    {message.role === 'user' ? 'You' : 'Assistant'}
+                  </div>
+                  <div className="whitespace-pre-wrap">
+                    {message.content}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Fallback for no messages */}
+          {(!messages || messages.length === 0) && (
+            <div className="p-4 text-muted-foreground text-center">
+              No messages yet
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
