@@ -14,9 +14,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger
 } from "~/components/ui/collapsible";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertCircle, CheckCircle } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
+import { Label } from "~/components/ui/label";
 
 // Message type definition 
 interface Message {
@@ -157,21 +158,39 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
   return (
     <div className="flex h-full">
       {/* Left Sidebar */}
-      <div className="w-80 p-4 border-r overflow-y-auto">
-        {children}
+      <div className="w-80 border-r overflow-y-auto flex flex-col">
+        {/* Connection status at top */}
+        <div className={`px-4 py-2 flex items-center gap-2 ${
+          connectionStatus === 'connected' 
+            ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400' 
+            : connectionStatus === 'error' 
+              ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400' 
+              : 'bg-amber-100 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400'
+        }`}>
+          {connectionStatus === 'connected' ? (
+            <CheckCircle className="h-4 w-4" />
+          ) : (
+            <AlertCircle className="h-4 w-4" />
+          )}
+          <Label className="font-medium">
+            {connectionStatus === 'connected' ? 'Connected' : 
+             connectionStatus === 'connecting' ? 'Connecting...' : 
+             connectionStatus === 'closed' ? 'Disconnected' : 'Connection Error'}
+          </Label>
+        </div>
         
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle>Connection Status: {connectionStatus}</CardTitle>
-            {connectionError && (
-              <CardDescription className="text-red-500">
-                Error: {connectionError}
-              </CardDescription>
-            )}
-          </CardHeader>
-        </Card>
-        
-        <Card>
+        <div className="p-4">
+          {children}
+          
+          {/* Connection error details */}
+          {connectionError && (
+            <div className="mb-4 p-3 text-xs rounded border border-red-200 bg-red-50 dark:bg-red-900/10 dark:border-red-800 text-red-800 dark:text-red-400">
+              <div className="font-semibold mb-1">Error Details:</div>
+              <div>{connectionError}</div>
+            </div>
+          )}
+          
+          <Card>
           <CardHeader>
             <Collapsible className="w-full" defaultOpen={false}>
               <div className="flex items-center justify-between">
@@ -190,6 +209,7 @@ function ClientOnly({ agentId, children, githubToken }: { agentId: string, child
             </Collapsible>
           </CardHeader>
         </Card>
+        </div>
       </div>
       
       {/* Main Message Area */}
