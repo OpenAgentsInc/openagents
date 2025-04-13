@@ -46,7 +46,7 @@ export async function githubRequest(
 
   // Add logging for debugging the request
   console.log(`🔄 GitHub API Request: ${url.substring(0, url.indexOf('?') > 0 ? url.indexOf('?') : url.length)}`);
-  console.log(`🔑 Auth present: ${!!options.token}`);
+  console.log(`🔑 Auth present: ${!!options.token}`); //by this point we already set the headers ..?
 
   try {
     const response = await fetch(url, {

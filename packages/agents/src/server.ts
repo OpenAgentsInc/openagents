@@ -27,6 +27,7 @@ export class Coder extends Agent<Env, CoderState> {
 
   onMessage(connection: Connection, message: WSMessage) {
     const parsedMessage = JSON.parse(message as string);
+    console.log("IN ON MESSAGE AND HAVE PARSED MESSAGE", parsedMessage);
     const githubToken = parsedMessage.githubToken;
     this.infer(githubToken)
   }
