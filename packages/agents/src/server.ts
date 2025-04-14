@@ -147,10 +147,40 @@ export class Coder extends Agent<Env, CoderState> {
    */
   private async generateAndAddTask(prompt: string) {
     try {
+      // Enhance prompt with current context
+      let contextPrompt = `Based on the following request or user message, define a clear, actionable coding task: "${prompt.trim()}"\n\n`;
+      
+      // Add repository context if available
+      if (this.state.currentRepoOwner && this.state.currentRepoName) {
+        contextPrompt += `Repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}\n`;
+        if (this.state.currentBranch) {
+          contextPrompt += `Branch: ${this.state.currentBranch}\n`;
+        }
+      }
+      
+      // Add current file context if available
+      if (this.state.workingFilePath) {
+        contextPrompt += `Currently focused on file: ${this.state.workingFilePath}\n`;
+      }
+      
+      // Add existing task context if available
+      if (this.state.tasks && this.state.tasks.length > 0) {
+        contextPrompt += `\nExisting tasks:\n`;
+        this.state.tasks.slice(0, 3).forEach(task => {
+          contextPrompt += `- ${task.description} (${task.status})\n`;
+        });
+        if (this.state.tasks.length > 3) {
+          contextPrompt += `- ... (${this.state.tasks.length - 3} more tasks)\n`;
+        }
+      }
+      
+      // Add instruction for task quality
+      contextPrompt += `\nCreate a SPECIFIC, ACTIONABLE coding task. Break it down into clear subtasks where appropriate.`;
+      
       const { object: newTaskInfo } = await generateObject({
         model: model,
         schema: NewTaskSchema,
-        prompt: `Based on the following request or analysis, define a new coding task: "${prompt}"`
+        prompt: contextPrompt
       });
 
       const newTask: Task = {
@@ -206,11 +236,38 @@ export class Coder extends Agent<Env, CoderState> {
    */
   private async updateAgentScratchpad(prompt: string) {
     try {
-      // Generate a structured thought based on the prompt
+      // Get recent context to enrich the prompt
+      const recentMessages = this.state.messages?.slice(-3) || [];
+      const currentFile = this.state.workingFilePath || '';
+      const currentRepo = this.state.currentRepoOwner && this.state.currentRepoName ? 
+        `${this.state.currentRepoOwner}/${this.state.currentRepoName}` : '';
+      
+      // Build a context-rich prompt
+      let contextPrompt = `Based on the current context and the goal "${prompt}", what is your immediate thought process, potential next action, or any clarifying questions?`;
+      
+      // Add file context if available
+      if (currentFile) {
+        contextPrompt += `\nCurrently focused on file: ${currentFile}`;
+      }
+      
+      // Add repo context if available
+      if (currentRepo) {
+        contextPrompt += `\nWorking in repository: ${currentRepo}${this.state.currentBranch ? ` (branch: ${this.state.currentBranch})` : ''}`;
+      }
+      
+      // Add recent message context
+      if (recentMessages.length > 0) {
+        contextPrompt += '\n\nRecent messages:';
+        recentMessages.forEach(msg => {
+          contextPrompt += `\n${msg.role}: ${msg.content?.substring(0, 100)}${msg.content && msg.content.length > 100 ? '...' : ''}`;
+        });
+      }
+      
+      // Generate a structured thought based on the enriched prompt
       const { object: planning } = await generateObject({
         model: model,
         schema: PlanningSchema,
-        prompt: `Based on the current context and the goal "${prompt}", what is your immediate thought process, potential next action, or any clarifying questions?`,
+        prompt: contextPrompt,
       });
 
       const timestamp = new Date().toISOString();
@@ -250,10 +307,38 @@ export class Coder extends Agent<Env, CoderState> {
     let summary = null;
     if (nodeType === 'file' && content) {
       try {
+        // Enhance the prompt with repository context
+        let contextPrompt = `Summarize the following code file located at '${path}'. `;
+        
+        // Add file extension info
+        const fileExtension = path.split('.').pop()?.toLowerCase();
+        if (fileExtension) {
+          contextPrompt += `This is a ${fileExtension} file. `;
+        }
+        
+        // Add repository context
+        if (this.state.currentRepoOwner && this.state.currentRepoName) {
+          contextPrompt += `File is from repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}. `;
+        }
+        
+        // Add specific instructions based on file type
+        if (fileExtension === 'js' || fileExtension === 'ts' || fileExtension === 'tsx') {
+          contextPrompt += `Focus on identifying exports (functions, classes, constants), dependencies (imports), and the main purpose of this module. `;
+        } else if (fileExtension === 'css' || fileExtension === 'scss') {
+          contextPrompt += `Focus on the main UI components or themes being styled. `;
+        } else if (fileExtension === 'json') {
+          contextPrompt += `Focus on the configuration purpose and key settings. `;
+        }
+        
+        // Add examples of good tag types
+        contextPrompt += `Add tags like "component", "api", "utility", "state-management", "auth", "ui", "database", "config", etc. that best describe this file's role. `;
+        
+        contextPrompt += `\n\n\`\`\`\n${content.substring(0, 4000)}\n\`\`\``; // Limit content length
+        
         const { object } = await generateObject({
           model: model,
           schema: FileSummarySchema,
-          prompt: `Summarize the following code file located at '${path}'. Focus on its purpose, key exports, and relevant tags.\n\n\`\`\`\n${content.substring(0, 4000)}\n\`\`\`` // Limit content length
+          prompt: contextPrompt
         });
         summary = object;
       } catch (error) {
@@ -345,13 +430,33 @@ export class Coder extends Agent<Env, CoderState> {
         maxSteps: 5,
       });
 
-      // Add observation for the response
+      // Add observation for the response and analyze for potential tasks
       if (result.text) {
         const snippet = result.text.length > 50 
           ? `${result.text.substring(0, 50)}...` 
           : result.text;
           
         this.addAgentObservation(`Generated response: ${snippet}`);
+        
+        // Check if this is in response to a user message requiring a task
+        if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+          const lastUserMessage = messages[messages.length - 1].content || '';
+          const taskIndicators = [
+            'implement', 'create', 'build', 'fix', 'add', 'refactor', 'optimize', 
+            'update', 'develop', 'design', 'setup', 'write'
+          ];
+          
+          // Check if the user message suggests a coding task
+          if (taskIndicators.some(indicator => 
+            lastUserMessage.toLowerCase().includes(indicator)) &&
+            (lastUserMessage.includes('code') || lastUserMessage.includes('function') || 
+             lastUserMessage.includes('class') || lastUserMessage.includes('file') || 
+             lastUserMessage.includes('component'))) {
+            
+            // Create a task based on the user's request
+            await this.generateAndAddTask(lastUserMessage);
+          }
+        }
       }
 
       // Create message parts array to handle both text and tool calls
