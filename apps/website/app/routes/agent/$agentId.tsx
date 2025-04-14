@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useLoaderData, useParams } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import type { Route } from "./+types/agent";
@@ -9,12 +9,13 @@ import {
   CardDescription,
   CardContent,
 } from "~/components/ui/card";
+import { Button } from "~/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger
 } from "~/components/ui/collapsible";
-import { ChevronDown, AlertCircle, CheckCircle, ArrowUp } from "lucide-react";
+import { ChevronDown, AlertCircle, CheckCircle, ArrowUp, Play, Pause, ListTodo } from "lucide-react";
 import { useAgentStore } from "~/lib/store";
 import { useAgent } from "agents/react";
 import { Label } from "~/components/ui/label";
@@ -73,6 +74,19 @@ function ClientOnly({ agentId, children }: { agentId: string, children?: React.R
   const [githubToken, setGithubToken] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const agentStore = useAgentStore();
+  
+  // Calculate task counts from agent state
+  const taskCounts = useMemo(() => {
+    const tasks = rawState?.tasks || [];
+    return {
+      pending: tasks.filter((t: any) => t.status === 'pending').length,
+      inProgress: tasks.filter((t: any) => t.status === 'in-progress').length,
+      completed: tasks.filter((t: any) => t.status === 'completed').length,
+      failed: tasks.filter((t: any) => t.status === 'failed').length,
+      cancelled: tasks.filter((t: any) => t.status === 'cancelled').length,
+      total: tasks.length,
+    };
+  }, [rawState?.tasks]);
 
   // Set up component and log initialization only once
   useEffect(() => {
@@ -175,6 +189,28 @@ function ClientOnly({ agentId, children }: { agentId: string, children?: React.R
       }
     }
   });
+
+  // Handle toggling continuous run
+  const handleToggleContinuousRun = async () => {
+    if (!agent || connectionStatus !== 'connected') return;
+
+    const currentlyActive = rawState?.isContinuousRunActive || false;
+    console.log(`Toggling continuous run. Currently active: ${currentlyActive}`);
+
+    try {
+      if (currentlyActive) {
+        await agent.stopContinuousRun(); // Call backend method
+        console.log("Called stopContinuousRun");
+      } else {
+        await agent.startContinuousRun(); // Call backend method
+        console.log("Called startContinuousRun");
+      }
+      // State update will come via onStateUpdate, no need to set locally here
+    } catch (error) {
+      console.error("Error toggling continuous run:", error);
+      setConnectionError(`Failed to ${currentlyActive ? 'stop' : 'start'} continuous run: ${error.message || 'Unknown error'}`);
+    }
+  };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -290,11 +326,43 @@ function ClientOnly({ agentId, children }: { agentId: string, children?: React.R
                   </div>
                 </CollapsibleContent>
               </Collapsible>
+              
+              {/* Task counts and controls */}
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <Label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-2">
+                  <ListTodo className="w-3.5 h-3.5" /> Agent Tasks
+                </Label>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-xs mb-3">
+                  {(taskCounts.pending > 0) && <div>Pending: {taskCounts.pending}</div>}
+                  {(taskCounts.inProgress > 0) && <div>In Progress: {taskCounts.inProgress}</div>}
+                  {(taskCounts.completed > 0) && <div>Completed: {taskCounts.completed}</div>}
+                  {(taskCounts.failed > 0) && <div className="text-red-600 dark:text-red-500">Failed: {taskCounts.failed}</div>}
+                  {(taskCounts.cancelled > 0) && <div>Cancelled: {taskCounts.cancelled}</div>}
+                  <div className="col-span-2 mt-1 pt-1 border-t border-border/20">Total: {taskCounts.total}</div>
+                </div>
+
+                <Label className="text-xs font-semibold text-muted-foreground block mb-2">
+                  Continuous Run
+                </Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-8 text-xs"
+                  onClick={handleToggleContinuousRun}
+                  disabled={connectionStatus !== 'connected'} // Disable if not connected
+                >
+                  {rawState?.isContinuousRunActive ? (
+                    <><Pause className="w-3 h-3 mr-2" /> Pause Run</>
+                  ) : (
+                    <><Play className="w-3 h-3 mr-2" /> Start Run</>
+                  )}
+                </Button>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="p-4">
+        <div className="p-4 mt-auto"> {/* Added mt-auto to push this section down */}
           {/* GitHub Token Input */}
           <GitHubTokenInput />
 
