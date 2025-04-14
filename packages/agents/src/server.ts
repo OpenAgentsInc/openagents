@@ -1,5 +1,5 @@
 import { Agent, routeAgentRequest, unstable_callable, type Connection, type Schedule, type WSMessage } from "agents"
-import { type UIMessage, generateId, generateText, experimental_createMCPClient as createMCPClient, type ToolSet } from "ai";
+import { type UIMessage, generateId, generateText, generateObject, type ToolSet } from "ai";
 import { env } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { UIPart } from "@openagents/core/src/chat/types";
@@ -10,65 +10,61 @@ import { addIssueCommentTool } from "@openagents/core/src/tools/github/addIssueC
 import { tools as availableTools } from "./tools";
 import { getSystemPrompt } from "./prompts";
 import type { CoderState, Task, FileNode } from "./types";
+import { z } from "zod";
 
 const openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY })
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");
 
 export const agentContext = new AsyncLocalStorage<Coder>();
 
-// Default state that will be merged with all setState operations to ensure no fields are lost
-const DEFAULT_STATE: CoderState = {
-  messages: [],
-  githubToken: undefined,
-  currentRepoOwner: undefined,
-  currentRepoName: undefined,
-  currentBranch: undefined,
-  codebase: {},
-  scratchpad: '',
-  tasks: [],
-  observations: [],
-  workingFilePath: undefined
-};
+// Zod schema for planning thoughts/scratchpad updates
+const PlanningSchema = z.object({
+  thought: z.string().describe("A concise thought or step in a plan related to the current task."),
+  nextAction: z.string().optional().describe("A potential next immediate action or tool use."),
+  questions: z.array(z.string()).optional().describe("Questions to ask the user or resolve internally."),
+});
+
+// Zod schema for summarizing file content for the codebase map
+const FileSummarySchema = z.object({
+  summary: z.string().describe("A brief summary of the file's purpose and key contents."),
+  tags: z.array(z.string()).optional().describe("Keywords or tags describing the file's functionality (e.g., 'auth', 'api-route', 'database')."),
+  exports: z.array(z.string()).optional().describe("Key functions, classes, or variables exported by the file."),
+});
+
+// Zod schema for defining a new task based on user request or analysis
+const NewTaskSchema = z.object({
+  description: z.string().describe("A clear, actionable description of the coding task."),
+  priority: z.enum(["high", "medium", "low"]).optional().describe("Priority of the task."),
+  subTasks: z.array(z.string()).optional().describe("Breakdown into smaller steps if applicable."),
+});
 
 /** * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Coder extends Agent<Env, CoderState> {
-  initialState: CoderState = DEFAULT_STATE;
+  initialState: CoderState = {
+    messages: [],
+    githubToken: undefined,
+    currentRepoOwner: undefined,
+    currentRepoName: undefined,
+    currentBranch: undefined,
+    codebase: {},
+    scratchpad: '',
+    tasks: [],
+    observations: [],
+    workingFilePath: undefined
+  };
   tools: ToolSet = {};
 
   /**
-   * Ensures all state operations include ALL required fields from the default state template.
-   * This prevents state loss when updates happen.
-   * @param partialState The partial state to update
+   * Safely updates the agent's state by merging the provided partial state
+   * with the existing state. Ensures ...this.state is always included.
+   * @param partialState An object containing the state properties to update.
    */
   private updateState(partialState: Partial<CoderState>) {
-    // Get current state with fallback to default values 
-    const currentState: CoderState = {
-      ...DEFAULT_STATE,
-      ...this.state,
-    };
-
-    // Update with new values
     this.setState({
-      ...currentState,
+      ...this.state,
       ...partialState,
     });
-
-    // Verify state integrity - logs which keys may be missing
-    this.verifyStateIntegrity();
-  }
-
-  /**
-   * Verifies that state contains all expected fields from DEFAULT_STATE
-   * Logs warnings if any are missing
-   */
-  private verifyStateIntegrity() {
-    if (!this.state) return;
-    
-    const missingKeys = Object.keys(DEFAULT_STATE).filter(key => !(key in this.state));
-    if (missingKeys.length > 0) {
-      console.warn(`[State Integrity Warning] State is missing expected keys: ${missingKeys.join(', ')}`);
-    }
   }
 
   async executeTask(description: string, task: Schedule<string>) {
@@ -87,7 +83,7 @@ export class Coder extends Agent<Env, CoderState> {
 
     this.updateState({
       messages: [
-        ...(this.state?.messages || []),
+        ...this.state.messages,
         newMessage
       ],
     });
@@ -139,18 +135,50 @@ export class Coder extends Agent<Env, CoderState> {
     };
     
     this.updateState({
-      tasks: [...(this.state?.tasks || []), newTask],
-      observations: [...(this.state?.observations || []), `New task added: ${description}`]
+      tasks: [...(this.state.tasks || []), newTask],
+      observations: [...(this.state.observations || []), `New task added: ${description}`]
     });
     
     return newTask.id;
   }
 
   /**
+   * Generates a structured task using AI and adds it to the agent's state
+   */
+  private async generateAndAddTask(prompt: string) {
+    try {
+      const { object: newTaskInfo } = await generateObject({
+        model: model,
+        schema: NewTaskSchema,
+        prompt: `Based on the following request or analysis, define a new coding task: "${prompt}"`
+      });
+
+      const newTask: Task = {
+        id: generateId(),
+        description: newTaskInfo.description,
+        status: 'pending',
+        created: new Date(),
+        notes: newTaskInfo.subTasks ? [`Sub-tasks: ${newTaskInfo.subTasks.join(', ')}`] : [],
+      };
+
+      this.updateState({
+        tasks: [...(this.state.tasks || []), newTask],
+        observations: [...(this.state.observations || []), `New task generated: ${newTask.description}`]
+      });
+      return newTask.id;
+
+    } catch (error) {
+      console.error("Error generating task object:", error);
+      this.addAgentObservation(`Failed to generate structured task for prompt: ${prompt}`);
+      return null; // Indicate failure
+    }
+  }
+
+  /**
    * Updates a task's status
    */
   private updateTaskStatus(taskId: string, status: Task['status'], notes?: string) {
-    if (!this.state?.tasks) return false;
+    if (!this.state.tasks) return false;
     
     const updatedTasks = this.state.tasks.map(task => {
       if (task.id === taskId) {
@@ -167,24 +195,43 @@ export class Coder extends Agent<Env, CoderState> {
     
     this.updateState({
       tasks: updatedTasks,
-      observations: [...(this.state?.observations || []), `Task ${taskId} status changed to ${status}`]
+      observations: [...(this.state.observations || []), `Task ${taskId} status changed to ${status}`]
     });
     
     return true;
   }
 
   /**
-   * Updates the agent's scratchpad for planning and thoughts
+   * Updates the agent's scratchpad with AI-generated structured thoughts
    */
-  private updateAgentScratchpad(thought: string) {
-    const timestamp = new Date().toISOString();
-    const formattedThought = `${timestamp}: ${thought}`;
-    
-    this.updateState({
-      scratchpad: this.state?.scratchpad 
-        ? `${this.state.scratchpad}\n- ${formattedThought}` 
-        : `- ${formattedThought}`
-    });
+  private async updateAgentScratchpad(prompt: string) {
+    try {
+      // Generate a structured thought based on the prompt
+      const { object: planning } = await generateObject({
+        model: model,
+        schema: PlanningSchema,
+        prompt: `Based on the current context and the goal "${prompt}", what is your immediate thought process, potential next action, or any clarifying questions?`,
+      });
+
+      const timestamp = new Date().toISOString();
+      const formattedThought = `${timestamp}: ${planning.thought}${planning.nextAction ? ` | Next: ${planning.nextAction}` : ''}${planning.questions && planning.questions.length > 0 ? ` | Questions: ${planning.questions.join(', ')}` : ''}`;
+
+      this.updateState({
+        scratchpad: this.state.scratchpad
+          ? `${this.state.scratchpad}\n- ${formattedThought}`
+          : `- ${formattedThought}`
+      });
+
+    } catch (error) {
+      console.error("Error generating structured thought:", error);
+      // Fallback to just adding the raw prompt
+      const timestamp = new Date().toISOString();
+      this.updateState({
+        scratchpad: this.state.scratchpad
+          ? `${this.state.scratchpad}\n- ${timestamp}: ${prompt}`
+          : `- ${timestamp}: ${prompt}`
+      });
+    }
   }
 
   /**
@@ -192,31 +239,56 @@ export class Coder extends Agent<Env, CoderState> {
    */
   private addAgentObservation(observation: string) {
     this.updateState({
-      observations: [...(this.state?.observations || []), observation]
+      observations: [...(this.state.observations || []), observation]
     });
   }
 
   /**
-   * Updates information about a file or directory in the codebase structure
+   * Updates information about a file or directory in the codebase structure with AI-generated summary
    */
-  private updateCodebaseStructure(path: string, nodeInfo: Partial<FileNode>) {
-    const structure = this.state?.codebase?.structure || {};
-    const existingNode = structure[path] || { type: nodeInfo.type || 'file', path };
-    
-    const updatedNode = {
-      ...existingNode,
-      ...nodeInfo
+  private async updateCodebaseStructure(path: string, content: string | null, nodeType: 'file' | 'directory' = 'file') {
+    let summary = null;
+    if (nodeType === 'file' && content) {
+      try {
+        const { object } = await generateObject({
+          model: model,
+          schema: FileSummarySchema,
+          prompt: `Summarize the following code file located at '${path}'. Focus on its purpose, key exports, and relevant tags.\n\n\`\`\`\n${content.substring(0, 4000)}\n\`\`\`` // Limit content length
+        });
+        summary = object;
+      } catch (error) {
+        console.error(`Error generating file summary for ${path}:`, error);
+      }
+    }
+
+    const structure = this.state.codebase?.structure || {};
+    const existingNode = structure[path] || { type: nodeType, path };
+
+    const updatedNode: FileNode = {
+      ...existingNode, // Keep existing info like type and path
+      type: nodeType, // Ensure type is set
+      path: path, // Ensure path is set
+      // Add generated summary and tags if available
+      description: summary?.summary || existingNode.description || `Accessed at ${new Date().toISOString()}`,
+      tags: summary?.tags || existingNode.tags || [],
     };
-    
+
+    // Update the codebase structure in the state
     this.updateState({
       codebase: {
-        ...(this.state?.codebase || {}),
+        ...(this.state.codebase || { structure: {} }),
         structure: {
           ...structure,
           [path]: updatedNode
         }
       }
     });
+
+    // Also add an observation
+    this.addAgentObservation(summary
+      ? `Analyzed file: ${path}. Purpose: ${summary.summary.substring(0, 30)}...`
+      : `Accessed ${nodeType}: ${path}`
+    );
   }
 
   /**
@@ -234,14 +306,14 @@ export class Coder extends Agent<Env, CoderState> {
   })
   async infer(githubToken?: string) {
     return agentContext.run(this, async () => {
-      // Check state integrity before proceeding
-      this.verifyStateIntegrity();
+      // Add initial planning thought
+      await this.updateAgentScratchpad("Processing user request and planning response");
 
       // Use githubToken from state if not provided as parameter
-      const token = githubToken || this.state?.githubToken;
+      const token = githubToken || this.state.githubToken;
 
       // Get current state messages
-      let messages = this.state?.messages || [];
+      let messages = this.state.messages || [];
 
       // If there's more than 10 messages, take the first 3 and last 5
       if (messages.length > 10) {
@@ -258,7 +330,7 @@ export class Coder extends Agent<Env, CoderState> {
 
       // Generate system prompt based on current state
       const systemPrompt = getSystemPrompt({
-        state: this.state || DEFAULT_STATE, // Provide default if somehow state is undefined
+        state: this.state,
         model,
         temperature: 0.7
       });
@@ -337,19 +409,23 @@ export class Coder extends Agent<Env, CoderState> {
             this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
             
             // Update codebase structure if it was a file contents tool
-            if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object') {
-              const args = toolCall.args as any;
+            if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
+              const args = toolCall.args as { path?: string };
               if (args.path) {
+                // Call the enhanced method with the file content
+                await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
+                // Also set current file
                 this.setCurrentFile(args.path);
-                this.updateCodebaseStructure(args.path, {
-                  type: 'file', 
-                  path: args.path,
-                  description: `File retrieved at ${new Date().toISOString()}`
-                });
               }
             }
           }
         }
+      }
+
+      // Add a thought about the interaction
+      if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+        const lastUserMessage = messages[messages.length - 1].content;
+        await this.updateAgentScratchpad(`Analyzing message: ${lastUserMessage}`);
       }
 
       // Finally, update state with the new message
@@ -365,9 +441,6 @@ export class Coder extends Agent<Env, CoderState> {
           }
         ]
       });
-
-      // Final state integrity check
-      this.verifyStateIntegrity();
 
       return {};
     });
