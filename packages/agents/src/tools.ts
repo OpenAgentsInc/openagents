@@ -192,7 +192,7 @@ const listAgentTasks = tool({
 
 //   if (options.token) {
 //     headers['Authorization'] = `Bearer ${options.token}`;
-//     console.log("Using GitHub token:", options.token.slice(0, 15));
+//     console.log("GitHub token is available");
 //   } else {
 //     console.log("No GitHub token found");
 //   }
@@ -332,7 +332,7 @@ export const executions = {
     if (agent && agent instanceof Coder) {
       console.log("Agent found via agentContext and is a Coder instance");
       // Access state via agent.state if needed
-      console.log(`GitHub token available: ${!!agent.state.githubToken}`);
+      console.log(`GitHub token status: ${agent.state.githubToken ? "available" : "unavailable"}`);
     } else {
       console.log("No agent found via agentContext or agent is not a Coder instance");
     }

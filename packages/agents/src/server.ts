@@ -102,10 +102,14 @@ export class Coder extends Agent<Env, CoderState> {
    * and reschedules itself.
    */
   public async continueInfer(payload?: any) {
-    // STATE LOGGING
+    // STATE LOGGING - avoid logging tokens or sensitive data
     console.log(`[continueInfer STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
     
-    console.log(`[continueInfer] Cycle start. Active: ${this.state.isContinuousRunActive}. Payload: ${JSON.stringify(payload)}`);
+    // Log payload without potentially sensitive data
+    const safePayload = payload ? JSON.parse(JSON.stringify(payload)) : {};
+    if (safePayload.githubToken) safePayload.githubToken = "[REDACTED]";
+    
+    console.log(`[continueInfer] Cycle start. Active: ${this.state.isContinuousRunActive}. Payload: ${JSON.stringify(safePayload)}`);
     if (!this.state.isContinuousRunActive) {
       console.log(`[continueInfer] Run inactive. Stopping.`);
       return;
@@ -397,10 +401,12 @@ export class Coder extends Agent<Env, CoderState> {
    * Only performs the directory listing operation, without calling infer().
    */
   public async scheduledListFiles(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
-    // STATE LOGGING
+    // STATE LOGGING - avoid logging any tokens
     console.log(`[scheduledListFiles STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
     
-    console.log(`[scheduledListFiles] Executing for path: ${payload.path}`);
+    // Create a safe copy of the payload without any potential tokens
+    const safePath = payload.path;
+    console.log(`[scheduledListFiles] Executing for path: ${safePath}`);
     const { path, owner, repo, branch } = payload;
     
     // Check if payload has all required fields
@@ -464,10 +470,12 @@ export class Coder extends Agent<Env, CoderState> {
    * Only performs the file fetching and summarization, without calling infer().
    */
   public async scheduledSummarizeFile(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
-    // STATE LOGGING
+    // STATE LOGGING - avoid logging any tokens
     console.log(`[scheduledSummarizeFile STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
     
-    console.log(`[scheduledSummarizeFile] Executing for path: ${payload.path}`);
+    // Create a safe copy of the payload without any potential tokens
+    const safePath = payload.path;
+    console.log(`[scheduledSummarizeFile] Executing for path: ${safePath}`);
     const { path, owner, repo, branch } = payload;
     
     // Check if payload has all required fields
@@ -563,9 +571,27 @@ export class Coder extends Agent<Env, CoderState> {
   onMessage(connection: Connection, message: WSMessage) {
     try {
       const parsedMessage = JSON.parse(message as string);
-      console.log("ON MESSAGE RECEIVED:", parsedMessage);
+      
+      // Create a safe copy for logging that redacts sensitive information
+      const safeMessageForLogging = { ...parsedMessage };
+      if (safeMessageForLogging.githubToken) {
+        safeMessageForLogging.githubToken = "[REDACTED]";
+      }
+      
+      // If there's a user message, include it but don't log full content
+      if (safeMessageForLogging.userMessage) {
+        const userMsg = safeMessageForLogging.userMessage;
+        safeMessageForLogging.userMessage = {
+          ...userMsg,
+          content: userMsg.content ? 
+            (userMsg.content.length > 50 ? userMsg.content.substring(0, 50) + '...' : userMsg.content) 
+            : '[no content]'
+        };
+      }
+      
+      console.log("ON MESSAGE RECEIVED:", safeMessageForLogging);
 
-      // --- Add Command Handling ---
+      // --- Command Handling ---
       if (parsedMessage.type === 'command' && parsedMessage.command) {
         console.log(`Processing command: ${parsedMessage.command}`);
         switch (parsedMessage.command) {
@@ -586,7 +612,7 @@ export class Coder extends Agent<Env, CoderState> {
       }
       // --- End Command Handling ---
 
-      // --- Existing GitHub Token Logic ---
+      // --- GitHub Token Logic ---
       // Check if it's a message containing the token
       if (parsedMessage.githubToken) {
         console.log("Processing githubToken update...");
@@ -599,12 +625,13 @@ export class Coder extends Agent<Env, CoderState> {
         return; // Exit after processing token
       }
 
-      // If message is none of the above, log a warning
-      console.warn("Received unhandled message structure via send():", parsedMessage);
+      // If message is none of the above, log a warning with safe data
+      console.warn("Received unhandled message structure via send():", safeMessageForLogging);
 
     } catch (error) {
       console.error("Error processing received message:", error);
-      console.error("Raw message data:", message);
+      // Don't log raw message data as it might contain tokens
+      console.error("Error parsing message - message is not logged for security");
     }
   }
 
@@ -834,7 +861,11 @@ export class Coder extends Agent<Env, CoderState> {
   private async updateCodebaseStructure(path: string, content: string | null, nodeType: 'file' | 'directory' = 'file') {
     console.log(`[updateCodebaseStructure] Starting for path: ${path}, nodeType: ${nodeType}`);
     console.log(`[updateCodebaseStructure] Content length: ${content ? content.length : 'null'}`);
-    console.log(`[updateCodebaseStructure] Current state keys: ${Object.keys(this.state || {}).join(', ')}`);
+    
+    // Safely log state keys without exposing sensitive data
+    const safeStateKeys = Object.keys(this.state || {})
+      .filter(key => key !== 'githubToken' && key !== 'token' && !key.toLowerCase().includes('token'));
+    console.log(`[updateCodebaseStructure] Current state keys: ${safeStateKeys.join(', ')}`);
     console.log(`[updateCodebaseStructure] Codebase exists: ${!!this.state.codebase}`);
 
     let summary = null;
