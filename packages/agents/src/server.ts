@@ -542,174 +542,189 @@ export class Coder extends Agent<Env, CoderState> {
         });
       }
 
-      // Process tool calls and results from the steps array
+      // Process tool calls and results from the steps array - consolidated approach
+      const toolInfoMap = new Map<string, { call: any; result?: any }>();
+
       if (result.steps && result.steps.length > 0) {
-        console.log("[Steps Loop] Processing steps array...");
+        console.log("[Consolidate] Processing steps to gather tool info...");
         for (const step of result.steps) {
-          console.log(`[Steps Loop] Processing step with type: ${step.stepType}, finishReason: ${step.finishReason}`);
-
-          // Check for tool calls within this step
+          console.log(`[Consolidate] Processing step with type: ${step.stepType}, finishReason: ${step.finishReason}`);
+          
+          // Collect tool calls from this step
           if (step.toolCalls && step.toolCalls.length > 0) {
-            console.log(`[Steps Loop] Found ${step.toolCalls.length} toolCalls in this step.`);
             for (const toolCall of step.toolCalls) {
-              console.log(`[Steps Loop] Processing toolCall: ${toolCall.toolName}`);
-              // @ts-ignore - Assuming similar structure, adjust if needed
-              const toolCallId = toolCall.toolCallId;
-
-              // First try to find the corresponding toolResult in the top-level result.toolResults
               // @ts-ignore
-              let toolResult = result.toolResults?.find(r => r.toolCallId === toolCallId);
-              console.log(`[Steps Loop] Found corresponding toolResult in top-level results: ${!!toolResult}`);
-              
-              // If not found in top level, look through all steps for a matching toolResult
-              if (!toolResult) {
-                for (const resultStep of result.steps) {
-                  if (resultStep.toolResults && resultStep.toolResults.length > 0) {
-                    // @ts-ignore
-                    const stepToolResult = resultStep.toolResults.find(r => r.toolCallId === toolCallId);
-                    if (stepToolResult) {
-                      toolResult = stepToolResult;
-                      console.log(`[Steps Loop] Found corresponding toolResult in step results`);
-                      break;
-                    }
-                  }
-                }
+              const toolCallId = toolCall.toolCallId;
+              if (toolCallId && !toolInfoMap.has(toolCallId)) {
+                // Only store the first call encountered for an ID
+                toolInfoMap.set(toolCallId, { call: toolCall });
+                console.log(`[Consolidate] Stored call for ${toolCallId} (${toolCall.toolName})`);
               }
-
-              // Log the tool call details
-              console.log(`[Steps Loop] Tool Call ID: ${toolCallId || 'undefined'}`);
-              console.log(`[Steps Loop] Tool Name: ${toolCall.toolName || 'undefined'}`);
-              console.log(`[Steps Loop] Tool Args: ${JSON.stringify(toolCall.args || {})}`);
-
-              // Add the tool call part to the message
-              messageParts.push({
-                type: 'tool-invocation' as const,
-                toolInvocation: {
-                  state: 'call' as const,
-                  toolCallId: toolCallId,
-                  toolName: toolCall.toolName as any,
-                  args: toolCall.args
-                }
-              });
-
-              // Add observation for tool usage
-              this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
-
-              // If we found a corresponding tool result, process it
-              if (toolResult) {
-                console.log(`[Steps Loop] Tool Result ID: ${toolResult.toolCallId || 'undefined'}`);
-                console.log(`[Steps Loop] Tool Result Type: ${typeof toolResult.result}`);
-                console.log(`[Steps Loop] Tool Result Length: ${typeof toolResult.result === 'string' ? toolResult.result.length : 'not a string'}`);
-                
-                // Add the tool result part to the message
-                messageParts.push({
-                  type: 'tool-invocation' as const,
-                  toolInvocation: {
-                    state: 'result' as const,
-                    toolCallId: toolCallId,
-                    toolName: toolCall.toolName as any,
-                    args: toolCall.args,
-                    result: toolResult.result
-                  }
-                });
-
-                // Add observation for tool result
-                const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
-                  ? `${toolResult.result.substring(0, 50)}...`
-                  : JSON.stringify(toolResult.result).substring(0, 50) + '...';
-                  
-                this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
-
-                // Update codebase structure if it was a file contents tool
-                console.log(`[Steps Loop] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
-                if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
-                  console.log('[Steps Loop] Condition MET for updateCodebaseStructure');
-                  
-                  const args = toolCall.args as { path?: string };
-                  console.log(`[Steps Loop] Args path: ${args.path || 'undefined'}`);
-                  
-                  if (args.path) {
-                    console.log(`[Steps Loop] Calling updateCodebaseStructure for path: ${args.path}`);
-                    
-                    try {
-                      // Call the enhanced method with the file content
-                      await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
-                      // Also set current file
-                      this.setCurrentFile(args.path);
-                      console.log(`[Steps Loop] Successfully completed updateCodebaseStructure for ${args.path}`);
-                    } catch (error) {
-                      console.error(`[Steps Loop] Error in updateCodebaseStructure: ${error}`);
-                    }
-                  } else {
-                    console.log('[Steps Loop] Missing path in args');
-                  }
-                } else {
-                  console.log('[Steps Loop] Condition FAILED for updateCodebaseStructure');
-                  console.log(`  - toolName === 'get_file_contents': ${toolCall.toolName === 'get_file_contents'}`);
-                  console.log(`  - typeof args === 'object': ${typeof toolCall.args === 'object'}`);
-                  console.log(`  - toolResult.result is truthy: ${!!toolResult.result}`);
-                }
-              } else {
-                console.log(`[Steps Loop] No toolResult found for toolCallId: ${toolCallId}`);
+            }
+          }
+          
+          // Collect tool results from this step
+          if (step.toolResults && step.toolResults.length > 0) {
+            for (const toolResult of step.toolResults) {
+              // @ts-ignore
+              const toolCallId = toolResult.toolCallId;
+              const existingInfo = toolInfoMap.get(toolCallId);
+              if (toolCallId && existingInfo) {
+                // Add the result to the existing call info
+                existingInfo.result = toolResult;
+                console.log(`[Consolidate] Added result for ${toolCallId}`);
+              } else if (toolCallId) {
+                // If result appears without a prior call (unlikely but possible)
+                console.warn(`[Consolidate] Found toolResult for ${toolCallId} without a preceding call.`);
+              }
+            }
+          }
+        } // end loop through steps
+        
+        // Also look for results in the top-level result.toolResults
+        if (result.toolResults && result.toolResults.length > 0) {
+          for (const toolResult of result.toolResults) {
+            // @ts-ignore
+            const toolCallId = toolResult.toolCallId;
+            const existingInfo = toolInfoMap.get(toolCallId);
+            if (toolCallId && existingInfo) {
+              // Add the result to the existing call info (if not already set)
+              if (!existingInfo.result) {
+                existingInfo.result = toolResult;
+                console.log(`[Consolidate] Added result from top-level for ${toolCallId}`);
               }
             }
           }
         }
       } else {
-        console.log("[Steps Loop] No steps array found or it is empty.");
+        console.log("[Consolidate] No steps array found or it is empty.");
         
         // Fall back to the original approach if steps array is empty
         if (result.toolCalls && result.toolCalls.length > 0) {
-          console.log("[Fallback] Using original toolCalls approach since steps array is empty");
+          console.log("[Consolidate] Using original toolCalls array as fallback");
           for (const toolCall of result.toolCalls) {
-            console.log(`[Fallback] Processing toolCall: ${toolCall.toolName}`);
-            
-            // @ts-ignore - toolCall type issue
-            const toolResult = result.toolResults?.find(r => r.toolCallId === toolCall.toolCallId);
-            console.log(`[Fallback] Found toolResult: ${!!toolResult}`);
-            
-            // Add the tool call
-            messageParts.push({
-              type: 'tool-invocation' as const,
-              toolInvocation: {
-                state: 'call' as const,
-                // @ts-ignore - toolCall type issue
-                toolCallId: toolCall.toolCallId,
-                toolName: toolCall.toolName as "getWeatherInformation",
-                args: toolCall.args
-              }
-            });
-
-            // Add observation for tool usage
-            this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
-
-            // Process tool result if available
-            if (toolResult) {
-              messageParts.push({
-                type: 'tool-invocation' as const,
-                toolInvocation: {
-                  state: 'result' as const,
-                  // @ts-ignore - toolCall type issue
-                  toolCallId: toolCall.toolCallId,
-                  toolName: toolCall.toolName as "getWeatherInformation",
-                  args: toolCall.args,
-                  // @ts-ignore - toolResult type issue
-                  result: toolResult.result
-                }
-              });
-
-              // Process file content tool results
-              if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
-                const args = toolCall.args as { path?: string };
-                if (args.path) {
-                  await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
-                  this.setCurrentFile(args.path);
+            // @ts-ignore
+            const toolCallId = toolCall.toolCallId;
+            if (toolCallId) {
+              toolInfoMap.set(toolCallId, { call: toolCall });
+              
+              // Try to find matching result in top-level results
+              if (result.toolResults && result.toolResults.length > 0) {
+                // @ts-ignore
+                const toolResult = result.toolResults.find(r => r.toolCallId === toolCallId);
+                if (toolResult) {
+                  const info = toolInfoMap.get(toolCallId);
+                  if (info) {
+                    info.result = toolResult;
+                  }
                 }
               }
             }
           }
         }
       }
+
+      // Now, iterate through the consolidated map to build messageParts
+      console.log(`[Build Parts] Processing ${toolInfoMap.size} consolidated tool invocations.`);
+      for (const [toolCallId, info] of toolInfoMap.entries()) {
+        const { call: toolCall, result: toolResult } = info;
+
+        // If we have a result, push ONLY the result part
+        if (toolResult) {
+          console.log(`[Build Parts] Adding 'result' part for ${toolCallId}`);
+          messageParts.push({
+            type: 'tool-invocation' as const,
+            toolInvocation: {
+              state: 'result' as const,
+              toolCallId: toolCallId,
+              toolName: toolCall.toolName as any,
+              args: toolCall.args,
+              result: toolResult.result
+            }
+          });
+          
+          // Add observation for tool result
+          const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
+            ? `${toolResult.result.substring(0, 50)}...`
+            : JSON.stringify(toolResult.result).substring(0, 50) + '...';
+          this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
+
+          // --- Update codebase logic ---
+          console.log(`[Build Parts] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
+          if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
+            console.log('[Build Parts] Condition MET for updateCodebaseStructure');
+            
+            const args = toolCall.args as { path?: string };
+            // Extract file content correctly from the GitHub API result object
+            const fileContentObj = toolResult.result;
+            console.log('[Build Parts] File content type:', typeof fileContentObj);
+            console.log('[Build Parts] File content structure:', JSON.stringify(fileContentObj).substring(0, 100) + '...');
+            
+            let fileContentDecoded: string | null = null;
+            
+            // Handle different result formats (string vs. object with content property)
+            if (typeof fileContentObj === 'string') {
+              fileContentDecoded = fileContentObj;
+              console.log(`[Build Parts] Using direct string content (length: ${fileContentDecoded.length})`);
+            } else if (typeof fileContentObj === 'object' && fileContentObj !== null) {
+              const fileContentBase64 = (fileContentObj as any)?.content;
+              if (typeof fileContentBase64 === 'string') {
+                try {
+                  // Decode base64 content
+                  fileContentDecoded = atob(fileContentBase64.replace(/\n/g, '')); 
+                  console.log(`[Build Parts] Decoded base64 content successfully (length: ${fileContentDecoded.length})`);
+                } catch (e) {
+                  console.error(`[Build Parts] Error decoding base64 content for ${args.path}:`, e);
+                  // Fallback to using the raw string
+                  fileContentDecoded = fileContentBase64;
+                  console.log(`[Build Parts] Using raw content string as fallback`);
+                }
+              } else {
+                console.log(`[Build Parts] No content property found, using full object stringified`);
+                fileContentDecoded = JSON.stringify(fileContentObj, null, 2);
+              }
+            } else {
+              console.log(`[Build Parts] File content in tool result was not a string or object.`);
+            }
+
+            console.log(`[Build Parts] Args path: ${args.path || 'undefined'}`);
+            if (args.path && fileContentDecoded) {
+              console.log(`[Build Parts] Calling updateCodebaseStructure for path: ${args.path}`);
+              try {
+                // Pass the decoded content
+                await this.updateCodebaseStructure(args.path, fileContentDecoded, 'file');
+                this.setCurrentFile(args.path);
+                console.log(`[Build Parts] Successfully completed updateCodebaseStructure for ${args.path}`);
+              } catch (error) {
+                console.error(`[Build Parts] Error in updateCodebaseStructure: ${error}`);
+              }
+            } else {
+              console.log('[Build Parts] Missing path in args or no file content extracted');
+            }
+          } else {
+            console.log('[Build Parts] Condition FAILED for updateCodebaseStructure');
+            console.log(`  - toolName === 'get_file_contents': ${toolCall.toolName === 'get_file_contents'}`);
+            console.log(`  - typeof args === 'object': ${typeof toolCall.args === 'object'}`);
+            console.log(`  - toolResult.result is truthy: ${!!toolResult.result}`);
+          }
+          // --- End Update codebase logic ---
+        } else {
+          // If we only have the call (tool hasn't finished or result wasn't found), push the call part
+          console.log(`[Build Parts] Adding 'call' part for ${toolCallId}`);
+          messageParts.push({
+            type: 'tool-invocation' as const,
+            toolInvocation: {
+              state: 'call' as const,
+              toolCallId: toolCallId,
+              toolName: toolCall.toolName as any,
+              args: toolCall.args
+            }
+          });
+          
+          // Add observation for tool usage (call initiated)
+          this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
+        }
+      } // end loop through consolidated map
 
       // Add a thought about the interaction
       if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
