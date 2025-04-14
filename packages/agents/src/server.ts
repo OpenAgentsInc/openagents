@@ -14,6 +14,7 @@ import { z } from "zod";
 
 const openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY })
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");
+const smallModel = openrouter("openai/gpt-4o-mini");
 
 export const agentContext = new AsyncLocalStorage<Coder>();
 
@@ -89,7 +90,7 @@ export class Coder extends Agent<Env, CoderState> {
         newMessage
       ],
     });
-    
+
     // now infer based on this message
     await this.infer();
   }
@@ -98,12 +99,12 @@ export class Coder extends Agent<Env, CoderState> {
     const parsedMessage = JSON.parse(message as string);
     console.log("IN ON MESSAGE AND HAVE PARSED MESSAGE", parsedMessage);
     const githubToken = parsedMessage.githubToken;
-    
+
     // Store the githubToken in state, preserving other state
     this.updateState({
       githubToken
     });
-    
+
     this.infer();
   }
 
@@ -115,13 +116,13 @@ export class Coder extends Agent<Env, CoderState> {
   })
   async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
     console.log(`Setting repository context to ${owner}/${repo} on branch ${branch}`);
-    
+
     this.updateState({
       currentRepoOwner: owner,
       currentRepoName: repo,
       currentBranch: branch,
     });
-    
+
     return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
   }
 
@@ -135,12 +136,12 @@ export class Coder extends Agent<Env, CoderState> {
       status: 'pending',
       created: new Date(),
     };
-    
+
     this.updateState({
       tasks: [...(this.state.tasks || []), newTask],
       observations: [...(this.state.observations || []), `New task added: ${description}`]
     });
-    
+
     return newTask.id;
   }
 
@@ -151,7 +152,7 @@ export class Coder extends Agent<Env, CoderState> {
     try {
       // Enhance prompt with current context
       let contextPrompt = `Based on the following request or user message, define a clear, actionable coding task: "${prompt.trim()}"\n\n`;
-      
+
       // Add repository context if available
       if (this.state.currentRepoOwner && this.state.currentRepoName) {
         contextPrompt += `Repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}\n`;
@@ -159,12 +160,12 @@ export class Coder extends Agent<Env, CoderState> {
           contextPrompt += `Branch: ${this.state.currentBranch}\n`;
         }
       }
-      
+
       // Add current file context if available
       if (this.state.workingFilePath) {
         contextPrompt += `Currently focused on file: ${this.state.workingFilePath}\n`;
       }
-      
+
       // Add existing task context if available
       if (this.state.tasks && this.state.tasks.length > 0) {
         contextPrompt += `\nExisting tasks:\n`;
@@ -175,10 +176,10 @@ export class Coder extends Agent<Env, CoderState> {
           contextPrompt += `- ... (${this.state.tasks.length - 3} more tasks)\n`;
         }
       }
-      
+
       // Add instruction for task quality
       contextPrompt += `\nCreate a SPECIFIC, ACTIONABLE coding task. Break it down into clear subtasks where appropriate.`;
-      
+
       const { object: newTaskInfo } = await generateObject({
         model: model,
         schema: NewTaskSchema,
@@ -211,7 +212,7 @@ export class Coder extends Agent<Env, CoderState> {
    */
   private updateTaskStatus(taskId: string, status: Task['status'], notes?: string) {
     if (!this.state.tasks) return false;
-    
+
     const updatedTasks = this.state.tasks.map(task => {
       if (task.id === taskId) {
         return {
@@ -224,12 +225,12 @@ export class Coder extends Agent<Env, CoderState> {
       }
       return task;
     });
-    
+
     this.updateState({
       tasks: updatedTasks,
       observations: [...(this.state.observations || []), `Task ${taskId} status changed to ${status}`]
     });
-    
+
     return true;
   }
 
@@ -241,22 +242,22 @@ export class Coder extends Agent<Env, CoderState> {
       // Get recent context to enrich the prompt
       const recentMessages = this.state.messages?.slice(-3) || [];
       const currentFile = this.state.workingFilePath || '';
-      const currentRepo = this.state.currentRepoOwner && this.state.currentRepoName ? 
+      const currentRepo = this.state.currentRepoOwner && this.state.currentRepoName ?
         `${this.state.currentRepoOwner}/${this.state.currentRepoName}` : '';
-      
+
       // Build a context-rich prompt
       let contextPrompt = `Based on the current context and the goal "${prompt}", what is your immediate thought process, potential next action, or any clarifying questions?`;
-      
+
       // Add file context if available
       if (currentFile) {
         contextPrompt += `\nCurrently focused on file: ${currentFile}`;
       }
-      
+
       // Add repo context if available
       if (currentRepo) {
         contextPrompt += `\nWorking in repository: ${currentRepo}${this.state.currentBranch ? ` (branch: ${this.state.currentBranch})` : ''}`;
       }
-      
+
       // Add recent message context
       if (recentMessages.length > 0) {
         contextPrompt += '\n\nRecent messages:';
@@ -264,7 +265,7 @@ export class Coder extends Agent<Env, CoderState> {
           contextPrompt += `\n${msg.role}: ${msg.content?.substring(0, 100)}${msg.content && msg.content.length > 100 ? '...' : ''}`;
         });
       }
-      
+
       // Generate a structured thought based on the enriched prompt
       const { object: planning } = await generateObject({
         model: model,
@@ -310,31 +311,31 @@ export class Coder extends Agent<Env, CoderState> {
     console.log(`[updateCodebaseStructure] Content length: ${content ? content.length : 'null'}`);
     console.log(`[updateCodebaseStructure] Current state keys: ${Object.keys(this.state || {}).join(', ')}`);
     console.log(`[updateCodebaseStructure] Codebase exists: ${!!this.state.codebase}`);
-    
+
     let summary = null;
     if (nodeType === 'file' && content) {
       try {
         console.log(`[updateCodebaseStructure] Preparing to generate file summary`);
-        
+
         // Create a comprehensive prompt for generating a structured file summary
         let contextPrompt = `Analyze the following code file located at '${path}' and generate a structured summary. `;
-        
+
         // Add file extension info
         const fileExtension = path.split('.').pop()?.toLowerCase();
         if (fileExtension) {
           contextPrompt += `This is a ${fileExtension} file. `;
         }
-        
+
         // Add repository context
         if (this.state.currentRepoOwner && this.state.currentRepoName) {
           contextPrompt += `File is from repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}${this.state.currentBranch ? ` (branch: ${this.state.currentBranch})` : ''}. `;
         }
-        
+
         // Add specific instructions based on file type
         contextPrompt += '\nPlease provide: \n';
         contextPrompt += '1. A concise summary (1-3 sentences) of the file\'s purpose and functionality\n';
         contextPrompt += '2. Appropriate tags categorizing this file (minimum 3 tags)\n';
-        
+
         if (fileExtension === 'js' || fileExtension === 'ts' || fileExtension === 'tsx') {
           contextPrompt += '3. A list of key exports (functions, classes, components, constants)\n';
           contextPrompt += '4. Important dependencies (imports) this file relies on\n';
@@ -352,28 +353,28 @@ export class Coder extends Agent<Env, CoderState> {
           contextPrompt += '4. Related files or systems\n';
           contextPrompt += '5. Assess the complexity (low/medium/high)\n';
         }
-        
+
         // Add examples of good tag types
         contextPrompt += `\nUse appropriate tags from categories such as: "component", "api", "utility", "state-management", "auth", "ui", "database", "config", "tool", "model", "type-definition", "server", "client", "test", etc. Be specific to the file's role in the codebase.\n`;
-        
+
         // Limit content length for faster processing
         const contentForAI = content.substring(0, 3000); // Using 3000 instead of 2000 for better context
         contextPrompt += `\n\`\`\`\n${contentForAI}\n\`\`\``;
-        
+
         // Add additional constraint for consistent output
-        contextPrompt += '\nKeep your summary focused on the technical details and main functionality, avoiding subjective judgments about code quality unless there are obvious issues.'; 
-        
+        contextPrompt += '\nKeep your summary focused on the technical details and main functionality, avoiding subjective judgments about code quality unless there are obvious issues.';
+
         console.log(`[updateCodebaseStructure] Calling generateObject`);
-        
+
         const { object } = await generateObject({
           model: model,
           schema: FileSummarySchema,
           prompt: contextPrompt
         });
-        
+
         console.log(`[updateCodebaseStructure] generateObject returned result: ${!!object}`);
         console.log(`[updateCodebaseStructure] Generated summary: ${object?.summary?.substring(0, 50) || 'none'}`);
-        
+
         summary = object;
       } catch (error) {
         console.error(`[updateCodebaseStructure] Error generating file summary for ${path}:`, error);
@@ -475,7 +476,7 @@ export class Coder extends Agent<Env, CoderState> {
         temperature: 0.7,
         maxSteps: 5,
       });
-      
+
       // Debug logging for result structure
       console.log("[Debug] Text response exists:", !!result.text);
       console.log("[Debug] Text response length:", result.text?.length || 0);
@@ -484,19 +485,19 @@ export class Coder extends Agent<Env, CoderState> {
       console.log("[Debug] Tool results exist:", !!result.toolResults);
       console.log("[Debug] Tool results length:", result.toolResults?.length || 0);
       console.log("[Debug] Finish reason:", result.finishReason || "unknown");
-      
+
       // Log steps array information
       console.log("[Debug] Steps array exists:", !!result.steps);
       console.log("[Debug] Steps array length:", result.steps?.length || 0);
       if (result.steps && result.steps.length > 0) {
         console.log("[Debug] Steps array content:", JSON.stringify(result.steps, null, 2));
       }
-      
+
       // Log full tool calls structure if it exists
       if (result.toolCalls && result.toolCalls.length > 0) {
         console.log("[Debug] Tool calls:", JSON.stringify(result.toolCalls, null, 2));
       }
-      
+
       // Log full tool results structure if it exists
       if (result.toolResults && result.toolResults.length > 0) {
         console.log("[Debug] Tool results:", JSON.stringify(result.toolResults, null, 2));
@@ -504,27 +505,27 @@ export class Coder extends Agent<Env, CoderState> {
 
       // Add observation for the response and analyze for potential tasks
       if (result.text) {
-        const snippet = result.text.length > 50 
-          ? `${result.text.substring(0, 50)}...` 
+        const snippet = result.text.length > 50
+          ? `${result.text.substring(0, 50)}...`
           : result.text;
-          
+
         this.addAgentObservation(`Generated response: ${snippet}`);
-        
+
         // Check if this is in response to a user message requiring a task
         if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
           const lastUserMessage = messages[messages.length - 1].content || '';
           const taskIndicators = [
-            'implement', 'create', 'build', 'fix', 'add', 'refactor', 'optimize', 
+            'implement', 'create', 'build', 'fix', 'add', 'refactor', 'optimize',
             'update', 'develop', 'design', 'setup', 'write'
           ];
-          
+
           // Check if the user message suggests a coding task
-          if (taskIndicators.some(indicator => 
+          if (taskIndicators.some(indicator =>
             lastUserMessage.toLowerCase().includes(indicator)) &&
-            (lastUserMessage.includes('code') || lastUserMessage.includes('function') || 
-             lastUserMessage.includes('class') || lastUserMessage.includes('file') || 
-             lastUserMessage.includes('component'))) {
-            
+            (lastUserMessage.includes('code') || lastUserMessage.includes('function') ||
+              lastUserMessage.includes('class') || lastUserMessage.includes('file') ||
+              lastUserMessage.includes('component'))) {
+
             // Create a task based on the user's request
             await this.generateAndAddTask(lastUserMessage);
           }
@@ -550,7 +551,7 @@ export class Coder extends Agent<Env, CoderState> {
         console.log("[Consolidate] Processing steps to gather tool info...");
         for (const step of result.steps) {
           console.log(`[Consolidate] Processing step with type: ${step.stepType}, finishReason: ${step.finishReason}`);
-          
+
           // Collect tool calls from this step
           if (step.toolCalls && step.toolCalls.length > 0) {
             for (const toolCall of step.toolCalls) {
@@ -563,7 +564,7 @@ export class Coder extends Agent<Env, CoderState> {
               }
             }
           }
-          
+
           // Collect tool results from this step
           if (step.toolResults && step.toolResults.length > 0) {
             for (const toolResult of step.toolResults) {
@@ -581,7 +582,7 @@ export class Coder extends Agent<Env, CoderState> {
             }
           }
         } // end loop through steps
-        
+
         // Also look for results in the top-level result.toolResults
         if (result.toolResults && result.toolResults.length > 0) {
           for (const toolResult of result.toolResults) {
@@ -599,7 +600,7 @@ export class Coder extends Agent<Env, CoderState> {
         }
       } else {
         console.log("[Consolidate] No steps array found or it is empty.");
-        
+
         // Fall back to the original approach if steps array is empty
         if (result.toolCalls && result.toolCalls.length > 0) {
           console.log("[Consolidate] Using original toolCalls array as fallback");
@@ -608,7 +609,7 @@ export class Coder extends Agent<Env, CoderState> {
             const toolCallId = toolCall.toolCallId;
             if (toolCallId) {
               toolInfoMap.set(toolCallId, { call: toolCall });
-              
+
               // Try to find matching result in top-level results
               if (result.toolResults && result.toolResults.length > 0) {
                 // @ts-ignore
@@ -634,7 +635,7 @@ export class Coder extends Agent<Env, CoderState> {
         if (toolCall) {
           // Add observation for tool usage
           this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
-          
+
           // If we have a result, add it to messageParts and process it for state updates
           if (toolResult) {
             console.log(`[Process Tools] Adding 'result' part for ${toolCallId} to messageParts`);
@@ -649,7 +650,7 @@ export class Coder extends Agent<Env, CoderState> {
                 result: toolResult.result
               }
             });
-            
+
             // Add observation for tool result
             const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
               ? `${toolResult.result.substring(0, 50)}...`
@@ -660,31 +661,31 @@ export class Coder extends Agent<Env, CoderState> {
             console.log(`[Process Tools] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
             if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
               console.log('[Process Tools] Condition MET for updateCodebaseStructure');
-              
+
               const args = toolCall.args as { path?: string };
-              
+
               // Extract the content from the GitHub API response
               let fileContentDecoded: string | null = null;
-              
+
               // First check if toolResult.result is already a string (direct content)
               if (typeof toolResult.result === 'string') {
                 console.log(`[Process Tools] Tool result is already a string, using directly`);
                 fileContentDecoded = toolResult.result;
-              } 
+              }
               // Check if it's a GitHub API response object with content field
               else if (toolResult.result && typeof toolResult.result === 'object') {
                 console.log(`[Process Tools] Tool result is an object, looking for content field`);
-                
+
                 const resultObj = toolResult.result as any;
-                
+
                 // Check if the object has a content property (typical GitHub API response)
                 if (resultObj.content && typeof resultObj.content === 'string') {
                   console.log(`[Process Tools] Found content field (length: ${resultObj.content.length})`);
-                  
+
                   // Check if it's base64 encoded (GitHub API typically encodes content)
                   if (resultObj.encoding === 'base64') {
                     console.log(`[Process Tools] Content is base64 encoded, attempting to decode`);
-                    
+
                     try {
                       // Most robust approach - try TextDecoder
                       const cleanBase64 = resultObj.content.replace(/\s/g, '');
@@ -693,7 +694,7 @@ export class Coder extends Agent<Env, CoderState> {
                       console.log(`[Process Tools] Successfully decoded content with TextDecoder (length: ${fileContentDecoded.length})`);
                     } catch (e) {
                       console.error(`[Process Tools] Error decoding with TextDecoder:`, e);
-                      
+
                       // Fallback to simpler method
                       try {
                         console.log(`[Process Tools] Trying alternative decode method...`);
