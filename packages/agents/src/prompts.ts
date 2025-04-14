@@ -162,7 +162,8 @@ ${scratchpad}`;
 5. MAINTAIN ERROR HANDLING and proper testing
 6. BE AUTONOMOUS - solve problems independently when possible
 7. REPORT DETAILED PROGRESS and explain your decisions
-8. EXECUTE TASKS systematically and step-by-step`;
+8. EXECUTE TASKS systematically and step-by-step
+9. CONTINUOUS RUN: When operating in continuous run mode (triggered by startContinuousRun), focus on performing the exploration/analysis steps for the current cycle. The rescheduling of the next cycle is handled automatically by the continueInfer function; you do not need to use the scheduleTask tool for self-rescheduling during a continuous run.`;
 
   // Add temperature hint
   if (temperature < 0.3) {

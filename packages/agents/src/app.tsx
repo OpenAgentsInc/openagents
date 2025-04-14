@@ -109,24 +109,24 @@ export default function Chat() {
   });
   
   // Handle toggling continuous run
-  const handleToggleContinuousRun = async () => {
+  const handleToggleContinuousRun = () => { // Make it non-async, send is usually fire-and-forget
     if (!agent || connectionStatus !== 'connected') return;
 
     const currentlyActive = rawState?.isContinuousRunActive || false;
-    console.log(`Toggling continuous run. Currently active: ${currentlyActive}`);
+    const command = currentlyActive ? 'stopContinuousRun' : 'startContinuousRun';
+    console.log(`Sending command: ${command}`);
 
     try {
-      if (currentlyActive) {
-        await agent.stopContinuousRun(); // Call backend method
-        console.log("Called stopContinuousRun");
-      } else {
-        await agent.startContinuousRun(); // Call backend method
-        console.log("Called startContinuousRun");
-      }
+      // Send a structured command message via WebSocket
+      agent.send(JSON.stringify({
+        type: 'command',
+        command: command,
+      }));
+      console.log(`Sent ${command} command via WebSocket`);
       // State update will come via onStateUpdate, no need to set locally here
     } catch (error) {
-      console.error("Error toggling continuous run:", error);
-      setConnectionError(`Failed to ${currentlyActive ? 'stop' : 'start'} continuous run: ${error.message || 'Unknown error'}`);
+      console.error(`Error sending ${command} command:`, error);
+      setConnectionError(`Failed to send ${command} command: ${error.message || 'Unknown error'}`);
     }
   };
 

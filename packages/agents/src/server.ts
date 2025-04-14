@@ -98,40 +98,421 @@ export class Coder extends Agent<Env, CoderState> {
   }
   
   /**
-   * Continues agent execution by running infer and scheduling the next run
-   * This enables long-running or overnight processing
+   * Decides the next action for the continuous run, schedules it,
+   * and reschedules itself.
    */
   public async continueInfer(payload?: any) {
-    console.log(`[continueInfer] Agent waking up. Payload: ${JSON.stringify(payload)}`);
-    try {
-      // Perform main thinking loop
-      await this.infer();
+    // STATE LOGGING
+    console.log(`[continueInfer STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
+    
+    console.log(`[continueInfer] Cycle start. Active: ${this.state.isContinuousRunActive}. Payload: ${JSON.stringify(payload)}`);
+    if (!this.state.isContinuousRunActive) {
+      console.log(`[continueInfer] Run inactive. Stopping.`);
+      return;
+    }
 
-      // Check if we should continue running (based on state flag)
-      if (this.state.isContinuousRunActive) {
-        const delayInSeconds = 60; // Run again in 60 seconds
-        console.log(`[continueInfer] Rescheduling self in ${delayInSeconds} seconds.`);
-        await this.schedule(delayInSeconds, 'continueInfer', { reason: 'continuous execution' });
+    try {
+      // --- Decide NEXT SINGLE Action ---
+      const nextAction = this.planNextExplorationStep();
+
+      if (nextAction) {
+        console.log(`[continueInfer] Planning next action: ${nextAction.type} - ${nextAction.path || nextAction.description}`);
+
+        // Schedule the *specific* action using its own method and payload
+        // Use a short delay for the action itself (e.g., 5 seconds)
+        await this.schedule(5, // Short delay to execute the action soon
+          nextAction.type === 'listFiles' ? 'scheduledListFiles' : 'scheduledSummarizeFile',
+          nextAction.payload
+        );
+        this.addAgentObservation(`Scheduled next action: ${nextAction.type} for ${nextAction.path || 'N/A'}`);
       } else {
-        console.log(`[continueInfer] Not rescheduling - continuous run inactive.`);
+        console.log("[continueInfer] No further exploration steps planned for now.");
+        // Add generic observation about continuing exploration
+        this.addAgentObservation("No specific exploration step found. Waiting for next planning cycle.");
+        
+        // We don't schedule any immediate action in this case
+        // Just let the next planning cycle happen after the standard delay
+      }
+
+      // --- Reschedule continueInfer for the *next planning cycle* ---
+      const planningIntervalSeconds = 120; // Longer interval (2 minutes) for planning the next step
+      console.log(`[continueInfer] Rescheduling planning cycle in ${planningIntervalSeconds} seconds.`);
+      await this.schedule(planningIntervalSeconds, 'continueInfer', { reason: 'next planning cycle' });
+
+    } catch (error) {
+      console.error("[continueInfer] Error during planning or scheduling:", error);
+      // Reschedule self even on error
+      if (this.state.isContinuousRunActive) {
+        const errorDelaySeconds = 300;
+        console.log(`[continueInfer] Rescheduling planning cycle after error in ${errorDelaySeconds} seconds.`);
+        await this.schedule(errorDelaySeconds, 'continueInfer', { reason: 'error recovery planning' });
+      }
+    }
+  }
+  
+  /**
+   * Method to determine the next exploration step.
+   */
+  private planNextExplorationStep(): { type: 'listFiles' | 'summarizeFile'; path?: string; description?: string; payload: any } | null {
+    console.log("[planNextExplorationStep] Deciding next step...");
+    
+    // CHECK FOR REPOSITORY CONTEXT
+    if (!this.state.currentRepoOwner || !this.state.currentRepoName) {
+      console.warn("[planNextExplorationStep] Repository context (owner/name) not set. Cannot plan file/dir actions.");
+      // Add an observation asking the user to set context
+      this.addAgentObservation("Please set the repository context using 'setRepositoryContext' before starting exploration.");
+      // Since we can't proceed without repo context, consider stopping the continuous run
+      this.stopContinuousRun().catch(e => console.error("Error stopping continuous run after missing repo context:", e));
+      return null; // Cannot plan without context
+    }
+    
+    // Get current state of exploration
+    const codebaseStructure = this.state.codebase?.structure || {};
+    const filesExplored = Object.values(codebaseStructure).filter(file => file.type === 'file');
+    const directoriesExplored = Object.values(codebaseStructure).filter(file => file.type === 'directory');
+    
+    console.log(`[planNextExplorationStep] Files explored: ${filesExplored.length}, Directories explored: ${directoriesExplored.length}`);
+    
+    // First priority: Check if root directory has been listed
+    if (!codebaseStructure['/']) {
+      console.log("[planNextExplorationStep] Planning: List root directory");
+      return {
+        type: 'listFiles',
+        path: '/',
+        description: 'List repository root directory',
+        payload: {
+          path: '/',
+          owner: this.state.currentRepoOwner,
+          repo: this.state.currentRepoName,
+          branch: this.state.currentBranch || 'main'
+        }
+      };
+    }
+    
+    // Second priority: List key directories that haven't been explored yet
+    const importantDirectories = ['src', 'packages', 'lib', 'docs', 'app'];
+    for (const dir of importantDirectories) {
+      if (!codebaseStructure[dir] && !codebaseStructure[`/${dir}`]) {
+        const path = dir.startsWith('/') ? dir : `/${dir}`;
+        console.log(`[planNextExplorationStep] Planning: List important directory '${path}'`);
+        return {
+          type: 'listFiles',
+          path,
+          description: `List '${path}' directory`,
+          payload: {
+            path,
+            owner: this.state.currentRepoOwner,
+            repo: this.state.currentRepoName,
+            branch: this.state.currentBranch || 'main'
+          }
+        };
+      }
+    }
+    
+    // Third priority: Find a file to summarize that hasn't been well-analyzed
+    const fileToSummarize = Object.values(codebaseStructure)
+      .find(file => 
+        file.type === 'file' && 
+        (!file.description || file.description === `Accessed at ${new Date().toISOString()}`)
+      );
+    
+    if (fileToSummarize) {
+      console.log(`[planNextExplorationStep] Planning: Summarize file '${fileToSummarize.path}'`);
+      return {
+        type: 'summarizeFile',
+        path: fileToSummarize.path,
+        description: `Summarize file '${fileToSummarize.path}'`,
+        payload: {
+          path: fileToSummarize.path,
+          owner: this.state.currentRepoOwner,
+          repo: this.state.currentRepoName,
+          branch: this.state.currentBranch || 'main'
+        }
+      };
+    }
+    
+    // Fourth priority: Explore subdirectories of already listed directories
+    for (const dir of directoriesExplored) {
+      // Look for important subfolders like 'src', 'components', etc.
+      const dirPath = dir.path;
+      const importantSubdirs = ['components', 'utils', 'hooks', 'pages', 'api', 'lib', 'services'];
+      
+      for (const subdir of importantSubdirs) {
+        const subdirPath = dirPath.endsWith('/') 
+          ? `${dirPath}${subdir}` 
+          : `${dirPath}/${subdir}`;
+        
+        if (!codebaseStructure[subdirPath]) {
+          console.log(`[planNextExplorationStep] Planning: List subdirectory '${subdirPath}'`);
+          return {
+            type: 'listFiles',
+            path: subdirPath,
+            description: `List '${subdirPath}' directory`,
+            payload: {
+              path: subdirPath,
+              owner: this.state.currentRepoOwner,
+              repo: this.state.currentRepoName,
+              branch: this.state.currentBranch || 'main'
+            }
+          };
+        }
+      }
+    }
+    
+    console.log("[planNextExplorationStep] No specific next step found.");
+    return null; // No specific action decided for now
+  }
+  
+  /**
+   * Fetches directory contents from GitHub API
+   * @private Helper method to fetch directory listing
+   */
+  private async fetchDirectoryContents(path: string, owner: string, repo: string, branch: string = 'main'): Promise<any[] | null> {
+    console.log(`[fetchDirectoryContents] Fetching directory: ${path} from ${owner}/${repo}:${branch}`);
+    
+    if (!this.state.githubToken) {
+      console.error("[fetchDirectoryContents] No GitHub token available");
+      return null;
+    }
+    
+    const token = this.state.githubToken;
+    const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+    
+    try {
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${normalizedPath}?ref=${branch}`;
+      console.log(`[fetchDirectoryContents] Making API request to: ${url}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'OpenAgents'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[fetchDirectoryContents] GitHub API error: ${response.status} ${response.statusText}`, errorText);
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      // Check if it's an array (directory listing) or object (single file)
+      if (Array.isArray(data)) {
+        console.log(`[fetchDirectoryContents] Successfully fetched directory with ${data.length} items`);
+        return data;
+      } else {
+        console.error(`[fetchDirectoryContents] Expected directory listing, got single file response`);
+        return null;
       }
     } catch (error) {
-      console.error("[continueInfer] Error during inference or rescheduling:", error);
-      // Consider rescheduling even on error, maybe with backoff?
-      if (this.state.isContinuousRunActive) {
-        const delayInSeconds = 300; // Reschedule after 5 mins on error
-        console.log(`[continueInfer] Rescheduling self after error in ${delayInSeconds} seconds.`);
-        await this.schedule(delayInSeconds, 'continueInfer', { reason: 'error recovery' });
+      console.error(`[fetchDirectoryContents] Error fetching directory contents:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Fetches and decodes file content from GitHub API
+   * @private Helper method to fetch and decode file content
+   */
+  private async fetchFileContent(path: string, owner: string, repo: string, branch: string = 'main'): Promise<string | null> {
+    console.log(`[fetchFileContent] Fetching file: ${path} from ${owner}/${repo}:${branch}`);
+    
+    if (!this.state.githubToken) {
+      console.error("[fetchFileContent] No GitHub token available");
+      return null;
+    }
+    
+    const token = this.state.githubToken;
+    const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+    
+    try {
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${normalizedPath}?ref=${branch}`;
+      console.log(`[fetchFileContent] Making API request to: ${url}`);
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'OpenAgents'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[fetchFileContent] GitHub API error: ${response.status} ${response.statusText}`, errorText);
+        return null;
       }
+      
+      const data = await response.json();
+      
+      // Check if it's a file (has content property)
+      if (data.content && data.encoding === 'base64') {
+        console.log(`[fetchFileContent] Successfully fetched file content, decoding from base64`);
+        
+        try {
+          // Use the same robust decoding approach as in the tool processing
+          const cleanBase64 = data.content.replace(/\s/g, '');
+          const binaryStr = Buffer.from(cleanBase64, 'base64');
+          const decodedContent = new TextDecoder().decode(binaryStr);
+          console.log(`[fetchFileContent] Successfully decoded content (length: ${decodedContent.length})`);
+          return decodedContent;
+        } catch (e) {
+          console.error(`[fetchFileContent] Error decoding with TextDecoder:`, e);
+          
+          // Fallback to simpler method
+          try {
+            const cleanBase64 = data.content.replace(/[\s\r\n]+/g, '');
+            const decodedContent = Buffer.from(cleanBase64, 'base64').toString('utf8');
+            console.log(`[fetchFileContent] Alternative decode succeeded (length: ${decodedContent.length})`);
+            return decodedContent;
+          } catch (fallbackError) {
+            console.error(`[fetchFileContent] All decode methods failed:`, fallbackError);
+            return null;
+          }
+        }
+      } else {
+        console.error(`[fetchFileContent] Expected file with content, got:`, typeof data);
+        return null;
+      }
+    } catch (error) {
+      console.error(`[fetchFileContent] Error fetching file content:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Method specifically scheduled to list files for a path.
+   * Only performs the directory listing operation, without calling infer().
+   */
+  public async scheduledListFiles(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
+    // STATE LOGGING
+    console.log(`[scheduledListFiles STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
+    
+    console.log(`[scheduledListFiles] Executing for path: ${payload.path}`);
+    const { path, owner, repo, branch } = payload;
+    
+    // Check if payload has all required fields
+    if (!path) {
+      console.error("[scheduledListFiles] Missing path in payload.");
+      return;
+    }
+    
+    // If owner/repo missing in payload, try to get from state
+    const effectiveOwner = owner || this.state.currentRepoOwner;
+    const effectiveRepo = repo || this.state.currentRepoName;
+    const effectiveBranch = branch || this.state.currentBranch || 'main';
+    
+    if (!effectiveOwner || !effectiveRepo) {
+      console.error("[scheduledListFiles] Missing owner or repo in both payload and state.");
+      this.addAgentObservation("Cannot list files: Repository owner/name not provided. Please set repository context first.");
+      return;
+    }
+    
+    try {
+      // Add an observation about listing files
+      this.addAgentObservation(`Listing files for: ${path}`);
+      
+      // Directly fetch directory contents using GitHub API
+      const listing = await this.fetchDirectoryContents(
+        path, 
+        effectiveOwner, 
+        effectiveRepo, 
+        effectiveBranch
+      );
+      
+      if (listing === null) {
+        throw new Error(`Failed to fetch directory contents for ${path}`);
+      }
+      
+      // Update the codebase structure for the directory
+      this.updateCodebaseStructure(path, null, 'directory');
+      
+      // Process each item in the directory listing
+      for (const item of listing) {
+        const itemPath = path.endsWith('/') ? `${path}${item.name}` : `${path}/${item.name}`;
+        const itemType = item.type === 'dir' ? 'directory' : 'file';
+        
+        // Add an entry in the codebase structure for each item
+        // For files, we just add a basic entry - they'll be summarized later if needed
+        this.updateCodebaseStructure(itemPath, null, itemType);
+      }
+      
+      // Add an observation with the results
+      this.addAgentObservation(`Listed ${listing.length} items in directory ${path}`);
+      console.log(`[scheduledListFiles] Successfully processed directory ${path} with ${listing.length} items`);
+      
+    } catch(e) {
+      console.error(`[scheduledListFiles] Error listing ${path}:`, e);
+      this.addAgentObservation(`Error listing files for ${path}: ${e.message}`);
+    }
+  }
+  
+  /**
+   * Method specifically scheduled to summarize a file.
+   * Only performs the file fetching and summarization, without calling infer().
+   */
+  public async scheduledSummarizeFile(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
+    // STATE LOGGING
+    console.log(`[scheduledSummarizeFile STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
+    
+    console.log(`[scheduledSummarizeFile] Executing for path: ${payload.path}`);
+    const { path, owner, repo, branch } = payload;
+    
+    // Check if payload has all required fields
+    if (!path) {
+      console.error("[scheduledSummarizeFile] Missing path in payload.");
+      return;
+    }
+    
+    // If owner/repo missing in payload, try to get from state
+    const effectiveOwner = owner || this.state.currentRepoOwner;
+    const effectiveRepo = repo || this.state.currentRepoName;
+    const effectiveBranch = branch || this.state.currentBranch || 'main';
+    
+    if (!effectiveOwner || !effectiveRepo) {
+      console.error("[scheduledSummarizeFile] Missing owner or repo in both payload and state.");
+      this.addAgentObservation("Cannot summarize file: Repository owner/name not provided. Please set repository context first.");
+      return;
+    }
+    
+    try {
+      // Add an observation about summarizing the file
+      this.addAgentObservation(`Summarizing file: ${path}`);
+      
+      // Directly fetch file content using GitHub API
+      const fileContent = await this.fetchFileContent(
+        path, 
+        effectiveOwner, 
+        effectiveRepo, 
+        effectiveBranch
+      );
+      
+      if (fileContent === null) {
+        throw new Error(`Failed to fetch content for ${path}`);
+      }
+      
+      // Update the codebase structure with the file content
+      // This will trigger the summary generation via generateObject
+      await this.updateCodebaseStructure(path, fileContent, 'file');
+      
+      // Set as current file to help with context
+      this.setCurrentFile(path);
+      
+      // Add success observation
+      this.addAgentObservation(`Successfully summarized file: ${path}`);
+      console.log(`[scheduledSummarizeFile] Successfully summarized ${path}`);
+      
+    } catch(e) {
+      console.error(`[scheduledSummarizeFile] Error summarizing ${path}:`, e);
+      this.addAgentObservation(`Error summarizing file ${path}: ${e.message}`);
     }
   }
   
   /**
    * Starts continuous agent execution
    */
-  @unstable_callable({
-    description: "Start continuous agent execution that persists until explicitly stopped"
-  })
   async startContinuousRun() {
     this.updateState({
       isContinuousRunActive: true,
@@ -147,9 +528,6 @@ export class Coder extends Agent<Env, CoderState> {
   /**
    * Stops continuous agent execution
    */
-  @unstable_callable({
-    description: "Stop continuous agent execution"
-  })
   async stopContinuousRun() {
     this.updateState({
       isContinuousRunActive: false,
@@ -173,16 +551,51 @@ export class Coder extends Agent<Env, CoderState> {
   }
 
   onMessage(connection: Connection, message: WSMessage) {
-    const parsedMessage = JSON.parse(message as string);
-    console.log("IN ON MESSAGE AND HAVE PARSED MESSAGE", parsedMessage);
-    const githubToken = parsedMessage.githubToken;
+    try {
+      const parsedMessage = JSON.parse(message as string);
+      console.log("ON MESSAGE RECEIVED:", parsedMessage);
 
-    // Store the githubToken in state, preserving other state
-    this.updateState({
-      githubToken
-    });
+      // --- Add Command Handling ---
+      if (parsedMessage.type === 'command' && parsedMessage.command) {
+        console.log(`Processing command: ${parsedMessage.command}`);
+        switch (parsedMessage.command) {
+          case 'startContinuousRun':
+            // Don't await here, let it run in the background
+            this.startContinuousRun().catch(e => console.error("Error starting continuous run from command:", e));
+            break;
+          case 'stopContinuousRun':
+            // Don't await here
+            this.stopContinuousRun().catch(e => console.error("Error stopping continuous run from command:", e));
+            break;
+          // Add other commands here if needed in the future
+          default:
+            console.warn(`Received unknown command: ${parsedMessage.command}`);
+        }
+        // Don't call infer() after a command, let the continuous run handle it
+        return; // Exit after processing command
+      }
+      // --- End Command Handling ---
 
-    this.infer();
+      // --- Existing GitHub Token Logic ---
+      // Check if it's a message containing the token
+      if (parsedMessage.githubToken) {
+        console.log("Processing githubToken update...");
+        const githubToken = parsedMessage.githubToken;
+        this.updateState({
+          githubToken
+        });
+        // Call infer after updating token
+        this.infer();
+        return; // Exit after processing token
+      }
+
+      // If message is none of the above, log a warning
+      console.warn("Received unhandled message structure via send():", parsedMessage);
+
+    } catch (error) {
+      console.error("Error processing received message:", error);
+      console.error("Raw message data:", message);
+    }
   }
 
   /**
@@ -616,24 +1029,51 @@ export class Coder extends Agent<Env, CoderState> {
 
         this.addAgentObservation(`Generated response: ${snippet}`);
 
-        // Check if this is in response to a user message requiring a task
-        if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
-          const lastUserMessage = messages[messages.length - 1].content || '';
-          const taskIndicators = [
-            'implement', 'create', 'build', 'fix', 'add', 'refactor', 'optimize',
-            'update', 'develop', 'design', 'setup', 'write'
-          ];
-
-          // Check if the user message suggests a coding task
-          if (taskIndicators.some(indicator =>
-            lastUserMessage.toLowerCase().includes(indicator)) &&
-            (lastUserMessage.includes('code') || lastUserMessage.includes('function') ||
-              lastUserMessage.includes('class') || lastUserMessage.includes('file') ||
-              lastUserMessage.includes('component'))) {
-
-            // Create a task based on the user's request
-            await this.generateAndAddTask(lastUserMessage);
+        // MODIFIED: Check for intent in user messages BEFORE task generation
+        const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+        if (lastMessage && lastMessage.role === 'user') {
+          const lastUserMessageContent = lastMessage.content || '';
+          console.log(`[Intent Check] Checking user message: "${lastUserMessageContent.substring(0, 50)}..."`);
+          
+          // NEW: Check for start/stop commands FIRST
+          if (lastUserMessageContent.toLowerCase().includes('start a continuous run') || 
+              lastUserMessageContent.toLowerCase().includes('start continuous run')) {
+            console.log("[Intent Check] User message requests start continuous run. Calling startContinuousRun().");
+            this.startContinuousRun().catch(e => console.error("Error auto-starting continuous run:", e));
+            // The startContinuousRun will already update state and trigger continueInfer
+            // So we don't need to generate tasks
+            return {}; // Return early to skip task generation and rest of infer method
+          } 
+          else if (lastUserMessageContent.toLowerCase().includes('stop continuous run')) {
+            console.log("[Intent Check] User message requests stop continuous run. Calling stopContinuousRun().");
+            this.stopContinuousRun().catch(e => console.error("Error auto-stopping continuous run:", e));
+            // Don't return - still allow the rest of the infer method to run
           }
+          // ONLY check for task generation if it wasn't a start/stop command
+          else {
+            console.log(`[Task Gen] Checking if message suggests a task: "${lastUserMessageContent.substring(0, 30)}..."`);
+            
+            const taskIndicators = [
+              'implement', 'create', 'build', 'fix', 'add', 'refactor', 'optimize',
+              'update', 'develop', 'design', 'setup', 'write'
+            ];
+
+            // Check if the user message suggests a coding task
+            if (taskIndicators.some(indicator =>
+              lastUserMessageContent.toLowerCase().includes(indicator)) &&
+              (lastUserMessageContent.includes('code') || lastUserMessageContent.includes('function') ||
+                lastUserMessageContent.includes('class') || lastUserMessageContent.includes('file') ||
+                lastUserMessageContent.includes('component'))) {
+
+              console.log("[Task Gen] Last user message suggests a task, calling generateAndAddTask.");
+              // Create a task based on the user's request
+              await this.generateAndAddTask(lastUserMessageContent);
+            } else {
+              console.log("[Task Gen] Last user message does not match task criteria.");
+            }
+          }
+        } else {
+          console.log("[Intent/Task Gen] No user message found as the last message.");
         }
       }
 
@@ -650,55 +1090,38 @@ export class Coder extends Agent<Env, CoderState> {
 
       // Process tool calls and results from the steps array - but don't add to messageParts
       // We only process tools to update agent state (codebase, etc.)
-      const toolInfoMap = new Map<string, { call: any; result?: any }>();
+      const toolInfoMap = new Map<string, { call?: any; result?: any }>();
 
+      // --- Refactored Tool Consolidation Logic ---
       if (result.steps && result.steps.length > 0) {
         console.log("[Consolidate] Processing steps to gather tool info...");
         for (const step of result.steps) {
-          console.log(`[Consolidate] Processing step with type: ${step.stepType}, finishReason: ${step.finishReason}`);
-
-          // Collect tool calls from this step
+          console.log(`[Consolidate] Processing step type: ${step.stepType}`);
+          
+          // Collect tool calls
           if (step.toolCalls && step.toolCalls.length > 0) {
             for (const toolCall of step.toolCalls) {
               // @ts-ignore
               const toolCallId = toolCall.toolCallId;
-              if (toolCallId && !toolInfoMap.has(toolCallId)) {
-                // Only store the first call encountered for an ID
-                toolInfoMap.set(toolCallId, { call: toolCall });
-                console.log(`[Consolidate] Stored call for ${toolCallId} (${toolCall.toolName})`);
+              if (toolCallId) {
+                const info = toolInfoMap.get(toolCallId) || {};
+                info.call = toolCall; // Store or overwrite call
+                toolInfoMap.set(toolCallId, info);
+                console.log(`[Consolidate] Stored/Updated call for ${toolCallId} (${toolCall.toolName})`);
               }
             }
           }
-
-          // Collect tool results from this step
+          
+          // Collect tool results
           if (step.toolResults && step.toolResults.length > 0) {
             for (const toolResult of step.toolResults) {
               // @ts-ignore
               const toolCallId = toolResult.toolCallId;
-              const existingInfo = toolInfoMap.get(toolCallId);
-              if (toolCallId && existingInfo) {
-                // Add the result to the existing call info
-                existingInfo.result = toolResult;
-                console.log(`[Consolidate] Added result for ${toolCallId}`);
-              } else if (toolCallId) {
-                // If result appears without a prior call (unlikely but possible)
-                console.warn(`[Consolidate] Found toolResult for ${toolCallId} without a preceding call.`);
-              }
-            }
-          }
-        } // end loop through steps
-
-        // Also look for results in the top-level result.toolResults
-        if (result.toolResults && result.toolResults.length > 0) {
-          for (const toolResult of result.toolResults) {
-            // @ts-ignore
-            const toolCallId = toolResult.toolCallId;
-            const existingInfo = toolInfoMap.get(toolCallId);
-            if (toolCallId && existingInfo) {
-              // Add the result to the existing call info (if not already set)
-              if (!existingInfo.result) {
-                existingInfo.result = toolResult;
-                console.log(`[Consolidate] Added result from top-level for ${toolCallId}`);
+              if (toolCallId) {
+                const info = toolInfoMap.get(toolCallId) || {};
+                info.result = toolResult; // Store or overwrite result
+                toolInfoMap.set(toolCallId, info);
+                console.log(`[Consolidate] Added/Updated result for ${toolCallId}`);
               }
             }
           }
@@ -713,17 +1136,16 @@ export class Coder extends Agent<Env, CoderState> {
             // @ts-ignore
             const toolCallId = toolCall.toolCallId;
             if (toolCallId) {
-              toolInfoMap.set(toolCallId, { call: toolCall });
+              const info = toolInfoMap.get(toolCallId) || {};
+              info.call = toolCall;
+              toolInfoMap.set(toolCallId, info);
 
               // Try to find matching result in top-level results
               if (result.toolResults && result.toolResults.length > 0) {
                 // @ts-ignore
                 const toolResult = result.toolResults.find(r => r.toolCallId === toolCallId);
                 if (toolResult) {
-                  const info = toolInfoMap.get(toolCallId);
-                  if (info) {
-                    info.result = toolResult;
-                  }
+                  info.result = toolResult;
                 }
               }
             }
@@ -768,75 +1190,94 @@ export class Coder extends Agent<Env, CoderState> {
               console.log('[Process Tools] Condition MET for updateCodebaseStructure');
 
               const args = toolCall.args as { path?: string };
+              
+              // Check if this is a directory listing (array from GitHub API)
+              const isDirectoryListing = Array.isArray(toolResult.result);
+              if (isDirectoryListing) {
+                console.log(`[Process Tools] Result appears to be a directory listing for ${args.path}`);
+                if (args.path) {
+                  // Update state for directory
+                  this.addAgentObservation(`Listed directory: ${args.path}`);
+                  this.updateCodebaseStructure(args.path, null, 'directory');
+                  console.log(`[Process Tools] Updated codebase structure for directory: ${args.path}`);
+                }
+              } else {
+                // Process as a file
+                // Extract the content from the GitHub API response
+                let fileContentDecoded: string | null = null;
 
-              // Extract the content from the GitHub API response
-              let fileContentDecoded: string | null = null;
+                // First check if toolResult.result is already a string (direct content)
+                if (typeof toolResult.result === 'string') {
+                  console.log(`[Process Tools] Tool result is already a string, using directly`);
+                  fileContentDecoded = toolResult.result;
+                }
+                // Check if it's a GitHub API response object with content field
+                else if (toolResult.result && typeof toolResult.result === 'object') {
+                  console.log(`[Process Tools] Tool result is an object, looking for content field`);
 
-              // First check if toolResult.result is already a string (direct content)
-              if (typeof toolResult.result === 'string') {
-                console.log(`[Process Tools] Tool result is already a string, using directly`);
-                fileContentDecoded = toolResult.result;
-              }
-              // Check if it's a GitHub API response object with content field
-              else if (toolResult.result && typeof toolResult.result === 'object') {
-                console.log(`[Process Tools] Tool result is an object, looking for content field`);
+                  const resultObj = toolResult.result as any;
 
-                const resultObj = toolResult.result as any;
+                  // Check if the object has a content property (typical GitHub API response)
+                  if (resultObj.content && typeof resultObj.content === 'string') {
+                    console.log(`[Process Tools] Found content field (length: ${resultObj.content.length})`);
 
-                // Check if the object has a content property (typical GitHub API response)
-                if (resultObj.content && typeof resultObj.content === 'string') {
-                  console.log(`[Process Tools] Found content field (length: ${resultObj.content.length})`);
+                    // Check if it's base64 encoded (GitHub API typically encodes content)
+                    if (resultObj.encoding === 'base64') {
+                      console.log(`[Process Tools] Content is base64 encoded, attempting to decode`);
 
-                  // Check if it's base64 encoded (GitHub API typically encodes content)
-                  if (resultObj.encoding === 'base64') {
-                    console.log(`[Process Tools] Content is base64 encoded, attempting to decode`);
-
-                    try {
-                      // Most robust approach - try TextDecoder
-                      const cleanBase64 = resultObj.content.replace(/\s/g, '');
-                      const binaryStr = Buffer.from(cleanBase64, 'base64');
-                      fileContentDecoded = new TextDecoder().decode(binaryStr);
-                      console.log(`[Process Tools] Successfully decoded content with TextDecoder (length: ${fileContentDecoded.length})`);
-                    } catch (e) {
-                      console.error(`[Process Tools] Error decoding with TextDecoder:`, e);
-
-                      // Fallback to simpler method
                       try {
-                        console.log(`[Process Tools] Trying alternative decode method...`);
-                        const cleanBase64 = resultObj.content.replace(/[\s\r\n]+/g, '');
-                        fileContentDecoded = Buffer.from(cleanBase64, 'base64').toString('utf8');
-                        console.log(`[Process Tools] Alternative decode succeeded (length: ${fileContentDecoded.length})`);
-                      } catch (fallbackError) {
-                        console.error(`[Process Tools] All decode methods failed:`, fallbackError);
+                        // Most robust approach - try TextDecoder
+                        const cleanBase64 = resultObj.content.replace(/\s/g, '');
+                        const binaryStr = Buffer.from(cleanBase64, 'base64');
+                        fileContentDecoded = new TextDecoder().decode(binaryStr);
+                        console.log(`[Process Tools] Successfully decoded content with TextDecoder (length: ${fileContentDecoded.length})`);
+                      } catch (e) {
+                        console.error(`[Process Tools] Error decoding with TextDecoder:`, e);
+
+                        // Fallback to simpler method
+                        try {
+                          console.log(`[Process Tools] Trying alternative decode method...`);
+                          const cleanBase64 = resultObj.content.replace(/[\s\r\n]+/g, '');
+                          fileContentDecoded = Buffer.from(cleanBase64, 'base64').toString('utf8');
+                          console.log(`[Process Tools] Alternative decode succeeded (length: ${fileContentDecoded.length})`);
+                        } catch (fallbackError) {
+                          console.error(`[Process Tools] All decode methods failed:`, fallbackError);
+                        }
                       }
+                    } else {
+                      // Content is not base64 encoded, use directly
+                      console.log(`[Process Tools] Content is not base64 encoded, using directly`);
+                      fileContentDecoded = resultObj.content;
                     }
                   } else {
-                    // Content is not base64 encoded, use directly
-                    console.log(`[Process Tools] Content is not base64 encoded, using directly`);
-                    fileContentDecoded = resultObj.content;
+                    // No content field - might still be a directory listing in a different format
+                    console.log(`[Process Tools] No content field found, checking if this is a directory listing`);
+                    if (args.path) {
+                      // Could be a directory in a different format - add an observation but don't try to summarize
+                      this.addAgentObservation(`Accessed path: ${args.path}`);
+                      this.updateCodebaseStructure(args.path, null, 'directory');
+                      console.log(`[Process Tools] Updated codebase as directory without summary: ${args.path}`);
+                    }
+                    return; // Skip further processing
                   }
                 } else {
-                  // No content field, use stringified object as fallback
-                  console.log(`[Process Tools] No content field found, using stringified object`);
-                  fileContentDecoded = JSON.stringify(resultObj, null, 2);
+                  console.log(`[Process Tools] Tool result is not a string or object, cannot extract content`);
                 }
-              } else {
-                console.log(`[Process Tools] Tool result is not a string or object, cannot extract content`);
-              }
 
-              console.log(`[Process Tools] Args path: ${args.path || 'undefined'}`);
-              if (args.path && fileContentDecoded) {
-                console.log(`[Process Tools] Calling updateCodebaseStructure for path: ${args.path}`);
-                try {
-                  // Pass the decoded content
-                  await this.updateCodebaseStructure(args.path, fileContentDecoded, 'file');
-                  this.setCurrentFile(args.path);
-                  console.log(`[Process Tools] Successfully completed updateCodebaseStructure for ${args.path}`);
-                } catch (error) {
-                  console.error(`[Process Tools] Error in updateCodebaseStructure: ${error}`);
+                console.log(`[Process Tools] Args path: ${args.path || 'undefined'}`);
+                if (args.path && fileContentDecoded) {
+                  console.log(`[Process Tools] Calling updateCodebaseStructure for path: ${args.path}`);
+                  try {
+                    // Pass the decoded content
+                    await this.updateCodebaseStructure(args.path, fileContentDecoded, 'file');
+                    this.setCurrentFile(args.path);
+                    console.log(`[Process Tools] Successfully completed updateCodebaseStructure for ${args.path}`);
+                  } catch (error) {
+                    console.error(`[Process Tools] Error in updateCodebaseStructure: ${error}`);
+                  }
+                } else {
+                  console.log('[Process Tools] Missing path in args or no file content decoded');
                 }
-              } else {
-                console.log('[Process Tools] Missing path in args or no file content decoded');
               }
             }
             // --- End Update codebase logic ---

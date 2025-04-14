@@ -47,7 +47,7 @@ const scheduleTask = tool({
   parameters: z.object({
     when: unstable_scheduleSchema,
     description: z.string(),
-    callbackMethodName: z.enum(['executeTask', 'continueInfer'])
+    callbackMethodName: z.enum(['executeTask', 'continueInfer', 'scheduledListFiles', 'scheduledSummarizeFile'])
       .optional()
       .default('executeTask')
       .describe('The specific agent method to call when the schedule fires. Defaults to executeTask.'),

@@ -5,3 +5,6 @@ node_modules
 
 # Build outputs
 packages/ui/dist
+
+# Ignore sensitive log files
+docs/logs/*.md
