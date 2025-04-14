@@ -6,13 +6,12 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { ToolExecutionOptions } from "ai";
 
-import { Coder } from "./server";
+import { Coder, agentContext } from "./server";
 import {
   unstable_getSchedulePrompt,
   unstable_scheduleSchema,
 } from "agents/schedule";
 import { GitHubContentSchema } from "../../../apps/mcp-github-server/src/common/types";
-import { agentContext } from "./server";
 
 /**
  * Weather information tool that requires human confirmation
@@ -225,19 +224,19 @@ export const tools = {
  * Each function here corresponds to a tool above that doesn't have an execute function
  */
 export const executions = {
-  getWeatherInformation: async (args: unknown, context: ToolExecutionOptions) => {
+  getWeatherInformation: async (args: unknown) => {
     const { city } = args as { city: string };
     console.log(`Getting weather information for ${city}`);
 
-    // Log if we have an agent and if it's a Coder
-    if (context.agent) {
-      console.log("Has agent in execution context");
-      if (context.agent instanceof Coder) {
-        console.log("Agent is a Coder instance");
-        console.log(`GitHub token available: ${!!context.agent.githubToken}`);
-      }
+    // Use agentContext to get the agent instance
+    const agent = agentContext.getStore();
+
+    if (agent && agent instanceof Coder) {
+      console.log("Agent found via agentContext and is a Coder instance");
+      // Access state via agent.state if needed
+      console.log(`GitHub token available: ${!!agent.state.githubToken}`);
     } else {
-      console.log("No agent in execution context");
+      console.log("No agent found via agentContext or agent is not a Coder instance");
     }
 
     return `The weather in ${city} is sunny`;

@@ -4,12 +4,12 @@ import { env } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { UIPart } from "@openagents/core/src/chat/types";
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { type ToolContext } from "@openagents/core/src/tools/toolContext";
+import type { ToolContext } from "@openagents/core/src/tools/toolContext";
 import { getFileContentsTool } from "@openagents/core/src/tools/github/getFileContents";
 import { addIssueCommentTool } from "@openagents/core/src/tools/github/addIssueComment";
 import { tools as availableTools } from "./tools";
 import { getSystemPrompt } from "./prompts";
-import { CoderState, Task, FileNode } from "./types";
+import type { CoderState, Task, FileNode } from "./types";
 
 const openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY })
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");

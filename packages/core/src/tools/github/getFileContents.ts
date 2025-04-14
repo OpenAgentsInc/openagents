@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { githubRequest } from "./common/utils";
 import { GitHubContentSchema, GitHubFileContentSchema } from "./common/types";
 import { z } from "zod";
-import { ToolContext } from '../toolContext';
+import type { ToolContext } from '../toolContext';
 
 export const GetFileContentsSchema = z.object({
   owner: z.string().describe("Repository owner (username or organization)"),
