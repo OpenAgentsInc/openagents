@@ -33,25 +33,39 @@ export class Coder extends Agent<Env, CoderState> {
   };
   tools: ToolSet = {};
 
-  async executeTask(description: string, task: Schedule<string>) {
+  /**
+   * Safely updates the agent's state by merging the provided partial state
+   * with the existing state. Ensures ...this.state is always included.
+   * @param partialState An object containing the state properties to update.
+   */
+  private updateState(partialState: Partial<CoderState>) {
     this.setState({
       ...this.state,
+      ...partialState,
+    });
+  }
+
+  async executeTask(description: string, task: Schedule<string>) {
+    const newMessage = {
+      id: generateId(),
+      role: "user" as const,
+      content: `This is a scheduled notice for you to now execute the following task: ${description}`,
+      createdAt: new Date(),
+      parts: [
+        {
+          type: "text" as const,
+          text: `This is a scheduled notice for you to now execute the following task: ${description}`
+        }
+      ],
+    };
+
+    this.updateState({
       messages: [
         ...this.state.messages,
-        {
-          id: generateId(),
-          role: "user",
-          content: `This is a scheduled notice for you to now execute the following task: ${description}`,
-          createdAt: new Date(),
-          parts: [
-            {
-              type: "text",
-              text: `This is a scheduled notice for you to now execute the following task: ${description}`
-            }
-          ],
-        },
+        newMessage
       ],
     });
+    
     // now infer based on this message
     await this.infer();
   }
@@ -60,12 +74,13 @@ export class Coder extends Agent<Env, CoderState> {
     const parsedMessage = JSON.parse(message as string);
     console.log("IN ON MESSAGE AND HAVE PARSED MESSAGE", parsedMessage);
     const githubToken = parsedMessage.githubToken;
-    // Store the githubToken in state
-    this.setState({
-      ...this.state,
+    
+    // Store the githubToken in state, preserving other state
+    this.updateState({
       githubToken
     });
-    this.infer()
+    
+    this.infer();
   }
 
   /**
@@ -76,12 +91,13 @@ export class Coder extends Agent<Env, CoderState> {
   })
   async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
     console.log(`Setting repository context to ${owner}/${repo} on branch ${branch}`);
-    this.setState({
-      ...this.state,
+    
+    this.updateState({
       currentRepoOwner: owner,
       currentRepoName: repo,
       currentBranch: branch,
     });
+    
     return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
   }
 
@@ -96,8 +112,7 @@ export class Coder extends Agent<Env, CoderState> {
       created: new Date(),
     };
     
-    this.setState({
-      ...this.state,
+    this.updateState({
       tasks: [...(this.state.tasks || []), newTask],
       observations: [...(this.state.observations || []), `New task added: ${description}`]
     });
@@ -124,8 +139,7 @@ export class Coder extends Agent<Env, CoderState> {
       return task;
     });
     
-    this.setState({
-      ...this.state,
+    this.updateState({
       tasks: updatedTasks,
       observations: [...(this.state.observations || []), `Task ${taskId} status changed to ${status}`]
     });
@@ -140,8 +154,7 @@ export class Coder extends Agent<Env, CoderState> {
     const timestamp = new Date().toISOString();
     const formattedThought = `${timestamp}: ${thought}`;
     
-    this.setState({
-      ...this.state,
+    this.updateState({
       scratchpad: this.state.scratchpad 
         ? `${this.state.scratchpad}\n- ${formattedThought}` 
         : `- ${formattedThought}`
@@ -152,8 +165,7 @@ export class Coder extends Agent<Env, CoderState> {
    * Adds an observation to the agent's state
    */
   private addAgentObservation(observation: string) {
-    this.setState({
-      ...this.state,
+    this.updateState({
       observations: [...(this.state.observations || []), observation]
     });
   }
@@ -170,8 +182,7 @@ export class Coder extends Agent<Env, CoderState> {
       ...nodeInfo
     };
     
-    this.setState({
-      ...this.state,
+    this.updateState({
       codebase: {
         ...(this.state.codebase || {}),
         structure: {
@@ -186,8 +197,7 @@ export class Coder extends Agent<Env, CoderState> {
    * Sets the file currently being worked on
    */
   private setCurrentFile(filePath: string) {
-    this.setState({
-      ...this.state,
+    this.updateState({
       workingFilePath: filePath
     });
   }
@@ -313,9 +323,8 @@ export class Coder extends Agent<Env, CoderState> {
         }
       }
 
-      // Update state with the new message containing all parts
-      this.setState({
-        ...this.state,
+      // Finally, update state with the new message
+      this.updateState({
         messages: [
           ...messages,
           {
@@ -329,7 +338,7 @@ export class Coder extends Agent<Env, CoderState> {
       });
 
       return {};
-    })
+    });
   }
 }
 
