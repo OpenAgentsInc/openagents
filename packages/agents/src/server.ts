@@ -102,7 +102,15 @@ export class Coder extends Agent<Env, CoderState> {
    * and reschedules itself.
    */
   public async continueInfer(payload?: any) {
-    // STATE LOGGING - avoid logging tokens or sensitive data
+    // Ensure state is fully loaded/hydrated after wake-up
+    console.log(`[continueInfer ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
+    
+    // If repository context is missing after waking up from schedule, attempt to handle it
+    if (this.state.isContinuousRunActive && (!this.state.currentRepoOwner || !this.state.currentRepoName)) {
+      console.warn(`[continueInfer] Repository context missing on wake-up. This suggests state rehydration issues.`);
+    }
+    
+    // Regular STATE LOGGING - avoid logging tokens or sensitive data
     console.log(`[continueInfer STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
     
     // Log payload without potentially sensitive data
@@ -401,6 +409,14 @@ export class Coder extends Agent<Env, CoderState> {
    * Only performs the directory listing operation, without calling infer().
    */
   public async scheduledListFiles(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
+    // Ensure state is fully loaded/hydrated after wake-up
+    console.log(`[scheduledListFiles ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
+    
+    // If repository context is missing after waking up, log warning
+    if (!this.state.currentRepoOwner || !this.state.currentRepoName) {
+      console.warn(`[scheduledListFiles] Repository context missing on wake-up. This suggests state rehydration issues.`);
+    }
+    
     // STATE LOGGING - avoid logging any tokens
     console.log(`[scheduledListFiles STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
     
@@ -470,6 +486,14 @@ export class Coder extends Agent<Env, CoderState> {
    * Only performs the file fetching and summarization, without calling infer().
    */
   public async scheduledSummarizeFile(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
+    // Ensure state is fully loaded/hydrated after wake-up
+    console.log(`[scheduledSummarizeFile ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
+    
+    // If repository context is missing after waking up, log warning
+    if (!this.state.currentRepoOwner || !this.state.currentRepoName) {
+      console.warn(`[scheduledSummarizeFile] Repository context missing on wake-up. This suggests state rehydration issues.`);
+    }
+    
     // STATE LOGGING - avoid logging any tokens
     console.log(`[scheduledSummarizeFile STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
     
@@ -1083,7 +1107,8 @@ export class Coder extends Agent<Env, CoderState> {
             console.log("[Intent Check] User message requests start continuous run. Calling startContinuousRun().");
             this.startContinuousRun().catch(e => console.error("Error auto-starting continuous run:", e));
             this.addAgentObservation("Continuous run initiated by user message.");
-            // No longer return early - allow generateText to create a confirmation message
+            // RESTORE early return to prevent redundant actions - user gets confirmation via state update
+            return {}; // Return early to prevent duplicating exploration steps
           } 
           else if (lastUserMessageContent.toLowerCase().includes('stop continuous run')) {
             commandIntentDetected = true;
