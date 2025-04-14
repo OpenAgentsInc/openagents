@@ -54,7 +54,8 @@ export class Coder extends Agent<Env, CoderState> {
     scratchpad: '',
     tasks: [],
     observations: [],
-    workingFilePath: undefined
+    workingFilePath: undefined,
+    isContinuousRunActive: false
   };
   tools: ToolSet = {};
 
@@ -70,7 +71,8 @@ export class Coder extends Agent<Env, CoderState> {
     });
   }
 
-  async executeTask(description: string, task: Schedule<string>) {
+  async executeTask(payload: Record<string, any>, task: Schedule<Record<string, any>>) {
+    const description = payload.description || "Scheduled task executed";
     const newMessage = {
       id: generateId(),
       role: "user" as const,
@@ -93,6 +95,81 @@ export class Coder extends Agent<Env, CoderState> {
 
     // now infer based on this message
     await this.infer();
+  }
+  
+  /**
+   * Continues agent execution by running infer and scheduling the next run
+   * This enables long-running or overnight processing
+   */
+  public async continueInfer(payload?: any) {
+    console.log(`[continueInfer] Agent waking up. Payload: ${JSON.stringify(payload)}`);
+    try {
+      // Perform main thinking loop
+      await this.infer();
+
+      // Check if we should continue running (based on state flag)
+      if (this.state.isContinuousRunActive) {
+        const delayInSeconds = 60; // Run again in 60 seconds
+        console.log(`[continueInfer] Rescheduling self in ${delayInSeconds} seconds.`);
+        await this.schedule(delayInSeconds, 'continueInfer', { reason: 'continuous execution' });
+      } else {
+        console.log(`[continueInfer] Not rescheduling - continuous run inactive.`);
+      }
+    } catch (error) {
+      console.error("[continueInfer] Error during inference or rescheduling:", error);
+      // Consider rescheduling even on error, maybe with backoff?
+      if (this.state.isContinuousRunActive) {
+        const delayInSeconds = 300; // Reschedule after 5 mins on error
+        console.log(`[continueInfer] Rescheduling self after error in ${delayInSeconds} seconds.`);
+        await this.schedule(delayInSeconds, 'continueInfer', { reason: 'error recovery' });
+      }
+    }
+  }
+  
+  /**
+   * Starts continuous agent execution
+   */
+  @unstable_callable({
+    description: "Start continuous agent execution that persists until explicitly stopped"
+  })
+  async startContinuousRun() {
+    this.updateState({
+      isContinuousRunActive: true,
+      observations: [...(this.state.observations || []), "Starting continuous agent execution"]
+    });
+    
+    // Immediately start the first execution
+    await this.continueInfer({ reason: 'initial start' });
+    
+    return { success: true, message: "Continuous run started successfully" };
+  }
+  
+  /**
+   * Stops continuous agent execution
+   */
+  @unstable_callable({
+    description: "Stop continuous agent execution"
+  })
+  async stopContinuousRun() {
+    this.updateState({
+      isContinuousRunActive: false,
+      observations: [...(this.state.observations || []), "Stopping continuous agent execution"]
+    });
+    
+    // Cancel any pending continueInfer schedules
+    try {
+      const schedules = this.getSchedules();
+      for (const schedule of schedules) {
+        if (schedule.callback === 'continueInfer') {
+          await this.cancelSchedule(schedule.id);
+          console.log(`[stopContinuousRun] Cancelled schedule ${schedule.id} for continueInfer`);
+        }
+      }
+    } catch (error) {
+      console.error("[stopContinuousRun] Error cancelling continueInfer schedules:", error);
+    }
+    
+    return { success: true, message: "Continuous run stopped successfully" };
   }
 
   onMessage(connection: Connection, message: WSMessage) {
@@ -129,12 +206,15 @@ export class Coder extends Agent<Env, CoderState> {
   /**
    * Adds a task to the agent's state
    */
-  private addAgentTask(description: string) {
+  addAgentTask(description: string, scheduleId?: string, payload?: Record<string, any>, callbackMethodName?: string) {
     const newTask: Task = {
       id: generateId(),
       description,
       status: 'pending',
       created: new Date(),
+      scheduleId,
+      payload,
+      callbackMethodName
     };
 
     this.updateState({
@@ -143,6 +223,31 @@ export class Coder extends Agent<Env, CoderState> {
     });
 
     return newTask.id;
+  }
+  
+  /**
+   * Cancels a task associated with a specific schedule ID
+   */
+  cancelTaskByScheduleId(scheduleId: string) {
+    if (!this.state.tasks) return false;
+    
+    const updatedTasks = this.state.tasks.map(task => {
+      if (task.scheduleId === scheduleId) {
+        return {
+          ...task,
+          status: 'cancelled' as const,
+          updated: new Date(),
+        };
+      }
+      return task;
+    });
+    
+    this.updateState({
+      tasks: updatedTasks,
+      observations: [...(this.state.observations || []), `Task with schedule ID ${scheduleId} was cancelled`]
+    });
+    
+    return true;
   }
 
   /**

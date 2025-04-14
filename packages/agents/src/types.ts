@@ -12,6 +12,7 @@ export interface CoderState {
   tasks?: Task[];
   observations?: string[];
   workingFilePath?: string;
+  isContinuousRunActive?: boolean;
 }
 
 // Type to track codebase understanding
@@ -46,9 +47,12 @@ export interface ModuleDescription {
 export interface Task {
   id: string;
   description: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'failed';
+  status: 'pending' | 'in-progress' | 'completed' | 'failed' | 'cancelled';
   created: Date;
   updated?: Date;
   completed?: Date;
   notes?: string[];
+  scheduleId?: string;
+  payload?: Record<string, any>;
+  callbackMethodName?: string;
 }
