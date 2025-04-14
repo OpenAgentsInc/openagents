@@ -271,6 +271,36 @@ const deleteSystemSchedule = tool({
   },
 });
 /**
+ * Tool to set the repository context for GitHub operations
+ */
+const setRepositoryContext = tool({
+  description: "Set the repository context (owner, name, branch) for GitHub operations",
+  parameters: z.object({
+    owner: z.string().describe("The GitHub username or organization name that owns the repository"),
+    repo: z.string().describe("The name of the repository"),
+    branch: z.string().optional().default("main").describe("The branch to use, defaults to 'main'")
+  }),
+  execute: async ({ owner, repo, branch = 'main' }) => {
+    console.log(`[set_repository_context] Setting context to ${owner}/${repo}:${branch}`);
+    const agent = agentContext.getStore();
+
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
+    }
+
+    try {
+      // Call the method on the agent instance
+      const result = await agent.setRepositoryContext(owner, repo, branch);
+      return `Repository context set: ${owner}/${repo} (${branch} branch)`;
+    } catch (error) {
+      console.error("[set_repository_context] Error setting repository context:", error);
+      return `Error setting repository context: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+});
+
+/**
  * Export all available tools
  * These will be provided to the AI model to describe available capabilities
  */
@@ -281,6 +311,8 @@ export const tools = {
   listSystemSchedules,
   listAgentTasks,
   deleteSystemSchedule,
+  cancelSchedule: deleteSystemSchedule,
+  setRepositoryContext,
   // fetchGitHubFileContent
 };
 

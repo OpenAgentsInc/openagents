@@ -1049,7 +1049,14 @@ export class Coder extends Agent<Env, CoderState> {
             this.stopContinuousRun().catch(e => console.error("Error auto-stopping continuous run:", e));
             // Don't return - still allow the rest of the infer method to run
           }
-          // ONLY check for task generation if it wasn't a start/stop command
+          // NEW: Check for set repository context - we'll guide the user to use the tool
+          else if (lastUserMessageContent.toLowerCase().includes('set repo context') ||
+                  lastUserMessageContent.toLowerCase().includes('set repository context')) {
+            console.log("[Intent Check] User message requests setting repository context. Suggesting tool usage.");
+            // Instead of trying to parse the message, we'll let the LLM respond with guidance
+            // to use the setRepositoryContext tool
+          }
+          // ONLY check for task generation if it wasn't a special command
           else {
             console.log(`[Task Gen] Checking if message suggests a task: "${lastUserMessageContent.substring(0, 30)}..."`);
             
