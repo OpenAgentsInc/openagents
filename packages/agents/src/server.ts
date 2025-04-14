@@ -542,7 +542,8 @@ export class Coder extends Agent<Env, CoderState> {
         });
       }
 
-      // Process tool calls and results from the steps array - consolidated approach
+      // Process tool calls and results from the steps array - but don't add to messageParts
+      // We only process tools to update agent state (codebase, etc.)
       const toolInfoMap = new Map<string, { call: any; result?: any }>();
 
       if (result.steps && result.steps.length > 0) {
@@ -624,105 +625,105 @@ export class Coder extends Agent<Env, CoderState> {
         }
       }
 
-      // Now, iterate through the consolidated map to build messageParts
-      console.log(`[Build Parts] Processing ${toolInfoMap.size} consolidated tool invocations.`);
+      // Process the tool calls to update state, but DON'T add to messageParts
+      console.log(`[Process Tools] Processing ${toolInfoMap.size} consolidated tool invocations for state updates.`);
       for (const [toolCallId, info] of toolInfoMap.entries()) {
         const { call: toolCall, result: toolResult } = info;
 
-        // If we have a result, push ONLY the result part
-        if (toolResult) {
-          console.log(`[Build Parts] Adding 'result' part for ${toolCallId}`);
-          messageParts.push({
-            type: 'tool-invocation' as const,
-            toolInvocation: {
-              state: 'result' as const,
-              toolCallId: toolCallId,
-              toolName: toolCall.toolName as any,
-              args: toolCall.args,
-              result: toolResult.result
-            }
-          });
+        // Process tool call and result, updating state and messageParts
+        if (toolCall) {
+          // Add observation for tool usage
+          this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
           
-          // Add observation for tool result
-          const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
-            ? `${toolResult.result.substring(0, 50)}...`
-            : JSON.stringify(toolResult.result).substring(0, 50) + '...';
-          this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
+          // If we have a result, add it to messageParts and process it for state updates
+          if (toolResult) {
+            console.log(`[Process Tools] Adding 'result' part for ${toolCallId} to messageParts`);
+            // Add the tool result part to messageParts
+            messageParts.push({
+              type: 'tool-invocation' as const,
+              toolInvocation: {
+                state: 'result' as const,
+                toolCallId: toolCallId,
+                toolName: toolCall.toolName as any,
+                args: toolCall.args,
+                result: toolResult.result
+              }
+            });
+            
+            // Add observation for tool result
+            const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
+              ? `${toolResult.result.substring(0, 50)}...`
+              : JSON.stringify(toolResult.result).substring(0, 50) + '...';
+            this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
 
-          // --- Update codebase logic ---
-          console.log(`[Build Parts] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
-          if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
-            console.log('[Build Parts] Condition MET for updateCodebaseStructure');
-            
-            const args = toolCall.args as { path?: string };
-            // Extract file content correctly from the GitHub API result object
-            const fileContentObj = toolResult.result;
-            console.log('[Build Parts] File content type:', typeof fileContentObj);
-            console.log('[Build Parts] File content structure:', JSON.stringify(fileContentObj).substring(0, 100) + '...');
-            
-            let fileContentDecoded: string | null = null;
-            
-            // Handle different result formats (string vs. object with content property)
-            if (typeof fileContentObj === 'string') {
-              fileContentDecoded = fileContentObj;
-              console.log(`[Build Parts] Using direct string content (length: ${fileContentDecoded.length})`);
-            } else if (typeof fileContentObj === 'object' && fileContentObj !== null) {
-              const fileContentBase64 = (fileContentObj as any)?.content;
+            // --- Update codebase logic ---
+            console.log(`[Process Tools] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
+            if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
+              console.log('[Process Tools] Condition MET for updateCodebaseStructure');
+              
+              const args = toolCall.args as { path?: string };
+              
+              // Extract the base64 content correctly from the nested result object
+              const fileContentBase64 = (toolResult.result as any)?.content;
+              let fileContentDecoded: string | null = null;
+
               if (typeof fileContentBase64 === 'string') {
+                console.log(`[Process Tools] Found base64 content string (length: ${fileContentBase64.length})`);
                 try {
-                  // Decode base64 content
-                  fileContentDecoded = atob(fileContentBase64.replace(/\n/g, '')); 
-                  console.log(`[Build Parts] Decoded base64 content successfully (length: ${fileContentDecoded.length})`);
+                  // Use Buffer for more robust decoding
+                  // First, ensure no invalid characters (like newlines) - remove ALL whitespace
+                  const cleanBase64 = fileContentBase64.replace(/\s/g, '');
+                  fileContentDecoded = Buffer.from(cleanBase64, 'base64').toString('utf8');
+                  console.log(`[Process Tools] Decoded file content successfully using Buffer (length: ${fileContentDecoded?.length || 0})`);
                 } catch (e) {
-                  console.error(`[Build Parts] Error decoding base64 content for ${args.path}:`, e);
-                  // Fallback to using the raw string
-                  fileContentDecoded = fileContentBase64;
-                  console.log(`[Build Parts] Using raw content string as fallback`);
+                  console.error(`[Process Tools] Error decoding base64 content for ${args.path} using Buffer:`, e);
+                  
+                  // Try a fallback method if Buffer fails
+                  try {
+                    console.log(`[Process Tools] Attempting fallback decoding method...`);
+                    // For Cloudflare Workers environment - different approach
+                    const cleanBase64 = fileContentBase64.replace(/[\s\r\n]+/g, '');
+                    const padded = cleanBase64.padEnd(cleanBase64.length + (4 - cleanBase64.length % 4) % 4, '=');
+                    fileContentDecoded = atob(padded);
+                    console.log(`[Process Tools] Fallback decoding succeeded (length: ${fileContentDecoded?.length || 0})`);
+                  } catch (fallbackError) {
+                    console.error(`[Process Tools] Fallback decoding also failed:`, fallbackError);
+                    // Keep fileContentDecoded as null if all decoding fails
+                  }
                 }
               } else {
-                console.log(`[Build Parts] No content property found, using full object stringified`);
-                fileContentDecoded = JSON.stringify(fileContentObj, null, 2);
+                console.log(`[Process Tools] File content in tool result was not a string or was missing.`);
               }
-            } else {
-              console.log(`[Build Parts] File content in tool result was not a string or object.`);
-            }
 
-            console.log(`[Build Parts] Args path: ${args.path || 'undefined'}`);
-            if (args.path && fileContentDecoded) {
-              console.log(`[Build Parts] Calling updateCodebaseStructure for path: ${args.path}`);
-              try {
-                // Pass the decoded content
-                await this.updateCodebaseStructure(args.path, fileContentDecoded, 'file');
-                this.setCurrentFile(args.path);
-                console.log(`[Build Parts] Successfully completed updateCodebaseStructure for ${args.path}`);
-              } catch (error) {
-                console.error(`[Build Parts] Error in updateCodebaseStructure: ${error}`);
+              console.log(`[Process Tools] Args path: ${args.path || 'undefined'}`);
+              if (args.path && fileContentDecoded) {
+                console.log(`[Process Tools] Calling updateCodebaseStructure for path: ${args.path}`);
+                try {
+                  // Pass the decoded content
+                  await this.updateCodebaseStructure(args.path, fileContentDecoded, 'file');
+                  this.setCurrentFile(args.path);
+                  console.log(`[Process Tools] Successfully completed updateCodebaseStructure for ${args.path}`);
+                } catch (error) {
+                  console.error(`[Process Tools] Error in updateCodebaseStructure: ${error}`);
+                }
+              } else {
+                console.log('[Process Tools] Missing path in args or no file content decoded');
               }
-            } else {
-              console.log('[Build Parts] Missing path in args or no file content extracted');
             }
+            // --- End Update codebase logic ---
           } else {
-            console.log('[Build Parts] Condition FAILED for updateCodebaseStructure');
-            console.log(`  - toolName === 'get_file_contents': ${toolCall.toolName === 'get_file_contents'}`);
-            console.log(`  - typeof args === 'object': ${typeof toolCall.args === 'object'}`);
-            console.log(`  - toolResult.result is truthy: ${!!toolResult.result}`);
+            // If we only have the call (tool hasn't finished or result wasn't found), push the call part
+            console.log(`[Process Tools] Adding 'call' part for ${toolCallId} to messageParts`);
+            messageParts.push({
+              type: 'tool-invocation' as const,
+              toolInvocation: {
+                state: 'call' as const,
+                toolCallId: toolCallId,
+                toolName: toolCall.toolName as any,
+                args: toolCall.args
+              }
+            });
           }
-          // --- End Update codebase logic ---
-        } else {
-          // If we only have the call (tool hasn't finished or result wasn't found), push the call part
-          console.log(`[Build Parts] Adding 'call' part for ${toolCallId}`);
-          messageParts.push({
-            type: 'tool-invocation' as const,
-            toolInvocation: {
-              state: 'call' as const,
-              toolCallId: toolCallId,
-              toolName: toolCall.toolName as any,
-              args: toolCall.args
-            }
-          });
-          
-          // Add observation for tool usage (call initiated)
-          this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
         }
       } // end loop through consolidated map
 
