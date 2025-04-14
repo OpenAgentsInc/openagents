@@ -16,33 +16,59 @@ const model = openrouter("google/gemini-2.5-pro-preview-03-25");
 
 export const agentContext = new AsyncLocalStorage<Coder>();
 
+// Default state that will be merged with all setState operations to ensure no fields are lost
+const DEFAULT_STATE: CoderState = {
+  messages: [],
+  githubToken: undefined,
+  currentRepoOwner: undefined,
+  currentRepoName: undefined,
+  currentBranch: undefined,
+  codebase: {},
+  scratchpad: '',
+  tasks: [],
+  observations: [],
+  workingFilePath: undefined
+};
+
 /** * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Coder extends Agent<Env, CoderState> {
-  initialState: CoderState = {
-    messages: [],
-    githubToken: undefined,
-    currentRepoOwner: undefined,
-    currentRepoName: undefined,
-    currentBranch: undefined,
-    codebase: {},
-    scratchpad: '',
-    tasks: [],
-    observations: [],
-    workingFilePath: undefined
-  };
+  initialState: CoderState = DEFAULT_STATE;
   tools: ToolSet = {};
 
   /**
-   * Safely updates the agent's state by merging the provided partial state
-   * with the existing state. Ensures ...this.state is always included.
-   * @param partialState An object containing the state properties to update.
+   * Ensures all state operations include ALL required fields from the default state template.
+   * This prevents state loss when updates happen.
+   * @param partialState The partial state to update
    */
   private updateState(partialState: Partial<CoderState>) {
-    this.setState({
+    // Get current state with fallback to default values 
+    const currentState: CoderState = {
+      ...DEFAULT_STATE,
       ...this.state,
+    };
+
+    // Update with new values
+    this.setState({
+      ...currentState,
       ...partialState,
     });
+
+    // Verify state integrity - logs which keys may be missing
+    this.verifyStateIntegrity();
+  }
+
+  /**
+   * Verifies that state contains all expected fields from DEFAULT_STATE
+   * Logs warnings if any are missing
+   */
+  private verifyStateIntegrity() {
+    if (!this.state) return;
+    
+    const missingKeys = Object.keys(DEFAULT_STATE).filter(key => !(key in this.state));
+    if (missingKeys.length > 0) {
+      console.warn(`[State Integrity Warning] State is missing expected keys: ${missingKeys.join(', ')}`);
+    }
   }
 
   async executeTask(description: string, task: Schedule<string>) {
@@ -61,7 +87,7 @@ export class Coder extends Agent<Env, CoderState> {
 
     this.updateState({
       messages: [
-        ...this.state.messages,
+        ...(this.state?.messages || []),
         newMessage
       ],
     });
@@ -113,8 +139,8 @@ export class Coder extends Agent<Env, CoderState> {
     };
     
     this.updateState({
-      tasks: [...(this.state.tasks || []), newTask],
-      observations: [...(this.state.observations || []), `New task added: ${description}`]
+      tasks: [...(this.state?.tasks || []), newTask],
+      observations: [...(this.state?.observations || []), `New task added: ${description}`]
     });
     
     return newTask.id;
@@ -124,7 +150,7 @@ export class Coder extends Agent<Env, CoderState> {
    * Updates a task's status
    */
   private updateTaskStatus(taskId: string, status: Task['status'], notes?: string) {
-    if (!this.state.tasks) return false;
+    if (!this.state?.tasks) return false;
     
     const updatedTasks = this.state.tasks.map(task => {
       if (task.id === taskId) {
@@ -141,7 +167,7 @@ export class Coder extends Agent<Env, CoderState> {
     
     this.updateState({
       tasks: updatedTasks,
-      observations: [...(this.state.observations || []), `Task ${taskId} status changed to ${status}`]
+      observations: [...(this.state?.observations || []), `Task ${taskId} status changed to ${status}`]
     });
     
     return true;
@@ -155,7 +181,7 @@ export class Coder extends Agent<Env, CoderState> {
     const formattedThought = `${timestamp}: ${thought}`;
     
     this.updateState({
-      scratchpad: this.state.scratchpad 
+      scratchpad: this.state?.scratchpad 
         ? `${this.state.scratchpad}\n- ${formattedThought}` 
         : `- ${formattedThought}`
     });
@@ -166,7 +192,7 @@ export class Coder extends Agent<Env, CoderState> {
    */
   private addAgentObservation(observation: string) {
     this.updateState({
-      observations: [...(this.state.observations || []), observation]
+      observations: [...(this.state?.observations || []), observation]
     });
   }
 
@@ -174,7 +200,7 @@ export class Coder extends Agent<Env, CoderState> {
    * Updates information about a file or directory in the codebase structure
    */
   private updateCodebaseStructure(path: string, nodeInfo: Partial<FileNode>) {
-    const structure = this.state.codebase?.structure || {};
+    const structure = this.state?.codebase?.structure || {};
     const existingNode = structure[path] || { type: nodeInfo.type || 'file', path };
     
     const updatedNode = {
@@ -184,7 +210,7 @@ export class Coder extends Agent<Env, CoderState> {
     
     this.updateState({
       codebase: {
-        ...(this.state.codebase || {}),
+        ...(this.state?.codebase || {}),
         structure: {
           ...structure,
           [path]: updatedNode
@@ -208,11 +234,14 @@ export class Coder extends Agent<Env, CoderState> {
   })
   async infer(githubToken?: string) {
     return agentContext.run(this, async () => {
+      // Check state integrity before proceeding
+      this.verifyStateIntegrity();
+
       // Use githubToken from state if not provided as parameter
-      const token = githubToken || this.state.githubToken;
+      const token = githubToken || this.state?.githubToken;
 
       // Get current state messages
-      let messages = this.state.messages || [];
+      let messages = this.state?.messages || [];
 
       // If there's more than 10 messages, take the first 3 and last 5
       if (messages.length > 10) {
@@ -229,7 +258,7 @@ export class Coder extends Agent<Env, CoderState> {
 
       // Generate system prompt based on current state
       const systemPrompt = getSystemPrompt({
-        state: this.state,
+        state: this.state || DEFAULT_STATE, // Provide default if somehow state is undefined
         model,
         temperature: 0.7
       });
@@ -336,6 +365,9 @@ export class Coder extends Agent<Env, CoderState> {
           }
         ]
       });
+
+      // Final state integrity check
+      this.verifyStateIntegrity();
 
       return {};
     });
