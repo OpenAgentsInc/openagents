@@ -181,7 +181,7 @@ export class Coder extends Agent<Env, CoderState> {
       contextPrompt += `\nCreate a SPECIFIC, ACTIONABLE coding task. Break it down into clear subtasks where appropriate.`;
 
       const { object: newTaskInfo } = await generateObject({
-        model: model,
+        model: smallModel, // Use smaller model for structured generation
         schema: NewTaskSchema,
         prompt: contextPrompt
       });
@@ -268,7 +268,7 @@ export class Coder extends Agent<Env, CoderState> {
 
       // Generate a structured thought based on the enriched prompt
       const { object: planning } = await generateObject({
-        model: model,
+        model: smallModel, // Use smaller model for structured generation
         schema: PlanningSchema,
         prompt: contextPrompt,
       });
@@ -367,7 +367,7 @@ export class Coder extends Agent<Env, CoderState> {
         console.log(`[updateCodebaseStructure] Calling generateObject`);
 
         const { object } = await generateObject({
-          model: model,
+          model: smallModel, // Use smaller model for structured generation
           schema: FileSummarySchema,
           prompt: contextPrompt
         });
