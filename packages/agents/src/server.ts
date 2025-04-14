@@ -1073,23 +1073,29 @@ export class Coder extends Agent<Env, CoderState> {
           const lastUserMessageContent = lastMessage.content || '';
           console.log(`[Intent Check] Checking user message: "${lastUserMessageContent.substring(0, 50)}..."`);
           
-          // NEW: Check for start/stop commands FIRST
+          // Track if we detected a command intent
+          let commandIntentDetected = false;
+          
+          // Check for start/stop commands FIRST
           if (lastUserMessageContent.toLowerCase().includes('start a continuous run') || 
               lastUserMessageContent.toLowerCase().includes('start continuous run')) {
+            commandIntentDetected = true;
             console.log("[Intent Check] User message requests start continuous run. Calling startContinuousRun().");
             this.startContinuousRun().catch(e => console.error("Error auto-starting continuous run:", e));
-            // The startContinuousRun will already update state and trigger continueInfer
-            // So we don't need to generate tasks
-            return {}; // Return early to skip task generation and rest of infer method
+            this.addAgentObservation("Continuous run initiated by user message.");
+            // No longer return early - allow generateText to create a confirmation message
           } 
           else if (lastUserMessageContent.toLowerCase().includes('stop continuous run')) {
+            commandIntentDetected = true;
             console.log("[Intent Check] User message requests stop continuous run. Calling stopContinuousRun().");
             this.stopContinuousRun().catch(e => console.error("Error auto-stopping continuous run:", e));
-            // Don't return - still allow the rest of the infer method to run
+            this.addAgentObservation("Continuous run stopped by user message.");
+            // Continue with the infer method to generate a confirmation message
           }
           // Modified: Check for set repository context and directly call the method when possible
           else if (lastUserMessageContent.toLowerCase().includes('set repo context') ||
                   lastUserMessageContent.toLowerCase().includes('set repository context')) {
+            commandIntentDetected = true;
             console.log("[Intent Check] User message requests setting repository context.");
 
             // --- BEGIN DIRECT TOOL EXECUTION LOGIC ---
@@ -1104,20 +1110,12 @@ export class Coder extends Agent<Env, CoderState> {
               try {
                 // Directly call the instance method, don't wait for LLM tool call
                 await this.setRepositoryContext(owner, repo, branch);
-                // Since we are bypassing the normal LLM response flow for this,
-                // we might need to manually create the assistant response here.
-                // For now, let's just return early. A better solution might involve
-                // adding a confirmation message to the state here.
                 this.addAgentObservation(`Repository context set via direct intent parsing: ${owner}/${repo}:${branch}`);
-                // We could potentially construct a simple text response here if needed.
-                // Example:
-                // messageParts.push({ type: 'text', text: `Okay, context set to ${owner}/${repo}:${branch}.` });
-                // But for now, let's just ensure the state is set and stop this infer cycle.
-                return {}; // Stop further processing in this infer cycle
+                // No longer returning early - allow generateText to create a confirmation message
               } catch (e) {
                 console.error("Error directly calling setRepositoryContext:", e);
                 this.addAgentObservation(`Error setting context: ${e.message}`);
-                // Allow infer to continue to generate an error message potentially
+                // Allow infer to continue to generate an error message
               }
             } else {
               console.warn("[Intent Check] Could not parse owner/repo/branch from message. Letting LLM handle it (might suggest tool).");
@@ -1125,8 +1123,8 @@ export class Coder extends Agent<Env, CoderState> {
             }
             // --- END DIRECT TOOL EXECUTION LOGIC ---
           }
-          // ONLY check for task generation if it wasn't a special command
-          else {
+          // ONLY check for task generation if no command intent was detected
+          if (!commandIntentDetected) {
             console.log(`[Task Gen] Checking if message suggests a task: "${lastUserMessageContent.substring(0, 30)}..."`);
             
             const taskIndicators = [
@@ -1147,6 +1145,8 @@ export class Coder extends Agent<Env, CoderState> {
             } else {
               console.log("[Task Gen] Last user message does not match task criteria.");
             }
+          } else {
+            console.log("[Task Gen] Skipping task generation as command intent was detected.");
           }
         } else {
           console.log("[Intent/Task Gen] No user message found as the last message.");
