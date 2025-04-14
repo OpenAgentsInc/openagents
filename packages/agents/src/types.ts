@@ -1,0 +1,47 @@
+import { type UIMessage } from "ai";
+
+// Define types for Coder state
+export interface CoderState {
+  messages: UIMessage[];
+  githubToken?: string;
+  currentRepoOwner?: string;
+  currentRepoName?: string;
+  currentBranch?: string;
+  codebase?: CodebaseState;
+  scratchpad?: string;
+  tasks?: Task[];
+  observations?: string[];
+  workingFilePath?: string;
+}
+
+// Type to track codebase understanding
+export interface CodebaseState {
+  structure?: Record<string, FileNode>;
+  dependencies?: Record<string, string>;
+  modules?: Record<string, ModuleDescription>;
+}
+
+export interface FileNode {
+  type: 'file' | 'directory';
+  path: string;
+  children?: string[]; // For directories, list of child paths
+  description?: string;
+  tags?: string[];
+}
+
+export interface ModuleDescription {
+  name: string;
+  purpose: string;
+  dependencies: string[];
+  apis: string[];
+}
+
+export interface Task {
+  id: string;
+  description: string;
+  status: 'pending' | 'in-progress' | 'completed' | 'failed';
+  created: Date;
+  updated?: Date;
+  completed?: Date;
+  notes?: string[];
+}

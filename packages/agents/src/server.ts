@@ -8,27 +8,34 @@ import { type ToolContext } from "@openagents/core/src/tools/toolContext";
 import { getFileContentsTool } from "@openagents/core/src/tools/github/getFileContents";
 import { addIssueCommentTool } from "@openagents/core/src/tools/github/addIssueComment";
 import { tools as availableTools } from "./tools";
+import { getSystemPrompt } from "./prompts";
+import { CoderState, Task, FileNode } from "./types";
+
 const openrouter = createOpenRouter({ apiKey: env.OPENROUTER_API_KEY })
 const model = openrouter("google/gemini-2.5-pro-preview-03-25");
 
 export const agentContext = new AsyncLocalStorage<Coder>();
-
-interface CoderState {
-  messages: UIMessage[];
-  githubToken?: string;
-}
 
 /** * Chat Agent implementation that handles real-time AI chat interactions
  */
 export class Coder extends Agent<Env, CoderState> {
   initialState: CoderState = {
     messages: [],
-    githubToken: undefined
+    githubToken: undefined,
+    currentRepoOwner: undefined,
+    currentRepoName: undefined,
+    currentBranch: undefined,
+    codebase: {},
+    scratchpad: '',
+    tasks: [],
+    observations: [],
+    workingFilePath: undefined
   };
   tools: ToolSet = {};
 
   async executeTask(description: string, task: Schedule<string>) {
     this.setState({
+      ...this.state,
       messages: [
         ...this.state.messages,
         {
@@ -61,6 +68,130 @@ export class Coder extends Agent<Env, CoderState> {
     this.infer()
   }
 
+  /**
+   * Sets the current repository context
+   */
+  @unstable_callable({
+    description: "Set the current repository context"
+  })
+  async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
+    console.log(`Setting repository context to ${owner}/${repo} on branch ${branch}`);
+    this.setState({
+      ...this.state,
+      currentRepoOwner: owner,
+      currentRepoName: repo,
+      currentBranch: branch,
+    });
+    return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
+  }
+
+  /**
+   * Adds a task to the agent's state
+   */
+  private addAgentTask(description: string) {
+    const newTask: Task = {
+      id: generateId(),
+      description,
+      status: 'pending',
+      created: new Date(),
+    };
+    
+    this.setState({
+      ...this.state,
+      tasks: [...(this.state.tasks || []), newTask],
+      observations: [...(this.state.observations || []), `New task added: ${description}`]
+    });
+    
+    return newTask.id;
+  }
+
+  /**
+   * Updates a task's status
+   */
+  private updateTaskStatus(taskId: string, status: Task['status'], notes?: string) {
+    if (!this.state.tasks) return false;
+    
+    const updatedTasks = this.state.tasks.map(task => {
+      if (task.id === taskId) {
+        return {
+          ...task,
+          status,
+          updated: new Date(),
+          ...(status === 'completed' ? { completed: new Date() } : {}),
+          notes: notes ? [...(task.notes || []), notes] : task.notes
+        };
+      }
+      return task;
+    });
+    
+    this.setState({
+      ...this.state,
+      tasks: updatedTasks,
+      observations: [...(this.state.observations || []), `Task ${taskId} status changed to ${status}`]
+    });
+    
+    return true;
+  }
+
+  /**
+   * Updates the agent's scratchpad for planning and thoughts
+   */
+  private updateAgentScratchpad(thought: string) {
+    const timestamp = new Date().toISOString();
+    const formattedThought = `${timestamp}: ${thought}`;
+    
+    this.setState({
+      ...this.state,
+      scratchpad: this.state.scratchpad 
+        ? `${this.state.scratchpad}\n- ${formattedThought}` 
+        : `- ${formattedThought}`
+    });
+  }
+
+  /**
+   * Adds an observation to the agent's state
+   */
+  private addAgentObservation(observation: string) {
+    this.setState({
+      ...this.state,
+      observations: [...(this.state.observations || []), observation]
+    });
+  }
+
+  /**
+   * Updates information about a file or directory in the codebase structure
+   */
+  private updateCodebaseStructure(path: string, nodeInfo: Partial<FileNode>) {
+    const structure = this.state.codebase?.structure || {};
+    const existingNode = structure[path] || { type: nodeInfo.type || 'file', path };
+    
+    const updatedNode = {
+      ...existingNode,
+      ...nodeInfo
+    };
+    
+    this.setState({
+      ...this.state,
+      codebase: {
+        ...(this.state.codebase || {}),
+        structure: {
+          ...structure,
+          [path]: updatedNode
+        }
+      }
+    });
+  }
+
+  /**
+   * Sets the file currently being worked on
+   */
+  private setCurrentFile(filePath: string) {
+    this.setState({
+      ...this.state,
+      workingFilePath: filePath
+    });
+  }
+
   @unstable_callable({
     description: "Generate an AI response based on the current messages",
     streaming: true
@@ -86,8 +217,15 @@ export class Coder extends Agent<Env, CoderState> {
         ...availableTools
       }
 
+      // Generate system prompt based on current state
+      const systemPrompt = getSystemPrompt({
+        state: this.state,
+        model,
+        temperature: 0.7
+      });
+
       const result = await generateText({
-        system: `You are a helpful assistant. Help the user with their GitHub repository.`,
+        system: systemPrompt,
         model,
         messages,
         tools,
@@ -95,6 +233,15 @@ export class Coder extends Agent<Env, CoderState> {
         temperature: 0.7,
         maxSteps: 5,
       });
+
+      // Add observation for the response
+      if (result.text) {
+        const snippet = result.text.length > 50 
+          ? `${result.text.substring(0, 50)}...` 
+          : result.text;
+          
+        this.addAgentObservation(`Generated response: ${snippet}`);
+      }
 
       // Create message parts array to handle both text and tool calls
       const messageParts: UIPart[] = [];
@@ -125,6 +272,9 @@ export class Coder extends Agent<Env, CoderState> {
             }
           });
 
+          // Add observation for tool usage
+          this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
+
           // Immediately add its result if available
           if (toolResult) {
             messageParts.push({
@@ -139,12 +289,33 @@ export class Coder extends Agent<Env, CoderState> {
                 result: toolResult.result
               }
             });
+
+            // Add observation for tool result
+            const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50 
+              ? `${toolResult.result.substring(0, 50)}...` 
+              : JSON.stringify(toolResult.result).substring(0, 50) + '...';
+              
+            this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
+            
+            // Update codebase structure if it was a file contents tool
+            if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object') {
+              const args = toolCall.args as any;
+              if (args.path) {
+                this.setCurrentFile(args.path);
+                this.updateCodebaseStructure(args.path, {
+                  type: 'file', 
+                  path: args.path,
+                  description: `File retrieved at ${new Date().toISOString()}`
+                });
+              }
+            }
           }
         }
       }
 
       // Update state with the new message containing all parts
       this.setState({
+        ...this.state,
         messages: [
           ...messages,
           {

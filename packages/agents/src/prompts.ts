@@ -1,80 +1,42 @@
 import { tools } from "./tools";
-import { AsyncLocalStorage } from "node:async_hooks";
-import { type UIMessage } from "ai";
+import { type CoderState } from "./types";
 
-// Define types for Coder state
-export interface CoderState {
-  messages: UIMessage[];
-  githubToken?: string;
-  currentRepoOwner?: string;
-  currentRepoName?: string;
-  currentBranch?: string;
-  codebase?: CodebaseState;
-  scratchpad?: string;
-  tasks?: Task[];
-  observations?: string[];
-  workingFilePath?: string;
-}
-
-// Type to track codebase understanding
-export interface CodebaseState {
-  structure?: Record<string, FileNode>;
-  dependencies?: Record<string, string>;
-  modules?: Record<string, ModuleDescription>;
-}
-
-export interface FileNode {
-  type: 'file' | 'directory';
-  path: string;
-  children?: string[]; // For directories, list of child paths
-  description?: string;
-  tags?: string[];
-}
-
-export interface ModuleDescription {
-  name: string;
-  purpose: string;
-  dependencies: string[];
-  apis: string[];
-}
-
-export interface Task {
-  id: string;
-  description: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'failed';
-  created: Date;
-  updated?: Date;
-  completed?: Date;
-  notes?: string[];
-}
-
-// Context used to access agent during tool execution
-export const agentContext = new AsyncLocalStorage<any>();
-
+/**
+ * Options for generating the system prompt
+ */
 interface SystemPromptOptions {
-  messages?: UIMessage[];
-  availableTools?: string[];
-  githubToken?: string;
-  currentRepoOwner?: string;
-  currentRepoName?: string;
-  currentBranch?: string;
-  model?: any;
-  state?: CoderState;
-  temperature?: number;
+  state: CoderState; // The agent's current state
+  model?: any; // Model information
+  temperature?: number; // Temperature setting for generation
 }
 
+/**
+ * Generates a system prompt for the Coder agent based on its current state
+ * 
+ * @param options Configuration options including the agent state
+ * @returns A string containing the complete system prompt
+ */
 export function getSystemPrompt(options: SystemPromptOptions): string {
   const { 
-    messages = [], 
-    availableTools = Object.keys(tools),
-    githubToken,
-    currentRepoOwner,
-    currentRepoName,
-    currentBranch,
-    model,
     state,
+    model,
     temperature = 0.7,
   } = options;
+
+  // Extract values from state
+  const { 
+    currentRepoOwner, 
+    currentRepoName, 
+    currentBranch,
+    scratchpad,
+    codebase,
+    tasks,
+    observations,
+    workingFilePath
+  } = state;
+
+  // Get available tools
+  const availableTools = Object.keys(tools);
 
   // Base system prompt
   let systemPrompt = `You are an autonomous coding agent designed to help with software development tasks. You can analyze codebases, fix bugs, implement features, and create pull requests.
@@ -96,51 +58,49 @@ Repository: ${currentRepoOwner}/${currentRepoName}${currentBranch ? `\nBranch: $
   }
 
   // Add state information
-  if (state) {
-    // Add any custom scratchpad content if it exists
-    if (state.scratchpad) {
-      systemPrompt += `\n\nSCRATCHPAD (for your internal planning - not visible to user):
-${state.scratchpad}`;
-    }
+  // Add any custom scratchpad content if it exists
+  if (scratchpad) {
+    systemPrompt += `\n\nSCRATCHPAD (for your internal planning - not visible to user):
+${scratchpad}`;
+  }
 
-    // Add codebase understanding if it exists
-    if (state.codebase && Object.keys(state.codebase).length > 0) {
-      systemPrompt += `\n\nCODEBASE UNDERSTANDING:`;
-      
-      if (state.codebase.modules && Object.keys(state.codebase.modules).length > 0) {
-        systemPrompt += `\nKey modules:`;
-        for (const [name, mod] of Object.entries(state.codebase.modules)) {
-          systemPrompt += `\n- ${name}: ${mod.purpose}`;
-        }
+  // Add codebase understanding if it exists
+  if (codebase && Object.keys(codebase).length > 0) {
+    systemPrompt += `\n\nCODEBASE UNDERSTANDING:`;
+    
+    if (codebase.modules && Object.keys(codebase.modules).length > 0) {
+      systemPrompt += `\nKey modules:`;
+      for (const [name, mod] of Object.entries(codebase.modules)) {
+        systemPrompt += `\n- ${name}: ${mod.purpose}`;
       }
     }
+  }
 
-    // Add pending tasks if they exist
-    if (state.tasks && state.tasks.length > 0) {
-      const pendingTasks = state.tasks.filter(t => t.status === 'pending' || t.status === 'in-progress');
-      if (pendingTasks.length > 0) {
-        systemPrompt += `\n\nPENDING TASKS:`;
-        pendingTasks.forEach(task => {
-          systemPrompt += `\n- ${task.description} (${task.status})`;
-        });
-      }
+  // Add pending tasks if they exist
+  if (tasks && tasks.length > 0) {
+    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'in-progress');
+    if (pendingTasks.length > 0) {
+      systemPrompt += `\n\nPENDING TASKS:`;
+      pendingTasks.forEach(task => {
+        systemPrompt += `\n- ${task.description} (${task.status})`;
+      });
     }
+  }
 
-    // Add recent observations if they exist
-    if (state.observations && state.observations.length > 0) {
-      const recentObservations = state.observations.slice(-3); // Last 3 observations
-      if (recentObservations.length > 0) {
-        systemPrompt += `\n\nRECENT OBSERVATIONS:`;
-        recentObservations.forEach(obs => {
-          systemPrompt += `\n- ${obs}`;
-        });
-      }
+  // Add recent observations if they exist
+  if (observations && observations.length > 0) {
+    const recentObservations = observations.slice(-3); // Last 3 observations
+    if (recentObservations.length > 0) {
+      systemPrompt += `\n\nRECENT OBSERVATIONS:`;
+      recentObservations.forEach(obs => {
+        systemPrompt += `\n- ${obs}`;
+      });
     }
+  }
 
-    // Add working file context if it exists
-    if (state.workingFilePath) {
-      systemPrompt += `\n\nCURRENTLY FOCUSED ON FILE: ${state.workingFilePath}`;
-    }
+  // Add working file context if it exists
+  if (workingFilePath) {
+    systemPrompt += `\n\nCURRENTLY FOCUSED ON FILE: ${workingFilePath}`;
   }
 
   // Add model information
@@ -179,92 +139,4 @@ ${state.scratchpad}`;
   }
 
   return systemPrompt;
-}
-
-// Helper functions to manage state
-export function updateScratchpad(state: CoderState, newContent: string): CoderState {
-  return {
-    ...state,
-    scratchpad: newContent
-  };
-}
-
-export function addObservation(state: CoderState, observation: string): CoderState {
-  return {
-    ...state,
-    observations: [...(state.observations || []), observation]
-  };
-}
-
-export function addTask(state: CoderState, description: string): CoderState {
-  const newTask: Task = {
-    id: Date.now().toString(),
-    description,
-    status: 'pending',
-    created: new Date()
-  };
-  
-  return {
-    ...state,
-    tasks: [...(state.tasks || []), newTask]
-  };
-}
-
-export function updateTaskStatus(state: CoderState, taskId: string, status: Task['status'], notes?: string): CoderState {
-  if (!state.tasks) return state;
-  
-  const updatedTasks = state.tasks.map(task => {
-    if (task.id === taskId) {
-      return {
-        ...task,
-        status,
-        updated: new Date(),
-        ...(status === 'completed' ? { completed: new Date() } : {}),
-        notes: notes ? [...(task.notes || []), notes] : task.notes
-      };
-    }
-    return task;
-  });
-  
-  return {
-    ...state,
-    tasks: updatedTasks
-  };
-}
-
-export function setRepoContext(state: CoderState, owner: string, repo: string, branch?: string): CoderState {
-  return {
-    ...state,
-    currentRepoOwner: owner,
-    currentRepoName: repo,
-    currentBranch: branch || 'main'
-  };
-}
-
-export function updateCodebaseStructure(state: CoderState, path: string, nodeInfo: Partial<FileNode>): CoderState {
-  const structure = state.codebase?.structure || {};
-  const existingNode = structure[path] || { type: nodeInfo.type || 'file', path };
-  
-  const updatedNode = {
-    ...existingNode,
-    ...nodeInfo
-  };
-  
-  return {
-    ...state,
-    codebase: {
-      ...(state.codebase || {}),
-      structure: {
-        ...structure,
-        [path]: updatedNode
-      }
-    }
-  };
-}
-
-export function setCurrentFile(state: CoderState, filePath: string): CoderState {
-  return {
-    ...state,
-    workingFilePath: filePath
-  };
 }
