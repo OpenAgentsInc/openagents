@@ -26,9 +26,11 @@ const PlanningSchema = z.object({
 
 // Zod schema for summarizing file content for the codebase map
 const FileSummarySchema = z.object({
-  summary: z.string().describe("A brief summary of the file's purpose and key contents."),
-  tags: z.array(z.string()).optional().describe("Keywords or tags describing the file's functionality (e.g., 'auth', 'api-route', 'database')."),
+  summary: z.string().describe("A brief summary of the file's purpose and key contents (1-3 sentences)."),
+  tags: z.array(z.string()).describe("Keywords or tags describing the file's functionality (e.g., 'auth', 'api-route', 'database', 'component', 'utility')."),
   exports: z.array(z.string()).optional().describe("Key functions, classes, or variables exported by the file."),
+  dependencies: z.array(z.string()).optional().describe("Important libraries, modules, or files this file depends on."),
+  complexity: z.enum(["low", "medium", "high"]).optional().describe("Assessment of the file's complexity."),
 });
 
 // Zod schema for defining a new task based on user request or analysis
@@ -314,8 +316,8 @@ export class Coder extends Agent<Env, CoderState> {
       try {
         console.log(`[updateCodebaseStructure] Preparing to generate file summary`);
         
-        // Enhance the prompt with repository context
-        let contextPrompt = `Summarize the following code file located at '${path}'. `;
+        // Create a comprehensive prompt for generating a structured file summary
+        let contextPrompt = `Analyze the following code file located at '${path}' and generate a structured summary. `;
         
         // Add file extension info
         const fileExtension = path.split('.').pop()?.toLowerCase();
@@ -325,24 +327,41 @@ export class Coder extends Agent<Env, CoderState> {
         
         // Add repository context
         if (this.state.currentRepoOwner && this.state.currentRepoName) {
-          contextPrompt += `File is from repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}. `;
+          contextPrompt += `File is from repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}${this.state.currentBranch ? ` (branch: ${this.state.currentBranch})` : ''}. `;
         }
         
         // Add specific instructions based on file type
+        contextPrompt += '\nPlease provide: \n';
+        contextPrompt += '1. A concise summary (1-3 sentences) of the file\'s purpose and functionality\n';
+        contextPrompt += '2. Appropriate tags categorizing this file (minimum 3 tags)\n';
+        
         if (fileExtension === 'js' || fileExtension === 'ts' || fileExtension === 'tsx') {
-          contextPrompt += `Focus on identifying exports (functions, classes, constants), dependencies (imports), and the main purpose of this module. `;
+          contextPrompt += '3. A list of key exports (functions, classes, components, constants)\n';
+          contextPrompt += '4. Important dependencies (imports) this file relies on\n';
+          contextPrompt += '5. Assess the code complexity (low/medium/high)\n';
         } else if (fileExtension === 'css' || fileExtension === 'scss') {
-          contextPrompt += `Focus on the main UI components or themes being styled. `;
+          contextPrompt += '3. Main UI components or elements being styled\n';
+          contextPrompt += '4. Any dependencies like imported fonts or other style files\n';
+          contextPrompt += '5. Assess the styling complexity (low/medium/high)\n';
         } else if (fileExtension === 'json') {
-          contextPrompt += `Focus on the configuration purpose and key settings. `;
+          contextPrompt += '3. Key configuration properties and their purpose\n';
+          contextPrompt += '4. Related files or systems that likely use this configuration\n';
+          contextPrompt += '5. Assess the configuration complexity (low/medium/high)\n';
+        } else {
+          contextPrompt += '3. Key elements defined in this file\n';
+          contextPrompt += '4. Related files or systems\n';
+          contextPrompt += '5. Assess the complexity (low/medium/high)\n';
         }
         
         // Add examples of good tag types
-        contextPrompt += `Add tags like "component", "api", "utility", "state-management", "auth", "ui", "database", "config", etc. that best describe this file's role. `;
+        contextPrompt += `\nUse appropriate tags from categories such as: "component", "api", "utility", "state-management", "auth", "ui", "database", "config", "tool", "model", "type-definition", "server", "client", "test", etc. Be specific to the file's role in the codebase.\n`;
         
-        // For debugging, shorten content significantly
-        const contentForAI = content.substring(0, 2000); // Shorter than normal for quicker debugging
-        contextPrompt += `\n\n\`\`\`\n${contentForAI}\n\`\`\``; 
+        // Limit content length for faster processing
+        const contentForAI = content.substring(0, 3000); // Using 3000 instead of 2000 for better context
+        contextPrompt += `\n\`\`\`\n${contentForAI}\n\`\`\``;
+        
+        // Add additional constraint for consistent output
+        contextPrompt += '\nKeep your summary focused on the technical details and main functionality, avoiding subjective judgments about code quality unless there are obvious issues.'; 
         
         console.log(`[updateCodebaseStructure] Calling generateObject`);
         
@@ -373,6 +392,16 @@ export class Coder extends Agent<Env, CoderState> {
       // Add generated summary and tags if available
       description: summary?.summary || existingNode.description || `Accessed at ${new Date().toISOString()}`,
       tags: summary?.tags || existingNode.tags || [],
+      // Add additional metadata from the summary
+      metadata: {
+        ...(existingNode.metadata || {}),
+        ...(summary ? {
+          exports: summary.exports || [],
+          dependencies: summary.dependencies || [],
+          complexity: summary.complexity || 'medium',
+          lastAnalyzed: new Date().toISOString(),
+        } : {})
+      }
     };
 
     // Update the codebase structure in the state
@@ -456,6 +485,13 @@ export class Coder extends Agent<Env, CoderState> {
       console.log("[Debug] Tool results length:", result.toolResults?.length || 0);
       console.log("[Debug] Finish reason:", result.finishReason || "unknown");
       
+      // Log steps array information
+      console.log("[Debug] Steps array exists:", !!result.steps);
+      console.log("[Debug] Steps array length:", result.steps?.length || 0);
+      if (result.steps && result.steps.length > 0) {
+        console.log("[Debug] Steps array content:", JSON.stringify(result.steps, null, 2));
+      }
+      
       // Log full tool calls structure if it exists
       if (result.toolCalls && result.toolCalls.length > 0) {
         console.log("[Debug] Tool calls:", JSON.stringify(result.toolCalls, null, 2));
@@ -506,90 +542,170 @@ export class Coder extends Agent<Env, CoderState> {
         });
       }
 
-      // Add tool calls and their results together
-      if (result.toolCalls && result.toolCalls.length > 0) {
-        for (const toolCall of result.toolCalls) {
-          console.log(`[Infer Loop] Processing toolCall: ${toolCall.toolName}`);
-          
-          // @ts-ignore - toolCall type issue
-          const toolResult = result.toolResults?.find(r => r.toolCallId === toolCall.toolCallId);
-          console.log(`[Infer Loop] Found toolResult: ${!!toolResult}`);
-          
-          // Log the specific tool call details
-          console.log(`[Infer Loop] Tool Call ID: ${(toolCall as any).toolCallId || 'undefined'}`);
-          console.log(`[Infer Loop] Tool Name: ${toolCall.toolName || 'undefined'}`);
-          console.log(`[Infer Loop] Tool Args: ${JSON.stringify(toolCall.args || {})}`);
+      // Process tool calls and results from the steps array
+      if (result.steps && result.steps.length > 0) {
+        console.log("[Steps Loop] Processing steps array...");
+        for (const step of result.steps) {
+          console.log(`[Steps Loop] Processing step with type: ${step.stepType}, finishReason: ${step.finishReason}`);
 
-          // Add the tool call
-          messageParts.push({
-            type: 'tool-invocation' as const,
-            toolInvocation: {
-              state: 'call' as const,
-              // @ts-ignore - toolCall type issue
-              toolCallId: toolCall.toolCallId,
-              toolName: toolCall.toolName as "getWeatherInformation",
-              args: toolCall.args
+          // Check for tool calls within this step
+          if (step.toolCalls && step.toolCalls.length > 0) {
+            console.log(`[Steps Loop] Found ${step.toolCalls.length} toolCalls in this step.`);
+            for (const toolCall of step.toolCalls) {
+              console.log(`[Steps Loop] Processing toolCall: ${toolCall.toolName}`);
+              // @ts-ignore - Assuming similar structure, adjust if needed
+              const toolCallId = toolCall.toolCallId;
+
+              // First try to find the corresponding toolResult in the top-level result.toolResults
+              // @ts-ignore
+              let toolResult = result.toolResults?.find(r => r.toolCallId === toolCallId);
+              console.log(`[Steps Loop] Found corresponding toolResult in top-level results: ${!!toolResult}`);
+              
+              // If not found in top level, look through all steps for a matching toolResult
+              if (!toolResult) {
+                for (const resultStep of result.steps) {
+                  if (resultStep.toolResults && resultStep.toolResults.length > 0) {
+                    // @ts-ignore
+                    const stepToolResult = resultStep.toolResults.find(r => r.toolCallId === toolCallId);
+                    if (stepToolResult) {
+                      toolResult = stepToolResult;
+                      console.log(`[Steps Loop] Found corresponding toolResult in step results`);
+                      break;
+                    }
+                  }
+                }
+              }
+
+              // Log the tool call details
+              console.log(`[Steps Loop] Tool Call ID: ${toolCallId || 'undefined'}`);
+              console.log(`[Steps Loop] Tool Name: ${toolCall.toolName || 'undefined'}`);
+              console.log(`[Steps Loop] Tool Args: ${JSON.stringify(toolCall.args || {})}`);
+
+              // Add the tool call part to the message
+              messageParts.push({
+                type: 'tool-invocation' as const,
+                toolInvocation: {
+                  state: 'call' as const,
+                  toolCallId: toolCallId,
+                  toolName: toolCall.toolName as any,
+                  args: toolCall.args
+                }
+              });
+
+              // Add observation for tool usage
+              this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
+
+              // If we found a corresponding tool result, process it
+              if (toolResult) {
+                console.log(`[Steps Loop] Tool Result ID: ${toolResult.toolCallId || 'undefined'}`);
+                console.log(`[Steps Loop] Tool Result Type: ${typeof toolResult.result}`);
+                console.log(`[Steps Loop] Tool Result Length: ${typeof toolResult.result === 'string' ? toolResult.result.length : 'not a string'}`);
+                
+                // Add the tool result part to the message
+                messageParts.push({
+                  type: 'tool-invocation' as const,
+                  toolInvocation: {
+                    state: 'result' as const,
+                    toolCallId: toolCallId,
+                    toolName: toolCall.toolName as any,
+                    args: toolCall.args,
+                    result: toolResult.result
+                  }
+                });
+
+                // Add observation for tool result
+                const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
+                  ? `${toolResult.result.substring(0, 50)}...`
+                  : JSON.stringify(toolResult.result).substring(0, 50) + '...';
+                  
+                this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
+
+                // Update codebase structure if it was a file contents tool
+                console.log(`[Steps Loop] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
+                if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
+                  console.log('[Steps Loop] Condition MET for updateCodebaseStructure');
+                  
+                  const args = toolCall.args as { path?: string };
+                  console.log(`[Steps Loop] Args path: ${args.path || 'undefined'}`);
+                  
+                  if (args.path) {
+                    console.log(`[Steps Loop] Calling updateCodebaseStructure for path: ${args.path}`);
+                    
+                    try {
+                      // Call the enhanced method with the file content
+                      await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
+                      // Also set current file
+                      this.setCurrentFile(args.path);
+                      console.log(`[Steps Loop] Successfully completed updateCodebaseStructure for ${args.path}`);
+                    } catch (error) {
+                      console.error(`[Steps Loop] Error in updateCodebaseStructure: ${error}`);
+                    }
+                  } else {
+                    console.log('[Steps Loop] Missing path in args');
+                  }
+                } else {
+                  console.log('[Steps Loop] Condition FAILED for updateCodebaseStructure');
+                  console.log(`  - toolName === 'get_file_contents': ${toolCall.toolName === 'get_file_contents'}`);
+                  console.log(`  - typeof args === 'object': ${typeof toolCall.args === 'object'}`);
+                  console.log(`  - toolResult.result is truthy: ${!!toolResult.result}`);
+                }
+              } else {
+                console.log(`[Steps Loop] No toolResult found for toolCallId: ${toolCallId}`);
+              }
             }
-          });
-
-          // Add observation for tool usage
-          this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
-
-          // Immediately add its result if available
-          if (toolResult) {
-            console.log(`[Infer Loop] Tool Result ID: ${(toolResult as any).toolCallId || 'undefined'}`);
-            console.log(`[Infer Loop] Tool Result Type: ${typeof toolResult.result}`);
-            console.log(`[Infer Loop] Tool Result Length: ${typeof toolResult.result === 'string' ? toolResult.result.length : 'not a string'}`);
+          }
+        }
+      } else {
+        console.log("[Steps Loop] No steps array found or it is empty.");
+        
+        // Fall back to the original approach if steps array is empty
+        if (result.toolCalls && result.toolCalls.length > 0) {
+          console.log("[Fallback] Using original toolCalls approach since steps array is empty");
+          for (const toolCall of result.toolCalls) {
+            console.log(`[Fallback] Processing toolCall: ${toolCall.toolName}`);
             
+            // @ts-ignore - toolCall type issue
+            const toolResult = result.toolResults?.find(r => r.toolCallId === toolCall.toolCallId);
+            console.log(`[Fallback] Found toolResult: ${!!toolResult}`);
+            
+            // Add the tool call
             messageParts.push({
               type: 'tool-invocation' as const,
               toolInvocation: {
-                state: 'result' as const,
+                state: 'call' as const,
                 // @ts-ignore - toolCall type issue
                 toolCallId: toolCall.toolCallId,
                 toolName: toolCall.toolName as "getWeatherInformation",
-                args: toolCall.args,
-                // @ts-ignore - toolResult type issue
-                result: toolResult.result
+                args: toolCall.args
               }
             });
 
-            // Add observation for tool result
-            const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50 
-              ? `${toolResult.result.substring(0, 50)}...` 
-              : JSON.stringify(toolResult.result).substring(0, 50) + '...';
-              
-            this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
-            
-            console.log(`[Infer Loop] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
-            
-            // Update codebase structure if it was a file contents tool
-            if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
-              console.log('[Infer Loop] Condition MET for updateCodebaseStructure');
-              
-              const args = toolCall.args as { path?: string };
-              console.log(`[Infer Loop] Args path: ${args.path || 'undefined'}`);
-              
-              if (args.path) {
-                console.log(`[Infer Loop] Calling updateCodebaseStructure for path: ${args.path}`);
-                
-                try {
-                  // Call the enhanced method with the file content
-                  await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
-                  // Also set current file
-                  this.setCurrentFile(args.path);
-                  console.log(`[Infer Loop] Successfully completed updateCodebaseStructure for ${args.path}`);
-                } catch (error) {
-                  console.error(`[Infer Loop] Error in updateCodebaseStructure: ${error}`);
+            // Add observation for tool usage
+            this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
+
+            // Process tool result if available
+            if (toolResult) {
+              messageParts.push({
+                type: 'tool-invocation' as const,
+                toolInvocation: {
+                  state: 'result' as const,
+                  // @ts-ignore - toolCall type issue
+                  toolCallId: toolCall.toolCallId,
+                  toolName: toolCall.toolName as "getWeatherInformation",
+                  args: toolCall.args,
+                  // @ts-ignore - toolResult type issue
+                  result: toolResult.result
                 }
-              } else {
-                console.log('[Infer Loop] Missing path in args');
+              });
+
+              // Process file content tool results
+              if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
+                const args = toolCall.args as { path?: string };
+                if (args.path) {
+                  await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
+                  this.setCurrentFile(args.path);
+                }
               }
-            } else {
-              console.log('[Infer Loop] Condition FAILED for updateCodebaseStructure');
-              console.log(`  - toolName === 'get_file_contents': ${toolCall.toolName === 'get_file_contents'}`);
-              console.log(`  - typeof args === 'object': ${typeof toolCall.args === 'object'}`);
-              console.log(`  - toolResult.result is truthy: ${!!toolResult.result}`);
             }
           }
         }

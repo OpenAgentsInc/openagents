@@ -27,6 +27,13 @@ export interface FileNode {
   children?: string[]; // For directories, list of child paths
   description?: string;
   tags?: string[];
+  metadata?: {
+    exports?: string[];
+    dependencies?: string[];
+    complexity?: 'low' | 'medium' | 'high';
+    lastAnalyzed?: string;
+    [key: string]: any; // Allow for additional metadata
+  };
 }
 
 export interface ModuleDescription {

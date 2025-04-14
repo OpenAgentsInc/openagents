@@ -68,10 +68,44 @@ ${scratchpad}`;
   if (codebase && Object.keys(codebase).length > 0) {
     systemPrompt += `\n\nCODEBASE UNDERSTANDING:`;
     
+    // Add modules information if available
     if (codebase.modules && Object.keys(codebase.modules).length > 0) {
       systemPrompt += `\nKey modules:`;
       for (const [name, mod] of Object.entries(codebase.modules)) {
         systemPrompt += `\n- ${name}: ${mod.purpose}`;
+      }
+    }
+    
+    // Add file structure information if available
+    if (codebase.structure && Object.keys(codebase.structure).length > 0) {
+      systemPrompt += `\n\nAnalyzed files:`;
+      
+      // Get the most recently analyzed files (up to 5)
+      const analyzedFiles = Object.values(codebase.structure)
+        .filter(file => file.type === 'file' && file.description)
+        .sort((a, b) => {
+          const aDate = a.metadata?.lastAnalyzed ? new Date(a.metadata.lastAnalyzed).getTime() : 0;
+          const bDate = b.metadata?.lastAnalyzed ? new Date(b.metadata.lastAnalyzed).getTime() : 0;
+          return bDate - aDate; // Sort descending (most recent first)
+        })
+        .slice(0, 5);
+      
+      for (const file of analyzedFiles) {
+        systemPrompt += `\n- ${file.path}: ${file.description}`;
+        
+        if (file.tags && file.tags.length > 0) {
+          systemPrompt += ` [${file.tags.join(', ')}]`;
+        }
+        
+        // Add exports if available
+        if (file.metadata?.exports && file.metadata.exports.length > 0) {
+          systemPrompt += `\n  Exports: ${file.metadata.exports.join(', ')}`;
+        }
+        
+        // Add dependencies if available
+        if (file.metadata?.dependencies && file.metadata.dependencies.length > 0) {
+          systemPrompt += `\n  Dependencies: ${file.metadata.dependencies.join(', ')}`;
+        }
       }
     }
   }
