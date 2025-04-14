@@ -663,36 +663,59 @@ export class Coder extends Agent<Env, CoderState> {
               
               const args = toolCall.args as { path?: string };
               
-              // Extract the base64 content correctly from the nested result object
-              const fileContentBase64 = (toolResult.result as any)?.content;
+              // Extract the content from the GitHub API response
               let fileContentDecoded: string | null = null;
-
-              if (typeof fileContentBase64 === 'string') {
-                console.log(`[Process Tools] Found base64 content string (length: ${fileContentBase64.length})`);
-                try {
-                  // Use Buffer for more robust decoding
-                  // First, ensure no invalid characters (like newlines) - remove ALL whitespace
-                  const cleanBase64 = fileContentBase64.replace(/\s/g, '');
-                  fileContentDecoded = Buffer.from(cleanBase64, 'base64').toString('utf8');
-                  console.log(`[Process Tools] Decoded file content successfully using Buffer (length: ${fileContentDecoded?.length || 0})`);
-                } catch (e) {
-                  console.error(`[Process Tools] Error decoding base64 content for ${args.path} using Buffer:`, e);
+              
+              // First check if toolResult.result is already a string (direct content)
+              if (typeof toolResult.result === 'string') {
+                console.log(`[Process Tools] Tool result is already a string, using directly`);
+                fileContentDecoded = toolResult.result;
+              } 
+              // Check if it's a GitHub API response object with content field
+              else if (toolResult.result && typeof toolResult.result === 'object') {
+                console.log(`[Process Tools] Tool result is an object, looking for content field`);
+                
+                const resultObj = toolResult.result as any;
+                
+                // Check if the object has a content property (typical GitHub API response)
+                if (resultObj.content && typeof resultObj.content === 'string') {
+                  console.log(`[Process Tools] Found content field (length: ${resultObj.content.length})`);
                   
-                  // Try a fallback method if Buffer fails
-                  try {
-                    console.log(`[Process Tools] Attempting fallback decoding method...`);
-                    // For Cloudflare Workers environment - different approach
-                    const cleanBase64 = fileContentBase64.replace(/[\s\r\n]+/g, '');
-                    const padded = cleanBase64.padEnd(cleanBase64.length + (4 - cleanBase64.length % 4) % 4, '=');
-                    fileContentDecoded = atob(padded);
-                    console.log(`[Process Tools] Fallback decoding succeeded (length: ${fileContentDecoded?.length || 0})`);
-                  } catch (fallbackError) {
-                    console.error(`[Process Tools] Fallback decoding also failed:`, fallbackError);
-                    // Keep fileContentDecoded as null if all decoding fails
+                  // Check if it's base64 encoded (GitHub API typically encodes content)
+                  if (resultObj.encoding === 'base64') {
+                    console.log(`[Process Tools] Content is base64 encoded, attempting to decode`);
+                    
+                    try {
+                      // Most robust approach - try TextDecoder
+                      const cleanBase64 = resultObj.content.replace(/\s/g, '');
+                      const binaryStr = Buffer.from(cleanBase64, 'base64');
+                      fileContentDecoded = new TextDecoder().decode(binaryStr);
+                      console.log(`[Process Tools] Successfully decoded content with TextDecoder (length: ${fileContentDecoded.length})`);
+                    } catch (e) {
+                      console.error(`[Process Tools] Error decoding with TextDecoder:`, e);
+                      
+                      // Fallback to simpler method
+                      try {
+                        console.log(`[Process Tools] Trying alternative decode method...`);
+                        const cleanBase64 = resultObj.content.replace(/[\s\r\n]+/g, '');
+                        fileContentDecoded = Buffer.from(cleanBase64, 'base64').toString('utf8');
+                        console.log(`[Process Tools] Alternative decode succeeded (length: ${fileContentDecoded.length})`);
+                      } catch (fallbackError) {
+                        console.error(`[Process Tools] All decode methods failed:`, fallbackError);
+                      }
+                    }
+                  } else {
+                    // Content is not base64 encoded, use directly
+                    console.log(`[Process Tools] Content is not base64 encoded, using directly`);
+                    fileContentDecoded = resultObj.content;
                   }
+                } else {
+                  // No content field, use stringified object as fallback
+                  console.log(`[Process Tools] No content field found, using stringified object`);
+                  fileContentDecoded = JSON.stringify(resultObj, null, 2);
                 }
               } else {
-                console.log(`[Process Tools] File content in tool result was not a string or was missing.`);
+                console.log(`[Process Tools] Tool result is not a string or object, cannot extract content`);
               }
 
               console.log(`[Process Tools] Args path: ${args.path || 'undefined'}`);

@@ -21,6 +21,7 @@ import { Label } from "~/components/ui/label";
 import { ClientOnlyMessageList } from "~/components/ui/client-only-message-list";
 import { AgentList } from "~/components/agent-list";
 import { GitHubTokenInput } from "~/components/github-token-input";
+import { CopyButton } from "~/components/ui/copy-button";
 
 // Message type definition
 interface Message {
@@ -55,13 +56,13 @@ export function meta({ params }: Route.MetaArgs) {
 // Load agent data - server-side only returns ID for safety
 export async function loader({ params }: LoaderFunctionArgs) {
   const { agentId } = params;
-  
+
   // For security, don't try to load agents on the server
   // Just return the ID and let client-side handle data lookup
   return { id: agentId };
 }
 
-function ClientOnly({ agentId, children }: { agentId: string, children: React.ReactNode }) {
+function ClientOnly({ agentId, children }: { agentId: string, children?: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -83,7 +84,7 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
     if (foundAgent) {
       setAgentData(foundAgent);
     }
-    
+
     // Load GitHub token from localStorage
     const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (storedToken) {
@@ -250,10 +251,10 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
         <div className="flex flex-col">
           {/* Status indicator with background */}
           <div className={`px-4 py-2 flex items-center gap-2 ${connectionStatus === 'connected'
-              ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400'
-              : connectionStatus === 'error'
-                ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400'
-                : 'bg-amber-100 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400'
+            ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400'
+            : connectionStatus === 'error'
+              ? 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400'
+              : 'bg-amber-100 dark:bg-amber-900/20 text-amber-800 dark:text-amber-400'
             }`}>
             {connectionStatus === 'connected' ? (
               <CheckCircle className="h-4 w-4" />
@@ -280,7 +281,10 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="pt-2">
-                    <pre className="bg-muted text-foreground p-2 overflow-auto whitespace-pre-wrap rounded-md max-h-96 text-xs mt-1">
+                    <pre className="bg-muted text-foreground p-2 overflow-auto whitespace-pre-wrap rounded-md max-h-96 text-xs mt-1 relative">
+                      <div className="absolute top-2 right-2">
+                        <CopyButton content={JSON.stringify(rawState, null, 2)} />
+                      </div>
                       {JSON.stringify(rawState, null, 2)}
                     </pre>
                   </div>
@@ -328,7 +332,7 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
                   createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined
                 }))}
                 showTimeStamps={false}
-                isTyping={connectionStatus === 'connecting'} 
+                isTyping={connectionStatus === 'connecting'}
               />
             ) : connectionStatus === 'connecting' ? (
               <div className="p-12 text-muted-foreground text-center border rounded-lg">
@@ -346,7 +350,7 @@ function ClientOnly({ agentId, children }: { agentId: string, children: React.Re
             )}
           </div>
         </div>
-        
+
         {/* Fixed Input Area */}
         <div className="border-t bg-background py-3 px-4">
           <div className="max-w-4xl mx-auto w-full">
