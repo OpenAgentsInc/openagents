@@ -125,19 +125,29 @@ export class Coder extends Agent<Env, CoderState> {
           nextAction.payload
         );
         this.addAgentObservation(`Scheduled next action: ${nextAction.type} for ${nextAction.path || 'N/A'}`);
-      } else {
-        console.log("[continueInfer] No further exploration steps planned for now.");
-        // Add generic observation about continuing exploration
-        this.addAgentObservation("No specific exploration step found. Waiting for next planning cycle.");
-        
-        // We don't schedule any immediate action in this case
-        // Just let the next planning cycle happen after the standard delay
-      }
 
-      // --- Reschedule continueInfer for the *next planning cycle* ---
-      const planningIntervalSeconds = 120; // Longer interval (2 minutes) for planning the next step
-      console.log(`[continueInfer] Rescheduling planning cycle in ${planningIntervalSeconds} seconds.`);
-      await this.schedule(planningIntervalSeconds, 'continueInfer', { reason: 'next planning cycle' });
+        // *** MOVE RESCHEDULING HERE ***
+        // Only reschedule the planner if an action was successfully planned *and* the run is still active
+        if (this.state.isContinuousRunActive) {
+          const planningIntervalSeconds = 120; // Longer interval (2 minutes) for planning the next step
+          console.log(`[continueInfer] Action scheduled. Rescheduling planning cycle in ${planningIntervalSeconds} seconds.`);
+          await this.schedule(planningIntervalSeconds, 'continueInfer', { reason: 'next planning cycle' });
+        } else {
+          console.log(`[continueInfer] Run was stopped during planning/scheduling. Not rescheduling planning cycle.`);
+        }
+      } else {
+        console.log("[continueInfer] No further exploration steps planned. Run potentially stopped or finished.");
+        // Do NOT reschedule the planning cycle if no action could be planned (e.g., missing context caused stop)
+        this.addAgentObservation("No specific exploration step found. Stopping or waiting for manual restart/context.");
+        // Ensure the run is marked inactive if the planner decided to stop it.
+        if(this.state.isContinuousRunActive) {
+          // This case happens if planner returns null but stopContinuousRun wasn't explicitly called by planner
+          // Maybe the exploration is just complete? Or stuck? For now, stop it.
+          console.log("[continueInfer] Planner returned null, stopping continuous run.");
+          await this.stopContinuousRun();
+        }
+      }
+      // *** REMOVED THE RESCHEDULING FROM OUTSIDE THE if(nextAction) BLOCK ***
 
     } catch (error) {
       console.error("[continueInfer] Error during planning or scheduling:", error);
@@ -601,10 +611,7 @@ export class Coder extends Agent<Env, CoderState> {
   /**
    * Sets the current repository context
    */
-  @unstable_callable({
-    description: "Set the current repository context"
-  })
-  async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
+  public async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
     console.log(`Setting repository context to ${owner}/${repo} on branch ${branch}`);
 
     this.updateState({
@@ -1049,12 +1056,43 @@ export class Coder extends Agent<Env, CoderState> {
             this.stopContinuousRun().catch(e => console.error("Error auto-stopping continuous run:", e));
             // Don't return - still allow the rest of the infer method to run
           }
-          // NEW: Check for set repository context - we'll guide the user to use the tool
+          // Modified: Check for set repository context and directly call the method when possible
           else if (lastUserMessageContent.toLowerCase().includes('set repo context') ||
                   lastUserMessageContent.toLowerCase().includes('set repository context')) {
-            console.log("[Intent Check] User message requests setting repository context. Suggesting tool usage.");
-            // Instead of trying to parse the message, we'll let the LLM respond with guidance
-            // to use the setRepositoryContext tool
+            console.log("[Intent Check] User message requests setting repository context.");
+
+            // --- BEGIN DIRECT TOOL EXECUTION LOGIC ---
+            // Attempt to parse owner/repo/branch directly from the message (heuristic)
+            // This is brittle, but necessary if the LLM won't use the tool.
+            const match = lastUserMessageContent.match(/set.*?context\s+to\s+([\w-]+)\/([\w-]+)(?:\s+(\S+))?/i);
+            if (match) {
+              const owner = match[1];
+              const repo = match[2];
+              const branch = match[3] || 'main'; // Default to main if not specified
+              console.log(`[Intent Check] Parsed context: ${owner}/${repo}:${branch}. Calling setRepositoryContext directly.`);
+              try {
+                // Directly call the instance method, don't wait for LLM tool call
+                await this.setRepositoryContext(owner, repo, branch);
+                // Since we are bypassing the normal LLM response flow for this,
+                // we might need to manually create the assistant response here.
+                // For now, let's just return early. A better solution might involve
+                // adding a confirmation message to the state here.
+                this.addAgentObservation(`Repository context set via direct intent parsing: ${owner}/${repo}:${branch}`);
+                // We could potentially construct a simple text response here if needed.
+                // Example:
+                // messageParts.push({ type: 'text', text: `Okay, context set to ${owner}/${repo}:${branch}.` });
+                // But for now, let's just ensure the state is set and stop this infer cycle.
+                return {}; // Stop further processing in this infer cycle
+              } catch (e) {
+                console.error("Error directly calling setRepositoryContext:", e);
+                this.addAgentObservation(`Error setting context: ${e.message}`);
+                // Allow infer to continue to generate an error message potentially
+              }
+            } else {
+              console.warn("[Intent Check] Could not parse owner/repo/branch from message. Letting LLM handle it (might suggest tool).");
+              // Let the LLM generate a response, hopefully suggesting the tool.
+            }
+            // --- END DIRECT TOOL EXECUTION LOGIC ---
           }
           // ONLY check for task generation if it wasn't a special command
           else {
