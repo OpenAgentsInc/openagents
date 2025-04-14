@@ -304,9 +304,16 @@ export class Coder extends Agent<Env, CoderState> {
    * Updates information about a file or directory in the codebase structure with AI-generated summary
    */
   private async updateCodebaseStructure(path: string, content: string | null, nodeType: 'file' | 'directory' = 'file') {
+    console.log(`[updateCodebaseStructure] Starting for path: ${path}, nodeType: ${nodeType}`);
+    console.log(`[updateCodebaseStructure] Content length: ${content ? content.length : 'null'}`);
+    console.log(`[updateCodebaseStructure] Current state keys: ${Object.keys(this.state || {}).join(', ')}`);
+    console.log(`[updateCodebaseStructure] Codebase exists: ${!!this.state.codebase}`);
+    
     let summary = null;
     if (nodeType === 'file' && content) {
       try {
+        console.log(`[updateCodebaseStructure] Preparing to generate file summary`);
+        
         // Enhance the prompt with repository context
         let contextPrompt = `Summarize the following code file located at '${path}'. `;
         
@@ -333,17 +340,27 @@ export class Coder extends Agent<Env, CoderState> {
         // Add examples of good tag types
         contextPrompt += `Add tags like "component", "api", "utility", "state-management", "auth", "ui", "database", "config", etc. that best describe this file's role. `;
         
-        contextPrompt += `\n\n\`\`\`\n${content.substring(0, 4000)}\n\`\`\``; // Limit content length
+        // For debugging, shorten content significantly
+        const contentForAI = content.substring(0, 2000); // Shorter than normal for quicker debugging
+        contextPrompt += `\n\n\`\`\`\n${contentForAI}\n\`\`\``; 
+        
+        console.log(`[updateCodebaseStructure] Calling generateObject`);
         
         const { object } = await generateObject({
           model: model,
           schema: FileSummarySchema,
           prompt: contextPrompt
         });
+        
+        console.log(`[updateCodebaseStructure] generateObject returned result: ${!!object}`);
+        console.log(`[updateCodebaseStructure] Generated summary: ${object?.summary?.substring(0, 50) || 'none'}`);
+        
         summary = object;
       } catch (error) {
-        console.error(`Error generating file summary for ${path}:`, error);
+        console.error(`[updateCodebaseStructure] Error generating file summary for ${path}:`, error);
       }
+    } else {
+      console.log(`[updateCodebaseStructure] Skipping summary generation - not a file or no content`);
     }
 
     const structure = this.state.codebase?.structure || {};
@@ -429,6 +446,25 @@ export class Coder extends Agent<Env, CoderState> {
         temperature: 0.7,
         maxSteps: 5,
       });
+      
+      // Debug logging for result structure
+      console.log("[Debug] Text response exists:", !!result.text);
+      console.log("[Debug] Text response length:", result.text?.length || 0);
+      console.log("[Debug] Tool calls exist:", !!result.toolCalls);
+      console.log("[Debug] Tool calls length:", result.toolCalls?.length || 0);
+      console.log("[Debug] Tool results exist:", !!result.toolResults);
+      console.log("[Debug] Tool results length:", result.toolResults?.length || 0);
+      console.log("[Debug] Finish reason:", result.finishReason || "unknown");
+      
+      // Log full tool calls structure if it exists
+      if (result.toolCalls && result.toolCalls.length > 0) {
+        console.log("[Debug] Tool calls:", JSON.stringify(result.toolCalls, null, 2));
+      }
+      
+      // Log full tool results structure if it exists
+      if (result.toolResults && result.toolResults.length > 0) {
+        console.log("[Debug] Tool results:", JSON.stringify(result.toolResults, null, 2));
+      }
 
       // Add observation for the response and analyze for potential tasks
       if (result.text) {
@@ -473,8 +509,16 @@ export class Coder extends Agent<Env, CoderState> {
       // Add tool calls and their results together
       if (result.toolCalls && result.toolCalls.length > 0) {
         for (const toolCall of result.toolCalls) {
+          console.log(`[Infer Loop] Processing toolCall: ${toolCall.toolName}`);
+          
           // @ts-ignore - toolCall type issue
           const toolResult = result.toolResults?.find(r => r.toolCallId === toolCall.toolCallId);
+          console.log(`[Infer Loop] Found toolResult: ${!!toolResult}`);
+          
+          // Log the specific tool call details
+          console.log(`[Infer Loop] Tool Call ID: ${(toolCall as any).toolCallId || 'undefined'}`);
+          console.log(`[Infer Loop] Tool Name: ${toolCall.toolName || 'undefined'}`);
+          console.log(`[Infer Loop] Tool Args: ${JSON.stringify(toolCall.args || {})}`);
 
           // Add the tool call
           messageParts.push({
@@ -493,6 +537,10 @@ export class Coder extends Agent<Env, CoderState> {
 
           // Immediately add its result if available
           if (toolResult) {
+            console.log(`[Infer Loop] Tool Result ID: ${(toolResult as any).toolCallId || 'undefined'}`);
+            console.log(`[Infer Loop] Tool Result Type: ${typeof toolResult.result}`);
+            console.log(`[Infer Loop] Tool Result Length: ${typeof toolResult.result === 'string' ? toolResult.result.length : 'not a string'}`);
+            
             messageParts.push({
               type: 'tool-invocation' as const,
               toolInvocation: {
@@ -513,15 +561,35 @@ export class Coder extends Agent<Env, CoderState> {
               
             this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
             
+            console.log(`[Infer Loop] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
+            
             // Update codebase structure if it was a file contents tool
             if (toolCall.toolName === 'get_file_contents' && typeof toolCall.args === 'object' && toolResult.result) {
+              console.log('[Infer Loop] Condition MET for updateCodebaseStructure');
+              
               const args = toolCall.args as { path?: string };
+              console.log(`[Infer Loop] Args path: ${args.path || 'undefined'}`);
+              
               if (args.path) {
-                // Call the enhanced method with the file content
-                await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
-                // Also set current file
-                this.setCurrentFile(args.path);
+                console.log(`[Infer Loop] Calling updateCodebaseStructure for path: ${args.path}`);
+                
+                try {
+                  // Call the enhanced method with the file content
+                  await this.updateCodebaseStructure(args.path, toolResult.result as string, 'file');
+                  // Also set current file
+                  this.setCurrentFile(args.path);
+                  console.log(`[Infer Loop] Successfully completed updateCodebaseStructure for ${args.path}`);
+                } catch (error) {
+                  console.error(`[Infer Loop] Error in updateCodebaseStructure: ${error}`);
+                }
+              } else {
+                console.log('[Infer Loop] Missing path in args');
               }
+            } else {
+              console.log('[Infer Loop] Condition FAILED for updateCodebaseStructure');
+              console.log(`  - toolName === 'get_file_contents': ${toolCall.toolName === 'get_file_contents'}`);
+              console.log(`  - typeof args === 'object': ${typeof toolCall.args === 'object'}`);
+              console.log(`  - toolResult.result is truthy: ${!!toolResult.result}`);
             }
           }
         }
