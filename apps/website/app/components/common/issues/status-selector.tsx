@@ -24,7 +24,7 @@ interface Status {
 // Component to render appropriate icon based on status type
 const StatusIcon = ({ status }: { status: Status }) => {
   const type = status.type?.toLowerCase() || '';
-  
+
   if (type.includes('done') || type.includes('completed')) {
     return <CheckCircle className="size-4" style={{ color: status.color }} />;
   } else if (type.includes('progress') || type.includes('started')) {
@@ -36,7 +36,7 @@ const StatusIcon = ({ status }: { status: Status }) => {
   } else if (type.includes('triage')) {
     return <Timer className="size-4" style={{ color: status.color }} />;
   }
-  
+
   // Default icon if no matching type
   return <Circle className="size-4" style={{ color: status.color }} />;
 };
@@ -51,10 +51,10 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
   const [open, setOpen] = useState<boolean>(false);
   const [value, setValue] = useState<string>(status.id);
   const loaderData = useLoaderData() || {};
-  
+
   // Get workflow states from loader data
   let workflowStates: Status[] = [];
-  
+
   if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
     workflowStates = loaderData.options.workflowStates;
   } else if (Array.isArray(loaderData.workflowStates)) {
@@ -64,10 +64,10 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
     const { getWorkflowStates } = useIssuesStore();
     workflowStates = getWorkflowStates ? getWorkflowStates() : [];
   }
-  
-  console.log('Status selector - workflow states:', workflowStates?.length || 0);
-  console.log('Status selector - loader data structure:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
-  
+
+  // console.log('Status selector - workflow states:', workflowStates?.length || 0);
+  // console.log('Status selector - loader data structure:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
+
   // Default workflow states as fallback if none are available
   if (!workflowStates || workflowStates.length === 0) {
     workflowStates = [

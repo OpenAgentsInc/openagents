@@ -37,34 +37,34 @@ export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }
   const routeLoaderData = useLoaderData() || {};
   // Use passed loaderData prop or fall back to useLoaderData
   const loaderData = propLoaderData || routeLoaderData;
-  
+
   // Check for workflow states in the loader data
   let allWorkflowStates: WorkflowState[] = [];
-  
+
   if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
     allWorkflowStates = loaderData.options.workflowStates;
   } else if (Array.isArray(loaderData.workflowStates)) {
     allWorkflowStates = loaderData.workflowStates;
   }
-  
+
   // Get a reference to the CreateNewIssue form context
   const formContext = (window as any).__createIssueFormContext;
   const selectedTeamId = formContext?.teamId || '';
-  
+
   // Filter workflow states by selected team if available
   let workflowStates = allWorkflowStates;
   if (selectedTeamId) {
-    console.log('[DEBUG] Filtering workflowStates for teamId:', selectedTeamId);
-    workflowStates = allWorkflowStates.filter(state => 
+    // console.log('[DEBUG] Filtering workflowStates for teamId:', selectedTeamId);
+    workflowStates = allWorkflowStates.filter(state =>
       state.teamId === selectedTeamId || state.teamId === null
     );
   }
-  
+
   // Use default states if none are available
   if (!workflowStates || workflowStates.length === 0) {
     workflowStates = defaultWorkflowStates;
   }
-  
+
   // FORCE USE DEFAULT STATES if we only have one
   if (workflowStates.length <= 1) {
     workflowStates = defaultWorkflowStates;
@@ -79,10 +79,10 @@ export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }
       if (found) setSelectedState(found);
     } else if (!stateId && workflowStates.length > 0) {
       // Set default state if none selected and states available
-      const defaultState = workflowStates.find(state => 
+      const defaultState = workflowStates.find(state =>
         state.type === 'todo' || state.type === 'backlog' || state.type === 'unstarted'
       ) || workflowStates[0];
-      
+
       onChange(defaultState.id);
       setSelectedState(defaultState);
     }
@@ -102,8 +102,8 @@ export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }
         <Button size="sm" variant="outline" className="gap-1.5">
           {selectedState ? (
             <>
-              <div 
-                className="size-3 rounded-full" 
+              <div
+                className="size-3 rounded-full"
                 style={{ backgroundColor: selectedState.color }}
               />
               <span>{selectedState.name}</span>
@@ -118,8 +118,8 @@ export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }
           {workflowStates.map((state) => (
             <DropdownMenuRadioItem key={state.id} value={state.id}>
               <div className="flex items-center gap-2">
-                <div 
-                  className="size-3 rounded-full" 
+                <div
+                  className="size-3 rounded-full"
                   style={{ backgroundColor: state.color }}
                 />
                 <span>{state.name}</span>
