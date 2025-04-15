@@ -2,7 +2,8 @@ import type { Route } from "./+types/home";
 import MainLayout from '@/components/layout/main-layout';
 import Header from '@/components/layout/headers/projects/header';
 import Projects from '@/components/common/projects/projects';
-import { getProjects, createProject } from '@/lib/db/project-helpers';
+import { getProjects, createProject, getProjectStatuses, getUsers, getTeams } from '@/lib/db/project-helpers.server';
+import { auth } from '@/lib/auth';
 
 export function meta({ }: Route.MetaArgs) {
   return [
@@ -11,20 +12,50 @@ export function meta({ }: Route.MetaArgs) {
   ];
 }
 
-export async function loader({ context }: Route.LoaderArgs) {
+export async function loader({ context, request }: Route.LoaderArgs) {
   try {
+    // Get current session with better-auth
+    const { user } = await auth.api.getSession(request);
+    
     const projects = await getProjects();
-    return { projects };
+    
+    // Get additional data for modal selectors
+    const statuses = await getProjectStatuses();
+    const users = await getUsers();
+    const teams = await getTeams();
+    
+    return { 
+      projects,
+      options: {
+        statuses,
+        users,
+        teams
+      },
+      user
+    };
   } catch (error) {
     console.error('Error loading projects:', error);
-    return { projects: [], error: 'Failed to load projects' };
+    return { 
+      projects: [], 
+      options: {
+        statuses: [],
+        users: [],
+        teams: []
+      },
+      user: null,
+      error: 'Failed to load projects' 
+    };
   }
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  // Get the current logged-in user (in a real app, this would come from the auth system)
-  // For now, we'll use a hardcoded test user ID
-  const testUserId = "test-user-123"; // This should be replaced with a real user ID from auth
+  // Get the currently authenticated user
+  const { user } = await auth.api.getSession(request);
+  
+  // Check if user is authenticated
+  if (!user) {
+    return { success: false, error: 'Authentication required' };
+  }
   
   const formData = await request.formData();
   const action = formData.get('action');
@@ -39,7 +70,7 @@ export async function action({ request }: Route.ActionArgs) {
       const projectData = JSON.parse(projectDataStr);
       
       // Add the current user as the creator
-      projectData.creatorId = testUserId;
+      projectData.creatorId = user.id;
       
       // Create the project
       const projectId = await createProject(projectData);

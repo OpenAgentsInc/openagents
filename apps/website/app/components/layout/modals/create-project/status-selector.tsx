@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useEffect, useState } from 'react';
-import { getDb } from '@/lib/db/project-helpers';
+import { useLoaderData } from 'react-router';
 
 interface ProjectStatus {
   id: string;
@@ -21,44 +21,31 @@ interface StatusSelectorProps {
   onChange: (statusId: string) => void;
 }
 
-export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
-  const [statuses, setStatuses] = useState<ProjectStatus[]>([]);
-  const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+interface LoaderData {
+  options: {
+    statuses: ProjectStatus[];
+    users: any[];
+    teams: any[];
+  };
+}
 
-  // Fetch statuses on mount
+export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
+  const { options } = useLoaderData() as LoaderData;
+  const statuses = options.statuses || [];
+  const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | null>(null);
+
+  // Update selected status when statusId or statuses change
   useEffect(() => {
-    async function fetchStatuses() {
-      try {
-        const db = getDb();
-        const results = await db
-          .selectFrom('project_status')
-          .select(['id', 'name', 'color', 'type'])
-          .where('archivedAt', 'is', null)
-          .orderBy('position')
-          .execute();
-        
-        setStatuses(results);
-        
-        // Set default status if none selected and statuses available
-        if (!statusId && results.length > 0) {
-          const defaultStatus = results.find(s => s.type === 'backlog') || results[0];
-          onChange(defaultStatus.id);
-          setSelectedStatus(defaultStatus);
-        } else if (statusId && results.length > 0) {
-          const found = results.find(s => s.id === statusId);
-          if (found) setSelectedStatus(found);
-        }
-        
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching project statuses:', error);
-        setLoading(false);
-      }
+    if (statusId && statuses.length > 0) {
+      const found = statuses.find(s => s.id === statusId);
+      if (found) setSelectedStatus(found);
+    } else if (!statusId && statuses.length > 0) {
+      // Set default status if none selected and statuses available
+      const defaultStatus = statuses.find(s => s.type === 'backlog') || statuses[0];
+      onChange(defaultStatus.id);
+      setSelectedStatus(defaultStatus);
     }
-    
-    fetchStatuses();
-  }, [statusId, onChange]);
+  }, [statusId, onChange, statuses]);
 
   const handleStatusChange = (newStatusId: string) => {
     const status = statuses.find(s => s.id === newStatusId);
@@ -68,10 +55,10 @@ export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
     }
   };
 
-  if (loading) {
+  if (statuses.length === 0) {
     return (
       <Button size="sm" variant="outline" className="gap-1.5" disabled>
-        Loading...
+        No statuses available
       </Button>
     );
   }

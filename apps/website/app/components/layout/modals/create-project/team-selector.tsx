@@ -5,9 +5,9 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Users } from 'lucide-react';
-import { getDb } from '@/lib/db/team-helpers';
+import { useLoaderData } from 'react-router';
 
 interface TeamData {
   id: string;
@@ -22,32 +22,17 @@ interface TeamSelectorProps {
   onChange: (teamIds: string[]) => void;
 }
 
-export function TeamSelector({ selectedTeamIds, onChange }: TeamSelectorProps) {
-  const [teams, setTeams] = useState<TeamData[]>([]);
-  const [loading, setLoading] = useState(true);
+interface LoaderData {
+  options: {
+    statuses: any[];
+    users: any[];
+    teams: TeamData[];
+  };
+}
 
-  // Fetch teams on mount
-  useEffect(() => {
-    async function fetchTeams() {
-      try {
-        const db = getDb();
-        const results = await db
-          .selectFrom('team')
-          .select(['id', 'name', 'key', 'icon', 'color'])
-          .where('archivedAt', 'is', null)
-          .orderBy('name')
-          .execute();
-        
-        setTeams(results);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching teams:', error);
-        setLoading(false);
-      }
-    }
-    
-    fetchTeams();
-  }, []);
+export function TeamSelector({ selectedTeamIds, onChange }: TeamSelectorProps) {
+  const { options } = useLoaderData() as LoaderData;
+  const teams = options.teams || [];
 
   const handleTeamToggle = (teamId: string) => {
     if (selectedTeamIds.includes(teamId)) {
@@ -57,10 +42,10 @@ export function TeamSelector({ selectedTeamIds, onChange }: TeamSelectorProps) {
     }
   };
 
-  if (loading) {
+  if (teams.length === 0) {
     return (
       <Button size="sm" variant="outline" className="gap-1.5" disabled>
-        Loading...
+        No teams available
       </Button>
     );
   }

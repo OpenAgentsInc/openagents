@@ -2,7 +2,7 @@ import type { Route } from "./+types/teams";
 import Teams from '@/components/common/teams/teams';
 import MainLayout from '@/components/layout/main-layout';
 import Header from '@/components/layout/headers/teams/header';
-import { getTeams } from '@/lib/db/team-helpers';
+import { getTeams } from '@/lib/db/team-helpers.server';
 
 export function meta({ }: Route.MetaArgs) {
   return [

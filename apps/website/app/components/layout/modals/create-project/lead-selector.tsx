@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useEffect, useState } from 'react';
 import { User } from 'lucide-react';
-import { getDb } from '@/lib/db/project-helpers';
+import { useLoaderData } from 'react-router';
 
 interface UserData {
   id: string;
@@ -23,38 +23,26 @@ interface LeadSelectorProps {
   onChange: (leadId: string | null) => void;
 }
 
-export function LeadSelector({ leadId, onChange }: LeadSelectorProps) {
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
+interface LoaderData {
+  options: {
+    statuses: any[];
+    users: UserData[];
+    teams: any[];
+  };
+}
 
-  // Fetch users on mount
+export function LeadSelector({ leadId, onChange }: LeadSelectorProps) {
+  const { options } = useLoaderData() as LoaderData;
+  const users = options.users || [];
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
+
+  // Update selected user when leadId or users change
   useEffect(() => {
-    async function fetchUsers() {
-      try {
-        const db = getDb();
-        const results = await db
-          .selectFrom('user')
-          .select(['id', 'name', 'email', 'image'])
-          .orderBy('name')
-          .execute();
-        
-        setUsers(results);
-        
-        if (leadId) {
-          const found = results.find(u => u.id === leadId);
-          if (found) setSelectedUser(found);
-        }
-        
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching users:', error);
-        setLoading(false);
-      }
+    if (leadId) {
+      const found = users.find(u => u.id === leadId);
+      if (found) setSelectedUser(found);
     }
-    
-    fetchUsers();
-  }, [leadId]);
+  }, [leadId, users]);
 
   const handleUserChange = (newUserId: string) => {
     if (newUserId === 'none') {
@@ -79,10 +67,10 @@ export function LeadSelector({ leadId, onChange }: LeadSelectorProps) {
       .substring(0, 2);
   };
 
-  if (loading) {
+  if (users.length === 0) {
     return (
       <Button size="sm" variant="outline" className="gap-1.5" disabled>
-        Loading...
+        No users available
       </Button>
     );
   }

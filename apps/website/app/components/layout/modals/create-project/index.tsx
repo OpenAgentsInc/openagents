@@ -14,6 +14,7 @@ import { TeamSelector } from './team-selector';
 import { IconPicker } from './icon-picker';
 import { ColorPicker } from './color-picker';
 import { useSubmit } from 'react-router';
+import { useSession } from '@/lib/auth-client';
 
 // Define the project data interface
 interface ProjectData {
@@ -35,6 +36,7 @@ export function CreateProject() {
   const [createMore, setCreateMore] = useState<boolean>(false);
   const { isOpen, openModal, closeModal } = useCreateProjectStore();
   const submit = useSubmit();
+  const { session, isLoading } = useSession();
 
   const createDefaultData = (): ProjectData => {
     return {
@@ -56,10 +58,17 @@ export function CreateProject() {
   const [projectForm, setProjectForm] = useState<ProjectData>(createDefaultData());
 
   useEffect(() => {
-    setProjectForm(createDefaultData());
+    if (isOpen) {
+      setProjectForm(createDefaultData());
+    }
   }, [isOpen]);
 
   const createProject = () => {
+    if (!session?.user) {
+      toast.error('You must be logged in to create a project');
+      return;
+    }
+
     if (!projectForm.name) {
       toast.error('Project name is required');
       return;
@@ -91,7 +100,7 @@ export function CreateProject() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(value) => (value ? openModal() : closeModal())}>
-      <DialogContent className="w-full sm:max-w-[750px] p-0 shadow-xl top-[30%]">
+      <DialogContent className="w-full sm:max-w-[750px] p-0 shadow-xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             <div className="flex items-center px-4 pt-4 gap-2">
@@ -184,9 +193,8 @@ export function CreateProject() {
           </div>
           <Button
             size="sm"
-            onClick={() => {
-              createProject();
-            }}
+            onClick={createProject}
+            disabled={isLoading || !session?.user}
           >
             Create project
           </Button>
