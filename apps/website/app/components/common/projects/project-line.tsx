@@ -4,6 +4,7 @@ import { PrioritySelector } from './priority-selector';
 import { LeadSelector } from './lead-selector';
 import { StatusWithPercent } from './status-with-percent';
 import { DatePicker } from './date-picker';
+import { Link } from "react-router";
 
 interface ProjectLineProps {
   project: Project;
@@ -11,7 +12,10 @@ interface ProjectLineProps {
 
 export default function ProjectLine({ project }: ProjectLineProps) {
   return (
-    <div className="w-full flex items-center py-3 px-6 border-b hover:bg-sidebar/50 border-muted-foreground/5 text-sm">
+    <Link
+      to={`/projects/${project.id}`}
+      className="w-full flex items-center py-3 px-6 border-b hover:bg-sidebar/50 border-muted-foreground/5 text-sm group cursor-pointer"
+    >
       <div className="w-[60%] sm:w-[70%] xl:w-[46%] flex items-center gap-2">
         <div className="relative">
           <div className="inline-flex size-6 bg-muted/50 items-center justify-center rounded shrink-0">
@@ -19,7 +23,7 @@ export default function ProjectLine({ project }: ProjectLineProps) {
           </div>
         </div>
         <div className="flex flex-col items-start overflow-hidden">
-          <span className="font-medium truncate w-full">{project.name}</span>
+          <span className="font-medium truncate w-full group-hover:text-primary transition-colors">{project.name}</span>
         </div>
       </div>
 
@@ -41,6 +45,6 @@ export default function ProjectLine({ project }: ProjectLineProps) {
       <div className="w-[20%] sm:w-[10%]">
         <StatusWithPercent status={project.status} percentComplete={project.percentComplete} />
       </div>
-    </div>
+    </Link>
   );
 }

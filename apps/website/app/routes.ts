@@ -8,4 +8,5 @@ export default [
   route("agent/:agentId", "routes/agent/$agentId.tsx"),
   route("api/auth/*", "routes/api.auth.$.tsx"),
   route("projects", "routes/projects.tsx"),
+  route("projects/:id", "routes/projects/$id.tsx"),
 ] satisfies RouteConfig;
