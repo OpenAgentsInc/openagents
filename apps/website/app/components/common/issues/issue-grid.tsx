@@ -1,4 +1,4 @@
-import { type Issue } from '@/mock-data/issues';
+import { type Issue } from '@/store/issues-store';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import { useEffect, useRef } from 'react';
@@ -30,14 +30,16 @@ function IssueDragPreview({ issue }: { issue: Issue }) {
       <h3 className="text-sm font-semibold mb-3 line-clamp-2">{issue.title}</h3>
 
       <div className="flex flex-wrap gap-1.5 mb-3 min-h-[1.5rem]">
-        <LabelBadge label={issue.labels} />
+        {issue.labels && issue.labels.length > 0 && <LabelBadge label={issue.labels} />}
         {issue.project && <ProjectBadge project={issue.project} />}
       </div>
 
       <div className="flex items-center justify-between mt-auto pt-2">
-        <span className="text-xs text-muted-foreground">
-          {format(new Date(issue.createdAt), 'MMM dd')}
-        </span>
+        {issue.createdAt && (
+          <span className="text-xs text-muted-foreground">
+            {format(new Date(issue.createdAt), 'MMM dd')}
+          </span>
+        )}
         <AssigneeUser user={issue.assignees} />
       </div>
     </div>
@@ -113,14 +115,16 @@ export function IssueGrid({ issue }: IssueGridProps) {
       <h3 className="text-sm font-semibold mb-3 line-clamp-2">{issue.title}</h3>
 
       <div className="flex flex-wrap gap-1.5 mb-3 min-h-[1.5rem]">
-        <LabelBadge label={issue.labels} />
+        {issue.labels && issue.labels.length > 0 && <LabelBadge label={issue.labels} />}
         {issue.project && <ProjectBadge project={issue.project} />}
       </div>
 
       <div className="flex items-center justify-between mt-auto pt-2">
-        <span className="text-xs text-muted-foreground">
-          {format(new Date(issue.createdAt), 'MMM dd')}
-        </span>
+        {issue.createdAt && (
+          <span className="text-xs text-muted-foreground">
+            {format(new Date(issue.createdAt), 'MMM dd')}
+          </span>
+        )}
         <AssigneeUser user={issue.assignees} />
       </div>
     </motion.div>

@@ -14,6 +14,7 @@ import {
   Clock,
   Zap,
   UserRound,
+  ListTodo,
 } from 'lucide-react';
 
 export const inboxItems = [
@@ -39,6 +40,11 @@ export const workspaceItems = [
     name: 'Projects',
     url: '/projects',
     icon: Box,
+  },
+  {
+    name: 'Issues',
+    url: '/issues',
+    icon: ListTodo,
   },
   {
     name: 'Members',

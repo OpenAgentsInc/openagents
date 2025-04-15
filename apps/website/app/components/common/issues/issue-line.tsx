@@ -1,4 +1,4 @@
-import { type Issue } from '@/mock-data/issues';
+import { type Issue } from '@/store/issues-store';
 import { format } from 'date-fns';
 import { AssigneeUser } from './assignee-user';
 import { LabelBadge } from './label-badge';
@@ -10,7 +10,6 @@ import { motion } from 'motion/react';
 export function IssueLine({ issue, layoutId = false }: { issue: Issue; layoutId?: boolean }) {
   return (
     <motion.div
-      //href={`/lndev-ui/issue/${issue.identifier}`}
       {...(layoutId && { layoutId: `issue-line-${issue.identifier}` })}
       className="w-full flex items-center justify-start h-11 px-6 hover:bg-sidebar/50"
     >
@@ -29,7 +28,7 @@ export function IssueLine({ issue, layoutId = false }: { issue: Issue; layoutId?
       <div className="flex items-center justify-end gap-2 ml-auto sm:w-fit">
         <div className="w-3 shrink-0"></div>
         <div className="-space-x-5 hover:space-x-1 lg:space-x-1 items-center justify-end hidden sm:flex duration-200 transition-all">
-          <LabelBadge label={issue.labels} />
+          {issue.labels && issue.labels.length > 0 && <LabelBadge label={issue.labels} />}
           {issue.project && <ProjectBadge project={issue.project} />}
         </div>
         {issue.createdAt && (

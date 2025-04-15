@@ -1,4 +1,4 @@
-import { groupIssuesByStatus, type Issue, issues as mockIssues } from '@/mock-data/issues';
+import { groupIssuesByStatus } from '@/mock-data/issues';
 import { type LabelInterface } from '@/mock-data/labels';
 import { type Priority } from '@/mock-data/priorities';
 import { type Project } from '@/mock-data/projects';
@@ -6,15 +6,31 @@ import { type Status } from '@/mock-data/status';
 import { type User } from '@/mock-data/users';
 import { create } from 'zustand';
 
+// Updated Issue interface to match the database schema
+export interface Issue {
+  id: string;
+  identifier: string;
+  title: string;
+  description: string;
+  status: Status;
+  assignees: User | null;
+  priority: Priority;
+  labels: LabelInterface[];
+  createdAt: string | null;
+  cycleId: string;
+  project?: Project;
+  subissues?: string[];
+  rank: string;
+}
+
 interface IssuesState {
   // Data
   issues: Issue[];
   issuesByStatus: Record<string, Issue[]>;
-
-  //
-  getAllIssues: () => Issue[];
+  isLoaded: boolean;
 
   // Actions
+  setIssues: (issues: Issue[]) => void;
   addIssue: (issue: Issue) => void;
   updateIssue: (id: string, updatedIssue: Partial<Issue>) => void;
   deleteIssue: (id: string) => void;
@@ -48,12 +64,19 @@ interface IssuesState {
 }
 
 export const useIssuesStore = create<IssuesState>((set, get) => ({
-  // Initial state
-  issues: mockIssues.sort((a, b) => b.rank.localeCompare(a.rank)),
-  issuesByStatus: groupIssuesByStatus(mockIssues),
+  // Initial state with empty data (to be loaded from API)
+  issues: [],
+  issuesByStatus: {},
+  isLoaded: false,
 
-  //
-  getAllIssues: () => get().issues,
+  // Set all issues (used when loading from API)
+  setIssues: (issues: Issue[]) => {
+    set({
+      issues,
+      issuesByStatus: groupIssuesByStatus(issues),
+      isLoaded: true,
+    });
+  },
 
   // Actions
   addIssue: (issue: Issue) => {

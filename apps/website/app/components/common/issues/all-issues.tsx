@@ -1,5 +1,3 @@
-
-
 import { status } from '@/mock-data/status';
 import { useIssuesStore } from '@/store/issues-store';
 import { useSearchStore } from '@/store/search-store';
@@ -11,10 +9,21 @@ import { GroupIssues } from './group-issues';
 import { SearchIssues } from './search-issues';
 import { CustomDragLayer } from './issue-grid';
 import { cn } from '@/lib/utils';
+import { useLoaderData } from 'react-router-dom';
+
+export interface AppLoaderData {
+  issues: any[];
+  workflowStates: any[];
+  labels: any[];
+  projects: any[];
+  teams: any[];
+  users: any[];
+}
 
 export default function AllIssues() {
   const { isSearchOpen, searchQuery } = useSearchStore();
   const { viewType } = useViewStore();
+  const { workflowStates = status } = useLoaderData<AppLoaderData>();
 
   const isSearching = isSearchOpen && searchQuery.trim() !== '';
   const isViewTypeGrid = viewType === 'grid';
@@ -24,7 +33,7 @@ export default function AllIssues() {
       {isSearching ? (
         <SearchIssuesView />
       ) : (
-        <GroupIssuesListView isViewTypeGrid={isViewTypeGrid} />
+        <GroupIssuesListView isViewTypeGrid={isViewTypeGrid} states={workflowStates} />
       )}
     </div>
   );
@@ -38,13 +47,14 @@ const SearchIssuesView = () => (
 
 const GroupIssuesListView: FC<{
   isViewTypeGrid: boolean;
-}> = ({ isViewTypeGrid = false }) => {
+  states: any[];
+}> = ({ isViewTypeGrid = false, states = status }) => {
   const { issuesByStatus } = useIssuesStore();
   return (
     <DndProvider backend={HTML5Backend}>
       <CustomDragLayer />
       <div className={cn(isViewTypeGrid && 'flex h-full gap-3 px-2 py-2 min-w-max')}>
-        {status.map((statusItem) => (
+        {states.map((statusItem) => (
           <GroupIssues
             key={statusItem.id}
             status={statusItem}
