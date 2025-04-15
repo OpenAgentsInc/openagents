@@ -421,8 +421,6 @@ const DEFAULT_PROJECT_STATUSES = [
 
 // Server-side only API for fetching dropdown options
 export async function getProjectStatuses() {
-  console.log('[DEBUG] getProjectStatuses called');
-  
   try {
     const db = getDb();
     
@@ -434,20 +432,16 @@ export async function getProjectStatuses() {
       .orderBy('position')
       .execute();
     
-    console.log(`[DEBUG] Found ${dbStatuses.length} project statuses in database`);
-    
     // Only include default statuses that don't have the same type as existing ones
     const existingTypes = dbStatuses.map(status => status.type);
     const missingDefaultStatuses = DEFAULT_PROJECT_STATUSES.filter(
       status => !existingTypes.includes(status.type)
     );
     
-    console.log(`[DEBUG] Adding ${missingDefaultStatuses.length} default statuses`);
-    
     // Return combined list with no duplicates
     return [...dbStatuses, ...missingDefaultStatuses];
   } catch (error) {
-    console.error('[DEBUG] Error getting project statuses:', error);
+    console.error('Error getting project statuses:', error);
     return DEFAULT_PROJECT_STATUSES;
   }
 }

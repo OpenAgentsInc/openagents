@@ -57,9 +57,10 @@ interface IssueFormData {
 
 interface CreateNewIssueProps {
   loaderData?: any;
+  initialProjectId?: string;
 }
 
-export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
+export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueProps) {
   const [createMore, setCreateMore] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { isOpen, defaultStatus, openModal, closeModal } = useCreateIssueStore();
@@ -89,10 +90,10 @@ export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
       stateId: '',
       priority: 0, // No priority
       assigneeId: undefined,
-      projectId: undefined,
+      projectId: initialProjectId, // Use the project ID from the URL if available
       labelIds: [],
     };
-  }, []);
+  }, [initialProjectId]);
 
   const [issueForm, setIssueForm] = useState<IssueFormData>(createDefaultFormData());
 
@@ -115,8 +116,6 @@ export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
   // When team changes, reset the state selection
   useEffect(() => {
     if (issueForm.teamId) {
-      console.log('[DEBUG] CreateNewIssue - Team changed, resetting state selection');
-      
       // Get workflow states for this team
       let teamWorkflowStates = [];
       if (loaderData?.options?.workflowStates) {
@@ -125,16 +124,12 @@ export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
         );
       }
       
-      console.log('[DEBUG] CreateNewIssue - Found states for team:', teamWorkflowStates.length);
-      
       // Set a default state
       if (teamWorkflowStates.length > 0) {
         // Find a backlog or todo state, or use the first state
         const defaultState = teamWorkflowStates.find(
           (state: any) => state.type === 'todo' || state.type === 'backlog' || state.type === 'unstarted'
         ) || teamWorkflowStates[0];
-        
-        console.log('[DEBUG] CreateNewIssue - Setting default state:', defaultState?.id);
         
         setIssueForm(prev => ({
           ...prev,
@@ -144,11 +139,8 @@ export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
     }
   }, [issueForm.teamId, loaderData]);
   
-  // Debug logging for issueForm changes and store it in a global reference
-  // so StatusSelector can access it
+  // Store a reference to the form data for other components to access
   useEffect(() => {
-    console.log('[DEBUG] CreateNewIssue - Current form data:', JSON.stringify(issueForm));
-    // Store a reference to the form data for other components
     (window as any).__createIssueFormContext = issueForm;
   }, [issueForm]);
 
@@ -199,13 +191,11 @@ export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
       });
   
       // Submit the form
-      const result = await submit(formData, {
+      await submit(formData, {
         method: 'post',
         navigate: false,
         action: '/issues'
       });
-
-      console.log('[DEBUG] Create issue result:', result);
       
       // After successful submission, revalidate the data
       revalidator.revalidate();

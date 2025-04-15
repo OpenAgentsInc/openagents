@@ -49,10 +49,7 @@ export function TeamSelector({ teamId, onChange, loaderData: propLoaderData }: T
     teams = loaderData.teams;
   }
   
-  // Debug output to console
-  console.log('Teams available:', teams.length, teams);
-  console.log('Using loader data from props:', !!propLoaderData);
-  console.log('Loader data structure:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
+  // No debug output in production
   
   // Set default team if none is selected
   useEffect(() => {
@@ -66,11 +63,7 @@ export function TeamSelector({ teamId, onChange, loaderData: propLoaderData }: T
   // When team changes, we need to update the parent form
   // This effect runs when the selected team changes
   useEffect(() => {
-    if (teamId) {
-      console.log('[DEBUG] TeamSelector - Selected team changed to:', teamId);
-      // The parent form will need to update the stateId when the team changes
-      // This is handled in the CreateNewIssue component
-    }
+    // The parent form will update the stateId when the team changes
   }, [teamId]);
 
   // If no teams are available, show a disabled button with clear message

@@ -83,12 +83,10 @@ export default function ProjectDetails() {
   // Update issues store with project-specific issues
   useEffect(() => {
     if (project?.issues) {
-      console.log('[DEBUG] ProjectDetails - Setting issues from project:', project.issues.length);
       setIssues(project.issues);
     }
     
     if (data.options?.workflowStates) {
-      console.log('[DEBUG] ProjectDetails - Setting workflow states:', data.options.workflowStates.length);
       setWorkflowStates(data.options.workflowStates);
     }
   }, [project, data.options, setIssues, setWorkflowStates]);

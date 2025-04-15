@@ -44,8 +44,7 @@ export function ProjectSelector({ projectId, onChange, loaderData: propLoaderDat
     projects = [loaderData.project];
   }
   
-  console.log('Using loader data from props:', !!propLoaderData);
-  console.log('Found projects:', projects?.length || 0);
+  // No debug logs in production
 
   const handleProjectChange = (newProjectId: string | undefined) => {
     onChange(newProjectId);

@@ -42,8 +42,7 @@ export function AssigneeSelector({ assigneeId, onChange, loaderData: propLoaderD
     users = loaderData.users;
   }
   
-  console.log('Using loader data from props:', !!propLoaderData);
-  console.log('Found users:', users?.length || 0);
+  // No debug logs in production
 
   const handleAssigneeChange = (userId: string | undefined) => {
     onChange(userId);

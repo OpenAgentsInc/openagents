@@ -44,16 +44,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       getUsers()
     ]);
     
-    console.log('[DEBUG] /issues loader - Fetched issues:', issues.length);
-    console.log('[DEBUG] /issues loader - First issue sample:', issues.length > 0 ? JSON.stringify(issues[0]).substring(0, 300) : 'No issues');
+    // No debug logs in production
 
     // Get teams that the current user is a member of
     const teams = await getTeamsForUser(user.id);
     
-    // --- START DEBUG LOG ---
-    console.log(`[DEBUG] /issues Loader - Fetched ${workflowStates?.length ?? 0} workflow states:`, JSON.stringify(workflowStates));
-    console.log(`[DEBUG] /issues Loader - Fetched ${teams?.length ?? 0} teams for user ${user.id}:`, JSON.stringify(teams));
-    // --- END DEBUG LOG ---
+    // No debug logs in production
 
     // Return simple object instead of json
     return {
@@ -135,18 +131,13 @@ export async function action({ request }: ActionFunctionArgs) {
         labelIds
       };
       
-      console.log('[DEBUG] Creating issue with data:', JSON.stringify(issueData));
       const issueId = await createIssue(issueData);
-      console.log('[DEBUG] Issue created with ID:', issueId);
       
-      // Instead of just returning the ID, let's get the complete created issue
-      // Force-refresh the issues list by requesting again
+      // Get the updated issues list
       const newIssues = await getAllIssues();
-      console.log('[DEBUG] Reloaded issues after creation, found:', newIssues.length);
       
-      // Find our new issue in the list so we can return it directly
+      // Find our new issue in the list
       const createdIssue = newIssues.find(issue => issue.id === issueId);
-      console.log('[DEBUG] Created issue details:', createdIssue);
       
       return { 
         success: true, 

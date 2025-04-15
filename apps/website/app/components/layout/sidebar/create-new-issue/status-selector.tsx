@@ -60,31 +60,13 @@ export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }
     );
   }
   
-  console.log('Loader data in status selector:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
-  console.log('Using loader data from props:', !!propLoaderData);
-  console.log('Found workflow states:', workflowStates?.length || 0);
-  
   // Use default states if none are available
   if (!workflowStates || workflowStates.length === 0) {
-    console.log('Using default workflow states');
     workflowStates = defaultWorkflowStates;
   }
-
-  // --- START DEBUG LOG ---
-  console.log('[DEBUG] StatusSelector Props:', { stateId, workflowStates });
-  if (Array.isArray(workflowStates)) {
-      console.log(`[DEBUG] StatusSelector - Rendering ${workflowStates.length} states:`, JSON.stringify(workflowStates));
-      workflowStates.forEach((state, index) => {
-          console.log(`[DEBUG] State ${index}:`, JSON.stringify(state));
-      });
-  } else {
-      console.error('[DEBUG] StatusSelector - workflowStates is NOT an array:', workflowStates);
-  }
-  // --- END DEBUG LOG ---
   
-  // FORCE USE DEFAULT STATES if we only have one or none
-  if (!workflowStates || workflowStates.length <= 1) {
-    console.log('[DEBUG] FORCING default workflow states');
+  // FORCE USE DEFAULT STATES if we only have one
+  if (workflowStates.length <= 1) {
     workflowStates = defaultWorkflowStates;
   }
 

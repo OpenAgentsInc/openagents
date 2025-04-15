@@ -33,21 +33,14 @@ export default function AllIssues() {
   useEffect(() => {
     if (loaderData) {
       if (loaderData.issues && loaderData.issues.length > 0) {
-        console.log('[DEBUG] AllIssues - Setting issues from loader data:', loaderData.issues.length);
         setIssues(loaderData.issues);
       }
       
       if (loaderData.options?.workflowStates && loaderData.options.workflowStates.length > 0) {
-        console.log('[DEBUG] AllIssues - Setting workflow states from loader data:', loaderData.options.workflowStates.length);
         setWorkflowStates(loaderData.options.workflowStates);
       }
     }
   }, [loaderData, setIssues, setWorkflowStates]);
-  
-  // Debug issues store
-  useEffect(() => {
-    console.log('[DEBUG] AllIssues - Current issues in store:', issues.length);
-  }, [issues]);
 
   const isSearching = isSearchOpen && searchQuery.trim() !== '';
   const isViewTypeGrid = viewType === 'grid';
@@ -74,10 +67,6 @@ const GroupIssuesListView: FC<{
   states: any[];
 }> = ({ isViewTypeGrid = false, states = status }) => {
   const { issuesByStatus, issues } = useIssuesStore();
-  
-  console.log('[DEBUG] GroupIssuesListView - Issues by status:', Object.keys(issuesByStatus));
-  console.log('[DEBUG] GroupIssuesListView - Total issues:', issues.length);
-  console.log('[DEBUG] GroupIssuesListView - Available states:', states.map(s => s.id));
   
   // Sort states by position if available, or fall back to order in the array
   const sortedStates = [...states].sort((a, b) => {
@@ -113,7 +102,6 @@ const GroupIssuesListView: FC<{
         {sortedStates.map((statusItem) => {
           // Find issues for this status
           const statusIssues = issuesByStatus[statusItem.id] || [];
-          console.log(`[DEBUG] Status ${statusItem.name} (${statusItem.id}) has ${statusIssues.length} issues`);
           
           return (
             <GroupIssues

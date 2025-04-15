@@ -43,8 +43,7 @@ export function LabelSelector({ selectedLabelIds, onChange, loaderData: propLoad
     labels = loaderData.labels;
   }
   
-  console.log('Using loader data from props:', !!propLoaderData);
-  console.log('Found labels:', labels?.length || 0);
+  // No debug logs in production
   
   // Handle label selection/deselection
   const handleLabelToggle = (labelId: string) => {

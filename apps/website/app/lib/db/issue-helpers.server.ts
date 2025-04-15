@@ -744,8 +744,6 @@ const DEFAULT_WORKFLOW_STATES = [
 export async function getWorkflowStates(teamId?: string) {
   const db = getDb();
   
-  console.log(`[DEBUG] getWorkflowStates called with teamId: ${teamId || 'none'}`);
-  
   let query = db
     .selectFrom('workflow_state')
     .select(['id', 'name', 'color', 'type', 'position', 'teamId'])
@@ -765,18 +763,14 @@ export async function getWorkflowStates(teamId?: string) {
     .execute();
     
   // Add default workflow states that don't already exist by type
-  console.log(`[DEBUG] Found ${states.length} workflow states for teamId: ${teamId || 'none'}`);
   
   // Get existing types
   const existingTypes = states.map(s => s.type);
-  console.log(`[DEBUG] Existing workflow state types: ${existingTypes.join(', ')}`);
   
   // Get default states that don't already exist by type
   const missingDefaultStates = DEFAULT_WORKFLOW_STATES.filter(
     s => !existingTypes.includes(s.type)
   );
-  
-  console.log(`[DEBUG] Adding ${missingDefaultStates.length} default workflow states`);
   
   // Return combined list with no duplicates by type
   return [...states, ...missingDefaultStates];
