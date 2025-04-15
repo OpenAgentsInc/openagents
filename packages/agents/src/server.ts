@@ -58,6 +58,14 @@ export class Coder extends Agent<Env, CoderState> {
     isContinuousRunActive: false
   };
   tools: ToolSet = {};
+  
+  private ctx: any; // DurableObjectState type
+  
+  constructor(ctx: any, env: Env) {
+    super(ctx, env);
+    this.ctx = ctx; // Store ctx for direct storage access
+    console.log("[Constructor] Coder instance created.");
+  }
 
   /**
    * Safely updates the agent's state by merging the provided partial state
@@ -65,46 +73,16 @@ export class Coder extends Agent<Env, CoderState> {
    * @param partialState An object containing the state properties to update.
    */
   private updateState(partialState: Partial<CoderState>) {
+    // ONLY use the base class method for in-memory update for now
     this.setState({
       ...this.state,
       ...partialState,
     });
+    console.log('[updateState] Updated in-memory state via this.setState.');
+    // REMOVED the explicit this.ctx.storage.put call for now to avoid interference
   }
 
-  /**
-   * Ensures the state is properly loaded/hydrated from storage.
-   * This helps address potential state rehydration issues when waking up from schedules.
-   */
-  private async ensureStateLoaded() {
-    // This is a placeholder - the exact mechanism depends on the Durable Object SDK / Agent base class.
-    try {
-      // Try reading a dummy key to trigger state hydration
-      if ((this.state as any).storage) {
-        await (this.state as any).storage.get('__internal_hydration_check__');
-        console.log('[State Load] State potentially hydrated via read.');
-      } else if ((this as any).storage) {
-        await (this as any).storage.get('__internal_hydration_check__');
-        console.log('[State Load] State potentially hydrated via this.storage read.');
-      } else {
-        console.warn('[State Load] No storage interface found on this.state or this. Using alternative approach.');
-        // Force a harmless state update to potentially trigger hydration
-        await this.setState({ ...this.state });
-        console.log('[State Load] Attempted hydration via harmless state update.');
-      }
-    } catch (e) {
-      console.error('[State Load] Error during state hydration attempt:', e);
-      // Try a fallback approach with a harmless state update
-      try {
-        await this.setState({ ...this.state });
-        console.log('[State Load] Attempted fallback hydration via state update.');
-      } catch (fallbackError) {
-        console.error('[State Load] Fallback hydration also failed:', fallbackError);
-      }
-    }
-    
-    // Add a final log after the attempt
-    console.log(`[State Load Check] Post-load check - Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
-  }
+  // ensureStateLoaded method removed - we'll handle explicit state reading in each method that needs it
 
   async executeTask(payload: Record<string, any>, task: Schedule<Record<string, any>>) {
     const description = payload.description || "Scheduled task executed";
@@ -121,7 +99,7 @@ export class Coder extends Agent<Env, CoderState> {
       ],
     };
 
-    this.updateState({
+    await this.updateState({
       messages: [
         ...this.state.messages,
         newMessage
@@ -137,92 +115,133 @@ export class Coder extends Agent<Env, CoderState> {
    * and reschedules itself.
    */
   public async continueInfer(payload?: any) {
-    // Force state hydration before proceeding
-    await this.ensureStateLoaded();
-
-    // Ensure state is fully loaded/hydrated after wake-up
-    console.log(`[continueInfer ENTRY]Owner: ${ this.state.currentRepoOwner }, Repo: ${ this.state.currentRepoName }, Active: ${ this.state.isContinuousRunActive } `);
-
-    // If repository context is missing after waking up from schedule, attempt to handle it
-    if (this.state.isContinuousRunActive && (!this.state.currentRepoOwner || !this.state.currentRepoName)) {
-      console.warn(`[continueInfer] Repository context missing on wake - up.This suggests state rehydration issues.`);
-    }
-
-    // Regular STATE LOGGING - avoid logging tokens or sensitive data
-    console.log(`[continueInfer STATE CHECK]Owner: ${ this.state.currentRepoOwner }, Repo: ${ this.state.currentRepoName }, Active: ${ this.state.isContinuousRunActive } `);
-
-    // Log payload without potentially sensitive data
-    const safePayload = payload ? JSON.parse(JSON.stringify(payload)) : {};
-    if (safePayload.githubToken) safePayload.githubToken = "[REDACTED]";
-
-    console.log(`[continueInfer] Cycle start.Active: ${ this.state.isContinuousRunActive }.Payload: ${ JSON.stringify(safePayload) } `);
-    if (!this.state.isContinuousRunActive) {
-      console.log(`[continueInfer] Run inactive.Stopping.`);
-      return;
-    }
-
+    // Explicitly read repository context directly from storage
+    let owner: string | undefined;
+    let repo: string | undefined;
+    let branch: string | undefined;
+    
     try {
-      // --- Decide NEXT SINGLE Action ---
-      const nextAction = this.planNextExplorationStep();
-
-      if (nextAction) {
-        console.log(`[continueInfer] Planning next action: ${ nextAction.type } - ${ nextAction.path || nextAction.description } `);
-
-        // Schedule the *specific* action using its own method and payload
-        // Use a short delay for the action itself (e.g., 5 seconds)
-        await this.schedule(5, // Short delay to execute the action soon
-          nextAction.type === 'listFiles' ? 'scheduledListFiles' : 'scheduledSummarizeFile',
-          nextAction.payload
-        );
-        this.addAgentObservation(`Scheduled next action: ${ nextAction.type } for ${ nextAction.path || 'N/A' }`);
-
-        // *** MOVE RESCHEDULING HERE ***
-        // Only reschedule the planner if an action was successfully planned *and* the run is still active
-        if (this.state.isContinuousRunActive) {
-          const planningIntervalSeconds = 120; // Longer interval (2 minutes) for planning the next step
-          console.log(`[continueInfer] Action scheduled.Rescheduling planning cycle in ${ planningIntervalSeconds } seconds.`);
-          await this.schedule(planningIntervalSeconds, 'continueInfer', { reason: 'next planning cycle' });
-        } else {
-          console.log(`[continueInfer] Run was stopped during planning / scheduling.Not rescheduling planning cycle.`);
-        }
+      console.log("[continueInfer] Explicitly reading repoContextData from storage...");
+      const storedContext = await this.ctx.storage.get('repoContextData');
+      if (storedContext) {
+        console.log("[continueInfer] Successfully read repoContextData:", JSON.stringify(storedContext));
+        owner = storedContext.currentRepoOwner;
+        repo = storedContext.currentRepoName;
+        branch = storedContext.currentBranch;
       } else {
-        console.log("[continueInfer] No further exploration steps planned. Run potentially stopped or finished.");
-        // Do NOT reschedule the planning cycle if no action could be planned (e.g., missing context caused stop)
-        this.addAgentObservation("No specific exploration step found. Stopping or waiting for manual restart/context.");
-        // Ensure the run is marked inactive if the planner decided to stop it.
-        if(this.state.isContinuousRunActive) {
-          // This case happens if planner returns null but stopContinuousRun wasn't explicitly called by planner
-          // Maybe the exploration is just complete? Or stuck? For now, stop it.
-          console.log("[continueInfer] Planner returned null, stopping continuous run.");
-          await this.stopContinuousRun();
+        console.log("[continueInfer] No repoContextData found in storage.");
+      }
+    } catch(e) {
+      console.error("[continueInfer] Error reading repoContextData:", e);
+    }
+    
+    console.log(`[continueInfer ENTRY] Read Owner: ${owner}, Read Repo: ${repo}, Active (from state): ${this.state.isContinuousRunActive}`);
+    
+    // If context was read successfully but not in memory state, update memory state
+    if (owner && repo && (this.state.currentRepoOwner !== owner || this.state.currentRepoName !== repo)) {
+      console.log("[continueInfer] Updating in-memory state with repository context from storage");
+      this.updateState({
+        currentRepoOwner: owner,
+        currentRepoName: repo,
+        currentBranch: branch
+      });
+    }
+
+    // Wrap the operation in blockConcurrencyWhile to ensure it completes
+    await this.ctx.blockConcurrencyWhile(async () => {
+      // Log payload without potentially sensitive data
+      const safePayload = payload ? JSON.parse(JSON.stringify(payload)) : {};
+      if (safePayload.githubToken) safePayload.githubToken = "[REDACTED]";
+
+      console.log(`[continueInfer] Cycle start. Active: ${this.state.isContinuousRunActive}. Payload: ${JSON.stringify(safePayload)}`);
+      if (!this.state.isContinuousRunActive) {
+        console.log(`[continueInfer] Run inactive. Stopping.`);
+        return;
+      }
+
+      try {
+        // --- Decide NEXT SINGLE Action ---
+        const nextAction = await this.planNextExplorationStep(owner, repo, branch);
+
+        if (nextAction) {
+          console.log(`[continueInfer] Planning next action: ${nextAction.type} - ${nextAction.path || nextAction.description}`);
+
+          // Schedule the *specific* action using its own method and payload
+          // Use a short delay for the action itself (e.g., 5 seconds)
+          await this.schedule(5, // Short delay to execute the action soon
+            nextAction.type === 'listFiles' ? 'scheduledListFiles' : 'scheduledSummarizeFile',
+            nextAction.payload
+          );
+          await this.addAgentObservation(`Scheduled next action: ${nextAction.type} for ${nextAction.path || 'N/A'}`);
+
+          // Only reschedule the planner if an action was successfully planned *and* the run is still active
+          if (this.state.isContinuousRunActive) {
+            const planningIntervalSeconds = 120; // Longer interval (2 minutes) for planning the next step
+            console.log(`[continueInfer] Action scheduled. Rescheduling planning cycle in ${planningIntervalSeconds} seconds.`);
+            await this.schedule(planningIntervalSeconds, 'continueInfer', { reason: 'next planning cycle' });
+          } else {
+            console.log(`[continueInfer] Run was stopped during planning/scheduling. Not rescheduling planning cycle.`);
+          }
+        } else {
+          console.log("[continueInfer] No further exploration steps planned. Run potentially stopped or finished.");
+          // Do NOT reschedule the planning cycle if no action could be planned (e.g., missing context caused stop)
+          await this.addAgentObservation("No specific exploration step found. Stopping or waiting for manual restart/context.");
+          // Ensure the run is marked inactive if the planner decided to stop it.
+          if (this.state.isContinuousRunActive) {
+            // This case happens if planner returns null but stopContinuousRun wasn't explicitly called by planner
+            console.log("[continueInfer] Planner returned null, stopping continuous run.");
+            await this.stopContinuousRun();
+          }
+        }
+
+      } catch (error) {
+        console.error("[continueInfer] Error during planning or scheduling:", error);
+        // Reschedule self even on error
+        if (this.state.isContinuousRunActive) {
+          const errorDelaySeconds = 300;
+          console.log(`[continueInfer] Rescheduling planning cycle after error in ${errorDelaySeconds} seconds.`);
+          await this.schedule(errorDelaySeconds, 'continueInfer', { reason: 'error recovery planning' });
         }
       }
-      // *** REMOVED THE RESCHEDULING FROM OUTSIDE THE if(nextAction) BLOCK ***
-
-    } catch (error) {
-      console.error("[continueInfer] Error during planning or scheduling:", error);
-      // Reschedule self even on error
-      if (this.state.isContinuousRunActive) {
-        const errorDelaySeconds = 300;
-        console.log(`[continueInfer] Rescheduling planning cycle after error in ${ errorDelaySeconds } seconds.`);
-        await this.schedule(errorDelaySeconds, 'continueInfer', { reason: 'error recovery planning' });
-      }
-    }
+    }); // End of blockConcurrencyWhile
   }
 
   /**
    * Method to determine the next exploration step.
    */
-  private planNextExplorationStep(): { type: 'listFiles' | 'summarizeFile'; path?: string; description?: string; payload: any } | null {
-    console.log("[planNextExplorationStep] Deciding next step...");
+  private async planNextExplorationStep(providedOwner?: string, providedRepo?: string, providedBranch?: string): Promise<{ type: 'listFiles' | 'summarizeFile'; path?: string; description?: string; payload: any } | null> {
+    // If context isn't provided, try to get it from storage directly
+    let owner = providedOwner;
+    let repo = providedRepo;
+    let branch = providedBranch;
+    
+    // If not provided as parameters, try to read directly
+    if (!owner || !repo) {
+      try {
+        console.log("[planNextExplorationStep] Explicitly reading repoContextData...");
+        const storedContext = await this.ctx.storage.get('repoContextData');
+        if (storedContext) {
+          console.log("[planNextExplorationStep] Successfully read context from storage:", JSON.stringify(storedContext));
+          owner = storedContext.currentRepoOwner;
+          repo = storedContext.currentRepoName;
+          branch = storedContext.currentBranch;
+        } else {
+          console.log("[planNextExplorationStep] No repoContextData found in storage.");
+        }
+      } catch(e) {
+        console.error("[planNextExplorationStep] Error reading repoContextData:", e);
+      }
+    }
+    
+    console.log(`[planNextExplorationStep ENTRY] Read Owner: ${owner}, Read Repo: ${repo}`);
 
     // CHECK FOR REPOSITORY CONTEXT
-    if (!this.state.currentRepoOwner || !this.state.currentRepoName) {
-      console.warn("[planNextExplorationStep] Repository context (owner/name) not set. Cannot plan file/dir actions.");
+    if (!owner || !repo) {
+      console.warn("[planNextExplorationStep] Repository context (owner/name) not found in storage or parameters. Cannot plan file/dir actions.");
       // Add an observation asking the user to set context
-      this.addAgentObservation("Please set the repository context using 'setRepositoryContext' before starting exploration.");
+      await this.addAgentObservation("Please set the repository context using 'setRepositoryContext' before starting exploration.");
       // Since we can't proceed without repo context, consider stopping the continuous run
-      this.stopContinuousRun().catch(e => console.error("Error stopping continuous run after missing repo context:", e));
+      await this.stopContinuousRun().catch(e => console.error("Error stopping continuous run after missing repo context:", e));
       return null; // Cannot plan without context
     }
 
@@ -242,9 +261,9 @@ export class Coder extends Agent<Env, CoderState> {
         description: 'List repository root directory',
         payload: {
           path: '/',
-          owner: this.state.currentRepoOwner,
-          repo: this.state.currentRepoName,
-          branch: this.state.currentBranch || 'main'
+          owner: owner, // Use local variable from storage/parameters
+          repo: repo, // Use local variable from storage/parameters
+          branch: branch || 'main'
         }
       };
     }
@@ -261,9 +280,9 @@ export class Coder extends Agent<Env, CoderState> {
           description: `List '${path}' directory`,
           payload: {
             path,
-            owner: this.state.currentRepoOwner,
-            repo: this.state.currentRepoName,
-            branch: this.state.currentBranch || 'main'
+            owner: owner, // Use local variable from storage/parameters
+            repo: repo, // Use local variable from storage/parameters
+            branch: branch || 'main'
           }
         };
       }
@@ -284,9 +303,9 @@ export class Coder extends Agent<Env, CoderState> {
         description: `Summarize file '${fileToSummarize.path}'`,
         payload: {
           path: fileToSummarize.path,
-          owner: this.state.currentRepoOwner,
-          repo: this.state.currentRepoName,
-          branch: this.state.currentBranch || 'main'
+          owner: owner, // Use local variable from storage/parameters
+          repo: repo, // Use local variable from storage/parameters
+          branch: branch || 'main'
         }
       };
     }
@@ -310,9 +329,9 @@ if (!codebaseStructure[subdirPath]) {
     description: `List '${subdirPath}' directory`,
     payload: {
       path: subdirPath,
-      owner: this.state.currentRepoOwner,
-      repo: this.state.currentRepoName,
-      branch: this.state.currentBranch || 'main'
+      owner: owner, // Use local variable from storage/parameters
+      repo: repo, // Use local variable from storage/parameters
+      branch: branch || 'main'
     }
   };
 }
@@ -447,79 +466,93 @@ try {
    * Only performs the directory listing operation, without calling infer().
    */
   public async scheduledListFiles(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
-  // Force state hydration before proceeding
-  await this.ensureStateLoaded();
-
-  // Ensure state is fully loaded/hydrated after wake-up
-  console.log(`[scheduledListFiles ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
-
-  // If repository context is missing after waking up, log warning
-  if (!this.state.currentRepoOwner || !this.state.currentRepoName) {
-    console.warn(`[scheduledListFiles] Repository context missing on wake-up. This suggests state rehydration issues.`);
-  }
-
-  // STATE LOGGING - avoid logging any tokens
-  console.log(`[scheduledListFiles STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
-
-  // Create a safe copy of the payload without any potential tokens
-  const safePath = payload.path;
-  console.log(`[scheduledListFiles] Executing for path: ${safePath}`);
-  const { path, owner, repo, branch } = payload;
-
-  // Check if payload has all required fields
-  if (!path) {
-    console.error("[scheduledListFiles] Missing path in payload.");
-    return;
-  }
-
-  // If owner/repo missing in payload, try to get from state
-  const effectiveOwner = owner || this.state.currentRepoOwner;
-  const effectiveRepo = repo || this.state.currentRepoName;
-  const effectiveBranch = branch || this.state.currentBranch || 'main';
-
-  if (!effectiveOwner || !effectiveRepo) {
-    console.error("[scheduledListFiles] Missing owner or repo in both payload and state.");
-    this.addAgentObservation("Cannot list files: Repository owner/name not provided. Please set repository context first.");
-    return;
-  }
-
+  // Explicitly read repository context directly from storage
+  let storedOwner: string | undefined;
+  let storedRepo: string | undefined;
+  let storedBranch: string | undefined;
+  
   try {
-    // Add an observation about listing files
-    this.addAgentObservation(`Listing files for: ${path}`);
-
-    // Directly fetch directory contents using GitHub API
-    const listing = await this.fetchDirectoryContents(
-      path,
-      effectiveOwner,
-      effectiveRepo,
-      effectiveBranch
-    );
-
-    if (listing === null) {
-      throw new Error(`Failed to fetch directory contents for ${path}`);
+    console.log("[scheduledListFiles] Explicitly reading repoContextData from storage...");
+    const storedContext = await this.ctx.storage.get('repoContextData');
+    if (storedContext) {
+      console.log("[scheduledListFiles] Successfully read repoContextData:", JSON.stringify(storedContext));
+      storedOwner = storedContext.currentRepoOwner;
+      storedRepo = storedContext.currentRepoName;
+      storedBranch = storedContext.currentBranch;
+    } else {
+      console.log("[scheduledListFiles] No repoContextData found in storage.");
     }
-
-    // Update the codebase structure for the directory
-    this.updateCodebaseStructure(path, null, 'directory');
-
-    // Process each item in the directory listing
-    for (const item of listing) {
-      const itemPath = path.endsWith('/') ? `${path}${item.name}` : `${path}/${item.name}`;
-      const itemType = item.type === 'dir' ? 'directory' : 'file';
-
-      // Add an entry in the codebase structure for each item
-      // For files, we just add a basic entry - they'll be summarized later if needed
-      this.updateCodebaseStructure(itemPath, null, itemType);
-    }
-
-    // Add an observation with the results
-    this.addAgentObservation(`Listed ${listing.length} items in directory ${path}`);
-    console.log(`[scheduledListFiles] Successfully processed directory ${path} with ${listing.length} items`);
-
-  } catch (e) {
-    console.error(`[scheduledListFiles] Error listing ${path}:`, e);
-    this.addAgentObservation(`Error listing files for ${path}: ${e.message}`);
+  } catch(e) {
+    console.error("[scheduledListFiles] Error reading repoContextData:", e);
   }
+  
+  // Wrap the key functionality in blockConcurrencyWhile to ensure state updates complete
+  await this.ctx.blockConcurrencyWhile(async () => {
+    console.log(`[scheduledListFiles ENTRY] From payload - Owner: ${payload.owner}, Repo: ${payload.repo}, From storage - Owner: ${storedOwner}, Repo: ${storedRepo}`);
+
+    // Create a safe copy of the payload without any potential tokens
+    const safePath = payload.path;
+    console.log(`[scheduledListFiles] Executing for path: ${safePath}`);
+    const { path, owner, repo, branch } = payload;
+
+    // Check if payload has all required fields
+    if (!path) {
+      console.error("[scheduledListFiles] Missing path in payload.");
+      return;
+    }
+
+    // Prioritize payload values, then storage values, then state values
+    // This gives explicit payload values highest precedence
+    const effectiveOwner = owner || storedOwner || this.state.currentRepoOwner;
+    const effectiveRepo = repo || storedRepo || this.state.currentRepoName;
+    const effectiveBranch = branch || storedBranch || this.state.currentBranch || 'main';
+
+    console.log(`[scheduledListFiles] Using effective context - Owner: ${effectiveOwner}, Repo: ${effectiveRepo}, Branch: ${effectiveBranch}`);
+
+    if (!effectiveOwner || !effectiveRepo) {
+      console.error("[scheduledListFiles] Missing owner or repo in payload, storage, and state.");
+      await this.addAgentObservation("Cannot list files: Repository owner/name not available. Please set repository context first.");
+      return;
+    }
+
+    try {
+      // Add an observation about listing files
+      await this.addAgentObservation(`Listing files for: ${path}`);
+
+      // Directly fetch directory contents using GitHub API
+      const listing = await this.fetchDirectoryContents(
+        path,
+        effectiveOwner,
+        effectiveRepo,
+        effectiveBranch
+      );
+
+      if (listing === null) {
+        throw new Error(`Failed to fetch directory contents for ${path}`);
+      }
+
+      // Update the codebase structure for the directory
+      await this.updateCodebaseStructure(path, null, 'directory');
+
+      // Process each item in the directory listing
+      for (const item of listing) {
+        const itemPath = path.endsWith('/') ? `${path}${item.name}` : `${path}/${item.name}`;
+        const itemType = item.type === 'dir' ? 'directory' : 'file';
+
+        // Add an entry in the codebase structure for each item
+        // For files, we just add a basic entry - they'll be summarized later if needed
+        await this.updateCodebaseStructure(itemPath, null, itemType);
+      }
+
+      // Add an observation with the results
+      await this.addAgentObservation(`Listed ${listing.length} items in directory ${path}`);
+      console.log(`[scheduledListFiles] Successfully processed directory ${path} with ${listing.length} items`);
+
+    } catch (e) {
+      console.error(`[scheduledListFiles] Error listing ${path}:`, e);
+      await this.addAgentObservation(`Error listing files for ${path}: ${e.message}`);
+    }
+  }); // End of blockConcurrencyWhile
 }
 
   /**
@@ -527,123 +560,150 @@ try {
    * Only performs the file fetching and summarization, without calling infer().
    */
   public async scheduledSummarizeFile(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
-  // Force state hydration before proceeding
-  await this.ensureStateLoaded();
-
-  // Ensure state is fully loaded/hydrated after wake-up
-  console.log(`[scheduledSummarizeFile ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
-
-  // If repository context is missing after waking up, log warning
-  if (!this.state.currentRepoOwner || !this.state.currentRepoName) {
-    console.warn(`[scheduledSummarizeFile] Repository context missing on wake-up. This suggests state rehydration issues.`);
-  }
-
-  // STATE LOGGING - avoid logging any tokens
-  console.log(`[scheduledSummarizeFile STATE CHECK] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
-
-  // Create a safe copy of the payload without any potential tokens
-  const safePath = payload.path;
-  console.log(`[scheduledSummarizeFile] Executing for path: ${safePath}`);
-  const { path, owner, repo, branch } = payload;
-
-  // Check if payload has all required fields
-  if (!path) {
-    console.error("[scheduledSummarizeFile] Missing path in payload.");
-    return;
-  }
-
-  // If owner/repo missing in payload, try to get from state
-  const effectiveOwner = owner || this.state.currentRepoOwner;
-  const effectiveRepo = repo || this.state.currentRepoName;
-  const effectiveBranch = branch || this.state.currentBranch || 'main';
-
-  if (!effectiveOwner || !effectiveRepo) {
-    console.error("[scheduledSummarizeFile] Missing owner or repo in both payload and state.");
-    this.addAgentObservation("Cannot summarize file: Repository owner/name not provided. Please set repository context first.");
-    return;
-  }
-
+  // Explicitly read repository context directly from storage
+  let storedOwner: string | undefined;
+  let storedRepo: string | undefined;
+  let storedBranch: string | undefined;
+  
   try {
-    // Add an observation about summarizing the file
-    this.addAgentObservation(`Summarizing file: ${path}`);
+    console.log("[scheduledSummarizeFile] Explicitly reading repoContextData from storage...");
+    const storedContext = await this.ctx.storage.get('repoContextData');
+    if (storedContext) {
+      console.log("[scheduledSummarizeFile] Successfully read repoContextData:", JSON.stringify(storedContext));
+      storedOwner = storedContext.currentRepoOwner;
+      storedRepo = storedContext.currentRepoName;
+      storedBranch = storedContext.currentBranch;
+    } else {
+      console.log("[scheduledSummarizeFile] No repoContextData found in storage.");
+    }
+  } catch(e) {
+    console.error("[scheduledSummarizeFile] Error reading repoContextData:", e);
+  }
+  
+  // Wrap the key functionality in blockConcurrencyWhile to ensure state updates complete
+  await this.ctx.blockConcurrencyWhile(async () => {
+    console.log(`[scheduledSummarizeFile ENTRY] From payload - Owner: ${payload.owner}, Repo: ${payload.repo}, From storage - Owner: ${storedOwner}, Repo: ${storedRepo}`);
 
-    // Directly fetch file content using GitHub API
-    const fileContent = await this.fetchFileContent(
-      path,
-      effectiveOwner,
-      effectiveRepo,
-      effectiveBranch
-    );
+    // Create a safe copy of the payload without any potential tokens
+    const safePath = payload.path;
+    console.log(`[scheduledSummarizeFile] Executing for path: ${safePath}`);
+    const { path, owner, repo, branch } = payload;
 
-    if (fileContent === null) {
-      throw new Error(`Failed to fetch content for ${path}`);
+    // Check if payload has all required fields
+    if (!path) {
+      console.error("[scheduledSummarizeFile] Missing path in payload.");
+      return;
     }
 
-    // Update the codebase structure with the file content
-    // This will trigger the summary generation via generateObject
-    await this.updateCodebaseStructure(path, fileContent, 'file');
+    // Prioritize payload values, then storage values, then state values
+    // This gives explicit payload values highest precedence
+    const effectiveOwner = owner || storedOwner || this.state.currentRepoOwner;
+    const effectiveRepo = repo || storedRepo || this.state.currentRepoName;
+    const effectiveBranch = branch || storedBranch || this.state.currentBranch || 'main';
 
-    // Set as current file to help with context
-    this.setCurrentFile(path);
+    console.log(`[scheduledSummarizeFile] Using effective context - Owner: ${effectiveOwner}, Repo: ${effectiveRepo}, Branch: ${effectiveBranch}`);
 
-    // Add success observation
-    this.addAgentObservation(`Successfully summarized file: ${path}`);
-    console.log(`[scheduledSummarizeFile] Successfully summarized ${path}`);
+    if (!effectiveOwner || !effectiveRepo) {
+      console.error("[scheduledSummarizeFile] Missing owner or repo in payload, storage, and state.");
+      await this.addAgentObservation("Cannot summarize file: Repository owner/name not available. Please set repository context first.");
+      return;
+    }
 
-  } catch (e) {
-    console.error(`[scheduledSummarizeFile] Error summarizing ${path}:`, e);
-    this.addAgentObservation(`Error summarizing file ${path}: ${e.message}`);
-  }
+    try {
+      // Add an observation about summarizing the file
+      await this.addAgentObservation(`Summarizing file: ${path}`);
+
+      // Directly fetch file content using GitHub API
+      const fileContent = await this.fetchFileContent(
+        path,
+        effectiveOwner,
+        effectiveRepo,
+        effectiveBranch
+      );
+
+      if (fileContent === null) {
+        throw new Error(`Failed to fetch content for ${path}`);
+      }
+
+      // Update the codebase structure with the file content
+      // This will trigger the summary generation via generateObject
+      await this.updateCodebaseStructure(path, fileContent, 'file');
+
+      // Set as current file to help with context
+      await this.setCurrentFile(path);
+
+      // Add success observation
+      await this.addAgentObservation(`Successfully summarized file: ${path}`);
+      console.log(`[scheduledSummarizeFile] Successfully summarized ${path}`);
+
+    } catch (e) {
+      console.error(`[scheduledSummarizeFile] Error summarizing ${path}:`, e);
+      await this.addAgentObservation(`Error summarizing file ${path}: ${e.message}`);
+    }
+  }); // End of blockConcurrencyWhile
 }
 
   /**
    * Starts continuous agent execution
    */
   async startContinuousRun() {
-  // Force state hydration before proceeding
-  await this.ensureStateLoaded();
+  // Explicitly read repository context directly from storage to verify it's available
+  try {
+    console.log("[startContinuousRun] Explicitly reading repoContextData from storage...");
+    const storedContext = await this.ctx.storage.get('repoContextData');
+    if (storedContext) {
+      console.log("[startContinuousRun] Successfully read repoContextData:", JSON.stringify(storedContext));
+    } else {
+      console.log("[startContinuousRun] Warning: No repoContextData found in storage. Continuous run may fail.");
+    }
+  } catch(e) {
+    console.error("[startContinuousRun] Error reading repoContextData:", e);
+  }
 
-  console.log(`[startContinuousRun ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
+  // Wrap in blockConcurrencyWhile to ensure state updates complete
+  return await this.ctx.blockConcurrencyWhile(async () => {
+    console.log(`[startContinuousRun ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
 
-  this.updateState({
-    isContinuousRunActive: true,
-    observations: [...(this.state.observations || []), "Starting continuous agent execution"]
+    this.updateState({
+      isContinuousRunActive: true,
+      observations: [...(this.state.observations || []), "Starting continuous agent execution"]
+    });
+
+    // Immediately start the first execution
+    await this.continueInfer({ reason: 'initial start' });
+
+    return { success: true, message: "Continuous run started successfully" };
   });
-
-  // Immediately start the first execution
-  await this.continueInfer({ reason: 'initial start' });
-
-  return { success: true, message: "Continuous run started successfully" };
 }
 
   /**
    * Stops continuous agent execution
    */
   async stopContinuousRun() {
-  // Force state hydration before proceeding
-  await this.ensureStateLoaded();
+  // Wrap in blockConcurrencyWhile to ensure state updates complete
+  return await this.ctx.blockConcurrencyWhile(async () => {
+    console.log(`[stopContinuousRun ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
 
-  console.log(`[stopContinuousRun ENTRY] Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}, Active: ${this.state.isContinuousRunActive}`);
+    this.updateState({
+      isContinuousRunActive: false,
+      observations: [...(this.state.observations || []), "Stopping continuous agent execution"]
+    });
 
-  this.updateState({
-    isContinuousRunActive: false,
-    observations: [...(this.state.observations || []), "Stopping continuous agent execution"]
-  });
-
-  // Cancel any pending continueInfer schedules
-  try {
-    const schedules = this.getSchedules();
-    for (const schedule of schedules) {
-      if (schedule.callback === 'continueInfer') {
-        await this.cancelSchedule(schedule.id);
-        console.log(`[stopContinuousRun] Cancelled schedule ${schedule.id} for continueInfer`);
+    // Cancel any pending continueInfer schedules
+    try {
+      const schedules = this.getSchedules();
+      for (const schedule of schedules) {
+        if (schedule.callback === 'continueInfer') {
+          await this.cancelSchedule(schedule.id);
+          console.log(`[stopContinuousRun] Cancelled schedule ${schedule.id} for continueInfer`);
+        }
       }
+    } catch (error) {
+      console.error("[stopContinuousRun] Error cancelling continueInfer schedules:", error);
     }
-  } catch (error) {
-    console.error("[stopContinuousRun] Error cancelling continueInfer schedules:", error);
-  }
 
-  return { success: true, message: "Continuous run stopped successfully" };
+    return { success: true, message: "Continuous run stopped successfully" };
+  });
 }
 
 async onMessage(connection: Connection, message: WSMessage) {
@@ -676,9 +736,6 @@ async onMessage(connection: Connection, message: WSMessage) {
     if (parsedMessage.type === 'command' && parsedMessage.command) {
       console.log(`Processing command: ${parsedMessage.command}`);
 
-      // Force state hydration before processing command
-      await this.ensureStateLoaded();
-
       switch (parsedMessage.command) {
         case 'startContinuousRun':
           // Don't await here, let it run in the background
@@ -701,7 +758,7 @@ async onMessage(connection: Connection, message: WSMessage) {
     if (parsedMessage.githubToken) {
       console.log("Processing githubToken update...");
       const githubToken = parsedMessage.githubToken;
-      this.updateState({
+      await this.updateState({
         githubToken
       });
 
@@ -731,8 +788,7 @@ async onMessage(connection: Connection, message: WSMessage) {
     // Call infer only if flagged to do so
     if (callInfer) {
       console.log("Calling infer() based on message contents...");
-      // Force state hydration before inference
-      await this.ensureStateLoaded();
+      // No longer trying to force state hydration - the new context loading approach should work better
       this.infer();
     }
 
@@ -747,27 +803,40 @@ async onMessage(connection: Connection, message: WSMessage) {
    * Sets the current repository context
    */
   public async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
-  // Force state hydration before proceeding
-  await this.ensureStateLoaded();
-
-  console.log(`[setRepositoryContext ENTRY] Current state - Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
-  console.log(`Setting repository context to ${owner}/${repo} on branch ${branch}`);
-
-  this.updateState({
-    currentRepoOwner: owner,
-    currentRepoName: repo,
-    currentBranch: branch,
-  });
-
-  console.log(`[setRepositoryContext EXIT] Updated state - Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
-
-  return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
+    console.log(`[setRepositoryContext] Setting context to ${owner}/${repo}:${branch}`);
+    
+    // Create object with only the context
+    const contextData = {
+      currentRepoOwner: owner,
+      currentRepoName: repo,
+      currentBranch: branch
+    };
+    
+    try {
+      // Explicitly write ONLY context data to a specific key
+      await this.ctx.storage.put('repoContextData', contextData);
+      console.log('[setRepositoryContext] Explicitly persisted contextData to storage.');
+      
+      // *** DEBUG: Immediately try reading it back ***
+      const readBack = await this.ctx.storage.get('repoContextData');
+      console.log('[setRepositoryContext] Read back contextData immediately:', JSON.stringify(readBack));
+      
+      // Also update the in-memory state using the base method
+      this.updateState(contextData);
+      console.log(`[setRepositoryContext] Updated in-memory state - Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
+      
+    } catch (e) {
+      console.error("[setRepositoryContext] FAILED to persist context data:", e);
+      throw e; // Re-throw error
+    }
+    
+    return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
 }
 
 /**
  * Adds a task to the agent's state
  */
-addAgentTask(description: string, scheduleId ?: string, payload ?: Record<string, any>, callbackMethodName ?: string) {
+async addAgentTask(description: string, scheduleId ?: string, payload ?: Record<string, any>, callbackMethodName ?: string) {
   const newTask: Task = {
     id: generateId(),
     description,
@@ -778,7 +847,7 @@ addAgentTask(description: string, scheduleId ?: string, payload ?: Record<string
     callbackMethodName
   };
 
-  this.updateState({
+  await this.updateState({
     tasks: [...(this.state.tasks || []), newTask],
     observations: [...(this.state.observations || []), `New task added: ${description}`]
   });
@@ -789,7 +858,7 @@ addAgentTask(description: string, scheduleId ?: string, payload ?: Record<string
 /**
  * Cancels a task associated with a specific schedule ID
  */
-cancelTaskByScheduleId(scheduleId: string) {
+async cancelTaskByScheduleId(scheduleId: string) {
   if (!this.state.tasks) return false;
 
   const updatedTasks = this.state.tasks.map(task => {
@@ -803,7 +872,7 @@ cancelTaskByScheduleId(scheduleId: string) {
     return task;
   });
 
-  this.updateState({
+  await this.updateState({
     tasks: updatedTasks,
     observations: [...(this.state.observations || []), `Task with schedule ID ${scheduleId} was cancelled`]
   });
@@ -860,7 +929,7 @@ cancelTaskByScheduleId(scheduleId: string) {
       notes: newTaskInfo.subTasks ? [`Sub-tasks: ${newTaskInfo.subTasks.join(', ')}`] : [],
     };
 
-    this.updateState({
+    await this.updateState({
       tasks: [...(this.state.tasks || []), newTask],
       observations: [...(this.state.observations || []), `New task generated: ${newTask.description}`]
     });
@@ -868,7 +937,7 @@ cancelTaskByScheduleId(scheduleId: string) {
 
   } catch (error) {
     console.error("Error generating task object:", error);
-    this.addAgentObservation(`Failed to generate structured task for prompt: ${prompt}`);
+    await this.addAgentObservation(`Failed to generate structured task for prompt: ${prompt}`);
     return null; // Indicate failure
   }
 }
@@ -876,7 +945,7 @@ cancelTaskByScheduleId(scheduleId: string) {
   /**
    * Updates a task's status
    */
-  private updateTaskStatus(taskId: string, status: Task['status'], notes ?: string) {
+  private async updateTaskStatus(taskId: string, status: Task['status'], notes ?: string) {
   if (!this.state.tasks) return false;
 
   const updatedTasks = this.state.tasks.map(task => {
@@ -892,7 +961,7 @@ cancelTaskByScheduleId(scheduleId: string) {
     return task;
   });
 
-  this.updateState({
+  await this.updateState({
     tasks: updatedTasks,
     observations: [...(this.state.observations || []), `Task ${taskId} status changed to ${status}`]
   });
@@ -963,8 +1032,8 @@ cancelTaskByScheduleId(scheduleId: string) {
   /**
    * Adds an observation to the agent's state
    */
-  private addAgentObservation(observation: string) {
-  this.updateState({
+  private async addAgentObservation(observation: string) {
+  await this.updateState({
     observations: [...(this.state.observations || []), observation]
   });
 }
@@ -1076,7 +1145,7 @@ cancelTaskByScheduleId(scheduleId: string) {
   };
 
   // Update the codebase structure in the state
-  this.updateState({
+  await this.updateState({
     codebase: {
       ...(this.state.codebase || { structure: {} }),
       structure: {
@@ -1087,7 +1156,7 @@ cancelTaskByScheduleId(scheduleId: string) {
   });
 
   // Also add an observation
-  this.addAgentObservation(summary
+  await this.addAgentObservation(summary
     ? `Analyzed file: ${path}. Purpose: ${summary.summary.substring(0, 30)}...`
     : `Accessed ${nodeType}: ${path}`
   );
@@ -1096,8 +1165,8 @@ cancelTaskByScheduleId(scheduleId: string) {
   /**
    * Sets the file currently being worked on
    */
-  private setCurrentFile(filePath: string) {
-  this.updateState({
+  private async setCurrentFile(filePath: string) {
+  await this.updateState({
     workingFilePath: filePath
   });
 }
@@ -1179,7 +1248,7 @@ async infer(githubToken ?: string) {
         ? `${result.text.substring(0, 50)}...`
         : result.text;
 
-      this.addAgentObservation(`Generated response: ${snippet}`);
+      await this.addAgentObservation(`Generated response: ${snippet}`);
 
       // MODIFIED: Check for intent in user messages BEFORE task generation
       const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -1196,7 +1265,7 @@ async infer(githubToken ?: string) {
           commandIntentDetected = true;
           console.log("[Intent Check] User message requests start continuous run. Calling startContinuousRun().");
           this.startContinuousRun().catch(e => console.error("Error auto-starting continuous run:", e));
-          this.addAgentObservation("Continuous run initiated by user message.");
+          await this.addAgentObservation("Continuous run initiated by user message.");
           // RESTORE early return to prevent redundant actions - user gets confirmation via state update
           return {}; // Return early to prevent duplicating exploration steps
         }
@@ -1204,7 +1273,7 @@ async infer(githubToken ?: string) {
           commandIntentDetected = true;
           console.log("[Intent Check] User message requests stop continuous run. Calling stopContinuousRun().");
           this.stopContinuousRun().catch(e => console.error("Error auto-stopping continuous run:", e));
-          this.addAgentObservation("Continuous run stopped by user message.");
+          await this.addAgentObservation("Continuous run stopped by user message.");
           // Continue with the infer method to generate a confirmation message
         }
         // Modified: Check for set repository context and directly call the method when possible
@@ -1225,11 +1294,11 @@ async infer(githubToken ?: string) {
             try {
               // Directly call the instance method, don't wait for LLM tool call
               await this.setRepositoryContext(owner, repo, branch);
-              this.addAgentObservation(`Repository context set via direct intent parsing: ${owner}/${repo}:${branch}`);
+              await this.addAgentObservation(`Repository context set via direct intent parsing: ${owner}/${repo}:${branch}`);
               // No longer returning early - allow generateText to create a confirmation message
             } catch (e) {
               console.error("Error directly calling setRepositoryContext:", e);
-              this.addAgentObservation(`Error setting context: ${e.message}`);
+              await this.addAgentObservation(`Error setting context: ${e.message}`);
               // Allow infer to continue to generate an error message
             }
           } else {
@@ -1352,7 +1421,7 @@ async infer(githubToken ?: string) {
       // Process tool call and result, updating state and messageParts
       if (toolCall) {
         // Add observation for tool usage
-        this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
+        await this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
 
         // If we have a result, add it to messageParts and process it for state updates
         if (toolResult) {
@@ -1373,7 +1442,7 @@ async infer(githubToken ?: string) {
           const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
             ? `${toolResult.result.substring(0, 50)}...`
             : JSON.stringify(toolResult.result).substring(0, 50) + '...';
-          this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
+          await this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
 
           // --- Update codebase logic ---
           console.log(`[Process Tools] Checking condition for updateCodebaseStructure for tool: ${toolCall.toolName}`);
@@ -1388,8 +1457,8 @@ async infer(githubToken ?: string) {
               console.log(`[Process Tools] Result appears to be a directory listing for ${args.path}`);
               if (args.path) {
                 // Update state for directory
-                this.addAgentObservation(`Listed directory: ${args.path}`);
-                this.updateCodebaseStructure(args.path, null, 'directory');
+                await this.addAgentObservation(`Listed directory: ${args.path}`);
+                await this.updateCodebaseStructure(args.path, null, 'directory');
                 console.log(`[Process Tools] Updated codebase structure for directory: ${args.path}`);
               }
             } else {
@@ -1445,8 +1514,8 @@ async infer(githubToken ?: string) {
                   console.log(`[Process Tools] No content field found, checking if this is a directory listing`);
                   if (args.path) {
                     // Could be a directory in a different format - add an observation but don't try to summarize
-                    this.addAgentObservation(`Accessed path: ${args.path}`);
-                    this.updateCodebaseStructure(args.path, null, 'directory');
+                    await this.addAgentObservation(`Accessed path: ${args.path}`);
+                    await this.updateCodebaseStructure(args.path, null, 'directory');
                     console.log(`[Process Tools] Updated codebase as directory without summary: ${args.path}`);
                   }
                   return; // Skip further processing
@@ -1461,7 +1530,7 @@ async infer(githubToken ?: string) {
                 try {
                   // Pass the decoded content
                   await this.updateCodebaseStructure(args.path, fileContentDecoded, 'file');
-                  this.setCurrentFile(args.path);
+                  await this.setCurrentFile(args.path);
                   console.log(`[Process Tools] Successfully completed updateCodebaseStructure for ${args.path}`);
                 } catch (error) {
                   console.error(`[Process Tools] Error in updateCodebaseStructure: ${error}`);
@@ -1495,7 +1564,7 @@ async infer(githubToken ?: string) {
     }
 
     // Finally, update state with the new message
-    this.updateState({
+    await this.updateState({
       messages: [
         ...messages,
         {
