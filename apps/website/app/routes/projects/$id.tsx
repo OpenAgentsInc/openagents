@@ -1,7 +1,7 @@
 import { useLoaderData, useParams } from "react-router";
 import type { Route } from "../+types/projects";
 import MainLayout from '@/components/layout/main-layout';
-import Header from '@/components/layout/headers/issues/header';
+import { HeaderIssues } from '@/components/layout/headers/issues/header';
 import AllIssues from '@/components/common/issues/all-issues';
 
 interface Project {
@@ -31,7 +31,7 @@ export default function ProjectDetails() {
   const data = useLoaderData() as { id: string };
 
   return (
-    <MainLayout header={<Header />}>
+    <MainLayout header={<HeaderIssues />}>
       <AllIssues />
     </MainLayout>
   );

@@ -1,14 +1,12 @@
-
-
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useSearchStore } from '@/store/search-store';
 import { SearchIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import Notifications from './notifications';
+import { Notifications } from './notifications';
 
-export default function HeaderNav() {
+export function HeaderNav() {
   const { isSearchOpen, toggleSearch, closeSearch, setSearchQuery, searchQuery } =
     useSearchStore();
   const searchInputRef = useRef<HTMLInputElement>(null);

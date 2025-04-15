@@ -15,6 +15,8 @@ import { useIssuesStore } from "../store/issues-store";
 import { useEffect } from "react";
 import { Button } from "../components/ui/button";
 import { HeaderIssues } from "../components/layout/headers/issues/header";
+import { CreateIssueModalProvider } from "../components/common/issues/create-issue-modal-provider";
+import { useCreateIssueStore } from "../store/create-issue-store";
 
 // Load issues and all related data
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -171,20 +173,19 @@ export default function IssuesRoute() {
     );
   }
 
+  const { openModal } = useCreateIssueStore();
+
   if (!isLoaded && (!issues || issues.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
         <h2 className="text-xl font-bold mb-4">No issues found</h2>
         <p className="text-muted-foreground mb-4">Create your first issue to get started</p>
         <Button
-          onClick={() => {
-            // Open create issue modal
-            // This would typically use the create-issue-modal-provider.tsx
-            // but that component would need to be updated to work with the DB
-          }}
+          onClick={openModal}
         >
           Create Issue
         </Button>
+        <CreateIssueModalProvider />
       </div>
     );
   }
@@ -195,6 +196,7 @@ export default function IssuesRoute() {
       <main className="container mx-auto p-4">
         <AllIssues />
       </main>
+      <CreateIssueModalProvider />
     </div>
   );
 }
