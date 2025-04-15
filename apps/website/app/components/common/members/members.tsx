@@ -1,5 +1,3 @@
-
-
 import { users } from '@/mock-data/users';
 import MemberLine from './member-line';
 

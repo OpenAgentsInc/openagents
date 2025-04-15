@@ -1,5 +1,7 @@
 import type { Route } from "./+types/members";
+import Header from '@/components/layout/headers/members/header';
 import MainLayout from '@/components/layout/main-layout';
+import Members from '@/components/common/members/members';
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   return [
@@ -14,10 +16,8 @@ export async function loader({ }: Route.LoaderArgs) {
 
 export default function MembersPage() {
   return (
-    <MainLayout header={<div />}>
-      <div className="container mx-auto py-8">
-        {/* Content will go here */}
-      </div>
+    <MainLayout header={<Header />}>
+      <Members />
     </MainLayout>
   );
 }

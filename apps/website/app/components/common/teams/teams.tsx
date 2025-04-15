@@ -1,5 +1,3 @@
-
-
 import { teams } from '@/mock-data/teams';
 import TeamLine from './team-line';
 
