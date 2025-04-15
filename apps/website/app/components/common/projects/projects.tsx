@@ -1,4 +1,4 @@
-import { useLoaderData } from '@remix-run/react';
+import { useLoaderData } from 'react-router';
 import ProjectLine from '@/components/common/projects/project-line';
 
 interface Status {
@@ -46,7 +46,7 @@ interface LoaderData {
 }
 
 export default function Projects() {
-  const { projects, error } = useLoaderData<LoaderData>();
+  const { projects, error } = useLoaderData() as LoaderData;
 
   if (error) {
     return (

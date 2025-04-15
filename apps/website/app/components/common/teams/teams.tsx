@@ -1,5 +1,5 @@
 import TeamLine from './team-line';
-import { useLoaderData } from '@remix-run/react';
+import { useLoaderData } from 'react-router';
 
 interface Team {
   id: string;
@@ -18,7 +18,7 @@ interface LoaderData {
 }
 
 export default function Teams() {
-  const { teams, error } = useLoaderData<LoaderData>();
+  const { teams, error } = useLoaderData() as LoaderData;
 
   if (error) {
     return (
