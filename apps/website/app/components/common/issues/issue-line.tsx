@@ -1,6 +1,4 @@
-
-
-import { Issue } from '@/mock-data/issues';
+import { type Issue } from '@/mock-data/issues';
 import { format } from 'date-fns';
 import { AssigneeUser } from './assignee-user';
 import { LabelBadge } from './label-badge';

@@ -1,10 +1,8 @@
-
-
-import { Issue } from '@/mock-data/issues';
+import { type Issue } from '@/mock-data/issues';
 import { format } from 'date-fns';
 import { motion } from 'motion/react';
 import { useEffect, useRef } from 'react';
-import { DragSourceMonitor, useDrag, useDragLayer, useDrop } from 'react-dnd';
+import { type DragSourceMonitor, useDrag, useDragLayer, useDrop } from 'react-dnd';
 import { getEmptyImage } from 'react-dnd-html5-backend';
 import { AssigneeUser } from './assignee-user';
 import { LabelBadge } from './label-badge';

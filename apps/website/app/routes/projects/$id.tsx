@@ -1,7 +1,8 @@
 import { useLoaderData, useParams } from "react-router";
 import type { Route } from "../+types/projects";
 import MainLayout from '@/components/layout/main-layout';
-import Header from '@/components/layout/headers/projects/header';
+import Header from '@/components/layout/headers/issues/header';
+import AllIssues from '@/components/common/issues/all-issues';
 
 interface Project {
   id: string;
@@ -31,10 +32,7 @@ export default function ProjectDetails() {
 
   return (
     <MainLayout header={<Header />}>
-      <div className="container mx-auto py-8">
-        <h1 className="text-3xl font-bold mb-6">Project {id}</h1>
-        {/* Add your project details UI components here */}
-      </div>
+      <AllIssues />
     </MainLayout>
   );
 }

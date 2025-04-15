@@ -1,5 +1,3 @@
-
-
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { useViewStore, ViewType } from '@/store/view-store';
+import { useViewStore, type ViewType } from '@/store/view-store';
 import { LayoutGrid, LayoutList, SlidersHorizontal } from 'lucide-react';
 import { Filter } from './filter';
 
