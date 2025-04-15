@@ -31,12 +31,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </>
         ) : (
           <>
-            {/* <NavInbox /> */}
+            <NavInbox />
             <NavWorkspace />
-            {/* <NavTeams /> */}
+            <NavTeams />
           </>
         )}
       </SidebarContent>
+      <SidebarFooter>
+        <div className="w-full flex flex-col gap-2">
+
+          <div className="w-full flex items-center justify-between">
+            <HelpButton />
+            <Button size="icon" variant="secondary" asChild>
+              <Link
+                to="https://github.com/ln-dev7/circle"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <RiGithubLine className="size-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 }
