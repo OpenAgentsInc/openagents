@@ -4,7 +4,6 @@ import Header from '@/components/layout/headers/projects/header';
 import Projects from '@/components/common/projects/projects';
 import { getProjects, createProject, getProjectStatuses, getUsers, getTeams } from '@/lib/db/project-helpers.server';
 import { auth } from '@/lib/auth';
-import { getDb } from '@/lib/db/project-helpers.server';
 
 export function meta({ }: Route.MetaArgs) {
   return [

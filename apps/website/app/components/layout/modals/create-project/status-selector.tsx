@@ -16,6 +16,15 @@ interface ProjectStatus {
   type: string;
 }
 
+// Default statuses as fallback if none are available from the server
+const defaultStatuses: ProjectStatus[] = [
+  { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },
+  { id: 'default-planned', name: 'Planned', color: '#3498DB', type: 'planned' },
+  { id: 'default-started', name: 'In Progress', color: '#F1C40F', type: 'started' },
+  { id: 'default-completed', name: 'Completed', color: '#2ECC71', type: 'completed' },
+  { id: 'default-canceled', name: 'Canceled', color: '#E74C3C', type: 'canceled' }
+];
+
 interface StatusSelectorProps {
   statusId: string;
   onChange: (statusId: string) => void;
@@ -30,8 +39,12 @@ interface LoaderData {
 }
 
 export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
-  const { options } = useLoaderData() as LoaderData;
-  const statuses = options.statuses || [];
+  const loaderData = useLoaderData() as LoaderData;
+  // Use server statuses or fall back to default statuses if none available
+  const statuses = (loaderData?.options?.statuses?.length > 0) 
+    ? loaderData.options.statuses 
+    : defaultStatuses;
+    
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | null>(null);
 
   // Update selected status when statusId or statuses change
@@ -54,14 +67,6 @@ export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
       onChange(newStatusId);
     }
   };
-
-  if (statuses.length === 0) {
-    return (
-      <Button size="sm" variant="outline" className="gap-1.5" disabled>
-        No statuses available
-      </Button>
-    );
-  }
 
   return (
     <DropdownMenu>
