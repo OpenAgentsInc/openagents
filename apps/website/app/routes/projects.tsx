@@ -7,6 +7,10 @@ export function meta({ }: Route.MetaArgs) {
   ];
 }
 
-export default function Home() {
-  return <></>
+export default function Projects() {
+  return (
+    <MainLayout header={<Header />}>
+      <Projects />
+    </MainLayout>
+  )
 }
