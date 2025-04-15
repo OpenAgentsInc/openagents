@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useAgent } from "agents/react";
 import { useAgentChat } from "agents/ai-react";
 import type { Message } from "@ai-sdk/react";
@@ -12,6 +12,7 @@ import { Input } from "@/components/input/Input";
 import { Avatar } from "@/components/avatar/Avatar";
 import { Toggle } from "@/components/toggle/Toggle";
 import { Tooltip } from "@/components/tooltip/Tooltip";
+import { Label } from "@/components/label/Label";
 
 // Icon imports
 import {
@@ -21,6 +22,9 @@ import {
   Robot,
   Sun,
   Trash,
+  Play,
+  Pause,
+  ListChecks
 } from "@phosphor-icons/react";
 
 // List of tools that require human confirmation
@@ -35,7 +39,23 @@ export default function Chat() {
     return (savedTheme as "dark" | "light") || "dark";
   });
   const [showDebug, setShowDebug] = useState(false);
+  const [rawState, setRawState] = useState<any>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Calculate task counts from agent state
+  const taskCounts = useMemo(() => {
+    const tasks = rawState?.tasks || [];
+    return {
+      pending: tasks.filter((t: any) => t.status === 'pending').length,
+      inProgress: tasks.filter((t: any) => t.status === 'in-progress').length,
+      completed: tasks.filter((t: any) => t.status === 'completed').length,
+      failed: tasks.filter((t: any) => t.status === 'failed').length,
+      cancelled: tasks.filter((t: any) => t.status === 'cancelled').length,
+      total: tasks.length,
+    };
+  }, [rawState?.tasks]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,7 +87,48 @@ export default function Chat() {
 
   const agent = useAgent({
     agent: "coder",
+    onStateUpdate: (state) => {
+      console.log("Agent state updated:", state);
+      setRawState(state);
+      setConnectionStatus('connected');
+    },
+    onConnect: () => {
+      console.log("Agent connected");
+      setConnectionStatus('connected');
+      setConnectionError(null);
+    },
+    onDisconnect: () => {
+      console.log("Agent disconnected");
+      setConnectionStatus('disconnected');
+      setConnectionError("Connection to agent lost");
+    },
+    onError: (error) => {
+      console.error("Agent error:", error);
+      setConnectionError(error.message || "Unknown error occurred");
+    }
   });
+  
+  // Handle toggling continuous run
+  const handleToggleContinuousRun = () => { // Make it non-async, send is usually fire-and-forget
+    if (!agent || connectionStatus !== 'connected') return;
+
+    const currentlyActive = rawState?.isContinuousRunActive || false;
+    const command = currentlyActive ? 'stopContinuousRun' : 'startContinuousRun';
+    console.log(`Sending command: ${command}`);
+
+    try {
+      // Send a structured command message via WebSocket
+      agent.send(JSON.stringify({
+        type: 'command',
+        command: command,
+      }));
+      console.log(`Sent ${command} command via WebSocket`);
+      // State update will come via onStateUpdate, no need to set locally here
+    } catch (error) {
+      console.error(`Error sending ${command} command:`, error);
+      setConnectionError(`Failed to send ${command} command: ${error.message || 'Unknown error'}`);
+    }
+  };
 
   const {
     messages: agentMessages,
@@ -104,6 +165,7 @@ export default function Chat() {
   return (
     <div className="h-[100vh] w-full p-4 flex justify-center items-center bg-fixed overflow-hidden">
       <div className="h-[calc(100vh-2rem)] w-full mx-auto max-w-lg flex flex-col shadow-xl rounded-md overflow-hidden relative border border-neutral-300 dark:border-neutral-800">
+        {/* Top header with controls */}
         <div className="px-4 py-3 border-b border-neutral-300 dark:border-neutral-800 flex items-center gap-3 sticky top-0 z-10">
           <div className="flex items-center justify-center h-8 w-8">
             <svg
@@ -156,9 +218,71 @@ export default function Chat() {
             <Trash size={20} />
           </Button>
         </div>
+        
+        {/* Task counts and controls */}
+        <div className="px-4 py-2 border-b border-neutral-300 dark:border-neutral-800">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Task Counts */}
+            <div>
+              <Label 
+                title="Agent Tasks" 
+                className="text-xs font-semibold flex items-center gap-1.5 mb-2"
+              >
+                <ListChecks size={14} className="text-[#F48120]" />
+              </Label>
+              <div className="grid grid-cols-1 gap-y-1 text-xs">
+                {(taskCounts.pending > 0) && <div>Pending: {taskCounts.pending}</div>}
+                {(taskCounts.inProgress > 0) && <div>In Progress: {taskCounts.inProgress}</div>}
+                {(taskCounts.completed > 0) && <div>Completed: {taskCounts.completed}</div>}
+                {(taskCounts.failed > 0) && <div className="text-red-500">Failed: {taskCounts.failed}</div>}
+                {(taskCounts.cancelled > 0) && <div>Cancelled: {taskCounts.cancelled}</div>}
+                <div className="font-medium mt-1 pt-1 border-t border-neutral-300/20 dark:border-neutral-800/20">Total: {taskCounts.total}</div>
+              </div>
+            </div>
+            
+            {/* Continuous Run Controls */}
+            <div>
+              <Label 
+                title="Continuous Run"
+                className="text-xs font-semibold flex items-center gap-1.5 mb-2"
+              >
+                {rawState?.isContinuousRunActive ? 
+                  <Pause size={14} className="text-[#F48120]" /> : 
+                  <Play size={14} className="text-[#F48120]" />
+                }
+              </Label>
+              <div className="text-xs mb-2">
+                Status: {rawState?.isContinuousRunActive ? 
+                  <span className="text-green-500 font-medium">Active</span> : 
+                  <span className="text-muted-foreground">Inactive</span>
+                }
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                className="w-full h-8 text-xs"
+                onClick={handleToggleContinuousRun}
+                disabled={connectionStatus !== 'connected'}
+              >
+                {rawState?.isContinuousRunActive ? (
+                  <><Pause className="w-3 h-3 mr-2" /> Pause Run</>
+                ) : (
+                  <><Play className="w-3 h-3 mr-2" /> Start Run</>
+                )}
+              </Button>
+            </div>
+          </div>
+          
+          {connectionStatus !== 'connected' && (
+            <div className="mt-2 text-xs text-amber-500">
+              {connectionStatus === 'connecting' ? 'Connecting to agent...' : 'Disconnected from agent'}
+              {connectionError && <div className="mt-1">{connectionError}</div>}
+            </div>
+          )}
+        </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-10rem)]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-24 max-h-[calc(100vh-14rem)]">
           {agentMessages.length === 0 && (
             <div className="h-full flex items-center justify-center">
               <Card className="p-6 max-w-md mx-auto bg-neutral-100 dark:bg-neutral-900">
