@@ -24,21 +24,27 @@ interface Label {
 interface LabelSelectorProps {
   selectedLabelIds: string[];
   onChange: (labelIds: string[]) => void;
+  loaderData?: any;
 }
 
-export function LabelSelector({ selectedLabelIds, onChange }: LabelSelectorProps) {
+export function LabelSelector({ selectedLabelIds, onChange, loaderData: propLoaderData }: LabelSelectorProps) {
   const id = useId();
   const [open, setOpen] = useState<boolean>(false);
-  const loaderData = useLoaderData() || {};
+  const routeLoaderData = useLoaderData() || {};
+  // Use passed loaderData prop or fall back to useLoaderData
+  const loaderData = propLoaderData || routeLoaderData;
   
   // Check for labels in various locations in the loader data
   let labels: Label[] = [];
   
-  if (Array.isArray(loaderData.labels)) {
-    labels = loaderData.labels;
-  } else if (loaderData.options && Array.isArray(loaderData.options.labels)) {
+  if (loaderData.options && Array.isArray(loaderData.options.labels)) {
     labels = loaderData.options.labels;
+  } else if (Array.isArray(loaderData.labels)) {
+    labels = loaderData.labels;
   }
+  
+  console.log('Using loader data from props:', !!propLoaderData);
+  console.log('Found labels:', labels?.length || 0);
   
   // Handle label selection/deselection
   const handleLabelToggle = (labelId: string) => {

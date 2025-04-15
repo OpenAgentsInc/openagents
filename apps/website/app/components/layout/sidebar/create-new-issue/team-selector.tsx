@@ -31,22 +31,28 @@ interface LoaderData {
 interface TeamSelectorProps {
   teamId: string | null;
   onChange: (teamId: string) => void;
+  loaderData?: any;
 }
 
-export function TeamSelector({ teamId, onChange }: TeamSelectorProps) {
+export function TeamSelector({ teamId, onChange, loaderData: propLoaderData }: TeamSelectorProps) {
   const [open, setOpen] = useState(false);
-  const loaderData = useLoaderData() || {};
+  const routeLoaderData = useLoaderData() || {};
+  // Use passed loaderData prop or fall back to useLoaderData
+  const loaderData = propLoaderData || routeLoaderData;
   
-  // Check for teams in various locations in the loader data
+  // Check for teams in the loader data
   let teams: any[] = [];
   
-  if (Array.isArray(loaderData.teams)) {
-    teams = loaderData.teams;
-  } else if (loaderData.options && Array.isArray(loaderData.options.teams)) {
+  if (loaderData.options && Array.isArray(loaderData.options.teams)) {
     teams = loaderData.options.teams;
+  } else if (Array.isArray(loaderData.teams)) {
+    teams = loaderData.teams;
   }
   
+  // Debug output to console
   console.log('Teams available:', teams.length, teams);
+  console.log('Using loader data from props:', !!propLoaderData);
+  console.log('Loader data structure:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
   
   // Set default team if none is selected
   useEffect(() => {
@@ -56,6 +62,16 @@ export function TeamSelector({ teamId, onChange }: TeamSelectorProps) {
   }, [teamId, teams, onChange]);
 
   const selectedTeam = teams.find((team) => team.id === teamId);
+  
+  // When team changes, we need to update the parent form
+  // This effect runs when the selected team changes
+  useEffect(() => {
+    if (teamId) {
+      console.log('[DEBUG] TeamSelector - Selected team changed to:', teamId);
+      // The parent form will need to update the stateId when the team changes
+      // This is handled in the CreateNewIssue component
+    }
+  }, [teamId]);
 
   // If no teams are available, show a disabled button with clear message
   if (!teams || teams.length === 0) {

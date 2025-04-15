@@ -32,7 +32,11 @@ interface IssueFormData {
   labelIds: string[];
 }
 
-export function CreateNewIssue() {
+interface CreateNewIssueProps {
+  loaderData?: any;
+}
+
+export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
   const [createMore, setCreateMore] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { isOpen, defaultStatus, openModal, closeModal } = useCreateIssueStore();
@@ -84,6 +88,46 @@ export function CreateNewIssue() {
       }));
     }
   }, [defaultStatus, isOpen]);
+  
+  // When team changes, reset the state selection
+  useEffect(() => {
+    if (issueForm.teamId) {
+      console.log('[DEBUG] CreateNewIssue - Team changed, resetting state selection');
+      
+      // Get workflow states for this team
+      let teamWorkflowStates = [];
+      if (loaderData?.options?.workflowStates) {
+        teamWorkflowStates = loaderData.options.workflowStates.filter(
+          (state: any) => state.teamId === issueForm.teamId || state.teamId === null
+        );
+      }
+      
+      console.log('[DEBUG] CreateNewIssue - Found states for team:', teamWorkflowStates.length);
+      
+      // Set a default state
+      if (teamWorkflowStates.length > 0) {
+        // Find a backlog or todo state, or use the first state
+        const defaultState = teamWorkflowStates.find(
+          (state: any) => state.type === 'todo' || state.type === 'backlog' || state.type === 'unstarted'
+        ) || teamWorkflowStates[0];
+        
+        console.log('[DEBUG] CreateNewIssue - Setting default state:', defaultState?.id);
+        
+        setIssueForm(prev => ({
+          ...prev,
+          stateId: defaultState.id
+        }));
+      }
+    }
+  }, [issueForm.teamId, loaderData]);
+  
+  // Debug logging for issueForm changes and store it in a global reference
+  // so StatusSelector can access it
+  useEffect(() => {
+    console.log('[DEBUG] CreateNewIssue - Current form data:', JSON.stringify(issueForm));
+    // Store a reference to the form data for other components
+    (window as any).__createIssueFormContext = issueForm;
+  }, [issueForm]);
 
   const createIssue = async () => {
     if (!session?.user) {
@@ -191,11 +235,13 @@ export function CreateNewIssue() {
             <TeamSelector
               teamId={issueForm.teamId}
               onChange={(newTeamId) => setIssueForm({ ...issueForm, teamId: newTeamId })}
+              loaderData={loaderData}
             />
             
             <StatusSelector
               stateId={issueForm.stateId}
               onChange={(newStateId) => setIssueForm({ ...issueForm, stateId: newStateId })}
+              loaderData={loaderData}
             />
                         
             <PrioritySelector
@@ -206,16 +252,19 @@ export function CreateNewIssue() {
             <AssigneeSelector
               assigneeId={issueForm.assigneeId}
               onChange={(newAssigneeId) => setIssueForm({ ...issueForm, assigneeId: newAssigneeId })}
+              loaderData={loaderData}
             />
                         
             <ProjectSelector
               projectId={issueForm.projectId}
               onChange={(newProjectId) => setIssueForm({ ...issueForm, projectId: newProjectId })}
+              loaderData={loaderData}
             />
             
             <LabelSelector
               selectedLabelIds={issueForm.labelIds}
               onChange={(newLabelIds) => setIssueForm({ ...issueForm, labelIds: newLabelIds })}
+              loaderData={loaderData}
             />
           </div>
         </div>

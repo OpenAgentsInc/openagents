@@ -29,29 +29,58 @@ const defaultWorkflowStates: WorkflowState[] = [
 interface StatusSelectorProps {
   stateId: string;
   onChange: (stateId: string) => void;
+  loaderData?: any;
 }
 
-export function StatusSelector({ stateId, onChange }: StatusSelectorProps) {
+export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }: StatusSelectorProps) {
   const [open, setOpen] = useState(false);
-  const loaderData = useLoaderData() || {};
+  const routeLoaderData = useLoaderData() || {};
+  // Use passed loaderData prop or fall back to useLoaderData
+  const loaderData = propLoaderData || routeLoaderData;
   
-  // Check for workflow states in various locations in the loader data
-  let workflowStates: WorkflowState[] = [];
+  // Check for workflow states in the loader data
+  let allWorkflowStates: WorkflowState[] = [];
   
-  if (Array.isArray(loaderData.workflowStates)) {
-    workflowStates = loaderData.workflowStates;
-  } else if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
-    workflowStates = loaderData.options.workflowStates;
+  if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
+    allWorkflowStates = loaderData.options.workflowStates;
+  } else if (Array.isArray(loaderData.workflowStates)) {
+    allWorkflowStates = loaderData.workflowStates;
   }
   
-  console.log('Loader data in status selector:', JSON.stringify(loaderData));
-  console.log('Found workflow states:', workflowStates.length);
+  // Get a reference to the CreateNewIssue form context
+  const formContext = (window as any).__createIssueFormContext;
+  const selectedTeamId = formContext?.teamId || '';
+  
+  // Filter workflow states by selected team if available
+  let workflowStates = allWorkflowStates;
+  if (selectedTeamId) {
+    console.log('[DEBUG] Filtering workflowStates for teamId:', selectedTeamId);
+    workflowStates = allWorkflowStates.filter(state => 
+      state.teamId === selectedTeamId || state.teamId === null
+    );
+  }
+  
+  console.log('Loader data in status selector:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
+  console.log('Using loader data from props:', !!propLoaderData);
+  console.log('Found workflow states:', workflowStates?.length || 0);
   
   // Use default states if none are available
   if (!workflowStates || workflowStates.length === 0) {
     console.log('Using default workflow states');
     workflowStates = defaultWorkflowStates;
   }
+
+  // --- START DEBUG LOG ---
+  console.log('[DEBUG] StatusSelector Props:', { stateId, workflowStates });
+  if (Array.isArray(workflowStates)) {
+      console.log(`[DEBUG] StatusSelector - Rendering ${workflowStates.length} states:`, JSON.stringify(workflowStates));
+      workflowStates.forEach((state, index) => {
+          console.log(`[DEBUG] State ${index}:`, JSON.stringify(state));
+      });
+  } else {
+      console.error('[DEBUG] StatusSelector - workflowStates is NOT an array:', workflowStates);
+  }
+  // --- END DEBUG LOG ---
 
   const [selectedState, setSelectedState] = useState<WorkflowState | null>(null);
 

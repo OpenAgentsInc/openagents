@@ -43,6 +43,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       getUsers()
     ]);
     
+    // --- START DEBUG LOG ---
+    console.log(`[DEBUG] /projects/$id Loader - Fetched ${workflowStates?.length ?? 0} workflow states:`, JSON.stringify(workflowStates));
+    console.log(`[DEBUG] /projects/$id Loader - Fetched ${teams?.length ?? 0} teams for user ${user.id}:`, JSON.stringify(teams));
+    // --- END DEBUG LOG ---
+    
     return { 
       project,
       options: {

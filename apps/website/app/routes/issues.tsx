@@ -46,6 +46,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     // Get teams that the current user is a member of
     const teams = await getTeamsForUser(user.id);
+    
+    // --- START DEBUG LOG ---
+    console.log(`[DEBUG] /issues Loader - Fetched ${workflowStates?.length ?? 0} workflow states:`, JSON.stringify(workflowStates));
+    console.log(`[DEBUG] /issues Loader - Fetched ${teams?.length ?? 0} teams for user ${user.id}:`, JSON.stringify(teams));
+    // --- END DEBUG LOG ---
 
     // Return simple object instead of json
     return {

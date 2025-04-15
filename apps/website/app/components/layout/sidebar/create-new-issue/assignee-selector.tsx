@@ -23,21 +23,27 @@ interface User {
 interface AssigneeSelectorProps {
   assigneeId: string | undefined;
   onChange: (assigneeId: string | undefined) => void;
+  loaderData?: any;
 }
 
-export function AssigneeSelector({ assigneeId, onChange }: AssigneeSelectorProps) {
+export function AssigneeSelector({ assigneeId, onChange, loaderData: propLoaderData }: AssigneeSelectorProps) {
   const id = useId();
   const [open, setOpen] = useState<boolean>(false);
-  const loaderData = useLoaderData() || {};
+  const routeLoaderData = useLoaderData() || {};
+  // Use passed loaderData prop or fall back to useLoaderData
+  const loaderData = propLoaderData || routeLoaderData;
   
   // Check for users in various locations in the loader data
   let users: User[] = [];
   
-  if (Array.isArray(loaderData.users)) {
-    users = loaderData.users;
-  } else if (loaderData.options && Array.isArray(loaderData.options.users)) {
+  if (loaderData.options && Array.isArray(loaderData.options.users)) {
     users = loaderData.options.users;
+  } else if (Array.isArray(loaderData.users)) {
+    users = loaderData.users;
   }
+  
+  console.log('Using loader data from props:', !!propLoaderData);
+  console.log('Found users:', users?.length || 0);
 
   const handleAssigneeChange = (userId: string | undefined) => {
     onChange(userId);

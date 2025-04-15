@@ -22,24 +22,30 @@ interface Project {
 interface ProjectSelectorProps {
   projectId: string | undefined;
   onChange: (projectId: string | undefined) => void;
+  loaderData?: any;
 }
 
-export function ProjectSelector({ projectId, onChange }: ProjectSelectorProps) {
+export function ProjectSelector({ projectId, onChange, loaderData: propLoaderData }: ProjectSelectorProps) {
   const id = useId();
   const [open, setOpen] = useState<boolean>(false);
-  const loaderData = useLoaderData() || {};
+  const routeLoaderData = useLoaderData() || {};
+  // Use passed loaderData prop or fall back to useLoaderData
+  const loaderData = propLoaderData || routeLoaderData;
   
   // Check for projects in various locations in the loader data
   let projects: Project[] = [];
   
-  if (Array.isArray(loaderData.projects)) {
-    projects = loaderData.projects;
-  } else if (loaderData.options && Array.isArray(loaderData.options.projects)) {
+  if (loaderData.options && Array.isArray(loaderData.options.projects)) {
     projects = loaderData.options.projects;
+  } else if (Array.isArray(loaderData.projects)) {
+    projects = loaderData.projects;
   } else if (loaderData.project) {
     // If we're on a project detail page, we should at least have the current project
     projects = [loaderData.project];
   }
+  
+  console.log('Using loader data from props:', !!propLoaderData);
+  console.log('Found projects:', projects?.length || 0);
 
   const handleProjectChange = (newProjectId: string | undefined) => {
     onChange(newProjectId);

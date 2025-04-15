@@ -744,13 +744,20 @@ const DEFAULT_WORKFLOW_STATES = [
 export async function getWorkflowStates(teamId?: string) {
   const db = getDb();
   
+  console.log(`[DEBUG] getWorkflowStates called with teamId: ${teamId || 'none'}`);
+  
   let query = db
     .selectFrom('workflow_state')
     .select(['id', 'name', 'color', 'type', 'position', 'teamId'])
     .where('archivedAt', 'is', null);
     
   if (teamId) {
-    query = query.where('teamId', '=', teamId);
+    query = query.where(eb => 
+      eb.or([
+        eb('teamId', 'is', null), // Global default states
+        eb('teamId', '=', teamId) // Team-specific states
+      ])
+    );
   }
   
   const states = await query
@@ -759,9 +766,11 @@ export async function getWorkflowStates(teamId?: string) {
     
   // If no states found, return default workflow states
   if (states.length === 0) {
+    console.log(`[DEBUG] No workflow states found for teamId: ${teamId || 'none'}. Using defaults.`);
     return DEFAULT_WORKFLOW_STATES;
   }
   
+  console.log(`[DEBUG] Found ${states.length} workflow states for teamId: ${teamId || 'none'}`);
   return states;
 }
 

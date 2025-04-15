@@ -55,17 +55,18 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
   // Get workflow states from loader data
   let workflowStates: Status[] = [];
   
-  if (Array.isArray(loaderData.workflowStates)) {
-    workflowStates = loaderData.workflowStates;
-  } else if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
+  if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
     workflowStates = loaderData.options.workflowStates;
+  } else if (Array.isArray(loaderData.workflowStates)) {
+    workflowStates = loaderData.workflowStates;
   } else {
     // Try to get all workflow states from the store
     const { getWorkflowStates } = useIssuesStore();
     workflowStates = getWorkflowStates ? getWorkflowStates() : [];
   }
   
-  console.log('Status selector - workflow states:', workflowStates.length);
+  console.log('Status selector - workflow states:', workflowStates?.length || 0);
+  console.log('Status selector - loader data structure:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
   
   // Default workflow states as fallback if none are available
   if (!workflowStates || workflowStates.length === 0) {
