@@ -36,7 +36,8 @@ export function CreateProject() {
   const [createMore, setCreateMore] = useState<boolean>(false);
   const { isOpen, openModal, closeModal } = useCreateProjectStore();
   const submit = useSubmit();
-  const { session, isLoading } = useSession();
+  const { data: session, isLoading } = useSession();
+  console.log({ session, isLoading })
 
   const createDefaultData = (): ProjectData => {
     return {
@@ -83,18 +84,18 @@ export function CreateProject() {
     const formData = new FormData();
     formData.append('action', 'createProject');
     formData.append('project', JSON.stringify(projectForm));
-    
+
     submit(formData, {
       method: 'post',
       navigate: false,
     });
 
     toast.success('Project created');
-    
+
     if (!createMore) {
       closeModal();
     }
-    
+
     setProjectForm(createDefaultData());
   };
 
@@ -132,7 +133,7 @@ export function CreateProject() {
                 onChange={(newIcon) => setProjectForm({ ...projectForm, icon: newIcon })}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label>Color</Label>
               <ColorPicker
@@ -147,12 +148,12 @@ export function CreateProject() {
               statusId={projectForm.statusId}
               onChange={(newStatusId) => setProjectForm({ ...projectForm, statusId: newStatusId })}
             />
-            
+
             <LeadSelector
               leadId={projectForm.leadId}
               onChange={(newLeadId) => setProjectForm({ ...projectForm, leadId: newLeadId })}
             />
-            
+
             <TeamSelector
               selectedTeamIds={projectForm.teamIds}
               onChange={(newTeamIds) => setProjectForm({ ...projectForm, teamIds: newTeamIds })}
@@ -168,7 +169,7 @@ export function CreateProject() {
                 onChange={(e) => setProjectForm({ ...projectForm, startDate: e.target.value || null })}
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label>Target Date</Label>
               <Input
@@ -179,7 +180,7 @@ export function CreateProject() {
             </div>
           </div>
         </div>
-        
+
         <div className="flex items-center justify-between py-2.5 px-4 w-full border-t">
           <div className="flex items-center gap-2">
             <div className="flex items-center space-x-2">

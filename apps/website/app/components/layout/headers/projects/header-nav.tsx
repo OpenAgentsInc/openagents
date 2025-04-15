@@ -24,9 +24,9 @@ export default function HeaderNav() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            className="relative" 
-            size="xs" 
+          <Button
+            className="relative"
+            size="xs"
             variant="secondary"
             onClick={openModal}
           >
@@ -35,7 +35,7 @@ export default function HeaderNav() {
           </Button>
         </div>
       </div>
-      
+
       {/* Include the create project modal */}
       <CreateProject />
     </>
