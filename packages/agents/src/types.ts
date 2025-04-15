@@ -28,6 +28,7 @@ export interface FileNode {
   children?: string[]; // For directories, list of child paths
   description?: string;
   tags?: string[];
+  contentsListed?: boolean; // Whether directory contents have been successfully listed
   metadata?: {
     exports?: string[];
     dependencies?: string[];

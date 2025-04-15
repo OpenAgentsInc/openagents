@@ -266,30 +266,56 @@ export class Coder extends Agent<Env, CoderState> {
       };
     }
 
-    // --- REVISED PLANNING LOGIC ---
+    // --- REVISED PLANNING LOGIC WITH CONTENTSLISTED FLAG ---
 
-    // Prioritize listing important directories first if they haven't been attempted
-    const importantDirsToTryListing = ['/apps', '/packages', '/docs']; 
-    for (const importantPath of importantDirsToTryListing) {
-      if (!codebaseStructure[importantPath]) {
-        console.log(`[planNextExplorationStep] Planning: List important directory '${importantPath}' (not listed yet).`);
+    // 1. Find an IMPORTANT directory that exists in the structure but hasn't had its contents listed yet
+    const importantDirectories = ['/apps', '/packages', '/src', '/lib', '/docs']; // Prioritize these paths
+    for (const importantPath of importantDirectories) {
+      const node = codebaseStructure[importantPath];
+      // Check if node exists, is a directory, AND contentsListed is not true
+      if (node && node.type === 'directory' && node.contentsListed !== true) {
+        console.log(`[planNextExplorationStep] Planning: List important directory '${node.path}' (contents not listed).`);
         return {
           type: 'listFiles',
-          path: importantPath,
-          description: `List important directory '${importantPath}'`,
-          payload: { 
-            path: importantPath, 
-            owner, 
-            repo, 
-            branch: branch || 'main' 
-          }
+          path: node.path,
+          description: `List important directory '${node.path}'`,
+          payload: { path: node.path, owner, repo, branch: branch || 'main' }
         };
       }
     }
 
-    // Find directories that HAS been listed but WHOSE subdirectories haven't been listed yet
-    const listedDirs = Object.values(codebaseStructure).filter(n => n.type === 'directory');
-    const dirsWithUnlistedSubdirs = [];
+    // 2. Check for important directories that don't exist yet
+    for (const importantPath of importantDirectories) {
+      if (!codebaseStructure[importantPath]) {
+        console.log(`[planNextExplorationStep] Planning: Attempt to list important directory '${importantPath}' (not yet discovered).`);
+        return {
+          type: 'listFiles',
+          path: importantPath,
+          description: `List important directory '${importantPath}'`,
+          payload: { path: importantPath, owner, repo, branch: branch || 'main' }
+        };
+      }
+    }
+
+    // 3. Look for any directory whose contents haven't been listed
+    const directoryToList = Object.values(codebaseStructure)
+      .find(node => node.type === 'directory' && node.contentsListed !== true);
+
+    if (directoryToList) {
+      console.log(`[planNextExplorationStep] Planning: List directory '${directoryToList.path}' (contents not listed).`);
+      return {
+        type: 'listFiles',
+        path: directoryToList.path,
+        description: `List directory '${directoryToList.path}'`,
+        payload: { path: directoryToList.path, owner, repo, branch: branch || 'main' }
+      };
+    }
+
+    // 4. Look for potential subdirectories in listed directories
+    // This is a heuristic approach since we can't know if a potential subdir exists without trying
+    const listedDirs = Object.values(codebaseStructure)
+      .filter(node => node.type === 'directory' && node.contentsListed === true);
+    const dirsWithPotentialSubdirs = [];
 
     for (const dirNode of listedDirs) {
       // Common subdirectories to check for
@@ -298,34 +324,28 @@ export class Coder extends Agent<Env, CoderState> {
       for (const sub of potentialSubdirs) {
         const subPath = dirNode.path === '/' ? `/${sub}` : `${dirNode.path}/${sub}`;
         if (!codebaseStructure[subPath]) {
-          // If parent is known, and common subdir isn't, let's try listing the potential subdirectory path
-          console.log(`[planNextExplorationStep] Found potential unlisted subdir: ${subPath}`);
+          // If this is a potential subdirectory of a successfully listed directory
+          console.log(`[planNextExplorationStep] Found potential subdirectory: ${subPath} in listed parent`);
           // Prioritize important ones
           if (['src', 'packages', 'apps', 'lib', 'core', 'agents'].includes(sub)) {
-            dirsWithUnlistedSubdirs.push(subPath);
+            dirsWithPotentialSubdirs.push(subPath);
           }
         }
       }
     }
 
-    // If there are potential subdirectories to explore, try one
-    if (dirsWithUnlistedSubdirs.length > 0) {
-      const pathToList = dirsWithUnlistedSubdirs[0]; // Just pick the first one found
-      console.log(`[planNextExplorationStep] Planning: List potentially unlisted subdirectory '${pathToList}'.`);
+    if (dirsWithPotentialSubdirs.length > 0) {
+      const pathToList = dirsWithPotentialSubdirs[0]; // Just pick the first one found
+      console.log(`[planNextExplorationStep] Planning: Try listing potential subdirectory '${pathToList}'.`);
       return {
         type: 'listFiles',
         path: pathToList,
-        description: `List potentially unlisted subdirectory '${pathToList}'`,
-        payload: { 
-          path: pathToList, 
-          owner, 
-          repo, 
-          branch: branch || 'main' 
-        }
+        description: `Try listing potential subdirectory '${pathToList}'`,
+        payload: { path: pathToList, owner, repo, branch: branch || 'main' }
       };
     }
 
-    // If all known directories seem listed, find a file to summarize
+    // 5. If all known directories are listed, find a file to summarize
     const fileToSummarize = Object.values(codebaseStructure)
       .find(file =>
         file.type === 'file' &&
@@ -345,18 +365,13 @@ export class Coder extends Agent<Env, CoderState> {
         type: 'summarizeFile',
         path: fileToSummarize.path,
         description: `Summarize file '${fileToSummarize.path}'`,
-        payload: {
-          path: fileToSummarize.path,
-          owner, 
-          repo, 
-          branch: branch || 'main'
-        }
+        payload: { path: fileToSummarize.path, owner, repo, branch: branch || 'main' }
       };
     }
 
     // --- END REVISED PLANNING LOGIC ---
 
-    console.log("[planNextExplorationStep] No specific next step found.");
+    console.log("[planNextExplorationStep] No specific next step found (exploration might be complete or stuck).");
     return null; // No specific action decided for now
   }
 
@@ -552,8 +567,9 @@ try {
         throw new Error(`Failed to fetch directory contents for ${path}`);
       }
 
-      // Update the codebase structure for the directory
-      await this.updateCodebaseStructure(path, null, 'directory');
+      // *** MARK THIS DIRECTORY AS HAVING ITS CONTENTS LISTED SUCCESSFULLY ***
+      await this.updateCodebaseStructure(path, null, 'directory', true);
+      console.log(`[scheduledListFiles] Marked directory ${path} as contentsListed=true`);
 
       // Process each item in the directory listing
       for (const item of listing) {
@@ -1067,9 +1083,13 @@ async cancelTaskByScheduleId(scheduleId: string) {
 
   /**
    * Updates information about a file or directory in the codebase structure with AI-generated summary
+   * @param path The path of the file or directory
+   * @param content The file content (null for directories)
+   * @param nodeType 'file' or 'directory'
+   * @param contentsJustListed Whether this directory's contents were just successfully listed
    */
-  private async updateCodebaseStructure(path: string, content: string | null, nodeType: 'file' | 'directory' = 'file') {
-  console.log(`[updateCodebaseStructure] Starting for path: ${path}, nodeType: ${nodeType}`);
+  private async updateCodebaseStructure(path: string, content: string | null, nodeType: 'file' | 'directory' = 'file', contentsJustListed: boolean = false) {
+  console.log(`[updateCodebaseStructure] Starting for path: ${path}, nodeType: ${nodeType}, contentsListed: ${contentsJustListed}`);
   console.log(`[updateCodebaseStructure] Content length: ${content ? content.length : 'null'}`);
 
   // Safely log state keys without exposing sensitive data
@@ -1159,6 +1179,9 @@ async cancelTaskByScheduleId(scheduleId: string) {
     // Add generated summary and tags if available
     description: summary?.summary || existingNode.description || `Accessed at ${new Date().toISOString()}`,
     tags: summary?.tags || existingNode.tags || [],
+    // Set contentsListed flag for directories
+    // If it's a directory, either use the provided flag or keep existing value
+    contentsListed: nodeType === 'directory' ? (contentsJustListed || existingNode.contentsListed || false) : undefined,
     // Add additional metadata from the summary
     metadata: {
       ...(existingNode.metadata || {}),
@@ -1185,7 +1208,7 @@ async cancelTaskByScheduleId(scheduleId: string) {
   // Also add an observation
   await this.addAgentObservation(summary
     ? `Analyzed file: ${path}. Purpose: ${summary.summary.substring(0, 30)}...`
-    : `Accessed ${nodeType}: ${path}`
+    : `Accessed ${nodeType}: ${path}${contentsJustListed ? " and listed its contents" : ""}`
   );
 }
 
