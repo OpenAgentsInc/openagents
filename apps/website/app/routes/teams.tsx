@@ -2,17 +2,23 @@ import type { Route } from "./+types/teams";
 import Teams from '@/components/common/teams/teams';
 import MainLayout from '@/components/layout/main-layout';
 import Header from '@/components/layout/headers/teams/header';
+import { getTeams } from '@/lib/db/team-helpers';
 
-export function meta({ params, location, data }: Route.MetaArgs) {
+export function meta({ }: Route.MetaArgs) {
   return [
-    { title: "Teams" },
+    { title: "Teams - OpenAgents" },
     { name: "description", content: "Manage your teams" },
   ];
 }
 
-export async function loader({ }: Route.LoaderArgs) {
-  // TODO: Implement teams data fetching
-  return { teams: [] };
+export async function loader({ context }: Route.LoaderArgs) {
+  try {
+    const teams = await getTeams();
+    return { teams };
+  } catch (error) {
+    console.error('Error loading teams:', error);
+    return { teams: [], error: 'Failed to load teams' };
+  }
 }
 
 export default function TeamsPage() {
