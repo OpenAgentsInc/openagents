@@ -9,4 +9,5 @@ export default [
   route("api/auth/*", "routes/api.auth.$.tsx"),
   route("projects", "routes/projects.tsx"),
   route("projects/:id", "routes/projects/$id.tsx"),
+  route("teams", "routes/teams.tsx"),
 ] satisfies RouteConfig;
