@@ -206,7 +206,7 @@ export const projects: Project[] = [
   },
   {
     id: '13',
-    name: 'LNDev UI - Authentication Flow',
+    name: 'ConsentKeys OIDC',
     status: status[0],
     icon: Lock,
     percentComplete: 75,

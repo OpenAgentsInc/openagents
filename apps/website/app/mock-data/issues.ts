@@ -15,7 +15,7 @@ export interface Issue {
   assignees: User | null;
   priority: Priority;
   labels: LabelInterface[];
-  createdAt: string;
+  createdAt: string | null;
   cycleId: string;
   project?: Project;
   subissues?: string[];

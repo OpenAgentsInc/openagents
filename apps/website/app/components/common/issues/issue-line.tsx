@@ -32,9 +32,11 @@ export function IssueLine({ issue, layoutId = false }: { issue: Issue; layoutId?
           <LabelBadge label={issue.labels} />
           {issue.project && <ProjectBadge project={issue.project} />}
         </div>
-        <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline-block">
-          {format(new Date(issue.createdAt), 'MMM dd')}
-        </span>
+        {issue.createdAt && (
+          <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline-block">
+            {format(new Date(issue.createdAt), 'MMM dd')}
+          </span>
+        )}
         <AssigneeUser user={issue.assignees} />
       </div>
     </motion.div>
