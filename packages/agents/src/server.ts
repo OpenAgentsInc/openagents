@@ -73,16 +73,12 @@ export class Coder extends Agent<Env, CoderState> {
    * @param partialState An object containing the state properties to update.
    */
   private updateState(partialState: Partial<CoderState>) {
-    // ONLY use the base class method for in-memory update for now
     this.setState({
       ...this.state,
       ...partialState,
     });
     console.log('[updateState] Updated in-memory state via this.setState.');
-    // REMOVED the explicit this.ctx.storage.put call for now to avoid interference
   }
-
-  // ensureStateLoaded method removed - we'll handle explicit state reading in each method that needs it
 
   async executeTask(payload: Record<string, any>, task: Schedule<Record<string, any>>) {
     const description = payload.description || "Scheduled task executed";
@@ -115,66 +111,68 @@ export class Coder extends Agent<Env, CoderState> {
    * and reschedules itself.
    */
   public async continueInfer(payload?: any) {
-    // Explicitly read repository context directly from storage
+    console.log(`[continueInfer] Cycle start. Payload: ${JSON.stringify(payload)}`);
+
+    // --- Explicit Context Read ---
     let owner: string | undefined;
     let repo: string | undefined;
     let branch: string | undefined;
+    let isContinuousRunActive = false;
     
     try {
-      console.log("[continueInfer] Explicitly reading repoContextData from storage...");
+      console.log("[continueInfer] Explicitly reading repoContextData...");
+      // Read minimal context
       const storedContext = await this.ctx.storage.get('repoContextData');
       if (storedContext) {
-        console.log("[continueInfer] Successfully read repoContextData:", JSON.stringify(storedContext));
         owner = storedContext.currentRepoOwner;
         repo = storedContext.currentRepoName;
         branch = storedContext.currentBranch;
+        console.log(`[continueInfer] Read context Owner: ${owner}, Repo: ${repo}`);
       } else {
-        console.log("[continueInfer] No repoContextData found in storage.");
+        console.log("[continueInfer] No repoContextData found.");
+      }
+
+      // Read the active flag from in-memory state
+      isContinuousRunActive = this.state.isContinuousRunActive;
+      console.log(`[continueInfer] Active flag from this.state: ${isContinuousRunActive}`);
+
+      // If context was read successfully but not in memory state, update memory state
+      if (owner && repo && (this.state.currentRepoOwner !== owner || this.state.currentRepoName !== repo)) {
+        console.log("[continueInfer] Updating in-memory state with repository context from storage");
+        this.updateState({
+          currentRepoOwner: owner,
+          currentRepoName: repo,
+          currentBranch: branch
+        });
       }
     } catch(e) {
-      console.error("[continueInfer] Error reading repoContextData:", e);
+      console.error("[continueInfer] Error reading state:", e);
     }
-    
-    console.log(`[continueInfer ENTRY] Read Owner: ${owner}, Read Repo: ${repo}, Active (from state): ${this.state.isContinuousRunActive}`);
-    
-    // If context was read successfully but not in memory state, update memory state
-    if (owner && repo && (this.state.currentRepoOwner !== owner || this.state.currentRepoName !== repo)) {
-      console.log("[continueInfer] Updating in-memory state with repository context from storage");
-      this.updateState({
-        currentRepoOwner: owner,
-        currentRepoName: repo,
-        currentBranch: branch
-      });
+    // --- End Explicit Context Read ---
+
+    if (!isContinuousRunActive) {
+      console.log(`[continueInfer] Run inactive. Stopping.`);
+      return;
     }
 
     // Wrap the operation in blockConcurrencyWhile to ensure it completes
     await this.ctx.blockConcurrencyWhile(async () => {
-      // Log payload without potentially sensitive data
-      const safePayload = payload ? JSON.parse(JSON.stringify(payload)) : {};
-      if (safePayload.githubToken) safePayload.githubToken = "[REDACTED]";
-
-      console.log(`[continueInfer] Cycle start. Payload: ${JSON.stringify(safePayload)}`);
-      if (!this.state.isContinuousRunActive) {
-        console.log(`[continueInfer] Run inactive. Stopping.`);
-        return;
-      }
-
       try {
         // --- Decide NEXT SINGLE Action ---
+        // Pass the READ owner/repo to the planner
         const nextAction = await this.planNextExplorationStep(owner, repo, branch);
 
         if (nextAction) {
           console.log(`[continueInfer] Planning next action: ${nextAction.type} - ${nextAction.path || nextAction.description}`);
 
-          // Schedule the *specific* action using its own method and payload
-          // Use a short delay for the action itself (e.g., 5 seconds)
+          // Schedule the specific action (payload should include owner/repo/branch)
           await this.schedule(5, // Short delay to execute the action soon
             nextAction.type === 'listFiles' ? 'scheduledListFiles' : 'scheduledSummarizeFile',
             nextAction.payload
           );
           await this.addAgentObservation(`Scheduled next action: ${nextAction.type} for ${nextAction.path || 'N/A'}`);
 
-          // Only reschedule the planner if an action was successfully planned *and* the run is still active
+          // Only reschedule the planner if an action was successfully planned and the run is still active
           if (this.state.isContinuousRunActive) {
             const planningIntervalSeconds = 120; // Longer interval (2 minutes) for planning the next step
             console.log(`[continueInfer] Action scheduled. Rescheduling planning cycle in ${planningIntervalSeconds} seconds.`);
@@ -184,11 +182,10 @@ export class Coder extends Agent<Env, CoderState> {
           }
         } else {
           console.log("[continueInfer] No further exploration steps planned. Run potentially stopped or finished.");
-          // Do NOT reschedule the planning cycle if no action could be planned (e.g., missing context caused stop)
           await this.addAgentObservation("No specific exploration step found. Stopping or waiting for manual restart/context.");
-          // Ensure the run is marked inactive if the planner decided to stop it.
+          
+          // Check if run is still active before stopping
           if (this.state.isContinuousRunActive) {
-            // This case happens if planner returns null but stopContinuousRun wasn't explicitly called by planner
             console.log("[continueInfer] Planner returned null, stopping continuous run.");
             await this.stopContinuousRun();
           }
@@ -469,18 +466,18 @@ try {
    */
   public async scheduledListFiles(payload: { path: string, owner?: string, repo?: string, branch?: string }) {
   // Explicitly read repository context directly from storage
-  let storedOwner: string | undefined;
-  let storedRepo: string | undefined;
-  let storedBranch: string | undefined;
+  let owner: string | undefined;
+  let repo: string | undefined;
+  let branch: string | undefined;
   
   try {
     console.log("[scheduledListFiles] Explicitly reading repoContextData from storage...");
     const storedContext = await this.ctx.storage.get('repoContextData');
     if (storedContext) {
-      console.log("[scheduledListFiles] Successfully read repoContextData:", JSON.stringify(storedContext));
-      storedOwner = storedContext.currentRepoOwner;
-      storedRepo = storedContext.currentRepoName;
-      storedBranch = storedContext.currentBranch;
+      console.log("[scheduledListFiles] Successfully read context from storage");
+      owner = storedContext.currentRepoOwner;
+      repo = storedContext.currentRepoName;
+      branch = storedContext.currentBranch;
     } else {
       console.log("[scheduledListFiles] No repoContextData found in storage.");
     }
@@ -490,27 +487,32 @@ try {
   
   // Wrap the key functionality in blockConcurrencyWhile to ensure state updates complete
   await this.ctx.blockConcurrencyWhile(async () => {
-    console.log(`[scheduledListFiles ENTRY] From payload - Owner: ${payload.owner}, Repo: ${payload.repo}, From storage - Owner: ${storedOwner}, Repo: ${storedRepo}`);
-
     // Create a safe copy of the payload without any potential tokens
     const safePath = payload.path;
     console.log(`[scheduledListFiles] Executing for path: ${safePath}`);
-    const { path, owner, repo, branch } = payload;
+    const { path, payloadOwner, payloadRepo, payloadBranch } = { 
+      path: payload.path, 
+      payloadOwner: payload.owner, 
+      payloadRepo: payload.repo, 
+      payloadBranch: payload.branch 
+    };
+    
+    console.log(`[scheduledListFiles ENTRY] From payload - Owner: ${payloadOwner}, Repo: ${payloadRepo}, From storage - Owner: ${owner}, Repo: ${repo}`);
 
-    // Check if payload has all required fields
+    // Check if path is valid
     if (!path) {
       console.error("[scheduledListFiles] Missing path in payload.");
       return;
     }
 
-    // Prioritize payload values, then storage values, then state values
+    // Prioritize payload values, then storage values
     // This gives explicit payload values highest precedence
-    const effectiveOwner = owner || storedOwner || this.state.currentRepoOwner;
-    const effectiveRepo = repo || storedRepo || this.state.currentRepoName;
-    const effectiveBranch = branch || storedBranch || this.state.currentBranch || 'main';
+    const effectiveOwner = payloadOwner || owner;
+    const effectiveRepo = payloadRepo || repo;
+    const effectiveBranch = payloadBranch || branch || 'main';
 
     if (!effectiveOwner || !effectiveRepo) {
-      console.error("[scheduledListFiles] Missing owner or repo in payload, storage, and state.");
+      console.error("[scheduledListFiles] Missing owner or repo in both payload and storage.");
       await this.addAgentObservation("Cannot list files: Repository owner/name not available. Please set repository context first.");
       return;
     }
@@ -650,7 +652,17 @@ try {
     console.log("[startContinuousRun] Explicitly reading repoContextData from storage...");
     const storedContext = await this.ctx.storage.get('repoContextData');
     if (storedContext) {
-      console.log("[startContinuousRun] Successfully read repoContextData:", JSON.stringify(storedContext));
+      console.log("[startContinuousRun] Successfully read context:", JSON.stringify(storedContext));
+      
+      // Update in-memory state if needed
+      if (this.state.currentRepoOwner !== storedContext.currentRepoOwner || 
+          this.state.currentRepoName !== storedContext.currentRepoName) {
+        this.updateState({
+          currentRepoOwner: storedContext.currentRepoOwner,
+          currentRepoName: storedContext.currentRepoName,
+          currentBranch: storedContext.currentBranch
+        });
+      }
     } else {
       console.log("[startContinuousRun] Warning: No repoContextData found in storage. Continuous run may fail.");
     }
@@ -801,9 +813,9 @@ async onMessage(connection: Connection, message: WSMessage) {
    * Sets the current repository context
    */
   public async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
-    console.log(`[setRepositoryContext] Setting context to ${owner}/${repo}:${branch}`);
+    console.log(`[setRepositoryContext ENTRY] Current state - Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
+    console.log(`Setting repository context to ${owner}/${repo} on branch ${branch}`);
     
-    // Create object with only the context
     const contextData = {
       currentRepoOwner: owner,
       currentRepoName: repo,
@@ -811,23 +823,21 @@ async onMessage(connection: Connection, message: WSMessage) {
     };
     
     try {
-      // Explicitly write ONLY context data to a specific key
+      // Explicitly write ONLY context data to specific key
       await this.ctx.storage.put('repoContextData', contextData);
-      console.log('[setRepositoryContext] Explicitly persisted contextData to storage.');
-      
-      // *** DEBUG: Immediately try reading it back ***
-      const readBack = await this.ctx.storage.get('repoContextData');
-      console.log('[setRepositoryContext] Read back contextData immediately:', JSON.stringify(readBack));
-      
-      // Also update the in-memory state using the base method
+      console.log(`[setRepositoryContext] Explicitly persisted minimal context to 'repoContextData'`);
+
+      // Update in-memory state using base method AFTER successful persistence
       this.updateState(contextData);
-      console.log(`[setRepositoryContext] Updated in-memory state - Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
       
     } catch (e) {
       console.error("[setRepositoryContext] FAILED to persist context data:", e);
+      // Add observation about failure
+      await this.addAgentObservation(`Error setting repository context: ${e.message}`);
       throw e; // Re-throw error
     }
     
+    console.log(`[setRepositoryContext EXIT] Updated state - Owner: ${this.state.currentRepoOwner}, Repo: ${this.state.currentRepoName}`);
     return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
 }
 
