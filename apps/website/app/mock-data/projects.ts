@@ -1,4 +1,4 @@
-import { type Status, status } from './status';
+import { type Status, status, StatusEnum } from './status';
 import {
   Accessibility,
   Bell,
@@ -75,7 +75,7 @@ export const projects: Project[] = [
   {
     id: '1',
     name: 'LNDev UI - Core Components',
-    status: status[0],
+    status: status.find(s => s.id === StatusEnum.IN_PROGRESS)!,
     icon: Cuboid,
     percentComplete: 80,
     startDate: '2025-03-08',
@@ -86,7 +86,7 @@ export const projects: Project[] = [
   {
     id: '2',
     name: 'LNDev UI - Theming',
-    status: status[1],
+    status: status.find(s => s.id === StatusEnum.TODO)!,
     icon: Blocks,
     percentComplete: 50,
     startDate: '2025-03-14',
@@ -97,7 +97,7 @@ export const projects: Project[] = [
   {
     id: '3',
     name: 'LNDev UI - Modals',
-    status: status[2],
+    status: status.find(s => s.id === StatusEnum.BACKLOG)!,
     icon: Vault,
     percentComplete: 0,
     startDate: '2025-03-09',
@@ -108,7 +108,7 @@ export const projects: Project[] = [
   {
     id: '4',
     name: 'LNDev UI - Navigation',
-    status: status[3],
+    status: status.find(s => s.id === StatusEnum.COMPLETED)!,
     icon: BrickWall,
     percentComplete: 0,
     startDate: '2025-03-10',
@@ -119,7 +119,7 @@ export const projects: Project[] = [
   {
     id: '5',
     name: 'LNDev UI - Layout',
-    status: status[4],
+    status: status.find(s => s.id === StatusEnum.IN_PROGRESS)!,
     icon: Wallpaper,
     percentComplete: 0,
     startDate: '2025-03-11',
@@ -130,7 +130,7 @@ export const projects: Project[] = [
   {
     id: '6',
     name: 'LNDev UI - Sidebar',
-    status: status[5],
+    status: status.find(s => s.id === StatusEnum.TODO)!,
     icon: TrafficCone,
     percentComplete: 0,
     startDate: '2025-03-12',
@@ -141,7 +141,7 @@ export const projects: Project[] = [
   {
     id: '7',
     name: 'LNDev UI - Cards',
-    status: status[1],
+    status: status.find(s => s.id === StatusEnum.TODO)!,
     icon: Grid2X2,
     percentComplete: 0,
     startDate: '2025-03-13',
@@ -152,7 +152,7 @@ export const projects: Project[] = [
   {
     id: '8',
     name: 'LNDev UI - Tooltip',
-    status: status[2],
+    status: status.find(s => s.id === StatusEnum.BACKLOG)!,
     icon: Bomb,
     percentComplete: 0,
     startDate: '2025-03-14',
@@ -163,7 +163,7 @@ export const projects: Project[] = [
   {
     id: '9',
     name: 'LNDev UI - Dropdown',
-    status: status[3],
+    status: status.find(s => s.id === StatusEnum.COMPLETED)!,
     icon: Shapes,
     percentComplete: 50,
     startDate: '2025-03-15',
@@ -174,7 +174,7 @@ export const projects: Project[] = [
   {
     id: '10',
     name: 'LNDev UI - Data Tables',
-    status: status[0],
+    status: status.find(s => s.id === StatusEnum.IN_PROGRESS)!,
     icon: Table,
     percentComplete: 65,
     startDate: '2025-03-18',
@@ -185,7 +185,7 @@ export const projects: Project[] = [
   {
     id: '11',
     name: 'LNDev UI - Form Controls',
-    status: status[2],
+    status: status.find(s => s.id === StatusEnum.BACKLOG)!,
     icon: FormInput,
     percentComplete: 30,
     startDate: '2025-03-19',
@@ -196,7 +196,7 @@ export const projects: Project[] = [
   {
     id: '12',
     name: 'LNDev UI - Notifications',
-    status: status[1],
+    status: status.find(s => s.id === StatusEnum.TODO)!,
     icon: Bell,
     percentComplete: 45,
     startDate: '2025-03-20',
@@ -229,7 +229,7 @@ export const projects: Project[] = [
   {
     id: '15',
     name: 'LNDev UI - Dashboard Widgets',
-    status: status[1],
+    status: status.find(s => s.id === StatusEnum.TODO)!,
     icon: LayoutDashboard,
     percentComplete: 55,
     startDate: '2025-03-17',
@@ -240,7 +240,7 @@ export const projects: Project[] = [
   {
     id: '16',
     name: 'LNDev UI - Onboarding Guide',
-    status: status[2],
+    status: status.find(s => s.id === StatusEnum.BACKLOG)!,
     icon: HelpCircle,
     percentComplete: 25,
     startDate: '2025-03-24',
@@ -251,7 +251,7 @@ export const projects: Project[] = [
   {
     id: '17',
     name: 'LNDev UI - Progress Indicators',
-    status: status[4],
+    status: status.find(s => s.id === StatusEnum.IN_PROGRESS)!,
     icon: Loader,
     percentComplete: 40,
     startDate: '2025-03-16',
@@ -262,7 +262,7 @@ export const projects: Project[] = [
   {
     id: '18',
     name: 'LNDev UI - Internationalization',
-    status: status[5],
+    status: status.find(s => s.id === StatusEnum.TODO)!,
     icon: Globe,
     percentComplete: 15,
     startDate: '2025-03-25',
@@ -273,7 +273,7 @@ export const projects: Project[] = [
   {
     id: '19',
     name: 'LNDev UI - Accessibility Features',
-    status: status[0],
+    status: status.find(s => s.id === StatusEnum.IN_PROGRESS)!,
     icon: Accessibility,
     percentComplete: 60,
     startDate: '2025-03-21',
@@ -284,7 +284,7 @@ export const projects: Project[] = [
   {
     id: '20',
     name: 'LNDev UI - Media Player',
-    status: status[3],
+    status: status.find(s => s.id === StatusEnum.COMPLETED)!,
     icon: Play,
     percentComplete: 20,
     startDate: '2025-03-26',

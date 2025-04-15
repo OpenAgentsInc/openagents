@@ -4,7 +4,9 @@ export enum StatusEnum {
   IN_PROGRESS = 'in-progress',
   TODO = 'to-do',
   BACKLOG = 'backlog',
-  COMPLETED = 'completed'
+  COMPLETED = 'completed',
+  PAUSED = 'paused',
+  TECHNICAL_REVIEW = 'technical-review',
 }
 
 export interface Status {
