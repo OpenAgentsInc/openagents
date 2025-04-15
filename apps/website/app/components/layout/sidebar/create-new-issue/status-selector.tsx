@@ -1,15 +1,12 @@
 import { Button } from '@/components/ui/button';
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CheckIcon } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useEffect, useState } from 'react';
 import { useLoaderData } from 'react-router';
 
 interface WorkflowState {
@@ -19,14 +16,23 @@ interface WorkflowState {
   type?: string;
 }
 
+// Default workflow states as fallback if none are available from the server
+const defaultWorkflowStates: WorkflowState[] = [
+  { id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage' },
+  { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },
+  { id: 'default-todo', name: 'To Do', color: '#3498DB', type: 'todo' },
+  { id: 'default-inprogress', name: 'In Progress', color: '#F1C40F', type: 'inprogress' },
+  { id: 'default-done', name: 'Done', color: '#2ECC71', type: 'done' },
+  { id: 'default-canceled', name: 'Canceled', color: '#E74C3C', type: 'canceled' }
+];
+
 interface StatusSelectorProps {
   stateId: string;
   onChange: (stateId: string) => void;
 }
 
 export function StatusSelector({ stateId, onChange }: StatusSelectorProps) {
-  const id = useId();
-  const [open, setOpen] = useState<boolean>(false);
+  const [open, setOpen] = useState(false);
   const loaderData = useLoaderData() || {};
   
   // Check for workflow states in various locations in the loader data
@@ -34,94 +40,77 @@ export function StatusSelector({ stateId, onChange }: StatusSelectorProps) {
   
   if (Array.isArray(loaderData.workflowStates)) {
     workflowStates = loaderData.workflowStates;
+  } else if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
+    workflowStates = loaderData.options.workflowStates;
+  }
+  
+  console.log('Loader data in status selector:', JSON.stringify(loaderData));
+  console.log('Found workflow states:', workflowStates.length);
+  
+  // Use default states if none are available
+  if (!workflowStates || workflowStates.length === 0) {
+    console.log('Using default workflow states');
+    workflowStates = defaultWorkflowStates;
   }
 
-  // Set a default state if none is selected and states are available
+  const [selectedState, setSelectedState] = useState<WorkflowState | null>(null);
+
+  // Update selected state when stateId or workflowStates change
   useEffect(() => {
-    if (!stateId && workflowStates.length > 0) {
-      // Try to find a "todo" or "backlog" type state as default
+    if (stateId && workflowStates.length > 0) {
+      const found = workflowStates.find(s => s.id === stateId);
+      if (found) setSelectedState(found);
+    } else if (!stateId && workflowStates.length > 0) {
+      // Set default state if none selected and states available
       const defaultState = workflowStates.find(state => 
         state.type === 'todo' || state.type === 'backlog' || state.type === 'unstarted'
       ) || workflowStates[0];
       
-      if (defaultState) {
-        onChange(defaultState.id);
-      }
+      onChange(defaultState.id);
+      setSelectedState(defaultState);
     }
-  }, [stateId, workflowStates, onChange]);
+  }, [stateId, onChange, workflowStates]);
 
-  const selectedState = workflowStates.find((state) => state.id === stateId);
-
-  // If no states are available, show a disabled button
-  if (!workflowStates || workflowStates.length === 0) {
-    return (
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-8 border-dashed bg-muted/50"
-        disabled
-      >
-        <span className="text-muted-foreground">No states available</span>
-      </Button>
-    );
-  }
+  const handleStateChange = (newStateId: string) => {
+    const state = workflowStates.find(s => s.id === newStateId);
+    if (state) {
+      setSelectedState(state);
+      onChange(newStateId);
+    }
+  };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          className="flex items-center justify-center gap-1.5"
-          size="sm"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-        >
-          {selectedState && (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant="outline" className="gap-1.5">
+          {selectedState ? (
             <>
               <div 
-                className="size-3 rounded-full"
+                className="size-3 rounded-full" 
                 style={{ backgroundColor: selectedState.color }}
               />
               <span>{selectedState.name}</span>
             </>
+          ) : (
+            'Select Status'
           )}
-          {!selectedState && <span>Select status</span>}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-full min-w-[var(--radix-popper-anchor-width)] p-0"
-        align="start"
-      >
-        <Command>
-          <CommandInput placeholder="Search status..." />
-          <CommandList>
-            <CommandEmpty>No status found.</CommandEmpty>
-            <CommandGroup>
-              {workflowStates.map((state) => (
-                <CommandItem
-                  key={state.id}
-                  value={state.name}
-                  onSelect={() => {
-                    onChange(state.id);
-                    setOpen(false);
-                  }}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-2">
-                    <div 
-                      className="size-3 rounded-full"
-                      style={{ backgroundColor: state.color }}
-                    />
-                    {state.name}
-                  </div>
-                  {stateId === state.id && <CheckIcon size={16} className="ml-auto" />}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56">
+        <DropdownMenuRadioGroup value={stateId} onValueChange={handleStateChange}>
+          {workflowStates.map((state) => (
+            <DropdownMenuRadioItem key={state.id} value={state.id}>
+              <div className="flex items-center gap-2">
+                <div 
+                  className="size-3 rounded-full" 
+                  style={{ backgroundColor: state.color }}
+                />
+                <span>{state.name}</span>
+              </div>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

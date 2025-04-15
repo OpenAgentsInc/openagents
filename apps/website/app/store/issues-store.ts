@@ -2,9 +2,16 @@ import { groupIssuesByStatus } from '@/mock-data/issues';
 import { type LabelInterface } from '@/mock-data/labels';
 import { type Priority } from '@/mock-data/priorities';
 import { type Project } from '@/mock-data/projects';
-import { type Status } from '@/mock-data/status';
 import { type User } from '@/mock-data/users';
 import { create } from 'zustand';
+
+// Generic Status interface compatible with both mock and DB data
+export interface Status {
+  id: string;
+  name: string;
+  color: string;
+  type?: string;
+}
 
 // Updated Issue interface to match the database schema
 export interface Issue {
@@ -28,9 +35,11 @@ interface IssuesState {
   issues: Issue[];
   issuesByStatus: Record<string, Issue[]>;
   isLoaded: boolean;
+  workflowStates?: Status[];
 
   // Actions
   setIssues: (issues: Issue[]) => void;
+  setWorkflowStates: (states: Status[]) => void;
   addIssue: (issue: Issue) => void;
   updateIssue: (id: string, updatedIssue: Partial<Issue>) => void;
   deleteIssue: (id: string) => void;
@@ -45,6 +54,7 @@ interface IssuesState {
 
   // Status management
   updateIssueStatus: (issueId: string, newStatus: Status) => void;
+  getWorkflowStates: () => Status[];
 
   // Priority management
   updateIssuePriority: (issueId: string, newPriority: Priority) => void;
@@ -68,6 +78,13 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
   issues: [],
   issuesByStatus: {},
   isLoaded: false,
+  workflowStates: [
+    { id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage' },
+    { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },
+    { id: 'default-todo', name: 'To Do', color: '#3498DB', type: 'todo' },
+    { id: 'default-inprogress', name: 'In Progress', color: '#F1C40F', type: 'inprogress' },
+    { id: 'default-done', name: 'Done', color: '#2ECC71', type: 'done' }
+  ],
 
   // Set all issues (used when loading from API)
   setIssues: (issues: Issue[]) => {
@@ -76,6 +93,18 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
       issuesByStatus: groupIssuesByStatus(issues),
       isLoaded: true,
     });
+  },
+  
+  // Set workflow states (used when loading from API)
+  setWorkflowStates: (states: Status[]) => {
+    set({
+      workflowStates: states,
+    });
+  },
+  
+  // Get workflow states
+  getWorkflowStates: () => {
+    return get().workflowStates || [];
   },
 
   // Actions

@@ -482,93 +482,177 @@ export async function createIssue(issueData: {
   estimate?: number;
   dueDate?: string;
 }) {
-  const db = getDb();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  
-  // Get the team to generate identifier
-  const team = await db
-    .selectFrom('team')
-    .select(['key'])
-    .where('id', '=', issueData.teamId)
-    .executeTakeFirst();
+  try {
+    console.log('Creating issue with data:', JSON.stringify(issueData));
     
-  if (!team) {
-    throw new Error('Team not found');
-  }
-  
-  // Get the next issue number for the team
-  const highestNumber = await db
-    .selectFrom('issue')
-    .select(db.fn.max('number').as('maxNumber'))
-    .where('teamId', '=', issueData.teamId)
-    .executeTakeFirst();
+    const db = getDb();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
     
-  const nextNumber = (highestNumber?.maxNumber || 0) + 1;
-  const identifier = `${team.key}-${nextNumber}`;
-  
-  // Generate a sortOrder value (use a high value to place at the bottom)
-  const highestSortOrder = await db
-    .selectFrom('issue')
-    .select(db.fn.max('sortOrder').as('maxSortOrder'))
-    .executeTakeFirst();
-    
-  const sortOrder = (highestSortOrder?.maxSortOrder || 0) + 1000; // Leave gaps between issues
-  
-  // Create the branch name from title
-  const branchName = issueData.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  
-  // Insert the issue
-  await db
-    .insertInto('issue')
-    .values({
-      id,
-      title: issueData.title,
-      description: issueData.description || null,
-      teamId: issueData.teamId,
-      stateId: issueData.stateId,
-      priority: issueData.priority || 0,
-      number: nextNumber,
-      identifier,
-      branchName: `${identifier.toLowerCase()}/${branchName}`,
-      url: `https://linear.app/issue/${identifier}`, // Placeholder URL
-      sortOrder,
-      prioritySortOrder: sortOrder,
-      assigneeId: issueData.assigneeId || null,
-      projectId: issueData.projectId || null,
-      cycleId: issueData.cycleId || null,
-      parentId: issueData.parentId || null,
-      creatorId: issueData.creatorId || null,
-      estimate: issueData.estimate || null,
-      dueDate: issueData.dueDate || null,
-      customerTicketCount: 0,
-      createdAt: now,
-      updatedAt: now,
-      ...(issueData.projectId && { addedToProjectAt: now }),
-      addedToTeamAt: now,
-    })
-    .execute();
-    
-  // Add labels if provided
-  if (issueData.labelIds && issueData.labelIds.length > 0) {
-    for (const labelId of issueData.labelIds) {
-      await db
-        .insertInto('issue_to_label')
-        .values({
-          id: crypto.randomUUID(),
-          issueId: id,
-          labelId,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .execute();
+    // Get the team to generate identifier
+    const team = await db
+      .selectFrom('team')
+      .select(['key'])
+      .where('id', '=', issueData.teamId)
+      .executeTakeFirst();
+      
+    if (!team) {
+      console.error('Team not found for id:', issueData.teamId);
+      throw new Error('Team not found');
     }
-  }
+    
+    // Get the next issue number for the team
+    const highestNumber = await db
+      .selectFrom('issue')
+      .select(db.fn.max('number').as('maxNumber'))
+      .where('teamId', '=', issueData.teamId)
+      .executeTakeFirst();
+      
+    const nextNumber = (highestNumber?.maxNumber || 0) + 1;
+    const identifier = `${team.key}-${nextNumber}`;
+    
+    // Generate a sortOrder value (use a high value to place at the bottom)
+    const highestSortOrder = await db
+      .selectFrom('issue')
+      .select(db.fn.max('sortOrder').as('maxSortOrder'))
+      .executeTakeFirst();
+      
+    const sortOrder = (highestSortOrder?.maxSortOrder || 0) + 1000; // Leave gaps between issues
+    
+    // Create the branch name from title
+    const branchName = issueData.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    
+    // Check if we're using a default state ID
+    let stateId = issueData.stateId;
+    
+    if (stateId && stateId.startsWith('default-')) {
+      // Create a real workflow state in the database
+      const stateType = stateId.replace('default-', '');
+      const newStateId = crypto.randomUUID();
+      
+      let stateName = 'Unknown';
+      let stateColor = '#808080';
+      let position = 0;
+      
+      switch (stateType) {
+        case 'triage':
+          stateName = 'Triage';
+          stateColor = '#6B7280';
+          position = 0;
+          break;
+        case 'backlog':
+          stateName = 'Backlog';
+          stateColor = '#95A5A6';
+          position = 100;
+          break;
+        case 'todo':
+          stateName = 'To Do';
+          stateColor = '#3498DB';
+          position = 200;
+          break;
+        case 'inprogress':
+          stateName = 'In Progress';
+          stateColor = '#F1C40F';
+          position = 300;
+          break;
+        case 'done':
+          stateName = 'Done';
+          stateColor = '#2ECC71';
+          position = 400;
+          break;
+        case 'canceled':
+          stateName = 'Canceled';
+          stateColor = '#E74C3C';
+          position = 500;
+          break;
+      }
+      
+      try {
+        console.log(`Creating workflow state: ${stateName} (${stateType})`);
+        await db
+          .insertInto('workflow_state')
+          .values({
+            id: newStateId,
+            name: stateName,
+            description: `Issues in ${stateName.toLowerCase()} state`,
+            color: stateColor,
+            type: stateType,
+            position,
+            teamId: issueData.teamId,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .execute();
+          
+        // Update the stateId to use the real workflow state
+        stateId = newStateId;
+        console.log(`Created workflow state with ID: ${newStateId}`);
+      } catch (error) {
+        console.error('Error creating workflow state:', error);
+        // Continue with the default stateId
+      }
+    }
   
-  return id;
+    console.log(`About to insert issue with stateId: ${stateId}`);
+    
+    // Insert the issue
+    await db
+      .insertInto('issue')
+      .values({
+        id,
+        title: issueData.title,
+        description: issueData.description || null,
+        teamId: issueData.teamId,
+        stateId,
+        priority: issueData.priority || 0,
+        number: nextNumber,
+        identifier,
+        branchName: `${identifier.toLowerCase()}/${branchName}`,
+        url: `https://linear.app/issue/${identifier}`, // Placeholder URL
+        sortOrder,
+        prioritySortOrder: sortOrder,
+        assigneeId: issueData.assigneeId || null,
+        projectId: issueData.projectId || null,
+        cycleId: issueData.cycleId || null,
+        parentId: issueData.parentId || null,
+        creatorId: issueData.creatorId || null,
+        estimate: issueData.estimate || null,
+        dueDate: issueData.dueDate || null,
+        customerTicketCount: 0,
+        createdAt: now,
+        updatedAt: now,
+        ...(issueData.projectId && { addedToProjectAt: now }),
+        addedToTeamAt: now,
+      })
+      .execute();
+      
+    console.log(`Issue created with ID: ${id}`);
+    
+    // Add labels if provided
+    if (issueData.labelIds && issueData.labelIds.length > 0) {
+      for (const labelId of issueData.labelIds) {
+        await db
+          .insertInto('issue_to_label')
+          .values({
+            id: crypto.randomUUID(),
+            issueId: id,
+            labelId,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .execute();
+      }
+      console.log(`Added ${issueData.labelIds.length} labels to issue ${id}`);
+    }
+    
+    return id;
+  } catch (error) {
+    console.error('Failed to create issue:', error);
+    throw error;
+  }
 }
 
 // Update an existing issue
@@ -646,6 +730,16 @@ export async function updateIssue(id: string, issueData: {
   return id;
 }
 
+// Default workflow states as fallback if none are available from the database
+const DEFAULT_WORKFLOW_STATES = [
+  { id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage', position: 0, teamId: null },
+  { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog', position: 100, teamId: null },
+  { id: 'default-todo', name: 'To Do', color: '#3498DB', type: 'todo', position: 200, teamId: null },
+  { id: 'default-inprogress', name: 'In Progress', color: '#F1C40F', type: 'inprogress', position: 300, teamId: null },
+  { id: 'default-done', name: 'Done', color: '#2ECC71', type: 'done', position: 400, teamId: null },
+  { id: 'default-canceled', name: 'Canceled', color: '#E74C3C', type: 'canceled', position: 500, teamId: null }
+];
+
 // Get workflow states for teams
 export async function getWorkflowStates(teamId?: string) {
   const db = getDb();
@@ -659,9 +753,16 @@ export async function getWorkflowStates(teamId?: string) {
     query = query.where('teamId', '=', teamId);
   }
   
-  return query
+  const states = await query
     .orderBy(['teamId', 'position'])
     .execute();
+    
+  // If no states found, return default workflow states
+  if (states.length === 0) {
+    return DEFAULT_WORKFLOW_STATES;
+  }
+  
+  return states;
 }
 
 // Get issue labels (optionally filtered by team)

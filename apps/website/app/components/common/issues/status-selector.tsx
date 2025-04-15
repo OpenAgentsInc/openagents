@@ -9,9 +9,37 @@ import {
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIssuesStore } from '@/store/issues-store';
-import { type Status, status as allStatus } from '@/mock-data/status';
-import { CheckIcon } from 'lucide-react';
+import { CheckIcon, CheckCircle, Circle, Clock, Hourglass, Timer } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
+import { useLoaderData } from 'react-router';
+
+// Define a more generic Status interface compatible with DB data
+interface Status {
+  id: string;
+  name: string;
+  color: string;
+  type?: string;
+}
+
+// Component to render appropriate icon based on status type
+const StatusIcon = ({ status }: { status: Status }) => {
+  const type = status.type?.toLowerCase() || '';
+  
+  if (type.includes('done') || type.includes('completed')) {
+    return <CheckCircle className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('progress') || type.includes('started')) {
+    return <Hourglass className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('todo')) {
+    return <Circle className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('backlog')) {
+    return <Clock className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('triage')) {
+    return <Timer className="size-4" style={{ color: status.color }} />;
+  }
+  
+  // Default icon if no matching type
+  return <Circle className="size-4" style={{ color: status.color }} />;
+};
 
 interface StatusSelectorProps {
   status: Status;
@@ -22,6 +50,33 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
   const id = useId();
   const [open, setOpen] = useState<boolean>(false);
   const [value, setValue] = useState<string>(status.id);
+  const loaderData = useLoaderData() || {};
+  
+  // Get workflow states from loader data
+  let workflowStates: Status[] = [];
+  
+  if (Array.isArray(loaderData.workflowStates)) {
+    workflowStates = loaderData.workflowStates;
+  } else if (loaderData.options && Array.isArray(loaderData.options.workflowStates)) {
+    workflowStates = loaderData.options.workflowStates;
+  } else {
+    // Try to get all workflow states from the store
+    const { getWorkflowStates } = useIssuesStore();
+    workflowStates = getWorkflowStates ? getWorkflowStates() : [];
+  }
+  
+  console.log('Status selector - workflow states:', workflowStates.length);
+  
+  // Default workflow states as fallback if none are available
+  if (!workflowStates || workflowStates.length === 0) {
+    workflowStates = [
+      { id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage' },
+      { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },
+      { id: 'default-todo', name: 'To Do', color: '#3498DB', type: 'todo' },
+      { id: 'default-inprogress', name: 'In Progress', color: '#F1C40F', type: 'inprogress' },
+      { id: 'default-done', name: 'Done', color: '#2ECC71', type: 'done' }
+    ];
+  }
 
   const { updateIssueStatus, filterByStatus } = useIssuesStore();
 
@@ -34,7 +89,7 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
     setOpen(false);
 
     if (issueId) {
-      const newStatus = allStatus.find((s) => s.id === statusId);
+      const newStatus = workflowStates.find((s) => s.id === statusId);
       if (newStatus) {
         updateIssueStatus(issueId, newStatus);
       }
@@ -53,14 +108,7 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
             role="combobox"
             aria-expanded={open}
           >
-            {(() => {
-              const selectedItem = allStatus.find((item) => item.id === value);
-              if (selectedItem) {
-                const Icon = selectedItem.icon;
-                return <Icon />;
-              }
-              return null;
-            })()}
+            <StatusIcon status={status} />
           </Button>
         </PopoverTrigger>
         <PopoverContent
@@ -72,20 +120,20 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
             <CommandList>
               <CommandEmpty>No status found.</CommandEmpty>
               <CommandGroup>
-                {allStatus.map((item) => (
+                {workflowStates.map((item) => (
                   <CommandItem
                     key={item.id}
                     value={item.id}
-                    onSelect={handleStatusChange}
+                    onSelect={() => handleStatusChange(item.id)}
                     className="flex items-center justify-between"
                   >
                     <div className="flex items-center gap-2">
-                      <item.icon />
+                      <StatusIcon status={item} />
                       {item.name}
                     </div>
                     {value === item.id && <CheckIcon size={16} className="ml-auto" />}
                     <span className="text-muted-foreground text-xs">
-                      {filterByStatus(item.id).length}
+                      {filterByStatus ? filterByStatus(item.id).length : 0}
                     </span>
                   </CommandItem>
                 ))}

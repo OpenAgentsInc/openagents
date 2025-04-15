@@ -50,22 +50,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Return simple object instead of json
     return {
       issues,
-      workflowStates,
-      labels,
-      projects,
-      teams,
-      users,
+      options: {
+        workflowStates,
+        labels,
+        projects,
+        teams,
+        users
+      },
       user
     };
   } catch (error) {
     console.error("Error loading issues:", error);
     return {
       issues: [],
-      workflowStates: [],
-      labels: [],
-      projects: [],
-      teams: [],
-      users: [],
+      options: {
+        workflowStates: [],
+        labels: [],
+        projects: [],
+        teams: [],
+        users: []
+      },
       user: null,
       error: "Failed to load issues"
     };
@@ -171,16 +175,19 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export default function IssuesRoute() {
   const loaderData = useLoaderData();
-  const { setIssues } = useIssuesStore();
+  const { setIssues, setWorkflowStates } = useIssuesStore();
   const submit = useSubmit();
   const { openModal } = useCreateIssueStore();
 
-  // Update store with issues from loader data
+  // Update store with issues and workflow states from loader data
   useEffect(() => {
     if (loaderData.issues) {
       setIssues(loaderData.issues);
     }
-  }, [loaderData.issues, setIssues]);
+    if (loaderData.workflowStates) {
+      setWorkflowStates(loaderData.workflowStates);
+    }
+  }, [loaderData.issues, loaderData.workflowStates, setIssues, setWorkflowStates]);
 
   return (
     <div className="w-full min-h-screen flex flex-col">

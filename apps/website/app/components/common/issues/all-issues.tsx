@@ -13,17 +13,20 @@ import { useLoaderData } from 'react-router';
 
 export interface AppLoaderData {
   issues: any[];
-  workflowStates: any[];
-  labels: any[];
-  projects: any[];
-  teams: any[];
-  users: any[];
+  options: {
+    workflowStates: any[];
+    labels: any[];
+    projects: any[];
+    teams: any[];
+    users: any[];
+  };
 }
 
 export default function AllIssues() {
   const { isSearchOpen, searchQuery } = useSearchStore();
   const { viewType } = useViewStore();
-  const { workflowStates = status } = useLoaderData<AppLoaderData>();
+  const loaderData = useLoaderData<AppLoaderData>();
+  const workflowStates = loaderData?.options?.workflowStates || status;
 
   const isSearching = isSearchOpen && searchQuery.trim() !== '';
   const isViewTypeGrid = viewType === 'grid';
@@ -50,11 +53,39 @@ const GroupIssuesListView: FC<{
   states: any[];
 }> = ({ isViewTypeGrid = false, states = status }) => {
   const { issuesByStatus } = useIssuesStore();
+  
+  // Sort states by position if available, or fall back to order in the array
+  const sortedStates = [...states].sort((a, b) => {
+    // Sort by position if available
+    if (a.position !== undefined && b.position !== undefined) {
+      return a.position - b.position;
+    }
+    
+    // Otherwise sort by type using a predefined order
+    const typeOrder: Record<string, number> = {
+      'triage': 1,
+      'backlog': 2, 
+      'todo': 3,
+      'unstarted': 3,
+      'inprogress': 4,
+      'started': 4,
+      'review': 5, 
+      'done': 6,
+      'completed': 6,
+      'canceled': 7
+    };
+    
+    const aType = (a.type || '').toLowerCase();
+    const bType = (b.type || '').toLowerCase();
+    
+    return (typeOrder[aType] || 99) - (typeOrder[bType] || 99);
+  });
+  
   return (
     <DndProvider backend={HTML5Backend}>
       <CustomDragLayer />
       <div className={cn(isViewTypeGrid && 'flex h-full gap-3 px-2 py-2 min-w-max')}>
-        {states.map((statusItem) => (
+        {sortedStates.map((statusItem) => (
           <GroupIssues
             key={statusItem.id}
             status={statusItem}

@@ -9,6 +9,7 @@ import { LabelBadge } from './label-badge';
 import { PrioritySelector } from './priority-selector';
 import { ProjectBadge } from './project-badge';
 import { StatusSelector } from './status-selector';
+import { CheckCircle, Circle, Clock, Hourglass, Timer } from 'lucide-react';
 
 export const IssueDragType = 'ISSUE';
 type IssueGridProps = {

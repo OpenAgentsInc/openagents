@@ -46,6 +46,8 @@ export function TeamSelector({ teamId, onChange }: TeamSelectorProps) {
     teams = loaderData.options.teams;
   }
   
+  console.log('Teams available:', teams.length, teams);
+  
   // Set default team if none is selected
   useEffect(() => {
     if (!teamId && teams.length > 0) {

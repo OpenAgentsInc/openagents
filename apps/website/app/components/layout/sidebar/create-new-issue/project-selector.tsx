@@ -34,6 +34,8 @@ export function ProjectSelector({ projectId, onChange }: ProjectSelectorProps) {
   
   if (Array.isArray(loaderData.projects)) {
     projects = loaderData.projects;
+  } else if (loaderData.options && Array.isArray(loaderData.options.projects)) {
+    projects = loaderData.options.projects;
   } else if (loaderData.project) {
     // If we're on a project detail page, we should at least have the current project
     projects = [loaderData.project];

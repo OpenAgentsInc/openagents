@@ -35,6 +35,8 @@ export function AssigneeSelector({ assigneeId, onChange }: AssigneeSelectorProps
   
   if (Array.isArray(loaderData.users)) {
     users = loaderData.users;
+  } else if (loaderData.options && Array.isArray(loaderData.options.users)) {
+    users = loaderData.options.users;
   }
 
   const handleAssigneeChange = (userId: string | undefined) => {

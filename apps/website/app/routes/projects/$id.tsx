@@ -45,20 +45,24 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     
     return { 
       project,
-      workflowStates,
-      labels,
-      teams,
-      users,
+      options: {
+        workflowStates,
+        labels,
+        teams,
+        users
+      },
       user
     };
   } catch (error) {
     console.error("Error loading project:", error);
     return { 
       error: "Failed to load project",
-      labels: [],
-      teams: [],
-      workflowStates: [],
-      users: []
+      options: {
+        workflowStates: [],
+        labels: [],
+        teams: [],
+        users: []
+      }
     };
   }
 }

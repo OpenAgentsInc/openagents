@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Heart } from 'lucide-react';
+import { Heart, RefreshCw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { RiEditLine } from '@remixicon/react';
@@ -16,7 +16,7 @@ import { AssigneeSelector } from './assignee-selector';
 import { ProjectSelector } from './project-selector';
 import { LabelSelector } from './label-selector';
 import { DialogTitle } from '@radix-ui/react-dialog';
-import { useSubmit } from 'react-router'; 
+import { useSubmit, useRevalidator } from 'react-router'; 
 import { useSession } from '@/lib/auth-client';
 import { TeamSelector } from './team-selector';
 
@@ -34,8 +34,10 @@ interface IssueFormData {
 
 export function CreateNewIssue() {
   const [createMore, setCreateMore] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { isOpen, defaultStatus, openModal, closeModal } = useCreateIssueStore();
   const submit = useSubmit();
+  const revalidator = useRevalidator();
   const { data: session, isLoading } = useSession();
   
   // Generate new ranks for UI only
@@ -73,7 +75,17 @@ export function CreateNewIssue() {
     }
   }, [isOpen, createDefaultFormData]);
 
-  const createIssue = () => {
+  // Set default status when opening modal
+  useEffect(() => {
+    if (defaultStatus) {
+      setIssueForm(prev => ({
+        ...prev,
+        stateId: defaultStatus.id
+      }));
+    }
+  }, [defaultStatus, isOpen]);
+
+  const createIssue = async () => {
     if (!session?.user) {
       toast.error('You must be logged in to create an issue');
       return;
@@ -94,40 +106,54 @@ export function CreateNewIssue() {
       return;
     }
 
-    // Submit the form to create a new issue using our route action
-    const formData = new FormData();
-    formData.append('_action', 'create');
-    formData.append('title', issueForm.title);
-    formData.append('description', issueForm.description || '');
-    formData.append('teamId', issueForm.teamId);
-    formData.append('stateId', issueForm.stateId);
-    formData.append('priority', issueForm.priority.toString());
-    
-    if (issueForm.assigneeId) {
-      formData.append('assigneeId', issueForm.assigneeId);
+    // Set submitting state to show spinner
+    setIsSubmitting(true);
+
+    try {
+      // Submit the form to create a new issue using our route action
+      const formData = new FormData();
+      formData.append('_action', 'create');
+      formData.append('title', issueForm.title);
+      formData.append('description', issueForm.description || '');
+      formData.append('teamId', issueForm.teamId);
+      formData.append('stateId', issueForm.stateId);
+      formData.append('priority', issueForm.priority.toString());
+      
+      if (issueForm.assigneeId) {
+        formData.append('assigneeId', issueForm.assigneeId);
+      }
+      
+      if (issueForm.projectId) {
+        formData.append('projectId', issueForm.projectId);
+      }
+      
+      issueForm.labelIds.forEach(labelId => {
+        formData.append('labelIds', labelId);
+      });
+  
+      // Submit the form
+      const result = await submit(formData, {
+        method: 'post',
+        navigate: false,
+        action: '/issues'
+      });
+  
+      // After successful submission, revalidate the data
+      revalidator.revalidate();
+  
+      toast.success('Issue created! Refreshing data...');
+  
+      if (!createMore) {
+        closeModal();
+      }
+  
+      setIssueForm(createDefaultFormData());
+    } catch (error) {
+      console.error('Error creating issue:', error);
+      toast.error('Failed to create issue. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    if (issueForm.projectId) {
-      formData.append('projectId', issueForm.projectId);
-    }
-    
-    issueForm.labelIds.forEach(labelId => {
-      formData.append('labelIds', labelId);
-    });
-
-    submit(formData, {
-      method: 'post',
-      navigate: false,
-      action: '/issues'
-    });
-
-    toast.success('Issue created');
-
-    if (!createMore) {
-      closeModal();
-    }
-
-    setIssueForm(createDefaultFormData());
   };
 
   return (
@@ -208,10 +234,19 @@ export function CreateNewIssue() {
           <Button 
             size="sm"
             onClick={createIssue}
-            disabled={isLoading || !session?.user}
+            disabled={isLoading || !session?.user || isSubmitting}
           >
-            <Heart className="mr-2 h-4 w-4" />
-            Create issue
+            {isSubmitting ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Heart className="mr-2 h-4 w-4" />
+                Create issue
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

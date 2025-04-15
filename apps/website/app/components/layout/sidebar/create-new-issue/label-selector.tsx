@@ -36,6 +36,8 @@ export function LabelSelector({ selectedLabelIds, onChange }: LabelSelectorProps
   
   if (Array.isArray(loaderData.labels)) {
     labels = loaderData.labels;
+  } else if (loaderData.options && Array.isArray(loaderData.options.labels)) {
+    labels = loaderData.options.labels;
   }
   
   // Handle label selection/deselection
