@@ -35,8 +35,17 @@ interface TeamSelectorProps {
 
 export function TeamSelector({ teamId, onChange }: TeamSelectorProps) {
   const [open, setOpen] = useState(false);
-  const { teams = [] } = useLoaderData<LoaderData>() || {};
-
+  const loaderData = useLoaderData() || {};
+  
+  // Check for teams in various locations in the loader data
+  let teams: any[] = [];
+  
+  if (Array.isArray(loaderData.teams)) {
+    teams = loaderData.teams;
+  } else if (loaderData.options && Array.isArray(loaderData.options.teams)) {
+    teams = loaderData.options.teams;
+  }
+  
   // Set default team if none is selected
   useEffect(() => {
     if (!teamId && teams.length > 0) {
@@ -45,6 +54,16 @@ export function TeamSelector({ teamId, onChange }: TeamSelectorProps) {
   }, [teamId, teams, onChange]);
 
   const selectedTeam = teams.find((team) => team.id === teamId);
+
+  // If no teams are available, show a disabled button with clear message
+  if (!teams || teams.length === 0) {
+    return (
+      <Button variant="outline" size="sm" className="h-8 border-dashed bg-muted/50" disabled>
+        <Users className="mr-2 size-4" />
+        <span className="text-muted-foreground">No teams available</span>
+      </Button>
+    );
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -64,7 +83,7 @@ export function TeamSelector({ teamId, onChange }: TeamSelectorProps) {
           ) : (
             <>
               <Users className="mr-2 size-4" />
-              <span>Team</span>
+              <span>Select Team</span>
             </>
           )}
         </Button>

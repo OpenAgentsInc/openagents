@@ -48,6 +48,13 @@ The implementation uses the following tables from `projects.sql`:
 - Client-side: Using `useSession()` hook to access session data for UI permissions
 - Automatically adding the authenticated user as an owner when creating a team
 
+## Integration with Projects and Issues
+- Updated the projects route to use `getTeamsForUser` instead of the generic `getTeams`
+- Updated the issues route to also use `getTeamsForUser` to make teams available in the issue creation modal
+- This ensures that when creating a project or issue, only teams that the user is a member of are shown in the selectors
+- Teams and projects are properly associated through the `team_project` join table
+- Issues are properly associated with teams through the direct `teamId` field
+
 ## Future Improvements
 - Implement team detail page with member management
 - Add ability to join/leave teams

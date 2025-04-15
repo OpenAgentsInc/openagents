@@ -8,11 +8,8 @@ import { Label } from '@/components/ui/label';
 import { RiEditLine } from '@remixicon/react';
 import { useState, useEffect, useCallback } from 'react';
 import { priorities } from '@/mock-data/priorities';
-import { status } from '@/mock-data/status';
-import { useIssuesStore } from '@/store/issues-store';
 import { useCreateIssueStore } from '@/store/create-issue-store';
 import { toast } from 'sonner';
-import { v4 as uuidv4 } from 'uuid';
 import { StatusSelector } from './status-selector';
 import { PrioritySelector } from './priority-selector';
 import { AssigneeSelector } from './assignee-selector';
@@ -60,13 +57,13 @@ export function CreateNewIssue() {
       title: '',
       description: '',
       teamId: '',
-      stateId: defaultStatus?.id || '',
+      stateId: '',
       priority: 0, // No priority
       assigneeId: undefined,
       projectId: undefined,
       labelIds: [],
     };
-  }, [defaultStatus]);
+  }, []);
 
   const [issueForm, setIssueForm] = useState<IssueFormData>(createDefaultFormData());
 
@@ -164,59 +161,39 @@ export function CreateNewIssue() {
             onChange={(e) => setIssueForm({ ...issueForm, description: e.target.value })}
           />
 
-          <div className="w-full flex items-center justify-start gap-1.5 flex-wrap py-2">
+          <div className="w-full flex flex-wrap gap-1.5 py-2">
             <TeamSelector
               teamId={issueForm.teamId}
               onChange={(newTeamId) => setIssueForm({ ...issueForm, teamId: newTeamId })}
             />
             
             <StatusSelector
-              status={defaultStatus || status.find((s) => s.id === 'to-do')}
-              onChange={(newStatus) => setIssueForm({ ...issueForm, stateId: newStatus.id })}
+              stateId={issueForm.stateId}
+              onChange={(newStateId) => setIssueForm({ ...issueForm, stateId: newStateId })}
             />
-            
+                        
             <PrioritySelector
-              priority={priorities.find((p) => p.id === 'no-priority')}
-              onChange={(newPriority) => {
-                // Convert priority to number based on id
-                let priorityNum = 0;
-                switch (newPriority.id) {
-                  case 'urgent': priorityNum = 1; break;
-                  case 'high': priorityNum = 2; break;
-                  case 'medium': priorityNum = 3; break;
-                  case 'low': priorityNum = 4; break;
-                  default: priorityNum = 0;
-                }
-                setIssueForm({ ...issueForm, priority: priorityNum });
-              }}
+              priority={issueForm.priority}
+              onChange={(newPriority) => setIssueForm({ ...issueForm, priority: newPriority })}
             />
             
             <AssigneeSelector
-              assignee={null}
-              onChange={(newAssignee) => setIssueForm({ 
-                ...issueForm, 
-                assigneeId: newAssignee?.id
-              })}
+              assigneeId={issueForm.assigneeId}
+              onChange={(newAssigneeId) => setIssueForm({ ...issueForm, assigneeId: newAssigneeId })}
             />
-            
+                        
             <ProjectSelector
-              project={undefined}
-              onChange={(newProject) => setIssueForm({ 
-                ...issueForm, 
-                projectId: newProject?.id
-              })}
+              projectId={issueForm.projectId}
+              onChange={(newProjectId) => setIssueForm({ ...issueForm, projectId: newProjectId })}
             />
             
             <LabelSelector
-              selectedLabels={[]}
-              onChange={(newLabels) => setIssueForm({ 
-                ...issueForm, 
-                labelIds: newLabels.map(label => label.id)
-              })}
+              selectedLabelIds={issueForm.labelIds}
+              onChange={(newLabelIds) => setIssueForm({ ...issueForm, labelIds: newLabelIds })}
             />
           </div>
         </div>
-        
+
         <div className="flex items-center justify-between py-2.5 px-4 w-full border-t">
           <div className="flex items-center gap-2">
             <div className="flex items-center space-x-2">
@@ -228,11 +205,12 @@ export function CreateNewIssue() {
               <Label htmlFor="create-more">Create more</Label>
             </div>
           </div>
-          <Button
+          <Button 
             size="sm"
             onClick={createIssue}
             disabled={isLoading || !session?.user}
           >
+            <Heart className="mr-2 h-4 w-4" />
             Create issue
           </Button>
         </div>

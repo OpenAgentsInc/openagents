@@ -3,13 +3,13 @@ import type { Route } from "../+types/projects";
 import MainLayout from '@/components/layout/main-layout';
 import { HeaderIssues } from '@/components/layout/headers/issues/header';
 import AllIssues from '@/components/common/issues/all-issues';
-
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  // Add other project fields as needed
-}
+import { auth } from "@/lib/auth";
+import { redirect } from "react-router";
+import { getProjectById } from "@/lib/db/project-helpers.server";
+import { getWorkflowStates, getIssueLabels } from "@/lib/db/issue-helpers.server";
+import { getTeamsForUser } from "@/lib/db/team-helpers.server";
+import { getUsers } from "@/lib/db/project-helpers.server";
+import { CreateIssueModalProvider } from "@/components/common/issues/create-issue-modal-provider";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   return [
@@ -18,21 +18,74 @@ export function meta({ params, location, data }: Route.MetaArgs) {
   ];
 }
 
-export async function loader({ params }: Route.LoaderArgs) {
-  const { id } = params;
-
-  // TODO: Implement actual project data fetching
-  // For now, just return the ID
-  return { id };
+export async function loader({ params, request }: Route.LoaderArgs) {
+  try {
+    const { id } = params;
+    
+    // Get current session with better-auth
+    const { user, session } = await auth.api.getSession(request);
+    
+    if (!session) {
+      return redirect("/login");
+    }
+    
+    const project = await getProjectById(id as string);
+    
+    if (!project) {
+      throw new Error("Project not found");
+    }
+    
+    // Load data needed for the issue creation modal
+    const [workflowStates, labels, teams, users] = await Promise.all([
+      getWorkflowStates(),
+      getIssueLabels(),
+      getTeamsForUser(user.id),
+      getUsers()
+    ]);
+    
+    return { 
+      project,
+      workflowStates,
+      labels,
+      teams,
+      users,
+      user
+    };
+  } catch (error) {
+    console.error("Error loading project:", error);
+    return { 
+      error: "Failed to load project",
+      labels: [],
+      teams: [],
+      workflowStates: [],
+      users: []
+    };
+  }
 }
 
 export default function ProjectDetails() {
   const { id } = useParams();
-  const data = useLoaderData() as { id: string };
-
+  const data = useLoaderData();
+  const project = data.project;
+  
+  if (data.error) {
+    return (
+      <MainLayout>
+        <div className="container mx-auto p-6">
+          <h1 className="text-2xl font-bold">Error</h1>
+          <p className="text-red-500">{data.error}</p>
+        </div>
+      </MainLayout>
+    );
+  }
+  
   return (
     <MainLayout header={<HeaderIssues />}>
-      <AllIssues />
+      <div className="container mx-auto p-6">
+        <h1 className="text-2xl font-bold mb-6">{project.name}</h1>
+        <AllIssues />
+      </div>
+      <CreateIssueModalProvider />
     </MainLayout>
   );
 }

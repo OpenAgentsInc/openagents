@@ -2,9 +2,11 @@ import type { Route } from "./+types/home";
 import MainLayout from '@/components/layout/main-layout';
 import Header from '@/components/layout/headers/projects/header';
 import Projects from '@/components/common/projects/projects';
-import { getProjects, createProject, getProjectStatuses, getUsers, getTeams } from '@/lib/db/project-helpers.server';
+import { getProjects, createProject, getProjectStatuses, getUsers } from '@/lib/db/project-helpers.server';
+import { getTeamsForUser } from '@/lib/db/team-helpers.server';
 import { auth } from '@/lib/auth';
 import { getDb } from '@/lib/db/project-helpers.server';
+import { redirect } from 'react-router';
 
 export function meta({ }: Route.MetaArgs) {
   return [
@@ -18,12 +20,18 @@ export async function loader({ context, request }: Route.LoaderArgs) {
     // Get current session with better-auth
     const { user } = await auth.api.getSession(request);
     
+    if (!user) {
+      return redirect('/login');
+    }
+    
     const projects = await getProjects();
     
     // Get additional data for modal selectors
     const statuses = await getProjectStatuses();
     const users = await getUsers();
-    const teams = await getTeams();
+    
+    // Get teams that the current user is a member of
+    const teams = await getTeamsForUser(user.id);
     
     return { 
       projects,

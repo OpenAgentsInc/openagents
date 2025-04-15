@@ -8,7 +8,8 @@ import {
   createIssue,
   updateIssue
 } from "../lib/db/issue-helpers.server";
-import { getUsers, getProjects, getTeams } from "../lib/db/project-helpers.server";
+import { getUsers, getProjects } from "../lib/db/project-helpers.server";
+import { getTeamsForUser } from "../lib/db/team-helpers.server";
 import AllIssues from "../components/common/issues/all-issues";
 import { useLoaderData, useSubmit } from "react-router";
 import { useIssuesStore } from "../store/issues-store";
@@ -34,16 +35,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
       workflowStates,
       labels,
       projects,
-      teams,
       users
     ] = await Promise.all([
       getAllIssues(),
       getWorkflowStates(),
       getIssueLabels(),
       getProjects(),
-      getTeams(),
       getUsers()
     ]);
+
+    // Get teams that the current user is a member of
+    const teams = await getTeamsForUser(user.id);
 
     // Return simple object instead of json
     return {
@@ -74,29 +76,41 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export async function action({ request }: ActionFunctionArgs) {
   try {
     const { session } = await auth.api.getSession(request);
-
+    
     if (!session) {
       return redirect("/login");
     }
-
+    
     const formData = await request.formData();
     const action = formData.get("_action") as string;
-
+    
     // Handle issue creation
     if (action === "create") {
       const title = formData.get("title") as string;
       const description = formData.get("description") as string;
       const teamId = formData.get("teamId") as string;
       const stateId = formData.get("stateId") as string;
-      const priority = parseInt(formData.get("priority") as string || "0");
-      const assigneeId = formData.get("assigneeId") as string || null;
-      const projectId = formData.get("projectId") as string || null;
-      const labelIds = formData.getAll("labelIds") as string[];
-
+      const priorityStr = formData.get("priority") as string;
+      const priority = parseInt(priorityStr, 10);
+      const assigneeId = formData.get("assigneeId") as string;
+      const projectId = formData.get("projectId") as string;
+      
+      // Convert label IDs from FormData (might be multiple entries)
+      let labelIds: string[] = [];
+      formData.getAll("labelIds").forEach(labelId => {
+        if (typeof labelId === 'string') {
+          labelIds.push(labelId);
+        }
+      });
+      
+      // Validate required fields
       if (!title || !teamId || !stateId) {
-        return { error: "Missing required fields" };
+        return {
+          success: false,
+          error: "Required fields are missing"
+        };
       }
-
+      
       const issueId = await createIssue({
         title,
         description,
@@ -108,94 +122,72 @@ export async function action({ request }: ActionFunctionArgs) {
         creatorId: session.userId,
         labelIds
       });
-
+      
       return { success: true, issueId };
     }
-
-    // Handle issue updates
+    
+    // Handle issue update
     if (action === "update") {
       const id = formData.get("id") as string;
       const title = formData.get("title") as string;
       const description = formData.get("description") as string;
+      const teamId = formData.get("teamId") as string;
       const stateId = formData.get("stateId") as string;
-      const priority = formData.get("priority") ? parseInt(formData.get("priority") as string) : undefined;
+      const priorityStr = formData.get("priority") as string;
+      const priority = parseInt(priorityStr, 10);
       const assigneeId = formData.get("assigneeId") as string;
       const projectId = formData.get("projectId") as string;
-      const labelIds = formData.getAll("labelIds") as string[];
-
-      if (!id) {
-        return { error: "Missing issue ID" };
+      
+      // Validate required fields
+      if (!id || !title || !teamId || !stateId) {
+        return {
+          success: false,
+          error: "Required fields are missing"
+        };
       }
-
+      
       await updateIssue(id, {
         title,
         description,
+        teamId,
         stateId,
         priority,
         assigneeId: assigneeId || null,
-        projectId: projectId || null,
-        labelIds
+        projectId: projectId || null
       });
-
+      
       return { success: true };
     }
-
-    return { error: "Invalid action" };
+    
+    return { success: false, error: "Unknown action" };
   } catch (error) {
-    console.error("Error in issues action:", error);
-    return { error: "Failed to process request" };
+    console.error("Error handling issue action:", error);
+    return {
+      success: false,
+      error: "Failed to process issue action"
+    };
   }
 }
 
 export default function IssuesRoute() {
-  const {
-    issues,
-    workflowStates,
-    error
-  } = useLoaderData<typeof loader>();
-  const { setIssues, isLoaded } = useIssuesStore();
+  const loaderData = useLoaderData();
+  const { setIssues } = useIssuesStore();
   const submit = useSubmit();
-
-  // Set issues in store when loaded from the server
-  useEffect(() => {
-    if (issues && issues.length > 0) {
-      setIssues(issues);
-    }
-  }, [issues, setIssues]);
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <h2 className="text-xl font-bold mb-4">Error loading issues</h2>
-        <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={() => window.location.reload()}>Retry</Button>
-      </div>
-    );
-  }
-
   const { openModal } = useCreateIssueStore();
 
-  if (!isLoaded && (!issues || issues.length === 0)) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <h2 className="text-xl font-bold mb-4">No issues found</h2>
-        <p className="text-muted-foreground mb-4">Create your first issue to get started</p>
-        <Button
-          onClick={openModal}
-        >
-          Create Issue
-        </Button>
-        <CreateIssueModalProvider />
-      </div>
-    );
-  }
+  // Update store with issues from loader data
+  useEffect(() => {
+    if (loaderData.issues) {
+      setIssues(loaderData.issues);
+    }
+  }, [loaderData.issues, setIssues]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="w-full min-h-screen flex flex-col">
       <HeaderIssues />
-      <main className="container mx-auto p-4">
+      <div className="flex-1 container mx-auto p-6">
         <AllIssues />
-      </main>
+      </div>
       <CreateIssueModalProvider />
     </div>
   );
