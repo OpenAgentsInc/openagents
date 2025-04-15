@@ -1,5 +1,3 @@
-
-
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -11,7 +9,7 @@ import {
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIssuesStore } from '@/store/issues-store';
-import { Project, projects } from '@/mock-data/projects';
+import { type Project, projects } from '@/mock-data/projects';
 import { Box, CheckIcon, FolderIcon } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 

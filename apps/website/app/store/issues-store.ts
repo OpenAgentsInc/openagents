@@ -1,9 +1,9 @@
-import { groupIssuesByStatus, Issue, issues as mockIssues } from '@/mock-data/issues';
-import { LabelInterface } from '@/mock-data/labels';
-import { Priority } from '@/mock-data/priorities';
+import { groupIssuesByStatus, type Issue, issues as mockIssues } from '@/mock-data/issues';
+import { type LabelInterface } from '@/mock-data/labels';
+import { type Priority } from '@/mock-data/priorities';
 import { type Project } from '@/mock-data/projects';
-import { Status } from '@/mock-data/status';
-import { User } from '@/mock-data/users';
+import { type Status } from '@/mock-data/status';
+import { type User } from '@/mock-data/users';
 import { create } from 'zustand';
 
 interface IssuesState {

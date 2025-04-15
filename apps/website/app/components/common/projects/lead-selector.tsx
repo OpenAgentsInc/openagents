@@ -1,5 +1,3 @@
-
-
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -10,7 +8,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { users, User } from '@/mock-data/users';
+import { type User, users } from '@/mock-data/users';
 import { CheckIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useId, useState } from 'react';

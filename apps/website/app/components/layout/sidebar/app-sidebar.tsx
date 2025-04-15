@@ -1,8 +1,6 @@
-
-
 import { RiGithubLine } from '@remixicon/react';
 import * as React from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import { HelpButton } from '@/components/layout/sidebar/help-button';
 import { NavInbox } from '@/components/layout/sidebar/nav-inbox';
@@ -15,12 +13,11 @@ import { OrgSwitcher } from '@/components/layout/sidebar/org-switcher';
 import { Button } from '@/components/ui/button';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar';
 import { X } from 'lucide-react';
-import { usePathname } from 'next/navigation';
 import { BackToApp } from '@/components/layout/sidebar/back-to-app';
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [open, setOpen] = React.useState(true);
-  const pathname = usePathname();
+  const { pathname } = useLocation();
   const isSettings = pathname.includes('/settings');
   return (
     <Sidebar collapsible="offcanvas" {...props}>

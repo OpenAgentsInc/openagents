@@ -1,6 +1,4 @@
-
-
-import Link from 'next/link';
+import { Link } from 'react-router';
 import { PlusIcon } from 'lucide-react';
 
 import {
@@ -22,7 +20,7 @@ export function NavTeamsSettings() {
         {joinedTeams.map((team) => (
           <SidebarMenuItem key={team.id}>
             <SidebarMenuButton asChild>
-              <Link href={`/settings/teams/${team.id}`}>
+              <Link to={`/settings/teams/${team.id}`}>
                 <div className="inline-flex size-6 bg-muted/50 items-center justify-center rounded shrink-0">
                   <div className="text-sm">{team.icon}</div>
                 </div>
@@ -34,7 +32,7 @@ export function NavTeamsSettings() {
         <SidebarMenuItem>
           <SidebarMenuButton asChild>
             <Button variant="ghost" className="w-full justify-start gap-2 px-2" asChild>
-              <Link href="/settings/teams/new">
+              <Link to="/settings/teams/new">
                 <PlusIcon className="size-4" />
                 <span>Join or create a team</span>
               </Link>
