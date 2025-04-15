@@ -11298,6 +11298,11 @@ kleur@^3.0.3:
   resolved "https://registry.yarnpkg.com/kleur/-/kleur-3.0.3.tgz#a79c9ecc86ee1ce3fa6206d1216c501f147fc07e"
   integrity sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==
 
+kysely-d1@^0.3.0:
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/kysely-d1/-/kysely-d1-0.3.0.tgz#6519a54eb4e6d0cecbcfd0e9e8e21e8c141d19f7"
+  integrity sha512-9wTbE6ooLiYtBa4wPg9e4fjfcmvRtgE/2j9pAjYrIq+iz+EsH/Hj9YbtxpEXA6JoRgfulVQ1EtGj6aycGGRpYw==
+
 kysely@^0.27.6:
   version "0.27.6"
   resolved "https://registry.yarnpkg.com/kysely/-/kysely-0.27.6.tgz#b2a908e160e510f9945586ca9de1616c187a2a8e"
