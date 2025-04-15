@@ -10,4 +10,5 @@ export default [
   route("projects", "routes/projects.tsx"),
   route("projects/:id", "routes/projects/$id.tsx"),
   route("teams", "routes/teams.tsx"),
+  route("members", "routes/members.tsx"),
 ] satisfies RouteConfig;
