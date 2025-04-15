@@ -6,5 +6,9 @@ export default [
   route("login", "routes/login.tsx"),
   route("signup", "routes/signup.tsx"),
   route("agent/:agentId", "routes/agent/$agentId.tsx"),
-  route("api/auth/*", "routes/api.auth.$.tsx")
+  route("api/auth/*", "routes/api.auth.$.tsx"),
+  route("projects", "routes/projects.tsx"),
+  route("projects/:id", "routes/projects/$id.tsx"),
+  route("teams", "routes/teams.tsx"),
+  route("members", "routes/members.tsx"),
 ] satisfies RouteConfig;
