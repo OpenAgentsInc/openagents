@@ -16,13 +16,13 @@ export function IssueLine({ issue, layoutId = false }: { issue: Issue; layoutId?
     >
       <div className="flex items-center gap-0.5">
         <PrioritySelector priority={issue.priority} issueId={issue.id} />
-        <span className="text-sm hidden sm:inline-block text-muted-foreground font-medium w-[66px] truncate shrink-0 mr-0.5">
+        <span className="text-sm hidden sm:inline-block text-muted-foreground font-medium w-[85px] truncate shrink-0 mr-0.5">
           {issue.identifier}
         </span>
         <StatusSelector status={issue.status} issueId={issue.id} />
       </div>
       <span className="min-w-0 flex items-center justify-start mr-1 ml-0.5">
-        <span className="text-xs sm:text-sm font-medium sm:font-semibold truncate">
+        <span className="text-xs sm:text-sm font-medium truncate">
           {issue.title}
         </span>
       </span>
