@@ -13,17 +13,5 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   // console.log("Auth API POST request:", request.url, "Method:", request.method);
-
-  // For debugging, let's try to log the request body if it's a sign-up request
-  if (request.url.includes("/sign-up/email")) {
-    try {
-      const clone = request.clone();
-      const body = await clone.json();
-      console.log("Sign-up request body:", body);
-    } catch (e) {
-      console.error("Could not parse request body:", e);
-    }
-  }
-
   return handleRequest(request);
 }
