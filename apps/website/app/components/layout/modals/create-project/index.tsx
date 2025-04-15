@@ -37,7 +37,7 @@ export function CreateProject() {
   const { isOpen, openModal, closeModal } = useCreateProjectStore();
   const submit = useSubmit();
   const { data: session, isLoading } = useSession();
-  console.log({ session, isLoading })
+  // console.log({ session, isLoading })
 
   const createDefaultData = (): ProjectData => {
     return {
