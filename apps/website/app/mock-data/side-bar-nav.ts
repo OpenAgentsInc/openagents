@@ -41,11 +41,11 @@ export const workspaceItems = [
     url: '/projects',
     icon: Box,
   },
-  {
-    name: 'Issues',
-    url: '/issues',
-    icon: ListTodo,
-  },
+  // {
+  //   name: 'Issues',
+  //   url: '/issues',
+  //   icon: ListTodo,
+  // },
   {
     name: 'Members',
     url: '/members',
