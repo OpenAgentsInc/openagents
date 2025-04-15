@@ -27,6 +27,20 @@ Created a new file `issue-helpers.server.ts` that provides the following functio
 - Fixed `/app/components/common/issues/issue-line.tsx` and `/app/components/common/issues/issue-grid.tsx` to handle the new data structure
 - Added an "Issues" link to the workspace navigation
 
+### React Router Updates
+
+- Used `react-router` instead of `react-router-dom` for imports
+- Removed use of `json` function from Remix
+- Modified loading functions to directly return objects
+- Updated error handling to fit React Router v7 patterns
+
+### Fix for Create New Issue Modal
+
+- Updated the `create-new-issue/index.tsx` component:
+  - Changed import for Issue type from mock-data to store
+  - Replaced `getAllIssues()` function usage with direct access to store's `issues` array
+  - Added a custom `generateRank()` function to replace dependency on mock data
+
 ### Data Flow
 
 1. `/app/routes/issues.tsx` loads data from the database using `issue-helpers.server.ts`

@@ -7,10 +7,9 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { RiEditLine } from '@remixicon/react';
 import { useState, useEffect, useCallback } from 'react';
-import { type Issue } from '@/mock-data/issues';
 import { priorities } from '@/mock-data/priorities';
 import { status } from '@/mock-data/status';
-import { useIssuesStore } from '@/store/issues-store';
+import { useIssuesStore, type Issue } from '@/store/issues-store';
 import { useCreateIssueStore } from '@/store/create-issue-store';
 import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
@@ -19,16 +18,24 @@ import { PrioritySelector } from './priority-selector';
 import { AssigneeSelector } from './assignee-selector';
 import { ProjectSelector } from './project-selector';
 import { LabelSelector } from './label-selector';
-import { ranks } from '@/mock-data/issues';
 import { DialogTitle } from '@radix-ui/react-dialog';
 
 export function CreateNewIssue() {
   const [createMore, setCreateMore] = useState<boolean>(false);
   const { isOpen, defaultStatus, openModal, closeModal } = useCreateIssueStore();
-  const { addIssue, getAllIssues } = useIssuesStore();
+  const { addIssue, issues } = useIssuesStore();
+
+  // Generate new ranks since we removed the import
+  const generateRank = useCallback(() => {
+    // Simple implementation that generates a random rank string
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    return 'a' + 
+      chars.charAt(Math.floor(Math.random() * chars.length)) + 
+      Math.floor(Math.random() * 10000).toString();
+  }, []);
 
   const generateUniqueIdentifier = useCallback(() => {
-    const identifiers = getAllIssues().map((issue) => issue.identifier);
+    const identifiers = issues.map((issue) => issue.identifier);
     let identifier = Math.floor(Math.random() * 999)
       .toString()
       .padStart(3, '0');
@@ -38,7 +45,7 @@ export function CreateNewIssue() {
         .padStart(3, '0');
     }
     return identifier;
-  }, [getAllIssues]);
+  }, [issues]);
 
   const createDefaultData = useCallback(() => {
     const identifier = generateUniqueIdentifier();
@@ -55,9 +62,9 @@ export function CreateNewIssue() {
       cycleId: '',
       project: undefined,
       subissues: [],
-      rank: ranks[ranks.length - 1],
+      rank: generateRank(),
     };
-  }, [defaultStatus, generateUniqueIdentifier]);
+  }, [defaultStatus, generateUniqueIdentifier, generateRank]);
 
   const [addIssueForm, setAddIssueForm] = useState<Issue>(createDefaultData());
 

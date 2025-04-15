@@ -14,7 +14,7 @@ import { useLoaderData, useSubmit } from "react-router";
 import { useIssuesStore } from "../store/issues-store";
 import { useEffect } from "react";
 import { Button } from "../components/ui/button";
-import HeaderIssues from "../components/layout/headers/issues/header";
+import { HeaderIssues } from "../components/layout/headers/issues/header";
 
 // Load issues and all related data
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -43,6 +43,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       getUsers()
     ]);
 
+    // Return simple object instead of json
     return {
       issues,
       workflowStates,
@@ -91,7 +92,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const labelIds = formData.getAll("labelIds") as string[];
 
       if (!title || !teamId || !stateId) {
-        return { error: "Missing required fields", status: 400 };
+        return { error: "Missing required fields" };
       }
 
       const issueId = await createIssue({
@@ -121,7 +122,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const labelIds = formData.getAll("labelIds") as string[];
 
       if (!id) {
-        return { error: "Missing issue ID", status: 400 };
+        return { error: "Missing issue ID" };
       }
 
       await updateIssue(id, {
@@ -137,10 +138,10 @@ export async function action({ request }: ActionFunctionArgs) {
       return { success: true };
     }
 
-    return { error: "Invalid action", status: 400 };
+    return { error: "Invalid action" };
   } catch (error) {
     console.error("Error in issues action:", error);
-    return { error: "Failed to process request", status: 500 };
+    return { error: "Failed to process request" };
   }
 }
 
