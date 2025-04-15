@@ -4,7 +4,7 @@ import { status } from '@/mock-data/status';
 import { useIssuesStore } from '@/store/issues-store';
 import { useSearchStore } from '@/store/search-store';
 import { useViewStore } from '@/store/view-store';
-import { FC } from 'react';
+import { type FC } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { GroupIssues } from './group-issues';
