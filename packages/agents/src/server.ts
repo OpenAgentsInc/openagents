@@ -153,7 +153,7 @@ export class Coder extends Agent<Env, CoderState> {
       const safePayload = payload ? JSON.parse(JSON.stringify(payload)) : {};
       if (safePayload.githubToken) safePayload.githubToken = "[REDACTED]";
 
-      console.log(`[continueInfer] Cycle start. Active: ${this.state.isContinuousRunActive}. Payload: ${JSON.stringify(safePayload)}`);
+      console.log(`[continueInfer] Cycle start. Payload: ${JSON.stringify(safePayload)}`);
       if (!this.state.isContinuousRunActive) {
         console.log(`[continueInfer] Run inactive. Stopping.`);
         return;
@@ -271,8 +271,8 @@ export class Coder extends Agent<Env, CoderState> {
     // Second priority: List key directories that haven't been explored yet
     const importantDirectories = ['src', 'packages', 'lib', 'docs', 'app'];
     for (const dir of importantDirectories) {
-      if (!codebaseStructure[dir] && !codebaseStructure[`/ ${ dir } `]) {
-        const path = dir.startsWith('/') ? dir : `/ ${ dir } `;
+      if (!codebaseStructure[dir] && !codebaseStructure[`/${dir}`]) {
+        const path = dir.startsWith('/') ? dir : `/${dir}`;
         console.log(`[planNextExplorationStep] Planning: List important directory '${path}'`);
         return {
           type: 'listFiles',
@@ -318,17 +318,19 @@ export class Coder extends Agent<Env, CoderState> {
 
       for (const subdir of importantSubdirs) {
         const subdirPath = dirPath.endsWith('/')
-          ? `${ dirPath }${ subdir } `
-          : `${ dirPath }/${subdir}`;
+          ? `${dirPath}${subdir}`
+          : `${dirPath}/${subdir}`;
 
 if (!codebaseStructure[subdirPath]) {
   console.log(`[planNextExplorationStep] Planning: List subdirectory '${subdirPath}'`);
+  // Make sure paths don't have extra spaces
+  const cleanPath = subdirPath.replace(/\s+/g, '');
   return {
     type: 'listFiles',
-    path: subdirPath,
-    description: `List '${subdirPath}' directory`,
+    path: cleanPath,
+    description: `List '${cleanPath}' directory`,
     payload: {
-      path: subdirPath,
+      path: cleanPath,
       owner: owner, // Use local variable from storage/parameters
       repo: repo, // Use local variable from storage/parameters
       branch: branch || 'main'
@@ -507,8 +509,6 @@ try {
     const effectiveRepo = repo || storedRepo || this.state.currentRepoName;
     const effectiveBranch = branch || storedBranch || this.state.currentBranch || 'main';
 
-    console.log(`[scheduledListFiles] Using effective context - Owner: ${effectiveOwner}, Repo: ${effectiveRepo}, Branch: ${effectiveBranch}`);
-
     if (!effectiveOwner || !effectiveRepo) {
       console.error("[scheduledListFiles] Missing owner or repo in payload, storage, and state.");
       await this.addAgentObservation("Cannot list files: Repository owner/name not available. Please set repository context first.");
@@ -600,8 +600,6 @@ try {
     const effectiveOwner = owner || storedOwner || this.state.currentRepoOwner;
     const effectiveRepo = repo || storedRepo || this.state.currentRepoName;
     const effectiveBranch = branch || storedBranch || this.state.currentBranch || 'main';
-
-    console.log(`[scheduledSummarizeFile] Using effective context - Owner: ${effectiveOwner}, Repo: ${effectiveRepo}, Branch: ${effectiveBranch}`);
 
     if (!effectiveOwner || !effectiveRepo) {
       console.error("[scheduledSummarizeFile] Missing owner or repo in payload, storage, and state.");
