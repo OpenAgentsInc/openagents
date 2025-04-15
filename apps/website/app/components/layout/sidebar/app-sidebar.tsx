@@ -1,4 +1,4 @@
-'use client';
+
 
 import { RiGithubLine } from '@remixicon/react';
 import * as React from 'react';

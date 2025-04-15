@@ -1,4 +1,4 @@
-'use client';
+
 
 import * as React from 'react';
 import { ChevronsUpDown } from 'lucide-react';

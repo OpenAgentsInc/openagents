@@ -1,4 +1,4 @@
-'use client';
+
 
 import * as React from 'react';
 import { ExternalLink, HelpCircle, Keyboard, Search } from 'lucide-react';

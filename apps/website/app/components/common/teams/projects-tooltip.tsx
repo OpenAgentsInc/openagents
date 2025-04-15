@@ -1,4 +1,4 @@
-'use client';
+
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { type Project } from '@/mock-data/projects';

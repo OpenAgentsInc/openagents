@@ -1,4 +1,4 @@
-'use client';
+
 
 import { status } from '@/mock-data/status';
 import { useIssuesStore } from '@/store/issues-store';
@@ -13,46 +13,46 @@ import { CustomDragLayer } from './issue-grid';
 import { cn } from '@/lib/utils';
 
 export default function AllIssues() {
-   const { isSearchOpen, searchQuery } = useSearchStore();
-   const { viewType } = useViewStore();
+  const { isSearchOpen, searchQuery } = useSearchStore();
+  const { viewType } = useViewStore();
 
-   const isSearching = isSearchOpen && searchQuery.trim() !== '';
-   const isViewTypeGrid = viewType === 'grid';
+  const isSearching = isSearchOpen && searchQuery.trim() !== '';
+  const isViewTypeGrid = viewType === 'grid';
 
-   return (
-      <div className={cn('w-full h-full', isViewTypeGrid && 'overflow-x-auto')}>
-         {isSearching ? (
-            <SearchIssuesView />
-         ) : (
-            <GroupIssuesListView isViewTypeGrid={isViewTypeGrid} />
-         )}
-      </div>
-   );
+  return (
+    <div className={cn('w-full h-full', isViewTypeGrid && 'overflow-x-auto')}>
+      {isSearching ? (
+        <SearchIssuesView />
+      ) : (
+        <GroupIssuesListView isViewTypeGrid={isViewTypeGrid} />
+      )}
+    </div>
+  );
 }
 
 const SearchIssuesView = () => (
-   <div className="px-6 mb-6">
-      <SearchIssues />
-   </div>
+  <div className="px-6 mb-6">
+    <SearchIssues />
+  </div>
 );
 
 const GroupIssuesListView: FC<{
-   isViewTypeGrid: boolean;
+  isViewTypeGrid: boolean;
 }> = ({ isViewTypeGrid = false }) => {
-   const { issuesByStatus } = useIssuesStore();
-   return (
-      <DndProvider backend={HTML5Backend}>
-         <CustomDragLayer />
-         <div className={cn(isViewTypeGrid && 'flex h-full gap-3 px-2 py-2 min-w-max')}>
-            {status.map((statusItem) => (
-               <GroupIssues
-                  key={statusItem.id}
-                  status={statusItem}
-                  issues={issuesByStatus[statusItem.id] || []}
-                  count={issuesByStatus[statusItem.id]?.length || 0}
-               />
-            ))}
-         </div>
-      </DndProvider>
-   );
+  const { issuesByStatus } = useIssuesStore();
+  return (
+    <DndProvider backend={HTML5Backend}>
+      <CustomDragLayer />
+      <div className={cn(isViewTypeGrid && 'flex h-full gap-3 px-2 py-2 min-w-max')}>
+        {status.map((statusItem) => (
+          <GroupIssues
+            key={statusItem.id}
+            status={statusItem}
+            issues={issuesByStatus[statusItem.id] || []}
+            count={issuesByStatus[statusItem.id]?.length || 0}
+          />
+        ))}
+      </div>
+    </DndProvider>
+  );
 };

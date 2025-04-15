@@ -1,4 +1,4 @@
-'use client';
+
 
 import { Layers, LayoutList, MoreHorizontal } from 'lucide-react';
 
