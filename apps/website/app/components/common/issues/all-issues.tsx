@@ -9,7 +9,7 @@ import { GroupIssues } from './group-issues';
 import { SearchIssues } from './search-issues';
 import { CustomDragLayer } from './issue-grid';
 import { cn } from '@/lib/utils';
-import { useLoaderData } from 'react-router-dom';
+import { useLoaderData } from 'react-router';
 
 export interface AppLoaderData {
   issues: any[];
