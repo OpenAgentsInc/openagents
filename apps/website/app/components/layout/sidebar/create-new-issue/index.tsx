@@ -16,7 +16,7 @@ import { AssigneeSelector } from './assignee-selector';
 import { ProjectSelector } from './project-selector';
 import { LabelSelector } from './label-selector';
 import { DialogTitle } from '@radix-ui/react-dialog';
-import { useSubmit, useRevalidator } from 'react-router'; 
+import { useSubmit, useRevalidator } from 'react-router';
 import { useSession } from '@/lib/auth-client';
 import { TeamSelector } from './team-selector';
 
@@ -67,13 +67,13 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
   const submit = useSubmit();
   const revalidator = useRevalidator();
   const { data: session, isLoading } = useSession();
-  
+
   // Generate new ranks for UI only
   const generateRank = useCallback(() => {
     // Simple implementation that generates a random rank string
     const chars = 'abcdefghijklmnopqrstuvwxyz';
-    return 'a' + 
-      chars.charAt(Math.floor(Math.random() * chars.length)) + 
+    return 'a' +
+      chars.charAt(Math.floor(Math.random() * chars.length)) +
       Math.floor(Math.random() * 10000).toString();
   }, []);
 
@@ -112,7 +112,7 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
       }));
     }
   }, [defaultStatus, isOpen]);
-  
+
   // When team changes, reset the state selection
   useEffect(() => {
     if (issueForm.teamId) {
@@ -123,14 +123,14 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
           (state: any) => state.teamId === issueForm.teamId || state.teamId === null
         );
       }
-      
+
       // Set a default state
       if (teamWorkflowStates.length > 0) {
         // Find a backlog or todo state, or use the first state
         const defaultState = teamWorkflowStates.find(
           (state: any) => state.type === 'todo' || state.type === 'backlog' || state.type === 'unstarted'
         ) || teamWorkflowStates[0];
-        
+
         setIssueForm(prev => ({
           ...prev,
           stateId: defaultState.id
@@ -138,7 +138,7 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
       }
     }
   }, [issueForm.teamId, loaderData]);
-  
+
   // Store a reference to the form data for other components to access
   useEffect(() => {
     (window as any).__createIssueFormContext = issueForm;
@@ -177,38 +177,38 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
       formData.append('teamId', issueForm.teamId);
       formData.append('stateId', issueForm.stateId);
       formData.append('priority', issueForm.priority.toString());
-      
+
       if (issueForm.assigneeId) {
         formData.append('assigneeId', issueForm.assigneeId);
       }
-      
+
       if (issueForm.projectId) {
         formData.append('projectId', issueForm.projectId);
       }
-      
+
       issueForm.labelIds.forEach(labelId => {
         formData.append('labelIds', labelId);
       });
-  
+
       // Submit the form
       await submit(formData, {
         method: 'post',
         navigate: false,
         action: '/issues'
       });
-      
+
       // After successful submission, revalidate the data
       revalidator.revalidate();
 
       // We'll simply let the revalidator do its job to refresh the data
       // This is the most reliable approach and avoids state management issues
-  
-      toast.success('Issue created! Refreshing data...');
-  
+
+      toast.success('Issue created');
+
       if (!createMore) {
         closeModal();
       }
-  
+
       setIssueForm(createDefaultFormData());
     } catch (error) {
       console.error('Error creating issue:', error);
@@ -255,30 +255,30 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
               onChange={(newTeamId) => setIssueForm({ ...issueForm, teamId: newTeamId })}
               loaderData={loaderData}
             />
-            
+
             <StatusSelector
               stateId={issueForm.stateId}
               onChange={(newStateId) => setIssueForm({ ...issueForm, stateId: newStateId })}
               loaderData={loaderData}
             />
-                        
+
             <PrioritySelector
               priority={issueForm.priority}
               onChange={(newPriority) => setIssueForm({ ...issueForm, priority: newPriority })}
             />
-            
+
             <AssigneeSelector
               assigneeId={issueForm.assigneeId}
               onChange={(newAssigneeId) => setIssueForm({ ...issueForm, assigneeId: newAssigneeId })}
               loaderData={loaderData}
             />
-                        
+
             <ProjectSelector
               projectId={issueForm.projectId}
               onChange={(newProjectId) => setIssueForm({ ...issueForm, projectId: newProjectId })}
               loaderData={loaderData}
             />
-            
+
             <LabelSelector
               selectedLabelIds={issueForm.labelIds}
               onChange={(newLabelIds) => setIssueForm({ ...issueForm, labelIds: newLabelIds })}
@@ -298,7 +298,7 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
               <Label htmlFor="create-more">Create more</Label>
             </div>
           </div>
-          <Button 
+          <Button
             size="sm"
             onClick={createIssue}
             disabled={isLoading || !session?.user || isSubmitting}

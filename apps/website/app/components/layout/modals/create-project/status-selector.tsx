@@ -40,19 +40,19 @@ interface LoaderData {
 
 export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
   const loaderData = useLoaderData() as LoaderData;
-  
+
   // Debug log to see what's being loaded
-  console.log('[DEBUG] Project StatusSelector - loaderData:', JSON.stringify(loaderData || {}, null, 2).substring(0, 300) + '...');
-  
+  // console.log('[DEBUG] Project StatusSelector - loaderData:', JSON.stringify(loaderData || {}, null, 2).substring(0, 300) + '...');
+
   // Get status options from loaderData
   let serverStatuses = loaderData?.options?.statuses || [];
-  
+
   // Debug log for statuses
-  console.log('[DEBUG] Project StatusSelector - Server statuses:', serverStatuses.length, JSON.stringify(serverStatuses || []));
-  
+  // console.log('[DEBUG] Project StatusSelector - Server statuses:', serverStatuses.length, JSON.stringify(serverStatuses || []));
+
   // ALWAYS use default statuses - server statuses are too limited
   const statuses = defaultStatuses;
-    
+
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | null>(null);
 
   // Update selected status when statusId or statuses change
@@ -82,8 +82,8 @@ export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
         <Button size="sm" variant="outline" className="gap-1.5">
           {selectedStatus ? (
             <>
-              <div 
-                className="size-3 rounded-full" 
+              <div
+                className="size-3 rounded-full"
                 style={{ backgroundColor: selectedStatus.color }}
               />
               <span>{selectedStatus.name}</span>
@@ -98,8 +98,8 @@ export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
           {statuses.map((status) => (
             <DropdownMenuRadioItem key={status.id} value={status.id}>
               <div className="flex items-center gap-2">
-                <div 
-                  className="size-3 rounded-full" 
+                <div
+                  className="size-3 rounded-full"
                   style={{ backgroundColor: status.color }}
                 />
                 <span>{status.name}</span>
