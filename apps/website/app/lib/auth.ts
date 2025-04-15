@@ -1,12 +1,11 @@
 import { betterAuth } from "better-auth";
 import { genericOAuth } from "better-auth/plugins";
-import { LibsqlDialect } from "@libsql/kysely-libsql";
 import { env } from "cloudflare:workers"
+import { D1Dialect } from 'kysely-d1';
 
-const dialect = new LibsqlDialect({
-  url: env.TURSO_DATABASE_URL || "",
-  authToken: env.TURSO_AUTH_TOKEN || "",
-})
+const dialect = new D1Dialect({
+  database: env.DB,
+});
 
 // Export the initialized auth instance with a more specific type
 // This avoids the portability issue while preventing type conflicts
