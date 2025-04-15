@@ -6,13 +6,12 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { ToolExecutionOptions } from "ai";
 
-import { Coder } from "./server";
+import { Coder, agentContext } from "./server";
 import {
   unstable_getSchedulePrompt,
   unstable_scheduleSchema,
 } from "agents/schedule";
 import { GitHubContentSchema } from "../../../apps/mcp-github-server/src/common/types";
-import { agentContext } from "./server";
 
 /**
  * Weather information tool that requires human confirmation
@@ -45,8 +44,20 @@ const getLocalTime = tool({
 
 const scheduleTask = tool({
   description: "A tool to schedule a task to be executed at a later time",
-  parameters: unstable_scheduleSchema,
-  execute: async ({ when, description }, { agent }) => {
+  parameters: z.object({
+    when: unstable_scheduleSchema,
+    description: z.string(),
+    callbackMethodName: z.enum(['executeTask', 'continueInfer', 'scheduledListFiles', 'scheduledSummarizeFile'])
+      .optional()
+      .default('executeTask')
+      .describe('The specific agent method to call when the schedule fires. Defaults to executeTask.'),
+    payload: z.record(z.any())
+      .optional()
+      .describe('Optional structured data (JSON object) to pass to the callback method.')
+  }),
+  execute: async ({ when, description, callbackMethodName = 'executeTask', payload }) => {
+    const agent = agentContext.getStore();
+
     // Get agent from context parameter
     if (!agent || !(agent instanceof Coder)) {
       throw new Error("No agent found or agent is not a Coder instance");
@@ -60,7 +71,7 @@ const scheduleTask = tool({
       return "Not a valid schedule input";
     }
 
-    const input =
+    const scheduleInput =
       when.type === "scheduled"
         ? when.date // scheduled
         : when.type === "delayed"
@@ -69,19 +80,32 @@ const scheduleTask = tool({
             ? when.cron // cron
             : throwError("not a valid schedule input");
     try {
-      agent.schedule(input!, "executeTask", description);
+      // Use payload or create a default one with the description
+      const scheduleResult = await agent.schedule(
+        scheduleInput!, 
+        callbackMethodName, 
+        payload || { description }
+      );
+      
+      // Get the schedule ID
+      const scheduleId = scheduleResult.id;
+      
+      // Add to agent tasks
+      agent.addAgentTask(description, scheduleId, payload, callbackMethodName);
+      
+      return `Task scheduled with ID: ${scheduleId}. Method: ${callbackMethodName}. Details: ${description}`;
     } catch (error) {
       console.error("error scheduling task", error);
       return `Error scheduling task: ${error}`;
     }
-    return `Task scheduled for type "${when.type}" : ${input}`;
   },
 });
 
-const listScheduledTasks = tool({
-  description: "A tool to list all currently scheduled tasks",
+const listSystemSchedules = tool({
+  description: "A tool to list all currently scheduled tasks at the system level",
   parameters: z.object({}),
-  execute: async (_, { agent }) => {
+  execute: async (_) => {
+    const agent = agentContext.getStore();
     // Get agent from context parameter
     if (!agent || !(agent instanceof Coder)) {
       throw new Error("No agent found or agent is not a Coder instance");
@@ -100,20 +124,61 @@ const listScheduledTasks = tool({
       const formattedTasks = tasks.map(task => {
         let scheduledTime = "Unknown";
         if (task.type === "scheduled") {
-          scheduledTime = new Date(task.time).toLocaleString();
+          scheduledTime = new Date(task.time * 1000).toLocaleString();
         } else if (task.type === "delayed") {
           scheduledTime = `${task.delayInSeconds} seconds from creation`;
         } else if (task.type === "cron") {
-          scheduledTime = `CRON: ${task.cron}`;
+          scheduledTime = `CRON: ${task.cron}, next run: ${new Date(task.time * 1000).toLocaleString()}`;
         }
 
-        return `Task info: ${JSON.stringify(task)}`;
+        return `ID: ${task.id}\nCallback: ${task.callback}\nType: ${task.type}\nScheduled Time: ${scheduledTime}\nPayload: ${JSON.stringify(task.payload)}`;
       }).join("\n\n");
 
-      return `Scheduled Tasks:\n\n${formattedTasks}`;
+      return `System Scheduled Tasks:\n\n${formattedTasks}`;
     } catch (error) {
       console.error("Error listing scheduled tasks:", error);
       return `Error listing scheduled tasks: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  },
+});
+
+const listAgentTasks = tool({
+  description: "Lists the tasks currently tracked in the agent's internal state",
+  parameters: z.object({
+    status: z.enum(['pending', 'in-progress', 'completed', 'failed', 'cancelled', 'all'])
+      .optional()
+      .default('pending')
+      .describe('Filter tasks by status.')
+  }),
+  execute: async ({ status = 'pending' }) => {
+    const agent = agentContext.getStore();
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
+    }
+
+    try {
+      // Get the agent tasks from state
+      const tasks = agent.state.tasks || [];
+      
+      // Filter tasks based on status
+      const filteredTasks = status === 'all' 
+        ? tasks 
+        : tasks.filter(task => task.status === status);
+
+      if (filteredTasks.length === 0) {
+        return `No ${status === 'all' ? '' : status + ' '}tasks found.`;
+      }
+
+      // Format the tasks for display
+      const formattedTasks = filteredTasks.map(task => {
+        return `ID: ${task.id}\nDescription: ${task.description}\nStatus: ${task.status}\nSchedule ID: ${task.scheduleId || 'none'}\nCallback Method: ${task.callbackMethodName || 'none'}\nCreated: ${task.created.toLocaleString()}\n${task.notes && task.notes.length > 0 ? `Notes:\n${task.notes.map(note => `- ${note}`).join('\n')}` : ''}`;
+      }).join("\n\n");
+
+      return `Agent Tasks (${status === 'all' ? 'all' : status}):\n\n${formattedTasks}`;
+    } catch (error) {
+      console.error("Error listing agent tasks:", error);
+      return `Error listing agent tasks: ${error instanceof Error ? error.message : String(error)}`;
     }
   },
 });
@@ -127,7 +192,7 @@ const listScheduledTasks = tool({
 
 //   if (options.token) {
 //     headers['Authorization'] = `Bearer ${options.token}`;
-//     console.log("Using GitHub token:", options.token.slice(0, 15));
+//     console.log("GitHub token is available");
 //   } else {
 //     console.log("No GitHub token found");
 //   }
@@ -166,41 +231,75 @@ const listScheduledTasks = tool({
 //   return data;
 // }
 
-const deleteScheduledTask = tool({
-  description: "A tool to delete a previously scheduled task",
+const deleteSystemSchedule = tool({
+  description: "A tool to delete a previously scheduled task at the system level",
   parameters: z.object({
-    taskId: z.string().describe("The ID of the task to delete")
+    scheduleId: z.string().describe("The ID of the schedule to delete")
   }),
-  execute: async ({ taskId }, { agent }) => {
+  execute: async ({ scheduleId }) => {
+    const agent = agentContext.getStore();
     // Get agent from context parameter
     if (!agent || !(agent instanceof Coder)) {
       throw new Error("No agent found or agent is not a Coder instance");
     }
 
     try {
-      // First check if the task exists
-      const tasks = agent.getSchedules({ id: taskId });
+      // First check if the schedule exists
+      const schedules = agent.getSchedules({ id: scheduleId });
 
-      if (!tasks || tasks.length === 0) {
-        return `No task found with ID: ${taskId}`;
+      if (!schedules || schedules.length === 0) {
+        return `No schedule found with ID: ${scheduleId}`;
       }
 
-      console.log(`Found task to delete:`, tasks[0]);
+      console.log(`Found schedule to delete:`, schedules[0]);
 
-      // Delete the task
-      const deleted = await agent.cancelSchedule(taskId);
+      // Delete the schedule
+      const deleted = await agent.cancelSchedule(scheduleId);
 
       if (deleted) {
-        return `Successfully deleted task with ID: ${taskId}`;
+        // Also update any related task in agent's state
+        agent.cancelTaskByScheduleId(scheduleId);
+        
+        return `Successfully deleted schedule with ID: ${scheduleId}`;
       } else {
-        return `Failed to delete task with ID: ${taskId}`;
+        return `Failed to delete schedule with ID: ${scheduleId}`;
       }
     } catch (error) {
-      console.error("Error deleting scheduled task:", error);
-      return `Error deleting scheduled task: ${error instanceof Error ? error.message : String(error)}`;
+      console.error("Error deleting system schedule:", error);
+      return `Error deleting system schedule: ${error instanceof Error ? error.message : String(error)}`;
     }
   },
 });
+/**
+ * Tool to set the repository context for GitHub operations
+ */
+const setRepositoryContext = tool({
+  description: "Set the repository context (owner, name, branch) for GitHub operations",
+  parameters: z.object({
+    owner: z.string().describe("The GitHub username or organization name that owns the repository"),
+    repo: z.string().describe("The name of the repository"),
+    branch: z.string().optional().default("main").describe("The branch to use, defaults to 'main'")
+  }),
+  execute: async ({ owner, repo, branch = 'main' }) => {
+    console.log(`[set_repository_context] Setting context to ${owner}/${repo}:${branch}`);
+    const agent = agentContext.getStore();
+
+    // Get agent from context parameter
+    if (!agent || !(agent instanceof Coder)) {
+      throw new Error("No agent found or agent is not a Coder instance");
+    }
+
+    try {
+      // Call the method on the agent instance
+      const result = await agent.setRepositoryContext(owner, repo, branch);
+      return `Repository context set: ${owner}/${repo} (${branch} branch)`;
+    } catch (error) {
+      console.error("[set_repository_context] Error setting repository context:", error);
+      return `Error setting repository context: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+});
+
 /**
  * Export all available tools
  * These will be provided to the AI model to describe available capabilities
@@ -209,8 +308,11 @@ export const tools = {
   getWeatherInformation,
   getLocalTime,
   scheduleTask,
-  listScheduledTasks,
-  deleteScheduledTask,
+  listSystemSchedules,
+  listAgentTasks,
+  deleteSystemSchedule,
+  cancelSchedule: deleteSystemSchedule,
+  setRepositoryContext,
   // fetchGitHubFileContent
 };
 
@@ -220,19 +322,19 @@ export const tools = {
  * Each function here corresponds to a tool above that doesn't have an execute function
  */
 export const executions = {
-  getWeatherInformation: async (args: unknown, context: ToolExecutionOptions) => {
+  getWeatherInformation: async (args: unknown) => {
     const { city } = args as { city: string };
     console.log(`Getting weather information for ${city}`);
 
-    // Log if we have an agent and if it's a Coder
-    if (context.agent) {
-      console.log("Has agent in execution context");
-      if (context.agent instanceof Coder) {
-        console.log("Agent is a Coder instance");
-        console.log(`GitHub token available: ${!!context.agent.githubToken}`);
-      }
+    // Use agentContext to get the agent instance
+    const agent = agentContext.getStore();
+
+    if (agent && agent instanceof Coder) {
+      console.log("Agent found via agentContext and is a Coder instance");
+      // Access state via agent.state if needed
+      console.log(`GitHub token status: ${agent.state.githubToken ? "available" : "unavailable"}`);
     } else {
-      console.log("No agent in execution context");
+      console.log("No agent found via agentContext or agent is not a Coder instance");
     }
 
     return `The weather in ${city} is sunny`;

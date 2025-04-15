@@ -13,8 +13,6 @@
     "types": [
       "node",
       "electron",
-      "react-native",
-      "@types/react-native",
       "@types/react"
     ],
     "experimentalDecorators": true,
