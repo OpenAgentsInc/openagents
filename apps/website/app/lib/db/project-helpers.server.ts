@@ -407,15 +407,46 @@ export async function createProject(projectData: any) {
   return id;
 }
 
+// Default project statuses
+const DEFAULT_PROJECT_STATUSES = [
+  { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },
+  { id: 'default-planned', name: 'Planned', color: '#3498DB', type: 'planned' },
+  { id: 'default-started', name: 'In Progress', color: '#F1C40F', type: 'started' },
+  { id: 'default-completed', name: 'Completed', color: '#2ECC71', type: 'completed' },
+  { id: 'default-canceled', name: 'Canceled', color: '#E74C3C', type: 'canceled' }
+];
+
 // Server-side only API for fetching dropdown options
 export async function getProjectStatuses() {
-  const db = getDb();
-  return db
-    .selectFrom('project_status')
-    .select(['id', 'name', 'color', 'type'])
-    .where('archivedAt', 'is', null)
-    .orderBy('position')
-    .execute();
+  console.log('[DEBUG] getProjectStatuses called');
+  
+  try {
+    const db = getDb();
+    
+    // Get statuses from the database
+    const dbStatuses = await db
+      .selectFrom('project_status')
+      .select(['id', 'name', 'color', 'type'])
+      .where('archivedAt', 'is', null)
+      .orderBy('position')
+      .execute();
+    
+    console.log(`[DEBUG] Found ${dbStatuses.length} project statuses in database`);
+    
+    // Only include default statuses that don't have the same type as existing ones
+    const existingTypes = dbStatuses.map(status => status.type);
+    const missingDefaultStatuses = DEFAULT_PROJECT_STATUSES.filter(
+      status => !existingTypes.includes(status.type)
+    );
+    
+    console.log(`[DEBUG] Adding ${missingDefaultStatuses.length} default statuses`);
+    
+    // Return combined list with no duplicates
+    return [...dbStatuses, ...missingDefaultStatuses];
+  } catch (error) {
+    console.error('[DEBUG] Error getting project statuses:', error);
+    return DEFAULT_PROJECT_STATUSES;
+  }
 }
 
 export async function getUsers() {

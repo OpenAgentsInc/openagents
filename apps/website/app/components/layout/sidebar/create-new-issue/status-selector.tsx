@@ -81,6 +81,12 @@ export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }
       console.error('[DEBUG] StatusSelector - workflowStates is NOT an array:', workflowStates);
   }
   // --- END DEBUG LOG ---
+  
+  // FORCE USE DEFAULT STATES if we only have one or none
+  if (!workflowStates || workflowStates.length <= 1) {
+    console.log('[DEBUG] FORCING default workflow states');
+    workflowStates = defaultWorkflowStates;
+  }
 
   const [selectedState, setSelectedState] = useState<WorkflowState | null>(null);
 

@@ -764,10 +764,16 @@ export async function getWorkflowStates(teamId?: string) {
     .orderBy(['teamId', 'position'])
     .execute();
     
-  // If no states found, return default workflow states
-  if (states.length === 0) {
-    console.log(`[DEBUG] No workflow states found for teamId: ${teamId || 'none'}. Using defaults.`);
-    return DEFAULT_WORKFLOW_STATES;
+  // If no states or very few states found, return default workflow states
+  if (states.length < 3) {
+    console.log(`[DEBUG] Few or no workflow states found for teamId: ${teamId || 'none'}. Using defaults.`);
+    // For consistency, preserve any DB states but add missing defaults
+    const existingIds = states.map(s => s.id);
+    const mergedStates = [
+      ...states,
+      ...DEFAULT_WORKFLOW_STATES.filter(s => !existingIds.includes(s.id))
+    ];
+    return mergedStates;
   }
   
   console.log(`[DEBUG] Found ${states.length} workflow states for teamId: ${teamId || 'none'}`);

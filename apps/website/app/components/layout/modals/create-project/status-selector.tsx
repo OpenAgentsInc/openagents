@@ -40,10 +40,18 @@ interface LoaderData {
 
 export function StatusSelector({ statusId, onChange }: StatusSelectorProps) {
   const loaderData = useLoaderData() as LoaderData;
-  // Use server statuses or fall back to default statuses if none available
-  const statuses = (loaderData?.options?.statuses?.length > 0) 
-    ? loaderData.options.statuses 
-    : defaultStatuses;
+  
+  // Debug log to see what's being loaded
+  console.log('[DEBUG] Project StatusSelector - loaderData:', JSON.stringify(loaderData || {}, null, 2).substring(0, 300) + '...');
+  
+  // Get status options from loaderData
+  let serverStatuses = loaderData?.options?.statuses || [];
+  
+  // Debug log for statuses
+  console.log('[DEBUG] Project StatusSelector - Server statuses:', serverStatuses.length, JSON.stringify(serverStatuses || []));
+  
+  // ALWAYS use default statuses - server statuses are too limited
+  const statuses = defaultStatuses;
     
   const [selectedStatus, setSelectedStatus] = useState<ProjectStatus | null>(null);
 
