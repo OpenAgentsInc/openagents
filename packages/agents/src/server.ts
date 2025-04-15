@@ -244,10 +244,11 @@ export class Coder extends Agent<Env, CoderState> {
 
     // Get current state of exploration
     const codebaseStructure = this.state.codebase?.structure || {};
+    const allPaths = Object.keys(codebaseStructure);
     const filesExplored = Object.values(codebaseStructure).filter(file => file.type === 'file');
     const directoriesExplored = Object.values(codebaseStructure).filter(file => file.type === 'directory');
 
-    console.log(`[planNextExplorationStep] Files explored: ${ filesExplored.length }, Directories explored: ${ directoriesExplored.length } `);
+    console.log(`[planNextExplorationStep] Files explored: ${filesExplored.length}, Directories explored: ${directoriesExplored.length}`);
 
     // First priority: Check if root directory has been listed
     if (!codebaseStructure['/']) {
@@ -265,31 +266,77 @@ export class Coder extends Agent<Env, CoderState> {
       };
     }
 
-    // Second priority: List key directories that haven't been explored yet
-    const importantDirectories = ['src', 'packages', 'lib', 'docs', 'app'];
-    for (const dir of importantDirectories) {
-      if (!codebaseStructure[dir] && !codebaseStructure[`/${dir}`]) {
-        const path = dir.startsWith('/') ? dir : `/${dir}`;
-        console.log(`[planNextExplorationStep] Planning: List important directory '${path}'`);
+    // --- REVISED PLANNING LOGIC ---
+
+    // Prioritize listing important directories first if they haven't been attempted
+    const importantDirsToTryListing = ['/apps', '/packages', '/docs']; 
+    for (const importantPath of importantDirsToTryListing) {
+      if (!codebaseStructure[importantPath]) {
+        console.log(`[planNextExplorationStep] Planning: List important directory '${importantPath}' (not listed yet).`);
         return {
           type: 'listFiles',
-          path,
-          description: `List '${path}' directory`,
-          payload: {
-            path,
-            owner: owner, // Use local variable from storage/parameters
-            repo: repo, // Use local variable from storage/parameters
-            branch: branch || 'main'
+          path: importantPath,
+          description: `List important directory '${importantPath}'`,
+          payload: { 
+            path: importantPath, 
+            owner, 
+            repo, 
+            branch: branch || 'main' 
           }
         };
       }
     }
 
-    // Third priority: Find a file to summarize that hasn't been well-analyzed
+    // Find directories that HAS been listed but WHOSE subdirectories haven't been listed yet
+    const listedDirs = Object.values(codebaseStructure).filter(n => n.type === 'directory');
+    const dirsWithUnlistedSubdirs = [];
+
+    for (const dirNode of listedDirs) {
+      // Common subdirectories to check for
+      const potentialSubdirs = ['src', 'lib', 'components', 'routes', 'pages', 'app', 'core', 'agents', 'ui']; 
+      
+      for (const sub of potentialSubdirs) {
+        const subPath = dirNode.path === '/' ? `/${sub}` : `${dirNode.path}/${sub}`;
+        if (!codebaseStructure[subPath]) {
+          // If parent is known, and common subdir isn't, let's try listing the potential subdirectory path
+          console.log(`[planNextExplorationStep] Found potential unlisted subdir: ${subPath}`);
+          // Prioritize important ones
+          if (['src', 'packages', 'apps', 'lib', 'core', 'agents'].includes(sub)) {
+            dirsWithUnlistedSubdirs.push(subPath);
+          }
+        }
+      }
+    }
+
+    // If there are potential subdirectories to explore, try one
+    if (dirsWithUnlistedSubdirs.length > 0) {
+      const pathToList = dirsWithUnlistedSubdirs[0]; // Just pick the first one found
+      console.log(`[planNextExplorationStep] Planning: List potentially unlisted subdirectory '${pathToList}'.`);
+      return {
+        type: 'listFiles',
+        path: pathToList,
+        description: `List potentially unlisted subdirectory '${pathToList}'`,
+        payload: { 
+          path: pathToList, 
+          owner, 
+          repo, 
+          branch: branch || 'main' 
+        }
+      };
+    }
+
+    // If all known directories seem listed, find a file to summarize
     const fileToSummarize = Object.values(codebaseStructure)
       .find(file =>
         file.type === 'file' &&
-        (!file.description || file.description === `Accessed at ${ new Date().toISOString() } `)
+        // Summarize if description is missing, or is the default 'Accessed at...' placeholder
+        (!file.description || file.description.startsWith('Accessed at')) &&
+        // Avoid trying to summarize certain un-summarizable files
+        !['.gitignore', 'LICENSE', 'yarn.lock', 'yarn-error.log', 'package-lock.json'].some(ignore => 
+          file.path.endsWith(ignore)
+        ) &&
+        !file.path.includes('.vscode/') && 
+        !file.path.includes('.cursor/')  // Avoid hidden config dirs
       );
 
     if (fileToSummarize) {
@@ -300,45 +347,17 @@ export class Coder extends Agent<Env, CoderState> {
         description: `Summarize file '${fileToSummarize.path}'`,
         payload: {
           path: fileToSummarize.path,
-          owner: owner, // Use local variable from storage/parameters
-          repo: repo, // Use local variable from storage/parameters
+          owner, 
+          repo, 
           branch: branch || 'main'
         }
       };
     }
 
-    // Fourth priority: Explore subdirectories of already listed directories
-    for (const dir of directoriesExplored) {
-      // Look for important subfolders like 'src', 'components', etc.
-      const dirPath = dir.path;
-      const importantSubdirs = ['components', 'utils', 'hooks', 'pages', 'api', 'lib', 'services'];
+    // --- END REVISED PLANNING LOGIC ---
 
-      for (const subdir of importantSubdirs) {
-        const subdirPath = dirPath.endsWith('/')
-          ? `${dirPath}${subdir}`
-          : `${dirPath}/${subdir}`;
-
-if (!codebaseStructure[subdirPath]) {
-  console.log(`[planNextExplorationStep] Planning: List subdirectory '${subdirPath}'`);
-  // Make sure paths don't have extra spaces
-  const cleanPath = subdirPath.replace(/\s+/g, '');
-  return {
-    type: 'listFiles',
-    path: cleanPath,
-    description: `List '${cleanPath}' directory`,
-    payload: {
-      path: cleanPath,
-      owner: owner, // Use local variable from storage/parameters
-      repo: repo, // Use local variable from storage/parameters
-      branch: branch || 'main'
-    }
-  };
-}
-      }
-    }
-
-console.log("[planNextExplorationStep] No specific next step found.");
-return null; // No specific action decided for now
+    console.log("[planNextExplorationStep] No specific next step found.");
+    return null; // No specific action decided for now
   }
 
   /**
