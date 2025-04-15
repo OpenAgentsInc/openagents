@@ -37,7 +37,7 @@ export function OrgSwitcher() {
                   LN
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">lndev-ui</span>
+                  <span className="truncate font-semibold">OpenAgents</span>
                 </div>
                 <ChevronsUpDown className="ml-auto" />
               </SidebarMenuButton>
