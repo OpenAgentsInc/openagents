@@ -1,5 +1,5 @@
-import TeamLine from './team-line';
 import { useLoaderData } from 'react-router';
+import TeamLine from './team-line';
 
 interface Team {
   id: string;
@@ -17,7 +17,7 @@ interface LoaderData {
   error?: string;
 }
 
-export default function Teams() {
+export function Teams() {
   const { teams, error } = useLoaderData() as LoaderData;
 
   if (error) {
@@ -54,3 +54,5 @@ export default function Teams() {
     </div>
   );
 }
+
+export default Teams;

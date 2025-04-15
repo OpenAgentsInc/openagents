@@ -13,6 +13,16 @@ export function getDb() {
   });
 }
 
+export interface TeamInputData {
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  private?: boolean;
+  timezone?: string;
+  cyclesEnabled?: boolean;
+}
+
 // Team operations
 export async function getTeams() {
   const db = getDb();
@@ -54,9 +64,7 @@ export async function getTeams() {
       .where('teamId', '=', team.id)
       .executeTakeFirst();
     
-    // Check if current user is a member of this team
-    // (In a real app, you'd check the current user's session)
-    // This is a placeholder for demonstration
+    // This will be replaced by proper user session check
     const isJoined = false;
     
     enhancedTeams.push({
@@ -141,7 +149,7 @@ export async function getTeamById(id: string) {
   };
 }
 
-export async function getTeamsByUserId(userId: string) {
+export async function getTeamsForUser(userId: string) {
   const db = getDb();
   
   // Get all teams that the user is a member of
@@ -153,26 +161,84 @@ export async function getTeamsByUserId(userId: string) {
   
   if (teamIds.length === 0) return [];
   
-  // Get full team details
-  const teams = [];
+  // Get enhanced team details with counts
+  const enhancedTeams = [];
+  
   for (const { teamId } of teamIds) {
-    const team = await getTeamById(teamId);
-    if (team) teams.push(team);
+    const team = await db
+      .selectFrom('team')
+      .select([
+        'id',
+        'name',
+        'key',
+        'description',
+        'icon',
+        'color',
+        'private',
+        'createdAt',
+        'updatedAt'
+      ])
+      .where('id', '=', teamId)
+      .where('archivedAt', 'is', null)
+      .executeTakeFirst();
+      
+    if (team) {
+      // Get team members count
+      const memberCount = await db
+        .selectFrom('team_membership')
+        .select(({ fn }) => [fn.count('id').as('count')])
+        .where('teamId', '=', teamId)
+        .executeTakeFirst();
+      
+      // Get team projects count
+      const projectCount = await db
+        .selectFrom('team_project')
+        .select(({ fn }) => [fn.count('id').as('count')])
+        .where('teamId', '=', teamId)
+        .executeTakeFirst();
+        
+      enhancedTeams.push({
+        id: team.id,
+        name: team.name,
+        key: team.key,
+        description: team.description,
+        icon: team.icon || '👥',
+        color: team.color || '#6366F1',
+        private: Boolean(team.private),
+        joined: true, // User is a member of this team
+        memberCount: parseInt(memberCount?.count as string || '0', 10),
+        projectCount: parseInt(projectCount?.count as string || '0', 10),
+        createdAt: team.createdAt,
+        updatedAt: team.updatedAt
+      });
+    }
   }
   
-  return teams;
+  return enhancedTeams;
 }
 
-export async function createTeam(teamData: any) {
+export async function createTeam(teamData: TeamInputData, creatorId: string) {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   
   // Generate a key based on the team name
-  const key = teamData.name
+  let key = teamData.name
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
     .substring(0, 5);
+    
+  // Check if the key already exists
+  const existingTeam = await db
+    .selectFrom('team')
+    .select(['id'])
+    .where('key', '=', key)
+    .executeTakeFirst();
+    
+  if (existingTeam) {
+    // Append a random string to make it unique
+    key = `${key}-${id.substring(0, 4)}`;
+  }
   
   // Create team
   await db
@@ -188,22 +254,35 @@ export async function createTeam(teamData: any) {
       timezone: teamData.timezone || 'America/Los_Angeles',
       inviteHash: crypto.randomUUID(),
       cyclesEnabled: teamData.cyclesEnabled ? 1 : 0,
-      cycleDuration: teamData.cycleDuration || null,
-      cycleCooldownTime: teamData.cycleCooldownTime || null,
-      cycleStartDay: teamData.cycleStartDay || null,
+      cycleDuration: null,
+      cycleCooldownTime: null,
+      cycleStartDay: null,
+      upcomingCycleCount: 0,
+      autoArchivePeriod: 0,
+      issueEstimationType: 'notUsed',
+      issueEstimationAllowZero: 0,
+      issueEstimationExtended: 0,
+      defaultIssueEstimate: 0,
+      triageEnabled: 0,
+      requirePriorityToLeaveTriage: 0,
+      groupIssueHistory: 1,
+      setIssueSortOrderOnStateChange: 'bottom',
+      inheritIssueEstimation: 1,
+      inheritWorkflowStatuses: 1,
+      scimManaged: 0,
       createdAt: now,
       updatedAt: now,
     })
     .execute();
   
-  // Add the creator as an owner
-  if (teamData.creatorId) {
+  // Add the creator as an owner if provided
+  if (creatorId) {
     await db
       .insertInto('team_membership')
       .values({
         id: crypto.randomUUID(),
         teamId: id,
-        userId: teamData.creatorId,
+        userId: creatorId,
         owner: 1,
         sortOrder: 0,
         createdAt: now,
