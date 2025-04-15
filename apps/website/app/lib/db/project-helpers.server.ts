@@ -180,6 +180,7 @@ export async function getProjectById(id: string) {
       'issue.identifier',
       'issue.priority',
       'issue.estimate',
+      'workflow_state.id as stateId',
       'workflow_state.name as stateName',
       'workflow_state.type as stateType',
       'workflow_state.color as stateColor',
@@ -249,7 +250,9 @@ export async function getProjectById(id: string) {
         color: getPriorityColor(issue.priority),
       },
       estimate: issue.estimate,
-      state: {
+      // Use status object to match the format in getAllIssues
+      status: {
+        id: issue.stateId || issue.id || '', // Fallback to issue.id if stateId is missing
         name: issue.stateName || '',
         type: issue.stateType || '',
         color: issue.stateColor || '',

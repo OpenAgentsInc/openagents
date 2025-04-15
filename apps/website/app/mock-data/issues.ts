@@ -36,17 +36,48 @@ const generateIssuesRanks = () => {
 generateIssuesRanks();
 
 export function groupIssuesByStatus(issues: Issue[]): Record<string, Issue[]> {
-  return issues.reduce<Record<string, Issue[]>>((acc, issue) => {
+  // Guard against null/undefined issues
+  if (!issues || !Array.isArray(issues)) {
+    console.error('Invalid issues array in groupIssuesByStatus');
+    return {};
+  }
+  
+  // Clean the issues array to ensure all items have valid status objects
+  const validIssues = issues.filter(issue => {
+    if (!issue) return false;
+    
+    // For issues without status at all, give them a default
+    if (!issue.status) {
+      console.warn(`Issue ${issue.id}: "${issue.title}" missing status, using default backlog`);
+      issue.status = {
+        id: 'default-backlog',
+        name: 'Backlog',
+        color: '#95A5A6',
+        type: 'backlog'
+      };
+    } 
+    // For issues with status object but no id, give a default id
+    else if (!issue.status.id) {
+      console.warn(`Issue ${issue.id}: "${issue.title}" has status but no id, using default backlog id`);
+      issue.status.id = 'default-backlog';
+    }
+    
+    return true;
+  });
+  
+  // Group the valid issues by status
+  const result = validIssues.reduce<Record<string, Issue[]>>((acc, issue) => {
     const statusId = issue.status.id;
-
+    
     if (!acc[statusId]) {
       acc[statusId] = [];
     }
 
     acc[statusId].push(issue);
-
     return acc;
   }, {});
+  
+  return result;
 }
 
 export function sortIssuesByPriority(issues: Issue[]): Issue[] {

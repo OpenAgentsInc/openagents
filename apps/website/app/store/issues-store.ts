@@ -88,6 +88,8 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
 
   // Set all issues (used when loading from API)
   setIssues: (issues: Issue[]) => {
+    console.log('[DEBUG] IssuesStore - Setting issues:', issues.length);
+    console.log('[DEBUG] IssuesStore - Issues by status:', Object.keys(groupIssuesByStatus(issues)));
     set({
       issues,
       issuesByStatus: groupIssuesByStatus(issues),
@@ -141,37 +143,60 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     });
   },
 
-  // Filters
+  // Filters with error handling
   filterByStatus: (statusId: string) => {
-    return get().issues.filter((issue) => issue.status.id === statusId);
+    return get().issues.filter((issue) => {
+      // Skip invalid issues
+      if (!issue || !issue.status) return false;
+      return issue.status.id === statusId;
+    });
   },
 
   filterByPriority: (priorityId: string) => {
-    return get().issues.filter((issue) => issue.priority.id === priorityId);
+    return get().issues.filter((issue) => {
+      // Skip invalid issues
+      if (!issue || !issue.priority) return false;
+      return issue.priority.id === priorityId;
+    });
   },
 
   filterByAssignee: (userId: string | null) => {
     if (userId === null) {
-      return get().issues.filter((issue) => issue.assignees === null);
+      return get().issues.filter((issue) => {
+        if (!issue) return false;
+        return issue.assignees === null;
+      });
     }
-    return get().issues.filter((issue) => issue.assignees?.id === userId);
+    return get().issues.filter((issue) => {
+      if (!issue || !issue.assignees) return false;
+      return issue.assignees.id === userId;
+    });
   },
 
   filterByLabel: (labelId: string) => {
-    return get().issues.filter((issue) => issue.labels.some((label) => label.id === labelId));
+    return get().issues.filter((issue) => {
+      if (!issue || !issue.labels || !Array.isArray(issue.labels)) return false;
+      return issue.labels.some((label) => label && label.id === labelId);
+    });
   },
 
   filterByProject: (projectId: string) => {
-    return get().issues.filter((issue) => issue.project?.id === projectId);
+    return get().issues.filter((issue) => {
+      if (!issue || !issue.project) return false;
+      return issue.project.id === projectId;
+    });
   },
 
   searchIssues: (query: string) => {
     const lowerCaseQuery = query.toLowerCase();
-    return get().issues.filter(
-      (issue) =>
-        issue.title.toLowerCase().includes(lowerCaseQuery) ||
-        issue.identifier.toLowerCase().includes(lowerCaseQuery)
-    );
+    return get().issues.filter(issue => {
+      if (!issue) return false;
+      
+      const titleMatch = issue.title && issue.title.toLowerCase().includes(lowerCaseQuery);
+      const identifierMatch = issue.identifier && issue.identifier.toLowerCase().includes(lowerCaseQuery);
+      
+      return titleMatch || identifierMatch;
+    });
   },
 
   // Status management

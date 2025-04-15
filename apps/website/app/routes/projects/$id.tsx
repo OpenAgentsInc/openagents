@@ -10,6 +10,8 @@ import { getWorkflowStates, getIssueLabels } from "@/lib/db/issue-helpers.server
 import { getTeamsForUser } from "@/lib/db/team-helpers.server";
 import { getUsers } from "@/lib/db/project-helpers.server";
 import { CreateIssueModalProvider } from "@/components/common/issues/create-issue-modal-provider";
+import { useIssuesStore } from "@/store/issues-store";
+import { useEffect } from "react";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   return [
@@ -76,6 +78,20 @@ export default function ProjectDetails() {
   const { id } = useParams();
   const data = useLoaderData();
   const project = data.project;
+  const { setIssues, setWorkflowStates } = useIssuesStore();
+  
+  // Update issues store with project-specific issues
+  useEffect(() => {
+    if (project?.issues) {
+      console.log('[DEBUG] ProjectDetails - Setting issues from project:', project.issues.length);
+      setIssues(project.issues);
+    }
+    
+    if (data.options?.workflowStates) {
+      console.log('[DEBUG] ProjectDetails - Setting workflow states:', data.options.workflowStates.length);
+      setWorkflowStates(data.options.workflowStates);
+    }
+  }, [project, data.options, setIssues, setWorkflowStates]);
   
   if (data.error) {
     return (

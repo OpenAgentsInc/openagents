@@ -43,6 +43,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
       getProjects(),
       getUsers()
     ]);
+    
+    console.log('[DEBUG] /issues loader - Fetched issues:', issues.length);
+    console.log('[DEBUG] /issues loader - First issue sample:', issues.length > 0 ? JSON.stringify(issues[0]).substring(0, 300) : 'No issues');
 
     // Get teams that the current user is a member of
     const teams = await getTeamsForUser(user.id);
@@ -120,7 +123,7 @@ export async function action({ request }: ActionFunctionArgs) {
         };
       }
       
-      const issueId = await createIssue({
+      const issueData = {
         title,
         description,
         teamId,
@@ -130,9 +133,27 @@ export async function action({ request }: ActionFunctionArgs) {
         projectId: projectId || undefined,
         creatorId: session.userId,
         labelIds
-      });
+      };
       
-      return { success: true, issueId };
+      console.log('[DEBUG] Creating issue with data:', JSON.stringify(issueData));
+      const issueId = await createIssue(issueData);
+      console.log('[DEBUG] Issue created with ID:', issueId);
+      
+      // Instead of just returning the ID, let's get the complete created issue
+      // Force-refresh the issues list by requesting again
+      const newIssues = await getAllIssues();
+      console.log('[DEBUG] Reloaded issues after creation, found:', newIssues.length);
+      
+      // Find our new issue in the list so we can return it directly
+      const createdIssue = newIssues.find(issue => issue.id === issueId);
+      console.log('[DEBUG] Created issue details:', createdIssue);
+      
+      return { 
+        success: true, 
+        issueId,
+        issues: newIssues,
+        createdIssue 
+      };
     }
     
     // Handle issue update
@@ -187,12 +208,19 @@ export default function IssuesRoute() {
   // Update store with issues and workflow states from loader data
   useEffect(() => {
     if (loaderData.issues) {
+      console.log('[DEBUG] IssuesRoute - Setting issues:', loaderData.issues.length);
       setIssues(loaderData.issues);
+    } else {
+      console.log('[DEBUG] IssuesRoute - No issues in loader data');
     }
-    if (loaderData.workflowStates) {
-      setWorkflowStates(loaderData.workflowStates);
+    
+    if (loaderData.options?.workflowStates) {
+      console.log('[DEBUG] IssuesRoute - Setting workflow states:', loaderData.options.workflowStates.length);
+      setWorkflowStates(loaderData.options.workflowStates);
+    } else {
+      console.log('[DEBUG] IssuesRoute - No workflow states in loader data');
     }
-  }, [loaderData.issues, loaderData.workflowStates, setIssues, setWorkflowStates]);
+  }, [loaderData.issues, loaderData.options?.workflowStates, setIssues, setWorkflowStates]);
 
   return (
     <div className="w-full min-h-screen flex flex-col">

@@ -764,20 +764,22 @@ export async function getWorkflowStates(teamId?: string) {
     .orderBy(['teamId', 'position'])
     .execute();
     
-  // If no states or very few states found, return default workflow states
-  if (states.length < 3) {
-    console.log(`[DEBUG] Few or no workflow states found for teamId: ${teamId || 'none'}. Using defaults.`);
-    // For consistency, preserve any DB states but add missing defaults
-    const existingIds = states.map(s => s.id);
-    const mergedStates = [
-      ...states,
-      ...DEFAULT_WORKFLOW_STATES.filter(s => !existingIds.includes(s.id))
-    ];
-    return mergedStates;
-  }
-  
+  // Add default workflow states that don't already exist by type
   console.log(`[DEBUG] Found ${states.length} workflow states for teamId: ${teamId || 'none'}`);
-  return states;
+  
+  // Get existing types
+  const existingTypes = states.map(s => s.type);
+  console.log(`[DEBUG] Existing workflow state types: ${existingTypes.join(', ')}`);
+  
+  // Get default states that don't already exist by type
+  const missingDefaultStates = DEFAULT_WORKFLOW_STATES.filter(
+    s => !existingTypes.includes(s.type)
+  );
+  
+  console.log(`[DEBUG] Adding ${missingDefaultStates.length} default workflow states`);
+  
+  // Return combined list with no duplicates by type
+  return [...states, ...missingDefaultStates];
 }
 
 // Get issue labels (optionally filtered by team)

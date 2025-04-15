@@ -20,6 +20,29 @@ import { useSubmit, useRevalidator } from 'react-router';
 import { useSession } from '@/lib/auth-client';
 import { TeamSelector } from './team-selector';
 
+// Helper functions for formatting data (copied from server code for consistency)
+function getPriorityName(priority: number): string {
+  switch (priority) {
+    case 0: return 'No priority';
+    case 1: return 'Urgent';
+    case 2: return 'High';
+    case 3: return 'Medium';
+    case 4: return 'Low';
+    default: return 'No priority';
+  }
+}
+
+function getPriorityColor(priority: number): string {
+  switch (priority) {
+    case 0: return '#6B7280'; // Gray
+    case 1: return '#EF4444'; // Red
+    case 2: return '#F59E0B'; // Amber
+    case 3: return '#3B82F6'; // Blue
+    case 4: return '#10B981'; // Green
+    default: return '#6B7280'; // Gray
+  }
+}
+
 // Define the issue data interface for form submission
 interface IssueFormData {
   title: string;
@@ -181,9 +204,14 @@ export function CreateNewIssue({ loaderData }: CreateNewIssueProps) {
         navigate: false,
         action: '/issues'
       });
-  
+
+      console.log('[DEBUG] Create issue result:', result);
+      
       // After successful submission, revalidate the data
       revalidator.revalidate();
+
+      // We'll simply let the revalidator do its job to refresh the data
+      // This is the most reliable approach and avoids state management issues
   
       toast.success('Issue created! Refreshing data...');
   
