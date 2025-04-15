@@ -25,10 +25,10 @@ export interface CodebaseState {
 export interface FileNode {
   type: 'file' | 'directory';
   path: string;
-  children?: string[]; // For directories, list of child paths
   description?: string;
   tags?: string[];
   contentsListed?: boolean; // Whether directory contents have been successfully listed
+  children?: { name: string; type: 'file' | 'directory'; path: string }[]; // Store children info for directories
   metadata?: {
     exports?: string[];
     dependencies?: string[];

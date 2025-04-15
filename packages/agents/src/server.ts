@@ -250,8 +250,10 @@ export class Coder extends Agent<Env, CoderState> {
 
     console.log(`[planNextExplorationStep] Files explored: ${filesExplored.length}, Directories explored: ${directoriesExplored.length}`);
 
-    // First priority: Check if root directory has been listed
-    if (!codebaseStructure['/']) {
+    // --- HIERARCHICAL PLANNING LOGIC USING CHILDREN ARRAY ---
+
+    // 0. If root directory hasn't been listed yet, list it (initial case)
+    if (!codebaseStructure['/'] || codebaseStructure['/'].contentsListed !== true) {
       console.log("[planNextExplorationStep] Planning: List root directory");
       return {
         type: 'listFiles',
@@ -259,108 +261,111 @@ export class Coder extends Agent<Env, CoderState> {
         description: 'List repository root directory',
         payload: {
           path: '/',
-          owner: owner, // Use local variable from storage/parameters
-          repo: repo, // Use local variable from storage/parameters
+          owner: owner,
+          repo: repo,
           branch: branch || 'main'
         }
       };
     }
 
-    // --- REVISED PLANNING LOGIC WITH CONTENTSLISTED FLAG ---
-
-    // 1. Find an IMPORTANT directory that exists in the structure but hasn't had its contents listed yet
-    const importantDirectories = ['/apps', '/packages', '/src', '/lib', '/docs']; // Prioritize these paths
-    for (const importantPath of importantDirectories) {
-      const node = codebaseStructure[importantPath];
-      // Check if node exists, is a directory, AND contentsListed is not true
-      if (node && node.type === 'directory' && node.contentsListed !== true) {
-        console.log(`[planNextExplorationStep] Planning: List important directory '${node.path}' (contents not listed).`);
-        return {
-          type: 'listFiles',
-          path: node.path,
-          description: `List important directory '${node.path}'`,
-          payload: { path: node.path, owner, repo, branch: branch || 'main' }
-        };
-      }
-    }
-
-    // 2. Check for important directories that don't exist yet
-    for (const importantPath of importantDirectories) {
-      if (!codebaseStructure[importantPath]) {
-        console.log(`[planNextExplorationStep] Planning: Attempt to list important directory '${importantPath}' (not yet discovered).`);
-        return {
-          type: 'listFiles',
-          path: importantPath,
-          description: `List important directory '${importantPath}'`,
-          payload: { path: importantPath, owner, repo, branch: branch || 'main' }
-        };
-      }
-    }
-
-    // 3. Look for any directory whose contents haven't been listed
-    const directoryToList = Object.values(codebaseStructure)
-      .find(node => node.type === 'directory' && node.contentsListed !== true);
-
-    if (directoryToList) {
-      console.log(`[planNextExplorationStep] Planning: List directory '${directoryToList.path}' (contents not listed).`);
-      return {
-        type: 'listFiles',
-        path: directoryToList.path,
-        description: `List directory '${directoryToList.path}'`,
-        payload: { path: directoryToList.path, owner, repo, branch: branch || 'main' }
-      };
-    }
-
-    // 4. Look for potential subdirectories in listed directories
-    // This is a heuristic approach since we can't know if a potential subdir exists without trying
-    const listedDirs = Object.values(codebaseStructure)
-      .filter(node => node.type === 'directory' && node.contentsListed === true);
-    const dirsWithPotentialSubdirs = [];
-
-    for (const dirNode of listedDirs) {
-      // Common subdirectories to check for
-      const potentialSubdirs = ['src', 'lib', 'components', 'routes', 'pages', 'app', 'core', 'agents', 'ui']; 
-      
-      for (const sub of potentialSubdirs) {
-        const subPath = dirNode.path === '/' ? `/${sub}` : `${dirNode.path}/${sub}`;
-        if (!codebaseStructure[subPath]) {
-          // If this is a potential subdirectory of a successfully listed directory
-          console.log(`[planNextExplorationStep] Found potential subdirectory: ${subPath} in listed parent`);
-          // Prioritize important ones
-          if (['src', 'packages', 'apps', 'lib', 'core', 'agents'].includes(sub)) {
-            dirsWithPotentialSubdirs.push(subPath);
-          }
+    // 1. Find a directory that HAS been listed (contentsListed=true) but contains child directories THAT HAVE NOT been listed
+    const listedDirsWithUnlistedChildren = [];
+    
+    for (const parentDir of directoriesExplored) {
+      // Only consider directories that have been successfully listed and have children
+      if (parentDir.contentsListed === true && parentDir.children && parentDir.children.length > 0) {
+        // Find child directories that haven't been listed yet
+        const unlistedChildDirs = parentDir.children
+          .filter(child => child.type === 'directory')
+          .filter(childDir => {
+            const childNode = codebaseStructure[childDir.path];
+            return !childNode || childNode.contentsListed !== true;
+          });
+        
+        if (unlistedChildDirs.length > 0) {
+          listedDirsWithUnlistedChildren.push({
+            parent: parentDir,
+            children: unlistedChildDirs
+          });
         }
       }
     }
 
-    if (dirsWithPotentialSubdirs.length > 0) {
-      const pathToList = dirsWithPotentialSubdirs[0]; // Just pick the first one found
-      console.log(`[planNextExplorationStep] Planning: Try listing potential subdirectory '${pathToList}'.`);
+    console.log(`[planNextExplorationStep] Found ${listedDirsWithUnlistedChildren.length} dirs with unlisted children`);    
+
+    if (listedDirsWithUnlistedChildren.length > 0) {
+      // Prioritize paths that match common important directory names
+      const importantDirNames = ['src', 'app', 'packages', 'apps', 'lib', 'core', 'components'];
+      
+      // First, look for important child directories
+      for (const { children } of listedDirsWithUnlistedChildren) {
+        const importantChild = children.find(child => {
+          const childName = child.path.split('/').pop() || ''; // Get the last part of the path
+          return importantDirNames.includes(childName);
+        });
+        
+        if (importantChild) {
+          console.log(`[planNextExplorationStep] Planning: List important child directory '${importantChild.path}'`);  
+          return {
+            type: 'listFiles',
+            path: importantChild.path,
+            description: `List child directory '${importantChild.path}'`,
+            payload: { path: importantChild.path, owner, repo, branch: branch || 'main' }
+          };
+        }
+      }
+      
+      // If no important ones found, just pick the first one
+      const firstUnlistedChild = listedDirsWithUnlistedChildren[0].children[0];
+      console.log(`[planNextExplorationStep] Planning: List child directory '${firstUnlistedChild.path}'`);  
       return {
         type: 'listFiles',
-        path: pathToList,
-        description: `Try listing potential subdirectory '${pathToList}'`,
-        payload: { path: pathToList, owner, repo, branch: branch || 'main' }
+        path: firstUnlistedChild.path,
+        description: `List child directory '${firstUnlistedChild.path}'`,
+        payload: { path: firstUnlistedChild.path, owner, repo, branch: branch || 'main' }
       };
     }
 
-    // 5. If all known directories are listed, find a file to summarize
-    const fileToSummarize = Object.values(codebaseStructure)
-      .find(file =>
-        file.type === 'file' &&
-        // Summarize if description is missing, or is the default 'Accessed at...' placeholder
-        (!file.description || file.description.startsWith('Accessed at')) &&
-        // Avoid trying to summarize certain un-summarizable files
-        !['.gitignore', 'LICENSE', 'yarn.lock', 'yarn-error.log', 'package-lock.json'].some(ignore => 
-          file.path.endsWith(ignore)
-        ) &&
-        !file.path.includes('.vscode/') && 
-        !file.path.includes('.cursor/')  // Avoid hidden config dirs
-      );
+    // 2. Look for any directory that hasn't been listed yet
+    const unlistedDirectory = directoriesExplored.find(dir => dir.contentsListed !== true);
+    if (unlistedDirectory) {
+      console.log(`[planNextExplorationStep] Planning: List directory '${unlistedDirectory.path}' (contents not yet listed)`);  
+      return {
+        type: 'listFiles',
+        path: unlistedDirectory.path,
+        description: `List directory '${unlistedDirectory.path}'`,
+        payload: { path: unlistedDirectory.path, owner, repo, branch: branch || 'main' }
+      };
+    }
 
-    if (fileToSummarize) {
-      console.log(`[planNextExplorationStep] Planning: Summarize file '${fileToSummarize.path}'`);
+    // 3. If all directories have been listed, find a file to summarize within a listed directory
+    // Focus on files that we know exist (seen in directory listings) but haven't been summarized
+    const filesToSummarize = filesExplored.filter(file => {
+      // Look for files with placeholder descriptions that we know exist
+      const needsSummary = !file.description || 
+                          file.description.startsWith('Accessed at') || 
+                          file.description.startsWith('Seen in');
+      
+      // Skip certain file types
+      const ignoredExtensions = ['.gitignore', 'LICENSE', 'yarn.lock', 'yarn-error.log', 'package-lock.json'];
+      const ignoredPaths = ['.vscode/', '.cursor/'];
+      
+      const shouldIgnore = ignoredExtensions.some(ext => file.path.endsWith(ext)) || 
+                         ignoredPaths.some(path => file.path.includes(path));
+                         
+      return needsSummary && !shouldIgnore;
+    });
+
+    if (filesToSummarize.length > 0) {
+      // Prioritize files with extensions suggesting source code
+      const sourceCodeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.cpp', '.go', '.rs', '.html', '.css'];
+      const sourceCodeFiles = filesToSummarize.filter(file => {
+        const extension = file.path.split('.').pop()?.toLowerCase() || '';
+        return sourceCodeExtensions.includes(`.${extension}`);
+      });
+      
+      const fileToSummarize = sourceCodeFiles.length > 0 ? sourceCodeFiles[0] : filesToSummarize[0];
+      console.log(`[planNextExplorationStep] Planning: Summarize file '${fileToSummarize.path}'`);  
       return {
         type: 'summarizeFile',
         path: fileToSummarize.path,
@@ -369,9 +374,9 @@ export class Coder extends Agent<Env, CoderState> {
       };
     }
 
-    // --- END REVISED PLANNING LOGIC ---
+    // --- END HIERARCHICAL PLANNING LOGIC ---
 
-    console.log("[planNextExplorationStep] No specific next step found (exploration might be complete or stuck).");
+    console.log("[planNextExplorationStep] No specific next step found (exploration might be complete).");
     return null; // No specific action decided for now
   }
 
@@ -567,19 +572,20 @@ try {
         throw new Error(`Failed to fetch directory contents for ${path}`);
       }
 
-      // *** MARK THIS DIRECTORY AS HAVING ITS CONTENTS LISTED SUCCESSFULLY ***
-      await this.updateCodebaseStructure(path, null, 'directory', true);
-      console.log(`[scheduledListFiles] Marked directory ${path} as contentsListed=true`);
+      // --- Prepare children data ---
+      const childrenData = listing.map(item => ({
+        name: item.name,
+        type: item.type === 'dir' ? 'directory' : 'file',
+        path: path.endsWith('/') ? `${path}${item.name}` : `${path}/${item.name}`
+      }));
+      // --- End children data preparation ---
 
-      // Process each item in the directory listing
-      for (const item of listing) {
-        const itemPath = path.endsWith('/') ? `${path}${item.name}` : `${path}/${item.name}`;
-        const itemType = item.type === 'dir' ? 'directory' : 'file';
+      // Update the parent directory node, marking listed and adding children
+      await this.updateCodebaseStructure(path, null, 'directory', true, childrenData);
+      console.log(`[scheduledListFiles] Marked directory ${path} as contentsListed=true with ${childrenData.length} children`);
 
-        // Add an entry in the codebase structure for each item
-        // For files, we just add a basic entry - they'll be summarized later if needed
-        await this.updateCodebaseStructure(itemPath, null, itemType);
-      }
+      // No need to add entries for individual items - updateCodebaseStructure will handle this
+      // based on the childrenData we're passing
 
       // Add an observation with the results
       await this.addAgentObservation(`Listed ${listing.length} items in directory ${path}`);
@@ -1087,10 +1093,17 @@ async cancelTaskByScheduleId(scheduleId: string) {
    * @param content The file content (null for directories)
    * @param nodeType 'file' or 'directory'
    * @param contentsJustListed Whether this directory's contents were just successfully listed
+   * @param childrenData Optional array of child objects for directories
    */
-  private async updateCodebaseStructure(path: string, content: string | null, nodeType: 'file' | 'directory' = 'file', contentsJustListed: boolean = false) {
+  private async updateCodebaseStructure(
+    path: string, 
+    content: string | null, 
+    nodeType: 'file' | 'directory' = 'file', 
+    contentsJustListed: boolean = false,
+    childrenData?: { name: string; type: 'file' | 'directory'; path: string }[]
+  ) {
   console.log(`[updateCodebaseStructure] Starting for path: ${path}, nodeType: ${nodeType}, contentsListed: ${contentsJustListed}`);
-  console.log(`[updateCodebaseStructure] Content length: ${content ? content.length : 'null'}`);
+  console.log(`[updateCodebaseStructure] Content length: ${content ? content.length : 'null'}, Children: ${childrenData ? childrenData.length : 'none'}`);
 
   // Safely log state keys without exposing sensitive data
   const safeStateKeys = Object.keys(this.state || {})
@@ -1182,6 +1195,9 @@ async cancelTaskByScheduleId(scheduleId: string) {
     // Set contentsListed flag for directories
     // If it's a directory, either use the provided flag or keep existing value
     contentsListed: nodeType === 'directory' ? (contentsJustListed || existingNode.contentsListed || false) : undefined,
+    // If childrenData is provided (meaning a directory was just listed), store it.
+    // Otherwise, keep existing children (if any). Only relevant for directories.
+    children: nodeType === 'directory' ? (childrenData || existingNode.children || undefined) : undefined,
     // Add additional metadata from the summary
     metadata: {
       ...(existingNode.metadata || {}),
@@ -1194,13 +1210,33 @@ async cancelTaskByScheduleId(scheduleId: string) {
     }
   };
 
-  // Update the codebase structure in the state
+  // Prepare updates for child nodes ONLY if childrenData was provided
+  const childStructureUpdates: Record<string, FileNode> = {};
+  if (nodeType === 'directory' && childrenData) {
+    for (const child of childrenData) {
+      // Add/update child node only if it doesn't exist or lacks details
+      if (!structure[child.path] || !structure[child.path].description || structure[child.path].description.startsWith('Accessed at')) {
+        childStructureUpdates[child.path] = {
+          ...(structure[child.path] || {}), // Keep existing data if present
+          type: child.type,
+          path: child.path,
+          description: structure[child.path]?.description || `Seen in ${path} listing`, // Basic description
+          tags: structure[child.path]?.tags || [],
+          metadata: structure[child.path]?.metadata || {},
+          contentsListed: structure[child.path]?.contentsListed || false // Default subdirs to not listed
+        };
+      }
+    }
+  }
+
+  // Update the codebase structure in the state, including parent and potentially new children
   await this.updateState({
     codebase: {
       ...(this.state.codebase || { structure: {} }),
       structure: {
         ...structure,
-        [path]: updatedNode
+        [path]: updatedNode, // Update the parent node
+        ...childStructureUpdates // Add/update child nodes
       }
     }
   });
