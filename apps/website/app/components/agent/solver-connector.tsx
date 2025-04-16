@@ -6,6 +6,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Terminal, Columns, BotIcon, PlugZap, Power, CheckCircle, AlertTriangle } from "lucide-react";
 import { useOpenAgent } from "@openagents/core";
 
+// Add special client directive to address hydration issues
+const isClient = typeof window !== "undefined";
+
 interface SolverConnectorProps {
   issue: any;  // The issue object from the parent component
   githubToken: string;
@@ -15,9 +18,17 @@ interface SolverConnectorProps {
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
+  // Use default state for server-side rendering, then update on client
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isStartingSolver, setIsStartingSolver] = useState(false);
+  
+  // For consistent server/client rendering, force hydration after mount
+  const [isHydrated, setIsHydrated] = useState(false);
+  
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   // Create a formatted issue object to send to the Solver agent
   const formattedIssue = {
@@ -185,29 +196,30 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       </CardContent>
 
       <CardFooter className="flex justify-end">
-        {connectionState === 'disconnected' && (
-          isConnectButtonDisabled ? (
-            <Button
-              variant="secondary"
-              className="opacity-50 cursor-not-allowed"
-            >
-              <PlugZap className="h-4 w-4 mr-2" />
-              Connect to Solver
-            </Button>
-          ) : (
-            <Button
-              onClick={connectToSolver}
-            >
-              <PlugZap className="h-4 w-4 mr-2" />
-              Connect to Solver
-            </Button>
-          )
-        )}
-
-        {(connectionState === 'connected' || connectionState === 'error') && (
+        {/* Server-side rendering always shows initial state - Client will rehydrate */}
+        {(!isClient || !isHydrated) ? (
+          // Default state for SSR
+          <Button variant="default" suppressHydrationWarning>
+            <PlugZap className="h-4 w-4 mr-2" />
+            Connect to Solver
+          </Button>
+        ) : connectionState === 'disconnected' ? (
+          // Client-side rendering for disconnected state
+          <Button
+            variant={isConnectButtonDisabled ? "secondary" : "default"}
+            className={isConnectButtonDisabled ? "opacity-50 cursor-not-allowed" : ""}
+            onClick={isConnectButtonDisabled ? undefined : connectToSolver}
+            suppressHydrationWarning
+          >
+            <PlugZap className="h-4 w-4 mr-2" />
+            Connect to Solver
+          </Button>
+        ) : (
+          // Client-side rendering for connected/error state
           <Button
             variant="outline"
             onClick={disconnectFromSolver}
+            suppressHydrationWarning
           >
             <Power className="h-4 w-4 mr-2" />
             Disconnect
