@@ -325,7 +325,7 @@ ${issue.creator ? `- Created by: ${issue.creator.name}` : '- Creator unknown'}
     headers: {
       'X-GitHub-Token': getGithubToken()
     },
-    maxSteps: 4,
+    maxSteps: 25,
     initialMessages: [{
       id: '12309123',
       role: 'system',
