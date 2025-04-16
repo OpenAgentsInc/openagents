@@ -26,7 +26,7 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
 
         <div className="h-full flex items-center gap-2 animate-in fade-in duration-250">
           {/* Only show agent-related UI if user is logged in */}
-          {!isPending && session?.user && (
+          {/* {!isPending && session?.user && (
             <>
               <AgentDropdown />
 
@@ -39,7 +39,7 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
                 </Button>
               )}
             </>
-          )}
+          )} */}
 
           {isPending ? (
             <></>
@@ -53,9 +53,14 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
               </Button>
             </div>
           ) : (
-            <Button variant="outline" asChild>
-              <Link to="/login">Log in</Link>
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/login">Log in</Link>
+              </Button>
+              <Button variant="default" size="sm" asChild>
+                <Link to="/signup">Sign up</Link>
+              </Button>
+            </div>
           )}
         </div>
       </div>
