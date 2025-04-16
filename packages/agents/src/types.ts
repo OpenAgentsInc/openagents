@@ -1,59 +1,7 @@
-import { type UIMessage } from "ai";
-
-// Define types for Coder state
-export interface CoderState {
-  messages: UIMessage[];
-  githubToken?: string;
-  currentRepoOwner?: string;
-  currentRepoName?: string;
-  currentBranch?: string;
-  codebase?: CodebaseState;
-  scratchpad?: string;
-  tasks?: Task[];
-  observations?: string[];
-  workingFilePath?: string;
-  isContinuousRunActive?: boolean;
-}
-
-// Type to track codebase understanding
-export interface CodebaseState {
-  structure?: Record<string, FileNode>;
-  dependencies?: Record<string, string>;
-  modules?: Record<string, ModuleDescription>;
-}
-
-export interface FileNode {
-  type: 'file' | 'directory';
-  path: string;
-  description?: string;
-  tags?: string[];
-  contentsListed?: boolean; // Whether directory contents have been successfully listed
-  children?: { name: string; type: 'file' | 'directory'; path: string }[]; // Store children info for directories
-  metadata?: {
-    exports?: string[];
-    dependencies?: string[];
-    complexity?: 'low' | 'medium' | 'high';
-    lastAnalyzed?: string;
-    [key: string]: any; // Allow for additional metadata
-  };
-}
-
-export interface ModuleDescription {
-  name: string;
-  purpose: string;
-  dependencies: string[];
-  apis: string[];
-}
-
-export interface Task {
-  id: string;
-  description: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'failed' | 'cancelled';
-  created: Date;
-  updated?: Date;
-  completed?: Date;
-  notes?: string[];
-  scheduleId?: string;
-  payload?: Record<string, any>;
-  callbackMethodName?: string;
+/**
+ * Environment variables and bindings for the worker
+ */
+export interface Env {
+  OPENROUTER_API_KEY: string;
+  // Add other environment variables as needed
 }
