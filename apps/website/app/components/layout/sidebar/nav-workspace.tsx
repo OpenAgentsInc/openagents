@@ -26,7 +26,7 @@ export function NavWorkspace() {
         {workspaceItems.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton asChild>
-              <Link to={item.url}>
+              <Link to={item.url} className="select-none">
                 <item.icon />
                 <span>{item.name}</span>
               </Link>
