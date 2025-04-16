@@ -2,8 +2,15 @@ import { groupIssuesByStatus } from '@/mock-data/issues';
 import { type LabelInterface } from '@/mock-data/labels';
 import { type Priority } from '@/mock-data/priorities';
 import { type Project } from '@/mock-data/projects';
-import { type User } from '@/mock-data/users';
 import { create } from 'zustand';
+
+// Database-driven User interface
+export interface User {
+  id: string;
+  name: string;
+  email?: string;
+  image?: string | null;
+}
 
 // Generic Status interface compatible with both mock and DB data
 export interface Status {

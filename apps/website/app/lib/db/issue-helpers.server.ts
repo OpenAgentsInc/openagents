@@ -41,6 +41,7 @@ export async function getAllIssues() {
       'workflow_state.type as stateType',
       'assignee.id as assigneeId',
       'assignee.name as assigneeName',
+      'assignee.email as assigneeEmail',
       'assignee.image as assigneeImage',
       'creator.id as creatorId',
       'creator.name as creatorName',
@@ -103,11 +104,7 @@ export async function getAllIssues() {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: issue.assigneeId ? {
-      id: issue.assigneeId,
-      name: issue.assigneeName || '',
-      image: issue.assigneeImage || null,
-    } : null,
+    assignees: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),
@@ -154,6 +151,7 @@ export async function getIssuesByTeamId(teamId: string) {
       'workflow_state.type as stateType',
       'assignee.id as assigneeId',
       'assignee.name as assigneeName',
+      'assignee.email as assigneeEmail',
       'assignee.image as assigneeImage',
       'creator.id as creatorId',
       'creator.name as creatorName',
@@ -214,11 +212,7 @@ export async function getIssuesByTeamId(teamId: string) {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: issue.assigneeId ? {
-      id: issue.assigneeId,
-      name: issue.assigneeName || '',
-      image: issue.assigneeImage || null,
-    } : null,
+    assignees: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),
@@ -264,6 +258,7 @@ export async function getIssuesByProjectId(projectId: string) {
       'workflow_state.type as stateType',
       'assignee.id as assigneeId',
       'assignee.name as assigneeName',
+      'assignee.email as assigneeEmail',
       'assignee.image as assigneeImage',
       'creator.id as creatorId',
       'creator.name as creatorName',
@@ -321,11 +316,7 @@ export async function getIssuesByProjectId(projectId: string) {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: issue.assigneeId ? {
-      id: issue.assigneeId,
-      name: issue.assigneeName || '',
-      image: issue.assigneeImage || null,
-    } : null,
+    assignees: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),
@@ -427,12 +418,7 @@ export async function getIssueById(id: string) {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: issue.assigneeId ? {
-      id: issue.assigneeId,
-      name: issue.assigneeName || '',
-      email: issue.assigneeEmail || '',
-      image: issue.assigneeImage || null,
-    } : null,
+    assignees: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),
@@ -831,4 +817,14 @@ function getPriorityColor(priority: any): string {
     case 4: return '#10B981'; // Green
     default: return '#6B7280'; // Gray
   }
+}
+
+// Helper to create assignee data for issues, ensuring proper typing
+function formatAssignee(issue: any) {
+  return issue.assigneeId ? {
+    id: issue.assigneeId,
+    name: issue.assigneeName || '',
+    email: issue.assigneeEmail || '',
+    image: issue.assigneeImage || null,
+  } : null;
 }
