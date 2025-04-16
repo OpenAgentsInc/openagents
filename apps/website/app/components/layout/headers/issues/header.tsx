@@ -13,6 +13,7 @@ export function HeaderIssues() {
         <h1 className="text-2xl font-bold">Issues</h1>
         <Button onClick={openModal} size="sm" className="gap-1.5">
           <Plus className="size-4" />
+          <Plus className="size-4" />
           New Issue
         </Button>
       </div>

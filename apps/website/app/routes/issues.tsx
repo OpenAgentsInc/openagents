@@ -43,12 +43,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       getProjects(),
       getUsers()
     ]);
-    
+
     // No debug logs in production
 
     // Get teams that the current user is a member of
     const teams = await getTeamsForUser(user.id);
-    
+
     // No debug logs in production
 
     // Return simple object instead of json
@@ -84,14 +84,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
 export async function action({ request }: ActionFunctionArgs) {
   try {
     const { session } = await auth.api.getSession(request);
-    
+
     if (!session) {
       return redirect("/login");
     }
-    
+
     const formData = await request.formData();
     const action = formData.get("_action") as string;
-    
+
     // Handle issue creation
     if (action === "create") {
       const title = formData.get("title") as string;
@@ -102,7 +102,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const priority = parseInt(priorityStr, 10);
       const assigneeId = formData.get("assigneeId") as string;
       const projectId = formData.get("projectId") as string;
-      
+
       // Convert label IDs from FormData (might be multiple entries)
       let labelIds: string[] = [];
       formData.getAll("labelIds").forEach(labelId => {
@@ -110,7 +110,7 @@ export async function action({ request }: ActionFunctionArgs) {
           labelIds.push(labelId);
         }
       });
-      
+
       // Validate required fields
       if (!title || !teamId || !stateId) {
         return {
@@ -118,7 +118,7 @@ export async function action({ request }: ActionFunctionArgs) {
           error: "Required fields are missing"
         };
       }
-      
+
       const issueData = {
         title,
         description,
@@ -130,23 +130,23 @@ export async function action({ request }: ActionFunctionArgs) {
         creatorId: session.userId,
         labelIds
       };
-      
+
       const issueId = await createIssue(issueData);
-      
+
       // Get the updated issues list
       const newIssues = await getAllIssues();
-      
+
       // Find our new issue in the list
       const createdIssue = newIssues.find(issue => issue.id === issueId);
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         issueId,
         issues: newIssues,
-        createdIssue 
+        createdIssue
       };
     }
-    
+
     // Handle issue update
     if (action === "update") {
       const id = formData.get("id") as string;
@@ -158,7 +158,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const priority = parseInt(priorityStr, 10);
       const assigneeId = formData.get("assigneeId") as string;
       const projectId = formData.get("projectId") as string;
-      
+
       // Validate required fields
       if (!id || !title || !teamId || !stateId) {
         return {
@@ -166,7 +166,7 @@ export async function action({ request }: ActionFunctionArgs) {
           error: "Required fields are missing"
         };
       }
-      
+
       await updateIssue(id, {
         title,
         description,
@@ -176,10 +176,10 @@ export async function action({ request }: ActionFunctionArgs) {
         assigneeId: assigneeId || null,
         projectId: projectId || null
       });
-      
+
       return { success: true };
     }
-    
+
     return { success: false, error: "Unknown action" };
   } catch (error) {
     console.error("Error handling issue action:", error);
@@ -199,17 +199,17 @@ export default function IssuesRoute() {
   // Update store with issues and workflow states from loader data
   useEffect(() => {
     if (loaderData.issues) {
-      console.log('[DEBUG] IssuesRoute - Setting issues:', loaderData.issues.length);
+      // console.log('[DEBUG] IssuesRoute - Setting issues:', loaderData.issues.length);
       setIssues(loaderData.issues);
     } else {
-      console.log('[DEBUG] IssuesRoute - No issues in loader data');
+      // console.log('[DEBUG] IssuesRoute - No issues in loader data');
     }
-    
+
     if (loaderData.options?.workflowStates) {
-      console.log('[DEBUG] IssuesRoute - Setting workflow states:', loaderData.options.workflowStates.length);
+      // console.log('[DEBUG] IssuesRoute - Setting workflow states:', loaderData.options.workflowStates.length);
       setWorkflowStates(loaderData.options.workflowStates);
     } else {
-      console.log('[DEBUG] IssuesRoute - No workflow states in loader data');
+      // console.log('[DEBUG] IssuesRoute - No workflow states in loader data');
     }
   }, [loaderData.issues, loaderData.options?.workflowStates, setIssues, setWorkflowStates]);
 

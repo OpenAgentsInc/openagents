@@ -95,22 +95,22 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
 
   // Set all issues (used when loading from API)
   setIssues: (issues: Issue[]) => {
-    console.log('[DEBUG] IssuesStore - Setting issues:', issues.length);
-    console.log('[DEBUG] IssuesStore - Issues by status:', Object.keys(groupIssuesByStatus(issues)));
+    // console.log('[DEBUG] IssuesStore - Setting issues:', issues.length);
+    // console.log('[DEBUG] IssuesStore - Issues by status:', Object.keys(groupIssuesByStatus(issues)));
     set({
       issues,
       issuesByStatus: groupIssuesByStatus(issues),
       isLoaded: true,
     });
   },
-  
+
   // Set workflow states (used when loading from API)
   setWorkflowStates: (states: Status[]) => {
     set({
       workflowStates: states,
     });
   },
-  
+
   // Get workflow states
   getWorkflowStates: () => {
     return get().workflowStates || [];
@@ -198,10 +198,10 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     const lowerCaseQuery = query.toLowerCase();
     return get().issues.filter(issue => {
       if (!issue) return false;
-      
+
       const titleMatch = issue.title && issue.title.toLowerCase().includes(lowerCaseQuery);
       const identifierMatch = issue.identifier && issue.identifier.toLowerCase().includes(lowerCaseQuery);
-      
+
       return titleMatch || identifierMatch;
     });
   },
