@@ -14,3 +14,5 @@
 # Database
 *.db
 *.sqlite
+
+app/mock-data/issues-data.ts

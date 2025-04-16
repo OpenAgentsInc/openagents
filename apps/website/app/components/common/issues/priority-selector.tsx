@@ -12,6 +12,7 @@ import { useIssuesStore } from '@/store/issues-store';
 import { type Priority, priorities } from '@/mock-data/priorities';
 import { CheckIcon } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
+import { useSubmit } from 'react-router';
 
 interface PrioritySelectorProps {
   priority: Priority;
@@ -22,6 +23,7 @@ export function PrioritySelector({ priority, issueId }: PrioritySelectorProps) {
   const id = useId();
   const [open, setOpen] = useState<boolean>(false);
   const [value, setValue] = useState<string>(priority.id);
+  const submit = useSubmit();
 
   const { filterByPriority, updateIssuePriority } = useIssuesStore();
 
@@ -36,7 +38,31 @@ export function PrioritySelector({ priority, issueId }: PrioritySelectorProps) {
     if (issueId) {
       const newPriority = priorities.find((p) => p.id === priorityId);
       if (newPriority) {
+        // Update UI state immediately
         updateIssuePriority(issueId, newPriority);
+        
+        // Map priority IDs to numeric values for the database
+        let priorityValue = 0; // default: no priority
+        switch (priorityId) {
+          case 'urgent': priorityValue = 1; break;
+          case 'high': priorityValue = 2; break;
+          case 'medium': priorityValue = 3; break;
+          case 'low': priorityValue = 4; break;
+        }
+        
+        // Then send the update to the server
+        const formData = new FormData();
+        formData.append('_action', 'update');
+        formData.append('id', issueId);
+        formData.append('priority', priorityValue.toString());
+        
+        // Always submit to the issues route as a fetch request instead of navigation
+        submit(formData, {
+          method: 'post',
+          action: '/issues', // Explicitly target the issues route which has the action
+          navigate: false, // This prevents navigation and keeps the current route
+          replace: true // This causes the page state to be updated with the server response
+        });
       }
     }
   };

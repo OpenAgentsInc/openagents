@@ -1,8 +1,7 @@
-
-
 import * as React from 'react';
 import { ChevronsUpDown } from 'lucide-react';
 import { Link } from 'react-router';
+import { signOut } from '@/lib/auth-client';
 
 import {
   DropdownMenu,
@@ -23,6 +22,17 @@ import { CreateNewIssue } from './create-new-issue';
 import { ThemeToggle } from '../theme-toggle';
 
 export function OrgSwitcher() {
+  const handleSignOut = async () => {
+    await signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          // Redirect to login page after signout
+          window.location.href = '/login';
+        },
+      },
+    });
+  };
+
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -30,20 +40,21 @@ export function OrgSwitcher() {
           <div className="w-full flex gap-1 items-center pt-2">
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
+                variant="outline"
                 size="lg"
                 className="h-8 p-1 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >
-                <div className="flex aspect-square size-6 items-center justify-center rounded bg-orange-500 text-sidebar-primary-foreground">
+                {/* <div className="flex aspect-square size-6 items-center justify-center rounded bg-orange-500 text-sidebar-primary-foreground">
                   LN
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
+                </div> */}
+                <div className="select-none grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">OpenAgents</span>
                 </div>
                 <ChevronsUpDown className="ml-auto" />
               </SidebarMenuButton>
             </DropdownMenuTrigger>
 
-            <ThemeToggle />
+            {/* <ThemeToggle /> */}
 
             <CreateNewIssue />
           </div>
@@ -53,7 +64,7 @@ export function OrgSwitcher() {
             align="end"
             sideOffset={4}
           >
-            <DropdownMenuGroup>
+            {/* <DropdownMenuGroup>
               <DropdownMenuItem asChild>
                 <Link to="/lndev-ui/settings">
                   Settings
@@ -84,10 +95,10 @@ export function OrgSwitcher() {
                   <DropdownMenuItem>Add an account</DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuPortal>
-            </DropdownMenuSub>
-            <DropdownMenuItem>
+            </DropdownMenuSub> */}
+            <DropdownMenuItem onClick={handleSignOut}>
               Log out
-              <DropdownMenuShortcut>⌥⇧Q</DropdownMenuShortcut>
+              {/* <DropdownMenuShortcut>⌥⇧Q</DropdownMenuShortcut> */}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

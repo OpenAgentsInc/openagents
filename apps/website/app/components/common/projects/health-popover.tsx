@@ -1,8 +1,6 @@
-
-
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CircleCheck, CircleX, AlertCircle, HelpCircle, Bell } from 'lucide-react';
+import { CircleCheck, CircleX, AlertCircle, HelpCircle, Bell, User } from 'lucide-react';
 import { type Project } from '@/mock-data/projects';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -29,6 +27,11 @@ export function HealthPopover({ project }: HealthPopoverProps) {
 
   const isMobile = useIsMobile();
 
+  // Function to safely get the first initial of a name
+  const getInitial = (name: string) => {
+    return name && name.length > 0 ? name.charAt(0).toUpperCase() : 'U';
+  };
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -50,7 +53,9 @@ export function HealthPopover({ project }: HealthPopoverProps) {
         <div className="flex items-center justify-between border-b p-3">
           <div className="flex items-center gap-2">
             {project.icon && (
-              <project.icon className="size-4 shrink-0 text-muted-foreground" />
+              typeof project.icon === 'string' 
+                ? <span className="size-4 shrink-0 text-muted-foreground">{project.icon}</span>
+                : <project.icon className="size-4 shrink-0 text-muted-foreground" />
             )}
             <h4 className="font-medium text-sm">{project.name}</h4>
           </div>
@@ -74,17 +79,37 @@ export function HealthPopover({ project }: HealthPopoverProps) {
               {getHealthIcon(project.health.id)}
               <span className="text-sm">{project.health.name}</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Avatar className="size-5">
-                <AvatarImage src={project.lead.avatarUrl} alt={project.lead.name} />
-                <AvatarFallback>{project.lead.name.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <span className="text-xs text-muted-foreground">{project.lead.name}</span>
-              <span className="text-xs text-muted-foreground">·</span>
-              <span className="text-xs text-muted-foreground">
-                {new Date(project.startDate).toLocaleDateString()}
-              </span>
-            </div>
+            {project.lead ? (
+              <div className="flex items-center gap-2">
+                <Avatar className="size-5">
+                  <AvatarImage 
+                    src={project.lead.image || project.lead.avatarUrl} 
+                    alt={project.lead.name} 
+                  />
+                  <AvatarFallback>{getInitial(project.lead.name)}</AvatarFallback>
+                </Avatar>
+                <span className="text-xs text-muted-foreground">{project.lead.name}</span>
+                <span className="text-xs text-muted-foreground">·</span>
+                <span className="text-xs text-muted-foreground">
+                  {project.startDate ? new Date(project.startDate).toLocaleDateString() : 'No start date'}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Avatar className="size-5">
+                  <AvatarFallback><User className="size-3" /></AvatarFallback>
+                </Avatar>
+                <span className="text-xs text-muted-foreground">No lead assigned</span>
+                {project.startDate && (
+                  <>
+                    <span className="text-xs text-muted-foreground">·</span>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(project.startDate).toLocaleDateString()}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div>

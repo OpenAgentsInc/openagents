@@ -7,23 +7,69 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { type User, statusUserColors, users } from '@/mock-data/users';
+import { useIssuesStore } from '@/store/issues-store';
 import { CheckIcon, CircleUserRound, Send, UserIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLoaderData, useSubmit } from 'react-router';
+
+// Database user interface
+interface User {
+  id: string;
+  name: string;
+  email?: string;
+  image?: string | null;
+}
 
 interface AssigneeUserProps {
   user: User | null;
+  issueId?: string; // Make issueId an optional prop
 }
 
-export function AssigneeUser({ user }: AssigneeUserProps) {
+export function AssigneeUser({ user, issueId }: AssigneeUserProps) {
   const [open, setOpen] = useState(false);
   const [currentAssignee, setCurrentAssignee] = useState<User | null>(user);
+  const loaderData = useLoaderData<any>();
+  const { updateIssueAssignee } = useIssuesStore();
+  const submit = useSubmit();
+  
+  // Get users from loader data
+  const users = loaderData?.options?.users || [];
+
+  // Keep local state in sync with prop changes
+  useEffect(() => {
+    setCurrentAssignee(user);
+  }, [user]);
+
+  const handleAssigneeChange = (newAssignee: User | null) => {
+    setCurrentAssignee(newAssignee);
+    setOpen(false);
+    
+    // Update the issue in the store if we have an issueId
+    if (issueId) {
+      // Update local state first for immediate UI response
+      updateIssueAssignee(issueId, newAssignee);
+      
+      // Then send the update to the server
+      const formData = new FormData();
+      formData.append('_action', 'update');
+      formData.append('id', issueId);
+      formData.append('assigneeId', newAssignee?.id || '');
+      
+      // Always submit to the issues route as a fetch request instead of navigation
+      submit(formData, { 
+        method: 'post',
+        action: '/issues', // Explicitly target the issues route which has the action
+        navigate: false, // This prevents navigation and keeps the current route
+        replace: true // This causes the page state to be updated with the server response
+      });
+    }
+  };
 
   const renderAvatar = () => {
     if (currentAssignee) {
       return (
         <Avatar className="size-6 shrink-0">
-          <AvatarImage src={currentAssignee.avatarUrl} alt={currentAssignee.name} />
+          <AvatarImage src={currentAssignee.image || ''} alt={currentAssignee.name} />
           <AvatarFallback>{currentAssignee.name[0]}</AvatarFallback>
         </Avatar>
       );
@@ -41,14 +87,6 @@ export function AssigneeUser({ user }: AssigneeUserProps) {
       <DropdownMenuTrigger asChild>
         <button className="relative w-fit focus:outline-none">
           {renderAvatar()}
-          {currentAssignee && (
-            <span
-              className="border-background absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full border-2"
-              style={{ backgroundColor: statusUserColors[currentAssignee.status] }}
-            >
-              <span className="sr-only">{currentAssignee.status}</span>
-            </span>
-          )}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[206px]">
@@ -56,8 +94,7 @@ export function AssigneeUser({ user }: AssigneeUserProps) {
         <DropdownMenuItem
           onClick={(e) => {
             e.stopPropagation();
-            setCurrentAssignee(null);
-            setOpen(false);
+            handleAssigneeChange(null);
           }}
         >
           <div className="flex items-center gap-2">
@@ -67,27 +104,24 @@ export function AssigneeUser({ user }: AssigneeUserProps) {
           {!currentAssignee && <CheckIcon className="ml-auto h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {users
-          .filter((user) => user.teamIds.includes('CORE'))
-          .map((user) => (
-            <DropdownMenuItem
-              key={user.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrentAssignee(user);
-                setOpen(false);
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <Avatar className="h-5 w-5">
-                  <AvatarImage src={user.avatarUrl} alt={user.name} />
-                  <AvatarFallback>{user.name[0]}</AvatarFallback>
-                </Avatar>
-                <span>{user.name}</span>
-              </div>
-              {currentAssignee?.id === user.id && <CheckIcon className="ml-auto h-4 w-4" />}
-            </DropdownMenuItem>
-          ))}
+        {users.map((user: User) => (
+          <DropdownMenuItem
+            key={user.id}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAssigneeChange(user);
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <Avatar className="h-5 w-5">
+                <AvatarImage src={user.image || ''} alt={user.name} />
+                <AvatarFallback>{user.name[0]}</AvatarFallback>
+              </Avatar>
+              <span>{user.name}</span>
+            </div>
+            {currentAssignee?.id === user.id && <CheckIcon className="ml-auto h-4 w-4" />}
+          </DropdownMenuItem>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuLabel>New user</DropdownMenuLabel>
         <DropdownMenuItem>

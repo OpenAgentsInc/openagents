@@ -1,10 +1,21 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { type User, statusUserColors } from '@/mock-data/users';
 import { format } from 'date-fns';
 import { TeamsTooltip } from './teams-tooltip';
 
+// Database user enhanced with team information
+interface DBUser {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  teams: any[];
+  teamIds: string[];
+  joinedDate: string;
+  role: string;
+}
+
 interface MemberLineProps {
-  user: User;
+  user: DBUser;
 }
 
 export default function MemberLine({ user }: MemberLineProps) {
@@ -13,15 +24,9 @@ export default function MemberLine({ user }: MemberLineProps) {
       <div className="w-[70%] md:w-[60%] lg:w-[55%] flex items-center gap-2">
         <div className="relative">
           <Avatar className="size-8 shrink-0">
-            <AvatarImage src={user.avatarUrl} alt={user.name} />
-            <AvatarFallback>{user.name[0]}</AvatarFallback>
+            <AvatarImage src={user.image || ''} alt={user.name} />
+            <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
           </Avatar>
-          <span
-            className="border-background absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full border-2"
-            style={{ backgroundColor: statusUserColors[user.status] }}
-          >
-            <span className="sr-only">{user.status}</span>
-          </span>
         </div>
         <div className="flex flex-col items-start overflow-hidden">
           <span className="font-medium truncate w-full">{user.name}</span>
@@ -35,7 +40,11 @@ export default function MemberLine({ user }: MemberLineProps) {
         {format(new Date(user.joinedDate), 'MMM yyyy')}
       </div>
       <div className="w-[30%] hidden md:flex md:w-[20%] lg:w-[15%] text-xs text-muted-foreground">
-        <TeamsTooltip teamIds={user.teamIds} />
+        {user.teamIds && user.teamIds.length > 0 ? (
+          <TeamsTooltip teamIds={user.teamIds} teams={user.teams} />
+        ) : (
+          <span className="text-xs text-muted-foreground">No teams</span>
+        )}
       </div>
     </div>
   );

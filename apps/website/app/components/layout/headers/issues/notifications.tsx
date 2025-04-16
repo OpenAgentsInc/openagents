@@ -1,5 +1,3 @@
-
-
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -7,7 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useState } from 'react';
 import { RiSlackLine } from '@remixicon/react';
 
-export default function Notifications() {
+export function Notifications() {
   const [notifications, setNotifications] = useState({
     teamIssueAdded: false,
     issueCompleted: false,

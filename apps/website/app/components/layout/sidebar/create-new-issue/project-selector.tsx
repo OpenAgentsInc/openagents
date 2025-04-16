@@ -8,110 +8,131 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useIssuesStore } from '@/store/issues-store';
-import { type Project, projects } from '@/mock-data/projects';
 import { Box, CheckIcon, FolderIcon } from 'lucide-react';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
+import { useLoaderData } from 'react-router';
 
-interface ProjectSelectorProps {
-  project: Project | undefined;
-  onChange: (project: Project | undefined) => void;
+interface Project {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
 }
 
-export function ProjectSelector({ project, onChange }: ProjectSelectorProps) {
+interface ProjectSelectorProps {
+  projectId: string | undefined;
+  onChange: (projectId: string | undefined) => void;
+  loaderData?: any;
+}
+
+export function ProjectSelector({ projectId, onChange, loaderData: propLoaderData }: ProjectSelectorProps) {
   const id = useId();
   const [open, setOpen] = useState<boolean>(false);
-  const [value, setValue] = useState<string | undefined>(project?.id);
+  const routeLoaderData = useLoaderData() || {};
+  // Use passed loaderData prop or fall back to useLoaderData
+  const loaderData = propLoaderData || routeLoaderData;
+  
+  // Check for projects in various locations in the loader data
+  let projects: Project[] = [];
+  
+  if (loaderData.options && Array.isArray(loaderData.options.projects)) {
+    projects = loaderData.options.projects;
+  } else if (Array.isArray(loaderData.projects)) {
+    projects = loaderData.projects;
+  } else if (loaderData.project) {
+    // If we're on a project detail page, we should at least have the current project
+    projects = [loaderData.project];
+  }
+  
+  // No debug logs in production
 
-  const { filterByProject } = useIssuesStore();
-
-  useEffect(() => {
-    setValue(project?.id);
-  }, [project]);
-
-  const handleProjectChange = (projectId: string) => {
-    if (projectId === 'no-project') {
-      setValue(undefined);
-      onChange(undefined);
-    } else {
-      setValue(projectId);
-      const newProject = projects.find((p) => p.id === projectId);
-      if (newProject) {
-        onChange(newProject);
-      }
-    }
+  const handleProjectChange = (newProjectId: string | undefined) => {
+    onChange(newProjectId);
     setOpen(false);
   };
 
+  const selectedProject = projects.find(p => p.id === projectId);
+
   return (
-    <div className="*:not-first:mt-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            id={id}
-            className="flex items-center justify-center"
-            size="xs"
-            variant="secondary"
-            role="combobox"
-            aria-expanded={open}
-          >
-            {value ? (
-              (() => {
-                const selectedProject = projects.find((p) => p.id === value);
-                if (selectedProject) {
-                  const Icon = selectedProject.icon;
-                  return <Icon className="size-4" />;
-                }
-                return <Box className="size-4" />;
-              })()
-            ) : (
-              <Box className="size-4" />
-            )}
-            <span>{value ? projects.find((p) => p.id === value)?.name : 'No project'}</span>
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          className="border-input w-full min-w-[var(--radix-popper-anchor-width)] p-0"
-          align="start"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          className="flex items-center gap-1.5"
+          size="sm"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
         >
-          <Command>
-            <CommandInput placeholder="Set project..." />
-            <CommandList>
-              <CommandEmpty>No projects found.</CommandEmpty>
-              <CommandGroup>
+          {selectedProject ? (
+            <>
+              <div 
+                className="size-4 rounded"
+                style={{ backgroundColor: selectedProject.color || '#6366F1' }}
+              >
+                {selectedProject.icon && (
+                  <span className="text-xs text-white flex items-center justify-center h-full">
+                    {selectedProject.icon}
+                  </span>
+                )}
+              </div>
+              <span>{selectedProject.name}</span>
+            </>
+          ) : (
+            <>
+              <FolderIcon className="size-4" />
+              <span>No project</span>
+            </>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-full min-w-[var(--radix-popper-anchor-width)] p-0"
+        align="start"
+      >
+        <Command>
+          <CommandInput placeholder="Search projects..." />
+          <CommandList>
+            <CommandEmpty>No projects found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="no-project"
+                onSelect={() => handleProjectChange(undefined)}
+                className="flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <FolderIcon className="size-4" />
+                  No Project
+                </div>
+                {projectId === undefined && <CheckIcon size={16} className="ml-auto" />}
+              </CommandItem>
+              {projects.map((project) => (
                 <CommandItem
-                  value="no-project"
-                  onSelect={() => handleProjectChange('no-project')}
+                  key={project.id}
+                  value={project.name}
+                  onSelect={() => handleProjectChange(project.id)}
                   className="flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2">
-                    <FolderIcon className="size-4" />
-                    No Project
-                  </div>
-                  {value === undefined && <CheckIcon size={16} className="ml-auto" />}
-                </CommandItem>
-                {projects.map((project) => (
-                  <CommandItem
-                    key={project.id}
-                    value={project.id}
-                    onSelect={() => handleProjectChange(project.id)}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2">
-                      <project.icon className="size-4" />
-                      {project.name}
+                    <div 
+                      className="size-4 rounded"
+                      style={{ backgroundColor: project.color || '#6366F1' }}
+                    >
+                      {project.icon && (
+                        <span className="text-xs text-white flex items-center justify-center h-full">
+                          {project.icon}
+                        </span>
+                      )}
                     </div>
-                    {value === project.id && <CheckIcon size={16} className="ml-auto" />}
-                    <span className="text-muted-foreground text-xs">
-                      {filterByProject(project.id).length}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    </div>
+                    <span>{project.name}</span>
+                  </div>
+                  {projectId === project.id && <CheckIcon size={16} className="ml-auto" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
