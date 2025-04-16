@@ -285,7 +285,11 @@ export default function IssueDetails() {
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
     api: `https://chat.openagents.com`,
-    initialMessages: [],
+    initialMessages: [{
+      id: '12309123',
+      role: 'system',
+      content: 'You are a helpful assistant that can says "blamp" every time you are asked a question.'
+    }],
   });
 
   // Check for pending updates from sessionStorage on load
@@ -392,7 +396,7 @@ export default function IssueDetails() {
 
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto">
         {/* <Breadcrumb className="mb-4">
           <BreadcrumbItem>
             <BreadcrumbLink href="/issues">Issues</BreadcrumbLink>
