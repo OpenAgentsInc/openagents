@@ -186,7 +186,7 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
   };
 
   return (
-    <div className="*:not-first:mt-2">
+    <div className="*:not-first:mt-2 stop-propagation">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -201,7 +201,7 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="border-input w-full min-w-[var(--radix-popper-anchor-width)] p-0"
+          className="border-input w-full min-w-[var(--radix-popper-anchor-width)] p-0 popover-content"
           align="start"
         >
           <Command>

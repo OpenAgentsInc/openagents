@@ -19,8 +19,16 @@ export function IssueLine({ issue, layoutId = false }: { issue: Issue; layoutId?
       target.closest('.stop-propagation') ||
       target.closest('button') ||
       target.closest('select') ||
+      target.closest('[role="combobox"]') ||
+      target.closest('[data-disabled]') ||
+      target.closest('[data-state="open"]') ||
+      target.closest('.popover-content') ||
+      target.closest('.dropdown-content') ||
+      target.closest('[role="dialog"]') ||
+      target.closest('[role="menu"]') ||
       target.closest('[role="button"]')
     ) {
+      e.stopPropagation();
       return;
     }
     navigate(`/issues/${issue.id}`);

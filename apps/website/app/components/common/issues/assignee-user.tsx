@@ -83,13 +83,13 @@ export function AssigneeUser({ user, issueId }: AssigneeUserProps) {
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenu open={open} onOpenChange={setOpen} className="stop-propagation">
       <DropdownMenuTrigger asChild>
         <button className="relative w-fit focus:outline-none">
           {renderAvatar()}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[206px]">
+      <DropdownMenuContent align="start" className="w-[206px] dropdown-content">
         <DropdownMenuLabel>Assign to...</DropdownMenuLabel>
         <DropdownMenuItem
           onClick={(e) => {
