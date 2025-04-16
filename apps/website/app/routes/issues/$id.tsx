@@ -20,6 +20,7 @@ import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
 import { useChat } from "@ai-sdk/react";
 import { Chat } from "@/components/ui/chat";
+import { SolverConnector } from "@/components/agent/solver-connector";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -607,6 +608,9 @@ You're currently viewing the issue page where users can see all details about th
                 </Tabs>
               </CardContent>
             </Card>
+
+            {/* Solver Agent Card */}
+            <SolverConnector issue={issue} githubToken={getGithubToken()} />
 
             {/* Chat Card */}
             <Card>
