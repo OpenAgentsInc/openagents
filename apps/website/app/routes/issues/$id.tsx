@@ -7,7 +7,7 @@ import { redirect } from "react-router";
 import { getIssueById, getWorkflowStates, getIssueLabels } from "@/lib/db/issue-helpers.server";
 import { getTeamsForUser } from "@/lib/db/team-helpers.server";
 import { getUsers, getProjects } from "@/lib/db/project-helpers.server";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
@@ -162,6 +162,119 @@ function ItemSection({ title, children }: { title: string, children: React.React
   );
 }
 
+function EditableDescription({ issue }: { issue: Issue }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [description, setDescription] = useState(issue.description || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const submit = useSubmit();
+
+  // Focus the textarea when entering edit mode
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const handleDoubleClick = () => {
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    setIsSaving(true);
+    
+    // Create form data for the update
+    const formData = new FormData();
+    formData.append('_action', 'update');
+    formData.append('id', issue.id);
+    formData.append('description', description);
+    
+    console.log('Saving description update for issue:', issue.id);
+    
+    // Submit the form using React Router's submit
+    submit(formData, {
+      method: 'post',
+      action: '/issues',
+      replace: true,
+      navigate: false
+    });
+    
+    // Set a flag in sessionStorage to reload after update
+    sessionStorage.setItem('pendingDescriptionUpdate', issue.id);
+    
+    // End editing mode
+    setIsEditing(false);
+    setIsSaving(false);
+  };
+
+  const handleCancel = () => {
+    // Reset to original description and exit edit mode
+    setDescription(issue.description || '');
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Save on Ctrl+Enter or Cmd+Enter
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault(); // Prevent default to avoid submitting other forms
+      handleSave();
+    }
+    // Cancel on Escape
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel();
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="prose prose-sm dark:prose-invert max-w-none">
+        <textarea
+          ref={textareaRef}
+          className="w-full min-h-[150px] p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Add a description..."
+        />
+        <div className="flex gap-2 mt-2">
+          <Button 
+            size="sm" 
+            onClick={handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onClick={handleCancel}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+        </div>
+        <div className="text-xs text-muted-foreground mt-1">
+          Tip: Press Ctrl+Enter to save, Esc to cancel
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className="prose prose-sm dark:prose-invert max-w-none cursor-pointer hover:bg-secondary/10 p-2 rounded-md transition-colors"
+      onDoubleClick={handleDoubleClick}
+    >
+      {description ? (
+        <p>{description}</p>
+      ) : (
+        <p className="text-muted-foreground italic">Double-click to add a description</p>
+      )}
+    </div>
+  );
+}
+
 export default function IssueDetails() {
   const { id } = useParams();
   const data = useLoaderData() as Route.IssueLoaderData;
@@ -169,6 +282,40 @@ export default function IssueDetails() {
   const submit = useSubmit();
   const [activeTab, setActiveTab] = useState("details");
   const { updateIssueStatus } = useIssuesStore();
+  
+  // Check for pending updates from sessionStorage on load
+  useEffect(() => {
+    const pendingUpdate = sessionStorage.getItem('pendingDescriptionUpdate');
+    if (pendingUpdate === id) {
+      // Clear the flag
+      sessionStorage.removeItem('pendingDescriptionUpdate');
+      // Reload once to get fresh data
+      window.location.reload();
+    }
+  }, [id]);
+  
+  // Listen for fetch responses to update the UI
+  useEffect(() => {
+    const handleFetchResponse = (event: any) => {
+      // Check if this is an update to our issue
+      if (event.detail?.data?.success && event.detail?.formData) {
+        const formData = event.detail.formData;
+        if (formData.get('_action') === 'update' && formData.get('id') === id) {
+          // Only reload for our specific issue updates
+          setTimeout(() => {
+            window.location.reload();
+          }, 200);
+        }
+      }
+    };
+    
+    // Listen for action response events
+    window.addEventListener('fetchresponse', handleFetchResponse);
+    
+    return () => {
+      window.removeEventListener('fetchresponse', handleFetchResponse);
+    };
+  }, [id]);
 
   // Handle status change
   const handleStatusChange = (statusId: string) => {
@@ -292,13 +439,7 @@ export default function IssueDetails() {
                     {/* Description section */}
                     <div className="border rounded-md p-4 bg-background">
                       <h2 className="text-sm font-medium text-muted-foreground mb-2">Description</h2>
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        {issue.description ? (
-                          <p>{issue.description}</p>
-                        ) : (
-                          <p className="text-muted-foreground italic">No description provided</p>
-                        )}
-                      </div>
+                      <EditableDescription issue={issue} />
                     </div>
 
                     {/* Other details as needed */}
