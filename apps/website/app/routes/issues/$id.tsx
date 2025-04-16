@@ -13,13 +13,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { formatDistanceToNow } from "date-fns";
 import { useIssuesStore, type Status, type User } from "@/store/issues-store";
-import { Form } from "@/components/ui/form";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { CalendarIcon, CheckCircle, Clock, Edit, LinkIcon, Tag, User as UserIcon } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink } from "@/components/ui/breadcrumb";
 import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
+import { useChat } from "@ai-sdk/react";
+import { Chat } from "@/components/ui/chat";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
@@ -182,15 +182,15 @@ function EditableDescription({ issue }: { issue: Issue }) {
 
   const handleSave = () => {
     setIsSaving(true);
-    
+
     // Create form data for the update
     const formData = new FormData();
     formData.append('_action', 'update');
     formData.append('id', issue.id);
     formData.append('description', description);
-    
+
     console.log('Saving description update for issue:', issue.id);
-    
+
     // Submit the form using React Router's submit
     submit(formData, {
       method: 'post',
@@ -198,10 +198,10 @@ function EditableDescription({ issue }: { issue: Issue }) {
       replace: true,
       navigate: false
     });
-    
+
     // Set a flag in sessionStorage to reload after update
     sessionStorage.setItem('pendingDescriptionUpdate', issue.id);
-    
+
     // End editing mode
     setIsEditing(false);
     setIsSaving(false);
@@ -238,16 +238,16 @@ function EditableDescription({ issue }: { issue: Issue }) {
           placeholder="Add a description..."
         />
         <div className="flex gap-2 mt-2">
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             onClick={handleSave}
             disabled={isSaving}
           >
             {isSaving ? 'Saving...' : 'Save'}
           </Button>
-          <Button 
-            size="sm" 
-            variant="outline" 
+          <Button
+            size="sm"
+            variant="outline"
             onClick={handleCancel}
             disabled={isSaving}
           >
@@ -262,7 +262,7 @@ function EditableDescription({ issue }: { issue: Issue }) {
   }
 
   return (
-    <div 
+    <div
       className="prose prose-sm dark:prose-invert max-w-none cursor-pointer hover:bg-secondary/10 p-2 rounded-md transition-colors"
       onDoubleClick={handleDoubleClick}
     >
@@ -282,7 +282,12 @@ export default function IssueDetails() {
   const submit = useSubmit();
   const [activeTab, setActiveTab] = useState("details");
   const { updateIssueStatus } = useIssuesStore();
-  
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
+    api: `/api/chat/${id}`,
+    initialMessages: [],
+  });
+
   // Check for pending updates from sessionStorage on load
   useEffect(() => {
     const pendingUpdate = sessionStorage.getItem('pendingDescriptionUpdate');
@@ -293,7 +298,7 @@ export default function IssueDetails() {
       window.location.reload();
     }
   }, [id]);
-  
+
   // Listen for fetch responses to update the UI
   useEffect(() => {
     const handleFetchResponse = (event: any) => {
@@ -308,10 +313,10 @@ export default function IssueDetails() {
         }
       }
     };
-    
+
     // Listen for action response events
     window.addEventListener('fetchresponse', handleFetchResponse);
-    
+
     return () => {
       window.removeEventListener('fetchresponse', handleFetchResponse);
     };
@@ -401,7 +406,7 @@ export default function IssueDetails() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Main content */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 space-y-6">
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
@@ -502,6 +507,23 @@ export default function IssueDetails() {
                     </TabsContent>
                   )}
                 </Tabs>
+              </CardContent>
+            </Card>
+
+            {/* Chat Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Issue Discussion</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Chat
+                  messages={messages}
+                  input={input}
+                  handleInputChange={handleInputChange}
+                  handleSubmit={handleSubmit}
+                  isGenerating={isLoading}
+                  stop={stop}
+                />
               </CardContent>
             </Card>
           </div>
