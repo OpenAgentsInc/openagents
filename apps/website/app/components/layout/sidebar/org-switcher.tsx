@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { ChevronsUpDown } from 'lucide-react';
 import { Link } from 'react-router';
+import { signOut } from '@/lib/auth-client';
 
 import {
   DropdownMenu,
@@ -21,6 +22,17 @@ import { CreateNewIssue } from './create-new-issue';
 import { ThemeToggle } from '../theme-toggle';
 
 export function OrgSwitcher() {
+  const handleSignOut = async () => {
+    await signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          // Redirect to login page after signout
+          window.location.href = '/login';
+        },
+      },
+    });
+  };
+
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -83,7 +95,7 @@ export function OrgSwitcher() {
                 </DropdownMenuSubContent>
               </DropdownMenuPortal>
             </DropdownMenuSub> */}
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSignOut}>
               Log out
               {/* <DropdownMenuShortcut>⌥⇧Q</DropdownMenuShortcut> */}
             </DropdownMenuItem>
