@@ -78,7 +78,8 @@ export interface CoderState {
 export interface SolverState {
   messages: UIMessage[];
   githubToken?: string;
-  currentProblem?: Problem;
+  currentIssue?: Issue;
+  implementationSteps?: ImplementationStep[];
   // ... other Solver-specific state
 }
 ```
@@ -110,6 +111,8 @@ const tools = {
 // In Solver.infer()
 const toolContext: ToolContext = { githubToken: token };
 const tools = {
+  get_file_contents: getFileContentsTool(toolContext),
+  add_issue_comment: addIssueCommentTool(toolContext),
   ...solverTools,
   ...commonTools
 };
@@ -204,7 +207,7 @@ export class YourAgent extends Agent<Env, YourAgentState> {
     console.log("[Constructor] YourAgent instance created.");
   }
 
-  private updateState(partialState: Partial<YourAgentState>) {
+  updateState(partialState: Partial<YourAgentState>) {
     this.setState({
       ...this.state,
       ...partialState,
@@ -215,10 +218,6 @@ export class YourAgent extends Agent<Env, YourAgentState> {
     // Handle incoming messages
   }
 
-  @unstable_callable({
-    description: "Generate a response based on the current messages",
-    streaming: true
-  })
   async infer() {
     return yourAgentContext.run(this, async () => {
       // Your agent's inference logic
@@ -315,6 +314,34 @@ Update `index.ts` to export your agent:
 // src/index.ts
 export { YourAgent } from './agents/your-agent-name';
 ```
+
+## Current Agent Types
+
+### Coder Agent
+
+The Coder agent is designed for general-purpose coding assistance tasks:
+
+- **Purpose**: Help with coding tasks across software development lifecycle
+- **Capabilities**:
+  - Analyze codebases to understand structure and patterns
+  - Debug issues by examining error logs and code
+  - Implement new features and improve existing code
+  - Provide code explanations and documentation
+- **State Model**: Tracks repository context, codebase understanding, and tasks
+- **Key Tools**: File content access, GitHub API integration, continuous exploration
+
+### Solver Agent
+
+The Solver agent is specialized for GitHub and Linear issue resolution:
+
+- **Purpose**: Analyze, plan, and implement solutions for tracked issues
+- **Capabilities**:
+  - Fetch and understand issue details from GitHub/Linear
+  - Create step-by-step implementation plans
+  - Implement code changes to resolve issues
+  - Update issue statuses and add progress comments
+- **State Model**: Tracks current issue, implementation steps, and progress
+- **Key Tools**: Issue management, implementation planning, step tracking
 
 ## Best Practices
 

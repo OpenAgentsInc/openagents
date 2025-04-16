@@ -65,18 +65,18 @@ mkdir -p /Users/christopherdavid/code/openagents/packages/agents/src/common/tool
 
 - **Agent-Specific Types**: Created separate type definitions for each agent
   - `agents/coder/types.ts`: Moved `CoderState`, `FileNode`, `Task` interfaces from original `types.ts`
-  - `agents/solver/types.ts`: Added new `SolverState`, `Problem`, `SolutionStep` interfaces
+  - `agents/solver/types.ts`: Added new `SolverState`, `Issue`, `ImplementationStep` interfaces
 - **Common Types**: Added `common/types.ts` for shared type definitions
 
 ### 3. Agent Implementations
 
 - **Coder Agent**: Moved the entire Coder class from `server.ts` to `agents/coder/index.ts`
-- **Solver Agent**: Created a new Solver agent implementation in `agents/solver/index.ts` with similar structure but adapted for mathematical/logical problem solving
+- **Solver Agent**: Created a new Solver agent implementation in `agents/solver/index.ts` to support GitHub and Linear issue resolution
 
 ### 4. Prompt Generation
 
 - **Coder Prompts**: Moved the `getSystemPrompt` function to `agents/coder/prompts.ts`
-- **Solver Prompts**: Created new `getSolverSystemPrompt` function in `agents/solver/prompts.ts` tailored for problem-solving
+- **Solver Prompts**: Created new `getSolverSystemPrompt` function in `agents/solver/prompts.ts` tailored for issue resolution
 
 ### 5. Schemas
 
@@ -94,8 +94,9 @@ mkdir -p /Users/christopherdavid/code/openagents/packages/agents/src/common/tool
   - `getFileContentsTool`: `common/tools/github/getFileContents.ts`
   - `addIssueCommentTool`: `common/tools/github/addIssueComment.ts`
 - **Solver-Specific Tools**: Created new tools for the Solver agent in `agents/solver/tools.ts`
-  - `evaluateExpression`: For evaluating mathematical expressions
-  - `verifyProof`: For verifying mathematical/logical proofs
+  - `getIssueDetails`: For fetching GitHub/Linear issue information
+  - `updateIssueStatus`: For updating issue statuses and adding comments
+  - `createImplementationPlan`: For generating structured implementation plans
 
 ### 7. Configuration
 
@@ -123,10 +124,18 @@ mkdir -p /Users/christopherdavid/code/openagents/packages/agents/src/common/tool
 
 The new Solver agent was implemented with the following characteristics:
 
-1. **Purpose**: Focus on mathematical, logical, and analytical problem-solving
-2. **State Model**: Uses `SolverState` to track problems, steps, and solutions
-3. **Tools**: Dedicated tools for evaluating expressions and verifying proofs
-4. **Prompt Design**: System prompt emphasizes thorough analysis, showing work, and verification
+1. **Purpose**: Focus on resolving GitHub and Linear issues within software projects
+2. **State Model**: Uses `SolverState` to track issues, implementation steps, and progress
+3. **Tools**: Dedicated tools for issue management and implementation planning
+4. **Prompt Design**: System prompt emphasizes methodical issue resolution through analysis, planning, implementation, and testing
+5. **Differentiator**: Unlike the general-purpose Coder agent, the Solver agent specifically integrates with issue tracking systems and follows a structured problem-solving approach
+
+The Solver agent includes specialized methods for:
+- Setting the current issue being worked on
+- Setting repository context for the issue
+- Tracking implementation steps and their statuses
+- Managing file access for implementing solutions
+- Communicating with GitHub and Linear APIs
 
 ## Next Steps
 
@@ -137,7 +146,8 @@ While the refactoring establishes the foundation for multiple agent types, there
 3. **Enhanced Tool Integration**: Further refine the tool interfaces for consistency
 4. **Documentation**: Add JSDoc comments to all exported components
 5. **UI Integration**: Update frontend components to support the selection of different agent types
-6. **Support for Additional Agent Types**: Use this architecture to implement other specialized agents
+6. **Linear API Integration**: Complete the Linear API integration for the Solver agent
+7. **Pull Request Workflow**: Add capabilities for the Solver agent to create PRs with implemented solutions
 
 ## Conclusion
 

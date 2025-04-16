@@ -4,23 +4,29 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Env } from "../../types";
 import type { UIPart } from "@openagents/core/src/chat/types";
 import type { ToolContext } from "@openagents/core/src/tools/toolContext";
+import { getFileContentsTool } from "../../common/tools/github/getFileContents";
+import { addIssueCommentTool } from "../../common/tools/github/addIssueComment";
 import { tools as commonTools } from "../../common/tools";
 import { solverTools } from "./tools";
 import { getSolverSystemPrompt } from "./prompts";
 import { openrouter, model, smallModel } from "../../common/config";
-import type { SolverState, Problem, SolutionStep } from "./types";
+import type { SolverState, Issue, ImplementationStep } from "./types";
 
 export const solverContext = new AsyncLocalStorage<Solver>();
 
 /**
- * Chat Agent implementation that handles problem-solving interactions
+ * Solver Agent implementation that handles GitHub and Linear issue resolution
  */
 export class Solver extends Agent<Env, SolverState> {
   initialState: SolverState = {
     messages: [],
     githubToken: undefined,
+    currentRepoOwner: undefined,
+    currentRepoName: undefined,
+    currentBranch: undefined,
     scratchpad: '',
-    observations: []
+    observations: [],
+    workingFilePath: undefined
   };
   tools: ToolSet = {};
   
@@ -37,12 +43,80 @@ export class Solver extends Agent<Env, SolverState> {
    * with the existing state. Ensures ...this.state is always included.
    * @param partialState An object containing the state properties to update.
    */
-  private updateState(partialState: Partial<SolverState>) {
+  updateState(partialState: Partial<SolverState>) {
     this.setState({
       ...this.state,
       ...partialState,
     });
     console.log('[updateState] Updated in-memory state via this.setState.');
+  }
+
+  /**
+   * Sets the current issue being worked on
+   */
+  async setCurrentIssue(issue: Issue) {
+    await this.updateState({
+      currentIssue: issue
+    });
+    
+    await this.addAgentObservation(`Now working on issue #${issue.number}: ${issue.title}`);
+    
+    return { success: true, message: `Set current issue to #${issue.number}` };
+  }
+
+  /**
+   * Sets the current repository context
+   */
+  async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
+    console.log(`[setRepositoryContext] Setting context to ${owner}/${repo} on branch ${branch}`);
+    
+    await this.updateState({
+      currentRepoOwner: owner,
+      currentRepoName: repo,
+      currentBranch: branch
+    });
+    
+    await this.addAgentObservation(`Repository context set to ${owner}/${repo}:${branch}`);
+    
+    return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
+  }
+
+  /**
+   * Updates the implementation step status
+   */
+  async updateStepStatus(stepId: string, status: ImplementationStep['status'], notes?: string) {
+    if (!this.state.implementationSteps) return false;
+
+    const updatedSteps = this.state.implementationSteps.map(step => {
+      if (step.id === stepId) {
+        return {
+          ...step,
+          status,
+          ...(status === 'in_progress' ? { started: new Date() } : {}),
+          ...(status === 'completed' ? { completed: new Date() } : {}),
+          notes: notes ? (step.notes ? `${step.notes}\n\n${notes}` : notes) : step.notes
+        };
+      }
+      return step;
+    });
+
+    await this.updateState({
+      implementationSteps: updatedSteps,
+      observations: [...(this.state.observations || []), `Step ${stepId} status changed to ${status}${notes ? " with note" : ""}`]
+    });
+
+    return true;
+  }
+
+  /**
+   * Sets the file currently being worked on
+   */
+  async setCurrentFile(filePath: string) {
+    await this.updateState({
+      workingFilePath: filePath
+    });
+    
+    await this.addAgentObservation(`Now working on file: ${filePath}`);
   }
 
   /**
@@ -55,7 +129,7 @@ export class Solver extends Agent<Env, SolverState> {
   }
 
   /**
-   * Updates the agent's scratchpad with thought
+   * Updates the agent's scratchpad with agent thoughts
    */
   private async updateScratchpad(thought: string) {
     const timestamp = new Date().toISOString();
@@ -86,7 +160,34 @@ export class Solver extends Agent<Env, SolverState> {
       // Flag to decide whether to call infer
       let callInfer = false;
 
-      // GitHub Token handling
+      // --- Command Handling ---
+      if (parsedMessage.type === 'command' && parsedMessage.command) {
+        console.log(`Processing command: ${parsedMessage.command}`);
+
+        switch (parsedMessage.command) {
+          case 'setIssue':
+            if (parsedMessage.issue) {
+              await this.setCurrentIssue(parsedMessage.issue);
+            }
+            break;
+          case 'setRepo':
+            if (parsedMessage.owner && parsedMessage.repo) {
+              await this.setRepositoryContext(
+                parsedMessage.owner,
+                parsedMessage.repo,
+                parsedMessage.branch || 'main'
+              );
+            }
+            break;
+          default:
+            console.warn(`Received unknown command: ${parsedMessage.command}`);
+        }
+        
+        callInfer = true; // Call infer after processing commands
+      }
+
+      // --- GitHub Token Logic ---
+      // Check if it's a message containing the token
       if (parsedMessage.githubToken) {
         console.log("Processing githubToken update...");
         const githubToken = parsedMessage.githubToken;
@@ -99,27 +200,56 @@ export class Solver extends Agent<Env, SolverState> {
           console.log("User message present with token, will call infer.");
           callInfer = true;
         } else {
-          console.log("Token update only, not calling infer.");
-          return; // Exit if only token was updated
+          console.log("Token update only, not calling infer yet.");
+          // Don't exit here - we might also have an issue or repo update
         }
       }
 
-      // User Message handling
-      else if (parsedMessage.userMessage && parsedMessage.userMessage.content) {
-        console.log("User message present, will call infer.");
+      // --- Issue Information Logic ---
+      if (parsedMessage.issue) {
+        console.log("Processing issue update...");
+        await this.setCurrentIssue(parsedMessage.issue);
         callInfer = true;
       }
 
-      // Unhandled message type
-      else {
-        console.warn("Received unhandled message structure via send():", safeMessageForLogging);
-        return; // Exit for unhandled message types
+      // --- Repository Context Logic ---
+      if (parsedMessage.repoOwner && parsedMessage.repoName) {
+        console.log("Processing repository context update...");
+        await this.setRepositoryContext(
+          parsedMessage.repoOwner,
+          parsedMessage.repoName,
+          parsedMessage.branch || 'main'
+        );
+        callInfer = true;
+      }
+
+      // --- User Message Handling ---
+      // Check if there's a user message that needs inference
+      if (parsedMessage.userMessage && parsedMessage.userMessage.content) {
+        console.log("User message present, will call infer.");
+        
+        // Update messages array with the new user message
+        await this.updateState({
+          messages: [
+            ...(this.state.messages || []),
+            {
+              ...parsedMessage.userMessage,
+              id: parsedMessage.userMessage.id || generateId(),
+              role: 'user',
+              createdAt: parsedMessage.userMessage.createdAt || new Date()
+            }
+          ]
+        });
+        
+        callInfer = true;
       }
 
       // Call infer only if flagged to do so
       if (callInfer) {
         console.log("Calling infer() based on message contents...");
         this.infer();
+      } else {
+        console.log("Not calling infer() - no trigger detected.");
       }
 
     } catch (error) {
@@ -131,16 +261,12 @@ export class Solver extends Agent<Env, SolverState> {
   /**
    * Main inference method that generates AI responses based on the current state
    */
-  @unstable_callable({
-    description: "Generate an AI response for problem-solving",
-    streaming: true
-  })
   async infer() {
     return solverContext.run(this, async () => {
       // Add initial planning thought
-      await this.updateScratchpad("Analyzing problem and planning solution");
+      await this.updateScratchpad("Processing request and planning response");
 
-      // Use githubToken from state if available
+      // Get GitHub token from state
       const token = this.state.githubToken;
 
       // Get current state messages
@@ -149,14 +275,16 @@ export class Solver extends Agent<Env, SolverState> {
       // If there's more than 10 messages, take the first 3 and last 5
       if (messages.length > 10) {
         messages = messages.slice(0, 3).concat(messages.slice(-5));
-        console.log("Truncated messages to first 3 and last 5", messages);
+        console.log("Truncated messages to first 3 and last 5");
       }
 
       // Set up tool context
       const toolContext: ToolContext = { githubToken: token };
       
-      // Combine solver-specific tools with common tools
+      // Combine solver-specific tools with common tools and GitHub tools
       const tools = {
+        get_file_contents: getFileContentsTool(toolContext),
+        add_issue_comment: addIssueCommentTool(toolContext),
         ...solverTools,
         ...commonTools
       };
@@ -234,6 +362,19 @@ export class Solver extends Agent<Env, SolverState> {
               ? `${toolResult.result.substring(0, 50)}...`
               : JSON.stringify(toolResult.result).substring(0, 50) + '...';
             await this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
+            
+            // Update state based on tool results (e.g., if we fetched issue details)
+            if (toolCall.toolName === 'getIssueDetails' && toolResult.result) {
+              try {
+                // If the result looks like an issue, update the current issue
+                const resultObj = toolResult.result as any;
+                if (resultObj.id && resultObj.number && resultObj.title) {
+                  await this.setCurrentIssue(resultObj);
+                }
+              } catch (error) {
+                console.error("[infer] Error updating issue from tool result:", error);
+              }
+            }
           } else {
             // If we only have the call (tool hasn't finished), push the call part
             messageParts.push({

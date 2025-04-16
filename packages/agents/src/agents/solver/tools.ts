@@ -3,61 +3,289 @@ import { z } from "zod";
 import { Solver, solverContext } from "./index";
 
 /**
- * Tool to evaluate mathematical expressions
+ * Tool to fetch an issue from GitHub or Linear
  */
-export const evaluateExpression = tool({
-  description: "Evaluate a mathematical expression",
+export const getIssueDetails = tool({
+  description: "Fetch details about an issue from GitHub or Linear",
   parameters: z.object({
-    expression: z.string().describe("The mathematical expression to evaluate")
+    source: z.enum(["github", "linear"]).describe("The source platform for the issue"),
+    owner: z.string().optional().describe("The owner/organization (for GitHub issues)"),
+    repo: z.string().optional().describe("The repository name (for GitHub issues)"),
+    issueNumber: z.number().describe("The issue number/ID"),
+    teamId: z.string().optional().describe("The team ID (for Linear issues)")
   }),
-  execute: async ({ expression }) => {
-    console.log(`[evaluateExpression] Evaluating: ${expression}`);
-    try {
-      // Using a simple eval for demo purposes
-      // In production, we would use a secure math expression evaluator library
-      // with proper validation and sandboxing
-      const result = eval(expression);
-      return result.toString();
-    } catch (error) {
-      console.error(`[evaluateExpression] Error evaluating expression:`, error);
-      return `Error evaluating expression: ${error instanceof Error ? error.message : String(error)}`;
-    }
-  }
-});
-
-/**
- * Tool to verify mathematical proofs
- */
-export const verifyProof = tool({
-  description: "Verify a mathematical or logical proof",
-  parameters: z.object({
-    proof: z.string().describe("The proof to verify"),
-    type: z.enum(["mathematical", "logical"]).describe("Type of proof"),
-    theorems: z.array(z.string()).optional().describe("Referenced theorems or axioms")
-  }),
-  execute: async ({ proof, type, theorems }) => {
-    console.log(`[verifyProof] Verifying ${type} proof`);
+  execute: async ({ source, owner, repo, issueNumber, teamId }) => {
+    console.log(`[getIssueDetails] Fetching ${source} issue #${issueNumber}`);
     
     const agent = solverContext.getStore();
     if (!agent || !(agent instanceof Solver)) {
       throw new Error("No agent found or agent is not a Solver instance");
     }
 
-    // This is a placeholder for an actual proof verification system
-    // In a real implementation, we would integrate with a formal verification tool
-    // or a structured approach to proof checking
+    // Get GitHub token from agent state
+    const token = agent.state.githubToken;
+    if (!token) {
+      throw new Error("GitHub token is required but not provided");
+    }
+
+    try {
+      // Fetch issue details based on source
+      if (source === "github") {
+        if (!owner || !repo) {
+          throw new Error("Owner and repo are required for GitHub issues");
+        }
+
+        // Construct GitHub API URL
+        const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
+        
+        // Make API request
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'OpenAgents'
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[getIssueDetails] GitHub API error: ${response.status} ${response.statusText}`, errorText);
+          throw new Error(`GitHub API error (${response.status}): ${errorText}`);
+        }
+
+        const data = await response.json();
+        
+        // Map the response to our Issue type
+        return {
+          id: data.id.toString(),
+          number: data.number,
+          title: data.title,
+          description: data.body || "",
+          source: "github",
+          status: data.state === "open" ? "open" : "closed",
+          url: data.html_url,
+          assignee: data.assignee ? data.assignee.login : undefined,
+          labels: data.labels ? data.labels.map((label: any) => label.name) : [],
+          created: new Date(data.created_at),
+          updated: new Date(data.updated_at)
+        };
+      } 
+      // Linear implementation would go here
+      else if (source === "linear") {
+        // For now, return a mock implementation
+        return {
+          error: "Linear API integration is not yet implemented",
+          message: "Please use GitHub issues for now"
+        };
+      }
+    } catch (error) {
+      console.error(`[getIssueDetails] Error:`, error);
+      throw error;
+    }
+  }
+});
+
+/**
+ * Tool to update issue status
+ */
+export const updateIssueStatus = tool({
+  description: "Update the status of an issue in GitHub or Linear",
+  parameters: z.object({
+    source: z.enum(["github", "linear"]).describe("The source platform for the issue"),
+    owner: z.string().optional().describe("The owner/organization (for GitHub issues)"),
+    repo: z.string().optional().describe("The repository name (for GitHub issues)"),
+    issueNumber: z.number().describe("The issue number/ID"),
+    status: z.enum(["open", "in_progress", "review", "closed"]).describe("The new status for the issue"),
+    comment: z.string().optional().describe("Optional comment to add with the status update")
+  }),
+  execute: async ({ source, owner, repo, issueNumber, status, comment }) => {
+    console.log(`[updateIssueStatus] Updating ${source} issue #${issueNumber} to ${status}`);
     
-    return {
-      verified: true,  // Placeholder result
-      confidence: 0.9, // Placeholder confidence score
-      steps: [
-        "Parsed proof structure",
-        "Verified logical flow",
-        "Confirmed theorem applications",
-        "Validated conclusion"
-      ],
-      notes: "This is a placeholder verification. In a real implementation, we would use formal verification methods."
-    };
+    const agent = solverContext.getStore();
+    if (!agent || !(agent instanceof Solver)) {
+      throw new Error("No agent found or agent is not a Solver instance");
+    }
+
+    // Get GitHub token from agent state
+    const token = agent.state.githubToken;
+    if (!token) {
+      throw new Error("GitHub token is required but not provided");
+    }
+
+    try {
+      // Update issue status based on source
+      if (source === "github") {
+        if (!owner || !repo) {
+          throw new Error("Owner and repo are required for GitHub issues");
+        }
+
+        // Map our status to GitHub status
+        const githubState = status === "closed" ? "closed" : "open";
+        
+        // Construct GitHub API URL
+        const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
+        
+        // Make API request to update status
+        const response = await fetch(url, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'OpenAgents'
+          },
+          body: JSON.stringify({ 
+            state: githubState,
+            // If there's a status other than open/closed, we'll add it as a label
+            ...(status !== "open" && status !== "closed" ? {
+              labels: [`status:${status}`]
+            } : {})
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[updateIssueStatus] GitHub API error: ${response.status} ${response.statusText}`, errorText);
+          throw new Error(`GitHub API error (${response.status}): ${errorText}`);
+        }
+
+        // If a comment was provided, add it
+        if (comment) {
+          const commentUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
+          
+          const commentResponse = await fetch(commentUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'OpenAgents'
+            },
+            body: JSON.stringify({ body: comment })
+          });
+
+          if (!commentResponse.ok) {
+            const errorText = await commentResponse.text();
+            console.error(`[updateIssueStatus] GitHub comment API error: ${commentResponse.status}`, errorText);
+            // Continue despite comment error
+          }
+        }
+
+        const data = await response.json();
+        
+        return {
+          success: true,
+          issue: {
+            id: data.id.toString(),
+            number: data.number,
+            status: status,
+            updated: new Date(data.updated_at)
+          },
+          message: `Issue #${issueNumber} updated to ${status}${comment ? " with comment" : ""}`
+        };
+      } 
+      // Linear implementation would go here
+      else if (source === "linear") {
+        // For now, return a mock implementation
+        return {
+          error: "Linear API integration is not yet implemented",
+          message: "Please use GitHub issues for now"
+        };
+      }
+    } catch (error) {
+      console.error(`[updateIssueStatus] Error:`, error);
+      throw error;
+    }
+  }
+});
+
+/**
+ * Tool to create an implementation plan for solving an issue
+ */
+export const createImplementationPlan = tool({
+  description: "Create a step-by-step implementation plan for solving an issue",
+  parameters: z.object({
+    issueTitle: z.string().describe("The title of the issue"),
+    issueDescription: z.string().describe("The full description of the issue"),
+    repoOwner: z.string().optional().describe("The owner of the repository"),
+    repoName: z.string().optional().describe("The name of the repository")
+  }),
+  execute: async ({ issueTitle, issueDescription, repoOwner, repoName }) => {
+    console.log(`[createImplementationPlan] Creating plan for issue: ${issueTitle}`);
+    
+    const agent = solverContext.getStore();
+    if (!agent || !(agent instanceof Solver)) {
+      throw new Error("No agent found or agent is not a Solver instance");
+    }
+
+    try {
+      // In a real implementation, you might use an LLM call here to generate the plan
+      // For this demonstration, we'll create a simple plan with predefined steps
+      
+      const steps = [
+        {
+          id: "step-1",
+          description: "Analyze the issue requirements",
+          type: "analysis",
+          status: "pending",
+          created: new Date(),
+          notes: "Understand the scope and requirements from the issue description"
+        },
+        {
+          id: "step-2",
+          description: "Research existing solutions",
+          type: "research",
+          status: "pending",
+          created: new Date(),
+          dependsOn: ["step-1"],
+          notes: "Look for similar patterns or solutions in the codebase"
+        },
+        {
+          id: "step-3",
+          description: "Implement solution",
+          type: "implementation",
+          status: "pending",
+          created: new Date(),
+          dependsOn: ["step-2"],
+          notes: "Write code to address the issue"
+        },
+        {
+          id: "step-4",
+          description: "Add tests",
+          type: "testing",
+          status: "pending",
+          created: new Date(),
+          dependsOn: ["step-3"],
+          notes: "Create tests to verify the solution"
+        },
+        {
+          id: "step-5",
+          description: "Update documentation",
+          type: "documentation",
+          status: "pending",
+          created: new Date(),
+          dependsOn: ["step-3"],
+          notes: "Update relevant documentation for the changes"
+        }
+      ];
+      
+      // Store the implementation steps in the agent's state
+      await agent.updateState({
+        implementationSteps: steps
+      });
+      
+      return {
+        success: true,
+        plan: {
+          issueTitle,
+          steps
+        },
+        message: `Created implementation plan with ${steps.length} steps for: ${issueTitle}`
+      };
+    } catch (error) {
+      console.error(`[createImplementationPlan] Error:`, error);
+      throw error;
+    }
   }
 });
 
@@ -65,6 +293,7 @@ export const verifyProof = tool({
  * Export solver-specific tools
  */
 export const solverTools = {
-  evaluateExpression,
-  verifyProof,
+  getIssueDetails,
+  updateIssueStatus,
+  createImplementationPlan
 };

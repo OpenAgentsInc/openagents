@@ -4,28 +4,49 @@ import { type UIMessage } from "ai";
 export interface SolverState {
   messages: UIMessage[];
   githubToken?: string;
-  currentProblem?: Problem;
-  steps?: SolutionStep[];
+  currentIssue?: Issue;
+  currentRepoOwner?: string;
+  currentRepoName?: string;
+  currentBranch?: string;
+  implementationSteps?: ImplementationStep[];
   observations?: string[];
   scratchpad?: string;
+  workingFilePath?: string;
+  issueComments?: IssueComment[];
 }
 
-export interface Problem {
+export interface Issue {
   id: string;
+  number: number;
+  title: string;
   description: string;
-  type: 'math' | 'logic' | 'reasoning' | 'other';
-  constraints?: string[];
-  status: 'unsolved' | 'in-progress' | 'solved' | 'failed';
+  source: 'github' | 'linear' | 'other';
+  status: 'open' | 'in_progress' | 'review' | 'closed';
+  url?: string;
+  assignee?: string;
+  labels?: string[];
   created: Date;
   updated?: Date;
-  completed?: Date;
+  projectId?: string;
+  teamId?: string;
 }
 
-export interface SolutionStep {
+export interface ImplementationStep {
   id: string;
   description: string;
+  type: 'analysis' | 'research' | 'implementation' | 'testing' | 'documentation';
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped';
+  notes?: string;
+  created: Date;
+  started?: Date;
+  completed?: Date;
+  dependsOn?: string[]; // IDs of steps this one depends on
+  filePaths?: string[]; // Files involved in this step
+}
+
+export interface IssueComment {
+  id: string;
   content: string;
-  type: 'assumption' | 'theorem' | 'definition' | 'calculation' | 'proof';
-  verified: boolean;
+  author: string;
   created: Date;
 }
