@@ -552,7 +552,7 @@ You're currently viewing the issue page where users can see all details about th
                         <ul className="list-disc pl-5">
                           {issue.subissues.map(subissueId => (
                             <li key={subissueId}>
-                              <a href={`/issues/${subissueId}`} className="text-blue-500 hover:underline">
+                              <a href={`/issues/${subissueId}`} className="text-zinc-500 hover:underline">
                                 {subissueId}
                               </a>
                             </li>
@@ -674,7 +674,7 @@ You're currently viewing the issue page where users can see all details about th
                       />
                       <a
                         href={`/projects/${issue.project.id}`}
-                        className="text-blue-500 hover:underline"
+                        className="text-zinc-500 hover:underline"
                       >
                         {issue.project.name}
                       </a>
