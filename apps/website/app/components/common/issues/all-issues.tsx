@@ -68,8 +68,34 @@ const GroupIssuesListView: FC<{
 }> = ({ isViewTypeGrid = false, states = status }) => {
   const { issuesByStatus, issues } = useIssuesStore();
   
+  // Deduplicate states by name (case-insensitive) to prevent duplicate "To Do" columns
+  const deduplicatedStates: typeof states = [];
+  const seenNames = new Set<string>();
+  
+  // First pass: add all the database-created workflow states (non-default-*)
+  for (const state of states) {
+    if (!state.id.startsWith('default-')) {
+      const normalizedName = state.name.toLowerCase();
+      if (!seenNames.has(normalizedName)) {
+        seenNames.add(normalizedName);
+        deduplicatedStates.push(state);
+      }
+    }
+  }
+  
+  // Second pass: add any missing default states if needed
+  for (const state of states) {
+    if (state.id.startsWith('default-')) {
+      const normalizedName = state.name.toLowerCase();
+      if (!seenNames.has(normalizedName)) {
+        seenNames.add(normalizedName);
+        deduplicatedStates.push(state);
+      }
+    }
+  }
+  
   // Sort states by position if available, or fall back to order in the array
-  const sortedStates = [...states].sort((a, b) => {
+  const sortedStates = [...deduplicatedStates].sort((a, b) => {
     // Sort by position if available
     if (a.position !== undefined && b.position !== undefined) {
       return a.position - b.position;

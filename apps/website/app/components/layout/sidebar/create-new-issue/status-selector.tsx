@@ -69,6 +69,35 @@ export function StatusSelector({ stateId, onChange, loaderData: propLoaderData }
   if (workflowStates.length <= 1) {
     workflowStates = defaultWorkflowStates;
   }
+  
+  // Deduplicate workflow states by name to prevent duplicate items
+  const deduplicatedStates: typeof workflowStates = [];
+  const seenNames = new Set<string>();
+  
+  // First pass: add all the database-created workflow states
+  for (const state of workflowStates) {
+    if (!state.id.startsWith('default-')) {
+      const normalizedName = state.name.toLowerCase();
+      if (!seenNames.has(normalizedName)) {
+        seenNames.add(normalizedName);
+        deduplicatedStates.push(state);
+      }
+    }
+  }
+  
+  // Second pass: add any missing default states if needed
+  for (const state of workflowStates) {
+    if (state.id.startsWith('default-')) {
+      const normalizedName = state.name.toLowerCase();
+      if (!seenNames.has(normalizedName)) {
+        seenNames.add(normalizedName);
+        deduplicatedStates.push(state);
+      }
+    }
+  }
+  
+  // Replace the workflow states with the deduplicated list
+  workflowStates = deduplicatedStates;
 
   const [selectedState, setSelectedState] = useState<WorkflowState | null>(null);
 

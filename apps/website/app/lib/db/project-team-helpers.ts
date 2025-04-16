@@ -1,16 +1,16 @@
 import { D1Dialect } from 'kysely-d1';
 import { Kysely } from 'kysely';
 import { env } from 'cloudflare:workers';
-import { 
-  Project, 
-  Team, 
-  ProjectMember, 
-  TeamMember, 
-  TeamProject, 
-  User, 
-  ProjectWithRelations, 
-  TeamWithRelations,
-  UserWithRelations
+import {
+  type Project,
+  type Team,
+  type ProjectMember,
+  type TeamMember,
+  type TeamProject,
+  type User,
+  type ProjectWithRelations,
+  type TeamWithRelations,
+  type UserWithRelations
 } from '../types/db-schema';
 
 // Define the database interface for Kysely
@@ -40,25 +40,25 @@ export async function getProjects() {
 
 export async function getProjectById(id: string): Promise<ProjectWithRelations | undefined> {
   const db = getDb();
-  
+
   // Get the project
   const project = await db
     .selectFrom('project')
     .where('id', '=', id)
     .selectAll()
     .executeTakeFirst();
-    
+
   if (!project) return undefined;
-  
+
   // Get the owner
   const owner = await db
     .selectFrom('user')
     .where('id', '=', project.ownerId)
     .selectAll()
     .executeTakeFirst();
-    
+
   if (!owner) return undefined;
-  
+
   // Get the members with their roles
   const projectMembers = await db
     .selectFrom('project_member')
@@ -72,7 +72,7 @@ export async function getProjectById(id: string): Promise<ProjectWithRelations |
       'project_member.role'
     ])
     .execute();
-    
+
   // Get the teams
   const teamProjects = await db
     .selectFrom('team_project')
@@ -80,7 +80,7 @@ export async function getProjectById(id: string): Promise<ProjectWithRelations |
     .innerJoin('team', 'team.id', 'team_project.teamId')
     .selectAll('team')
     .execute();
-    
+
   return {
     ...project,
     owner,
@@ -101,7 +101,7 @@ export async function getProjectById(id: string): Promise<ProjectWithRelations |
 export async function createProject(project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) {
   const db = getDb();
   const id = crypto.randomUUID();
-  
+
   await db
     .insertInto('project')
     .values({
@@ -111,7 +111,7 @@ export async function createProject(project: Omit<Project, 'id' | 'createdAt' | 
       updatedAt: new Date()
     })
     .execute();
-    
+
   return id;
 }
 
@@ -123,25 +123,25 @@ export async function getTeams() {
 
 export async function getTeamById(id: string): Promise<TeamWithRelations | undefined> {
   const db = getDb();
-  
+
   // Get the team
   const team = await db
     .selectFrom('team')
     .where('id', '=', id)
     .selectAll()
     .executeTakeFirst();
-    
+
   if (!team) return undefined;
-  
+
   // Get the owner
   const owner = await db
     .selectFrom('user')
     .where('id', '=', team.ownerId)
     .selectAll()
     .executeTakeFirst();
-    
+
   if (!owner) return undefined;
-  
+
   // Get the members with their roles
   const teamMembers = await db
     .selectFrom('team_member')
@@ -155,7 +155,7 @@ export async function getTeamById(id: string): Promise<TeamWithRelations | undef
       'team_member.role'
     ])
     .execute();
-    
+
   // Get the projects
   const teamProjects = await db
     .selectFrom('team_project')
@@ -163,7 +163,7 @@ export async function getTeamById(id: string): Promise<TeamWithRelations | undef
     .innerJoin('project', 'project.id', 'team_project.projectId')
     .selectAll('project')
     .execute();
-    
+
   return {
     ...team,
     owner,
@@ -184,7 +184,7 @@ export async function getTeamById(id: string): Promise<TeamWithRelations | undef
 export async function createTeam(team: Omit<Team, 'id' | 'createdAt' | 'updatedAt'>) {
   const db = getDb();
   const id = crypto.randomUUID();
-  
+
   await db
     .insertInto('team')
     .values({
@@ -194,7 +194,7 @@ export async function createTeam(team: Omit<Team, 'id' | 'createdAt' | 'updatedA
       updatedAt: new Date()
     })
     .execute();
-    
+
   return id;
 }
 
@@ -202,7 +202,7 @@ export async function createTeam(team: Omit<Team, 'id' | 'createdAt' | 'updatedA
 export async function addUserToProject(projectId: string, userId: string, role: string = 'member') {
   const db = getDb();
   const id = crypto.randomUUID();
-  
+
   await db
     .insertInto('project_member')
     .values({
@@ -214,14 +214,14 @@ export async function addUserToProject(projectId: string, userId: string, role: 
       updatedAt: new Date()
     })
     .execute();
-    
+
   return id;
 }
 
 export async function addUserToTeam(teamId: string, userId: string, role: string = 'member') {
   const db = getDb();
   const id = crypto.randomUUID();
-  
+
   await db
     .insertInto('team_member')
     .values({
@@ -233,14 +233,14 @@ export async function addUserToTeam(teamId: string, userId: string, role: string
       updatedAt: new Date()
     })
     .execute();
-    
+
   return id;
 }
 
 export async function addProjectToTeam(teamId: string, projectId: string) {
   const db = getDb();
   const id = crypto.randomUUID();
-  
+
   await db
     .insertInto('team_project')
     .values({
@@ -251,37 +251,37 @@ export async function addProjectToTeam(teamId: string, projectId: string) {
       updatedAt: new Date()
     })
     .execute();
-    
+
   return id;
 }
 
 // User-focused queries
 export async function getUserWithRelations(userId: string): Promise<UserWithRelations | undefined> {
   const db = getDb();
-  
+
   // Get the user
   const user = await db
     .selectFrom('user')
     .where('id', '=', userId)
     .selectAll()
     .executeTakeFirst();
-    
+
   if (!user) return undefined;
-  
+
   // Get owned projects
   const ownedProjects = await db
     .selectFrom('project')
     .where('ownerId', '=', userId)
     .selectAll()
     .execute();
-    
+
   // Get owned teams
   const ownedTeams = await db
     .selectFrom('team')
     .where('ownerId', '=', userId)
     .selectAll()
     .execute();
-    
+
   // Get projects the user is a member of
   const memberProjects = await db
     .selectFrom('project_member')
@@ -292,7 +292,7 @@ export async function getUserWithRelations(userId: string): Promise<UserWithRela
       'project_member.role'
     ])
     .execute();
-    
+
   // Get teams the user is a member of
   const memberTeams = await db
     .selectFrom('team_member')
@@ -303,7 +303,7 @@ export async function getUserWithRelations(userId: string): Promise<UserWithRela
       'team_member.role'
     ])
     .execute();
-    
+
   return {
     ...user,
     ownedProjects,
