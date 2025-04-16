@@ -1,109 +1,306 @@
-import React, { useMemo, useState, useCallback } from "react"
+"use client"
+
+import React, { useMemo, useState } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { motion } from "framer-motion"
-import { ChevronRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { CopyButton } from "@/components/ui/copy-button"
 import { FilePreview } from "@/components/ui/file-preview"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { ToolCall } from "@/components/ui/tool-call"
-
-type Animation = "none" | "fade" | "scale" | null | undefined
+import type {
+  Message,
+  Attachment,
+  ToolInvocation,
+  MessagePart,
+  TextUIPart,
+  ReasoningUIPart,
+  ToolInvocationUIPart
+} from "@/lib/types"
+import { CopyButton } from "@/components/ui/copy-button"
+import { Button } from "@/components/ui/button"
+import { ThumbsUp, ThumbsDown } from "lucide-react"
 
 const chatBubbleVariants = cva(
-  "group/message relative break-words p-3 text-sm",
+  "group/message relative break-words rounded-lg p-3 text-sm sm:max-w-[85%]",
   {
     variants: {
       isUser: {
-        true: "border border-secondary/50 bg-secondary/50 text-foreground sm:max-w-[80%]",
-        false: "text-foreground w-full",
-      },
-      isSystem: {
-        true: "border-yellow-500 border bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 w-full",
-        false: "",
-      },
-      isError: {
-        true: "border-red-500 border bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 w-full",
-        false: "",
+        // true: "bg-primary text-primary-foreground",
+        true: "border-muted-foreground border bg-muted text-foreground",
+        false: "bg-muted text-foreground",
       },
       animation: {
         none: "",
+        slide: "",
+        scale: "",
         fade: "",
-        scale: "duration-500 scale-in-95",
       },
     },
+    compoundVariants: [
+      {
+        isUser: true,
+        animation: "slide",
+        class: "",
+      },
+      {
+        isUser: false,
+        animation: "slide",
+        class: "",
+      },
+      {
+        isUser: true,
+        animation: "scale",
+        class: "",
+      },
+      {
+        isUser: false,
+        animation: "scale",
+        class: "",
+      },
+    ],
   }
 )
 
-interface Attachment {
-  name?: string
-  contentType?: string
-  url: string
-}
-
-interface PartialToolCall {
-  state: "partial-call"
-  toolName: string
-}
-
-interface ToolCallState {
-  state: "call"
-  toolName: string
-}
-
-interface ToolResult {
-  state: "result"
-  toolName: string
-  result: {
-    __cancelled?: boolean
-    [key: string]: any
-  }
-}
-
-type ToolInvocation = PartialToolCall | ToolCallState | ToolResult
-
-interface ReasoningPart {
-  type: "reasoning"
-  reasoning: string
-}
-
-interface ToolInvocationPart {
-  type: "tool-invocation"
-  toolInvocation: ToolInvocation
-}
-
-interface TextPart {
-  type: "text"
-  text: string
-}
-
-interface SourcePart {
-  type: "source"
-}
-
-type MessagePart = TextPart | ReasoningPart | ToolInvocationPart | SourcePart
-
-export interface Message {
-  id: string
-  role: "user" | "assistant" | (string & {})
-  content: string
-  createdAt?: Date
-  experimental_attachments?: Attachment[]
-  toolInvocations?: ToolInvocation[]
-  parts?: MessagePart[]
-}
+type Animation = VariantProps<typeof chatBubbleVariants>["animation"]
 
 export interface ChatMessageProps extends Message {
   showTimeStamp?: boolean
-  animation?: 'none' | 'fade' | 'scale'
+  animation?: Animation
   actions?: React.ReactNode
-  isError?: boolean
+  className?: string
+  experimental_attachments?: Attachment[]
+  onRateResponse?: (messageId: string, rating: string) => void
+}
+
+export const ChatMessage: React.FC<ChatMessageProps> = ({
+  id,
+  role = "assistant",
+  content = "",  // Default to empty string to prevent errors
+  createdAt,
+  showTimeStamp = false,
+  animation = "scale",
+  actions,
+  className,
+  experimental_attachments,
+  toolInvocations = [],
+  parts = [],
+  onRateResponse,
+}) => {
+  const files = useMemo(() => {
+    return experimental_attachments?.map((attachment: Attachment) => {
+      const dataArray = dataUrlToUint8Array(attachment.url)
+      const file = new File([dataArray], attachment.name ?? "Unknown")
+      return file
+    })
+  }, [experimental_attachments])
+
+  const isUser = role === "user"
+
+  // Convert createdAt to Date if it's a string
+  const createdAtDate = useMemo(() => {
+    if (!createdAt) return null;
+    try {
+      return createdAt instanceof Date ? createdAt : new Date(createdAt);
+    } catch (e) {
+      console.error("Error parsing date:", e);
+      return null;
+    }
+  }, [createdAt]);
+
+  // Format the time
+  const formattedTime = useMemo(() => {
+    if (!createdAtDate) return "";
+    try {
+      return createdAtDate.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (e) {
+      console.error("Error formatting time:", e);
+      return "";
+    }
+  }, [createdAtDate]);
+
+  // Get ISO string for dateTime attribute
+  const dateTimeISO = useMemo(() => {
+    if (!createdAtDate) return "";
+    try {
+      return createdAtDate.toISOString();
+    } catch (e) {
+      console.error("Error generating ISO string:", e);
+      return "";
+    }
+  }, [createdAtDate]);
+
+  // Generate message parts from content and toolInvocations if parts is not provided
+  const messageParts = useMemo(() => {
+    // One simple log of the entire message structure
+    // console.log('[ChatMessage] Message structure:', {
+    //   id,
+    //   role,
+    //   content: content ? (content.length > 50 ? content.substring(0, 50) + '...' : content) : null,
+    //   hasTools: !!toolInvocations?.length,
+    //   toolCount: toolInvocations?.length || 0,
+    //   hasParts: !!parts?.length,
+    //   partCount: parts?.length || 0
+    // });
+
+    // CRITICAL: Always prioritize the parts array if it exists and has content
+    // This is the format from the AI SDK and must be preserved
+    if (parts && Array.isArray(parts) && parts.length > 0) {
+      // Log parts for debugging
+      // console.log('[ChatMessage] Using parts from message:',
+      //   parts.map(p => ({ type: p.type, tool: p.type === 'tool-invocation' ? p.toolInvocation?.toolName : null }))
+      // );
+
+      // Don't sort - preserve the original order of parts
+      // as they should already be in the correct order from the AI SDK
+      return parts;
+    }
+
+    // If no parts array exists, we need to generate one from toolInvocations + content
+    const generatedParts: MessagePart[] = [];
+
+    // Only add tool invocations if available (and ONLY ONE per message)
+    if (toolInvocations && Array.isArray(toolInvocations) && toolInvocations.length > 0) {
+      // Only ever add the first tool to avoid duplicates
+      const firstTool = toolInvocations[0];
+
+      if (firstTool) {
+        // Log for debugging
+        // console.log('[ChatMessage] Generated part from toolInvocation:', firstTool.toolName);
+
+        generatedParts.push({
+          type: "tool-invocation",
+          toolInvocation: firstTool
+        });
+      }
+    }
+
+    // Only add content part if it's not empty
+    if (content && content.trim() !== '') {
+      generatedParts.push({
+        type: "text",
+        text: content
+      });
+    }
+
+    // If we have no parts at all, but we do have content, add it
+    if (generatedParts.length === 0 && content) {
+      return [{
+        type: "text",
+        text: content
+      }];
+    }
+
+    return generatedParts;
+  }, [parts, content, toolInvocations]);
+
+  return (
+    <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
+      {files ? (
+        <div className="mb-1 flex flex-wrap gap-2">
+          {files.map((file: File, index: number) => {
+            return <FilePreview file={file} key={index} />
+          })}
+        </div>
+      ) : null}
+
+      <div className={cn(chatBubbleVariants({ isUser, animation }), className, "p-0 mb-6 max-w-full overflow-hidden")}>
+        {isUser ? (
+          <div className="group w-full overflow-hidden">
+            <div className="prose prose-zinc prose-sm prose-invert max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:p-0 text-muted-foreground overflow-hidden">
+              {/* Render message parts in sequence */}
+              {messageParts.map((part, index) => {
+                if (part.type === "text" && "text" in part) {
+                  return (
+                    <div key={`text-${index}`} className="px-3 py-2">
+                      <MarkdownRenderer>{part.text}</MarkdownRenderer>
+                    </div>
+                  );
+                } else if (part.type === "tool-invocation" && "toolInvocation" in part) {
+                  return (
+                    <div key={`tool-${index}`} className="my-2">
+                      <ToolCall toolInvocations={[part.toolInvocation]} />
+                    </div>
+                  );
+                } else if (part.type === "reasoning" && "reasoning" in part) {
+                  return (
+                    <div key={`reasoning-${index}`} className="p-3 pl-4 border-l-2 border-muted-foreground/30 bg-muted/30 text-xs opacity-50 italic">
+                      <MarkdownRenderer>{part.reasoning}</MarkdownRenderer>
+                    </div>
+                  );
+                } else {
+                  return null;
+                }
+              })}
+            </div>
+            <CopyButton content={content} copyMessage="Copied to clipboard" isUser={true} />
+          </div>
+        ) : (
+          <div className="group relative w-full max-w-full break-words overflow-hidden">
+            <div className="prose prose-zinc prose-sm prose-invert max-w-none prose-pre:m-0 prose-pre:bg-transparent prose-pre:p-0 text-muted-foreground overflow-hidden">
+              {/* Render message parts in sequence */}
+              {messageParts.map((part, index) => {
+                if (part.type === "text" && "text" in part) {
+                  return (
+                    <div key={`text-${index}`} className="px-3 py-2">
+                      <MarkdownRenderer>{part.text}</MarkdownRenderer>
+                    </div>
+                  );
+                } else if (part.type === "tool-invocation" && "toolInvocation" in part) {
+                  return (
+                    <div key={`tool-${index}`} className="my-2">
+                      <ToolCall toolInvocations={[part.toolInvocation]} />
+                    </div>
+                  );
+                } else if (part.type === "reasoning" && "reasoning" in part) {
+                  return (
+                    <div key={`reasoning-${index}`} className="p-3 pl-4 border-l-2 border-muted-foreground/30 bg-muted/30 text-xs opacity-50 italic">
+                      <MarkdownRenderer>{part.reasoning}</MarkdownRenderer>
+                    </div>
+                  );
+                } else {
+                  return null;
+                }
+              })}
+            </div>
+            <CopyButton content={content} copyMessage="Copied to clipboard" isUser={false} />
+          </div>
+        )}
+
+        {actions && onRateResponse && !isUser ? (
+          <div className="absolute -top-4 right-5 flex space-x-1 rounded-lg border bg-background p-1 text-foreground opacity-0 transition-opacity group-hover/message:opacity-100">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => onRateResponse(id!, "thumbs-up")}
+            >
+              <ThumbsUp className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => onRateResponse(id!, "thumbs-down")}
+            >
+              <ThumbsDown className="h-4 w-4" />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      {showTimeStamp && createdAtDate && dateTimeISO ? (
+        <time
+          dateTime={dateTimeISO}
+          className="mt-1 block px-1 text-xs opacity-50"
+        >
+          {formattedTime}
+        </time>
+      ) : null}
+    </div>
+  )
 }
 
 function dataUrlToUint8Array(data: string) {
@@ -111,375 +308,3 @@ function dataUrlToUint8Array(data: string) {
   const buf = Buffer.from(base64, "base64")
   return new Uint8Array(buf)
 }
-
-// Memoize the ReasoningBlock component to prevent unnecessary rerenders
-const ReasoningBlock = React.memo(function ReasoningBlock({ part }: { part: ReasoningPart }) {
-  const [isOpen, setIsOpen] = useState(false)
-
-  // Memoize the onOpenChange handler to maintain reference stability
-  const handleOpenChange = useCallback((open: boolean) => {
-    setIsOpen(open);
-  }, []);
-
-  // Memoize the reasoning content to prevent rendering on parent rerenders
-  const reasoningContent = useMemo(() => part.reasoning, [part.reasoning]);
-
-  return (
-    <div className="mb-2 flex flex-col items-start sm:max-w-[70%]">
-      <Collapsible
-        open={isOpen}
-        onOpenChange={handleOpenChange}
-        className="group w-full overflow-hidden rounded-xl border bg-muted/50"
-      >
-        <CollapsibleTrigger asChild>
-          <button className="w-full">
-            <div className="flex items-center p-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
-                <span>Thinking</span>
-              </div>
-            </div>
-          </button>
-        </CollapsibleTrigger>
-        <CollapsibleContent forceMount>
-          <motion.div
-            initial={false}
-            animate={isOpen ? "open" : "closed"}
-            variants={{
-              open: { height: "auto", opacity: 1 },
-              closed: { height: 0, opacity: 0 },
-            }}
-            transition={{ duration: 0.3, ease: [0.04, 0.62, 0.23, 0.98] }}
-            className="border-t"
-          >
-            <div className="p-2">
-              <div className="whitespace-pre-wrap text-xs">
-                {reasoningContent}
-              </div>
-            </div>
-          </motion.div>
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
-  )
-});
-
-// Memoize the entire ChatMessage component to prevent unnecessary renders
-export const ChatMessage = React.memo(function ChatMessage({
-  role,
-  content,
-  createdAt,
-  showTimeStamp = false,
-  animation = 'scale',
-  actions,
-  experimental_attachments,
-  toolInvocations,
-  parts,
-  isError: propIsError,
-}: ChatMessageProps) {
-  // Memoize file processing to prevent unnecessary processing on re-renders
-  const files = useMemo(() => {
-    return experimental_attachments?.map((attachment) => {
-      const dataArray = dataUrlToUint8Array(attachment.url)
-      const file = new File([dataArray], attachment.name ?? "Unknown")
-      return file
-    })
-  }, [experimental_attachments])
-
-  // Memoize these values to prevent recalculations
-  const isUser = useMemo(() => role === "user", [role])
-  const isSystem = useMemo(() => role === "system", [role])
-
-  // Check if this is a tool execution error message - check for all variants
-  const isToolError = useMemo(() =>
-    propIsError ||
-    (content && (
-      content.includes('Error executing tool') ||
-      content.includes('Authentication Failed') ||
-      content.includes('Bad credentials')
-    )),
-    [propIsError, content])
-
-  // Memoize the formatted time to avoid recalculations
-  const formattedTime = useMemo(() => {
-    return createdAt?.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }, [createdAt])
-
-  // Use regular markdown renderer for all messages
-  // The previous attempt to optimize with StreamedMarkdownRenderer was causing issues
-  const messageContent = useMemo(() => {
-    // All messages now use the standard renderer
-    return <MarkdownRenderer>{content}</MarkdownRenderer>;
-  }, [content])
-
-  if (isSystem) {
-    // System messages (like errors) use a special style
-    // Log to console first for debugging
-    // console.log("SYSTEM MESSAGE CONTENT:", content);
-
-    // For context overflow errors and tool execution errors, show content directly (without markdown processing)
-    // Also check for the special hardcoded error
-    const isSpecialErrorFormat =
-      content.includes('context the overflows') ||
-      content.includes('context length of only') ||
-      content.includes('Trying to keep the first') ||
-      content.includes('Error executing tool') ||
-      content.includes('Authentication Failed') ||
-      content.includes('Bad credentials') ||
-      content.includes('An error occurred') || // Include generic errors
-      isToolError;
-
-    // Force the tool error flag if the content contains our specific error strings
-    const forcedToolError = isToolError ||
-      content.includes('Error executing tool') ||
-      content.includes('Authentication Failed') ||
-      content.includes('Bad credentials');
-
-    // Add more detailed console logging for debugging
-    // console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
-    // console.log("RENDERING SYSTEM MESSAGE:", {
-    //   firstChars: content.substring(0, 50),
-    //   length: content.length,
-    //   isSpecialErrorFormat,
-    //   isToolError,
-    //   hasOverflows: content.includes('context the overflows'),
-    //   hasTrying: content.includes('Trying to keep the first'),
-    //   hasToolError: content.includes('Error executing tool'),
-    //   hasAuthError: content.includes('Authentication Failed: Bad credentials'),
-    //   hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
-    // });
-
-    // Format tool execution errors to display on two lines
-    let formattedContent = content;
-
-    // Check if the content starts with the warning prefix and remove it for tool errors
-    if (content.startsWith('⚠️ Error:') &&
-      (content.includes('Error executing tool') ||
-        content.includes('Authentication Failed') ||
-        content.includes('Bad credentials'))) {
-      // Remove the prefix for tool errors
-      formattedContent = content.replace('⚠️ Error:', '').trim();
-      // console.log("REMOVED PREFIX FROM TOOL ERROR:", formattedContent);
-    }
-
-    // Format errors with colons to display on two lines
-    if ((isToolError || formattedContent.includes('Error executing tool')) && formattedContent.includes(':')) {
-      // Find the first colon that belongs to the error message (not part of a URL)
-      const colonIndex = formattedContent.indexOf(':');
-      if (colonIndex > 0) {
-        // Format with a line break after the colon
-        formattedContent = formattedContent.substring(0, colonIndex + 1) +
-          '\n' +
-          formattedContent.substring(colonIndex + 1).trim();
-        // console.log("FORMATTED ERROR WITH LINE BREAK:", formattedContent);
-      }
-    }
-
-    return (
-      <div className="flex flex-col items-center w-full">
-        <div className={cn(chatBubbleVariants({
-          isUser: false,
-          isSystem: !isToolError && !forcedToolError,
-          isError: isToolError || forcedToolError,
-          animation
-        }))}>
-          {isSpecialErrorFormat ? (
-            <div className="whitespace-pre-wrap font-mono text-sm p-1">{formattedContent}</div>
-          ) : (
-            messageContent
-          )}
-        </div>
-
-        {showTimeStamp && createdAt ? (
-          <time
-            dateTime={createdAt.toISOString()}
-            className={cn(
-              "mt-1 block px-1 text-xs text-secondary-foreground"
-            )}
-          >
-            {formattedTime}
-          </time>
-        ) : null}
-      </div>
-    )
-  }
-
-  if (isUser) {
-    return (
-      <div
-        className={cn("flex flex-col", isUser ? "items-end" : "items-start")}
-      >
-        {files ? (
-          <div className="mb-1 flex flex-wrap gap-2">
-            {files.map((file, index) => {
-              return <FilePreview file={file} key={index} />
-            })}
-          </div>
-        ) : null}
-
-        <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }), "group/message")}>
-          {messageContent}
-          <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
-            <CopyButton
-              content={content}
-              copyMessage="Copied to clipboard"
-              className="size-6 rounded-md bg-transparent p-1 hover:bg-muted-foreground/10"
-            />
-          </div>
-        </div>
-
-        {showTimeStamp && createdAt ? (
-          <time
-            dateTime={createdAt.toISOString()}
-            className={cn(
-              "mt-1 block px-1 text-xs text-secondary-foreground/80"
-            )}
-          >
-            {formattedTime}
-          </time>
-        ) : null}
-      </div>
-    )
-  }
-
-  if (parts && parts.length > 0) {
-    // Extract and memoize reasoning parts separately
-    const reasoningParts = useMemo(() =>
-      parts.filter(part => part.type === "reasoning") as ReasoningPart[],
-      [parts]);
-
-    // Extract and memoize tool invocation parts separately
-    const toolInvocationParts = useMemo(() =>
-      parts.filter(part => part.type === "tool-invocation") as ToolInvocationPart[],
-      [parts]);
-
-    // Extract and memoize text parts separately
-    const textParts = useMemo(() =>
-      parts.filter(part => part.type === "text") as TextPart[],
-      [parts]);
-
-    // Render text parts
-    const renderedTextParts = useMemo(() => {
-      return textParts.map((part, index) => {
-        // Use standard MarkdownRenderer for all parts
-        const partContent = <MarkdownRenderer>{part.text}</MarkdownRenderer>;
-
-        return (
-          <div
-            className={cn(
-              "flex flex-col",
-              isUser ? "items-end" : "items-start"
-            )}
-            key={`text-${index}`}
-          >
-            <div className={cn(chatBubbleVariants({ isUser, animation }))}>
-              {partContent}
-              <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
-                {actions ? actions : (
-                  <CopyButton
-                    content={part.text}
-                    copyMessage="Copied to clipboard"
-                    className="size-6 rounded-md bg-transparent p-1 hover:bg-muted-foreground/10"
-                  />
-                )}
-              </div>
-            </div>
-
-            {showTimeStamp && createdAt ? (
-              <time
-                dateTime={createdAt.toISOString()}
-                className={cn(
-                  "mt-1 block px-1 text-xs text-secondary-foreground/80"
-                )}
-              >
-                {formattedTime}
-              </time>
-            ) : null}
-          </div>
-        );
-      });
-    }, [textParts, role, isUser, animation, actions, showTimeStamp, createdAt, formattedTime]);
-
-    // Render reasoning parts
-    const renderedReasoningParts = useMemo(() => {
-      return reasoningParts.map((part, index) => (
-        <ReasoningBlock key={`reasoning-${index}`} part={part} />
-      ));
-    }, [reasoningParts]);
-
-    // Render tool invocation parts
-    const renderedToolParts = useMemo(() => {
-      return toolInvocationParts.map((part, index) => (
-        <ToolCall
-          key={`tool-${index}`}
-          toolInvocations={[part.toolInvocation]}
-        />
-      ));
-    }, [toolInvocationParts]);
-
-    // Combine all rendered parts in proper order
-    const renderedParts = useMemo(() => {
-      // Create an array to hold all rendered parts in their original order
-      const result: React.ReactNode[] = [];
-
-      // Map through original parts to maintain order
-      parts.forEach((part, index) => {
-        if (part.type === "text") {
-          const textIndex = textParts.findIndex(p => p === part);
-          if (textIndex !== -1) {
-            result.push(renderedTextParts[textIndex]);
-          }
-        } else if (part.type === "reasoning") {
-          const reasoningIndex = reasoningParts.findIndex(p => p === part);
-          if (reasoningIndex !== -1) {
-            result.push(renderedReasoningParts[reasoningIndex]);
-          }
-        } else if (part.type === "tool-invocation") {
-          const toolIndex = toolInvocationParts.findIndex(p => p === part);
-          if (toolIndex !== -1) {
-            result.push(renderedToolParts[toolIndex]);
-          }
-        }
-      });
-
-      return result;
-    }, [parts, textParts, reasoningParts, toolInvocationParts, renderedTextParts, renderedReasoningParts, renderedToolParts]);
-
-    return <>{renderedParts}</>;
-  }
-
-  if (toolInvocations && toolInvocations.length > 0) {
-    return <ToolCall toolInvocations={toolInvocations} />
-  }
-
-  return (
-    <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
-      <div className={cn(chatBubbleVariants({ isUser, isSystem: false, animation }))}>
-        {messageContent}
-        <div className="absolute -bottom-4 right-2 flex items-center gap-1 opacity-0 group-hover/message:opacity-100">
-          {actions ? actions : (
-            <CopyButton
-              content={content}
-              copyMessage="Copied to clipboard"
-              className="size-6 rounded-md bg-secondary p-1 hover:bg-muted-foreground/10"
-            />
-          )}
-        </div>
-      </div>
-
-      {showTimeStamp && createdAt ? (
-        <time
-          dateTime={createdAt.toISOString()}
-          className={cn(
-            "mt-1 block px-1 text-xs text-secondary-foreground/80"
-          )}
-        >
-          {formattedTime}
-        </time>
-      ) : null}
-    </div>
-  )
-});

@@ -312,10 +312,11 @@ ${issue.creator ? `- Created by: ${issue.creator.name}` : '- Creator unknown'}
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
     api: `https://chat.openagents.com`,
+    maxSteps: 4,
     initialMessages: [{
       id: '12309123',
       role: 'system',
-      content: `You are an AI assistant integrated into OpenAgents - a comprehensive project management and issue tracking system. 
+      content: `You are an AI assistant integrated into OpenAgents - a comprehensive project management and issue tracking system.
 
 Project Context:
 - OpenAgents is a platform for AI agents using open protocols
