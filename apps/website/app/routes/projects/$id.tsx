@@ -14,8 +14,11 @@ import { useIssuesStore } from "@/store/issues-store";
 import { useEffect } from "react";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
+  // Use type assertion to access project data
+  const loaderData = data as Route.ProjectLoaderData;
+  
   // Use the project name from the loader data if available
-  const projectName = data?.project?.name || "Project Details";
+  const projectName = loaderData?.project?.name || "Project Details";
 
   return [
     { title: `${projectName} - OpenAgents` },

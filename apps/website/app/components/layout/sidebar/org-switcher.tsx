@@ -1,5 +1,3 @@
-
-
 import * as React from 'react';
 import { ChevronsUpDown } from 'lucide-react';
 import { Link } from 'react-router';
@@ -36,7 +34,7 @@ export function OrgSwitcher() {
                 {/* <div className="flex aspect-square size-6 items-center justify-center rounded bg-orange-500 text-sidebar-primary-foreground">
                   LN
                 </div> */}
-                <div className="grid flex-1 text-left text-sm leading-tight">
+                <div className="select-none grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">OpenAgents</span>
                 </div>
                 <ChevronsUpDown className="ml-auto" />
@@ -53,7 +51,7 @@ export function OrgSwitcher() {
             align="end"
             sideOffset={4}
           >
-            <DropdownMenuGroup>
+            {/* <DropdownMenuGroup>
               <DropdownMenuItem asChild>
                 <Link to="/lndev-ui/settings">
                   Settings
@@ -84,10 +82,10 @@ export function OrgSwitcher() {
                   <DropdownMenuItem>Add an account</DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuPortal>
-            </DropdownMenuSub>
+            </DropdownMenuSub> */}
             <DropdownMenuItem>
               Log out
-              <DropdownMenuShortcut>⌥⇧Q</DropdownMenuShortcut>
+              {/* <DropdownMenuShortcut>⌥⇧Q</DropdownMenuShortcut> */}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
