@@ -312,6 +312,9 @@ ${issue.creator ? `- Created by: ${issue.creator.name}` : '- Creator unknown'}
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
     api: `https://chat.openagents.com`,
+    body: {
+      githubToken: "testtt"
+    },
     maxSteps: 4,
     initialMessages: [{
       id: '12309123',
