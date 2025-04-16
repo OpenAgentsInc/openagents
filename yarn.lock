@@ -5513,11 +5513,6 @@
   dependencies:
     undici-types "~6.19.2"
 
-"@types/prop-types@*":
-  version "15.7.14"
-  resolved "https://registry.yarnpkg.com/@types/prop-types/-/prop-types-15.7.14.tgz#1433419d73b2a7ebfc6918dcefd2ec0d5cd698f2"
-  integrity sha512-gNMvNH49DJ7OJYv+KAKn0Xp45p8PLl6zo2YnvDIbTd4J6MER2BmWN49TG7n9LvkyihINxeKW8+3bfS2yDC9dzQ==
-
 "@types/qs@*":
   version "6.9.18"
   resolved "https://registry.yarnpkg.com/@types/qs/-/qs-6.9.18.tgz#877292caa91f7c1b213032b34626505b746624c2"
@@ -5547,26 +5542,11 @@
   dependencies:
     "@types/react" "*"
 
-"@types/react@*", "@types/react@19.0.0":
+"@types/react@*", "@types/react@19.0.0", "@types/react@^19.0.1", "@types/react@^19.0.12", "@types/react@~18.3.12":
   version "19.0.0"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-19.0.0.tgz#fbbb53ce223f4e2b750ad5dd09580b2c43522bbf"
   integrity sha512-MY3oPudxvMYyesqs/kW1Bh8y9VqSmf+tzqw3ae8a9DZW68pUe3zAdHeI1jc6iAysuRdACnVknHP8AhwD4/dxtg==
   dependencies:
-    csstype "^3.0.2"
-
-"@types/react@^19.0.1", "@types/react@^19.0.12":
-  version "19.1.1"
-  resolved "https://registry.yarnpkg.com/@types/react/-/react-19.1.1.tgz#f7f2bb4a0a8d22b9ee4b8f6e27f0c78d76eb7f9b"
-  integrity sha512-ePapxDL7qrgqSF67s0h9m412d9DbXyC1n59O2st+9rjuuamWsZuD2w55rqY12CbzsZ7uVXb5Nw0gEp9Z8MMutQ==
-  dependencies:
-    csstype "^3.0.2"
-
-"@types/react@~18.3.12":
-  version "18.3.20"
-  resolved "https://registry.yarnpkg.com/@types/react/-/react-18.3.20.tgz#b0dccda9d2f1bc24d2a04b1d0cb5d0b9a3576ad3"
-  integrity sha512-IPaCZN7PShZK/3t6Q87pfTkRm6oLTd4vztyoj+cbHUF1g3FfVb2tFIL79uCRKEfv16AhqDMBywP2VW3KIZUvcg==
-  dependencies:
-    "@types/prop-types" "*"
     csstype "^3.0.2"
 
 "@types/responselike@^1.0.0":
@@ -5998,17 +5978,7 @@ agentkeepalive@^4.2.1:
   dependencies:
     humanize-ms "^1.2.1"
 
-agents@^0.0.46:
-  version "0.0.46"
-  resolved "https://registry.yarnpkg.com/agents/-/agents-0.0.46.tgz#ed0b6083e3fed4b231fcf113269a1a874c7f1e5d"
-  integrity sha512-YC49h/KCP1Og7Pd0XVWD22f5Xg6MevUL0qtIJUjK3xP7Zb2F9lGzGqcvgkRmqalLEwZByZqDknvMb9nuDPnVXg==
-  dependencies:
-    cron-schedule "^5.0.4"
-    nanoid "^5.1.5"
-    partyserver "^0.0.66"
-    partysocket "1.1.2"
-
-agents@^0.0.59:
+agents@0.0.59, agents@^0.0.46, agents@^0.0.59:
   version "0.0.59"
   resolved "https://registry.yarnpkg.com/agents/-/agents-0.0.59.tgz#cbded9a0d5b0c61592e7bf023486011267a2eef2"
   integrity sha512-OiUg1QffKszZ+FdSB60KvBQF2Owzp96WIeP3XK2ShB3dYeAGwlsg6SmE7QomNfR+oe1KgvI4AmBKy9cLB7qY6A==
@@ -8059,11 +8029,6 @@ dexie@4.0.10:
   resolved "https://registry.yarnpkg.com/dexie/-/dexie-4.0.10.tgz#979e3ee75993b44eea3852f97ceb198019d5b287"
   integrity sha512-eM2RzuR3i+M046r2Q0Optl3pS31qTWf8aFuA7H9wnsHTwl8EPvroVLwvQene/6paAs39Tbk6fWZcn2aZaHkc/w==
 
-dexie@^4.0.11:
-  version "4.0.11"
-  resolved "https://registry.yarnpkg.com/dexie/-/dexie-4.0.11.tgz#010a2c82dd35d40aa9a81c8d21951bfeb487b7d6"
-  integrity sha512-SOKO002EqlvBYYKQSew3iymBoN2EQ4BDw/3yprjh7kAfFzjBYkaMNa/pZvcA7HSWlcKSQb9XhPe3wKyQ0x4A8A==
-
 diff-match-patch@^1.0.5:
   version "1.0.5"
   resolved "https://registry.yarnpkg.com/diff-match-patch/-/diff-match-patch-1.0.5.tgz#abb584d5f10cd1196dfc55aa03701592ae3f7b37"
@@ -8786,11 +8751,6 @@ event-target-shim@^5.0.0, event-target-shim@^5.0.1:
   version "5.0.1"
   resolved "https://registry.yarnpkg.com/event-target-shim/-/event-target-shim-5.0.1.tgz#5d4d3ebdf9583d63a5333ce2deb7480ab2b05789"
   integrity sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==
-
-event-target-shim@^6.0.2:
-  version "6.0.2"
-  resolved "https://registry.yarnpkg.com/event-target-shim/-/event-target-shim-6.0.2.tgz#ea5348c3618ee8b62ff1d344f01908ee2b8a2b71"
-  integrity sha512-8q3LsZjRezbFZ2PN+uP+Q7pnHUMmAOziU2vA2OwoFaKIXxlxl38IylhSSgUorWu/rf4er67w0ikBqjBFk/pomA==
 
 eventemitter3@^4.0.1, eventemitter3@^4.0.4:
   version "4.0.7"
@@ -13629,13 +13589,6 @@ partyserver@^0.0.66:
   dependencies:
     nanoid "^5.1.2"
 
-partysocket@1.1.2:
-  version "1.1.2"
-  resolved "https://registry.yarnpkg.com/partysocket/-/partysocket-1.1.2.tgz#4b7d81b0d094e8f5af09cfdcc3a97c23408842d2"
-  integrity sha512-vWyxg0dYJewBsT6BaYkq+DEavYw+N/8J0jUXYSuZRRJdnmMJY+rkCg19t/8c3pTSyg8FjJH8VzIaHBhFMQRDIw==
-  dependencies:
-    event-target-shim "^6.0.2"
-
 partysocket@1.1.3, partysocket@^1.1.2:
   version "1.1.3"
   resolved "https://registry.yarnpkg.com/partysocket/-/partysocket-1.1.3.tgz#19571a375a25f0d6279ec7b5828cfe3e2ba946c4"
@@ -14532,14 +14485,7 @@ react-transition-group@^4.4.5:
     loose-envify "^1.4.0"
     prop-types "^15.6.2"
 
-react@18.3.1:
-  version "18.3.1"
-  resolved "https://registry.yarnpkg.com/react/-/react-18.3.1.tgz#49ab892009c53933625bd16b2533fc754cab2891"
-  integrity sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==
-  dependencies:
-    loose-envify "^1.1.0"
-
-react@19.1.0, react@^19.0.0, react@^19.1.0:
+react@18.3.1, react@19.1.0, react@^19.0.0, react@^19.1.0:
   version "19.1.0"
   resolved "https://registry.yarnpkg.com/react/-/react-19.1.0.tgz#926864b6c48da7627f004795d6cce50e90793b75"
   integrity sha512-FS+XFBNvn3GTAWq26joslQgWNoFu08F4kl0J4CgdNKADkdSGXQyTCnKteIAJy96Br6YbpEU1LSzV5dYtjMkMDg==
@@ -15118,7 +15064,7 @@ run-parallel@^1.1.9:
   dependencies:
     queue-microtask "^1.2.2"
 
-rxdb@^16.8.1, rxdb@^16.9.0:
+rxdb@^16.9.0:
   version "16.9.0"
   resolved "https://registry.yarnpkg.com/rxdb/-/rxdb-16.9.0.tgz#05528e1b5f214658e491defd9639931e3135b18b"
   integrity sha512-zpzHKASQOVEruZPRMi+Fu7uYUqiQAzbnOhut3APGXcm2I6fc0zd7Ee6gnF17Tjrq1+pSxk/FE4me8gre+jFYrw==
@@ -15155,7 +15101,7 @@ rxdb@^16.8.1, rxdb@^16.9.0:
     ws "8.16.0"
     z-schema "6.0.2"
 
-rxjs@^7.8.0, rxjs@^7.8.2:
+rxjs@^7.8.0:
   version "7.8.2"
   resolved "https://registry.yarnpkg.com/rxjs/-/rxjs-7.8.2.tgz#955bc473ed8af11a002a2be52071bf475638607b"
   integrity sha512-dhKf903U/PQZY6boNNtAGdWbG85WAbjT/1xYoZIC7FAY0yWapOBQVsVrDl58W86//e1VpMNBtRV4MaXfdMySFA==

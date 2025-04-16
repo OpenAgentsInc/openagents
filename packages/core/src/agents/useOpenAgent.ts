@@ -1,48 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { generateId, UIMessage } from "ai";
-
-// Create a mock useAgent implementation for development/testing
-// This will be replaced with the actual import in production
-const createMockAgent = (config: any) => {
-  const { name, agent, onStateUpdate } = config;
-  const state: any = { messages: [] };
-  
-  // Initial state update
-  setTimeout(() => {
-    if (onStateUpdate) onStateUpdate(state);
-  }, 0);
-  
-  return {
-    setState: (newState: any) => {
-      Object.assign(state, newState);
-      if (onStateUpdate) onStateUpdate({...state});
-    },
-    call: async (method: string, args: any[]) => {
-      console.log(`Mock agent call: ${method}`, args);
-      
-      // Simulate responses for different methods
-      if (method === 'getGithubToken') {
-        return localStorage.getItem('githubToken') || '';
-      }
-      
-      if (method === 'setGithubToken') {
-        const token = args[0];
-        localStorage.setItem('githubToken', token);
-        return;
-      }
-      
-      if (method === 'infer') {
-        // Simulate a response
-        return {
-          content: `This is a simulated response from the ${agent} agent.`,
-          toolCalls: []
-        };
-      }
-      
-      return null;
-    }
-  };
-};
+import { useAgent } from "agents/react";
 
 // Define agent types
 type AgentType = 'coder' | 'solver';
@@ -52,7 +10,7 @@ export type OpenAgent = {
   messages: UIMessage[];
   setMessages: (messages: UIMessage[]) => void;
   handleSubmit: (message: string) => void;
-  infer: (token: string) => Promise<any>;
+  infer: (token?: string) => Promise<any>;
   setGithubToken: (token: string) => Promise<void>;
   getGithubToken: () => Promise<string>;
   setCurrentIssue?: (issue: any) => Promise<void>;
@@ -81,19 +39,16 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     messages: []
   });
 
-  // Try to dynamically import the Cloudflare Agents SDK
-  // If it fails, use the mock implementation
-  const mockAgent = createMockAgent({
-    name: `${type}-${id}`,
-    agent: type,
+  // Connect to the agent using the Cloudflare Agents SDK
+  const cloudflareAgent = useAgent({
+    name: `${type}-${id}`, // Unique name combining type and ID
+    agent: type,          // Agent type maps to URL path/DO binding name
     onStateUpdate: (newState: AgentState) => {
+      // Update local state whenever agent state changes
+      console.log(`[useOpenAgent ${type}-${id}] State updated from agent:`, newState);
       setAgentState(newState);
     }
   });
-
-  // Use the mock agent for now
-  // This can be replaced with the real Cloudflare agent when deployed
-  const cloudflareAgent = mockAgent;
 
   /**
    * Submits a new user message to the agent
@@ -161,8 +116,10 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   /**
    * Triggers the agent to generate a response
    */
-  const infer = useCallback(async (token: string): Promise<any> => {
-    return await cloudflareAgent.call('infer', [token]);
+  const infer = useCallback(async (token?: string): Promise<any> => {
+    // Pass token in args array if needed by the agent's infer method
+    const args = token ? [token] : [];
+    return await cloudflareAgent.call('infer', args);
   }, [cloudflareAgent]);
 
   // Return the OpenAgent interface with appropriate methods

@@ -333,9 +333,9 @@ Extend the `useOpenAgent` hook to support your new agent type:
 
 ```typescript
 // packages/core/src/agents/useOpenAgent.ts
-import { useAgent } from "agents/react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { generateId, UIMessage } from "ai";
+import { useAgent } from "agents/react";
 
 // Update the agent type to include your new agent
 type AgentType = 'coder' | 'solver' | 'myagent';
@@ -345,37 +345,107 @@ export type OpenAgent = {
   messages: UIMessage[];
   setMessages: (messages: UIMessage[]) => void;
   handleSubmit: (message: string) => void;
-  infer: (token: string) => Promise<any>;
+  infer: (token?: string) => Promise<any>;
   setGithubToken: (token: string) => Promise<void>;
   getGithubToken: () => Promise<string>;
   
   // Add agent-specific methods
   setCurrentIssue?: (issue: any) => Promise<void>;  // For Solver
+  setRepositoryContext?: (owner: string, repo: string, branch?: string) => Promise<void>;
   setCurrentTask?: (task: any) => Promise<void>;    // For MyAgent
   completeTask?: (result: string) => Promise<void>; // For MyAgent
 }
 
 export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
-  // Existing implementation...
-  
-  // Add methods for your agent
-  const setCurrentTask = async (task: any): Promise<void> => {
-    if (type === 'myagent') {
-      await cloudflareAgent.call('setCurrentTask', [task])
+  // Setup local state that will be synchronized with the agent
+  const [state, setAgentState] = useState<AgentState>({ 
+    messages: []
+  });
+
+  // Connect to the agent using the Cloudflare Agents SDK
+  const cloudflareAgent = useAgent({
+    name: `${type}-${id}`, // Unique name combining type and ID
+    agent: type,          // Agent type maps to URL path/DO binding name
+    onStateUpdate: (newState: AgentState) => {
+      // Update local state whenever agent state changes
+      console.log(`[useOpenAgent ${type}-${id}] State updated from agent:`, newState);
+      setAgentState(newState);
     }
-    return
-  }
+  });
   
-  const completeTask = async (result: string): Promise<void> => {
-    if (type === 'myagent') {
-      await cloudflareAgent.call('completeTask', [result])
+  // Implement methods for all agent types
+  const handleSubmit = useCallback((message: string) => {
+    const newMessage: UIMessage = {
+      id: generateId(),
+      role: 'user',
+      content: message,
+      parts: [{
+        type: 'text',
+        text: message
+      }]
+    };
+    
+    cloudflareAgent.setState({
+      messages: [...(state?.messages || []), newMessage]
+    });
+  }, [cloudflareAgent, state?.messages]);
+  
+  const setMessages = useCallback((messages: UIMessage[]) => {
+    cloudflareAgent.setState({ messages });
+  }, [cloudflareAgent]);
+  
+  const setGithubToken = useCallback(async (token: string): Promise<void> => {
+    await cloudflareAgent.call('setGithubToken', [token]);
+    return;
+  }, [cloudflareAgent]);
+  
+  const getGithubToken = useCallback(async (): Promise<string> => {
+    const result = await cloudflareAgent.call('getGithubToken', []);
+    return result as string;
+  }, [cloudflareAgent]);
+  
+  const infer = useCallback(async (token?: string): Promise<any> => {
+    const args = token ? [token] : [];
+    return await cloudflareAgent.call('infer', args);
+  }, [cloudflareAgent]);
+  
+  // Implement agent-specific methods
+  const setCurrentIssue = useCallback(async (issue: any): Promise<void> => {
+    if (type === 'solver') {
+      await cloudflareAgent.call('setCurrentIssue', [issue]);
     }
-    return
-  }
+    return;
+  }, [cloudflareAgent, type]);
+  
+  const setRepositoryContext = useCallback(async (owner: string, repo: string, branch: string = 'main'): Promise<void> => {
+    await cloudflareAgent.call('setRepositoryContext', [owner, repo, branch]);
+    return;
+  }, [cloudflareAgent]);
+  
+  // Add methods for your new agent
+  const setCurrentTask = useCallback(async (task: any): Promise<void> => {
+    if (type === 'myagent') {
+      await cloudflareAgent.call('setCurrentTask', [task]);
+    }
+    return;
+  }, [cloudflareAgent, type]);
+  
+  const completeTask = useCallback(async (result: string): Promise<void> => {
+    if (type === 'myagent') {
+      await cloudflareAgent.call('completeTask', [result]);
+    }
+    return;
+  }, [cloudflareAgent, type]);
 
   return {
-    // Existing properties...
-    
+    state,
+    messages: state?.messages || [],
+    setMessages,
+    handleSubmit,
+    infer,
+    setGithubToken,
+    getGithubToken,
+    setRepositoryContext,
     // Conditionally include agent-specific methods
     ...(type === 'solver' ? { setCurrentIssue } : {}),
     ...(type === 'myagent' ? { setCurrentTask, completeTask } : {})

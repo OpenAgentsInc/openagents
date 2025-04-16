@@ -337,7 +337,7 @@ export class Solver extends Agent<Env, SolverState> {
 The `useOpenAgent` hook provides a convenient way to connect to agents from React components:
 
 ```typescript
-// Enhanced with support for both Coder and Solver agents
+// Enhanced with support for both Coder and Solver agents with the official Cloudflare Agents SDK
 export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   const [state, setAgentState] = useState<AgentState>({ messages: [] })
 
@@ -488,7 +488,7 @@ Several issues were fixed to enable successful deployment of the agents to Cloud
 
 1. **Removed `unstable_callable` decorator**: The original implementation was using a Cloudflare Workers-specific decorator `@unstable_callable` which was causing deployment errors. This decorator was removed from the `infer` method in the `Coder` class.
 
-2. **Mock implementation that preserves Cloudflare API**: The `useOpenAgent` hook was updated to use a mock implementation with the same interface as the Cloudflare Agents SDK, allowing for proper integration with the Cloudflare model while maintaining development functionality.
+2. **Direct integration with Cloudflare Agents SDK**: The `useOpenAgent` hook was implemented to use the official Cloudflare Agents SDK's `useAgent` hook for seamless integration with Durable Objects while preserving a consistent interface for components.
 
 3. **Added Solver to Durable Objects**: The Wrangler configuration was updated to include Solver in the Durable Objects bindings with a separate migration (tag: "v2"), ensuring proper versioning and state management for the new agent type.
 

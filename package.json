@@ -35,6 +35,8 @@
   },
   "resolutions": {
     "agents": "0.0.59",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-native": "0.76.7",
     "@types/react": "19.0.0"
   }
