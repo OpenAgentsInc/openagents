@@ -284,7 +284,7 @@ export default function IssueDetails() {
   const { updateIssueStatus } = useIssuesStore();
 
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
-    api: `/api/chat/${id}`,
+    api: `https://chat.openagents.com`,
     initialMessages: [],
   });
 
@@ -512,9 +512,9 @@ export default function IssueDetails() {
 
             {/* Chat Card */}
             <Card>
-              <CardHeader>
+              {/* <CardHeader>
                 <CardTitle>Issue Discussion</CardTitle>
-              </CardHeader>
+              </CardHeader> */}
               <CardContent>
                 <Chat
                   messages={messages}
