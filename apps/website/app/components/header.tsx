@@ -24,7 +24,7 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
           OpenAgents
         </Link>
 
-        <div className="h-full flex items-center gap-2">
+        <div className="h-full flex items-center gap-2 animate-in fade-in duration-250">
           {/* Only show agent-related UI if user is logged in */}
           {!isPending && session?.user && (
             <>
@@ -42,9 +42,7 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
           )}
 
           {isPending ? (
-            <Button variant="outline" size="sm" disabled>
-              Loading...
-            </Button>
+            <></>
           ) : session?.user ? (
             <div className="flex items-center gap-2">
               <div className="text-sm mr-2">
@@ -55,8 +53,8 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
               </Button>
             </div>
           ) : (
-            <Button variant="ghost" asChild>
-              <Link to="/login">Login</Link>
+            <Button variant="outline" asChild>
+              <Link to="/login">Log in</Link>
             </Button>
           )}
         </div>
