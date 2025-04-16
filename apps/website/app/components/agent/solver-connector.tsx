@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Terminal, Columns, BotIcon, PlugZap, Power, CheckCircle, AlertTriangle } from "lucide-react";
-import { useChat } from "@ai-sdk/react";
+import { useOpenAgent } from "@openagents/core";
 
 interface SolverConnectorProps {
   issue: any;  // The issue object from the parent component
@@ -33,29 +33,15 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     updated: issue.updatedAt ? new Date(issue.updatedAt) : undefined
   };
 
-  // Note: This chat instance is specifically for the Solver agent
-  // It's separate from the main chat in the issues page
-  const {
-    messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    data,
-    error,
-    append
-  } = useChat({
-    api: `https://agents.openagents.com/agent/solver`, // Use the Solver agent endpoint
-    headers: {
-      'X-GitHub-Token': githubToken
-    },
-    body: {
-      repoOwner: "openagents", // Replace with your actual repo owner
-      repoName: "openagents", // Replace with your actual repo name
-      issue: formattedIssue
-    },
-    id: `solver-${issue.id}`, // Unique ID for this chat session
-  });
+  // Extract repository context from issue or use defaults
+  const repoInfo = {
+    owner: "openagents", // Replace with dynamic value if available
+    repo: "openagents",  // Replace with dynamic value if available
+    branch: "main"      // Replace with dynamic value if available
+  };
+
+  // Use the OpenAgent hook to connect to the Solver agent
+  const agent = useOpenAgent(`solver-${issue.id}`, "solver");
 
   // Handle connection to the Solver agent
   const connectToSolver = async () => {
@@ -69,37 +55,53 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     setIsStartingSolver(true);
 
     try {
-      // Send an initial message to the Solver agent with context
-      await append({
-        role: 'user',
-        content: `I need help with issue ${issue.identifier}: "${issue.title}". Please analyze this issue and suggest a plan to solve it.`
-      });
+      // Set GitHub token for the agent
+      await agent.setGithubToken(githubToken);
+
+      // Set repository context
+      if (agent.setRepositoryContext) {
+        await agent.setRepositoryContext(repoInfo.owner, repoInfo.repo, repoInfo.branch);
+      }
+
+      // Set the current issue context
+      if (agent.setCurrentIssue) {
+        await agent.setCurrentIssue(formattedIssue);
+      }
+
+      // Set up the issue context with the agent
+      await agent.handleSubmit(`I need help with issue ${issue.identifier}: "${issue.title}". Please analyze this issue and suggest a plan to solve it.`);
+
+      // Start inference on the agent
+      await agent.infer(githubToken);
 
       setConnectionState('connected');
     } catch (err) {
       console.error("Error connecting to Solver agent:", err);
-      setErrorMessage("Failed to connect to the Solver agent. Please try again later.");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to connect to the Solver agent. Please try again later.");
       setConnectionState('error');
     } finally {
       setIsStartingSolver(false);
     }
   };
 
+  // This can be used to determine if the button should be disabled
+  const isConnectButtonDisabled = isStartingSolver || !githubToken;
+
   // Disconnect from the Solver agent
   const disconnectFromSolver = () => {
+    // Reset messages
+    agent.setMessages([]);
     setConnectionState('disconnected');
-    // Note: In a real implementation, you might want to send a message to the agent
-    // to properly close the connection or reset the agent state
   };
 
-  // Update connection state based on errors
+  // Update connection state based on changes in agent state
   useEffect(() => {
-    if (error) {
-      console.error("Solver agent error:", error);
-      setErrorMessage(error.message || "An error occurred with the Solver agent");
-      setConnectionState('error');
+    if (agent.messages.length > 0 && connectionState === 'disconnected') {
+      setConnectionState('connected');
     }
-  }, [error]);
+
+    // In real implementation, you'd want to handle potential error states here
+  }, [agent.messages, connectionState]);
 
   return (
     <Card className="mb-6">
@@ -162,12 +164,12 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
               <span className="font-medium">Solver Agent Connected</span>
             </div>
 
-            {messages.length > 1 && (
+            {agent.messages.length > 1 && (
               <div className="border rounded-md p-3 mb-4 bg-muted/50">
                 <h4 className="font-medium mb-2">Latest Update:</h4>
                 <p className="text-sm">
-                  {messages[messages.length - 1].content.substring(0, 150)}
-                  {messages[messages.length - 1].content.length > 150 ? '...' : ''}
+                  {agent.messages[agent.messages.length - 1].content.substring(0, 150)}
+                  {agent.messages[agent.messages.length - 1].content.length > 150 ? '...' : ''}
                 </p>
               </div>
             )}
@@ -184,20 +186,28 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
       <CardFooter className="flex justify-end">
         {connectionState === 'disconnected' && (
-          <Button
-            onClick={connectToSolver}
-            disabled={isStartingSolver || !githubToken ? true : undefined}
-          >
-            <PlugZap className="h-4 w-4 mr-2" />
-            Connect to Solver
-          </Button>
+          isConnectButtonDisabled ? (
+            <Button
+              variant="secondary"
+              className="opacity-50 cursor-not-allowed"
+            >
+              <PlugZap className="h-4 w-4 mr-2" />
+              Connect to Solver
+            </Button>
+          ) : (
+            <Button
+              onClick={connectToSolver}
+            >
+              <PlugZap className="h-4 w-4 mr-2" />
+              Connect to Solver
+            </Button>
+          )
         )}
 
         {(connectionState === 'connected' || connectionState === 'error') && (
           <Button
             variant="outline"
             onClick={disconnectFromSolver}
-            disabled={false ? true : undefined}
           >
             <Power className="h-4 w-4 mr-2" />
             Disconnect

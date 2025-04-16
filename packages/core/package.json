@@ -9,15 +9,12 @@
   },
   "dependencies": {
     "@ai-sdk/react": "1.2.2",
-    "agents": "^0.0.46",
     "ajv": "^8.17.1",
-    "dexie": "^4.0.11",
     "partysocket": "^1.1.2",
-    "rxdb": "^16.8.1",
-    "rxjs": "^7.8.2",
     "universal-user-agent": "^7.0.2",
     "uuid": "^11.1.0",
-    "z-schema": "^6.0.2"
+    "z-schema": "^6.0.2",
+    "ai": "^4.3.4"
   },
   "peerDependencies": {
     "react": "19.1.0",

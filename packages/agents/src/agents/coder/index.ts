@@ -1231,10 +1231,7 @@ async cancelTaskByScheduleId(scheduleId: string) {
   });
 }
 
-@unstable_callable({
-  description: "Generate an AI response based on the current messages",
-  streaming: true
-})
+// Generate an AI response based on the current messages
 async infer(githubToken ?: string) {
   return agentContext.run(this, async () => {
     // Add initial planning thought
