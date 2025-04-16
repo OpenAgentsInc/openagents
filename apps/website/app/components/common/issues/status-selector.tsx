@@ -68,6 +68,7 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
 
   // Default workflow states as fallback if none are available
   if (!workflowStates || workflowStates.length === 0) {
+    console.log('Warning: No workflow states found, using defaults in UI');
     workflowStates = [
       { id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage' },
       { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },
@@ -75,6 +76,30 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
       { id: 'default-inprogress', name: 'In Progress', color: '#F1C40F', type: 'inprogress' },
       { id: 'default-done', name: 'Done', color: '#2ECC71', type: 'done' }
     ];
+  } else {
+    // Make sure we have at least one of each standard type
+    const hasTriageState = workflowStates.some(s => s.type === 'triage');
+    const hasBacklogState = workflowStates.some(s => s.type === 'backlog');
+    const hasTodoState = workflowStates.some(s => s.type === 'todo');
+    const hasInProgressState = workflowStates.some(s => s.type === 'inprogress');
+    const hasDoneState = workflowStates.some(s => s.type === 'done');
+    
+    // Add missing states as defaults
+    if (!hasTriageState) {
+      workflowStates.push({ id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage' });
+    }
+    if (!hasBacklogState) {
+      workflowStates.push({ id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' });
+    }
+    if (!hasTodoState) {
+      workflowStates.push({ id: 'default-todo', name: 'To Do', color: '#3498DB', type: 'todo' });
+    }
+    if (!hasInProgressState) {
+      workflowStates.push({ id: 'default-inprogress', name: 'In Progress', color: '#F1C40F', type: 'inprogress' });
+    }
+    if (!hasDoneState) {
+      workflowStates.push({ id: 'default-done', name: 'Done', color: '#2ECC71', type: 'done' });
+    }
   }
 
   const { updateIssueStatus, filterByStatus } = useIssuesStore();

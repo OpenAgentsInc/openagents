@@ -85,6 +85,7 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
   issues: [],
   issuesByStatus: {},
   isLoaded: false,
+  // Default workflow states, but these will be replaced by actual DB states once loaded
   workflowStates: [
     { id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage' },
     { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },

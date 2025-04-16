@@ -670,121 +670,114 @@ export async function updateIssue(id: string, issueData: {
   if (issueData.title !== undefined) updateValues.title = issueData.title;
   if (issueData.description !== undefined) updateValues.description = issueData.description;
   if (issueData.stateId !== undefined) {
-    // Special handling for stateId - check if it's a "Done" status
-    const isDoneStatus = 
-      issueData.stateId.includes('done') || 
-      issueData.stateId.includes('completed') || 
-      issueData.stateId === 'default-done';
-      
-    if (isDoneStatus) {
-      console.log(`Processing a "Done" status update: ${issueData.stateId}`);
-      
-      // Verify the stateId exists in the workflow_state table
-      try {
-        const db = getDb();
-        const stateCheck = await db
-          .selectFrom('workflow_state')
-          .select(['id', 'name', 'type'])
-          .where('id', '=', issueData.stateId)
-          .executeTakeFirst();
+    // Handle all workflow states, not just "Done"
+    console.log(`Processing workflow state update: ${issueData.stateId}`);
+    
+    // Verify the stateId exists in the workflow_state table
+    try {
+      const db = getDb();
+      const stateCheck = await db
+        .selectFrom('workflow_state')
+        .select(['id', 'name', 'type'])
+        .where('id', '=', issueData.stateId)
+        .executeTakeFirst();
+        
+      if (stateCheck) {
+        console.log(`Found workflow state: ${JSON.stringify(stateCheck)}`);
+      } else {
+        console.log(`Warning: Status ID ${issueData.stateId} not found in workflow_state table`);
+        
+        // Check if this is one of the default IDs
+        if (issueData.stateId.startsWith('default-')) {
+          const stateType = issueData.stateId.replace('default-', '');
+          console.log(`Handling default-${stateType} status`);
           
-        if (stateCheck) {
-          console.log(`Found workflow state for Done status: ${JSON.stringify(stateCheck)}`);
-        } else {
-          console.log(`Warning: Done status ID ${issueData.stateId} not found in workflow_state table`);
-          // If using a default ID, we may need to create a real workflow state
-          if (issueData.stateId === 'default-done') {
-            console.log('Handling default-done status');
-            
-            // Before creating a new workflow state, first check if we have an existing "done" state
-            try {
-              const existingDoneState = await db
-                .selectFrom('workflow_state')
-                .select(['id'])
-                .where('type', '=', 'done')
+          // First, check if we have an existing state of this type
+          try {
+            const existingState = await db
+              .selectFrom('workflow_state')
+              .select(['id'])
+              .where('type', '=', stateType)
+              .executeTakeFirst();
+              
+            if (existingState) {
+              // Use existing state of this type
+              console.log(`Using existing ${stateType} state: ${existingState.id}`);
+              issueData.stateId = existingState.id;
+            } else {
+              // No existing state found - need to create one
+              console.log(`No existing ${stateType} state found - checking for issue team`);
+              
+              // Need to look up the issue's teamId first
+              const issue = await db
+                .selectFrom('issue')
+                .select(['teamId'])
+                .where('id', '=', id)
                 .executeTakeFirst();
+              
+              // Default workflow state properties
+              let stateName = 'Unknown';
+              let stateColor = '#808080';
+              let position = 0;
+              
+              switch (stateType) {
+                case 'triage':
+                  stateName = 'Triage';
+                  stateColor = '#6B7280';
+                  position = 0;
+                  break;
+                case 'backlog':
+                  stateName = 'Backlog';
+                  stateColor = '#95A5A6';
+                  position = 100;
+                  break;
+                case 'todo':
+                  stateName = 'To Do';
+                  stateColor = '#3498DB';
+                  position = 200;
+                  break;
+                case 'inprogress':
+                  stateName = 'In Progress';
+                  stateColor = '#F1C40F';
+                  position = 300;
+                  break;
+                case 'done':
+                  stateName = 'Done';
+                  stateColor = '#2ECC71';
+                  position = 400;
+                  break;
+                case 'canceled':
+                  stateName = 'Canceled';
+                  stateColor = '#E74C3C';
+                  position = 500;
+                  break;
+              }
+              
+              if (!issue || !issue.teamId) {
+                console.log('No teamId found for issue, using first team');
                 
-              if (existingDoneState) {
-                // Use existing Done state
-                console.log(`Using existing done state: ${existingDoneState.id}`);
-                issueData.stateId = existingDoneState.id;
-              } else {
-                // No existing done state found
-                console.log('No existing done state found - checking for issue team');
-                
-                // Need to look up the issue's teamId first
-                const issue = await db
-                  .selectFrom('issue')
-                  .select(['teamId'])
-                  .where('id', '=', id)
+                // Find any team to associate the workflow state with
+                const anyTeam = await db
+                  .selectFrom('team')
+                  .select(['id'])
+                  .limit(1)
                   .executeTakeFirst();
                 
-                if (!issue || !issue.teamId) {
-                  console.log('No teamId found for issue, using first team');
-                  
-                  // Find any team to associate the workflow state with
-                  const anyTeam = await db
-                    .selectFrom('team')
-                    .select(['id'])
-                    .limit(1)
-                    .executeTakeFirst();
-                  
-                  if (anyTeam) {
-                    const teamId = anyTeam.id;
-                    console.log(`Using team ID: ${teamId} for new workflow state`);
-                    
-                    const newStateId = crypto.randomUUID();
-                    await db
-                      .insertInto('workflow_state')
-                      .values({
-                        id: newStateId,
-                        name: 'Done',
-                        description: 'Issues in done state',
-                        color: '#2ECC71',
-                        type: 'done',
-                        position: 400,
-                        teamId: teamId, // Use found team ID
-                        createdAt: new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                      })
-                      .execute();
-                    
-                    // Use the newly created state ID
-                    issueData.stateId = newStateId;
-                    console.log(`Created new workflow state with ID: ${newStateId}`);
-                  } else {
-                    // Can't create a workflow state - revert to a known real workflow state
-                    console.log('No teams found, checking for any valid workflow state');
-                    const anyWorkflowState = await db
-                      .selectFrom('workflow_state')
-                      .select(['id'])
-                      .limit(1)
-                      .executeTakeFirst();
-                      
-                    if (anyWorkflowState) {
-                      issueData.stateId = anyWorkflowState.id;
-                      console.log(`Using existing workflow state: ${anyWorkflowState.id}`);
-                    } else {
-                      // Can't find any workflow state - critical error
-                      throw new Error('No workflow states exist in database');
-                    }
-                  }
-                } else {
-                  // We have the issue's team ID, create a workflow state for it
-                  const teamId = issue.teamId;
-                  console.log(`Creating workflow state for team: ${teamId}`);
+                if (anyTeam) {
+                  const teamId = anyTeam.id;
+                  console.log(`Using team ID: ${teamId} for new workflow state`);
                   
                   const newStateId = crypto.randomUUID();
                   await db
                     .insertInto('workflow_state')
                     .values({
                       id: newStateId,
-                      name: 'Done',
-                      description: 'Issues in done state',
-                      color: '#2ECC71',
-                      type: 'done',
-                      position: 400,
-                      teamId: teamId,
+                      name: stateName,
+                      description: `Issues in ${stateName.toLowerCase()} state`,
+                      color: stateColor,
+                      type: stateType,
+                      position,
+                      teamId: teamId, // Use found team ID
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString(),
                     })
@@ -793,35 +786,107 @@ export async function updateIssue(id: string, issueData: {
                   // Use the newly created state ID
                   issueData.stateId = newStateId;
                   console.log(`Created new workflow state with ID: ${newStateId}`);
-                }
-              }
-            } catch (error) {
-              console.error('Error handling done state:', error);
-              
-              // Fallback: Find any valid workflow state
-              try {
-                const anyWorkflowState = await db
-                  .selectFrom('workflow_state')
-                  .select(['id'])
-                  .limit(1)
-                  .executeTakeFirst();
-                  
-                if (anyWorkflowState) {
-                  issueData.stateId = anyWorkflowState.id;
-                  console.log(`Fallback: Using existing workflow state: ${anyWorkflowState.id}`);
                 } else {
-                  throw new Error('No workflow states exist in database');
+                  // Can't create a workflow state - revert to a known real workflow state
+                  console.log('No teams found, checking for any valid workflow state');
+                  const anyWorkflowState = await db
+                    .selectFrom('workflow_state')
+                    .select(['id'])
+                    .limit(1)
+                    .executeTakeFirst();
+                    
+                  if (anyWorkflowState) {
+                    issueData.stateId = anyWorkflowState.id;
+                    console.log(`Using existing workflow state: ${anyWorkflowState.id}`);
+                  } else {
+                    // Can't find any workflow state - critical error
+                    throw new Error('No workflow states exist in database');
+                  }
                 }
-              } catch (innerError) {
-                console.error('Critical error finding workflow state:', innerError);
-                throw new Error('Could not find or create a valid workflow state');
+              } else {
+                // We have the issue's team ID, create a workflow state for it
+                const teamId = issue.teamId;
+                console.log(`Creating workflow state for team: ${teamId}`);
+                
+                const newStateId = crypto.randomUUID();
+                await db
+                  .insertInto('workflow_state')
+                  .values({
+                    id: newStateId,
+                    name: stateName,
+                    description: `Issues in ${stateName.toLowerCase()} state`,
+                    color: stateColor,
+                    type: stateType,
+                    position,
+                    teamId: teamId,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                  })
+                  .execute();
+                
+                // Use the newly created state ID
+                issueData.stateId = newStateId;
+                console.log(`Created new workflow state with ID: ${newStateId}`);
               }
             }
+          } catch (error) {
+            console.error(`Error handling ${stateType} state:`, error);
+            
+            // Fallback: Find any valid workflow state
+            try {
+              const anyWorkflowState = await db
+                .selectFrom('workflow_state')
+                .select(['id'])
+                .limit(1)
+                .executeTakeFirst();
+                
+              if (anyWorkflowState) {
+                issueData.stateId = anyWorkflowState.id;
+                console.log(`Fallback: Using existing workflow state: ${anyWorkflowState.id}`);
+              } else {
+                throw new Error('No workflow states exist in database');
+              }
+            } catch (innerError) {
+              console.error('Critical error finding workflow state:', innerError);
+              throw new Error('Could not find or create a valid workflow state');
+            }
+          }
+        } else {
+          // Not a default ID but still not found - use a valid workflow state
+          console.log(`Non-default workflow state ${issueData.stateId} not found, using fallback`);
+          
+          try {
+            // Find any valid workflow state
+            const anyWorkflowState = await db
+              .selectFrom('workflow_state')
+              .select(['id'])
+              .limit(1)
+              .executeTakeFirst();
+              
+            if (anyWorkflowState) {
+              issueData.stateId = anyWorkflowState.id;
+              console.log(`Using valid workflow state: ${anyWorkflowState.id}`);
+            } else {
+              throw new Error('No workflow states exist in database');
+            }
+          } catch (error) {
+            console.error('Error finding fallback workflow state:', error);
+            throw error;
           }
         }
-      } catch (error) {
-        console.error('Error checking workflow state:', error);
       }
+    } catch (error) {
+      console.error('Error checking workflow state:', error);
+    }
+    
+    // Is this a Done status? If so, set completedAt
+    const isDoneStatus = 
+      issueData.stateId.includes('done') || 
+      issueData.stateId.includes('completed') || 
+      issueData.stateId === 'default-done';
+      
+    if (isDoneStatus && !issueData.completedAt) {
+      issueData.completedAt = new Date().toISOString();
     }
     
     updateValues.stateId = issueData.stateId;
@@ -922,18 +987,125 @@ export async function getWorkflowStates(teamId?: string) {
     .orderBy(['teamId', 'position'])
     .execute();
     
-  // Add default workflow states that don't already exist by type
+  // Check if we need to create any missing workflow states in the database
+  if (states.length === 0 || states.length < 5) { // We should have at least 5 basic states
+    console.log('Missing workflow states in database. Attempting to create defaults...');
+    
+    try {
+      // Find a team to associate the states with
+      let teamToUse = teamId;
+      if (!teamToUse) {
+        const anyTeam = await db
+          .selectFrom('team')
+          .select(['id'])
+          .limit(1)
+          .executeTakeFirst();
+          
+        if (anyTeam) {
+          teamToUse = anyTeam.id;
+          console.log(`Using team ${teamToUse} for default workflow states`);
+        } else {
+          console.log('No teams found, cannot create workflow states');
+        }
+      }
+      
+      if (teamToUse) {
+        // Map of types we need to ensure exist
+        const requiredTypes = new Set(['triage', 'backlog', 'todo', 'inprogress', 'done', 'canceled']);
+        
+        // Remove types that already exist
+        states.forEach(state => {
+          if (state.type && requiredTypes.has(state.type)) {
+            requiredTypes.delete(state.type);
+          }
+        });
+        
+        // Create missing workflow states
+        const now = new Date().toISOString();
+        for (const stateType of requiredTypes) {
+          let stateName = 'Unknown';
+          let stateColor = '#808080';
+          let position = 0;
+          
+          switch (stateType) {
+            case 'triage':
+              stateName = 'Triage';
+              stateColor = '#6B7280';
+              position = 0;
+              break;
+            case 'backlog':
+              stateName = 'Backlog';
+              stateColor = '#95A5A6';
+              position = 100;
+              break;
+            case 'todo':
+              stateName = 'To Do';
+              stateColor = '#3498DB';
+              position = 200;
+              break;
+            case 'inprogress':
+              stateName = 'In Progress';
+              stateColor = '#F1C40F';
+              position = 300;
+              break;
+            case 'done':
+              stateName = 'Done';
+              stateColor = '#2ECC71';
+              position = 400;
+              break;
+            case 'canceled':
+              stateName = 'Canceled';
+              stateColor = '#E74C3C';
+              position = 500;
+              break;
+          }
+          
+          try {
+            const newStateId = crypto.randomUUID();
+            await db
+              .insertInto('workflow_state')
+              .values({
+                id: newStateId,
+                name: stateName,
+                description: `Issues in ${stateName.toLowerCase()} state`,
+                color: stateColor,
+                type: stateType,
+                position,
+                teamId: teamToUse,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .execute();
+              
+            console.log(`Created ${stateType} workflow state with ID: ${newStateId}`);
+            
+            // Add to our return list
+            states.push({
+              id: newStateId,
+              name: stateName,
+              color: stateColor,
+              type: stateType,
+              position,
+              teamId: teamToUse
+            });
+          } catch (error) {
+            console.error(`Error creating ${stateType} workflow state:`, error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error setting up default workflow states:', error);
+    }
+  }
   
-  // Get existing types
-  const existingTypes = states.map(s => s.type);
+  // If we still don't have states (e.g., DB errors), add UI-only defaults as a fallback
+  if (states.length === 0) {
+    console.log('Using default UI-only workflow states after DB attempt');
+    return DEFAULT_WORKFLOW_STATES;
+  }
   
-  // Get default states that don't already exist by type
-  const missingDefaultStates = DEFAULT_WORKFLOW_STATES.filter(
-    s => !existingTypes.includes(s.type)
-  );
-  
-  // Return combined list with no duplicates by type
-  return [...states, ...missingDefaultStates];
+  // Return the workflow states (real + created ones)
+  return states;
 }
 
 // Get issue labels (optionally filtered by team)
