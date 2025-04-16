@@ -3,7 +3,7 @@ import type { Route } from "../+types/projects";
 import MainLayout from '@/components/layout/main-layout';
 import { HeaderIssues } from '@/components/layout/headers/issues/header';
 import AllIssues from '@/components/common/issues/all-issues';
-import { auth, requireAuth } from "@/lib/auth";
+// Server-side imports moved to loader and action
 import { redirect } from "react-router";
 import { getProjectById } from "@/lib/db/project-helpers.server";
 import { getWorkflowStates, getIssueLabels } from "@/lib/db/issue-helpers.server";
@@ -27,6 +27,8 @@ export function meta({ params, location, data }: Route.MetaArgs) {
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
+  // Import auth only within loader (server-side only)
+  const { auth, requireAuth } = await import('@/lib/auth.server');
   try {
     const { id } = params;
 

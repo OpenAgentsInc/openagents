@@ -4,7 +4,6 @@ import MainLayout from '@/components/layout/main-layout';
 import Members from '@/components/common/members/members';
 import { getUsers } from "../lib/db/project-helpers.server";
 import { getDb } from "../lib/db/team-helpers.server";
-import { requireAuth } from "../lib/auth";
 import { redirect } from "react-router";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
@@ -15,6 +14,9 @@ export function meta({ params, location, data }: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Import auth only within loader (server-side only)
+  const { requireAuth } = await import('@/lib/auth.server');
+  
   // Check authentication with requireAuth helper
   const authResult = await requireAuth(request);
   

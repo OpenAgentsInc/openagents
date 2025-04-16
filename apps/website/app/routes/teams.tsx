@@ -4,7 +4,7 @@ import MainLayout from '@/components/layout/main-layout';
 import Header from '@/components/layout/headers/teams/header';
 import { getTeamsForUser } from '@/lib/db/team-helpers.server';
 import { createTeam } from '@/lib/db/team-helpers.server';
-import { auth, requireAuth } from '@/lib/auth';
+// Server-side imports moved to loader and action
 import { CreateTeam } from '@/components/layout/modals/create-team';
 import { redirect } from 'react-router';
 
@@ -16,6 +16,8 @@ export function meta({ }: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Import auth only within loader (server-side only)
+  const { auth, requireAuth } = await import('@/lib/auth.server');
   try {
     // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
@@ -45,6 +47,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Import auth only within action (server-side only)
+  const { auth, requireAuth } = await import('@/lib/auth.server');
   // Check authentication with requireAuth helper
   const authResult = await requireAuth(request);
   

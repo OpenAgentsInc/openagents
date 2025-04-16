@@ -1,17 +1,18 @@
-import { auth } from '~/lib/auth' // Use the correct path alias
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router"
 
-// Define a handler function to work around type issues
-const handleRequest = (request: Request) => {
-  return auth.handler(request);
-};
+// We'll import auth from server module directly within the handler functions
+// This keeps server-only code isolated to server functions
 
 export async function loader({ request }: LoaderFunctionArgs) {
+  // Import auth server module
+  const { auth } = await import('~/lib/auth.server');
   // console.log("Auth API GET request:", request.url);
-  return handleRequest(request);
+  return auth.handler(request);
 }
 
 export async function action({ request }: ActionFunctionArgs) {
+  // Import auth server module
+  const { auth } = await import('~/lib/auth.server');
   // console.log("Auth API POST request:", request.url, "Method:", request.method);
-  return handleRequest(request);
+  return auth.handler(request);
 }

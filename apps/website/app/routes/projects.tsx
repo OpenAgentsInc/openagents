@@ -4,7 +4,6 @@ import Header from '@/components/layout/headers/projects/header';
 import Projects from '@/components/common/projects/projects';
 import { getProjects, createProject, getProjectStatuses, getUsers } from '@/lib/db/project-helpers.server';
 import { getTeamsForUser } from '@/lib/db/team-helpers.server';
-import { auth, requireAuth } from '@/lib/auth';
 import { getDb } from '@/lib/db/project-helpers.server';
 import { redirect } from 'react-router';
 
@@ -16,6 +15,8 @@ export function meta({ }: Route.MetaArgs) {
 }
 
 export async function loader({ context, request }: Route.LoaderArgs) {
+  // Import auth only within loader (server-side only)
+  const { auth, requireAuth } = await import('@/lib/auth.server');
   try {
     // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
@@ -61,6 +62,8 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Import auth only within action (server-side only)
+  const { auth, requireAuth } = await import('@/lib/auth.server');
   // Check authentication with requireAuth helper
   const authResult = await requireAuth(request);
   

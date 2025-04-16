@@ -1,4 +1,4 @@
-import { auth, requireAuth } from "@/lib/auth";
+// Server-side imports moved to loader and action
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
 import {
@@ -21,6 +21,8 @@ import { useCreateIssueStore } from "../store/create-issue-store";
 
 // Load issues and all related data
 export async function loader({ request }: LoaderFunctionArgs) {
+  // Import auth only within loader (server-side only)
+  const { auth, requireAuth } = await import('@/lib/auth.server');
   try {
     // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
@@ -85,6 +87,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 // Handle forms for creating or updating issues
 export async function action({ request }: ActionFunctionArgs) {
+  // Import auth only within action (server-side only)
+  const { auth, requireAuth } = await import('@/lib/auth.server');
   try {
     // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
