@@ -21,7 +21,7 @@ import { RiPresentationLine } from '@remixicon/react';
 export function NavWorkspace() {
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+      <SidebarGroupLabel className="select-none">Workspace</SidebarGroupLabel>
       <SidebarMenu>
         {workspaceItems.map((item) => (
           <SidebarMenuItem key={item.name}>

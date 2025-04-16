@@ -7,7 +7,7 @@ import { useLoaderData } from 'react-router';
 
 export default function HeaderNav() {
   const { users = [] } = useLoaderData<{ users: any[] }>();
-  
+
   return (
     <div className="w-full flex justify-between items-center border-b py-1.5 px-6 h-10">
       <div className="flex items-center gap-2">
@@ -18,10 +18,10 @@ export default function HeaderNav() {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Button className="relative" size="xs" variant="secondary">
+        {/* <Button className="relative" size="xs" variant="secondary">
           <Plus className="size-4" />
           Invite
-        </Button>
+        </Button> */}
       </div>
     </div>
   );
