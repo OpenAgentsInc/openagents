@@ -59,7 +59,8 @@ export function AssigneeUser({ user, issueId }: AssigneeUserProps) {
       submit(formData, { 
         method: 'post',
         action: '/issues', // Explicitly target the issues route which has the action
-        navigate: false // This prevents navigation and keeps the current route
+        navigate: false, // This prevents navigation and keeps the current route
+        replace: true // This causes the page state to be updated with the server response
       });
     }
   };

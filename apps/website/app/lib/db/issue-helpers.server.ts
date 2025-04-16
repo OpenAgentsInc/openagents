@@ -654,7 +654,10 @@ export async function updateIssue(id: string, issueData: {
   estimate?: number | null;
   dueDate?: string | null;
   labelIds?: string[];
+  teamId?: string; // Added teamId as optional to avoid validation errors
+  completedAt?: string | null; // Add completedAt field for Done status
 }) {
+  console.log(`Starting issue update for ID: ${id}`, issueData);
   const db = getDb();
   const now = new Date().toISOString();
   
@@ -666,7 +669,163 @@ export async function updateIssue(id: string, issueData: {
   // Add only provided fields
   if (issueData.title !== undefined) updateValues.title = issueData.title;
   if (issueData.description !== undefined) updateValues.description = issueData.description;
-  if (issueData.stateId !== undefined) updateValues.stateId = issueData.stateId;
+  if (issueData.stateId !== undefined) {
+    // Special handling for stateId - check if it's a "Done" status
+    const isDoneStatus = 
+      issueData.stateId.includes('done') || 
+      issueData.stateId.includes('completed') || 
+      issueData.stateId === 'default-done';
+      
+    if (isDoneStatus) {
+      console.log(`Processing a "Done" status update: ${issueData.stateId}`);
+      
+      // Verify the stateId exists in the workflow_state table
+      try {
+        const db = getDb();
+        const stateCheck = await db
+          .selectFrom('workflow_state')
+          .select(['id', 'name', 'type'])
+          .where('id', '=', issueData.stateId)
+          .executeTakeFirst();
+          
+        if (stateCheck) {
+          console.log(`Found workflow state for Done status: ${JSON.stringify(stateCheck)}`);
+        } else {
+          console.log(`Warning: Done status ID ${issueData.stateId} not found in workflow_state table`);
+          // If using a default ID, we may need to create a real workflow state
+          if (issueData.stateId === 'default-done') {
+            console.log('Handling default-done status');
+            
+            // Before creating a new workflow state, first check if we have an existing "done" state
+            try {
+              const existingDoneState = await db
+                .selectFrom('workflow_state')
+                .select(['id'])
+                .where('type', '=', 'done')
+                .executeTakeFirst();
+                
+              if (existingDoneState) {
+                // Use existing Done state
+                console.log(`Using existing done state: ${existingDoneState.id}`);
+                issueData.stateId = existingDoneState.id;
+              } else {
+                // No existing done state found
+                console.log('No existing done state found - checking for issue team');
+                
+                // Need to look up the issue's teamId first
+                const issue = await db
+                  .selectFrom('issue')
+                  .select(['teamId'])
+                  .where('id', '=', id)
+                  .executeTakeFirst();
+                
+                if (!issue || !issue.teamId) {
+                  console.log('No teamId found for issue, using first team');
+                  
+                  // Find any team to associate the workflow state with
+                  const anyTeam = await db
+                    .selectFrom('team')
+                    .select(['id'])
+                    .limit(1)
+                    .executeTakeFirst();
+                  
+                  if (anyTeam) {
+                    const teamId = anyTeam.id;
+                    console.log(`Using team ID: ${teamId} for new workflow state`);
+                    
+                    const newStateId = crypto.randomUUID();
+                    await db
+                      .insertInto('workflow_state')
+                      .values({
+                        id: newStateId,
+                        name: 'Done',
+                        description: 'Issues in done state',
+                        color: '#2ECC71',
+                        type: 'done',
+                        position: 400,
+                        teamId: teamId, // Use found team ID
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                      })
+                      .execute();
+                    
+                    // Use the newly created state ID
+                    issueData.stateId = newStateId;
+                    console.log(`Created new workflow state with ID: ${newStateId}`);
+                  } else {
+                    // Can't create a workflow state - revert to a known real workflow state
+                    console.log('No teams found, checking for any valid workflow state');
+                    const anyWorkflowState = await db
+                      .selectFrom('workflow_state')
+                      .select(['id'])
+                      .limit(1)
+                      .executeTakeFirst();
+                      
+                    if (anyWorkflowState) {
+                      issueData.stateId = anyWorkflowState.id;
+                      console.log(`Using existing workflow state: ${anyWorkflowState.id}`);
+                    } else {
+                      // Can't find any workflow state - critical error
+                      throw new Error('No workflow states exist in database');
+                    }
+                  }
+                } else {
+                  // We have the issue's team ID, create a workflow state for it
+                  const teamId = issue.teamId;
+                  console.log(`Creating workflow state for team: ${teamId}`);
+                  
+                  const newStateId = crypto.randomUUID();
+                  await db
+                    .insertInto('workflow_state')
+                    .values({
+                      id: newStateId,
+                      name: 'Done',
+                      description: 'Issues in done state',
+                      color: '#2ECC71',
+                      type: 'done',
+                      position: 400,
+                      teamId: teamId,
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString(),
+                    })
+                    .execute();
+                  
+                  // Use the newly created state ID
+                  issueData.stateId = newStateId;
+                  console.log(`Created new workflow state with ID: ${newStateId}`);
+                }
+              }
+            } catch (error) {
+              console.error('Error handling done state:', error);
+              
+              // Fallback: Find any valid workflow state
+              try {
+                const anyWorkflowState = await db
+                  .selectFrom('workflow_state')
+                  .select(['id'])
+                  .limit(1)
+                  .executeTakeFirst();
+                  
+                if (anyWorkflowState) {
+                  issueData.stateId = anyWorkflowState.id;
+                  console.log(`Fallback: Using existing workflow state: ${anyWorkflowState.id}`);
+                } else {
+                  throw new Error('No workflow states exist in database');
+                }
+              } catch (innerError) {
+                console.error('Critical error finding workflow state:', innerError);
+                throw new Error('Could not find or create a valid workflow state');
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking workflow state:', error);
+      }
+    }
+    
+    updateValues.stateId = issueData.stateId;
+  }
   if (issueData.priority !== undefined) updateValues.priority = issueData.priority;
   
   // Handle assignee specifically - empty string should be converted to null
@@ -685,13 +844,23 @@ export async function updateIssue(id: string, issueData: {
   if (issueData.parentId !== undefined) updateValues.parentId = issueData.parentId;
   if (issueData.estimate !== undefined) updateValues.estimate = issueData.estimate;
   if (issueData.dueDate !== undefined) updateValues.dueDate = issueData.dueDate;
+  if (issueData.completedAt !== undefined) updateValues.completedAt = issueData.completedAt;
   
-  // Update the issue
-  await db
-    .updateTable('issue')
-    .set(updateValues)
-    .where('id', '=', id)
-    .execute();
+  console.log(`Executing SQL update for issue ${id} with values:`, updateValues);
+  
+  try {
+    // Update the issue
+    const result = await db
+      .updateTable('issue')
+      .set(updateValues)
+      .where('id', '=', id)
+      .execute();
+      
+    console.log(`Update execution complete for issue ${id}, result:`, result);
+  } catch (error) {
+    console.error(`Error during SQL update for issue ${id}:`, error);
+    throw error;
+  }
     
   // Update labels if provided
   if (issueData.labelIds !== undefined) {

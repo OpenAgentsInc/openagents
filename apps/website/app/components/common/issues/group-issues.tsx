@@ -118,6 +118,16 @@ const IssueGridList: FC<{ issues: Issue[]; status: Status }> = ({ issues, status
     accept: IssueDragType,
     drop(item: Issue, monitor) {
       if (monitor.didDrop() && item.status.id !== status.id) {
+        // Enhanced debugging for "Done" status
+        const isDoneStatus = status.type === 'done' || status.name === 'Done';
+        if (isDoneStatus) {
+          console.log('DEBUG: Drag and drop - Setting issue status to Done:', {
+            issueId: item.id,
+            oldStatus: item.status,
+            newStatus: status
+          });
+        }
+        
         updateIssueStatus(item.id, status);
       }
     },

@@ -94,13 +94,42 @@ export default function ProjectDetails() {
   // Update issues store with project-specific issues
   useEffect(() => {
     if (project?.issues) {
+      console.log('[DEBUG] ProjectDetails - Setting issues from project data:', project.issues.length);
       setIssues(project.issues);
     }
 
     if (data.options?.workflowStates) {
+      console.log('[DEBUG] ProjectDetails - Setting workflow states:', data.options.workflowStates.length);
       setWorkflowStates(data.options.workflowStates);
     }
   }, [project, data.options, setIssues, setWorkflowStates]);
+  
+  // Also listen for fetch responses from actions
+  useEffect(() => {
+    const handleFetchResponse = (event: any) => {
+      // Check if the event is from an issue update action
+      if (event.detail?.data?.issues && Array.isArray(event.detail.data.issues)) {
+        console.log('[DEBUG] ProjectDetails - Received new issues from fetch response:', event.detail.data.issues.length);
+        
+        // Filter to only include issues for this project
+        const projectIssues = event.detail.data.issues.filter((issue: any) => 
+          issue.project && issue.project.id === id
+        );
+        
+        if (projectIssues.length > 0) {
+          console.log('[DEBUG] ProjectDetails - Setting filtered issues for project:', projectIssues.length);
+          setIssues(projectIssues);
+        }
+      }
+    };
+    
+    // Listen for action response events
+    window.addEventListener('fetchresponse', handleFetchResponse);
+    
+    return () => {
+      window.removeEventListener('fetchresponse', handleFetchResponse);
+    };
+  }, [id, setIssues]);
 
   if (data.error) {
     return (

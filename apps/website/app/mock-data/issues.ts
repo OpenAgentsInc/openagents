@@ -12,7 +12,7 @@ export interface Issue {
   title: string;
   description: string;
   status: Status;
-  assignees: User | null;
+  assignee: User | null; // Changed from assignees to assignee to match store interface
   priority: Priority;
   labels: LabelInterface[];
   createdAt: string | null;

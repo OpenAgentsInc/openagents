@@ -90,6 +90,16 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
     if (issueId) {
       const newStatus = workflowStates.find((s) => s.id === statusId);
       if (newStatus) {
+        // Extra debugging for Done status
+        const isDoneStatus = newStatus.type === 'done' || newStatus.name === 'Done';
+        if (isDoneStatus) {
+          console.log('DEBUG: Setting status to Done:', {
+            statusId,
+            statusObj: newStatus,
+            issueId
+          });
+        }
+        
         // Update UI state immediately
         updateIssueStatus(issueId, newStatus);
         
@@ -99,12 +109,53 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
         formData.append('id', issueId);
         formData.append('stateId', statusId);
         
+        // For Done status, add extra data to ensure proper handling
+        if (isDoneStatus) {
+          // Add completedAt date
+          formData.append('completedAt', new Date().toISOString());
+          // Extra flag to identify Done status for debugging server-side
+          formData.append('isDone', 'true');
+          
+          // Get teamId from the current issue if available (from loader data)
+          const currentIssue = loaderData?.issues?.find((issue: any) => issue.id === issueId);
+          if (currentIssue?.project?.id) {
+            console.log(`Adding project ID ${currentIssue.project.id} to done status update`);
+            formData.append('projectId', currentIssue.project.id);
+          }
+          
+          if (currentIssue?.teamId) {
+            console.log(`Adding team ID ${currentIssue.teamId} to done status update`);
+            formData.append('teamId', currentIssue.teamId);
+          } else if (currentIssue?.team?.id) {
+            console.log(`Adding team ID ${currentIssue.team.id} to done status update`);
+            formData.append('teamId', currentIssue.team.id);
+          }
+        }
+        
+        // Add debug info to help troubleshoot
+        console.log(`Updating issue ${issueId} status to ${statusId} (type: ${newStatus.type})`);
+        
         // Always submit to the issues route as a fetch request instead of navigation
         submit(formData, {
           method: 'post',
           action: '/issues', // Explicitly target the issues route which has the action
-          navigate: false // This prevents navigation and keeps the current route
+          navigate: false, // This prevents navigation and keeps the current route
+          replace: true // This causes the page state to be updated with the server response
         });
+        
+        // Add an additional handler for "Done" status to re-sync after a short delay
+        if (isDoneStatus) {
+          setTimeout(() => {
+            console.log('DEBUG: Re-submitting fetch for issue list after Done status update');
+            // Fetch a fresh list of issues to ensure store is fully in sync
+            submit(null, {
+              method: 'get',
+              action: '/issues',
+              navigate: false,
+              replace: true
+            });
+          }, 500); // Short delay to allow the status update to be processed
+        }
       }
     }
   };
