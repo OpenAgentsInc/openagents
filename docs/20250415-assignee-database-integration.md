@@ -12,6 +12,7 @@ This document details the implementation of database-driven Assignees for issues
 - Added a new helper function `formatAssignee()` for consistent assignee data formatting  
 - Updated all issue transformation code to use the helper function
 - Standardized the format of assignee data across all issue-related operations
+- Fixed field name inconsistency by using `assignee` (singular) consistently
 
 ### 2. Updated AssigneeUser Component
 
@@ -25,6 +26,13 @@ This document details the implementation of database-driven Assignees for issues
 
 - Updated the issue grid and issue list components to properly handle the new assignee format
 - Ensured proper fallback handling when assignees are null
+- Fixed field name inconsistency by updating all components to use `issue.assignee` instead of `issue.assignees`
+
+### 4. Store Updates
+
+- Updated Issue interface field from `assignees` to `assignee` for consistency
+- Fixed all filter functions and update methods to use the correct field name
+- Updated type declarations to use the database format
 
 ## Usage Example
 

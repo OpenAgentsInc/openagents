@@ -104,7 +104,7 @@ export async function getAllIssues() {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: formatAssignee(issue),
+    assignee: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),
@@ -212,7 +212,7 @@ export async function getIssuesByTeamId(teamId: string) {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: formatAssignee(issue),
+    assignee: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),
@@ -316,7 +316,7 @@ export async function getIssuesByProjectId(projectId: string) {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: formatAssignee(issue),
+    assignee: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),
@@ -418,7 +418,7 @@ export async function getIssueById(id: string) {
       color: issue.stateColor || '',
       type: issue.stateType || '',
     },
-    assignees: formatAssignee(issue),
+    assignee: formatAssignee(issue),
     priority: {
       id: getPriorityKey(issue.priority),
       name: getPriorityName(issue.priority),

@@ -27,7 +27,7 @@ export interface Issue {
   title: string;
   description: string;
   status: Status;
-  assignees: User | null;
+  assignee: User | null;
   priority: Priority;
   labels: LabelInterface[];
   createdAt: string | null;
@@ -171,12 +171,12 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     if (userId === null) {
       return get().issues.filter((issue) => {
         if (!issue) return false;
-        return issue.assignees === null;
+        return issue.assignee === null;
       });
     }
     return get().issues.filter((issue) => {
-      if (!issue || !issue.assignees) return false;
-      return issue.assignees.id === userId;
+      if (!issue || !issue.assignee) return false;
+      return issue.assignee.id === userId;
     });
   },
 
@@ -218,7 +218,7 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
 
   // Assignee management
   updateIssueAssignee: (issueId: string, newAssignee: User | null) => {
-    get().updateIssue(issueId, { assignees: newAssignee });
+    get().updateIssue(issueId, { assignee: newAssignee });
   },
 
   // Labels management
