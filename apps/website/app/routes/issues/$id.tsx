@@ -283,6 +283,33 @@ export default function IssueDetails() {
   const [activeTab, setActiveTab] = useState("details");
   const { updateIssueStatus } = useIssuesStore();
 
+  // Prepare issue details for the system prompt
+  const issueDetails = `
+Current Issue Details:
+- Identifier: ${issue.identifier}
+- Title: ${issue.title}
+- Description: ${issue.description || 'No description provided'}
+- Status: ${issue.status.name} (${issue.status.type})
+- Priority: ${issue.priority.name}
+${issue.assignee ? `- Assigned to: ${issue.assignee.name}` : '- Unassigned'}
+${issue.dueDate ? `- Due Date: ${new Date(issue.dueDate).toLocaleDateString()}` : '- No due date'}
+${issue.labels && issue.labels.length > 0 ? `- Labels: ${issue.labels.map(l => l.name).join(', ')}` : '- No labels'}
+${issue.project ? `
+Project Details:
+- Project: ${issue.project.name}
+- Color: ${issue.project.color}
+` : '- Not assigned to any project'}
+${issue.team ? `
+Team Details:
+- Team: ${issue.team.name}
+- Team Key: ${issue.team.key}
+` : ''}
+${issue.subissues && issue.subissues.length > 0 ? `- Has ${issue.subissues.length} subtasks` : '- No subtasks'}
+${issue.parentId ? `- Is a subtask of issue: ${issue.parentId}` : '- Is a top-level issue'}
+- Created: ${new Date(issue.createdAt).toLocaleString()}
+${issue.creator ? `- Created by: ${issue.creator.name}` : '- Creator unknown'}
+`;
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
     api: `https://chat.openagents.com`,
     initialMessages: [{
@@ -307,14 +334,17 @@ Team & Project Structure:
 - Users can be members of multiple teams and projects with different roles
 - Teams can customize their workflow states and issue numbering
 
+${issueDetails}
+
 Your Role:
-- Help users understand issue details and context
-- Assist with crafting clear descriptions and summaries
-- Suggest appropriate labels, priorities, and workflow states
-- Provide technical guidance related to issue implementation
+- Help users understand this specific issue's details and context
+- Assist with improving the issue description if needed
+- Suggest appropriate status updates, labels, or priority changes
+- Provide technical guidance related to this issue's implementation
+- Answer questions about this issue, its project, and its team
 - Maintain a helpful, professional tone focused on productivity
 
-You're currently viewing an issue page where users can see all details about an issue, edit the description, change status, and discuss the issue through this chat interface. Be helpful and concise in your responses.`
+You're currently viewing the issue page where users can see all details about this issue, edit the description, change status, and discuss the issue through this chat interface. Be helpful and concise in your responses.`
     }],
   });
 
