@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useIssuesStore } from '@/store/issues-store';
 import { CheckIcon, CheckCircle, Circle, Clock, Hourglass, Timer } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
-import { useLoaderData } from 'react-router';
+import { useLoaderData, useSubmit } from 'react-router';
 
 // Define a more generic Status interface compatible with DB data
 interface Status {
@@ -51,6 +51,7 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
   const [open, setOpen] = useState<boolean>(false);
   const [value, setValue] = useState<string>(status.id);
   const loaderData = useLoaderData() || {};
+  const submit = useSubmit();
 
   // Get workflow states from loader data
   let workflowStates: Status[] = [];
@@ -64,9 +65,6 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
     const { getWorkflowStates } = useIssuesStore();
     workflowStates = getWorkflowStates ? getWorkflowStates() : [];
   }
-
-  // console.log('Status selector - workflow states:', workflowStates?.length || 0);
-  // console.log('Status selector - loader data structure:', JSON.stringify(loaderData, null, 2).substring(0, 200) + '...');
 
   // Default workflow states as fallback if none are available
   if (!workflowStates || workflowStates.length === 0) {
@@ -92,7 +90,21 @@ export function StatusSelector({ status, issueId }: StatusSelectorProps) {
     if (issueId) {
       const newStatus = workflowStates.find((s) => s.id === statusId);
       if (newStatus) {
+        // Update UI state immediately
         updateIssueStatus(issueId, newStatus);
+        
+        // Then send the update to the server
+        const formData = new FormData();
+        formData.append('_action', 'update');
+        formData.append('id', issueId);
+        formData.append('stateId', statusId);
+        
+        // Always submit to the issues route as a fetch request instead of navigation
+        submit(formData, {
+          method: 'post',
+          action: '/issues', // Explicitly target the issues route which has the action
+          navigate: false // This prevents navigation and keeps the current route
+        });
       }
     }
   };

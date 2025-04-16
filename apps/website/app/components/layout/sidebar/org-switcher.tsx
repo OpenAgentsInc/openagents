@@ -40,6 +40,7 @@ export function OrgSwitcher() {
           <div className="w-full flex gap-1 items-center pt-2">
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
+                variant="outline"
                 size="lg"
                 className="h-8 p-1 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               >

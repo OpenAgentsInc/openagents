@@ -221,7 +221,7 @@ export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueP
   return (
     <Dialog open={isOpen} onOpenChange={(value) => (value ? openModal() : closeModal())}>
       <DialogTrigger asChild>
-        <Button className="size-8 shrink-0" variant="secondary" size="icon">
+        <Button className="size-8 shrink-0" variant="outline" size="icon">
           <RiEditLine />
         </Button>
       </DialogTrigger>

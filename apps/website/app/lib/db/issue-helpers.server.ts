@@ -668,7 +668,12 @@ export async function updateIssue(id: string, issueData: {
   if (issueData.description !== undefined) updateValues.description = issueData.description;
   if (issueData.stateId !== undefined) updateValues.stateId = issueData.stateId;
   if (issueData.priority !== undefined) updateValues.priority = issueData.priority;
-  if (issueData.assigneeId !== undefined) updateValues.assigneeId = issueData.assigneeId;
+  
+  // Handle assignee specifically - empty string should be converted to null
+  if (issueData.assigneeId !== undefined) {
+    updateValues.assigneeId = issueData.assigneeId === '' ? null : issueData.assigneeId;
+  }
+  
   if (issueData.projectId !== undefined) {
     updateValues.projectId = issueData.projectId;
     if (issueData.projectId) updateValues.addedToProjectAt = now;

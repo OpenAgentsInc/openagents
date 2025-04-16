@@ -7,9 +7,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useIssuesStore } from '@/store/issues-store';
 import { CheckIcon, CircleUserRound, Send, UserIcon } from 'lucide-react';
-import { useState } from 'react';
-import { useLoaderData } from 'react-router';
+import { useState, useEffect } from 'react';
+import { useLoaderData, useSubmit } from 'react-router';
 
 // Database user interface
 interface User {
@@ -21,15 +22,47 @@ interface User {
 
 interface AssigneeUserProps {
   user: User | null;
+  issueId?: string; // Make issueId an optional prop
 }
 
-export function AssigneeUser({ user }: AssigneeUserProps) {
+export function AssigneeUser({ user, issueId }: AssigneeUserProps) {
   const [open, setOpen] = useState(false);
   const [currentAssignee, setCurrentAssignee] = useState<User | null>(user);
   const loaderData = useLoaderData<any>();
+  const { updateIssueAssignee } = useIssuesStore();
+  const submit = useSubmit();
   
   // Get users from loader data
   const users = loaderData?.options?.users || [];
+
+  // Keep local state in sync with prop changes
+  useEffect(() => {
+    setCurrentAssignee(user);
+  }, [user]);
+
+  const handleAssigneeChange = (newAssignee: User | null) => {
+    setCurrentAssignee(newAssignee);
+    setOpen(false);
+    
+    // Update the issue in the store if we have an issueId
+    if (issueId) {
+      // Update local state first for immediate UI response
+      updateIssueAssignee(issueId, newAssignee);
+      
+      // Then send the update to the server
+      const formData = new FormData();
+      formData.append('_action', 'update');
+      formData.append('id', issueId);
+      formData.append('assigneeId', newAssignee?.id || '');
+      
+      // Always submit to the issues route as a fetch request instead of navigation
+      submit(formData, { 
+        method: 'post',
+        action: '/issues', // Explicitly target the issues route which has the action
+        navigate: false // This prevents navigation and keeps the current route
+      });
+    }
+  };
 
   const renderAvatar = () => {
     if (currentAssignee) {
@@ -60,8 +93,7 @@ export function AssigneeUser({ user }: AssigneeUserProps) {
         <DropdownMenuItem
           onClick={(e) => {
             e.stopPropagation();
-            setCurrentAssignee(null);
-            setOpen(false);
+            handleAssigneeChange(null);
           }}
         >
           <div className="flex items-center gap-2">
@@ -76,8 +108,7 @@ export function AssigneeUser({ user }: AssigneeUserProps) {
             key={user.id}
             onClick={(e) => {
               e.stopPropagation();
-              setCurrentAssignee(user);
-              setOpen(false);
+              handleAssigneeChange(user);
             }}
           >
             <div className="flex items-center gap-2">

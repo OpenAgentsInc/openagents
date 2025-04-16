@@ -36,7 +36,7 @@ export function IssueLine({ issue, layoutId = false }: { issue: Issue; layoutId?
             {format(new Date(issue.createdAt), 'MMM dd')}
           </span>
         )}
-        <AssigneeUser user={issue.assignee} />
+        <AssigneeUser user={issue.assignee} issueId={issue.id} />
       </div>
     </motion.div>
   );

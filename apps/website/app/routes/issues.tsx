@@ -150,34 +150,83 @@ export async function action({ request }: ActionFunctionArgs) {
     // Handle issue update
     if (action === "update") {
       const id = formData.get("id") as string;
-      const title = formData.get("title") as string;
-      const description = formData.get("description") as string;
-      const teamId = formData.get("teamId") as string;
-      const stateId = formData.get("stateId") as string;
-      const priorityStr = formData.get("priority") as string;
-      const priority = parseInt(priorityStr, 10);
-      const assigneeId = formData.get("assigneeId") as string;
-      const projectId = formData.get("projectId") as string;
-
-      // Validate required fields
-      if (!id || !title || !teamId || !stateId) {
+      
+      // Basic validation - we need at least an ID
+      if (!id) {
         return {
           success: false,
-          error: "Required fields are missing"
+          error: "Issue ID is required for updates"
         };
       }
+      
+      // Check if this is a partial update (e.g., just updating the assignee)
+      const isPartialUpdate = !formData.has("title");
+      
+      if (isPartialUpdate) {
+        // Handle partial updates (like just updating the assignee)
+        const updateData: Record<string, any> = {};
+        
+        // Add fields that were provided in the request
+        if (formData.has("assigneeId")) {
+          const assigneeId = formData.get("assigneeId") as string;
+          updateData.assigneeId = assigneeId || null;
+        }
+        
+        if (formData.has("stateId")) {
+          updateData.stateId = formData.get("stateId") as string;
+        }
+        
+        if (formData.has("priority")) {
+          const priorityStr = formData.get("priority") as string;
+          updateData.priority = parseInt(priorityStr, 10);
+        }
+        
+        if (formData.has("projectId")) {
+          updateData.projectId = formData.get("projectId") as string || null;
+        }
+        
+        // Perform the update with just the fields that were provided
+        await updateIssue(id, updateData);
+        
+        // Get the updated issue
+        const newIssues = await getAllIssues();
+        const updatedIssue = newIssues.find(issue => issue.id === id);
+        
+        return { 
+          success: true,
+          issue: updatedIssue
+        };
+      } else {
+        // Handle full updates with all required fields
+        const title = formData.get("title") as string;
+        const description = formData.get("description") as string;
+        const teamId = formData.get("teamId") as string;
+        const stateId = formData.get("stateId") as string;
+        const priorityStr = formData.get("priority") as string;
+        const priority = parseInt(priorityStr, 10);
+        const assigneeId = formData.get("assigneeId") as string;
+        const projectId = formData.get("projectId") as string;
 
-      await updateIssue(id, {
-        title,
-        description,
-        teamId,
-        stateId,
-        priority,
-        assigneeId: assigneeId || null,
-        projectId: projectId || null
-      });
+        // Validate required fields for full updates
+        if (!title || !teamId || !stateId) {
+          return {
+            success: false,
+            error: "Required fields are missing"
+          };
+        }
 
-      return { success: true };
+        await updateIssue(id, {
+          title,
+          description,
+          teamId,
+          stateId,
+          priority,
+          assigneeId: assigneeId || null,
+          projectId: projectId || null
+        });
+
+        return { success: true };
+      }
     }
 
     return { success: false, error: "Unknown action" };

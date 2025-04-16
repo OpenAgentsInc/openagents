@@ -41,7 +41,7 @@ function IssueDragPreview({ issue }: { issue: Issue }) {
             {format(new Date(issue.createdAt), 'MMM dd')}
           </span>
         )}
-        <AssigneeUser user={issue.assignee} />
+        <AssigneeUser user={issue.assignee} issueId={issue.id} />
       </div>
     </div>
   );
@@ -126,7 +126,7 @@ export function IssueGrid({ issue }: IssueGridProps) {
             {format(new Date(issue.createdAt), 'MMM dd')}
           </span>
         )}
-        <AssigneeUser user={issue.assignee} />
+        <AssigneeUser user={issue.assignee} issueId={issue.id} />
       </div>
     </motion.div>
   );
