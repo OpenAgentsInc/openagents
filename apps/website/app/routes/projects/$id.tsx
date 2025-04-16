@@ -14,29 +14,32 @@ import { useIssuesStore } from "@/store/issues-store";
 import { useEffect } from "react";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
+  // Use the project name from the loader data if available
+  const projectName = data?.project?.name || "Project Details";
+
   return [
-    { title: `Project: ${params.id}` },
-    { name: "description", content: "View project details" },
+    { title: `${projectName} - OpenAgents` },
+    { name: "description", content: `View details for ${projectName}` },
   ];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   try {
     const { id } = params;
-    
+
     // Get current session with better-auth
     const { user, session } = await auth.api.getSession(request);
-    
+
     if (!session) {
       return redirect("/login");
     }
-    
+
     const project = await getProjectById(id as string);
-    
+
     if (!project) {
       throw new Error("Project not found");
     }
-    
+
     // Load data needed for the issue creation modal
     const [workflowStates, labels, teams, users] = await Promise.all([
       getWorkflowStates(),
@@ -44,13 +47,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
       getTeamsForUser(user.id),
       getUsers()
     ]);
-    
+
     // --- START DEBUG LOG ---
     console.log(`[DEBUG] /projects/$id Loader - Fetched ${workflowStates?.length ?? 0} workflow states:`, JSON.stringify(workflowStates));
     console.log(`[DEBUG] /projects/$id Loader - Fetched ${teams?.length ?? 0} teams for user ${user.id}:`, JSON.stringify(teams));
     // --- END DEBUG LOG ---
-    
-    return { 
+
+    return {
       project,
       options: {
         workflowStates,
@@ -62,7 +65,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     };
   } catch (error) {
     console.error("Error loading project:", error);
-    return { 
+    return {
       error: "Failed to load project",
       options: {
         workflowStates: [],
@@ -79,18 +82,18 @@ export default function ProjectDetails() {
   const data = useLoaderData();
   const project = data.project;
   const { setIssues, setWorkflowStates } = useIssuesStore();
-  
+
   // Update issues store with project-specific issues
   useEffect(() => {
     if (project?.issues) {
       setIssues(project.issues);
     }
-    
+
     if (data.options?.workflowStates) {
       setWorkflowStates(data.options.workflowStates);
     }
   }, [project, data.options, setIssues, setWorkflowStates]);
-  
+
   if (data.error) {
     return (
       <MainLayout>
@@ -101,7 +104,7 @@ export default function ProjectDetails() {
       </MainLayout>
     );
   }
-  
+
   return (
     <MainLayout header={<HeaderIssues />}>
       <div className="flex-1 container mx-auto p-6">
