@@ -3,7 +3,7 @@ import type { Route } from "../+types/projects";
 import MainLayout from '@/components/layout/main-layout';
 import { HeaderIssues } from '@/components/layout/headers/issues/header';
 import AllIssues from '@/components/common/issues/all-issues';
-import { auth } from "@/lib/auth";
+import { auth, requireAuth } from "@/lib/auth";
 import { redirect } from "react-router";
 import { getProjectById } from "@/lib/db/project-helpers.server";
 import { getWorkflowStates, getIssueLabels } from "@/lib/db/issue-helpers.server";
@@ -30,12 +30,15 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   try {
     const { id } = params;
 
-    // Get current session with better-auth
-    const { user, session } = await auth.api.getSession(request);
-
-    if (!session) {
-      return redirect("/login");
+    // Check authentication with requireAuth helper
+    const authResult = await requireAuth(request);
+    
+    if (authResult.redirect) {
+      return redirect(authResult.redirect);
     }
+    
+    // Get user and session from the auth result
+    const { user, session } = authResult;
 
     const project = await getProjectById(id as string);
 

@@ -67,3 +67,15 @@ export const auth: BetterAuthInstance = betterAuth({
   // Enable debug mode for more detailed logs
   debug: true,
 });
+
+// Helper function to create a loader that requires authentication
+// and redirects to the homepage if not authenticated
+export async function requireAuth(request: Request) {
+  const result = await auth.api.getSession(request);
+  
+  if (!result || !result.session) {
+    return { redirect: '/', authError: 'You must be logged in to access this page' };
+  }
+  
+  return { session: result.session, user: result.user };
+}

@@ -4,7 +4,7 @@ import Header from '@/components/layout/headers/projects/header';
 import Projects from '@/components/common/projects/projects';
 import { getProjects, createProject, getProjectStatuses, getUsers } from '@/lib/db/project-helpers.server';
 import { getTeamsForUser } from '@/lib/db/team-helpers.server';
-import { auth } from '@/lib/auth';
+import { auth, requireAuth } from '@/lib/auth';
 import { getDb } from '@/lib/db/project-helpers.server';
 import { redirect } from 'react-router';
 
@@ -17,12 +17,15 @@ export function meta({ }: Route.MetaArgs) {
 
 export async function loader({ context, request }: Route.LoaderArgs) {
   try {
-    // Get current session with better-auth
-    const { user } = await auth.api.getSession(request);
+    // Check authentication with requireAuth helper
+    const authResult = await requireAuth(request);
     
-    if (!user) {
-      return redirect('/login');
+    if (authResult.redirect) {
+      return redirect(authResult.redirect);
     }
+    
+    // Get user from the auth result
+    const { user } = authResult;
     
     const projects = await getProjects();
     
@@ -58,13 +61,15 @@ export async function loader({ context, request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  // Get the currently authenticated user
-  const { user } = await auth.api.getSession(request);
+  // Check authentication with requireAuth helper
+  const authResult = await requireAuth(request);
   
-  // Check if user is authenticated
-  if (!user) {
-    return { success: false, error: 'Authentication required' };
+  if (authResult.redirect) {
+    return redirect(authResult.redirect);
   }
+  
+  // Get user from the auth result
+  const { user } = authResult;
   
   const formData = await request.formData();
   const action = formData.get('action');

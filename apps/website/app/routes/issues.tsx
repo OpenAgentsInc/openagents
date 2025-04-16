@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { auth, requireAuth } from "@/lib/auth";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
 import {
@@ -22,12 +22,15 @@ import { useCreateIssueStore } from "../store/create-issue-store";
 // Load issues and all related data
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
-    // Get current session with better-auth
-    const { user, session } = await auth.api.getSession(request);
-
-    if (!session) {
-      return redirect("/login");
+    // Check authentication with requireAuth helper
+    const authResult = await requireAuth(request);
+    
+    if (authResult.redirect) {
+      return redirect(authResult.redirect);
     }
+    
+    // Get user and session from the auth result
+    const { user, session } = authResult;
 
     // Concurrently fetch data
     const [
@@ -83,11 +86,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
 // Handle forms for creating or updating issues
 export async function action({ request }: ActionFunctionArgs) {
   try {
-    const { session } = await auth.api.getSession(request);
-
-    if (!session) {
-      return redirect("/login");
+    // Check authentication with requireAuth helper
+    const authResult = await requireAuth(request);
+    
+    if (authResult.redirect) {
+      return redirect(authResult.redirect);
     }
+    
+    // Get session from the auth result
+    const { session } = authResult;
 
     const formData = await request.formData();
     const action = formData.get("_action") as string;

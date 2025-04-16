@@ -4,6 +4,8 @@ import MainLayout from '@/components/layout/main-layout';
 import Members from '@/components/common/members/members';
 import { getUsers } from "../lib/db/project-helpers.server";
 import { getDb } from "../lib/db/team-helpers.server";
+import { requireAuth } from "../lib/auth";
+import { redirect } from "react-router";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   return [
@@ -12,7 +14,14 @@ export function meta({ params, location, data }: Route.MetaArgs) {
   ];
 }
 
-export async function loader({ }: Route.LoaderArgs) {
+export async function loader({ request }: Route.LoaderArgs) {
+  // Check authentication with requireAuth helper
+  const authResult = await requireAuth(request);
+  
+  if (authResult.redirect) {
+    return redirect(authResult.redirect);
+  }
+  
   // Get all users from the database
   const users = await getUsers();
 
