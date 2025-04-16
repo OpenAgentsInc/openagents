@@ -16,7 +16,7 @@ import { useEffect } from "react";
 export function meta({ params, location, data }: Route.MetaArgs) {
   // Use type assertion to access project data
   const loaderData = data as Route.ProjectLoaderData;
-  
+
   // Use the project name from the loader data if available
   const projectName = loaderData?.project?.name || "Project Details";
 
@@ -34,11 +34,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
     // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
-    
+
     if (authResult.redirect) {
       return redirect(authResult.redirect);
     }
-    
+
     // Get user and session from the auth result
     const { user, session } = authResult;
 
@@ -57,8 +57,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     ]);
 
     // --- START DEBUG LOG ---
-    console.log(`[DEBUG] /projects/$id Loader - Fetched ${workflowStates?.length ?? 0} workflow states:`, JSON.stringify(workflowStates));
-    console.log(`[DEBUG] /projects/$id Loader - Fetched ${teams?.length ?? 0} teams for user ${user.id}:`, JSON.stringify(teams));
+    // console.log(`[DEBUG] /projects/$id Loader - Fetched ${workflowStates?.length ?? 0} workflow states:`, JSON.stringify(workflowStates));
+    // console.log(`[DEBUG] /projects/$id Loader - Fetched ${teams?.length ?? 0} teams for user ${user.id}:`, JSON.stringify(teams));
     // --- END DEBUG LOG ---
 
     return {
