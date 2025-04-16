@@ -199,8 +199,10 @@ function EditableDescription({ issue }: { issue: Issue }) {
       navigate: false
     });
 
-    // Set a flag in sessionStorage to reload after update
-    sessionStorage.setItem('pendingDescriptionUpdate', issue.id);
+    // Set a flag in sessionStorage to reload after update (only in browser)
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      sessionStorage.setItem('pendingDescriptionUpdate', issue.id);
+    }
 
     // End editing mode
     setIsEditing(false);
@@ -310,10 +312,18 @@ ${issue.parentId ? `- Is a subtask of issue: ${issue.parentId}` : '- Is a top-le
 ${issue.creator ? `- Created by: ${issue.creator.name}` : '- Creator unknown'}
 `;
 
+  // Safe way to access localStorage with a check for browser environment
+  const getGithubToken = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return localStorage.getItem('github_token') || '';
+    }
+    return '';
+  };
+
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
-    api: `https://chat.openagents.com`,
-    body: {
-      githubToken: "testtt"
+    api: `https://chat.openagents.com/chat`,
+    headers: {
+      'X-GitHub-Token': getGithubToken()
     },
     maxSteps: 4,
     initialMessages: [{
@@ -352,14 +362,23 @@ You're currently viewing the issue page where users can see all details about th
     }],
   });
 
+  // Log first 14 characters of GitHub token (only in browser environment)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      console.log('GitHub token (first 14 chars):', (localStorage.getItem('github_token') || '').slice(0, 14));
+    }
+  }, []);
+
   // Check for pending updates from sessionStorage on load
   useEffect(() => {
-    const pendingUpdate = sessionStorage.getItem('pendingDescriptionUpdate');
-    if (pendingUpdate === id) {
-      // Clear the flag
-      sessionStorage.removeItem('pendingDescriptionUpdate');
-      // Reload once to get fresh data
-      window.location.reload();
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const pendingUpdate = sessionStorage.getItem('pendingDescriptionUpdate');
+      if (pendingUpdate === id) {
+        // Clear the flag
+        sessionStorage.removeItem('pendingDescriptionUpdate');
+        // Reload once to get fresh data
+        window.location.reload();
+      }
     }
   }, [id]);
 

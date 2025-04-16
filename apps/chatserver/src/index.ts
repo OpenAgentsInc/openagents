@@ -7,7 +7,7 @@ import { cors } from 'hono/cors';
 import { mcpClientManager } from './mcp/client';
 // Re-import functions from tools.ts
 import { extractToolDefinitions, processToolCall, type ToolResultPayload } from './mcp/tools';
-
+import { getFileContentsTool, ToolContext } from '@openagents/core';
 interface Env {
   AI: any; // Keep 'any' for now
   OPENROUTER_API_KEY: string;
@@ -34,6 +34,72 @@ app.use('*', cors({
 
 // Health check endpoint
 app.get('/', c => c.text('200 OK - Chat Server Running'));
+
+// Simpler chat endpoint
+app.post('/chat', async c => {
+  const body = await c.req.json();
+  console.log("📝 Request body (preview):", JSON.stringify(body)?.substring(0, 300));
+
+  // --- Validate Input Messages ---
+  let messages: Message[] = body.messages || [];
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return c.json({ error: "No valid messages array provided" }, 400);
+  }
+  if (!messages.every(m => m && typeof m.role === 'string' && typeof m.content === 'string')) {
+    return c.json({ error: "Invalid message format" }, 400);
+  }
+
+  // --- Auth Token Extraction ---
+  const token = c.req.header('X-GitHub-Token');
+  const toolContext: ToolContext = { githubToken: token }
+  const tools = {
+    get_file_contents: getFileContentsTool(toolContext),
+  }
+
+  try {
+    // Initialize OpenRouter with API key
+    const openrouter = createOpenRouter({
+      apiKey: c.env.OPENROUTER_API_KEY,
+      baseURL: "https://openrouter.ai/api/v1"
+    });
+
+    const MODEL = "anthropic/claude-3.5-sonnet";
+    const streamResult = streamText({
+      model: openrouter(MODEL),
+      messages,
+      tools,
+      toolChoice: 'auto',
+      temperature: 0.7,
+      toolCallStreaming: true,
+      headers: {
+        'Authorization': `Bearer ${c.env.OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'https://openagents.com',
+        'X-Title': 'OpenAgents Chat',
+        'X-GitHub-Token': token,
+      }
+    });
+
+    // Setup SSE Response
+    c.header('Content-Type', 'text/event-stream; charset=utf-8');
+    c.header('Cache-Control', 'no-cache');
+    c.header('Connection', 'keep-alive');
+    c.header('X-Vercel-AI-Data-Stream', 'v1');
+
+    return stream(c, async (responseStream) => {
+      try {
+        const sdkStream = streamResult.toDataStream();
+        await responseStream.pipe(sdkStream);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await responseStream.write(`data: 3:${JSON.stringify(`Stream failed: ${errorMessage}`)}\n\n`);
+      }
+    });
+
+  } catch (error) {
+    return c.json({ error: "Failed to process chat request" }, 500);
+  }
+
+})
 
 // Main chat endpoint
 app.post('/', async c => {

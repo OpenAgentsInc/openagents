@@ -134,27 +134,15 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 
   // Generate message parts from content and toolInvocations if parts is not provided
   const messageParts = useMemo(() => {
-    // One simple log of the entire message structure
-    // console.log('[ChatMessage] Message structure:', {
-    //   id,
-    //   role,
-    //   content: content ? (content.length > 50 ? content.substring(0, 50) + '...' : content) : null,
-    //   hasTools: !!toolInvocations?.length,
-    //   toolCount: toolInvocations?.length || 0,
-    //   hasParts: !!parts?.length,
-    //   partCount: parts?.length || 0
-    // });
+    // Log system messages but don't display them
+    if (role === 'system') {
+      // console.log('[ChatMessage] System message:', content);
+      return [];
+    }
 
     // CRITICAL: Always prioritize the parts array if it exists and has content
     // This is the format from the AI SDK and must be preserved
     if (parts && Array.isArray(parts) && parts.length > 0) {
-      // Log parts for debugging
-      // console.log('[ChatMessage] Using parts from message:',
-      //   parts.map(p => ({ type: p.type, tool: p.type === 'tool-invocation' ? p.toolInvocation?.toolName : null }))
-      // );
-
-      // Don't sort - preserve the original order of parts
-      // as they should already be in the correct order from the AI SDK
       return parts;
     }
 
