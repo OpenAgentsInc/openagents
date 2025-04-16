@@ -1,20 +1,52 @@
-import { groupIssuesByStatus, type Issue, issues as mockIssues } from '@/mock-data/issues';
+import { groupIssuesByStatus } from '@/mock-data/issues';
 import { type LabelInterface } from '@/mock-data/labels';
 import { type Priority } from '@/mock-data/priorities';
 import { type Project } from '@/mock-data/projects';
-import { type Status } from '@/mock-data/status';
-import { type User } from '@/mock-data/users';
 import { create } from 'zustand';
+
+// Database-driven User interface
+export interface User {
+  id: string;
+  name: string;
+  email?: string;
+  image?: string | null;
+}
+
+// Generic Status interface compatible with both mock and DB data
+export interface Status {
+  id: string;
+  name: string;
+  color: string;
+  type?: string;
+}
+
+// Updated Issue interface to match the database schema
+export interface Issue {
+  id: string;
+  identifier: string;
+  title: string;
+  description: string;
+  status: Status;
+  assignee: User | null;
+  priority: Priority;
+  labels: LabelInterface[];
+  createdAt: string | null;
+  cycleId: string;
+  project?: Project;
+  subissues?: string[];
+  rank: string;
+}
 
 interface IssuesState {
   // Data
   issues: Issue[];
   issuesByStatus: Record<string, Issue[]>;
-
-  //
-  getAllIssues: () => Issue[];
+  isLoaded: boolean;
+  workflowStates?: Status[];
 
   // Actions
+  setIssues: (issues: Issue[]) => void;
+  setWorkflowStates: (states: Status[]) => void;
   addIssue: (issue: Issue) => void;
   updateIssue: (id: string, updatedIssue: Partial<Issue>) => void;
   deleteIssue: (id: string) => void;
@@ -29,6 +61,7 @@ interface IssuesState {
 
   // Status management
   updateIssueStatus: (issueId: string, newStatus: Status) => void;
+  getWorkflowStates: () => Status[];
 
   // Priority management
   updateIssuePriority: (issueId: string, newPriority: Priority) => void;
@@ -48,12 +81,41 @@ interface IssuesState {
 }
 
 export const useIssuesStore = create<IssuesState>((set, get) => ({
-  // Initial state
-  issues: mockIssues.sort((a, b) => b.rank.localeCompare(a.rank)),
-  issuesByStatus: groupIssuesByStatus(mockIssues),
+  // Initial state with empty data (to be loaded from API)
+  issues: [],
+  issuesByStatus: {},
+  isLoaded: false,
+  // Default workflow states, but these will be replaced by actual DB states once loaded
+  workflowStates: [
+    { id: 'default-triage', name: 'Triage', color: '#6B7280', type: 'triage' },
+    { id: 'default-backlog', name: 'Backlog', color: '#95A5A6', type: 'backlog' },
+    { id: 'default-todo', name: 'To Do', color: '#3498DB', type: 'todo' },
+    { id: 'default-inprogress', name: 'In Progress', color: '#F1C40F', type: 'inprogress' },
+    { id: 'default-done', name: 'Done', color: '#2ECC71', type: 'done' }
+  ],
 
-  //
-  getAllIssues: () => get().issues,
+  // Set all issues (used when loading from API)
+  setIssues: (issues: Issue[]) => {
+    // console.log('[DEBUG] IssuesStore - Setting issues:', issues.length);
+    // console.log('[DEBUG] IssuesStore - Issues by status:', Object.keys(groupIssuesByStatus(issues)));
+    set({
+      issues,
+      issuesByStatus: groupIssuesByStatus(issues),
+      isLoaded: true,
+    });
+  },
+
+  // Set workflow states (used when loading from API)
+  setWorkflowStates: (states: Status[]) => {
+    set({
+      workflowStates: states,
+    });
+  },
+
+  // Get workflow states
+  getWorkflowStates: () => {
+    return get().workflowStates || [];
+  },
 
   // Actions
   addIssue: (issue: Issue) => {
@@ -89,37 +151,60 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
     });
   },
 
-  // Filters
+  // Filters with error handling
   filterByStatus: (statusId: string) => {
-    return get().issues.filter((issue) => issue.status.id === statusId);
+    return get().issues.filter((issue) => {
+      // Skip invalid issues
+      if (!issue || !issue.status) return false;
+      return issue.status.id === statusId;
+    });
   },
 
   filterByPriority: (priorityId: string) => {
-    return get().issues.filter((issue) => issue.priority.id === priorityId);
+    return get().issues.filter((issue) => {
+      // Skip invalid issues
+      if (!issue || !issue.priority) return false;
+      return issue.priority.id === priorityId;
+    });
   },
 
   filterByAssignee: (userId: string | null) => {
     if (userId === null) {
-      return get().issues.filter((issue) => issue.assignees === null);
+      return get().issues.filter((issue) => {
+        if (!issue) return false;
+        return issue.assignee === null;
+      });
     }
-    return get().issues.filter((issue) => issue.assignees?.id === userId);
+    return get().issues.filter((issue) => {
+      if (!issue || !issue.assignee) return false;
+      return issue.assignee.id === userId;
+    });
   },
 
   filterByLabel: (labelId: string) => {
-    return get().issues.filter((issue) => issue.labels.some((label) => label.id === labelId));
+    return get().issues.filter((issue) => {
+      if (!issue || !issue.labels || !Array.isArray(issue.labels)) return false;
+      return issue.labels.some((label) => label && label.id === labelId);
+    });
   },
 
   filterByProject: (projectId: string) => {
-    return get().issues.filter((issue) => issue.project?.id === projectId);
+    return get().issues.filter((issue) => {
+      if (!issue || !issue.project) return false;
+      return issue.project.id === projectId;
+    });
   },
 
   searchIssues: (query: string) => {
     const lowerCaseQuery = query.toLowerCase();
-    return get().issues.filter(
-      (issue) =>
-        issue.title.toLowerCase().includes(lowerCaseQuery) ||
-        issue.identifier.toLowerCase().includes(lowerCaseQuery)
-    );
+    return get().issues.filter(issue => {
+      if (!issue) return false;
+
+      const titleMatch = issue.title && issue.title.toLowerCase().includes(lowerCaseQuery);
+      const identifierMatch = issue.identifier && issue.identifier.toLowerCase().includes(lowerCaseQuery);
+
+      return titleMatch || identifierMatch;
+    });
   },
 
   // Status management
@@ -134,7 +219,7 @@ export const useIssuesStore = create<IssuesState>((set, get) => ({
 
   // Assignee management
   updateIssueAssignee: (issueId: string, newAssignee: User | null) => {
-    get().updateIssue(issueId, { assignees: newAssignee });
+    get().updateIssue(issueId, { assignee: newAssignee });
   },
 
   // Labels management

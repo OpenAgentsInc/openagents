@@ -1,5 +1,3 @@
-
-
 import { Layers, LayoutList, MoreHorizontal } from 'lucide-react';
 
 import {
@@ -23,18 +21,19 @@ import { RiPresentationLine } from '@remixicon/react';
 export function NavWorkspace() {
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+      <SidebarGroupLabel className="select-none">Workspace</SidebarGroupLabel>
       <SidebarMenu>
         {workspaceItems.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton asChild>
-              <Link to={item.url}>
+              <Link to={item.url} className="select-none">
                 <item.icon />
                 <span>{item.name}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         ))}
+        {/* Commented out More menu
         <SidebarMenuItem>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -62,6 +61,7 @@ export function NavWorkspace() {
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>
+        */}
       </SidebarMenu>
     </SidebarGroup>
   );

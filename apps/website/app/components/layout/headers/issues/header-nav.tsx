@@ -1,14 +1,12 @@
-
-
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useSearchStore } from '@/store/search-store';
 import { SearchIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import Notifications from './notifications';
+import { Notifications } from './notifications';
 
-export default function HeaderNav() {
+export function HeaderNav() {
   const { isSearchOpen, toggleSearch, closeSearch, setSearchQuery, searchQuery } =
     useSearchStore();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +40,12 @@ export default function HeaderNav() {
 
   return (
     <div className="w-full flex justify-between items-center border-b py-1.5 px-6 h-10">
-      <SidebarTrigger className="" />
+      <div className="flex items-center gap-2">
+        <SidebarTrigger className="" />
+        <div className="flex items-center gap-1">
+          <span className="text-sm font-medium">Issues</span>
+        </div>
+      </div>
 
       <div className="flex items-center gap-2">
         {isSearchOpen ? (

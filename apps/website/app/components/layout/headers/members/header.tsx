@@ -1,11 +1,12 @@
 import HeaderNav from './header-nav';
-import HeaderOptions from './header-options';
+import { SidebarProvider } from '@/components/ui/sidebar';
 
 export default function Header() {
    return (
       <div className="w-full flex flex-col items-center">
-         <HeaderNav />
-         <HeaderOptions />
+         <SidebarProvider>
+            <HeaderNav />
+         </SidebarProvider>
       </div>
    );
 }

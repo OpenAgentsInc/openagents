@@ -1,9 +1,8 @@
 import { type Issue } from '@/mock-data/issues';
-import { type Status } from '@/mock-data/status';
 import { useIssuesStore } from '@/store/issues-store';
 import { useViewStore } from '@/store/view-store';
 import { cn } from '@/lib/utils';
-import { Plus } from 'lucide-react';
+import { CheckCircle, Circle, Clock, Hourglass, Plus, Timer } from 'lucide-react';
 import { type FC, useRef } from 'react';
 import { useDrop } from 'react-dnd';
 import { Button } from '../../ui/button';
@@ -12,6 +11,34 @@ import { IssueLine } from './issue-line';
 import { useCreateIssueStore } from '@/store/create-issue-store';
 import { sortIssuesByPriority } from '@/mock-data/issues';
 import { AnimatePresence, motion } from 'motion/react';
+
+// Define a more generic Status interface compatible with DB data
+interface Status {
+  id: string;
+  name: string;
+  color: string;
+  type?: string;
+}
+
+// Component to render appropriate icon based on status type
+const StatusIcon: FC<{ status: Status }> = ({ status }) => {
+  const type = status.type?.toLowerCase() || '';
+  
+  if (type.includes('done') || type.includes('completed')) {
+    return <CheckCircle className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('progress') || type.includes('started')) {
+    return <Hourglass className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('todo')) {
+    return <Circle className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('backlog')) {
+    return <Clock className="size-4" style={{ color: status.color }} />;
+  } else if (type.includes('triage')) {
+    return <Timer className="size-4" style={{ color: status.color }} />;
+  }
+  
+  // Default icon if no matching type
+  return <Circle className="size-4" style={{ color: status.color }} />;
+};
 
 interface GroupIssuesProps {
   status: Status;
@@ -50,7 +77,7 @@ export function GroupIssues({ status, issues, count }: GroupIssuesProps) {
           }}
         >
           <div className="flex items-center gap-2">
-            <status.icon />
+            <StatusIcon status={status} />
             <span className="text-sm font-medium">{status.name}</span>
             <span className="text-sm text-muted-foreground">{count}</span>
           </div>
@@ -91,6 +118,16 @@ const IssueGridList: FC<{ issues: Issue[]; status: Status }> = ({ issues, status
     accept: IssueDragType,
     drop(item: Issue, monitor) {
       if (monitor.didDrop() && item.status.id !== status.id) {
+        // Enhanced debugging for "Done" status
+        const isDoneStatus = status.type === 'done' || status.name === 'Done';
+        if (isDoneStatus) {
+          console.log('DEBUG: Drag and drop - Setting issue status to Done:', {
+            issueId: item.id,
+            oldStatus: item.status,
+            newStatus: status
+          });
+        }
+        
         updateIssueStatus(item.id, status);
       }
     },

@@ -2,97 +2,234 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Heart } from 'lucide-react';
+import { Heart, RefreshCw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { RiEditLine } from '@remixicon/react';
 import { useState, useEffect, useCallback } from 'react';
-import { type Issue } from '@/mock-data/issues';
 import { priorities } from '@/mock-data/priorities';
-import { status } from '@/mock-data/status';
-import { useIssuesStore } from '@/store/issues-store';
 import { useCreateIssueStore } from '@/store/create-issue-store';
 import { toast } from 'sonner';
-import { v4 as uuidv4 } from 'uuid';
 import { StatusSelector } from './status-selector';
 import { PrioritySelector } from './priority-selector';
 import { AssigneeSelector } from './assignee-selector';
 import { ProjectSelector } from './project-selector';
 import { LabelSelector } from './label-selector';
-import { ranks } from '@/mock-data/issues';
 import { DialogTitle } from '@radix-ui/react-dialog';
+import { useSubmit, useRevalidator } from 'react-router';
+import { useSession } from '@/lib/auth-client';
+import { TeamSelector } from './team-selector';
 
-export function CreateNewIssue() {
+// Helper functions for formatting data (copied from server code for consistency)
+function getPriorityName(priority: number): string {
+  switch (priority) {
+    case 0: return 'No priority';
+    case 1: return 'Urgent';
+    case 2: return 'High';
+    case 3: return 'Medium';
+    case 4: return 'Low';
+    default: return 'No priority';
+  }
+}
+
+function getPriorityColor(priority: number): string {
+  switch (priority) {
+    case 0: return '#6B7280'; // Gray
+    case 1: return '#EF4444'; // Red
+    case 2: return '#F59E0B'; // Amber
+    case 3: return '#3B82F6'; // Blue
+    case 4: return '#10B981'; // Green
+    default: return '#6B7280'; // Gray
+  }
+}
+
+// Define the issue data interface for form submission
+interface IssueFormData {
+  title: string;
+  description: string;
+  teamId: string;
+  stateId: string;
+  priority: number;
+  assigneeId?: string;
+  projectId?: string;
+  labelIds: string[];
+}
+
+interface CreateNewIssueProps {
+  loaderData?: any;
+  initialProjectId?: string;
+}
+
+export function CreateNewIssue({ loaderData, initialProjectId }: CreateNewIssueProps) {
   const [createMore, setCreateMore] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const { isOpen, defaultStatus, openModal, closeModal } = useCreateIssueStore();
-  const { addIssue, getAllIssues } = useIssuesStore();
+  const submit = useSubmit();
+  const revalidator = useRevalidator();
+  const { data: session, isLoading } = useSession();
+
+  // Generate new ranks for UI only
+  const generateRank = useCallback(() => {
+    // Simple implementation that generates a random rank string
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    return 'a' +
+      chars.charAt(Math.floor(Math.random() * chars.length)) +
+      Math.floor(Math.random() * 10000).toString();
+  }, []);
 
   const generateUniqueIdentifier = useCallback(() => {
-    const identifiers = getAllIssues().map((issue) => issue.identifier);
-    let identifier = Math.floor(Math.random() * 999)
-      .toString()
-      .padStart(3, '0');
-    while (identifiers.includes(`LNUI-${identifier}`)) {
-      identifier = Math.floor(Math.random() * 999)
-        .toString()
-        .padStart(3, '0');
-    }
-    return identifier;
-  }, [getAllIssues]);
+    // Simple random identifier for UI only
+    return Math.floor(Math.random() * 999).toString().padStart(3, '0');
+  }, []);
 
-  const createDefaultData = useCallback(() => {
-    const identifier = generateUniqueIdentifier();
+  const createDefaultFormData = useCallback((): IssueFormData => {
     return {
-      id: uuidv4(),
-      identifier: `LNUI-${identifier}`,
       title: '',
       description: '',
-      status: defaultStatus || status.find((s) => s.id === 'to-do')!,
-      assignees: null,
-      priority: priorities.find((p) => p.id === 'no-priority')!,
-      labels: [],
-      createdAt: new Date().toISOString(),
-      cycleId: '',
-      project: undefined,
-      subissues: [],
-      rank: ranks[ranks.length - 1],
+      teamId: '',
+      stateId: '',
+      priority: 0, // No priority
+      assigneeId: undefined,
+      projectId: initialProjectId, // Use the project ID from the URL if available
+      labelIds: [],
     };
-  }, [defaultStatus, generateUniqueIdentifier]);
+  }, [initialProjectId]);
 
-  const [addIssueForm, setAddIssueForm] = useState<Issue>(createDefaultData());
+  const [issueForm, setIssueForm] = useState<IssueFormData>(createDefaultFormData());
 
   useEffect(() => {
-    setAddIssueForm(createDefaultData());
-  }, [createDefaultData]);
+    if (isOpen) {
+      setIssueForm(createDefaultFormData());
+    }
+  }, [isOpen, createDefaultFormData]);
 
-  const createIssue = () => {
-    if (!addIssueForm.title) {
+  // Set default status when opening modal
+  useEffect(() => {
+    if (defaultStatus) {
+      setIssueForm(prev => ({
+        ...prev,
+        stateId: defaultStatus.id
+      }));
+    }
+  }, [defaultStatus, isOpen]);
+
+  // When team changes, reset the state selection
+  useEffect(() => {
+    if (issueForm.teamId) {
+      // Get workflow states for this team
+      let teamWorkflowStates = [];
+      if (loaderData?.options?.workflowStates) {
+        teamWorkflowStates = loaderData.options.workflowStates.filter(
+          (state: any) => state.teamId === issueForm.teamId || state.teamId === null
+        );
+      }
+
+      // Set a default state
+      if (teamWorkflowStates.length > 0) {
+        // Find a backlog or todo state, or use the first state
+        const defaultState = teamWorkflowStates.find(
+          (state: any) => state.type === 'todo' || state.type === 'backlog' || state.type === 'unstarted'
+        ) || teamWorkflowStates[0];
+
+        setIssueForm(prev => ({
+          ...prev,
+          stateId: defaultState.id
+        }));
+      }
+    }
+  }, [issueForm.teamId, loaderData]);
+
+  // Store a reference to the form data for other components to access
+  useEffect(() => {
+    (window as any).__createIssueFormContext = issueForm;
+  }, [issueForm]);
+
+  const createIssue = async () => {
+    if (!session?.user) {
+      toast.error('You must be logged in to create an issue');
+      return;
+    }
+
+    if (!issueForm.title) {
       toast.error('Title is required');
       return;
     }
-    toast.success('Issue created');
-    addIssue(addIssueForm);
-    if (!createMore) {
-      closeModal();
+
+    if (!issueForm.teamId) {
+      toast.error('Team is required');
+      return;
     }
-    setAddIssueForm(createDefaultData());
+
+    if (!issueForm.stateId) {
+      toast.error('Status is required');
+      return;
+    }
+
+    // Set submitting state to show spinner
+    setIsSubmitting(true);
+
+    try {
+      // Submit the form to create a new issue using our route action
+      const formData = new FormData();
+      formData.append('_action', 'create');
+      formData.append('title', issueForm.title);
+      formData.append('description', issueForm.description || '');
+      formData.append('teamId', issueForm.teamId);
+      formData.append('stateId', issueForm.stateId);
+      formData.append('priority', issueForm.priority.toString());
+
+      if (issueForm.assigneeId) {
+        formData.append('assigneeId', issueForm.assigneeId);
+      }
+
+      if (issueForm.projectId) {
+        formData.append('projectId', issueForm.projectId);
+      }
+
+      issueForm.labelIds.forEach(labelId => {
+        formData.append('labelIds', labelId);
+      });
+
+      // Submit the form
+      await submit(formData, {
+        method: 'post',
+        navigate: false,
+        action: '/issues'
+      });
+
+      // After successful submission, revalidate the data
+      revalidator.revalidate();
+
+      // We'll simply let the revalidator do its job to refresh the data
+      // This is the most reliable approach and avoids state management issues
+
+      toast.success('Issue created');
+
+      if (!createMore) {
+        closeModal();
+      }
+
+      setIssueForm(createDefaultFormData());
+    } catch (error) {
+      console.error('Error creating issue:', error);
+      toast.error('Failed to create issue. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(value) => (value ? openModal() : closeModal())}>
       <DialogTrigger asChild>
-        <Button className="size-8 shrink-0" variant="secondary" size="icon">
+        <Button className="size-8 shrink-0" variant="outline" size="icon">
           <RiEditLine />
         </Button>
       </DialogTrigger>
-      <DialogContent className="w-full sm:max-w-[750px] p-0 shadow-xl top-[30%]">
+      <DialogContent className="w-full sm:max-w-[750px] p-0 shadow-xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             <div className="flex items-center px-4 pt-4 gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <Heart className="size-4 text-orange-500 fill-orange-500" />
-                <span className="font-medium">CORE</span>
-              </Button>
+              <h2 className="text-lg font-medium">Create New Issue</h2>
             </div>
           </DialogTitle>
         </DialogHeader>
@@ -101,52 +238,55 @@ export function CreateNewIssue() {
           <Input
             className="border-none w-full shadow-none outline-none text-2xl font-medium px-0 h-auto focus-visible:ring-0 overflow-hidden text-ellipsis whitespace-normal break-words"
             placeholder="Issue title"
-            value={addIssueForm.title}
-            onChange={(e) => setAddIssueForm({ ...addIssueForm, title: e.target.value })}
+            value={issueForm.title}
+            onChange={(e) => setIssueForm({ ...issueForm, title: e.target.value })}
           />
 
           <Textarea
             className="border-none w-full shadow-none outline-none resize-none px-0 min-h-16 focus-visible:ring-0 break-words whitespace-normal overflow-wrap"
             placeholder="Add description..."
-            value={addIssueForm.description}
-            onChange={(e) =>
-              setAddIssueForm({ ...addIssueForm, description: e.target.value })
-            }
+            value={issueForm.description}
+            onChange={(e) => setIssueForm({ ...issueForm, description: e.target.value })}
           />
 
-          <div className="w-full flex items-center justify-start gap-1.5 flex-wrap">
+          <div className="w-full flex flex-wrap gap-1.5 py-2">
+            <TeamSelector
+              teamId={issueForm.teamId}
+              onChange={(newTeamId) => setIssueForm({ ...issueForm, teamId: newTeamId })}
+              loaderData={loaderData}
+            />
+
             <StatusSelector
-              status={addIssueForm.status}
-              onChange={(newStatus) =>
-                setAddIssueForm({ ...addIssueForm, status: newStatus })
-              }
+              stateId={issueForm.stateId}
+              onChange={(newStateId) => setIssueForm({ ...issueForm, stateId: newStateId })}
+              loaderData={loaderData}
             />
+
             <PrioritySelector
-              priority={addIssueForm.priority}
-              onChange={(newPriority) =>
-                setAddIssueForm({ ...addIssueForm, priority: newPriority })
-              }
+              priority={issueForm.priority}
+              onChange={(newPriority) => setIssueForm({ ...issueForm, priority: newPriority })}
             />
+
             <AssigneeSelector
-              assignee={addIssueForm.assignees}
-              onChange={(newAssignee) =>
-                setAddIssueForm({ ...addIssueForm, assignees: newAssignee })
-              }
+              assigneeId={issueForm.assigneeId}
+              onChange={(newAssigneeId) => setIssueForm({ ...issueForm, assigneeId: newAssigneeId })}
+              loaderData={loaderData}
             />
+
             <ProjectSelector
-              project={addIssueForm.project}
-              onChange={(newProject) =>
-                setAddIssueForm({ ...addIssueForm, project: newProject })
-              }
+              projectId={issueForm.projectId}
+              onChange={(newProjectId) => setIssueForm({ ...issueForm, projectId: newProjectId })}
+              loaderData={loaderData}
             />
+
             <LabelSelector
-              selectedLabels={addIssueForm.labels}
-              onChange={(newLabels) =>
-                setAddIssueForm({ ...addIssueForm, labels: newLabels })
-              }
+              selectedLabelIds={issueForm.labelIds}
+              onChange={(newLabelIds) => setIssueForm({ ...issueForm, labelIds: newLabelIds })}
+              loaderData={loaderData}
             />
           </div>
         </div>
+
         <div className="flex items-center justify-between py-2.5 px-4 w-full border-t">
           <div className="flex items-center gap-2">
             <div className="flex items-center space-x-2">
@@ -160,11 +300,20 @@ export function CreateNewIssue() {
           </div>
           <Button
             size="sm"
-            onClick={() => {
-              createIssue();
-            }}
+            onClick={createIssue}
+            disabled={isLoading || !session?.user || isSubmitting}
           >
-            Create issue
+            {isSubmitting ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Heart className="mr-2 h-4 w-4" />
+                Create issue
+              </>
+            )}
           </Button>
         </div>
       </DialogContent>

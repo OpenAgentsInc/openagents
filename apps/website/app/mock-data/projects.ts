@@ -206,7 +206,7 @@ export const projects: Project[] = [
   },
   {
     id: '13',
-    name: 'LNDev UI - Authentication Flow',
+    name: 'ConsentKeys OIDC',
     status: status[0],
     icon: Lock,
     percentComplete: 75,
@@ -251,7 +251,7 @@ export const projects: Project[] = [
   {
     id: '17',
     name: 'LNDev UI - Progress Indicators',
-    status: status[4],
+    status: status[0],
     icon: Loader,
     percentComplete: 40,
     startDate: '2025-03-16',
@@ -262,7 +262,7 @@ export const projects: Project[] = [
   {
     id: '18',
     name: 'LNDev UI - Internationalization',
-    status: status[5],
+    status: status[1],
     icon: Globe,
     percentComplete: 15,
     startDate: '2025-03-25',

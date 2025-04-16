@@ -1,9 +1,69 @@
-
-
-import { projects } from '@/mock-data/projects';
+import { useLoaderData } from 'react-router';
 import ProjectLine from '@/components/common/projects/project-line';
 
+interface Status {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface Priority {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface Health {
+  id: string;
+  name: string;
+  color: string;
+  description: string;
+}
+
+interface User {
+  id: string;
+  name: string;
+  image: string | null;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  percentComplete: number;
+  startDate: string | null;
+  targetDate: string | null;
+  status: Status;
+  priority: Priority;
+  health: Health;
+  lead: User | null;
+}
+
+interface LoaderData {
+  projects: Project[];
+  error?: string;
+}
+
 export default function Projects() {
+  const { projects, error } = useLoaderData() as LoaderData;
+
+  if (error) {
+    return (
+      <div className="w-full p-8 text-center">
+        <p className="text-red-500">Error loading projects: {error}</p>
+      </div>
+    );
+  }
+
+  if (!projects || projects.length === 0) {
+    return (
+      <div className="w-full p-8 text-center">
+        <p className="text-muted-foreground">No projects found. Create a project to get started.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
       <div className="bg-container px-6 py-1.5 text-sm flex items-center text-muted-foreground border-b sticky top-0 z-10">
