@@ -1104,8 +1104,38 @@ export async function getWorkflowStates(teamId?: string) {
     return DEFAULT_WORKFLOW_STATES;
   }
   
-  // Return the workflow states (real + created ones)
-  return states;
+  // IMPORTANT: Remove any duplicate workflow states with the same name (case-insensitive)
+  // This prevents the UI from showing duplicate "To Do" status columns
+  const deduplicatedStates = [];
+  const seenNames = new Set<string>();
+  
+  // First pass: add all the database-created workflow states
+  for (const state of states) {
+    // Skip default-* IDs in favor of real DB-created workflow states
+    if (state.id.startsWith('default-')) continue;
+    
+    const normalizedName = state.name.toLowerCase();
+    if (!seenNames.has(normalizedName)) {
+      seenNames.add(normalizedName);
+      deduplicatedStates.push(state);
+    }
+  }
+  
+  // Second pass: add any missing default states if needed
+  for (const state of states) {
+    if (state.id.startsWith('default-')) {
+      const normalizedName = state.name.toLowerCase();
+      if (!seenNames.has(normalizedName)) {
+        seenNames.add(normalizedName);
+        deduplicatedStates.push(state);
+      }
+    }
+  }
+  
+  console.log(`Returning ${deduplicatedStates.length} workflow states after deduplication (from ${states.length} original)`);
+  
+  // Return the deduplicated workflow states
+  return deduplicatedStates;
 }
 
 // Get issue labels (optionally filtered by team)
