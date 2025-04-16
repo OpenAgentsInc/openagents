@@ -1,7 +1,7 @@
 import { D1Dialect } from 'kysely-d1';
 import { Kysely } from 'kysely';
 import { env } from 'cloudflare:workers';
-import { Database } from './types';
+import type { Database } from './types';
 import { getProjectsByTeamId } from './project-helpers.server';
 
 // Initialize the DB connection
@@ -26,7 +26,7 @@ export interface TeamInputData {
 // Team operations
 export async function getTeams() {
   const db = getDb();
-  
+
   // Get all teams
   const teams = await db
     .selectFrom('team')
@@ -45,10 +45,10 @@ export async function getTeams() {
     .where('archivedAt', 'is', null)
     .orderBy('name')
     .execute();
-  
+
   // Enhanced team data for frontend
   const enhancedTeams = [];
-  
+
   for (const team of teams) {
     // Get team members count
     const memberCount = await db
@@ -56,17 +56,17 @@ export async function getTeams() {
       .select(({ fn }) => [fn.count('id').as('count')])
       .where('teamId', '=', team.id)
       .executeTakeFirst();
-    
+
     // Get team projects count
     const projectCount = await db
       .selectFrom('team_project')
       .select(({ fn }) => [fn.count('id').as('count')])
       .where('teamId', '=', team.id)
       .executeTakeFirst();
-    
+
     // This will be replaced by proper user session check
     const isJoined = false;
-    
+
     enhancedTeams.push({
       id: team.id,
       name: team.name,
@@ -82,13 +82,13 @@ export async function getTeams() {
       updatedAt: team.updatedAt
     });
   }
-  
+
   return enhancedTeams;
 }
 
 export async function getTeamById(id: string) {
   const db = getDb();
-  
+
   // Get the team
   const team = await db
     .selectFrom('team')
@@ -107,9 +107,9 @@ export async function getTeamById(id: string) {
     .where('id', '=', id)
     .where('archivedAt', 'is', null)
     .executeTakeFirst();
-    
+
   if (!team) return null;
-  
+
   // Get team members
   const members = await db
     .selectFrom('team_membership')
@@ -123,10 +123,10 @@ export async function getTeamById(id: string) {
     ])
     .where('team_membership.teamId', '=', id)
     .execute();
-  
+
   // Get team projects
   const projects = await getProjectsByTeamId(id);
-  
+
   return {
     id: team.id,
     name: team.name,
@@ -151,19 +151,19 @@ export async function getTeamById(id: string) {
 
 export async function getTeamsForUser(userId: string) {
   const db = getDb();
-  
+
   // Get all teams that the user is a member of
   const teamIds = await db
     .selectFrom('team_membership')
     .select(['teamId'])
     .where('userId', '=', userId)
     .execute();
-  
+
   if (teamIds.length === 0) return [];
-  
+
   // Get enhanced team details with counts
   const enhancedTeams = [];
-  
+
   for (const { teamId } of teamIds) {
     const team = await db
       .selectFrom('team')
@@ -181,7 +181,7 @@ export async function getTeamsForUser(userId: string) {
       .where('id', '=', teamId)
       .where('archivedAt', 'is', null)
       .executeTakeFirst();
-      
+
     if (team) {
       // Get team members count
       const memberCount = await db
@@ -189,14 +189,14 @@ export async function getTeamsForUser(userId: string) {
         .select(({ fn }) => [fn.count('id').as('count')])
         .where('teamId', '=', teamId)
         .executeTakeFirst();
-      
+
       // Get team projects count
       const projectCount = await db
         .selectFrom('team_project')
         .select(({ fn }) => [fn.count('id').as('count')])
         .where('teamId', '=', teamId)
         .executeTakeFirst();
-        
+
       enhancedTeams.push({
         id: team.id,
         name: team.name,
@@ -213,7 +213,7 @@ export async function getTeamsForUser(userId: string) {
       });
     }
   }
-  
+
   return enhancedTeams;
 }
 
@@ -221,25 +221,25 @@ export async function createTeam(teamData: TeamInputData, creatorId: string) {
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  
+
   // Generate a key based on the team name
   let key = teamData.name
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
     .substring(0, 5);
-    
+
   // Check if the key already exists
   const existingTeam = await db
     .selectFrom('team')
     .select(['id'])
     .where('key', '=', key)
     .executeTakeFirst();
-    
+
   if (existingTeam) {
     // Append a random string to make it unique
     key = `${key}-${id.substring(0, 4)}`;
   }
-  
+
   // Create team
   await db
     .insertInto('team')
@@ -274,7 +274,7 @@ export async function createTeam(teamData: TeamInputData, creatorId: string) {
       updatedAt: now,
     })
     .execute();
-  
+
   // Add the creator as an owner if provided
   if (creatorId) {
     await db
@@ -290,7 +290,7 @@ export async function createTeam(teamData: TeamInputData, creatorId: string) {
       })
       .execute();
   }
-  
+
   return id;
 }
 
@@ -298,7 +298,7 @@ export async function addMemberToTeam(teamId: string, userId: string, isOwner: b
   const db = getDb();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  
+
   await db
     .insertInto('team_membership')
     .values({
@@ -311,6 +311,6 @@ export async function addMemberToTeam(teamId: string, userId: string, isOwner: b
       updatedAt: now,
     })
     .execute();
-    
+
   return id;
 }

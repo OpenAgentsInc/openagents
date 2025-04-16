@@ -1,8 +1,7 @@
 import { D1Dialect } from 'kysely-d1';
 import { Kysely } from 'kysely';
 import { env } from 'cloudflare:workers';
-import { Database } from './types';
-import { sql } from 'kysely';
+import type { Database } from './types';
 
 // Initialize the DB connection
 export function getDb() {
@@ -16,7 +15,7 @@ export function getDb() {
 // Project operations
 export async function getProjects() {
   const db = getDb();
-  
+
   // Get all projects with related information
   const projects = await db
     .selectFrom('project')
@@ -47,11 +46,11 @@ export async function getProjects() {
     .where('project.archivedAt', 'is', null)
     .orderBy('project.createdAt', 'desc')
     .execute();
-  
+
   // Transform to match front-end expectations
   return projects.map(project => ({
     id: project.id,
-    name: project.name, 
+    name: project.name,
     description: project.description,
     icon: project.icon,
     color: project.color,
@@ -87,7 +86,7 @@ export async function getProjects() {
 
 export async function getProjectById(id: string) {
   const db = getDb();
-  
+
   // Get the project with related information
   const project = await db
     .selectFrom('project')
@@ -124,9 +123,9 @@ export async function getProjectById(id: string) {
     ])
     .where('project.id', '=', id)
     .executeTakeFirst();
-    
+
   if (!project) return null;
-  
+
   // Get project members
   const members = await db
     .selectFrom('project_member')
@@ -139,7 +138,7 @@ export async function getProjectById(id: string) {
     ])
     .where('project_member.projectId', '=', id)
     .execute();
-    
+
   // Get project teams
   const teams = await db
     .selectFrom('team_project')
@@ -153,7 +152,7 @@ export async function getProjectById(id: string) {
     ])
     .where('team_project.projectId', '=', id)
     .execute();
-    
+
   // Get project milestones if they exist
   const milestones = await db
     .selectFrom('project_milestone')
@@ -169,7 +168,7 @@ export async function getProjectById(id: string) {
     .where('projectId', '=', id)
     .orderBy('sortOrder')
     .execute();
-  
+
   // Get issues associated with this project
   const issues = await db
     .selectFrom('issue')
@@ -195,7 +194,7 @@ export async function getProjectById(id: string) {
     .where('issue.archivedAt', 'is', null)
     .orderBy('issue.createdAt', 'desc')
     .execute();
-  
+
   // Format project for frontend
   return {
     id: project.id,
@@ -271,7 +270,7 @@ export async function getProjectById(id: string) {
 
 export async function getProjectsByTeamId(teamId: string) {
   const db = getDb();
-  
+
   // Get all projects associated with the team
   const projects = await db
     .selectFrom('team_project')
@@ -303,7 +302,7 @@ export async function getProjectsByTeamId(teamId: string) {
     .where('project.archivedAt', 'is', null)
     .orderBy('project.createdAt', 'desc')
     .execute();
-  
+
   // Transform to match front-end expectations
   return projects.map(project => ({
     id: project.id,
@@ -346,7 +345,7 @@ export async function createProject(projectData: any) {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const slugId = projectData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  
+
   await db
     .insertInto('project')
     .values({
@@ -372,7 +371,7 @@ export async function createProject(projectData: any) {
       updatedAt: now,
     })
     .execute();
-  
+
   // Add team associations if provided
   if (projectData.teamIds && projectData.teamIds.length > 0) {
     for (const teamId of projectData.teamIds) {
@@ -388,7 +387,7 @@ export async function createProject(projectData: any) {
         .execute();
     }
   }
-  
+
   // Add member associations if provided
   if (projectData.memberIds && projectData.memberIds.length > 0) {
     for (const userId of projectData.memberIds) {
@@ -404,7 +403,7 @@ export async function createProject(projectData: any) {
         .execute();
     }
   }
-  
+
   return id;
 }
 

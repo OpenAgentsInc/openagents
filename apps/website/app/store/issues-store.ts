@@ -31,10 +31,20 @@ export interface Issue {
   priority: Priority;
   labels: LabelInterface[];
   createdAt: string | null;
+  updatedAt?: string;
   cycleId: string;
   project?: Project;
   subissues?: string[];
   rank: string;
+  // Additional fields from database that might be used in the UI
+  team?: {
+    id: string;
+    name: string;
+    key: string;
+  };
+  creator?: User | null;
+  parentId?: string;
+  dueDate?: string;
 }
 
 interface IssuesState {

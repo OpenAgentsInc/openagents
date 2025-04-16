@@ -301,6 +301,13 @@ export async function action({ request }: ActionFunctionArgs) {
           updateData.projectId = formData.get("projectId") as string || null;
         }
         
+        // Handle description updates
+        if (formData.has("description")) {
+          updateData.description = formData.get("description") as string;
+          updateData.updatedAt = new Date().toISOString(); // Explicitly update the timestamp
+          console.log(`Updating description for issue ${id}: ${updateData.description?.substring(0, 50)}...`);
+        }
+        
         console.log(`Updating issue ${id} with data:`, updateData);
         
         try {
@@ -363,7 +370,8 @@ export async function action({ request }: ActionFunctionArgs) {
         return { 
           success: true,
           issues: newIssues,
-          issue: updatedIssue 
+          issue: updatedIssue,
+          id: id // Include the issue ID in the response for easier identification
         };
       } else {
         // Handle full updates with all required fields

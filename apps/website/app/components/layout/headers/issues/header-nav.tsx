@@ -88,7 +88,7 @@ export function HeaderNav() {
           </div>
         ) : (
           <>
-            <Button
+            {/* <Button
               variant="ghost"
               size="icon"
               onClick={toggleSearch}
@@ -97,7 +97,7 @@ export function HeaderNav() {
             >
               <SearchIcon className="h-4 w-4" />
             </Button>
-            <Notifications />
+            <Notifications /> */}
           </>
         )}
       </div>
