@@ -1,5 +1,6 @@
 import { useLoaderData, useParams, useSubmit } from "react-router";
 import type { Route } from "../+types/issues";
+import type { ActionFunctionArgs } from "react-router";
 import MainLayout from '@/components/layout/main-layout';
 import { HeaderIssues } from '@/components/layout/headers/issues/header';
 import { redirect } from "react-router";
@@ -11,12 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { formatDistanceToNow } from "date-fns";
-import { useIssuesStore } from "@/store/issues-store";
+import { useIssuesStore, type Status, type User } from "@/store/issues-store";
 import { Form } from "@/components/ui/form";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { CalendarIcon, CheckCircle, Clock, Edit, LinkIcon, Tag, User as UserIcon } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink } from "@/components/ui/breadcrumb";
+import { type Priority } from "@/mock-data/priorities";
+import { type LabelInterface } from "@/mock-data/labels";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
@@ -104,7 +107,7 @@ export async function action({ request }: Route.ActionArgs) {
     // Forward to the main issues action handler
     // Import dynamically to avoid circular imports
     const { action: issuesAction } = await import("../issues");
-    return issuesAction({ request } as any);
+    return issuesAction({ request, params: {} } as ActionFunctionArgs);
   } catch (error) {
     console.error("Error handling issue action:", error);
     return {
@@ -114,7 +117,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
-function StatusBadge({ status }: { status: any }) {
+function StatusBadge({ status }: { status: Status }) {
   return (
     <Badge
       style={{ backgroundColor: `${status.color}20`, color: status.color, borderColor: status.color }}
@@ -126,7 +129,7 @@ function StatusBadge({ status }: { status: any }) {
   );
 }
 
-function PriorityBadge({ priority }: { priority: any }) {
+function PriorityBadge({ priority }: { priority: Priority }) {
   return (
     <Badge
       style={{ backgroundColor: `${priority.color}20`, color: priority.color, borderColor: priority.color }}
@@ -138,7 +141,7 @@ function PriorityBadge({ priority }: { priority: any }) {
   );
 }
 
-function LabelBadge({ label }: { label: any }) {
+function LabelBadge({ label }: { label: LabelInterface }) {
   return (
     <Badge
       style={{ backgroundColor: `${label.color}20`, color: label.color, borderColor: label.color }}
@@ -196,7 +199,9 @@ export default function IssueDetails() {
     }
   };
 
-  // Handle assignee change
+  // Handle assignee change - commented out until needed
+  // This function is currently unused but kept for future reference
+  /*
   const handleAssigneeChange = (userId: string | null) => {
     const formData = new FormData();
     formData.append("_action", "update");
@@ -206,6 +211,7 @@ export default function IssueDetails() {
     // Submit the form to save to the database
     submit(formData, { method: "post", replace: true });
   };
+  */
 
   if (data.error) {
     return (
