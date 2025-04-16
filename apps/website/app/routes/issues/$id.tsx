@@ -241,7 +241,7 @@ export default function IssueDetails() {
   return (
     <MainLayout header={<HeaderIssues />}>
       <div className="container mx-auto p-6">
-        <Breadcrumb className="mb-4">
+        {/* <Breadcrumb className="mb-4">
           <BreadcrumbItem>
             <BreadcrumbLink href="/issues">Issues</BreadcrumbLink>
           </BreadcrumbItem>
@@ -250,7 +250,7 @@ export default function IssueDetails() {
               {issue.identifier}
             </BreadcrumbLink>
           </BreadcrumbItem>
-        </Breadcrumb>
+        </Breadcrumb> */}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Main content */}
