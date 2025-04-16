@@ -186,7 +186,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         {connectionState === 'disconnected' && (
           <Button
             onClick={connectToSolver}
-            disabled={isStartingSolver || !githubToken}
+            disabled={isStartingSolver || !githubToken ? true : undefined}
           >
             <PlugZap className="h-4 w-4 mr-2" />
             Connect to Solver
@@ -197,6 +197,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
           <Button
             variant="outline"
             onClick={disconnectFromSolver}
+            disabled={false ? true : undefined}
           >
             <Power className="h-4 w-4 mr-2" />
             Disconnect
