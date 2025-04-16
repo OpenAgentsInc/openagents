@@ -20,6 +20,14 @@ import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
 import { useChat } from "@ai-sdk/react";
 import { Chat } from "@/components/ui/chat";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+  BreadcrumbPage
+} from "@/components/ui/breadcrumb";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
@@ -475,17 +483,24 @@ You're currently viewing the issue page where users can see all details about th
 
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto">
-        {/* <Breadcrumb className="mb-4">
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/issues">Issues</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbItem>
-            <BreadcrumbLink href={`/issues/${issue.id}`} isCurrentPage>
-              {issue.identifier}
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </Breadcrumb> */}
+      <div className="container mx-auto px-6 pt-4">
+        {issue.project && (
+          <Breadcrumb className="mb-4">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink href={`/projects/${issue.project.id}`}>
+                  {issue.project.name}
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>
+                  {issue.identifier}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Main content */}

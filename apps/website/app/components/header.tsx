@@ -3,6 +3,14 @@ import { Button } from "~/components/ui/button";
 import { Plus } from "lucide-react";
 import { AgentDropdown } from "~/components/agent-dropdown";
 import { signOut, useSession } from "~/lib/auth-client";
+import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 
 export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boolean }) {
   const { data: session, isPending } = useSession();
@@ -15,6 +23,15 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
         }
       }
     });
+  };
+
+  const getUserInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   return (
@@ -44,13 +61,29 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
           {isPending ? (
             <></>
           ) : session?.user ? (
-            <div className="flex items-center gap-2">
-              <div className="text-sm mr-2">
-                {session.user.name || session.user.email}
-              </div>
-              <Button variant="ghost" onClick={handleSignOut}>
-                Logout
+            <div className="flex items-center gap-4">
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/projects">Projects</Link>
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger className="outline-none">
+                  <Avatar>
+                    <AvatarImage src={session.user.image || undefined} />
+                    <AvatarFallback>
+                      {getUserInitials(session.user.name || session.user.email || 'U')}
+                    </AvatarFallback>
+                  </Avatar>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem className="text-sm">
+                    Signed in as {session.user.name || session.user.email}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} variant="destructive">
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ) : (
             <div className="flex items-center gap-3">
