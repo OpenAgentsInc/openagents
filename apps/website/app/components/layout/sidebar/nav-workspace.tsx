@@ -1,5 +1,3 @@
-
-
 import { Layers, LayoutList, MoreHorizontal } from 'lucide-react';
 
 import {
@@ -35,6 +33,7 @@ export function NavWorkspace() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         ))}
+        {/* Commented out More menu
         <SidebarMenuItem>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -62,6 +61,7 @@ export function NavWorkspace() {
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarMenuItem>
+        */}
       </SidebarMenu>
     </SidebarGroup>
   );

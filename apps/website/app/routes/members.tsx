@@ -7,7 +7,7 @@ import { getDb } from "../lib/db/team-helpers.server";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   return [
-    { title: "Members" },
+    { title: "Members - OpenAgents" },
     { name: "description", content: "Members" },
   ];
 }
@@ -15,7 +15,7 @@ export function meta({ params, location, data }: Route.MetaArgs) {
 export async function loader({ }: Route.LoaderArgs) {
   // Get all users from the database
   const users = await getUsers();
-  
+
   // For each user, get their team memberships
   const db = getDb();
   const usersWithTeams = await Promise.all(
@@ -33,7 +33,7 @@ export async function loader({ }: Route.LoaderArgs) {
         ])
         .where("team_membership.userId", "=", user.id)
         .execute();
-        
+
       // Calculate joined date based on the first team membership (approximate)
       let joinedDate = new Date().toISOString();
       if (teamMemberships.length > 0) {
@@ -44,15 +44,15 @@ export async function loader({ }: Route.LoaderArgs) {
           .orderBy("createdAt", "asc")
           .limit(1)
           .executeTakeFirst();
-          
+
         if (membership) {
           joinedDate = membership.createdAt;
         }
       }
-      
+
       // Determine role based on team ownership (simplified)
       const isAdmin = teamMemberships.some(membership => membership.owner === 1);
-      
+
       return {
         ...user,
         teams: teamMemberships,
@@ -62,7 +62,7 @@ export async function loader({ }: Route.LoaderArgs) {
       };
     })
   );
-  
+
   return { users: usersWithTeams };
 }
 

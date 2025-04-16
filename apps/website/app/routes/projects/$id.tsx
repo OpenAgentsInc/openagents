@@ -104,8 +104,7 @@ export default function ProjectDetails() {
   
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-6">{project.name}</h1>
+      <div className="flex-1 container mx-auto p-6">
         <AllIssues />
       </div>
       <CreateIssueModalProvider />
