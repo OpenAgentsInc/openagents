@@ -488,7 +488,7 @@ Several issues were fixed to enable successful deployment of the agents to Cloud
 
 1. **Removed `unstable_callable` decorator**: The original implementation was using a Cloudflare Workers-specific decorator `@unstable_callable` which was causing deployment errors. This decorator was removed from the `infer` method in the `Coder` class.
 
-2. **Fallback implementation for client-side**: The `useOpenAgent` hook was reimplemented with a fallback approach that doesn't rely on the Cloudflare Agents SDK, allowing for local state management and simulated agent responses during development and testing.
+2. **Mock implementation that preserves Cloudflare API**: The `useOpenAgent` hook was updated to use a mock implementation with the same interface as the Cloudflare Agents SDK, allowing for proper integration with the Cloudflare model while maintaining development functionality.
 
 3. **Added Solver to Durable Objects**: The Wrangler configuration was updated to include Solver in the Durable Objects bindings with a separate migration (tag: "v2"), ensuring proper versioning and state management for the new agent type.
 
