@@ -218,7 +218,7 @@ export const ChatMessage = React.memo(function ChatMessage({
   if (isSystem) {
     // System messages (like errors) use a special style
     // Log to console first for debugging
-    console.log("SYSTEM MESSAGE CONTENT:", content);
+    // console.log("SYSTEM MESSAGE CONTENT:", content);
 
     // For context overflow errors and tool execution errors, show content directly (without markdown processing)
     // Also check for the special hardcoded error
@@ -239,18 +239,18 @@ export const ChatMessage = React.memo(function ChatMessage({
       content.includes('Bad credentials');
 
     // Add more detailed console logging for debugging
-    console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
-    console.log("RENDERING SYSTEM MESSAGE:", {
-      firstChars: content.substring(0, 50),
-      length: content.length,
-      isSpecialErrorFormat,
-      isToolError,
-      hasOverflows: content.includes('context the overflows'),
-      hasTrying: content.includes('Trying to keep the first'),
-      hasToolError: content.includes('Error executing tool'),
-      hasAuthError: content.includes('Authentication Failed: Bad credentials'),
-      hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
-    });
+    // console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
+    // console.log("RENDERING SYSTEM MESSAGE:", {
+    //   firstChars: content.substring(0, 50),
+    //   length: content.length,
+    //   isSpecialErrorFormat,
+    //   isToolError,
+    //   hasOverflows: content.includes('context the overflows'),
+    //   hasTrying: content.includes('Trying to keep the first'),
+    //   hasToolError: content.includes('Error executing tool'),
+    //   hasAuthError: content.includes('Authentication Failed: Bad credentials'),
+    //   hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
+    // });
 
     // Format tool execution errors to display on two lines
     let formattedContent = content;
@@ -262,7 +262,7 @@ export const ChatMessage = React.memo(function ChatMessage({
         content.includes('Bad credentials'))) {
       // Remove the prefix for tool errors
       formattedContent = content.replace('⚠️ Error:', '').trim();
-      console.log("REMOVED PREFIX FROM TOOL ERROR:", formattedContent);
+      // console.log("REMOVED PREFIX FROM TOOL ERROR:", formattedContent);
     }
 
     // Format errors with colons to display on two lines
@@ -274,7 +274,7 @@ export const ChatMessage = React.memo(function ChatMessage({
         formattedContent = formattedContent.substring(0, colonIndex + 1) +
           '\n' +
           formattedContent.substring(colonIndex + 1).trim();
-        console.log("FORMATTED ERROR WITH LINE BREAK:", formattedContent);
+        // console.log("FORMATTED ERROR WITH LINE BREAK:", formattedContent);
       }
     }
 
