@@ -24,7 +24,7 @@ export function Header({ showNewAgentButton = true }: { showNewAgentButton?: boo
           OpenAgents
         </Link>
 
-        <div className="h-full flex items-center gap-2 animate-in fade-in duration-250">
+        <div className="h-full flex items-center gap-2">
           {/* Only show agent-related UI if user is logged in */}
           {/* {!isPending && session?.user && (
             <>
