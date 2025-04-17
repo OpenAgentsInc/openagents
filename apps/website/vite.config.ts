@@ -17,7 +17,9 @@ export default defineConfig({
       // Point to the root node_modules instead of the app-specific one
       'react': path.resolve(__dirname, '../../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../../node_modules/react-dom'),
-      'react-dom/server.node': path.resolve(__dirname, '../../node_modules/react-dom/server.node.js'),
+      // FORCE resolution to the .edge version for both generic and specific imports
+      'react-dom/server': path.resolve(__dirname, '../../node_modules/react-dom/server.edge.js'),
+      'react-dom/server.edge': path.resolve(__dirname, '../../node_modules/react-dom/server.edge.js'),
     },
   },
 });

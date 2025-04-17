@@ -1,8 +1,7 @@
 import type { AppLoadContext, EntryContext } from "react-router";
 import { ServerRouter } from "react-router";
 import { isbot } from "isbot";
-// Import the server module with the correct method
-import { renderToString } from "react-dom/server.node";
+import { renderToReadableStream } from "react-dom/server.edge"; // Explicitly import from the .edge module
 
 export default async function handleRequest(
   request: Request,
@@ -11,31 +10,34 @@ export default async function handleRequest(
   routerContext: EntryContext,
   _loadContext: AppLoadContext
 ) {
-  // Simplify by using renderToString which is more reliable in this context
-  try {
-    const html = renderToString(
-      <ServerRouter context={routerContext} url={request.url} />
-    );
-    
-    responseHeaders.set("Content-Type", "text/html");
-    return new Response(
-      // Add DOCTYPE and wrap in html/body if needed
-      `<!DOCTYPE html>${html}`,
-      {
-        status: responseStatusCode,
-        headers: responseHeaders,
-      }
-    );
-  } catch (error) {
-    console.error("Rendering error:", error);
-    
-    responseHeaders.set("Content-Type", "text/html");
-    return new Response(
-      "<!DOCTYPE html><html><body>Server Error</body></html>",
-      {
-        status: 500,
-        headers: responseHeaders,
-      }
-    );
+  let shellRendered = false;
+  const userAgent = request.headers.get("user-agent");
+
+  const body = await renderToReadableStream(
+    <ServerRouter context={routerContext} url={request.url} />,
+    {
+      onError(error: unknown) {
+        responseStatusCode = 500;
+        // Log streaming rendering errors from inside the shell.  Don't log
+        // errors encountered during initial shell rendering since they'll
+        // reject and get logged in handleDocumentRequest.
+        if (shellRendered) {
+          console.error(error);
+        }
+      },
+    }
+  );
+  shellRendered = true;
+
+  // Ensure requests from bots and SPA Mode renders wait for all content to load before responding
+  // https://react.dev/reference/react-dom/server/renderToPipeableStream#waiting-for-all-content-to-load-for-crawlers-and-static-generation
+  if ((userAgent && isbot(userAgent)) || routerContext.isSpaMode) {
+    await body.allReady;
   }
+
+  responseHeaders.set("Content-Type", "text/html");
+  return new Response(body, {
+    headers: responseHeaders,
+    status: responseStatusCode,
+  });
 }
