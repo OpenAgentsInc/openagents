@@ -1,9 +1,8 @@
 // ₿
 import { observer } from "mobx-react-lite"
 import { FC } from "react"
-import { View, ViewStyle } from "react-native"
+import { View, ViewStyle, TouchableOpacity, Text } from "react-native"
 import { Icon, Screen } from "@/components"
-import { Button } from "@openagents/ui"
 import { useHeader } from "@/hooks/useHeader"
 import { goBack } from "@/navigators/navigationUtilities"
 import { WalletStackParamList } from "@/navigators/WalletNavigator"
@@ -19,7 +18,7 @@ type WalletScreenNavigationProp = NativeStackNavigationProp<WalletStackParamList
 export const WalletScreen: FC = observer(function WalletScreen() {
   const navigation = useNavigation<WalletScreenNavigationProp>()
   const { totalEarnings, withdrawEarnings } = useEarnings()
-  
+
   useHeader({
     title: "Wallet",
     leftIcon: "back",
@@ -43,50 +42,41 @@ export const WalletScreen: FC = observer(function WalletScreen() {
         <BalanceHeader />
         <View style={$buttonsContainer}>
           <View style={$buttonRow}>
-            <Button
-              label="Send"
+            <TouchableOpacity
+              style={$actionButton}
               onPress={() => {
                 navigation.navigate("Send")
               }}
+            >
+              <Text style={$iconContainer}>{renderIcon("arrow-upward")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={$actionButton}
-              variant="primary"
-              size="medium"
-              leftIcon="arrow-upward"
-              renderIcon={renderIcon}
-            />
-            <Button
-              label="Receive"
               onPress={() => {
                 navigation.navigate("Receive")
               }}
-              style={$actionButton}
-              variant="primary"
-              size="medium"
-              leftIcon="arrow-downward"
-              renderIcon={renderIcon}
-            />
+            >
+              <Text style={$iconContainer}>{renderIcon("arrow-downward")}</Text>
+            </TouchableOpacity>
           </View>
-          
+
           {/* Only show the Withdraw button if there are earnings */}
           {totalEarnings > 0 && (
-            <Button
-              label={`Withdraw ₿${totalEarnings.toLocaleString()} to Wallet`}
+            <TouchableOpacity
+              style={$withdrawButton}
               onPress={() => {
                 // Withdraw the earnings
                 const amount = withdrawEarnings();
-                
+
                 // In a real app, this would add the amount to the wallet balance
                 // and create a transaction record
-                
+
                 // Show success toast or message (you could use your Toast component here)
                 alert(`Successfully withdrawn ₿${amount.toLocaleString()} to your wallet!`);
               }}
-              style={$withdrawButton}
-              variant="primary"
-              size="medium"
-              leftIcon="wallet-outline"
-              renderIcon={renderIcon}
-            />
+            >
+              <Text style={$iconContainer}>{renderIcon("wallet-outline")}</Text>
+            </TouchableOpacity>
           )}
         </View>
       </View>

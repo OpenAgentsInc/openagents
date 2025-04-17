@@ -19,6 +19,8 @@ export interface ToastProps {
   onPress?: () => void;
   /** Custom styles */
   style?: ViewStyle;
+  visible: boolean;
+  type?: 'success' | 'error' | 'info';
 }
 
 export interface ToastProviderProps {
@@ -31,6 +33,8 @@ export interface ToastOptions extends Omit<ToastProps, 'message'> {
   message: string;
   /** Callback when toast is pressed */
   onPress?: () => void;
+  type?: 'success' | 'error' | 'info';
+  duration?: number;
 }
 
 export interface ToastContextType {
@@ -42,4 +46,6 @@ export interface ToastContextType {
   close: (id: string) => void;
   /** Close all toasts */
   closeAll: () => void;
+  showToast: (options: ToastOptions) => void;
+  hideToast: (id: string) => void;
 }

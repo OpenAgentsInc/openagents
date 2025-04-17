@@ -1,21 +1,14 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { Animated, GestureResponderEvent } from 'react-native';
-import { Ionicons as ExpoIonicons } from '@expo/vector-icons';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  SafeAreaView,
+  Animated,
+  ViewStyle,
+  TextStyle,
+} from 'react-native';
 import { ToastProps, ToastProviderProps, ToastOptions, ToastContextType } from './Toast.types';
-import { View, Text, TouchableOpacity, SafeAreaView, AnimatedView } from '@openagents/core';
-import { react19 } from '@openagents/core';
-
-// Define interface for the icon props
-interface IconProps {
-  name: string;
-  size: number;
-  style?: any;
-  [key: string]: any;
-}
-
-// Make Expo icons compatible with React 19
-const Ionicons = react19.icon<IconProps>(ExpoIonicons);
-import { styles, getVariantStyles } from './Toast.styles';
 
 // Create a unique ID for each toast
 const generateId = () => Math.random().toString(36).substring(2, 9);
@@ -24,83 +17,58 @@ const generateId = () => Math.random().toString(36).substring(2, 9);
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 // Toast component
-export const Toast = ({
-  title,
+export function Toast({
+  visible,
   message,
-  variant = 'default',
-  icon,
-  action,
-  style,
+  type = 'info',
+  duration = 3000,
   onClose,
-  onPress,
-}: ToastProps) => {
-  const animation = useRef(new Animated.Value(0)).current;
+}: ToastProps) {
+  const opacity = React.useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(animation, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    if (visible) {
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.delay(duration),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        onClose?.();
+      });
+    }
+  }, [visible, duration, opacity, onClose]);
 
-    return () => {
-      animation.setValue(0);
-    };
-  }, []);
+  if (!visible) return null;
 
-  const handleClose = (e: GestureResponderEvent) => {
-    e.stopPropagation(); // Prevent triggering onPress when closing
-    Animated.timing(animation, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      if (onClose) onClose();
-    });
-  };
-
-  const variantStyles = getVariantStyles(variant);
+  const backgroundColor = type === 'success' ? '#4CAF50' : type === 'error' ? '#F44336' : '#2196F3';
 
   return (
-    <TouchableOpacity
-      activeOpacity={onPress ? 0.8 : 1}
-      onPress={onPress}
-      disabled={!onPress}
-    >
-      <AnimatedView
+    <SafeAreaView style={$container}>
+      <Animated.View
         style={[
-          styles.toast,
-          variantStyles,
-          style,
+          $toast,
           {
-            opacity: animation,
-            transform: [
-              {
-                translateY: animation.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-20, 0],
-                }),
-              },
-            ],
+            opacity,
+            backgroundColor,
           },
         ]}
       >
-        {icon && <View>{icon as React.ReactNode}</View>}
-
-        <View style={styles.contentContainer}>
-          {title && <Text style={styles.title}>{title}</Text>}
-          <Text style={styles.message}>{message}</Text>
-        </View>
-
-        {action && <View style={styles.actionContainer}>{action as React.ReactNode}</View>}
-
-        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-          <Ionicons name="close" size={18} style={styles.closeIcon} />
+        <Text style={$message}>{message}</Text>
+        <TouchableOpacity onPress={onClose} style={$closeButton}>
+          <Text style={$closeText}>×</Text>
         </TouchableOpacity>
-      </AnimatedView>
-    </TouchableOpacity>
+      </Animated.View>
+    </SafeAreaView>
   );
-};
+}
 
 // Toast provider
 export const ToastProvider = ({ children }: ToastProviderProps) => {
@@ -158,16 +126,13 @@ export const ToastProvider = ({ children }: ToastProviderProps) => {
   return (
     <ToastContext.Provider value={contextValue}>
       {children as React.ReactNode}
-      <SafeAreaView style={styles.container} pointerEvents="box-none">
+      <SafeAreaView style={$container} pointerEvents="box-none">
         {Array.from(toasts.values()).map((toast) => (
           <Toast
             key={toast.id}
             message={toast.message}
-            title={toast.title}
-            variant={toast.variant}
-            icon={toast.icon}
-            action={toast.action}
-            onPress={toast.onPress}
+            type={toast.type}
+            duration={toast.duration}
             onClose={() => removeToast(toast.id)}
           />
         ))}
@@ -187,7 +152,7 @@ export const useToast = () => {
 
 // Custom hook for interval
 export const useInterval = (callback: () => void, delay: number | null) => {
-  const savedCallback = useRef<() => void>(() => {});
+  const savedCallback = useRef<() => void>(() => { });
 
   useEffect(() => {
     savedCallback.current = callback;
@@ -205,4 +170,42 @@ export const useInterval = (callback: () => void, delay: number | null) => {
 
     return undefined;
   }, [delay]);
+};
+
+const $container: ViewStyle = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  zIndex: 999,
+};
+
+const $toast: ViewStyle = {
+  margin: 16,
+  padding: 16,
+  borderRadius: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.25,
+  shadowRadius: 3.84,
+  elevation: 5,
+};
+
+const $message: TextStyle = {
+  color: '#fff',
+  fontSize: 16,
+  flex: 1,
+};
+
+const $closeButton: ViewStyle = {
+  marginLeft: 16,
+};
+
+const $closeText: TextStyle = {
+  color: '#fff',
+  fontSize: 24,
+  lineHeight: 24,
 };
