@@ -4,6 +4,25 @@ import { generateId, type UIMessage } from "ai";
 // Explicitly import from the package
 import { useAgent } from "agents/react";
 
+// Define inference types locally to avoid circular imports
+export interface InferProps {
+  model: string;
+  messages: UIMessage[];
+  system?: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  stream?: boolean;
+}
+
+export interface InferResponse {
+  id: string;
+  content: string;
+  role: string;
+  timestamp: string;
+  model: string;
+}
+
 // Define agent types
 type AgentType = 'coder' | 'solver';
 
@@ -21,6 +40,7 @@ export type OpenAgent = {
   setMessages: (messages: Message[]) => void;
   handleSubmit: (message: string) => Promise<void>; // Changed to async for compatibility
   infer: (token?: string) => Promise<any>;
+  sharedInfer: (props: InferProps) => Promise<InferResponse>; // New shared inference method
   setGithubToken: (token: string) => Promise<void>;
   getGithubToken: () => Promise<string>;
   setCurrentIssue?: (issue: any) => Promise<void>;
@@ -158,6 +178,19 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
           // Dispatch the event for the promise to handle
           window.dispatchEvent(responseEvent);
           console.log(`[useOpenAgent ${agentName}] Dispatched prompt response event for request ${data.requestId}`);
+        }
+        else if (data.type === 'infer_response' && data.requestId) {
+          // Create the event name for this inference response
+          const eventName = `${agentName}:infer_response:${data.requestId}`;
+          
+          // Create a custom event with the response data
+          const responseEvent = new CustomEvent(eventName, {
+            detail: data
+          });
+          
+          // Dispatch the event for the promise to handle
+          window.dispatchEvent(responseEvent);
+          console.log(`[useOpenAgent ${agentName}] Dispatched inference response event for request ${data.requestId}`);
         }
       } catch (error) {
         console.error(`[useOpenAgent ${agentName}] Error handling WebSocket message:`, error);
@@ -551,6 +584,83 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
       return `Failed to retrieve system prompt for ${type} agent. The agent may not be connected or the method is not implemented.`;
     }
   }, [cloudflareAgent, agentName, type]);
+  
+  /**
+   * Shared inference method using WebSocket messaging
+   * This uses a special message type to request inference
+   * and returns a Promise that resolves when the response is received
+   */
+  const sharedInfer = useCallback(async (props: InferProps): Promise<InferResponse> => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Running shared inference...`, {
+        model: props.model,
+        messagesCount: props.messages.length
+      });
+      
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        // Create a unique request ID for this inference request
+        const requestId = `infer_req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const eventName = `${agentName}:infer_response:${requestId}`;
+        
+        // Create a promise that will be resolved when we get the response
+        const responsePromise = new Promise<InferResponse>((resolve, reject) => {
+          // Set a timeout to ensure we don't wait forever
+          const timeoutId = setTimeout(() => {
+            reject(new Error("Timeout waiting for inference response"));
+            // Remove the event listener after timeout
+            window.removeEventListener(eventName, handleResponse);
+          }, 30000); // 30 second timeout for inference
+          
+          // Function to handle the response - properly typed for EventListener
+          const handleResponse = (event: Event) => {
+            clearTimeout(timeoutId);
+            // Cast to CustomEvent for type safety
+            const customEvent = event as CustomEvent;
+            const responseData = customEvent.detail;
+            
+            if (responseData.error) {
+              reject(new Error(responseData.error));
+            } else {
+              resolve(responseData.result as InferResponse);
+            }
+            
+            // Clean up by removing the event listener
+            window.removeEventListener(eventName, handleResponse);
+          };
+          
+          // Listen for the response event
+          window.addEventListener(eventName, handleResponse);
+          
+          // Send the request message
+          const message = {
+            type: "shared_infer",
+            requestId,
+            params: props,
+            timestamp: new Date().toISOString()
+          };
+          
+          cloudflareAgent.send(JSON.stringify(message));
+          console.log(`[useOpenAgent ${agentName}] Inference request sent with ID ${requestId}`);
+        });
+        
+        return await responsePromise;
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot run inference: Agent not available or send not a function`);
+        throw new Error('Agent not available');
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to run inference:`, error);
+      
+      // Return a dummy error response
+      return {
+        id: generateId(),
+        content: `Error running inference: ${error instanceof Error ? error.message : String(error)}`,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        model: props.model
+      };
+    }
+  }, [cloudflareAgent, agentName]);
 
   // Return the OpenAgent interface with appropriate methods
   return {
@@ -559,6 +669,7 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     setMessages: adaptSetMessages,
     handleSubmit,
     infer,
+    sharedInfer,           // New shared inference method
     setGithubToken,
     getGithubToken,
     addAgentObservation,

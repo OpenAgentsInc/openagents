@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Terminal, Columns, BotIcon, PlugZap, Power, CheckCircle, AlertTriangle, BookOpen, FileCode2 } from "lucide-react";
 import { useOpenAgent } from "@openagents/core";
+import { generateId } from "ai";
 import {
   Dialog,
   DialogContent,
@@ -455,6 +456,59 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
               }}
             >
               Send Command
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              onClick={async () => {
+                try {
+                  // Create a test message
+                  const testMessage = { 
+                    id: generateId(), 
+                    role: 'user', 
+                    content: `Test inference at ${new Date().toISOString()}`,
+                    parts: [{ type: 'text', text: `This is a test message for shared inference. Please respond briefly.` }]
+                  };
+                  
+                  // Get the system prompt to use in the inference request
+                  let systemPrompt = "";
+                  try {
+                    systemPrompt = await agent.getSystemPrompt();
+                    console.log("Got system prompt for inference, length:", systemPrompt.length);
+                  } catch (error) {
+                    console.error("Failed to get system prompt for inference:", error);
+                    systemPrompt = "You are a helpful AI assistant.";
+                  }
+                  
+                  // Run shared inference with the test message and system prompt
+                  console.log("Running shared inference...");
+                  const result = await agent.sharedInfer({
+                    model: "claude-3-opus-20240229",
+                    messages: [testMessage],
+                    system: systemPrompt,
+                    temperature: 0.7,
+                    max_tokens: 500
+                  });
+                  
+                  // Log the result
+                  console.log("Shared inference result:", result);
+                  
+                  // Add the result to the messages
+                  agent.setMessages([
+                    ...agent.messages, 
+                    { 
+                      id: result.id, 
+                      role: 'assistant', 
+                      content: result.content 
+                    }
+                  ]);
+                  
+                } catch (error) {
+                  console.error("Error running shared inference:", error);
+                }
+              }}
+            >
+              Test Shared Inference
             </Button>
             
             <Dialog 

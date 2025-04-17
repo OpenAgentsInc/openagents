@@ -70,6 +70,32 @@ export class Solver extends OpenAgent<SolverState> {
           // Implement command handling logic as needed
           break;
           
+        case "shared_infer":
+          // Handle inference request
+          console.log("Inference request received");
+          try {
+            const inferProps = parsedMessage.params;
+            const result = await this.sharedInfer(inferProps);
+            
+            // Send the inference result back to the client
+            connection.send(JSON.stringify({
+              type: "infer_response",
+              requestId: parsedMessage.requestId,
+              result: result,
+              timestamp: new Date().toISOString()
+            }));
+            console.log(`Inference result sent back for request ${parsedMessage.requestId}`);
+          } catch (error) {
+            console.error("Error performing inference:", error);
+            connection.send(JSON.stringify({
+              type: "infer_response",
+              requestId: parsedMessage.requestId,
+              error: error instanceof Error ? error.message : String(error),
+              timestamp: new Date().toISOString()
+            }));
+          }
+          break;
+          
         default:
           console.log("Unhandled message type:", parsedMessage.type);
       }
