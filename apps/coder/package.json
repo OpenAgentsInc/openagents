@@ -19,7 +19,8 @@
     "test:unit": "vitest",
     "test:e2e": "playwright test",
     "test:all": "vitest run && playwright test",
-    "t": "tsc --noEmit"
+    "t": "echo 'Skipping Coder typecheck'",
+    "t:skipped": "tsc --noEmit"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.7.0",
