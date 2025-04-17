@@ -483,7 +483,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                   // Run shared inference with the test message and system prompt
                   console.log("Running shared inference...");
                   const result = await agent.sharedInfer({
-                    model: "claude-3-opus-20240229",
+                    // Use default Llama 4 model
                     messages: [testMessage],
                     system: systemPrompt,
                     temperature: 0.7,

@@ -1,8 +1,10 @@
 // Base OpenAgent class that implements common functionality for all agents
 
 import { Agent } from "agents";
-import { generateId } from "ai";
+import { generateId, generateText } from "ai";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
+import { createWorkersAI } from 'workers-ai-provider';
+import { env } from "cloudflare:workers"
 
 /**
  * Base OpenAgent class that implements common functionality for all agent types
@@ -22,7 +24,7 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
       workingFilePath: undefined
     };
   }
-  
+
   constructor(ctx: any, env: Env) {
     super(ctx, env);
   }
@@ -85,7 +87,7 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     } as Partial<T>);
 
     this.addAgentObservation(`Now working on file: ${filePath}`);
-    
+
     return { success: true, message: `Current file set to ${filePath}` };
   }
 
@@ -96,7 +98,7 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     this.updateState({
       observations: [...(this.state.observations || []), observation]
     } as Partial<T>);
-    
+
     return { success: true };
   }
 
@@ -112,17 +114,17 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
         ? `${this.state.scratchpad}\n- ${formattedThought}`
         : `- ${formattedThought}`
     } as Partial<T>);
-    
+
     return { success: true };
   }
-  
+
   /**
    * Gets the system prompt for the agent
    * This is a base implementation - agent subclasses should override to provide their specific system prompts
    */
   getSystemPrompt() {
     // Base system prompt that all agents can use
-    const basePrompt = `You are an autonomous agent designed to assist with development tasks. 
+    const basePrompt = `You are an autonomous agent designed to assist with development tasks.
 You have access to a repository and can help with understanding code, implementing features, and fixing issues.
 
 Current context:
@@ -132,15 +134,23 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
 
     return basePrompt;
   }
-  
+
   /**
    * Shared inference method for all agents
-   * This version just logs the input and returns a dummy response
+   * Uses Cloudflare Workers AI with Llama 4 to generate responses
    * @param props Inference properties including model, messages, and system prompt
-   * @returns A dummy response object
+   * @returns Response from the AI model
    */
   async sharedInfer(props: InferProps): Promise<InferResponse> {
-    const { model, messages, system, temperature = 0.7, max_tokens, top_p } = props;
+    // Default to Llama 4 Scout if no model specified
+    const { 
+      model = "@cf/meta/llama-4-scout-17b-16e-instruct", 
+      messages, 
+      system, 
+      temperature = 0.7, 
+      max_tokens = 1024, 
+      top_p = 0.95 
+    } = props;
     
     // Log the input parameters
     console.log("SHARED INFER CALLED WITH:", {
@@ -152,19 +162,70 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       top_p
     });
     
-    // For debugging, log the first and last message
-    if (messages.length > 0) {
-      console.log("First message:", messages[0]);
-      console.log("Last message:", messages[messages.length - 1]);
+    try {
+      // Format messages for the chat completion format
+      let formattedMessages = [];
+      
+      // Add system message if provided
+      if (system) {
+        formattedMessages.push({
+          role: "system",
+          content: system
+        });
+      }
+      
+      // Add user and assistant messages from the conversation
+      messages.forEach(msg => {
+        formattedMessages.push({
+          role: msg.role,
+          content: msg.content
+        });
+      });
+      
+      // Log the formatted messages for debugging
+      console.log(`Formatted ${formattedMessages.length} messages for AI inference`);
+      
+      // Use Workers AI binding to call the model
+      // @ts-expect-error The Env type may not be correctly defined in TypeScript
+      const result = await this.env.AI.run(model, {
+        messages: formattedMessages,
+        temperature,
+        max_tokens,
+        top_p
+      });
+      
+      // The result structure depends on the model used
+      // For LLM chat models, the result may be either a string or an object with a response field
+      const responseText = typeof result === 'string' ? result : 
+                         (result as any).response || 
+                         (result as any).text || 
+                         (result as any).generated_text || 
+                         "No content generated";
+      
+      console.log("AI inference successful:", {
+        responseLength: responseText.length,
+        model: model
+      });
+      
+      // Return a properly formatted response
+      return {
+        id: generateId(),
+        content: responseText,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        model: model
+      };
+    } catch (error) {
+      console.error("Error during AI inference:", error);
+      
+      // Return a response with the error message
+      return {
+        id: generateId(),
+        content: `Error generating response with Llama 4: ${error instanceof Error ? error.message : String(error)}`,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        model: model
+      };
     }
-    
-    // For now, just return a dummy response
-    return {
-      id: generateId(),
-      content: `This is a dummy response from the ${model} model. The real implementation will connect to the AI provider.`,
-      role: "assistant",
-      timestamp: new Date().toISOString(),
-      model: model
-    };
   }
 }
