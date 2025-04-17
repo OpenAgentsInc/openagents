@@ -7,18 +7,26 @@ import { useAgent } from "agents/react";
 // Define agent types
 type AgentType = 'coder' | 'solver';
 
+// Define a Message type that matches the Message type in UI package
+export type Message = {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | 'data';
+  content: string;
+  parts?: Array<{ type: string; text: string }>;
+};
+
 export type OpenAgent = {
   state: AgentState;
-  messages: UIMessage[];
-  setMessages: (messages: UIMessage[]) => void;
-  handleSubmit: (message: string) => void;
+  messages: Message[];
+  setMessages: (messages: Message[]) => void;
+  handleSubmit: (message: string) => Promise<void>; // Changed to async for compatibility
   infer: (token?: string) => Promise<any>;
   setGithubToken: (token: string) => Promise<void>;
   getGithubToken: () => Promise<string>;
   setCurrentIssue?: (issue: any) => Promise<void>;
   setRepositoryContext?: (owner: string, repo: string, branch?: string) => Promise<void>;
   connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error';
-  disconnect: () => void; // New method to properly disconnect
+  disconnect: () => void; // Method to properly disconnect
 }
 
 type AgentState = {
@@ -152,7 +160,7 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   /**
    * Submits a new user message to the agent
    */
-  const handleSubmit = useCallback((message: string) => {
+  const handleSubmit = useCallback(async (message: string): Promise<void> => {
     // First create the new message
     const newMessage: UIMessage = {
       id: generateId(),
@@ -190,6 +198,9 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
         ...prevState,
         messages: [...(prevState.messages || []), newMessage]
       }));
+      
+      // Re-throw the error for the caller to handle
+      throw error;
     }
   }, [cloudflareAgent, state?.messages, agentName, connectionStatus]);
 

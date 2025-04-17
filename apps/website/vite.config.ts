@@ -17,6 +17,7 @@ export default defineConfig({
       // Point to the root node_modules instead of the app-specific one
       'react': path.resolve(__dirname, '../../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../../node_modules/react-dom'),
+      'react-dom/server.node': path.resolve(__dirname, '../../node_modules/react-dom/server.node.js'),
     },
   },
 });
