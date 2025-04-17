@@ -45,17 +45,19 @@ The `OpenAgent` generic base class implements common functionality that applies 
 
 ```typescript
 export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
-  // Base initial state that can be inherited by subclasses
-  baseInitialState: BaseAgentState = {
-    messages: [],
-    githubToken: undefined,
-    currentRepoOwner: undefined,
-    currentRepoName: undefined,
-    currentBranch: undefined,
-    scratchpad: '',
-    observations: [],
-    workingFilePath: undefined
-  };
+  // Method to get base initial state for proper typing when inherited
+  protected getBaseInitialState(): BaseAgentState {
+    return {
+      messages: [],
+      githubToken: undefined,
+      currentRepoOwner: undefined,
+      currentRepoName: undefined,
+      currentBranch: undefined,
+      scratchpad: '',
+      observations: [],
+      workingFilePath: undefined
+    };
+  }
 
   // Common methods that all agents need
   protected updateState(partialState: Partial<T>): void;
@@ -103,22 +105,24 @@ export class Solver extends OpenAgent<SolverState> {
 5. **Type Safety**: The generic type parameter ensures type safety across the inheritance hierarchy
 6. **State Inheritance**: Base state properties are defined once and inherited by all agent types, reducing the risk of state definitions getting out of sync
 
-### Base State Inheritance
+### Type-Safe Base State Inheritance
 
-A particularly important improvement is how agent-specific classes inherit the base state properties:
+A particularly important improvement is how agent-specific classes inherit the base state properties in a type-safe manner:
 
 ```typescript
 // In OpenAgent base class
-baseInitialState: BaseAgentState = {
-  messages: [],
-  githubToken: undefined,
-  currentRepoOwner: undefined,
-  // ...other common properties
-};
+protected getBaseInitialState(): BaseAgentState {
+  return {
+    messages: [],
+    githubToken: undefined,
+    currentRepoOwner: undefined,
+    // ...other common properties
+  };
+}
 
 // In specific agent class (e.g., Solver)
 initialState: SolverState = {
-  ...this.baseInitialState as any, // Inherit all base properties
+  ...this.getBaseInitialState(), // Type-safe inheritance of base properties
   // Add only agent-specific properties here
 };
 ```
@@ -126,8 +130,10 @@ initialState: SolverState = {
 This approach ensures that:
 - Common state properties are defined in only one place
 - Changes to base state automatically propagate to all agent types
-- Agent implementations only need to define agent-specific state properties
+- Agent implementations only need to define agent-specific state properties 
 - The state definition stays in sync with the interface
+- **Type safety is maintained** without needing to use `as any` type casting
+- TypeScript compiler can properly verify the assignment is valid
 
 ## Usage Example
 
@@ -146,7 +152,7 @@ export interface AnalyzerState extends BaseAgentState {
 export class Analyzer extends OpenAgent<AnalyzerState> {
   // Initialize state by extending the base state
   initialState: AnalyzerState = {
-    ...this.baseInitialState as any, // Cast to any to resolve typing issues
+    ...this.getBaseInitialState(), // Type-safe inheritance of base properties
     // Add analyzer-specific initial properties here
   };
   

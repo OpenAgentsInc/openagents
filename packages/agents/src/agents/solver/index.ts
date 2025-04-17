@@ -19,7 +19,7 @@ export const solverContext = new AsyncLocalStorage<Solver>();
 export class Solver extends OpenAgent<SolverState> {
   // Initialize state by extending the base state with solver-specific properties
   initialState: SolverState = {
-    ...this.baseInitialState as any, // Cast to any to avoid strict typing issues with the spread
+    ...this.getBaseInitialState(), // Type-safe access to base state
     // Add solver-specific initial state properties here
   };
   tools: ToolSet = {};
