@@ -1,5 +1,5 @@
 import { Agent, type Connection, type WSMessage } from "agents";
-import { type UIMessage, generateId, generateText, generateObject, type ToolSet, type ToolResult } from "ai";
+import { generateId, generateText, type ToolSet, type ToolResult } from "ai";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Env } from "../../types";
 import type { UIPart } from "@openagents/core/src/chat/types";
@@ -9,7 +9,7 @@ import { addIssueCommentTool } from "../../common/tools/github/addIssueComment";
 import { tools as commonTools } from "../../common/tools";
 import { solverTools } from "./tools";
 import { getSolverSystemPrompt } from "./prompts";
-import { openrouter, model, smallModel } from "../../common/config";
+import { model } from "../../common/config";
 import type { SolverState, Issue, ImplementationStep } from "./types";
 
 export const solverContext = new AsyncLocalStorage<Solver>();
@@ -55,7 +55,7 @@ export class Solver extends Agent<Env, SolverState> {
    * Sets the current issue being worked on
    */
   async setCurrentIssue(issue: Issue) {
-    await this.updateState({
+    this.updateState({
       currentIssue: issue
     });
 
@@ -70,7 +70,7 @@ export class Solver extends Agent<Env, SolverState> {
   async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
     console.log(`[setRepositoryContext] Setting context to ${owner}/${repo} on branch ${branch}`);
 
-    await this.updateState({
+    this.updateState({
       currentRepoOwner: owner,
       currentRepoName: repo,
       currentBranch: branch
