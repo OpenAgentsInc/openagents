@@ -42,8 +42,5 @@ export interface BaseAgentState {
   scratchpad?: string;
 }
 
-// Export type for Env
-export type { Env } from './env';
-
 // Import OpenAgent from its own file
 export { OpenAgent } from './open-agent';

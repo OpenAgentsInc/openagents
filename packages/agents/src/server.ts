@@ -1,5 +1,4 @@
 import { routeAgentRequest } from "agents";
-import type { Env } from "./common/env";
 import type { ExecutionContext } from '@cloudflare/workers-types';
 
 // Export the agents so they can be used as Durable Objects

@@ -3,7 +3,6 @@
 import { Agent } from "agents";
 import { generateId } from "ai";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
-import type { Env } from './env';
 
 /**
  * Base OpenAgent class that implements common functionality for all agent types
