@@ -15,6 +15,8 @@ export type OpenAgent = {
   getGithubToken: () => Promise<string>;
   setCurrentIssue?: (issue: any) => Promise<void>;
   setRepositoryContext?: (owner: string, repo: string, branch?: string) => Promise<void>;
+  connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error';
+  disconnect: () => void; // New method to properly disconnect
 }
 
 type AgentState = {
@@ -69,6 +71,7 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     }
   };
   
+  // Use the Cloudflare Agents SDK hook to connect to the agent
   const cloudflareAgent = useAgent({
     name: agentName, // Unique name for this agent instance
     agent: type,     // Agent type maps to URL path/DO binding name
@@ -77,48 +80,112 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
       console.log(`[useOpenAgent ${agentName}] State updated from agent:`, newState);
       setAgentState(newState);
     },
-    host: "agents.openagents.com", 
-    onOpen,
-    onClose,
-    onError
+    host: "agents.openagents.com"
   });
+  
+  // Add listeners manually since we can't pass them to useAgent directly
+  useEffect(() => {
+    // Add listeners to the socket instance after it's created
+    if (cloudflareAgent) {
+      cloudflareAgent.addEventListener('open', onOpen);
+      cloudflareAgent.addEventListener('close', onClose);
+      cloudflareAgent.addEventListener('error', onError);
+    }
+    
+    return () => {
+      // Clean up listeners
+      if (cloudflareAgent) {
+        cloudflareAgent.removeEventListener('open', onOpen);
+        cloudflareAgent.removeEventListener('close', onClose);
+        cloudflareAgent.removeEventListener('error', onError);
+      }
+    };
+  }, [cloudflareAgent, onOpen, onClose, onError]);
+  
 
   // Track connection status for logging purposes
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
   
-  // Update connection status based on connection events
+  // We'll use custom event names with prefixes to avoid recursion
+  const connectedEventName = `agent:${agentName}:connected`;
+  const disconnectedEventName = `agent:${agentName}:disconnected`;
+  const errorEventName = `agent:${agentName}:error`;
+    
+  // Update connection status based on actual WebSocket events (not our custom events)
   useEffect(() => {
-    const handleOpen = () => {
+    const handleSocketOpen = () => {
       console.log(`[useOpenAgent ${agentName}] WebSocket connection opened successfully`);
       setConnectionStatus('connected');
+      
+      // Dispatch a custom event that components can listen for
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(connectedEventName));
+        // Also dispatch a generic event for legacy listeners
+        window.dispatchEvent(new CustomEvent('agent:connected', { 
+          detail: { agentName, type } 
+        }));
+      }
     };
     
-    const handleClose = () => {
+    const handleSocketClose = () => {
       console.log(`[useOpenAgent ${agentName}] WebSocket connection closed`);
       setConnectionStatus('disconnected');
+      
+      // Dispatch a custom event that components can listen for
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(disconnectedEventName));
+        // Also dispatch a generic event for legacy listeners
+        window.dispatchEvent(new CustomEvent('agent:disconnected', { 
+          detail: { agentName, type } 
+        }));
+      }
     };
     
-    const handleError = () => {
+    const handleSocketError = () => {
       console.error(`[useOpenAgent ${agentName}] WebSocket connection error`);
       setConnectionStatus('error');
+      
+      // Dispatch a custom event that components can listen for
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(errorEventName));
+        // Also dispatch a generic event for legacy listeners
+        window.dispatchEvent(new CustomEvent('agent:error', { 
+          detail: { agentName, type } 
+        }));
+      }
     };
     
-    // Setup listeners
-    if (typeof window !== 'undefined') {
-      window.addEventListener('agent:connected', handleOpen);
-      window.addEventListener('agent:disconnected', handleClose);
-      window.addEventListener('agent:error', handleError);
+    // If we already received a state update, we're already connected
+    if (state && Object.keys(state).length > 0 && connectionStatus === 'disconnected') {
+      console.log(`[useOpenAgent ${agentName}] Already connected with state:`, state);
+      setConnectionStatus('connected');
+      
+      // Dispatch a connected event
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(connectedEventName));
+        // Also dispatch a generic event for legacy listeners
+        window.dispatchEvent(new CustomEvent('agent:connected', { 
+          detail: { agentName, type } 
+        }));
+      }
+    }
+    
+    // Connect the actual WebSocket events to our handlers
+    if (cloudflareAgent) {
+      cloudflareAgent.addEventListener('open', handleSocketOpen);
+      cloudflareAgent.addEventListener('close', handleSocketClose);
+      cloudflareAgent.addEventListener('error', handleSocketError);
     }
     
     return () => {
-      // Cleanup listeners
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('agent:connected', handleOpen);
-        window.removeEventListener('agent:disconnected', handleClose);
-        window.removeEventListener('agent:error', handleError);
+      // Cleanup socket listeners
+      if (cloudflareAgent) {
+        cloudflareAgent.removeEventListener('open', handleSocketOpen);
+        cloudflareAgent.removeEventListener('close', handleSocketClose);
+        cloudflareAgent.removeEventListener('error', handleSocketError);
       }
     };
-  }, [agentName]);
+  }, [agentName, type, cloudflareAgent, state, connectionStatus]);
   
   console.log(`[useOpenAgent ${agentName}] Agent initialized:`, { 
     type, 
@@ -266,6 +333,32 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     }
   }, [cloudflareAgent, agentName, connectionStatus]);
 
+  /**
+   * Disconnects the WebSocket connection to the agent
+   */
+  const disconnect = useCallback(() => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Disconnecting WebSocket connection...`);
+      
+      // Close the WebSocket connection if it exists
+      if (cloudflareAgent && cloudflareAgent.readyState !== 3) { // 3 = CLOSED
+        cloudflareAgent.close(1000, "User initiated disconnect");
+      }
+      
+      // Reset connection status
+      setConnectionStatus('disconnected');
+      
+      // Reset agent state
+      setAgentState({
+        messages: []
+      });
+      
+      console.log(`[useOpenAgent ${agentName}] WebSocket connection closed successfully`);
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Error disconnecting:`, error);
+    }
+  }, [cloudflareAgent, agentName]);
+
   // Return the OpenAgent interface with appropriate methods
   return {
     state,
@@ -276,6 +369,8 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     setGithubToken,
     getGithubToken,
     ...(type === 'solver' ? { setCurrentIssue } : {}),
-    setRepositoryContext  // Available for both agent types
+    setRepositoryContext,  // Available for both agent types
+    connectionStatus,      // Expose connection status to consumer components
+    disconnect             // Method to properly disconnect the WebSocket
   };
 }

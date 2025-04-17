@@ -55,6 +55,52 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   // Don't add "solver-" prefix here since useOpenAgent already adds it
   const agent = useOpenAgent(issue.id, "solver");
 
+  // Sync connection state from the agent hook
+  useEffect(() => {
+    // Use the agent's connection status directly
+    console.log("Agent connection status:", agent.connectionStatus);
+    setConnectionState(agent.connectionStatus);
+    
+    // If there's an error, set an error message
+    if (agent.connectionStatus === 'error') {
+      setErrorMessage("Connection to Solver agent failed or was lost.");
+    }
+    
+    // Use the agent-specific event names
+    const agentName = `solver-${issue.id}`;
+    const connectedEventName = `agent:${agentName}:connected`;
+    const disconnectedEventName = `agent:${agentName}:disconnected`;
+    const errorEventName = `agent:${agentName}:error`;
+    
+    // Add event listeners to track WebSocket connection status
+    const handleConnected = (event: Event) => {
+      console.log("Solver UI: Received connection event", event);
+      setConnectionState('connected');
+    };
+    
+    const handleDisconnected = (event: Event) => {
+      console.log("Solver UI: Received disconnection event", event);
+      setConnectionState('disconnected');
+    };
+    
+    const handleError = (event: Event) => {
+      console.log("Solver UI: Received connection error event", event);
+      setConnectionState('error');
+      setErrorMessage("Connection to Solver agent failed or was lost.");
+    };
+
+    // Listen to agent-specific events to avoid recursion
+    window.addEventListener(connectedEventName, handleConnected);
+    window.addEventListener(disconnectedEventName, handleDisconnected);
+    window.addEventListener(errorEventName, handleError);
+
+    return () => {
+      window.removeEventListener(connectedEventName, handleConnected);
+      window.removeEventListener(disconnectedEventName, handleDisconnected);
+      window.removeEventListener(errorEventName, handleError);
+    };
+  }, [agent.connectionStatus, agent.state, issue.id]);
+
   // Handle connection to the Solver agent
   const connectToSolver = async () => {
     if (!githubToken) {
@@ -171,9 +217,15 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
   // Disconnect from the Solver agent
   const disconnectFromSolver = () => {
-    // Reset messages
-    agent.setMessages([]);
+    console.log("Disconnecting from Solver agent...");
+    
+    // Use the proper disconnect method to close the WebSocket
+    agent.disconnect();
+    
+    // Also update local UI state
     setConnectionState('disconnected');
+    
+    console.log("Successfully disconnected from Solver agent");
   };
 
   // Update connection state based on agent messages
@@ -186,17 +238,38 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   
   // Monitor the connection status
   useEffect(() => {
+    let connectionStartTime: number | null = null;
+    const connectionTimeout = 15000; // 15 seconds timeout
+    
+    if (connectionState === 'connecting') {
+      connectionStartTime = Date.now();
+    }
+    
     // Check connection status periodically
     const intervalId = setInterval(() => {
-      if (connectionState === 'connecting') {
-        // If we've been connecting for more than 10 seconds, consider it an error
-        console.log("Still connecting...");
+      if (connectionState === 'connecting' && connectionStartTime) {
+        const elapsedTime = Date.now() - connectionStartTime;
+        console.log(`Still connecting... (${Math.round(elapsedTime / 1000)}s elapsed)`);
+        
+        // If we've been connecting for more than the timeout, consider it an error
+        if (elapsedTime > connectionTimeout) {
+          console.error("Connection timeout exceeded");
+          setConnectionState('error');
+          setErrorMessage("Connection timed out. The agent server may be unreachable.");
+        }
+      } else if (connectionState === 'connected') {
+        // Periodically check if our connection is still valid by checking for agent state
+        if (!agent.state || Object.keys(agent.state).length === 0) {
+          console.warn("Connected but no agent state - connection may be stale");
+        } else {
+          console.log("Connection confirmed with valid agent state");
+        }
       }
     }, 3000);
     
     // Cleanup interval
     return () => clearInterval(intervalId);
-  }, [connectionState]);
+  }, [connectionState, agent.state]);
 
   return (
     <Card className="mb-6">
