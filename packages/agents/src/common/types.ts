@@ -23,6 +23,8 @@ export interface BaseAgentState {
   scratchpad?: string;
 }
 
+import type { Env } from './env';
+
 // Base OpenAgent class that implements common functionality for all agents
 export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
   // Provide default base state that can be extended by subclasses

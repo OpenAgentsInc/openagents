@@ -9,7 +9,8 @@ import { tools as commonTools } from "../../common/tools";
 import { solverTools } from "./tools";
 import { getSolverSystemPrompt } from "./prompts";
 import { model } from "../../common/config";
-import type { SolverState, Issue, ImplementationStep } from "./types";
+import type { SolverState } from "./types";
+import type { BaseIssue as Issue, ImplementationStep } from "@openagents/core";
 
 export const solverContext = new AsyncLocalStorage<Solver>();
 

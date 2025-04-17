@@ -9,8 +9,7 @@ import { solverTools } from "./tools";
 import { getSolverSystemPrompt } from "./prompts";
 import { model } from "../../common/config";
 import type { SolverState } from "./types";
-import type { Issue } from "@openagents/core";
-import type { ImplementationStep } from "@openagents/core";
+import type { BaseIssue as Issue, ImplementationStep } from "@openagents/core";
 import { OpenAgent } from "../../common/types";
 
 export const solverContext = new AsyncLocalStorage<Solver>();

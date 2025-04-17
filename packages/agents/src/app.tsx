@@ -495,7 +495,7 @@ export default function Chat() {
                                           target: {
                                             value: APPROVAL.NO,
                                           },
-                                        } as ChangeEvent<HTMLInputElement>)
+                                        } as unknown as ChangeEvent<HTMLTextAreaElement>)
                                       }
                                     >
                                       Reject
@@ -509,7 +509,7 @@ export default function Chat() {
                                             target: {
                                               value: APPROVAL.YES,
                                             },
-                                          } as ChangeEvent<HTMLInputElement>)
+                                          } as unknown as ChangeEvent<HTMLTextAreaElement>)
                                         }
                                       >
                                         Approve
