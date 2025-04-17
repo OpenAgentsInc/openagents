@@ -1,0 +1,3 @@
+import type { BaseIssue as Issue, ImplementationStep } from "@openagents/core";
+import type { SolverState } from "./types";
+// ... existing code ...

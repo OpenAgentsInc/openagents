@@ -3,7 +3,7 @@ import { useAgent } from "agents/react";
 import { useAgentChat } from "agents/ai-react";
 import type { Message } from "@ai-sdk/react";
 import { APPROVAL } from "./shared";
-import type { tools } from "./tools";
+import type { tools } from "./common/tools";
 
 // Component imports
 import { Button } from "@/components/button/Button";
@@ -43,7 +43,7 @@ export default function Chat() {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   // Calculate task counts from agent state
   const taskCounts = useMemo(() => {
     const tasks = rawState?.tasks || [];
@@ -107,7 +107,7 @@ export default function Chat() {
       setConnectionError(error.message || "Unknown error occurred");
     }
   });
-  
+
   // Handle toggling continuous run
   const handleToggleContinuousRun = () => { // Make it non-async, send is usually fire-and-forget
     if (!agent || connectionStatus !== 'connected') return;
@@ -218,14 +218,14 @@ export default function Chat() {
             <Trash size={20} />
           </Button>
         </div>
-        
+
         {/* Task counts and controls */}
         <div className="px-4 py-2 border-b border-neutral-300 dark:border-neutral-800">
           <div className="grid grid-cols-2 gap-4">
             {/* Task Counts */}
             <div>
-              <Label 
-                title="Agent Tasks" 
+              <Label
+                title="Agent Tasks"
                 className="text-xs font-semibold flex items-center gap-1.5 mb-2"
               >
                 <ListChecks size={14} className="text-[#F48120]" />
@@ -239,21 +239,21 @@ export default function Chat() {
                 <div className="font-medium mt-1 pt-1 border-t border-neutral-300/20 dark:border-neutral-800/20">Total: {taskCounts.total}</div>
               </div>
             </div>
-            
+
             {/* Continuous Run Controls */}
             <div>
-              <Label 
+              <Label
                 title="Continuous Run"
                 className="text-xs font-semibold flex items-center gap-1.5 mb-2"
               >
-                {rawState?.isContinuousRunActive ? 
-                  <Pause size={14} className="text-[#F48120]" /> : 
+                {rawState?.isContinuousRunActive ?
+                  <Pause size={14} className="text-[#F48120]" /> :
                   <Play size={14} className="text-[#F48120]" />
                 }
               </Label>
               <div className="text-xs mb-2">
-                Status: {rawState?.isContinuousRunActive ? 
-                  <span className="text-green-500 font-medium">Active</span> : 
+                Status: {rawState?.isContinuousRunActive ?
+                  <span className="text-green-500 font-medium">Active</span> :
                   <span className="text-muted-foreground">Inactive</span>
                 }
               </div>
@@ -272,7 +272,7 @@ export default function Chat() {
               </Button>
             </div>
           </div>
-          
+
           {connectionStatus !== 'connected' && (
             <div className="mt-2 text-xs text-amber-500">
               {connectionStatus === 'connecting' ? 'Connecting to agent...' : 'Disconnected from agent'}
@@ -345,8 +345,8 @@ export default function Chat() {
                               <div key={i}>
                                 <Card
                                   className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${isUser
-                                      ? "rounded-br-none"
-                                      : "rounded-bl-none border-assistant-border"
+                                    ? "rounded-br-none"
+                                    : "rounded-bl-none border-assistant-border"
                                     } ${part.text.startsWith("scheduled message")
                                       ? "border-accent/50"
                                       : ""

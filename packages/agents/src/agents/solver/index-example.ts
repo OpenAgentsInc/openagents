@@ -1,7 +1,6 @@
 import { Agent, type Connection, type WSMessage } from "agents";
 import { generateId, generateText, type ToolSet, type ToolResult } from "ai";
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Env } from "../../types";
 import type { UIPart } from "@openagents/core/src/chat/types";
 import type { ToolContext } from "@openagents/core/src/tools/toolContext";
 import { getFileContentsTool } from "../../common/tools/github/getFileContents";

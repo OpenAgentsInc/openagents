@@ -5,7 +5,7 @@ import { threadRepository, messageRepository } from '../db/repositories';
 import { getDatabase } from '../db/database';
 import type { Thread } from '../db/types';
 import { type UIMessage, toVercelMessage, fromVercelMessage } from './types';
-import { AgentRouterProvider } from '../agentrouter/provider';
+import type { AgentRouterProvider } from '../agentrouter/provider';
 import { inferRouted } from '../agentrouter';
 
 /**

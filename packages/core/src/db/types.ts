@@ -1,6 +1,6 @@
 import type { UIMessage } from '../chat/types';
 import type { RxCollection, RxDatabase, RxDocument } from 'rxdb';
-import { DeepReadonlyObject } from '../types';
+import type { DeepReadonlyObject } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 /**

@@ -247,16 +247,16 @@ export const createImplementationPlan = tool({
         {
           id: "step-1",
           description: "Analyze the issue requirements",
-          type: "analysis",
-          status: "pending",
+          type: "analysis" as const,
+          status: "pending" as const,
           created: new Date(),
           notes: "Understand the scope and requirements from the issue description"
         },
         {
           id: "step-2",
           description: "Research existing solutions",
-          type: "research",
-          status: "pending",
+          type: "research" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-1"],
           notes: "Look for similar patterns or solutions in the codebase"
@@ -264,8 +264,8 @@ export const createImplementationPlan = tool({
         {
           id: "step-3",
           description: "Implement solution",
-          type: "implementation",
-          status: "pending",
+          type: "implementation" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-2"],
           notes: "Write code to address the issue"
@@ -273,8 +273,8 @@ export const createImplementationPlan = tool({
         {
           id: "step-4",
           description: "Add tests",
-          type: "testing",
-          status: "pending",
+          type: "testing" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-3"],
           notes: "Create tests to verify the solution"
@@ -282,16 +282,20 @@ export const createImplementationPlan = tool({
         {
           id: "step-5",
           description: "Update documentation",
-          type: "documentation",
-          status: "pending",
+          type: "documentation" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-3"],
           notes: "Update relevant documentation for the changes"
         }
       ];
       
-      // Store the implementation steps in the agent's state
-      await agent.updateState({
+      // Get current state first
+      const currentState = agent.state;
+      
+      // Then update with the full state object including required messages
+      await agent.setState({
+        ...currentState,
         implementationSteps: steps
       });
       

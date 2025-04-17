@@ -1,4 +1,4 @@
-import { RxJsonSchema } from 'rxdb';
+import { type RxJsonSchema } from 'rxdb';
 import type { Thread, StoredMessage, Settings } from './types';
 
 // Increment this when making schema changes

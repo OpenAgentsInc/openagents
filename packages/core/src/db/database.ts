@@ -1,19 +1,19 @@
 import {
-  RxCollection,
+  type RxCollection,
   createRxDatabase,
   addRxPlugin,
-  RxDocument,
-  RxJsonSchema,
-  RxStorage,
-  RxDatabase,
-  RxDatabaseCreator
+  type RxDocument,
+  type RxJsonSchema,
+  type RxStorage,
+  type RxDatabase,
+  type RxDatabaseCreator
 } from 'rxdb/plugins/core';
 import { getRxStorageDexie } from 'rxdb/plugins/storage-dexie';
 import { wrappedValidateZSchemaStorage } from 'rxdb/plugins/validate-z-schema';
 import { RxDBQueryBuilderPlugin } from 'rxdb/plugins/query-builder';
 import { RxDBUpdatePlugin } from 'rxdb/plugins/update';
 import { RxDBMigrationSchemaPlugin } from 'rxdb/plugins/migration-schema';
-import { Thread, StoredMessage, Settings, DatabaseCollections, Database } from './types';
+import type { Thread, StoredMessage, Settings, DatabaseCollections, Database } from './types';
 import { threadSchema, messageSchema, settingsSchema } from './schema';
 
 // Add required plugins
@@ -48,8 +48,8 @@ export async function createDatabase(): Promise<Database> {
   // Import logger dynamically to avoid circular dependencies
   const { createLogger } = await import('../utils/logManager');
   const dbLogger = createLogger('database');
-  
-  dbLogger.info('Creating database', { 
+
+  dbLogger.info('Creating database', {
     environment: process.env.NODE_ENV,
     existingInstance: !!dbInstance,
     creationInProgress: dbCreationInProgress,
@@ -99,7 +99,7 @@ export async function createDatabase(): Promise<Database> {
       const dbName = process.env.NODE_ENV === 'production'
         ? PROD_DB_NAME
         : DEV_DB_NAME;
-      
+
       dbLogger.info(`Creating RxDB database with name: ${dbName}`);
 
       // Create database with environment-appropriate options
@@ -115,102 +115,102 @@ export async function createDatabase(): Promise<Database> {
           runEach: 1000 * 60 * 60 // every hour
         }
       };
-      
+
       // Only use ignoreDuplicate in development mode
       if (process.env.NODE_ENV === 'development') {
         dbConfig.ignoreDuplicate = true;
       }
-      
+
       dbLogger.info('Creating RxDatabase with configuration', dbConfig);
-      
+
       try {
         const db = await createRxDatabase<DatabaseCollections>(dbConfig);
-        
+
         dbLogger.info('RxDatabase created successfully');
 
         // Create collections with schema validation and migrations
         dbLogger.info('Adding collections to database');
         try {
           await db.addCollections({
-          threads: {
-            schema: threadSchema,
-            migrationStrategies: {
-              // Migrate from version 0 to 1 - keep document as is
-              1: function (oldDoc) {
-                return oldDoc;
-              },
-              // Version 2 - no changes needed for threads, just keep the document
-              2: function (oldDoc) {
-                return oldDoc;
-              },
-              // Version 3 - no changes needed for threads, just keep the document
-              3: function (oldDoc) {
-                return oldDoc;
+            threads: {
+              schema: threadSchema,
+              migrationStrategies: {
+                // Migrate from version 0 to 1 - keep document as is
+                1: function (oldDoc) {
+                  return oldDoc;
+                },
+                // Version 2 - no changes needed for threads, just keep the document
+                2: function (oldDoc) {
+                  return oldDoc;
+                },
+                // Version 3 - no changes needed for threads, just keep the document
+                3: function (oldDoc) {
+                  return oldDoc;
+                }
+              }
+            },
+            messages: {
+              schema: messageSchema,
+              migrationStrategies: {
+                // Migrate from version 0 to 1 - keep document as is
+                1: function (oldDoc) {
+                  return oldDoc;
+                },
+                // Version 2 - no changes needed for messages, just keep the document
+                2: function (oldDoc) {
+                  return oldDoc;
+                },
+                // Version 3 - no changes needed for messages, just keep the document
+                3: function (oldDoc) {
+                  return oldDoc;
+                }
+              }
+            },
+            settings: {
+              schema: settingsSchema,
+              migrationStrategies: {
+                // Migrate from version 0 to 1 - keep document as is
+                1: function (oldDoc) {
+                  return oldDoc;
+                },
+                // Migrate from version 1 to 2 - add the new fields
+                2: function (oldDoc) {
+                  return {
+                    ...oldDoc,
+                    // Add the new fields with sensible defaults
+                    selectedModelId: oldDoc.defaultModel || 'anthropic/claude-3.7-sonnet',
+                    visibleModelIds: [
+                      'anthropic/claude-3.7-sonnet',
+                      'anthropic/claude-3.5-sonnet',
+                      'openai/gpt-4o-mini',
+                      'openai/gpt-4o-2024-11-20',
+                      'google/gemini-2.0-flash-001'
+                    ],
+                    // Add empty array for MCP clients
+                    mcpClients: []
+                  };
+                },
+                // Migrate from version 2 to 3 - add enabledToolIds
+                3: function (oldDoc) {
+                  return {
+                    ...oldDoc,
+                    // Add enabledToolIds with default (shell_command enabled)
+                    enabledToolIds: ['shell_command']
+                  };
+                }
               }
             }
-          },
-          messages: {
-            schema: messageSchema,
-            migrationStrategies: {
-              // Migrate from version 0 to 1 - keep document as is
-              1: function (oldDoc) {
-                return oldDoc;
-              },
-              // Version 2 - no changes needed for messages, just keep the document
-              2: function (oldDoc) {
-                return oldDoc;
-              },
-              // Version 3 - no changes needed for messages, just keep the document
-              3: function (oldDoc) {
-                return oldDoc;
-              }
-            }
-          },
-          settings: {
-            schema: settingsSchema,
-            migrationStrategies: {
-              // Migrate from version 0 to 1 - keep document as is
-              1: function (oldDoc) {
-                return oldDoc;
-              },
-              // Migrate from version 1 to 2 - add the new fields
-              2: function (oldDoc) {
-                return {
-                  ...oldDoc,
-                  // Add the new fields with sensible defaults
-                  selectedModelId: oldDoc.defaultModel || 'anthropic/claude-3.7-sonnet',
-                  visibleModelIds: [
-                    'anthropic/claude-3.7-sonnet',
-                    'anthropic/claude-3.5-sonnet',
-                    'openai/gpt-4o-mini', 
-                    'openai/gpt-4o-2024-11-20',
-                    'google/gemini-2.0-flash-001'
-                  ],
-                  // Add empty array for MCP clients
-                  mcpClients: []
-                };
-              },
-              // Migrate from version 2 to 3 - add enabledToolIds
-              3: function (oldDoc) {
-                return {
-                  ...oldDoc,
-                  // Add enabledToolIds with default (shell_command enabled)
-                  enabledToolIds: ['shell_command']
-                };
-              }
-            }
-          }
-        });
-        dbLogger.info('Successfully added all collections');
-      } catch (error) {
-        dbLogger.error('Error adding collections to database', error);
-        throw error;
-      }
+          });
+          dbLogger.info('Successfully added all collections');
+        } catch (error) {
+          dbLogger.error('Error adding collections to database', error);
+          throw error;
+        }
 
         // Check that collections were created successfully
         const collectionNames = Object.keys(db.collections);
         dbLogger.info(`Database collections created: ${collectionNames.join(', ')}`);
-        
+
         // Database successfully created
         dbInstance = db;
         dbLogger.info('Database successfully created and initialized');
@@ -224,13 +224,13 @@ export async function createDatabase(): Promise<Database> {
       // Import logger dynamically to avoid circular dependencies
       const { createLogger } = await import('../utils/logManager');
       const dbLogger = createLogger('database');
-      
+
       dbLogger.error('Failed to create RxDB database:', error);
 
       // Dispatch a global event that UI components can listen for
       if (typeof window !== 'undefined') {
         dbLogger.info('Dispatching database-error event to notify UI components');
-        window.dispatchEvent(new CustomEvent('database-error', { 
+        window.dispatchEvent(new CustomEvent('database-error', {
           detail: { error }
         }));
       }
@@ -252,7 +252,7 @@ export async function createDatabase(): Promise<Database> {
       // Clear the creation flags regardless of outcome
       dbCreationInProgress = false;
       dbCreationPromise = null;
-      
+
       // Clear the timeout
       clearTimeout(initTimeout);
       dbLogger.info('Database creation process completed (success or failure)');
@@ -276,16 +276,16 @@ export async function getDatabase(): Promise<Database> {
       const { createLogger } = await import('../utils/logManager');
       const dbLogger = createLogger('database');
       dbLogger.info('Database initialization requested from getDatabase()');
-      
+
       // Handle the case where a request comes in while initialization is in progress
       if (dbCreationInProgress && dbCreationPromise) {
         dbLogger.info('Another initialization is already in progress, joining that one');
         return dbCreationPromise;
       }
-      
+
       // Create the database
       const db = await createDatabase();
-      
+
       // Verify collections exist
       if (db && db.collections) {
         const collectionNames = Object.keys(db.collections);
@@ -293,22 +293,22 @@ export async function getDatabase(): Promise<Database> {
           dbLogger.error('Database created but no collections were added');
           throw new Error('Database created but no collections were added');
         }
-        
+
         // Check for required collections
         const requiredCollections = ['threads', 'messages', 'settings'];
         const missingCollections = requiredCollections.filter(c => !collectionNames.includes(c));
-        
+
         if (missingCollections.length > 0) {
           dbLogger.error(`Database missing required collections: ${missingCollections.join(', ')}`);
           throw new Error(`Database missing required collections: ${missingCollections.join(', ')}`);
         }
-        
+
         dbLogger.info(`Database verified with collections: ${collectionNames.join(', ')}`);
       }
-      
+
       return db;
     }
-    
+
     // Database instance exists, verify it's still valid
     if (dbInstance.collections && Object.keys(dbInstance.collections).length > 0) {
       return dbInstance;
@@ -316,7 +316,7 @@ export async function getDatabase(): Promise<Database> {
       // Import logger dynamically to avoid circular dependencies
       const { createLogger } = await import('../utils/logManager');
       const dbLogger = createLogger('database');
-      
+
       dbLogger.error('Existing database instance has no collections, recreating');
       dbInstance = null; // Clear invalid instance
       return createDatabase(); // Try to recreate
@@ -325,7 +325,7 @@ export async function getDatabase(): Promise<Database> {
     // Import logger dynamically to avoid circular dependencies
     const { createLogger } = await import('../utils/logManager');
     const dbLogger = createLogger('database');
-    
+
     dbLogger.error('Error getting database:', error);
     throw error;
   }
@@ -338,13 +338,13 @@ export async function cleanupDatabase() {
   // Import logger dynamically to avoid circular dependencies
   const { createLogger } = await import('../utils/logManager');
   const dbLogger = createLogger('database');
-  
+
   dbLogger.info('Starting database cleanup');
-  
+
   if (dbInstance) {
     try {
       dbLogger.info('Cleaning up existing database instance');
-      
+
       // Try to destroy the database if the method exists
       if (typeof (dbInstance as any).destroy === 'function') {
         dbLogger.info('Calling database destroy() method');
@@ -371,12 +371,12 @@ export async function cleanupDatabase() {
   if (typeof window !== 'undefined' && window.indexedDB) {
     try {
       dbLogger.info('Cleaning up all IndexedDB databases');
-      
+
       // Try to list and delete existing databases
       if (typeof window.indexedDB.databases === 'function') {
         const dbs = await window.indexedDB.databases() || [];
         dbLogger.info(`Found ${dbs.length} IndexedDB databases, checking for openagents databases`);
-        
+
         for (const db of dbs) {
           if (db.name && db.name.includes('openagents')) {
             dbLogger.info(`Removing database: ${db.name}`);

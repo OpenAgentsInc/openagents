@@ -1,10 +1,10 @@
-import { useChat, Message, UseChatOptions } from '@ai-sdk/react';
+import { useChat, type Message, type UseChatOptions } from '@ai-sdk/react';
 import { useState, useEffect, useRef } from 'react';
 import * as React from 'react';
 import { threadRepository, messageRepository } from '../db/repositories';
 import { getDatabase } from '../db/database';
-import { Thread } from '../db/types';
-import { UIMessage, toVercelMessage, fromVercelMessage } from './types';
+import type { Thread } from '../db/types';
+import { type UIMessage, toVercelMessage, fromVercelMessage } from './types';
 
 // Version information
 // AI SDK: @ai-sdk/react
@@ -529,27 +529,27 @@ export function usePersistentChat(options: UsePersistentChatOptions = {}): UsePe
     // Prepare the options for submission
     // We need to create a new options object that includes the selected tools
     const submissionOptions = { ...options } as SubmissionOptions;
-    
+
     // If tools are explicitly selected, add them to the options
     if (Array.isArray(selectedToolIds)) {
       console.log('[usePersistentChat] Forwarding selected tool IDs to API:', selectedToolIds);
-      
+
       // Create the body if it doesn't exist
       if (!submissionOptions.body) {
         submissionOptions.body = {};
       }
-      
+
       // Set the selectedToolIds in two places:
       // 1. Directly in the options object for our server handler
       submissionOptions.selectedToolIds = selectedToolIds;
-      
+
       // 2. In the body object for the vercel/ai SDK
       submissionOptions.body = {
         ...submissionOptions.body,
         selectedToolIds: selectedToolIds,
       };
-      
-      console.log('[usePersistentChat] FINAL SUBMISSION OPTIONS WITH TOOLS:', 
+
+      console.log('[usePersistentChat] FINAL SUBMISSION OPTIONS WITH TOOLS:',
         JSON.stringify(submissionOptions, null, 2));
     } else {
       console.log('[usePersistentChat] No selected tools provided, using defaults');
