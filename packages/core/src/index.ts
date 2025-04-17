@@ -20,6 +20,18 @@ export * from './utils/setupElectronCommandExecutor'
 export * from './utils/logManager'
 export * from './utils/generateId'
 export * from './tools'
+// Common shared types - fully re-export all issue types
+export type {
+  BaseUser, 
+  IssueStatus, 
+  IssuePriority, 
+  IssueLabel, 
+  BaseProject, 
+  BaseTeam, 
+  BaseIssue, 
+  IssueComment, 
+  ImplementationStep
+} from './types/issue'
 
 // import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
