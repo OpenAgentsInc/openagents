@@ -1,6 +1,7 @@
 // Use native EventSource in browser
-import { Transport } from "./transport";
-import { JSONRPCMessage, JSONRPCMessageSchema } from "./types";
+import type { Transport } from "./transport";
+import { JSONRPCMessageSchema } from "./types";
+import type { JSONRPCMessage } from "./types";
 
 // Use the native EventSource type
 type EventSourceType = typeof EventSource;

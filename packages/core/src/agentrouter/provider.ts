@@ -3,7 +3,7 @@
  */
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { LanguageModel } from 'ai';
+import type { LanguageModel } from 'ai';
 
 export interface AgentRouterProvider {
   id: string;

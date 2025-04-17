@@ -1,6 +1,6 @@
-import { UIMessage } from '../chat/types';
-import { RxCollection, RxDatabase, RxDocument } from 'rxdb';
-import { DeepReadonlyObject } from '../types';
+import type { UIMessage } from '../chat/types';
+import type { RxCollection, RxDatabase, RxDocument } from 'rxdb';
+import type { DeepReadonlyObject } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -107,8 +107,8 @@ export function storedMessageToUIMessage(storedMessage: StoredMessage | DeepRead
     : undefined;
 
   // Ensure we have a valid Date object for createdAt
-  const createdAt = storedMessage.createdAt 
-    ? new Date(storedMessage.createdAt) 
+  const createdAt = storedMessage.createdAt
+    ? new Date(storedMessage.createdAt)
     : new Date();
 
   return {

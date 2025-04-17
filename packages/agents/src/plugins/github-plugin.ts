@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * GitHub plugin for the Coder agent - Direct GitHub API implementation
  * This version uses the GitHub API directly instead of going through MCP

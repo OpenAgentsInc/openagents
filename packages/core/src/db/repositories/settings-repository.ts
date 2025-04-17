@@ -1,6 +1,6 @@
 import { getDatabase } from '../database';
-import { Settings, Database } from '../types';
-import { RxDocument } from 'rxdb';
+import type { Settings, Database } from '../types';
+import type { RxDocument } from 'rxdb';
 
 // Global settings ID
 const GLOBAL_SETTINGS_ID = 'global';
@@ -656,31 +656,31 @@ export class SettingsRepository {
     // Use cached settings if available
     const settings = this.cachedSettings || await this.getSettings();
     const apiKeys = { ...(settings.apiKeys || {}) };
-    
+
     if (provider in apiKeys) {
       delete apiKeys[provider];
 
       // console.log(`Deleting API key for provider: ${provider}`);
-      
+
       // Check if the selected model belongs to this provider and reset it if necessary
       let selectedModelId = settings.selectedModelId;
       const currentSelectedModelId = settings.selectedModelId || settings.defaultModel;
-      
+
       if (currentSelectedModelId) {
         // Check if the current selected model needs an API key from this provider
-        const isProviderModel = 
+        const isProviderModel =
           (provider === 'anthropic' && currentSelectedModelId.includes('claude')) ||
           (provider === 'openai' && (currentSelectedModelId.includes('gpt') || currentSelectedModelId.startsWith('openai/'))) ||
           (provider === 'google' && (currentSelectedModelId.includes('gemini') || currentSelectedModelId.startsWith('google/'))) ||
           (provider === 'openrouter' && currentSelectedModelId.startsWith('openrouter/'));
-          
+
         if (isProviderModel) {
           // If we delete the key for the provider of the currently selected model,
           // reset to a default model that might not need an API key
           selectedModelId = 'qwen-qwq-32b'; // Fallback model
         }
       }
-      
+
       // Update settings with deleted API key and potentially reset selected model
       if (selectedModelId !== settings.selectedModelId) {
         await this.updateSettings({
@@ -930,7 +930,7 @@ export class SettingsRepository {
     try {
       const settings = await this.getSettings();
       const enabledToolIds = settings.enabledToolIds || [];
-      
+
       // Toggle the tool's status
       let updatedToolIds: string[];
       if (enabledToolIds.includes(toolId)) {
@@ -940,7 +940,7 @@ export class SettingsRepository {
         // Add the tool if it's currently disabled
         updatedToolIds = [...enabledToolIds, toolId];
       }
-      
+
       // Update settings
       return this.updateSettings({
         enabledToolIds: updatedToolIds
@@ -959,20 +959,20 @@ export class SettingsRepository {
       console.log(`[SettingsRepository] Enabling tool: ${toolId}`);
       const settings = await this.getSettings();
       const enabledToolIds = settings.enabledToolIds || [];
-      
+
       console.log(`[SettingsRepository] Current enabled tools:`, enabledToolIds);
-      
+
       // Only add if not already enabled
       if (!enabledToolIds.includes(toolId)) {
         console.log(`[SettingsRepository] Adding ${toolId} to enabled tools`);
         const updatedSettings = await this.updateSettings({
           enabledToolIds: [...enabledToolIds, toolId]
         });
-        
+
         console.log(`[SettingsRepository] After enabling, enabled tools:`, updatedSettings.enabledToolIds);
         return updatedSettings;
       }
-      
+
       console.log(`[SettingsRepository] Tool ${toolId} already enabled`);
       return toMutableSettings(settings);
     } catch (error) {
@@ -989,20 +989,20 @@ export class SettingsRepository {
       console.log(`[SettingsRepository] Disabling tool: ${toolId}`);
       const settings = await this.getSettings();
       const enabledToolIds = settings.enabledToolIds || [];
-      
+
       console.log(`[SettingsRepository] Current enabled tools:`, enabledToolIds);
-      
+
       // Only remove if currently enabled
       if (enabledToolIds.includes(toolId)) {
         console.log(`[SettingsRepository] Removing ${toolId} from enabled tools`);
         const updatedSettings = await this.updateSettings({
           enabledToolIds: enabledToolIds.filter(id => id !== toolId)
         });
-        
+
         console.log(`[SettingsRepository] After disabling, enabled tools:`, updatedSettings.enabledToolIds);
         return updatedSettings;
       }
-      
+
       console.log(`[SettingsRepository] Tool ${toolId} already disabled`);
       return toMutableSettings(settings);
     } catch (error) {
@@ -1027,7 +1027,7 @@ export class SettingsRepository {
           return [];
         }
       }
-      
+
       // Default to shell_command if no tools are explicitly enabled
       console.log(`[SettingsRepository] No enabledToolIds found, defaulting to ['shell_command']`);
       return ['shell_command'];

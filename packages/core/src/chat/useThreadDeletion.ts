@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Thread } from '../db/types';
-import { UIMessage } from './types';
+import type { Thread } from '../db/types';
+import { type UIMessage } from './types';
 import { messageRepository, threadRepository } from '../db/repositories';
 import { getDatabase } from '../db/database';
 

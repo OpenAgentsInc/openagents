@@ -1,60 +1,62 @@
 import React from 'react';
-import { ButtonProps } from './Button.types';
-import { View, Text, TouchableOpacity, ActivityIndicator } from '@openagents/core';
-import { getButtonStyles, getButtonHeight, getTextStyle, getTextSize, styles, COLORS } from './Button.styles';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 
-export const Button = ({
+interface ButtonProps {
+  label?: string;
+  onPress?: () => void;
+  variant?: 'primary' | 'secondary';
+  size?: 'small' | 'medium' | 'large';
+  disabled?: boolean;
+  loading?: boolean;
+  style?: any;
+  leftIcon?: string;
+  renderIcon?: (icon: string) => React.ReactNode;
+}
+
+export function Button({
   label,
+  onPress,
   variant = 'primary',
   size = 'medium',
-  loading = false,
   disabled = false,
+  loading = false,
   style,
-  onPress,
   leftIcon,
-  rightIcon,
   renderIcon,
-  ...rest
-}: ButtonProps) => {
-  const buttonStyles = getButtonStyles(variant, disabled);
-  const height = getButtonHeight(size);
-  const textStyles = getTextStyle(variant, disabled);
-  const fontSize = getTextSize(size);
-
+}: ButtonProps) {
   return (
     <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled || loading}
       style={[
-        buttonStyles,
-        { height },
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: size === 'small' ? 8 : size === 'medium' ? 12 : 16,
+          borderRadius: 8,
+          backgroundColor: variant === 'primary' ? '#007AFF' : '#333333',
+          opacity: disabled ? 0.5 : 1,
+        },
         style,
       ]}
-      disabled={disabled || loading}
-      onPress={onPress}
-      activeOpacity={0.8}
-      {...rest}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-        {loading && (
-          <ActivityIndicator
-            size="small"
-            color={variant === 'tertiary' ? COLORS.black : COLORS.white}
-            style={styles.activityIndicator}
-          />
-        )}
-        {!loading && leftIcon && renderIcon && (
-          <View style={{ marginRight: 8 }}>
-            {renderIcon(leftIcon) as React.ReactElement}
-          </View>
-        )}
-        <Text style={[textStyles, { fontSize }]}>{label}</Text>
-        {!loading && rightIcon && renderIcon && (
-          <View style={{ marginLeft: 8 }}>
-            {renderIcon(rightIcon) as React.ReactElement}
-          </View>
-        )}
-      </View>
+      {loading ? (
+        <ActivityIndicator color="#fff" />
+      ) : (
+        <>
+          {leftIcon && renderIcon && (
+            <View style={{ marginRight: 8 }}>
+              {renderIcon(leftIcon)}
+            </View>
+          )}
+          {label && (
+            <Text style={{ color: '#fff', fontSize: 16 }}>
+              {label}
+            </Text>
+          )}
+        </>
+      )}
     </TouchableOpacity>
   );
-};
-
-export default Button;
+}

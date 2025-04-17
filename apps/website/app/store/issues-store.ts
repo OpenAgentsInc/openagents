@@ -3,21 +3,14 @@ import { type LabelInterface } from '@/mock-data/labels';
 import { type Priority } from '@/mock-data/priorities';
 import { type Project } from '@/mock-data/projects';
 import { create } from 'zustand';
+import { type BaseUser, type IssueStatus as BaseIssueStatus } from '@openagents/core';
 
-// Database-driven User interface
-export interface User {
-  id: string;
-  name: string;
-  email?: string;
-  image?: string | null;
-}
+// Re-export BaseUser for consistency
+export type User = BaseUser;
 
 // Generic Status interface compatible with both mock and DB data
-export interface Status {
-  id: string;
-  name: string;
-  color: string;
-  type?: string;
+export interface Status extends BaseIssueStatus {
+  // Any additional website-specific status properties can be added here
 }
 
 // Updated Issue interface to match the database schema

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabase } from '../database';
-import { Thread, ThreadDocument, Database } from '../types';
+import type { Thread, ThreadDocument, Database } from '../types';
 
 /**
  * Repository for thread operations

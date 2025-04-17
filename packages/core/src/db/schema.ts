@@ -1,5 +1,5 @@
-import { RxJsonSchema } from 'rxdb';
-import { Thread, StoredMessage, Settings } from './types';
+import { type RxJsonSchema } from 'rxdb';
+import type { Thread, StoredMessage, Settings } from './types';
 
 // Increment this when making schema changes
 // This allows RxDB to handle migrations properly
@@ -152,16 +152,16 @@ export const settingsSchema: RxJsonSchema<Settings> = {
           type: { type: 'string', enum: ['sse', 'stdio'] },
           url: { type: 'string' },
           command: { type: 'string' },
-          args: { 
+          args: {
             type: 'array',
             items: { type: 'string' }
           },
-          env: { 
+          env: {
             type: 'object',
             additionalProperties: true
           },
           lastConnected: { type: 'number' },
-          status: { 
+          status: {
             type: 'string',
             enum: ['connected', 'disconnected', 'error']
           },

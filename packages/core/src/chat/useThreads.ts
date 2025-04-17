@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { threadRepository } from '../db/repositories';
-import { Thread } from '../db/types';
+import type { Thread } from '../db/types';
 
 /**
  * Hook options

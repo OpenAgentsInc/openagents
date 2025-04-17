@@ -11,6 +11,8 @@
     "@ai-sdk/react": "1.2.2",
     "ajv": "^8.17.1",
     "partysocket": "^1.1.2",
+    "rxdb": "^15.12.0",
+    "rxjs": "^7.8.1",
     "universal-user-agent": "^7.0.2",
     "uuid": "^11.1.0",
     "z-schema": "^6.0.2",

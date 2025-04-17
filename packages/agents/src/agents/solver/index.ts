@@ -1,90 +1,47 @@
-import { Agent, type Connection, type WSMessage } from "agents";
-import { type UIMessage, generateId, generateText, generateObject, type ToolSet } from "ai";
+import { type Connection, type WSMessage } from "agents";
+import { generateId, generateText, type ToolSet, type ToolResult } from "ai";
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Env } from "../../types";
-import type { UIPart } from "@openagents/core/src/chat/types";
-import type { ToolContext } from "@openagents/core/src/tools/toolContext";
+import type { ToolContext, UIPart } from "@openagents/core";
 import { getFileContentsTool } from "../../common/tools/github/getFileContents";
 import { addIssueCommentTool } from "../../common/tools/github/addIssueComment";
 import { tools as commonTools } from "../../common/tools";
 import { solverTools } from "./tools";
 import { getSolverSystemPrompt } from "./prompts";
-import { openrouter, model, smallModel } from "../../common/config";
-import type { SolverState, Issue, ImplementationStep } from "./types";
+import { model } from "../../common/config";
+import type { SolverState } from "./types";
+import type { BaseIssue as Issue, ImplementationStep } from "@openagents/core";
+import { OpenAgent } from "../../common/types";
 
 export const solverContext = new AsyncLocalStorage<Solver>();
 
 /**
- * Solver Agent implementation that handles GitHub and Linear issue resolution
+ * Solver Agent that handles issue resolution in OpenAgents Projects
  */
-export class Solver extends Agent<Env, SolverState> {
+export class Solver extends OpenAgent<SolverState> {
+  // Initialize state by extending the base state with solver-specific properties
   initialState: SolverState = {
-    messages: [],
-    githubToken: undefined,
-    currentRepoOwner: undefined,
-    currentRepoName: undefined,
-    currentBranch: undefined,
-    scratchpad: '',
-    observations: [],
-    workingFilePath: undefined
+    ...this.getBaseInitialState(), // Type-safe access to base state
+    // Add solver-specific initial state properties here
   };
   tools: ToolSet = {};
-  
-  private ctx: any; // DurableObjectState type
-  
-  constructor(ctx: any, env: Env) {
-    super(ctx, env);
-    this.ctx = ctx; // Store ctx for direct storage access
-    console.log("[Constructor] Solver instance created.");
-  }
-
-  /**
-   * Safely updates the agent's state by merging the provided partial state
-   * with the existing state. Ensures ...this.state is always included.
-   * @param partialState An object containing the state properties to update.
-   */
-  updateState(partialState: Partial<SolverState>) {
-    this.setState({
-      ...this.state,
-      ...partialState,
-    });
-    console.log('[updateState] Updated in-memory state via this.setState.');
-  }
 
   /**
    * Sets the current issue being worked on
    */
-  async setCurrentIssue(issue: Issue) {
-    await this.updateState({
+  setCurrentIssue(issue: Issue) {
+    this.updateState({
       currentIssue: issue
     });
-    
-    await this.addAgentObservation(`Now working on issue #${issue.number}: ${issue.title}`);
-    
-    return { success: true, message: `Set current issue to #${issue.number}` };
-  }
 
-  /**
-   * Sets the current repository context
-   */
-  async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
-    console.log(`[setRepositoryContext] Setting context to ${owner}/${repo} on branch ${branch}`);
-    
-    await this.updateState({
-      currentRepoOwner: owner,
-      currentRepoName: repo,
-      currentBranch: branch
-    });
-    
-    await this.addAgentObservation(`Repository context set to ${owner}/${repo}:${branch}`);
-    
-    return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
+    this.addAgentObservation(`Now working on issue #${issue.number}: ${issue.title}`);
+
+    return { success: true, message: `Set current issue to #${issue.number}` };
   }
 
   /**
    * Updates the implementation step status
    */
-  async updateStepStatus(stepId: string, status: ImplementationStep['status'], notes?: string) {
+  updateStepStatus(stepId: string, status: ImplementationStep['status'], notes?: string) {
     if (!this.state.implementationSteps) return false;
 
     const updatedSteps = this.state.implementationSteps.map(step => {
@@ -100,46 +57,12 @@ export class Solver extends Agent<Env, SolverState> {
       return step;
     });
 
-    await this.updateState({
+    this.updateState({
       implementationSteps: updatedSteps,
       observations: [...(this.state.observations || []), `Step ${stepId} status changed to ${status}${notes ? " with note" : ""}`]
     });
 
     return true;
-  }
-
-  /**
-   * Sets the file currently being worked on
-   */
-  async setCurrentFile(filePath: string) {
-    await this.updateState({
-      workingFilePath: filePath
-    });
-    
-    await this.addAgentObservation(`Now working on file: ${filePath}`);
-  }
-
-  /**
-   * Adds an observation to the agent's state
-   */
-  async addAgentObservation(observation: string) {
-    await this.updateState({
-      observations: [...(this.state.observations || []), observation]
-    });
-  }
-
-  /**
-   * Updates the agent's scratchpad with agent thoughts
-   */
-  private async updateScratchpad(thought: string) {
-    const timestamp = new Date().toISOString();
-    const formattedThought = `${timestamp}: ${thought}`;
-    
-    this.updateState({
-      scratchpad: this.state.scratchpad
-        ? `${this.state.scratchpad}\n- ${formattedThought}`
-        : `- ${formattedThought}`
-    });
   }
 
   /**
@@ -167,12 +90,12 @@ export class Solver extends Agent<Env, SolverState> {
         switch (parsedMessage.command) {
           case 'setIssue':
             if (parsedMessage.issue) {
-              await this.setCurrentIssue(parsedMessage.issue);
+              this.setCurrentIssue(parsedMessage.issue);
             }
             break;
           case 'setRepo':
             if (parsedMessage.owner && parsedMessage.repo) {
-              await this.setRepositoryContext(
+              this.setRepositoryContext(
                 parsedMessage.owner,
                 parsedMessage.repo,
                 parsedMessage.branch || 'main'
@@ -182,7 +105,7 @@ export class Solver extends Agent<Env, SolverState> {
           default:
             console.warn(`Received unknown command: ${parsedMessage.command}`);
         }
-        
+
         callInfer = true; // Call infer after processing commands
       }
 
@@ -191,7 +114,7 @@ export class Solver extends Agent<Env, SolverState> {
       if (parsedMessage.githubToken) {
         console.log("Processing githubToken update...");
         const githubToken = parsedMessage.githubToken;
-        await this.updateState({
+        this.updateState({
           githubToken
         });
 
@@ -208,14 +131,14 @@ export class Solver extends Agent<Env, SolverState> {
       // --- Issue Information Logic ---
       if (parsedMessage.issue) {
         console.log("Processing issue update...");
-        await this.setCurrentIssue(parsedMessage.issue);
+        this.setCurrentIssue(parsedMessage.issue);
         callInfer = true;
       }
 
       // --- Repository Context Logic ---
       if (parsedMessage.repoOwner && parsedMessage.repoName) {
         console.log("Processing repository context update...");
-        await this.setRepositoryContext(
+        this.setRepositoryContext(
           parsedMessage.repoOwner,
           parsedMessage.repoName,
           parsedMessage.branch || 'main'
@@ -227,9 +150,9 @@ export class Solver extends Agent<Env, SolverState> {
       // Check if there's a user message that needs inference
       if (parsedMessage.userMessage && parsedMessage.userMessage.content) {
         console.log("User message present, will call infer.");
-        
+
         // Update messages array with the new user message
-        await this.updateState({
+        this.updateState({
           messages: [
             ...(this.state.messages || []),
             {
@@ -240,7 +163,7 @@ export class Solver extends Agent<Env, SolverState> {
             }
           ]
         });
-        
+
         callInfer = true;
       }
 
@@ -264,7 +187,7 @@ export class Solver extends Agent<Env, SolverState> {
   async infer() {
     return solverContext.run(this, async () => {
       // Add initial planning thought
-      await this.updateScratchpad("Processing request and planning response");
+      this.updateScratchpad("Processing request and planning response");
 
       // Get GitHub token from state
       const token = this.state.githubToken;
@@ -280,7 +203,7 @@ export class Solver extends Agent<Env, SolverState> {
 
       // Set up tool context
       const toolContext: ToolContext = { githubToken: token };
-      
+
       // Combine solver-specific tools with common tools and GitHub tools
       const tools = {
         get_file_contents: getFileContentsTool(toolContext),
@@ -301,7 +224,7 @@ export class Solver extends Agent<Env, SolverState> {
         system: systemPrompt,
         model,
         messages,
-        tools,
+        tools: tools as ToolSet,
         maxTokens: 5000,
         temperature: 0.7,
         maxSteps: 5,
@@ -319,7 +242,7 @@ export class Solver extends Agent<Env, SolverState> {
           ? `${result.text.substring(0, 50)}...`
           : result.text;
 
-        await this.addAgentObservation(`Generated response: ${snippet}`);
+        this.addAgentObservation(`Generated response: ${snippet}`);
       }
 
       // Create message parts array to handle both text and tool calls
@@ -337,13 +260,13 @@ export class Solver extends Agent<Env, SolverState> {
       if (result.toolCalls && result.toolCalls.length > 0) {
         for (let i = 0; i < result.toolCalls.length; i++) {
           const toolCall = result.toolCalls[i];
-          
+
           // Add observation for tool usage
-          await this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
-          
+          this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
+
           // Find matching result if available
-          const toolResult = result.toolResults && result.toolResults[i];
-          
+          const toolResult = result.toolResults && result.toolResults[i] as ToolResult<string, any, any>;
+
           if (toolResult) {
             // Add the tool with result to messageParts
             messageParts.push({
@@ -356,20 +279,20 @@ export class Solver extends Agent<Env, SolverState> {
                 result: toolResult.result
               }
             });
-            
+
             // Add observation for tool result
             const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
               ? `${toolResult.result.substring(0, 50)}...`
               : JSON.stringify(toolResult.result).substring(0, 50) + '...';
-            await this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
-            
+            this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
+
             // Update state based on tool results (e.g., if we fetched issue details)
             if (toolCall.toolName === 'getIssueDetails' && toolResult.result) {
               try {
                 // If the result looks like an issue, update the current issue
                 const resultObj = toolResult.result as any;
                 if (resultObj.id && resultObj.number && resultObj.title) {
-                  await this.setCurrentIssue(resultObj);
+                  this.setCurrentIssue(resultObj);
                 }
               } catch (error) {
                 console.error("[infer] Error updating issue from tool result:", error);
@@ -393,11 +316,11 @@ export class Solver extends Agent<Env, SolverState> {
       // Add a thought about the interaction to the scratchpad
       if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
         const lastUserMessage = messages[messages.length - 1].content;
-        await this.updateScratchpad(`Processing user request: ${lastUserMessage}`);
+        this.updateScratchpad(`Processing user request: ${lastUserMessage}`);
       }
 
       // Finally, update state with the new message
-      await this.updateState({
+      this.updateState({
         messages: [
           ...messages,
           {

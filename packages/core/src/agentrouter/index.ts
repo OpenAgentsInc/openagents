@@ -1,7 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { AGENTS, AgentName } from './AGENTS';
-import { AgentRouterProvider } from './provider';
+import { AGENTS, type AgentName } from './AGENTS';
+import { type AgentRouterProvider } from './provider';
 
 export interface RoutedPrompt {
   agent_name: AgentName

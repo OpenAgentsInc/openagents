@@ -1,52 +1,17 @@
 import { type UIMessage } from "ai";
+import type { BaseAgentState } from "../../common/types";
+import type { BaseIssue, ImplementationStep, IssueComment } from "@openagents/core";
 
-// Define types for Solver state
-export interface SolverState {
-  messages: UIMessage[];
-  githubToken?: string;
-  currentIssue?: Issue;
-  currentRepoOwner?: string;
-  currentRepoName?: string;
-  currentBranch?: string;
+// Define types for Solver state - extends base agent state
+export interface SolverState extends BaseAgentState {
+  messages: UIMessage[]; // Override to specify UIMessage type
+  currentIssue?: BaseIssue;
   implementationSteps?: ImplementationStep[];
-  observations?: string[];
-  scratchpad?: string;
-  workingFilePath?: string;
   issueComments?: IssueComment[];
 }
 
-export interface Issue {
-  id: string;
-  number: number;
-  title: string;
-  description: string;
-  source: 'github' | 'linear' | 'other';
-  status: 'open' | 'in_progress' | 'review' | 'closed';
-  url?: string;
-  assignee?: string;
-  labels?: string[];
-  created: Date;
-  updated?: Date;
-  projectId?: string;
-  teamId?: string;
-}
-
-export interface ImplementationStep {
-  id: string;
-  description: string;
-  type: 'analysis' | 'research' | 'implementation' | 'testing' | 'documentation';
-  status: 'pending' | 'in_progress' | 'completed' | 'skipped';
-  notes?: string;
-  created: Date;
-  started?: Date;
-  completed?: Date;
-  dependsOn?: string[]; // IDs of steps this one depends on
-  filePaths?: string[]; // Files involved in this step
-}
-
-export interface IssueComment {
-  id: string;
-  content: string;
-  author: string;
-  created: Date;
+// Use the solver-specific issue type to add any solver-specific fields
+export interface SolverIssue extends BaseIssue {
+  // If needed, add solver-specific issue fields here
+  // For now, we can use the base issue type directly
 }

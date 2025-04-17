@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { settingsRepository } from '../db/repositories';
-import { Settings } from '../db/types';
+import type { Settings } from '../db/types';
 
 /**
  * Hook for accessing application settings
@@ -8,22 +8,22 @@ import { Settings } from '../db/types';
 export function useSettings() {
   // Settings state
   const [settings, setSettings] = useState<Settings | null>(null);
-  
+
   // Loading state
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  
+
   // Error state
   const [error, setError] = useState<Error | null>(null);
-  
+
   // Load settings
   const loadSettings = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const appSettings = await settingsRepository.getSettings();
       setSettings(appSettings);
-      
+
       return appSettings;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
@@ -34,7 +34,7 @@ export function useSettings() {
       setIsLoading(false);
     }
   }, []);
-  
+
   // Update settings
   const updateSettings = useCallback(async (updates: Partial<Settings>): Promise<Settings | null> => {
     try {
@@ -47,7 +47,7 @@ export function useSettings() {
       return null;
     }
   }, []);
-  
+
   // Set API key for a provider
   const setApiKey = useCallback(async (provider: string, key: string): Promise<void> => {
     try {
@@ -58,7 +58,7 @@ export function useSettings() {
       console.error('Error setting API key:', error);
     }
   }, [loadSettings]);
-  
+
   // Get API key for a provider
   const getApiKey = useCallback(async (provider: string): Promise<string | null> => {
     try {
@@ -69,7 +69,7 @@ export function useSettings() {
       return null;
     }
   }, []);
-  
+
   // Delete API key for a provider
   const deleteApiKey = useCallback(async (provider: string): Promise<void> => {
     try {
@@ -80,7 +80,7 @@ export function useSettings() {
       console.error('Error deleting API key:', error);
     }
   }, [loadSettings]);
-  
+
   // Set a preference value
   const setPreference = useCallback(async <T>(key: string, value: T): Promise<void> => {
     try {
@@ -91,7 +91,7 @@ export function useSettings() {
       console.error('Error setting preference:', error);
     }
   }, [loadSettings]);
-  
+
   // Get a preference value
   const getPreference = useCallback(async <T>(key: string, defaultValue: T): Promise<T> => {
     try {
@@ -102,19 +102,19 @@ export function useSettings() {
       return defaultValue;
     }
   }, []);
-  
+
   // Initial load
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
-  
+
   // Clear settings cache in repository
   const clearSettingsCache = useCallback(() => {
     settingsRepository.clearCache();
     // Reload settings
     return loadSettings();
   }, [loadSettings]);
-  
+
   // Reset settings to defaults
   const resetSettings = useCallback(async () => {
     try {
