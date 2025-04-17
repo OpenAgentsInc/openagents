@@ -1,32 +1,43 @@
 import React from 'react';
-import { CardProps } from './Card.types';
-import { View } from '@openagents/core';
-import { styles, getCardPadding } from './Card.styles';
+import { View, ViewStyle } from 'react-native';
 
-export const Card = ({
-  children,
-  padding = 'medium',
-  borderWidth = 1,
-  style,
-  ...rest
-}: CardProps) => {
-  const paddingValue = getCardPadding(padding);
+interface CardProps {
+  children: React.ReactNode;
+  style?: ViewStyle;
+  padding?: 'none' | 'small' | 'medium' | 'large';
+}
+
+export function Card({ children, style, padding = 'medium' }: CardProps) {
+  const getPadding = () => {
+    switch (padding) {
+      case 'small':
+        return 8;
+      case 'large':
+        return 24;
+      case 'none':
+        return 0;
+      default:
+        return 16;
+    }
+  };
 
   return (
     <View
       style={[
-        styles.card,
         {
-          padding: paddingValue,
-          borderWidth,
+          backgroundColor: '#1A1A1A',
+          borderRadius: 8,
+          padding: getPadding(),
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 3.84,
+          elevation: 5,
         },
         style,
       ]}
-      {...rest}
     >
-      {children as React.ReactNode}
+      {children}
     </View>
   );
-};
-
-export default Card;
+}

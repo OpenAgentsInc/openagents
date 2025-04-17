@@ -1,8 +1,7 @@
 import { observer } from "mobx-react-lite"
 import { FC, useState } from "react"
-import { ScrollView, StyleSheet, TextStyle, View, ViewStyle, ImageStyle } from "react-native"
+import { ScrollView, StyleSheet, TextStyle, View, ViewStyle, ImageStyle, TouchableOpacity } from "react-native"
 import { Icon, Screen, Text } from "@/components"
-import { Button, Card } from "@openagents/ui"
 import { useHeader } from "@/hooks/useHeader"
 import { goBack } from "@/navigators/navigationUtilities"
 import { typography } from "@/theme"
@@ -48,54 +47,50 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
   return (
     <Screen style={$root} preset="scroll">
       <View style={$container}>
-        <Card padding="large" style={$totalCard}>
+        <View style={$totalCard}>
           <Text text={`${activePeriod.charAt(0).toUpperCase() + activePeriod.slice(1)} Earnings`} style={$totalLabel} />
           <View style={$totalMoneyContainer}>
             <Money sats={periodTotal} symbol={true} size="display" />
           </View>
           <View style={$periodSelector}>
-            <Button
-              label="Week"
-              variant="primary"
-              size="small"
+            <TouchableOpacity
               style={[
                 $periodButton,
                 activePeriod === 'week' ? $periodButtonActive : null
               ]}
               onPress={() => setActivePeriod('week')}
-            />
-            <Button
-              label="Month"
-              variant="primary"
-              size="small"
+            >
+              <Text style={$periodButtonText}>Week</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[
                 $periodButton,
                 activePeriod === 'month' ? $periodButtonActive : null
               ]}
               onPress={() => setActivePeriod('month')}
-            />
-            <Button
-              label="Year"
-              variant="primary"
-              size="small"
+            >
+              <Text style={$periodButtonText}>Month</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[
                 $periodButton,
                 activePeriod === 'year' ? $periodButtonActive : null
               ]}
               onPress={() => setActivePeriod('year')}
-            />
-            <Button
-              label="All"
-              variant="primary"
-              size="small"
+            >
+              <Text style={$periodButtonText}>Year</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[
                 $periodButton,
                 activePeriod === 'all' ? $periodButtonActive : null
               ]}
               onPress={() => setActivePeriod('all')}
-            />
+            >
+              <Text style={$periodButtonText}>All</Text>
+            </TouchableOpacity>
           </View>
-        </Card>
+        </View>
 
         <Text text="Earnings Breakdown" style={$sectionHeader} />
         <ScrollView style={$categoriesList}>
@@ -115,7 +110,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
             if (categoryTotal === 0) return null;
 
             return (
-              <Card key={item.category} padding="medium" style={$categoryCard}>
+              <View key={item.category} style={$categoryCard}>
                 <View style={$categoryHeader}>
                   <View style={$categoryLeft}>
                     <Icon icon={item.icon as any} color="white" size={24} style={$icon} />
@@ -127,7 +122,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
                     <MoneySmall sats={categoryTotal} symbol={true} size="bodyMSB" />
                   </View>
                 </View>
-              </Card>
+              </View>
             );
           })
             .filter(Boolean) /* Remove null items */
@@ -135,7 +130,7 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
 
           {/* Show message if no earnings in selected period */}
           {filteredEarnings.length === 0 && (
-            <Card padding="medium" style={$categoryCard}>
+            <View style={$categoryCard}>
               <View style={$categoryHeader}>
                 <View style={$categoryLeft}>
                   <Ionicons name="information-circle-outline" color="white" size={24} style={$icon} />
@@ -144,20 +139,17 @@ export const AgentEarningsScreen: FC = observer(function AgentEarningsScreen() {
                   </View>
                 </View>
               </View>
-            </Card>
+            </View>
           )}
         </ScrollView>
 
         <View style={$actionsContainer}>
-          <Button
-            label="Go to Wallet"
-            variant="primary"
-            size="medium"
+          <TouchableOpacity
             style={$actionButton}
-            leftIcon="wallet-outline"
-            renderIcon={renderIcon}
             onPress={() => navigation.navigate("Wallet")}
-          />
+          >
+            <Text style={$actionButtonText}>Go to Wallet</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Screen>
@@ -202,6 +194,13 @@ const $periodButton: ViewStyle = {
 
 const $periodButtonActive: ViewStyle = {
   backgroundColor: colors.palette.neutral200,
+}
+
+const $periodButtonText: TextStyle = {
+  color: "white",
+  fontSize: 16,
+  fontFamily: typography.primary.medium,
+  textAlign: "center",
 }
 
 const $sectionHeader: TextStyle = {
@@ -258,6 +257,16 @@ const $actionsContainer: ViewStyle = {
 
 const $actionButton: ViewStyle = {
   width: "100%",
+  backgroundColor: colors.palette.accent100,
+  padding: 12,
+  borderRadius: 8,
+  alignItems: "center",
+}
+
+const $actionButtonText: TextStyle = {
+  color: "white",
+  fontSize: 16,
+  fontFamily: typography.primary.medium,
 }
 
 const $moneyContainer: ViewStyle = {

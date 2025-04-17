@@ -2,12 +2,23 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { ToolContext } from "@openagents/core/src/tools/toolContext";
 
+interface GitHubCommentResponse {
+  id: number;
+  html_url: string;
+}
+
+interface AddIssueCommentParams {
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  body: string;
+}
+
 /**
  * Tool for adding comments to GitHub issues
  */
 export function addIssueCommentTool(context: ToolContext) {
-  return tool({
-    name: "add_issue_comment",
+  const toolConfig = {
     description: "Add a comment to a GitHub issue",
     parameters: z.object({
       owner: z.string().describe("The owner of the repository (username or organization)"),
@@ -15,19 +26,19 @@ export function addIssueCommentTool(context: ToolContext) {
       issueNumber: z.number().describe("The issue number"),
       body: z.string().describe("The comment text to add to the issue"),
     }),
-    execute: async ({ owner, repo, issueNumber, body }) => {
+    execute: async ({ owner, repo, issueNumber, body }: AddIssueCommentParams) => {
       console.log(`[add_issue_comment] Adding comment to ${owner}/${repo}#${issueNumber}`);
-      
+
       if (!context.githubToken) {
         throw new Error("GitHub token is required but not provided");
       }
-      
+
       const token = context.githubToken;
-      
+
       try {
         // Construct GitHub API URL for adding comments
         const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}/comments`;
-        
+
         // Make API request
         const response = await fetch(url, {
           method: 'POST',
@@ -39,15 +50,15 @@ export function addIssueCommentTool(context: ToolContext) {
           },
           body: JSON.stringify({ body })
         });
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[add_issue_comment] GitHub API error: ${response.status} ${response.statusText}`, errorText);
           throw new Error(`GitHub API error (${response.status}): ${errorText}`);
         }
-        
-        const data = await response.json();
-        
+
+        const data = await response.json() as GitHubCommentResponse;
+
         return {
           success: true,
           commentId: data.id,
@@ -59,5 +70,7 @@ export function addIssueCommentTool(context: ToolContext) {
         throw error;
       }
     }
-  });
+  };
+
+  return tool(toolConfig);
 }

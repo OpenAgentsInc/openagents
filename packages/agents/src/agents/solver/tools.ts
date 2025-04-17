@@ -53,7 +53,21 @@ export const getIssueDetails = tool({
           throw new Error(`GitHub API error (${response.status}): ${errorText}`);
         }
 
-        const data = await response.json();
+        // Define a type for GitHub issue response
+        interface GitHubIssue {
+          id: number;
+          number: number;
+          title: string;
+          body: string | null;
+          state: string;
+          html_url: string;
+          assignee: { login: string } | null;
+          labels: Array<{ name: string }>;
+          created_at: string;
+          updated_at: string;
+        }
+        
+        const data = await response.json() as GitHubIssue;
         
         // Map the response to our Issue type
         return {
@@ -65,7 +79,7 @@ export const getIssueDetails = tool({
           status: data.state === "open" ? "open" : "closed",
           url: data.html_url,
           assignee: data.assignee ? data.assignee.login : undefined,
-          labels: data.labels ? data.labels.map((label: any) => label.name) : [],
+          labels: data.labels ? data.labels.map(label => label.name) : [],
           created: new Date(data.created_at),
           updated: new Date(data.updated_at)
         };
@@ -171,7 +185,14 @@ export const updateIssueStatus = tool({
           }
         }
 
-        const data = await response.json();
+        // Define a type for GitHub issue update response
+        interface GitHubIssueUpdate {
+          id: number;
+          number: number;
+          updated_at: string;
+        }
+        
+        const data = await response.json() as GitHubIssueUpdate;
         
         return {
           success: true,
@@ -226,16 +247,16 @@ export const createImplementationPlan = tool({
         {
           id: "step-1",
           description: "Analyze the issue requirements",
-          type: "analysis",
-          status: "pending",
+          type: "analysis" as const,
+          status: "pending" as const,
           created: new Date(),
           notes: "Understand the scope and requirements from the issue description"
         },
         {
           id: "step-2",
           description: "Research existing solutions",
-          type: "research",
-          status: "pending",
+          type: "research" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-1"],
           notes: "Look for similar patterns or solutions in the codebase"
@@ -243,8 +264,8 @@ export const createImplementationPlan = tool({
         {
           id: "step-3",
           description: "Implement solution",
-          type: "implementation",
-          status: "pending",
+          type: "implementation" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-2"],
           notes: "Write code to address the issue"
@@ -252,8 +273,8 @@ export const createImplementationPlan = tool({
         {
           id: "step-4",
           description: "Add tests",
-          type: "testing",
-          status: "pending",
+          type: "testing" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-3"],
           notes: "Create tests to verify the solution"
@@ -261,16 +282,20 @@ export const createImplementationPlan = tool({
         {
           id: "step-5",
           description: "Update documentation",
-          type: "documentation",
-          status: "pending",
+          type: "documentation" as const,
+          status: "pending" as const,
           created: new Date(),
           dependsOn: ["step-3"],
           notes: "Update relevant documentation for the changes"
         }
       ];
       
-      // Store the implementation steps in the agent's state
-      await agent.updateState({
+      // Get current state first
+      const currentState = agent.state;
+      
+      // Then update with the full state object including required messages
+      await agent.setState({
+        ...currentState,
         implementationSteps: steps
       });
       

@@ -1,9 +1,13 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useAgent } from "agents/react";
-import { useAgentChat } from "agents/ai-react";
-import type { Message } from "@ai-sdk/react";
+import { useEffect, useState, useRef, useCallback, useMemo, type ChangeEvent } from "react";
+import { useChat, type UseChatHelpers, type Message as UIMessage, type UseChatOptions } from "@ai-sdk/react";
+import { createAgentRouterProvider, useAgentChat, type UseAgentChatReturn, type UseAgentChatOptions } from "@openagents/core";
+import type { AgentRouterProvider } from "@openagents/core";
+import type { Message } from "ai";
+import type { LanguageModelUsage } from "@openagents/core";
 import { APPROVAL } from "./shared";
-import type { tools } from "./tools";
+import type { tools } from "./common/tools";
+import { tool } from "ai";
+import { z } from "zod";
 
 // Component imports
 import { Button } from "@/components/button/Button";
@@ -32,6 +36,40 @@ const toolsRequiringConfirmation: (keyof typeof tools)[] = [
   "getWeatherInformation",
 ];
 
+interface ErrorWithMessage {
+  message: string;
+}
+
+function isErrorWithMessage(error: unknown): error is ErrorWithMessage {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as Record<string, unknown>).message === 'string'
+  );
+}
+
+function getErrorMessage(error: unknown): string {
+  if (isErrorWithMessage(error)) {
+    return error.message;
+  }
+  return String(error);
+}
+
+interface ExtendedUseChatHelpers extends UseChatHelpers {
+  addToolResult: (params: { toolCallId: string; result: any }) => void;
+  clearHistory: () => void;
+  send: (message: string, options?: any) => Promise<void>;
+}
+
+interface ExtendedUseChatOptions extends UseChatOptions {
+  agentRouterProvider: AgentRouterProvider;
+  onStateUpdate?: (state: any) => void;
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  onError?: (error: Error) => void;
+}
+
 export default function Chat() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     // Check localStorage first, default to dark if not found
@@ -42,8 +80,11 @@ export default function Chat() {
   const [rawState, setRawState] = useState<any>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+  const [isContinuousRunActive, setIsContinuousRunActive] = useState<boolean | undefined>(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
+
   // Calculate task counts from agent state
   const taskCounts = useMemo(() => {
     const tasks = rawState?.tasks || [];
@@ -85,48 +126,49 @@ export default function Chat() {
     setTheme(newTheme);
   };
 
-  const agent = useAgent({
-    agent: "coder",
-    onStateUpdate: (state) => {
+  const agentOptions: ExtendedUseChatOptions = {
+    agentRouterProvider: createAgentRouterProvider("CODER", ""),
+    onStateUpdate: (state: any) => {
       console.log("Agent state updated:", state);
-      setRawState(state);
-      setConnectionStatus('connected');
+      if (state.isContinuousRunActive !== undefined) {
+        setIsContinuousRunActive(state.isContinuousRunActive);
+      }
     },
     onConnect: () => {
       console.log("Agent connected");
       setConnectionStatus('connected');
-      setConnectionError(null);
     },
     onDisconnect: () => {
       console.log("Agent disconnected");
       setConnectionStatus('disconnected');
-      setConnectionError("Connection to agent lost");
     },
-    onError: (error) => {
-      console.error("Agent error:", error);
-      setConnectionError(error.message || "Unknown error occurred");
+    onError: (error: Error) => {
+      console.error("Agent error:", getErrorMessage(error));
+      setConnectionError(getErrorMessage(error));
     }
-  });
-  
+  };
+
+  const agent = useChat(agentOptions) as ExtendedUseChatHelpers;
+
   // Handle toggling continuous run
-  const handleToggleContinuousRun = () => { // Make it non-async, send is usually fire-and-forget
+  const handleToggleContinuousRun = () => {
     if (!agent || connectionStatus !== 'connected') return;
 
-    const currentlyActive = rawState?.isContinuousRunActive || false;
+    const currentlyActive = isContinuousRunActive || false;
     const command = currentlyActive ? 'stopContinuousRun' : 'startContinuousRun';
     console.log(`Sending command: ${command}`);
 
     try {
-      // Send a structured command message via WebSocket
-      agent.send(JSON.stringify({
-        type: 'command',
-        command: command,
-      }));
-      console.log(`Sent ${command} command via WebSocket`);
-      // State update will come via onStateUpdate, no need to set locally here
+      if (agent.send) {
+        agent.send(JSON.stringify({
+          type: 'command',
+          command: command,
+        }));
+        console.log(`Sent ${command} command via WebSocket`);
+      }
     } catch (error) {
       console.error(`Error sending ${command} command:`, error);
-      setConnectionError(`Failed to send ${command} command: ${error.message || 'Unknown error'}`);
+      setConnectionError(`Failed to send ${command} command: ${getErrorMessage(error)}`);
     }
   };
 
@@ -135,11 +177,9 @@ export default function Chat() {
     input: agentInput,
     handleInputChange: handleAgentInputChange,
     handleSubmit: handleAgentSubmit,
-    addToolResult,
-    clearHistory,
   } = useAgentChat({
-    agent,
-    maxSteps: 5,
+    agentRouterProvider: agentOptions.agentRouterProvider,
+    maxSteps: 5
   });
 
   // Scroll to bottom when messages change
@@ -160,6 +200,33 @@ export default function Chat() {
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setAttachment(selectedFile);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (!input.trim()) return;
+
+    const currentInput = input;
+    setInput("");
+
+    try {
+      await handleAgentSubmit(e);
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
+
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    handleAgentInputChange(e);
   };
 
   return (
@@ -213,19 +280,19 @@ export default function Chat() {
             size="md"
             shape="square"
             className="rounded-full h-9 w-9"
-            onClick={clearHistory}
+            onClick={handleAgentSubmit}
           >
             <Trash size={20} />
           </Button>
         </div>
-        
+
         {/* Task counts and controls */}
         <div className="px-4 py-2 border-b border-neutral-300 dark:border-neutral-800">
           <div className="grid grid-cols-2 gap-4">
             {/* Task Counts */}
             <div>
-              <Label 
-                title="Agent Tasks" 
+              <Label
+                title="Agent Tasks"
                 className="text-xs font-semibold flex items-center gap-1.5 mb-2"
               >
                 <ListChecks size={14} className="text-[#F48120]" />
@@ -239,21 +306,21 @@ export default function Chat() {
                 <div className="font-medium mt-1 pt-1 border-t border-neutral-300/20 dark:border-neutral-800/20">Total: {taskCounts.total}</div>
               </div>
             </div>
-            
+
             {/* Continuous Run Controls */}
             <div>
-              <Label 
+              <Label
                 title="Continuous Run"
                 className="text-xs font-semibold flex items-center gap-1.5 mb-2"
               >
-                {rawState?.isContinuousRunActive ? 
-                  <Pause size={14} className="text-[#F48120]" /> : 
+                {isContinuousRunActive ?
+                  <Pause size={14} className="text-[#F48120]" /> :
                   <Play size={14} className="text-[#F48120]" />
                 }
               </Label>
               <div className="text-xs mb-2">
-                Status: {rawState?.isContinuousRunActive ? 
-                  <span className="text-green-500 font-medium">Active</span> : 
+                Status: {isContinuousRunActive ?
+                  <span className="text-green-500 font-medium">Active</span> :
                   <span className="text-muted-foreground">Inactive</span>
                 }
               </div>
@@ -264,7 +331,7 @@ export default function Chat() {
                 onClick={handleToggleContinuousRun}
                 disabled={connectionStatus !== 'connected'}
               >
-                {rawState?.isContinuousRunActive ? (
+                {isContinuousRunActive ? (
                   <><Pause className="w-3 h-3 mr-2" /> Pause Run</>
                 ) : (
                   <><Play className="w-3 h-3 mr-2" /> Start Run</>
@@ -272,7 +339,7 @@ export default function Chat() {
               </Button>
             </div>
           </div>
-          
+
           {connectionStatus !== 'connected' && (
             <div className="mt-2 text-xs text-amber-500">
               {connectionStatus === 'connecting' ? 'Connecting to agent...' : 'Disconnected from agent'}
@@ -345,8 +412,8 @@ export default function Chat() {
                               <div key={i}>
                                 <Card
                                   className={`p-3 rounded-md bg-neutral-100 dark:bg-neutral-900 ${isUser
-                                      ? "rounded-br-none"
-                                      : "rounded-bl-none border-assistant-border"
+                                    ? "rounded-br-none"
+                                    : "rounded-bl-none border-assistant-border"
                                     } ${part.text.startsWith("scheduled message")
                                       ? "border-accent/50"
                                       : ""
@@ -424,10 +491,11 @@ export default function Chat() {
                                       variant="primary"
                                       size="sm"
                                       onClick={() =>
-                                        addToolResult({
-                                          toolCallId,
-                                          result: APPROVAL.NO,
-                                        })
+                                        handleAgentInputChange({
+                                          target: {
+                                            value: APPROVAL.NO,
+                                          },
+                                        } as unknown as ChangeEvent<HTMLTextAreaElement>)
                                       }
                                     >
                                       Reject
@@ -437,10 +505,11 @@ export default function Chat() {
                                         variant="primary"
                                         size="sm"
                                         onClick={() =>
-                                          addToolResult({
-                                            toolCallId,
-                                            result: APPROVAL.YES,
-                                          })
+                                          handleAgentInputChange({
+                                            target: {
+                                              value: APPROVAL.YES,
+                                            },
+                                          } as unknown as ChangeEvent<HTMLTextAreaElement>)
                                         }
                                       >
                                         Approve
@@ -466,15 +535,7 @@ export default function Chat() {
 
         {/* Input Area */}
         <form
-          onSubmit={(e) =>
-            handleAgentSubmit(e, {
-              data: {
-                annotations: {
-                  hello: "world",
-                },
-              },
-            })
-          }
+          onSubmit={handleSubmit}
           className="p-3 bg-input-background absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800"
         >
           <div className="flex items-center gap-2">
@@ -487,12 +548,12 @@ export default function Chat() {
                     : "Type your message..."
                 }
                 className="pl-4 pr-10 py-2 w-full rounded-full"
-                value={agentInput}
-                onChange={handleAgentInputChange}
+                value={input}
+                onChange={handleInputChange as unknown as (e: ChangeEvent<HTMLInputElement>) => void}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleAgentSubmit(e as unknown as React.FormEvent);
+                    handleSubmit(e as unknown as React.FormEvent<HTMLFormElement>);
                   }
                 }}
                 onValueChange={undefined}
@@ -503,7 +564,7 @@ export default function Chat() {
               type="submit"
               shape="square"
               className="rounded-full h-10 w-10 flex-shrink-0"
-              disabled={pendingToolCallConfirmation || !agentInput.trim()}
+              disabled={pendingToolCallConfirmation || !input.trim()}
             >
               <PaperPlaneRight size={16} />
             </Button>

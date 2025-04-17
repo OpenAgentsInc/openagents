@@ -1,6 +1,3 @@
-// Database schema types for projects and teams
-import { type InferSelectModel } from 'drizzle-orm';
-
 // User type from the existing schema
 export interface User {
   id: string;

@@ -1,4 +1,4 @@
-import { JSONRPCMessage } from "./types";
+import type { JSONRPCMessage } from "./types";
 
 /**
  * Describes the minimal contract for a MCP transport that a client or server can communicate over.

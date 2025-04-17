@@ -6,4 +6,4 @@ export { Solver } from './agents/solver';
 export { default } from './server';
 
 // Also export common types
-export type { Env } from './types';
+export type { Env } from './common/env';
