@@ -27,6 +27,7 @@ export type OpenAgent = {
   setRepositoryContext?: (owner: string, repo: string, branch?: string) => Promise<void>;
   addAgentObservation: (observation: string) => Promise<void>; // Add method to send observations
   sendRawMessage: (message: any) => void; // Add method to send raw WebSocket messages
+  getSystemPrompt: () => Promise<string>; // Method to get the agent's system prompt
   connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error';
   disconnect: () => void; // Method to properly disconnect
 }
@@ -133,6 +134,35 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
         }));
       }
     };
+    
+    const handleSocketMessage = (event: MessageEvent) => {
+      try {
+        // Parse the message
+        const data = JSON.parse(event.data);
+        
+        // Don't log state messages as they generate too much noise
+        if (data.type !== 'cf_agent_state') {
+          console.log(`[useOpenAgent ${agentName}] Received WebSocket message:`, data);
+        }
+        
+        // Handle different message types
+        if (data.type === 'prompt_response' && data.requestId) {
+          // Create the event name for this response
+          const eventName = `${agentName}:prompt_response:${data.requestId}`;
+          
+          // Create a custom event with the response data
+          const responseEvent = new CustomEvent(eventName, {
+            detail: data
+          });
+          
+          // Dispatch the event for the promise to handle
+          window.dispatchEvent(responseEvent);
+          console.log(`[useOpenAgent ${agentName}] Dispatched prompt response event for request ${data.requestId}`);
+        }
+      } catch (error) {
+        console.error(`[useOpenAgent ${agentName}] Error handling WebSocket message:`, error);
+      }
+    };
 
     // If we already received a state update, we're already connected
     if (state && Object.keys(state).length > 0 && connectionStatus === 'disconnected') {
@@ -144,12 +174,14 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     cloudflareAgent.addEventListener('open', handleSocketOpen);
     cloudflareAgent.addEventListener('close', handleSocketClose);
     cloudflareAgent.addEventListener('error', handleSocketError);
+    cloudflareAgent.addEventListener('message', handleSocketMessage);
 
     return () => {
       // Clean up listeners
       cloudflareAgent.removeEventListener('open', handleSocketOpen);
       cloudflareAgent.removeEventListener('close', handleSocketClose);
       cloudflareAgent.removeEventListener('error', handleSocketError);
+      cloudflareAgent.removeEventListener('message', handleSocketMessage);
     };
   }, [cloudflareAgent, agentName, type, maxReconnectAttempts, connectionAttempts, state, connectionStatus]);
 
@@ -458,6 +490,67 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
       console.error(`[useOpenAgent ${agentName}] Failed to send raw message:`, error);
     }
   }, [cloudflareAgent, agentName]);
+  
+  /**
+   * Gets the system prompt from the agent using WebSocket messaging
+   * This uses a special message type to request the system prompt
+   * and returns a Promise that resolves when the response is received
+   */
+  const getSystemPrompt = useCallback(async (): Promise<string> => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Getting system prompt via WebSocket message...`);
+      
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        // Create a unique request ID for this system prompt request
+        const requestId = `prompt_req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const eventName = `${agentName}:prompt_response:${requestId}`;
+        
+        // Create a promise that will be resolved when we get the response
+        const responsePromise = new Promise<string>((resolve, reject) => {
+          // Set a timeout to ensure we don't wait forever
+          const timeoutId = setTimeout(() => {
+            reject(new Error("Timeout waiting for system prompt response"));
+            // Remove the event listener after timeout
+            window.removeEventListener(eventName, handleResponse);
+          }, 10000); // 10 second timeout
+          
+          // Function to handle the response - properly typed for EventListener
+          const handleResponse = (event: Event) => {
+            clearTimeout(timeoutId);
+            // Cast to CustomEvent for type safety
+            const customEvent = event as CustomEvent;
+            const promptData = customEvent.detail;
+            resolve(promptData.prompt || "No system prompt received");
+            // Clean up by removing the event listener
+            window.removeEventListener(eventName, handleResponse);
+          };
+          
+          // Listen for the response event
+          window.addEventListener(eventName, handleResponse);
+          
+          // Send the request message
+          const message = {
+            type: "get_system_prompt",
+            requestId,
+            timestamp: new Date().toISOString()
+          };
+          
+          cloudflareAgent.send(JSON.stringify(message));
+          console.log(`[useOpenAgent ${agentName}] System prompt request sent with ID ${requestId}`);
+        });
+        
+        return await responsePromise;
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot get system prompt: Agent not available or send not a function`);
+        throw new Error('Agent not available');
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to get system prompt:`, error);
+      
+      // If we can't get the actual system prompt, return a fallback message
+      return `Failed to retrieve system prompt for ${type} agent. The agent may not be connected or the method is not implemented.`;
+    }
+  }, [cloudflareAgent, agentName, type]);
 
   // Return the OpenAgent interface with appropriate methods
   return {
@@ -470,6 +563,7 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     getGithubToken,
     addAgentObservation,
     sendRawMessage,        // Expose direct WebSocket messaging
+    getSystemPrompt,       // Method to get the agent's system prompt
     ...(type === 'solver' ? { setCurrentIssue } : {}),
     setRepositoryContext,  // Available for both agent types
     connectionStatus,      // Expose connection status to consumer components

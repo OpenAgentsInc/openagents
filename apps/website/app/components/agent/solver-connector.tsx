@@ -3,8 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { Terminal, Columns, BotIcon, PlugZap, Power, CheckCircle, AlertTriangle } from "lucide-react";
+import { Terminal, Columns, BotIcon, PlugZap, Power, CheckCircle, AlertTriangle, BookOpen, FileCode2 } from "lucide-react";
 import { useOpenAgent } from "@openagents/core";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 // Add special client directive to address hydration issues
 const isClient = typeof window !== "undefined";
@@ -25,6 +33,11 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   
   // For consistent server/client rendering, force hydration after mount
   const [isHydrated, setIsHydrated] = useState(false);
+  
+  // State for system prompt dialog
+  const [systemPrompt, setSystemPrompt] = useState<string>('Loading...');
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   
   useEffect(() => {
     setIsHydrated(true);
@@ -443,6 +456,62 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             >
               Send Command
             </Button>
+            
+            <Dialog 
+              open={promptDialogOpen} 
+              onOpenChange={(open) => {
+                setPromptDialogOpen(open);
+                
+                // When opening the dialog, fetch the system prompt
+                if (open) {
+                  setIsLoadingPrompt(true);
+                  setSystemPrompt('Loading system prompt...');
+                  
+                  // Fetch the system prompt
+                  agent.getSystemPrompt()
+                    .then(prompt => {
+                      setSystemPrompt(prompt);
+                      setIsLoadingPrompt(false);
+                    })
+                    .catch(error => {
+                      console.error("Error fetching system prompt:", error);
+                      setSystemPrompt(`Failed to load system prompt: ${error.message || 'Unknown error'}`);
+                      setIsLoadingPrompt(false);
+                    });
+                }
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  View System Prompt
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center">
+                    <FileCode2 className="mr-2 h-5 w-5" />
+                    Solver Agent System Prompt
+                  </DialogTitle>
+                  <DialogDescription>
+                    This is the system prompt that guides the agent's behavior and capabilities.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="mt-4">
+                  {isLoadingPrompt ? (
+                    <div className="flex justify-center py-8">
+                      <Spinner className="h-8 w-8" />
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-muted rounded-md overflow-auto">
+                      <pre className="text-sm whitespace-pre-wrap font-mono" style={{ maxHeight: '60vh' }}>
+                        {systemPrompt}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
         

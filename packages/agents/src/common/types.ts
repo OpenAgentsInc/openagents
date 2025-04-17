@@ -134,4 +134,21 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     
     return { success: true };
   }
+  
+  /**
+   * Gets the system prompt for the agent
+   * This is a base implementation - agent subclasses should override to provide their specific system prompts
+   */
+  getSystemPrompt() {
+    // Base system prompt that all agents can use
+    const basePrompt = `You are an autonomous agent designed to assist with development tasks. 
+You have access to a repository and can help with understanding code, implementing features, and fixing issues.
+
+Current context:
+${this.state.currentRepoOwner ? `Repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}` : 'No repository set'}
+${this.state.currentBranch ? `Branch: ${this.state.currentBranch}` : ''}
+${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : ''}`;
+
+    return basePrompt;
+  }
 }
