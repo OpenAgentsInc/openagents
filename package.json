@@ -22,7 +22,7 @@
     "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
     "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
     "t:ui": "yarn workspace @openagents/ui t",
-    "clean": "rm -rf **/yarn.lock **/node_modules",
+    "clean": "sh clean-install.sh",
     "clean:onyx": "yarn clean && yarn workspace @openagents/onyx prebuild:clean"
   },
   "devDependencies": {
