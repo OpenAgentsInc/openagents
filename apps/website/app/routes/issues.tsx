@@ -27,11 +27,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   try {
     // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
-    
+
     if (authResult.redirect) {
       return redirect(authResult.redirect);
     }
-    
+
     // Get user and session from the auth result
     const { user, session } = authResult;
 
@@ -93,11 +93,11 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
-    
+
     if (authResult.redirect) {
       return redirect(authResult.redirect);
     }
-    
+
     // Get session from the auth result
     const { session } = authResult;
 
@@ -162,7 +162,7 @@ export async function action({ request }: ActionFunctionArgs) {
     // Handle issue update
     if (action === "update") {
       const id = formData.get("id") as string;
-      
+
       // Basic validation - we need at least an ID
       if (!id) {
         return {
@@ -170,33 +170,33 @@ export async function action({ request }: ActionFunctionArgs) {
           error: "Issue ID is required for updates"
         };
       }
-      
+
       // Check if this is a partial update (e.g., just updating the assignee)
       const isPartialUpdate = !formData.has("title");
-      
+
       if (isPartialUpdate) {
         // Handle partial updates (like just updating the assignee)
         const updateData: Record<string, any> = {};
-        
+
         // Add fields that were provided in the request
         if (formData.has("assigneeId")) {
           const assigneeId = formData.get("assigneeId") as string;
           updateData.assigneeId = assigneeId || null;
         }
-        
+
         if (formData.has("stateId")) {
           updateData.stateId = formData.get("stateId") as string;
-          
+
           // Special handling for Done status
           const isDone = formData.get("isDone") === "true";
-          const isDoneStatus = 
-            updateData.stateId.includes('done') || 
-            updateData.stateId.includes('completed') || 
+          const isDoneStatus =
+            updateData.stateId.includes('done') ||
+            updateData.stateId.includes('completed') ||
             updateData.stateId === 'default-done';
-          
+
           if (isDone || isDoneStatus) {
             console.log(`Setting issue ${id} to Done status: ${updateData.stateId}`);
-            
+
             // If completedAt was provided, use it
             if (formData.has("completedAt")) {
               updateData.completedAt = formData.get("completedAt") as string;
@@ -204,7 +204,7 @@ export async function action({ request }: ActionFunctionArgs) {
               // Otherwise set it to now
               updateData.completedAt = new Date().toISOString();
             }
-            
+
             // Ensure we have a teamId for this issue update
             if (formData.has("teamId")) {
               updateData.teamId = formData.get("teamId") as string;
@@ -218,27 +218,27 @@ export async function action({ request }: ActionFunctionArgs) {
                   .select(['teamId'])
                   .where('id', '=', id)
                   .executeTakeFirst();
-                  
+
                 if (issue && issue.teamId) {
                   updateData.teamId = issue.teamId;
                   console.log(`Found issue teamId: ${updateData.teamId} for Done update`);
                 } else {
                   console.log(`Could not find teamId for issue ${id}, trying to find a team`);
-                  
+
                   // Find any team if we can't get the issue's teamId
                   const anyTeam = await db
                     .selectFrom('team')
                     .select(['id'])
                     .limit(1)
                     .executeTakeFirst();
-                    
+
                   if (anyTeam) {
                     updateData.teamId = anyTeam.id;
                     console.log(`Using first available teamId: ${updateData.teamId} for Done update`);
                   } else {
                     // Hard-coded fallback if all else fails - find a working status ID
                     console.log('No teams found. Finding a valid workflow state instead');
-                    
+
                     // Look for a non-done workflow state to use
                     const validState = await db
                       .selectFrom('workflow_state')
@@ -246,7 +246,7 @@ export async function action({ request }: ActionFunctionArgs) {
                       .where('type', '!=', 'done')
                       .limit(1)
                       .executeTakeFirst();
-                      
+
                     if (validState) {
                       // Override the stateId to use a known working state
                       updateData.stateId = validState.id;
@@ -257,7 +257,7 @@ export async function action({ request }: ActionFunctionArgs) {
                 }
               } catch (error) {
                 console.error(`Error getting teamId for issue ${id}:`, error);
-                
+
                 // If we failed to get a team ID, try a final fallback - don't use done status
                 try {
                   // Find any non-done workflow state as a fallback
@@ -267,12 +267,12 @@ export async function action({ request }: ActionFunctionArgs) {
                     .select(['id', 'type'])
                     .limit(1)
                     .executeTakeFirst();
-                    
+
                   if (validState) {
                     // Override the stateId to use a known working state
                     updateData.stateId = validState.id;
                     console.log(`Emergency fallback: Using workflow state ${validState.id} (${validState.type}) instead`);
-                    
+
                     // Only clear completedAt if it's not a "done" type
                     if (validState.type !== 'done') {
                       updateData.completedAt = null;
@@ -288,44 +288,44 @@ export async function action({ request }: ActionFunctionArgs) {
             // If not Done, ensure completedAt is null
             updateData.completedAt = null;
           }
-          
+
           console.log(`Setting issue ${id} stateId to ${updateData.stateId} (completedAt: ${updateData.completedAt})`);
         }
-        
+
         if (formData.has("priority")) {
           const priorityStr = formData.get("priority") as string;
           updateData.priority = parseInt(priorityStr, 10);
         }
-        
+
         if (formData.has("projectId")) {
           updateData.projectId = formData.get("projectId") as string || null;
         }
-        
+
         // Handle description updates
         if (formData.has("description")) {
           updateData.description = formData.get("description") as string;
           updateData.updatedAt = new Date().toISOString(); // Explicitly update the timestamp
           console.log(`Updating description for issue ${id}: ${updateData.description?.substring(0, 50)}...`);
         }
-        
+
         console.log(`Updating issue ${id} with data:`, updateData);
-        
+
         try {
           // Perform the update with just the fields that were provided
           await updateIssue(id, updateData);
           console.log(`Successfully updated issue ${id}`);
         } catch (error) {
           console.error(`Error updating issue ${id}:`, error);
-          
+
           // Check if this was a workflow state related error
           const errorString = String(error);
-          const isWorkflowStateError = 
+          const isWorkflowStateError =
             errorString.includes('FOREIGN KEY constraint') ||
             errorString.includes('workflow_state');
-            
+
           if (isWorkflowStateError && updateData.stateId?.includes('done')) {
             console.log('Detected workflow state error for Done status, trying fallback...');
-            
+
             try {
               // Find a valid workflow state that works
               const db = getDb();
@@ -334,18 +334,18 @@ export async function action({ request }: ActionFunctionArgs) {
                 .select(['id'])
                 .limit(1)
                 .executeTakeFirst();
-                
+
               if (existingState) {
                 console.log(`Using fallback workflow state: ${existingState.id}`);
-                
+
                 // Update with the valid workflow state instead
                 updateData.stateId = existingState.id;
                 await updateIssue(id, updateData);
-                
+
                 // Get the updated issue list
                 const newIssues = await getAllIssues();
-                
-                return { 
+
+                return {
                   success: true,
                   issues: newIssues,
                   message: 'Used fallback workflow state due to constraint error'
@@ -355,19 +355,19 @@ export async function action({ request }: ActionFunctionArgs) {
               console.error('Error in workflow state fallback:', fallbackError);
             }
           }
-          
+
           return {
             success: false,
             error: `Failed to update issue: ${error instanceof Error ? error.message : String(error)}`
           };
         }
-        
+
         // Get the updated issue list for the frontend
         const newIssues = await getAllIssues();
         const updatedIssue = newIssues.find(issue => issue.id === id);
-        
+
         // Return the full issue list to update the UI
-        return { 
+        return {
           success: true,
           issues: newIssues,
           issue: updatedIssue,
@@ -438,7 +438,7 @@ export default function IssuesRoute() {
       console.log('[DEBUG] IssuesRoute - No workflow states in loader data');
     }
   }, [loaderData.issues, loaderData.options?.workflowStates, setIssues, setWorkflowStates]);
-  
+
   // Also listen for fetch responses from actions
   useEffect(() => {
     const handleFetchResponse = (event: any) => {
@@ -450,17 +450,17 @@ export default function IssuesRoute() {
         // If this was an update action but we didn't get a full issues list in the response,
         // force a refresh to get the latest data
         console.log('[DEBUG] IssuesRoute - Status update detected, fetching latest issues');
-        
+
         // Use a small timeout to not interfere with the current action response
         setTimeout(() => {
           window.location.reload();
         }, 300);
       }
     };
-    
+
     // Listen for action response events
     window.addEventListener('fetchresponse', handleFetchResponse);
-    
+
     return () => {
       window.removeEventListener('fetchresponse', handleFetchResponse);
     };
@@ -469,7 +469,7 @@ export default function IssuesRoute() {
   return (
     <div className="w-full min-h-screen flex flex-col">
       <HeaderIssues />
-      <div className="flex-1 container mx-auto p-6">
+      <div className="flex-1 container mx-auto">
         <AllIssues />
       </div>
       <CreateIssueModalProvider />

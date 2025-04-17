@@ -13,13 +13,22 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { formatDistanceToNow } from "date-fns";
 import { useIssuesStore, type Status, type User } from "@/store/issues-store";
-import { Form } from "@/components/ui/form";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { CalendarIcon, CheckCircle, Clock, Edit, LinkIcon, Tag, User as UserIcon } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink } from "@/components/ui/breadcrumb";
 import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
+import { useChat } from "@ai-sdk/react";
+import { Chat } from "@/components/ui/chat";
+import { SolverConnector } from "@/components/agent/solver-connector";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+  BreadcrumbPage
+} from "@/components/ui/breadcrumb";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
@@ -182,15 +191,15 @@ function EditableDescription({ issue }: { issue: Issue }) {
 
   const handleSave = () => {
     setIsSaving(true);
-    
+
     // Create form data for the update
     const formData = new FormData();
     formData.append('_action', 'update');
     formData.append('id', issue.id);
     formData.append('description', description);
-    
+
     console.log('Saving description update for issue:', issue.id);
-    
+
     // Submit the form using React Router's submit
     submit(formData, {
       method: 'post',
@@ -198,10 +207,12 @@ function EditableDescription({ issue }: { issue: Issue }) {
       replace: true,
       navigate: false
     });
-    
-    // Set a flag in sessionStorage to reload after update
-    sessionStorage.setItem('pendingDescriptionUpdate', issue.id);
-    
+
+    // Set a flag in sessionStorage to reload after update (only in browser)
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      sessionStorage.setItem('pendingDescriptionUpdate', issue.id);
+    }
+
     // End editing mode
     setIsEditing(false);
     setIsSaving(false);
@@ -238,16 +249,16 @@ function EditableDescription({ issue }: { issue: Issue }) {
           placeholder="Add a description..."
         />
         <div className="flex gap-2 mt-2">
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             onClick={handleSave}
             disabled={isSaving}
           >
             {isSaving ? 'Saving...' : 'Save'}
           </Button>
-          <Button 
-            size="sm" 
-            variant="outline" 
+          <Button
+            size="sm"
+            variant="outline"
             onClick={handleCancel}
             disabled={isSaving}
           >
@@ -262,7 +273,7 @@ function EditableDescription({ issue }: { issue: Issue }) {
   }
 
   return (
-    <div 
+    <div
       className="prose prose-sm dark:prose-invert max-w-none cursor-pointer hover:bg-secondary/10 p-2 rounded-md transition-colors"
       onDoubleClick={handleDoubleClick}
     >
@@ -282,18 +293,104 @@ export default function IssueDetails() {
   const submit = useSubmit();
   const [activeTab, setActiveTab] = useState("details");
   const { updateIssueStatus } = useIssuesStore();
-  
+
+  // Prepare issue details for the system prompt
+  const issueDetails = `
+Current Issue Details:
+- Identifier: ${issue.identifier}
+- Title: ${issue.title}
+- Description: ${issue.description || 'No description provided'}
+- Status: ${issue.status.name} (${issue.status.type})
+- Priority: ${issue.priority.name}
+${issue.assignee ? `- Assigned to: ${issue.assignee.name}` : '- Unassigned'}
+${issue.dueDate ? `- Due Date: ${new Date(issue.dueDate).toLocaleDateString()}` : '- No due date'}
+${issue.labels && issue.labels.length > 0 ? `- Labels: ${issue.labels.map(l => l.name).join(', ')}` : '- No labels'}
+${issue.project ? `
+Project Details:
+- Project: ${issue.project.name}
+- Color: ${issue.project.color}
+` : '- Not assigned to any project'}
+${issue.team ? `
+Team Details:
+- Team: ${issue.team.name}
+- Team Key: ${issue.team.key}
+` : ''}
+${issue.subissues && issue.subissues.length > 0 ? `- Has ${issue.subissues.length} subtasks` : '- No subtasks'}
+${issue.parentId ? `- Is a subtask of issue: ${issue.parentId}` : '- Is a top-level issue'}
+- Created: ${new Date(issue.createdAt).toLocaleString()}
+${issue.creator ? `- Created by: ${issue.creator.name}` : '- Creator unknown'}
+`;
+
+  // Safe way to access localStorage with a check for browser environment
+  const getGithubToken = () => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return localStorage.getItem('github_token') || '';
+    }
+    return '';
+  };
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
+    api: `https://chat.openagents.com/chat`,
+    headers: {
+      'X-GitHub-Token': getGithubToken()
+    },
+    maxSteps: 25,
+    initialMessages: [{
+      id: '12309123',
+      role: 'system',
+      content: `You are an AI assistant integrated into OpenAgents - a comprehensive project management and issue tracking system.
+
+Project Context:
+- OpenAgents is a platform for AI agents using open protocols
+- The system includes web, mobile, and desktop applications
+- You're currently in the issue tracking module, similar to Linear or Jira
+
+Issue Tracking System:
+- Issues belong to Teams and can be assigned to Projects
+- Issues have workflow states: Triage, Backlog, Todo, In Progress, Done, Canceled
+- Issues have properties: title, description, priority, labels, assignees, due dates
+- Issues can have parent-child relationships and can reference other issues
+
+Team & Project Structure:
+- Teams are organizational units that own issues and define workflows
+- Projects group related issues and can belong to teams
+- Users can be members of multiple teams and projects with different roles
+- Teams can customize their workflow states and issue numbering
+
+${issueDetails}
+
+Your Role:
+- Help users understand this specific issue's details and context
+- Assist with improving the issue description if needed
+- Suggest appropriate status updates, labels, or priority changes
+- Provide technical guidance related to this issue's implementation
+- Answer questions about this issue, its project, and its team
+- Maintain a helpful, professional tone focused on productivity
+
+You're currently viewing the issue page where users can see all details about this issue, edit the description, change status, and discuss the issue through this chat interface. Be helpful and concise in your responses.`
+    }],
+  });
+
+  // Log first 14 characters of GitHub token (only in browser environment)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      console.log('GitHub token (first 14 chars):', (localStorage.getItem('github_token') || '').slice(0, 14));
+    }
+  }, []);
+
   // Check for pending updates from sessionStorage on load
   useEffect(() => {
-    const pendingUpdate = sessionStorage.getItem('pendingDescriptionUpdate');
-    if (pendingUpdate === id) {
-      // Clear the flag
-      sessionStorage.removeItem('pendingDescriptionUpdate');
-      // Reload once to get fresh data
-      window.location.reload();
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const pendingUpdate = sessionStorage.getItem('pendingDescriptionUpdate');
+      if (pendingUpdate === id) {
+        // Clear the flag
+        sessionStorage.removeItem('pendingDescriptionUpdate');
+        // Reload once to get fresh data
+        window.location.reload();
+      }
     }
   }, [id]);
-  
+
   // Listen for fetch responses to update the UI
   useEffect(() => {
     const handleFetchResponse = (event: any) => {
@@ -308,10 +405,10 @@ export default function IssueDetails() {
         }
       }
     };
-    
+
     // Listen for action response events
     window.addEventListener('fetchresponse', handleFetchResponse);
-    
+
     return () => {
       window.removeEventListener('fetchresponse', handleFetchResponse);
     };
@@ -387,21 +484,28 @@ export default function IssueDetails() {
 
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto p-6">
-        {/* <Breadcrumb className="mb-4">
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/issues">Issues</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbItem>
-            <BreadcrumbLink href={`/issues/${issue.id}`} isCurrentPage>
-              {issue.identifier}
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-        </Breadcrumb> */}
+      <div className="container mx-auto px-6 pt-4">
+        {issue.project && (
+          <Breadcrumb className="mb-4">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink href={`/projects/${issue.project.id}`}>
+                  {issue.project.name}
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>
+                  {issue.identifier}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Main content */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 space-y-6">
             <Card>
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
@@ -449,7 +553,7 @@ export default function IssueDetails() {
                         <ul className="list-disc pl-5">
                           {issue.subissues.map(subissueId => (
                             <li key={subissueId}>
-                              <a href={`/issues/${subissueId}`} className="text-blue-500 hover:underline">
+                              <a href={`/issues/${subissueId}`} className="text-zinc-500 hover:underline">
                                 {subissueId}
                               </a>
                             </li>
@@ -504,6 +608,26 @@ export default function IssueDetails() {
                 </Tabs>
               </CardContent>
             </Card>
+
+            {/* Solver Agent Card */}
+            <SolverConnector issue={issue} githubToken={getGithubToken()} />
+
+            {/* Chat Card */}
+            <Card>
+              {/* <CardHeader>
+                <CardTitle>Issue Discussion</CardTitle>
+              </CardHeader> */}
+              <CardContent>
+                <Chat
+                  messages={messages}
+                  input={input}
+                  handleInputChange={handleInputChange}
+                  handleSubmit={handleSubmit}
+                  isGenerating={isLoading}
+                  stop={stop}
+                />
+              </CardContent>
+            </Card>
           </div>
 
           {/* Sidebar */}
@@ -554,7 +678,7 @@ export default function IssueDetails() {
                       />
                       <a
                         href={`/projects/${issue.project.id}`}
-                        className="text-blue-500 hover:underline"
+                        className="text-zinc-500 hover:underline"
                       >
                         {issue.project.name}
                       </a>

@@ -1,10 +1,13 @@
-import { type RouteConfig, index, route } from "@react-router/dev/routes";
+import { type RouteConfig, index, route, layout } from "@react-router/dev/routes";
 
 export default [
-  index("routes/home.tsx"),
+  layout("components/layouts/with-header.tsx", [
+    index("routes/home.tsx"),
+    route("login", "routes/login.tsx"),
+    route("signup", "routes/signup.tsx"),
+  ]),
+  // Routes without header
   route("spawn", "routes/spawn.tsx"),
-  route("login", "routes/login.tsx"),
-  route("signup", "routes/signup.tsx"),
   route("agent/:agentId", "routes/agent/$agentId.tsx"),
   route("api/auth/*", "routes/api.auth.$.tsx"),
   route("projects", "routes/projects.tsx"),

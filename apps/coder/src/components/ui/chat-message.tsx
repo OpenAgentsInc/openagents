@@ -189,16 +189,16 @@ export const ChatMessage = React.memo(function ChatMessage({
   // Memoize these values to prevent recalculations
   const isUser = useMemo(() => role === "user", [role])
   const isSystem = useMemo(() => role === "system", [role])
-  
+
   // Check if this is a tool execution error message - check for all variants
-  const isToolError = useMemo(() => 
-    propIsError || 
+  const isToolError = useMemo(() =>
+    propIsError ||
     (content && (
-      content.includes('Error executing tool') || 
+      content.includes('Error executing tool') ||
       content.includes('Authentication Failed') ||
       content.includes('Bad credentials')
     )),
-  [propIsError, content])
+    [propIsError, content])
 
   // Memoize the formatted time to avoid recalculations
   const formattedTime = useMemo(() => {
@@ -222,7 +222,7 @@ export const ChatMessage = React.memo(function ChatMessage({
 
     // For context overflow errors and tool execution errors, show content directly (without markdown processing)
     // Also check for the special hardcoded error
-    const isSpecialErrorFormat = 
+    const isSpecialErrorFormat =
       content.includes('context the overflows') ||
       content.includes('context length of only') ||
       content.includes('Trying to keep the first') ||
@@ -231,60 +231,60 @@ export const ChatMessage = React.memo(function ChatMessage({
       content.includes('Bad credentials') ||
       content.includes('An error occurred') || // Include generic errors
       isToolError;
-      
+
     // Force the tool error flag if the content contains our specific error strings
-    const forcedToolError = isToolError || 
-                          content.includes('Error executing tool') || 
-                          content.includes('Authentication Failed') || 
-                          content.includes('Bad credentials');
+    const forcedToolError = isToolError ||
+      content.includes('Error executing tool') ||
+      content.includes('Authentication Failed') ||
+      content.includes('Bad credentials');
 
     // Add more detailed console logging for debugging
-    console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
-    console.log("RENDERING SYSTEM MESSAGE:", {
-      firstChars: content.substring(0, 50),
-      length: content.length,
-      isSpecialErrorFormat,
-      isToolError,
-      hasOverflows: content.includes('context the overflows'),
-      hasTrying: content.includes('Trying to keep the first'),
-      hasToolError: content.includes('Error executing tool'),
-      hasAuthError: content.includes('Authentication Failed: Bad credentials'),
-      hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
-    });
+    // console.log("RENDERING SYSTEM MESSAGE - FULL CONTENT:", JSON.stringify(content));
+    // console.log("RENDERING SYSTEM MESSAGE:", {
+    //   firstChars: content.substring(0, 50),
+    //   length: content.length,
+    //   isSpecialErrorFormat,
+    //   isToolError,
+    //   hasOverflows: content.includes('context the overflows'),
+    //   hasTrying: content.includes('Trying to keep the first'),
+    //   hasToolError: content.includes('Error executing tool'),
+    //   hasAuthError: content.includes('Authentication Failed: Bad credentials'),
+    //   hasAI_ToolExecutionError: content.includes('AI_ToolExecutionError')
+    // });
 
     // Format tool execution errors to display on two lines
     let formattedContent = content;
-    
+
     // Check if the content starts with the warning prefix and remove it for tool errors
-    if (content.startsWith('⚠️ Error:') && 
-        (content.includes('Error executing tool') || 
-         content.includes('Authentication Failed') ||
-         content.includes('Bad credentials'))) {
+    if (content.startsWith('⚠️ Error:') &&
+      (content.includes('Error executing tool') ||
+        content.includes('Authentication Failed') ||
+        content.includes('Bad credentials'))) {
       // Remove the prefix for tool errors
       formattedContent = content.replace('⚠️ Error:', '').trim();
       console.log("REMOVED PREFIX FROM TOOL ERROR:", formattedContent);
     }
-    
+
     // Format errors with colons to display on two lines
     if ((isToolError || formattedContent.includes('Error executing tool')) && formattedContent.includes(':')) {
       // Find the first colon that belongs to the error message (not part of a URL)
       const colonIndex = formattedContent.indexOf(':');
       if (colonIndex > 0) {
         // Format with a line break after the colon
-        formattedContent = formattedContent.substring(0, colonIndex + 1) + 
-                          '\n' + 
-                          formattedContent.substring(colonIndex + 1).trim();
+        formattedContent = formattedContent.substring(0, colonIndex + 1) +
+          '\n' +
+          formattedContent.substring(colonIndex + 1).trim();
         console.log("FORMATTED ERROR WITH LINE BREAK:", formattedContent);
       }
     }
 
     return (
       <div className="flex flex-col items-center w-full">
-        <div className={cn(chatBubbleVariants({ 
-          isUser: false, 
-          isSystem: !isToolError && !forcedToolError, 
+        <div className={cn(chatBubbleVariants({
+          isUser: false,
+          isSystem: !isToolError && !forcedToolError,
           isError: isToolError || forcedToolError,
-          animation 
+          animation
         }))}>
           {isSpecialErrorFormat ? (
             <div className="whitespace-pre-wrap font-mono text-sm p-1">{formattedContent}</div>
