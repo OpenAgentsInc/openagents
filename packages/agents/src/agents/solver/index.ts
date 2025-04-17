@@ -17,15 +17,10 @@ export const solverContext = new AsyncLocalStorage<Solver>();
  * Solver Agent that handles issue resolution in OpenAgents Projects
  */
 export class Solver extends OpenAgent<SolverState> {
+  // Initialize state by extending the base state with solver-specific properties
   initialState: SolverState = {
-    messages: [],
-    githubToken: undefined,
-    currentRepoOwner: undefined,
-    currentRepoName: undefined,
-    currentBranch: undefined,
-    scratchpad: '',
-    observations: [],
-    workingFilePath: undefined
+    ...this.baseInitialState as any, // Cast to any to avoid strict typing issues with the spread
+    // Add solver-specific initial state properties here
   };
   tools: ToolSet = {};
 

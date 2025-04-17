@@ -25,6 +25,18 @@ export interface BaseAgentState {
 
 // Base OpenAgent class that implements common functionality for all agents
 export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
+  // Provide default base state that can be extended by subclasses
+  baseInitialState: BaseAgentState = {
+    messages: [],
+    githubToken: undefined,
+    currentRepoOwner: undefined,
+    currentRepoName: undefined,
+    currentBranch: undefined,
+    scratchpad: '',
+    observations: [],
+    workingFilePath: undefined
+  };
+  
   constructor(ctx: any, env: Env) {
     super(ctx, env);
   }
