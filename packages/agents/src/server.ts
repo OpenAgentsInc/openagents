@@ -1,8 +1,6 @@
 import { routeAgentRequest } from "agents";
 import type { Env } from "./types";
 import type { ExecutionContext } from '@cloudflare/workers-types';
-import { Coder } from './agents/coder';
-import { Solver } from './agents/solver';
 
 // Export the agents so they can be used as Durable Objects
 export { Coder } from './agents/coder';
@@ -15,7 +13,7 @@ export { Solver } from './agents/solver';
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     console.log(`[AGENT SERVER] Request path: ${new URL(request.url).pathname}`);
-    
+
     // Route the request to our agent via the Agents SDK
     // This automatically handles routing to the correct agent (coder or solver)
     // and manages WebSocket connections properly

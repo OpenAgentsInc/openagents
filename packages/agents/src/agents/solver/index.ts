@@ -1,5 +1,5 @@
 import { Agent, type Connection, type WSMessage } from "agents";
-import { type UIMessage, generateId, generateText, generateObject, type ToolSet } from "ai";
+import { type UIMessage, generateId, generateText, generateObject, type ToolSet, type ToolResult } from "ai";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Env } from "../../types";
 import type { UIPart } from "@openagents/core/src/chat/types";
@@ -29,9 +29,9 @@ export class Solver extends Agent<Env, SolverState> {
     workingFilePath: undefined
   };
   tools: ToolSet = {};
-  
-  private ctx: any; // DurableObjectState type
-  
+
+  protected ctx: any; // DurableObjectState type
+
   constructor(ctx: any, env: Env) {
     super(ctx, env);
     this.ctx = ctx; // Store ctx for direct storage access
@@ -58,9 +58,9 @@ export class Solver extends Agent<Env, SolverState> {
     await this.updateState({
       currentIssue: issue
     });
-    
+
     await this.addAgentObservation(`Now working on issue #${issue.number}: ${issue.title}`);
-    
+
     return { success: true, message: `Set current issue to #${issue.number}` };
   }
 
@@ -69,15 +69,15 @@ export class Solver extends Agent<Env, SolverState> {
    */
   async setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
     console.log(`[setRepositoryContext] Setting context to ${owner}/${repo} on branch ${branch}`);
-    
+
     await this.updateState({
       currentRepoOwner: owner,
       currentRepoName: repo,
       currentBranch: branch
     });
-    
+
     await this.addAgentObservation(`Repository context set to ${owner}/${repo}:${branch}`);
-    
+
     return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
   }
 
@@ -115,7 +115,7 @@ export class Solver extends Agent<Env, SolverState> {
     await this.updateState({
       workingFilePath: filePath
     });
-    
+
     await this.addAgentObservation(`Now working on file: ${filePath}`);
   }
 
@@ -134,7 +134,7 @@ export class Solver extends Agent<Env, SolverState> {
   private async updateScratchpad(thought: string) {
     const timestamp = new Date().toISOString();
     const formattedThought = `${timestamp}: ${thought}`;
-    
+
     this.updateState({
       scratchpad: this.state.scratchpad
         ? `${this.state.scratchpad}\n- ${formattedThought}`
@@ -182,7 +182,7 @@ export class Solver extends Agent<Env, SolverState> {
           default:
             console.warn(`Received unknown command: ${parsedMessage.command}`);
         }
-        
+
         callInfer = true; // Call infer after processing commands
       }
 
@@ -227,7 +227,7 @@ export class Solver extends Agent<Env, SolverState> {
       // Check if there's a user message that needs inference
       if (parsedMessage.userMessage && parsedMessage.userMessage.content) {
         console.log("User message present, will call infer.");
-        
+
         // Update messages array with the new user message
         await this.updateState({
           messages: [
@@ -240,7 +240,7 @@ export class Solver extends Agent<Env, SolverState> {
             }
           ]
         });
-        
+
         callInfer = true;
       }
 
@@ -280,7 +280,7 @@ export class Solver extends Agent<Env, SolverState> {
 
       // Set up tool context
       const toolContext: ToolContext = { githubToken: token };
-      
+
       // Combine solver-specific tools with common tools and GitHub tools
       const tools = {
         get_file_contents: getFileContentsTool(toolContext),
@@ -301,7 +301,7 @@ export class Solver extends Agent<Env, SolverState> {
         system: systemPrompt,
         model,
         messages,
-        tools,
+        tools: tools as ToolSet,
         maxTokens: 5000,
         temperature: 0.7,
         maxSteps: 5,
@@ -337,13 +337,13 @@ export class Solver extends Agent<Env, SolverState> {
       if (result.toolCalls && result.toolCalls.length > 0) {
         for (let i = 0; i < result.toolCalls.length; i++) {
           const toolCall = result.toolCalls[i];
-          
+
           // Add observation for tool usage
           await this.addAgentObservation(`Used tool: ${toolCall.toolName} with args: ${JSON.stringify(toolCall.args)}`);
-          
+
           // Find matching result if available
-          const toolResult = result.toolResults && result.toolResults[i];
-          
+          const toolResult = result.toolResults && result.toolResults[i] as ToolResult<string, any, any>;
+
           if (toolResult) {
             // Add the tool with result to messageParts
             messageParts.push({
@@ -356,13 +356,13 @@ export class Solver extends Agent<Env, SolverState> {
                 result: toolResult.result
               }
             });
-            
+
             // Add observation for tool result
             const resultSnippet = typeof toolResult.result === 'string' && toolResult.result.length > 50
               ? `${toolResult.result.substring(0, 50)}...`
               : JSON.stringify(toolResult.result).substring(0, 50) + '...';
             await this.addAgentObservation(`Tool result from ${toolCall.toolName}: ${resultSnippet}`);
-            
+
             // Update state based on tool results (e.g., if we fetched issue details)
             if (toolCall.toolName === 'getIssueDetails' && toolResult.result) {
               try {
