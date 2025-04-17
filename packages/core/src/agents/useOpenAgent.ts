@@ -25,6 +25,8 @@ export type OpenAgent = {
   getGithubToken: () => Promise<string>;
   setCurrentIssue?: (issue: any) => Promise<void>;
   setRepositoryContext?: (owner: string, repo: string, branch?: string) => Promise<void>;
+  addAgentObservation: (observation: string) => Promise<void>; // Add method to send observations
+  sendRawMessage: (message: any) => void; // Add method to send raw WebSocket messages
   connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error';
   disconnect: () => void; // Method to properly disconnect
 }
@@ -405,6 +407,58 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     setMessages(uiMessages);
   };
 
+  /**
+   * Adds an observation to the agent's state using direct message
+   */
+  const addAgentObservation = useCallback(async (observation: string): Promise<void> => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Adding agent observation: ${observation}`);
+      
+      // Instead of calling a method, send a direct message with a specific format
+      // that the agent's onMessage handler can recognize
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        const observationMessage = {
+          type: 'agent_observation',
+          content: observation,
+          timestamp: new Date().toISOString()
+        };
+        
+        cloudflareAgent.send(JSON.stringify(observationMessage));
+        console.log(`[useOpenAgent ${agentName}] Agent observation sent successfully`);
+        return Promise.resolve();
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot add observation: Agent not available or send not a function`);
+        throw new Error('Agent not available');
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to add agent observation:`, error);
+      // Mark connection as error if needed
+      if (connectionStatus !== 'error') {
+        setConnectionStatus('error');
+      }
+      throw error;
+    }
+  }, [cloudflareAgent, agentName, connectionStatus]);
+  
+  /**
+   * Sends a raw WebSocket message to the agent
+   */
+  const sendRawMessage = useCallback((message: any): void => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Sending raw message:`, message);
+      
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        // Send the raw message as JSON string
+        cloudflareAgent.send(typeof message === 'string' ? message : JSON.stringify(message));
+        console.log(`[useOpenAgent ${agentName}] Raw message sent successfully`);
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot send raw message: Agent not available or send not a function`);
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to send raw message:`, error);
+    }
+  }, [cloudflareAgent, agentName]);
+
   // Return the OpenAgent interface with appropriate methods
   return {
     state,
@@ -414,6 +468,8 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     infer,
     setGithubToken,
     getGithubToken,
+    addAgentObservation,
+    sendRawMessage,        // Expose direct WebSocket messaging
     ...(type === 'solver' ? { setCurrentIssue } : {}),
     setRepositoryContext,  // Available for both agent types
     connectionStatus,      // Expose connection status to consumer components

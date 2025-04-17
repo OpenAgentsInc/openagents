@@ -355,29 +355,121 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         )}
       </CardContent>
 
-      <CardFooter className="flex justify-end">
-        {/* Server-side rendering always shows initial state - Client will rehydrate */}
-        {(!isClient || !isHydrated) ? (
-          // Default state for SSR
-          <Button variant="default" suppressHydrationWarning>
-            <PlugZap className="h-4 w-4 mr-2" />
-            Connect to Solver
-          </Button>
-        ) : connectionState === 'disconnected' ? (
-          // Client-side rendering for disconnected state
-          <Button
-            variant={isConnectButtonDisabled ? "secondary" : "default"}
-            className={isConnectButtonDisabled ? "opacity-50 cursor-not-allowed" : ""}
-            onClick={isConnectButtonDisabled ? undefined : connectToSolver}
-            suppressHydrationWarning
-          >
-            <PlugZap className="h-4 w-4 mr-2" />
-            Connect to Solver
-          </Button>
-        ) : (
-          // Client has connected or error state - no disconnect button needed due to autoreconnect
-          <></>
+      <CardFooter className="flex justify-between">
+        {connectionState === 'connected' && (
+          <div className="flex gap-2 flex-wrap">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                // Create a user message to send to the agent
+                const testMessage = `Test message sent at ${new Date().toISOString()}`;
+                console.log("Sending test message:", testMessage);
+                
+                // Use the handleSubmit method to send a user message
+                agent.handleSubmit(testMessage)
+                  .then(() => {
+                    console.log("Test message submitted successfully");
+                  })
+                  .catch(error => {
+                    console.error("Error submitting test message:", error);
+                  });
+              }}
+            >
+              Send Test Message
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                // Use the raw message sending capability
+                const observation = `UI Observation at ${new Date().toISOString()}`;
+                console.log("Sending raw observation message to agent:", observation);
+                
+                // Format the message as a direct WebSocket message
+                // This should match how the agent's onMessage handler expects it
+                const message = {
+                  type: "observation",
+                  content: observation,
+                  timestamp: new Date().toISOString(),
+                  issueId: issue.id
+                };
+                
+                // Send the raw message directly via WebSocket
+                agent.sendRawMessage(message);
+              }}
+            >
+              Add Observation
+            </Button>
+
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                // Send a status update message
+                const status = `Status update at ${new Date().toISOString()}`;
+                console.log("Sending status update message:", status);
+                
+                const message = {
+                  type: "status_update",
+                  content: status,
+                  timestamp: new Date().toISOString(),
+                  issueId: issue.id
+                };
+                
+                agent.sendRawMessage(message);
+              }}
+            >
+              Send Status Update
+            </Button>
+
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                // Send a custom command message that the agent might understand
+                console.log("Sending custom command message");
+                
+                const message = {
+                  type: "command",
+                  command: "analyze_issue",
+                  timestamp: new Date().toISOString(),
+                  issueId: issue.id,
+                  params: {
+                    priority: "high",
+                    context: "ui-testing"
+                  }
+                };
+                
+                agent.sendRawMessage(message);
+              }}
+            >
+              Send Command
+            </Button>
+          </div>
         )}
+        
+        <div>
+          {/* Server-side rendering always shows initial state - Client will rehydrate */}
+          {(!isClient || !isHydrated) ? (
+            // Default state for SSR
+            <Button variant="default" suppressHydrationWarning>
+              <PlugZap className="h-4 w-4 mr-2" />
+              Connect to Solver
+            </Button>
+          ) : connectionState === 'disconnected' ? (
+            // Client-side rendering for disconnected state
+            <Button
+              variant={isConnectButtonDisabled ? "secondary" : "default"}
+              className={isConnectButtonDisabled ? "opacity-50 cursor-not-allowed" : ""}
+              onClick={isConnectButtonDisabled ? undefined : connectToSolver}
+              suppressHydrationWarning
+            >
+              <PlugZap className="h-4 w-4 mr-2" />
+              Connect to Solver
+            </Button>
+          ) : (
+            // Client has connected or error state - no disconnect button needed due to autoreconnect
+            <></>
+          )}
+        </div>
       </CardFooter>
     </Card>
   );
