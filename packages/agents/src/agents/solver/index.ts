@@ -123,7 +123,7 @@ export class Solver extends Agent<Env, SolverState> {
    * Adds an observation to the agent's state
    */
   async addAgentObservation(observation: string) {
-    await this.updateState({
+    this.updateState({
       observations: [...(this.state.observations || []), observation]
     });
   }
