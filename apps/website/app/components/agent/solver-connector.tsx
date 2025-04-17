@@ -337,13 +337,13 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
         {connectionState === 'connected' && (
           <div className="py-2">
-            <div className="flex items-center mb-4">
+            <div className="flex items-center">
               <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
               <span className="font-medium">Solver Agent Connected</span>
             </div>
 
             {agent.messages.length > 1 && (
-              <div className="border rounded-md p-3 mb-4 bg-muted/50">
+              <div className="border rounded-md p-3 mt-4 bg-muted/50">
                 <h4 className="font-medium mb-2">Latest Update:</h4>
                 <p className="text-sm">
                   {agent.messages[agent.messages.length - 1].content.substring(0, 150)}
@@ -351,13 +351,6 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                 </p>
               </div>
             )}
-
-            <div className="flex flex-col gap-2">
-              <Button size="sm" variant="outline" onClick={() => window.open(`/chat?agent=solver&issue=${issue.id}`, '_blank')}>
-                <Columns className="h-4 w-4 mr-2" />
-                Open Full Solver Interface
-              </Button>
-            </div>
           </div>
         )}
       </CardContent>
@@ -382,15 +375,8 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             Connect to Solver
           </Button>
         ) : (
-          // Client-side rendering for connected/error state
-          <Button
-            variant="outline"
-            onClick={disconnectFromSolver}
-            suppressHydrationWarning
-          >
-            <Power className="h-4 w-4 mr-2" />
-            Disconnect
-          </Button>
+          // Client has connected or error state - no disconnect button needed due to autoreconnect
+          <></>
         )}
       </CardFooter>
     </Card>
