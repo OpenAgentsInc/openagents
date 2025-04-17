@@ -25,6 +25,10 @@
       {
         "name": "Coder",
         "class_name": "Coder"
+      },
+      {
+        "name": "Solver",
+        "class_name": "Solver"
       }
     ]
   },
@@ -33,6 +37,12 @@
       "tag": "v1",
       "new_sqlite_classes": [
         "Coder"
+      ]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "Solver"
       ]
     }
   ],

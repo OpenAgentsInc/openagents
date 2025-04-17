@@ -261,62 +261,76 @@ export class MyMCP extends McpAgent {
     ];
 
     for (const tool of tools) {
-      this.server.tool(tool.name, tool.schema.shape, async (params: Record<string, unknown>) => {
-        const validatedParams = tool.schema.parse(params);
-        const context: ToolContext = {
-          token: (params as { token?: string }).token,
-        };
+      this.server.tool(
+        tool.name, 
+        tool.schema.shape, 
+        async (args: any, extra: { signal: AbortSignal; sessionId?: string }) => {
+          // Get the request ID for logging
+          const requestId = extra.sessionId || 'unknown';
+          
+          // Extract token from the request context
+          // We'll need to get it from the protocol-level properties
+          const mcpRequestContext = (extra as any)._mcpRequestContext || {};
+          const rawRequest = mcpRequestContext.request || {};
+          const meta = rawRequest._meta as { token?: string; requestId?: string } | undefined;
+          const token = meta?.token;
+          
+          console.log(`[${requestId}] 🔧 Executing GitHub tool: ${tool.name}`);
+          console.log(`[${requestId}] 📊 Tool arguments: ${JSON.stringify(args).substring(0, 200)}`);
+          console.log(`[${requestId}] 🔑 GitHub token present in _meta: ${!!token}`);
+          
+          const context: ToolContext = { token };
 
-        // Temporarily replace githubRequest with token-aware version
-        const originalRequest = globalThis.githubRequest;
-        try {
-          console.log(`🔧 Executing GitHub tool: ${tool.name}`);
-          console.log(`📊 Tool parameters: ${JSON.stringify(validatedParams).substring(0, 200)}`);
-          console.log(`🔑 GitHub token present: ${!!context.token}`);
+          // Temporarily replace githubRequest with token-aware version
+          const originalRequest = globalThis.githubRequest;
+          try {
+            globalThis.githubRequest = withToken(context.token);
+            const result = await tool.handler(args);
 
-          globalThis.githubRequest = withToken(context.token);
-          const result = await tool.handler(validatedParams as any);
-
-          console.log(`✅ Tool ${tool.name} execution successful`);
-          return {
-            content: [{
-              type: "text" as const,
-              text: JSON.stringify(result)
-            }]
-          };
-        } catch (error) {
-          console.error(`❌ Tool execution error for ${tool.name}:`, error);
-
-          // Improved error handling for specific GitHub errors
-          let errorResponse: any = {
-            error: error instanceof Error ? error.message : String(error)
-          };
-
-          // For operations that fail without a token to public repositories
-          if (tool.name.startsWith('get_') && !context.token &&
-            (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
-            console.log(`🔄 Error might be due to GitHub rate limits or auth requirements`);
-
-            errorResponse = {
-              error: "GitHub API access error",
-              details: {
-                message: `The GitHub API returned an error that might be due to rate limiting or authentication requirements.`,
-                original_error: error instanceof Error ? error.message : String(error),
-                status: error?.status || 'unknown',
-                suggestion: "For public repositories, you may still access content without authentication, but GitHub imposes stricter rate limits for unauthenticated requests. Providing a GitHub token would help avoid these limitations."
-              }
+            console.log(`[${requestId}] ✅ Tool ${tool.name} execution successful`);
+            
+            // Return the result in the proper format expected by MCP
+            return {
+              content: [{
+                type: "text" as "text", // Use the precise literal type
+                text: JSON.stringify(result)
+              }]
             };
-          }
+          } catch (error) {
+            console.error(`[${requestId}] ❌ Tool execution error for ${tool.name}:`, error);
 
-          return {
-            content: [{
-              type: "text" as const,
-              text: JSON.stringify(errorResponse)
-            }]
-          };
-        } finally {
-          globalThis.githubRequest = originalRequest;
-        }
+            // Improved error handling for specific GitHub errors
+            let errorResponse: any = {
+              error: error instanceof Error ? error.message : String(error)
+            };
+
+            // For operations that fail without a token to public repositories
+            if (tool.name.startsWith('get_') && !context.token &&
+              (error instanceof GitHubError && (error.status === 401 || error.status === 403 || error.status === 429))) {
+              console.log(`[${requestId}] 🔄 Error might be due to GitHub rate limits or auth requirements`);
+
+              errorResponse = {
+                error: "GitHub API access error",
+                details: {
+                  message: `The GitHub API returned an error that might be due to rate limiting or authentication requirements.`,
+                  original_error: error instanceof Error ? error.message : String(error),
+                  status: error instanceof GitHubError ? error.status : 'unknown',
+                  suggestion: "For public repositories, you may still access content without authentication, but GitHub imposes stricter rate limits for unauthenticated requests. Providing a GitHub token would help avoid these limitations."
+                }
+              };
+            }
+
+            // Return error in the proper format expected by MCP
+            return {
+              content: [{
+                type: "text" as "text", // Use the precise literal type
+                text: JSON.stringify(errorResponse)
+              }],
+              isError: true // Mark this as an error response
+            };
+          } finally {
+            globalThis.githubRequest = originalRequest;
+          }
       });
     }
   }

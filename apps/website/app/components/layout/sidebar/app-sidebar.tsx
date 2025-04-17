@@ -10,6 +10,7 @@ import { NavAccount } from '@/components/layout/sidebar/nav-account';
 import { NavFeatures } from '@/components/layout/sidebar/nav-features';
 import { NavTeamsSettings } from '@/components/layout/sidebar/nav-teams-settings';
 import { OrgSwitcher } from '@/components/layout/sidebar/org-switcher';
+import { GitHubTokenInput } from '@/components/layout/sidebar/github-token-input';
 import { Button } from '@/components/ui/button';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from '@/components/ui/sidebar';
 import { X } from 'lucide-react';
@@ -37,6 +38,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </>
         )}
       </SidebarContent>
+      <SidebarFooter className="border-t">
+        <div className="space-y-2 py-1">
+          {/* <HelpButton /> */}
+          <GitHubTokenInput />
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 }
