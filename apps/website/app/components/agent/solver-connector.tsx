@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +52,8 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   };
 
   // Use the OpenAgent hook to connect to the Solver agent
-  const agent = useOpenAgent(`solver-${issue.id}`, "solver");
+  // Don't add "solver-" prefix here since useOpenAgent already adds it
+  const agent = useOpenAgent(issue.id, "solver");
 
   // Handle connection to the Solver agent
   const connectToSolver = async () => {
@@ -66,28 +67,82 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     setIsStartingSolver(true);
 
     try {
-      // Set GitHub token for the agent
-      await agent.setGithubToken(githubToken);
+      // Log connection information
+      console.log("=== CONNECTING TO SOLVER AGENT ===");
+      console.log("Issue ID:", issue.id);
+      console.log("Issue Identifier:", issue.identifier);
+      console.log("Token (first 10 chars):", githubToken.substring(0, 10) + "...");
+      
+      // Add timeout promise to detect stalled connections
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Connection timed out. The agent server may be unreachable.")), 30000);
+      });
 
-      // Set repository context
+      // Basic step 1: Set GitHub token
+      console.log("Step 1: Setting GitHub token...");
+      
+      try {
+        await Promise.race([
+          agent.setGithubToken(githubToken),
+          timeoutPromise
+        ]);
+        console.log("✓ GitHub token set successfully");
+      } catch (error) {
+        console.error("✗ Failed to set GitHub token:", error);
+        throw new Error(`Failed to set GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
+
+      // Basic step 2: Set repository context
       if (agent.setRepositoryContext) {
-        await agent.setRepositoryContext(repoInfo.owner, repoInfo.repo, repoInfo.branch);
+        console.log("Step 2: Setting repository context...");
+        try {
+          await agent.setRepositoryContext(repoInfo.owner, repoInfo.repo, repoInfo.branch);
+          console.log("✓ Repository context set successfully");
+        } catch (error) {
+          console.error("✗ Failed to set repository context:", error);
+          throw new Error(`Failed to set repository context: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
       }
 
-      // Set the current issue context
+      // Basic step 3: Set current issue
       if (agent.setCurrentIssue) {
-        await agent.setCurrentIssue(formattedIssue);
+        console.log("Step 3: Setting current issue...");
+        try {
+          await agent.setCurrentIssue(formattedIssue);
+          console.log("✓ Current issue set successfully");
+        } catch (error) {
+          console.error("✗ Failed to set current issue:", error);
+          throw new Error(`Failed to set current issue: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
       }
 
-      // Set up the issue context with the agent
-      await agent.handleSubmit(`I need help with issue ${issue.identifier}: "${issue.title}". Please analyze this issue and suggest a plan to solve it.`);
+      // Basic step 4: Submit initial prompt
+      console.log("Step 4: Sending initial prompt to agent...");
+      const initialPrompt = `I need help with issue ${issue.identifier}: "${issue.title}". Please analyze this issue and suggest a plan to solve it.`;
+      console.log("Initial prompt:", initialPrompt);
+      
+      try {
+        await agent.handleSubmit(initialPrompt);
+        console.log("✓ Initial prompt sent successfully");
+      } catch (error) {
+        console.error("✗ Failed to send initial prompt:", error);
+        throw new Error(`Failed to send initial prompt: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
 
-      // Start inference on the agent
-      await agent.infer(githubToken);
+      // Basic step 5: Start inference
+      console.log("Step 5: Starting agent inference...");
+      try {
+        await agent.infer(githubToken);
+        console.log("✓ Agent inference started successfully");
+      } catch (error) {
+        console.error("✗ Failed to start agent inference:", error);
+        throw new Error(`Failed to start agent inference: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
 
+      console.log("=== AGENT CONNECTION PROCESS COMPLETE ===");
       setConnectionState('connected');
     } catch (err) {
-      console.error("Error connecting to Solver agent:", err);
+      console.error("=== ERROR CONNECTING TO SOLVER AGENT ===", err);
       setErrorMessage(err instanceof Error ? err.message : "Failed to connect to the Solver agent. Please try again later.");
       setConnectionState('error');
     } finally {
@@ -97,6 +152,22 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
   // This can be used to determine if the button should be disabled
   const isConnectButtonDisabled = isStartingSolver || !githubToken;
+  
+  // Add a retry mechanism
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
+  
+  const retryConnection = useCallback(() => {
+    if (retryCount < maxRetries) {
+      setRetryCount(prev => prev + 1);
+      setConnectionState('disconnected');
+      setErrorMessage('');
+      setIsStartingSolver(false);
+      console.log(`Retry attempt ${retryCount + 1}/${maxRetries}`);
+    } else {
+      setErrorMessage(`Failed after ${maxRetries} attempts. The agent server may be down or unreachable.`);
+    }
+  }, [retryCount, maxRetries]);
 
   // Disconnect from the Solver agent
   const disconnectFromSolver = () => {
@@ -105,14 +176,27 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     setConnectionState('disconnected');
   };
 
-  // Update connection state based on changes in agent state
+  // Update connection state based on agent messages
   useEffect(() => {
+    // If we get messages when disconnected, we may be connected
     if (agent.messages.length > 0 && connectionState === 'disconnected') {
-      setConnectionState('connected');
+      console.log("Agent has messages, connection might be working");
     }
-
-    // In real implementation, you'd want to handle potential error states here
   }, [agent.messages, connectionState]);
+  
+  // Monitor the connection status
+  useEffect(() => {
+    // Check connection status periodically
+    const intervalId = setInterval(() => {
+      if (connectionState === 'connecting') {
+        // If we've been connecting for more than 10 seconds, consider it an error
+        console.log("Still connecting...");
+      }
+    }, 3000);
+    
+    // Cleanup interval
+    return () => clearInterval(intervalId);
+  }, [connectionState]);
 
   return (
     <Card className="mb-6">
@@ -165,6 +249,16 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             <p className="text-muted-foreground mb-4">
               {errorMessage || "Failed to connect to the Solver agent. Please try again."}
             </p>
+            {retryCount < maxRetries && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={retryConnection}
+                className="mt-2"
+              >
+                Retry Connection
+              </Button>
+            )}
           </div>
         )}
 

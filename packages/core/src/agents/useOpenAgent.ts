@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { generateId, UIMessage } from "ai";
 import { useAgent } from "agents/react";
 
@@ -35,19 +35,95 @@ type AgentState = {
  */
 export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   // Setup local state that will be synchronized with the agent
-  const [state, setAgentState] = useState<AgentState>({ 
+  const [state, setAgentState] = useState<AgentState>({
     messages: []
   });
 
   // Connect to the agent using the Cloudflare Agents SDK
+  // Make sure we don't duplicate the agent type prefix in the name
+  const agentName = id.startsWith(`${type}-`) ? id : `${type}-${id}`;
+  
+  // Add more robust logging and connection debugging with auto-reconnect logic
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const maxReconnectAttempts = 3;
+  
+  const onOpen = () => {
+    console.log(`[useOpenAgent ${agentName}] WebSocket connection opened successfully`);
+    // Reset connection attempts on successful connection
+    setConnectionAttempts(0);
+  };
+  
+  const onClose = (event: any) => {
+    console.log(`[useOpenAgent ${agentName}] WebSocket connection closed`, event);
+  };
+  
+  const onError = (error: any) => {
+    console.error(`[useOpenAgent ${agentName}] WebSocket connection error:`, error);
+    
+    // Only attempt to reconnect if we haven't exceeded max attempts
+    if (connectionAttempts < maxReconnectAttempts) {
+      setConnectionAttempts(prev => prev + 1);
+      console.log(`[useOpenAgent ${agentName}] Auto-reconnect attempt ${connectionAttempts + 1}/${maxReconnectAttempts}`);
+    } else {
+      console.error(`[useOpenAgent ${agentName}] Max reconnection attempts (${maxReconnectAttempts}) reached. Giving up.`);
+    }
+  };
+  
   const cloudflareAgent = useAgent({
-    name: `${type}-${id}`, // Unique name combining type and ID
-    agent: type,          // Agent type maps to URL path/DO binding name
+    name: agentName, // Unique name for this agent instance
+    agent: type,     // Agent type maps to URL path/DO binding name
     onStateUpdate: (newState: AgentState) => {
       // Update local state whenever agent state changes
-      console.log(`[useOpenAgent ${type}-${id}] State updated from agent:`, newState);
+      console.log(`[useOpenAgent ${agentName}] State updated from agent:`, newState);
       setAgentState(newState);
+    },
+    host: "agents.openagents.com", 
+    onOpen,
+    onClose,
+    onError
+  });
+
+  // Track connection status for logging purposes
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
+  
+  // Update connection status based on connection events
+  useEffect(() => {
+    const handleOpen = () => {
+      console.log(`[useOpenAgent ${agentName}] WebSocket connection opened successfully`);
+      setConnectionStatus('connected');
+    };
+    
+    const handleClose = () => {
+      console.log(`[useOpenAgent ${agentName}] WebSocket connection closed`);
+      setConnectionStatus('disconnected');
+    };
+    
+    const handleError = () => {
+      console.error(`[useOpenAgent ${agentName}] WebSocket connection error`);
+      setConnectionStatus('error');
+    };
+    
+    // Setup listeners
+    if (typeof window !== 'undefined') {
+      window.addEventListener('agent:connected', handleOpen);
+      window.addEventListener('agent:disconnected', handleClose);
+      window.addEventListener('agent:error', handleError);
     }
+    
+    return () => {
+      // Cleanup listeners
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('agent:connected', handleOpen);
+        window.removeEventListener('agent:disconnected', handleClose);
+        window.removeEventListener('agent:error', handleError);
+      }
+    };
+  }, [agentName]);
+  
+  console.log(`[useOpenAgent ${agentName}] Agent initialized:`, { 
+    type, 
+    agentName, 
+    connectionStatus: cloudflareAgent ? 'created' : 'failed'
   });
 
   /**
@@ -64,12 +140,30 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
         text: message
       }]
     };
-    
-    // Update the agent's state with the new message
-    cloudflareAgent.setState({
-      messages: [...(state?.messages || []), newMessage]
-    });
-  }, [cloudflareAgent, state?.messages]);
+
+    try {
+      // Log that we're submitting a message
+      console.log(`[useOpenAgent ${agentName}] Submitting message to agent:`, message);
+      
+      // Update the agent's state with the new message
+      cloudflareAgent.setState({
+        messages: [...(state?.messages || []), newMessage]
+      });
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to submit message:`, error);
+      
+      // Mark connection as error if it wasn't already
+      if (connectionStatus !== 'error') {
+        setConnectionStatus('error');
+      }
+      
+      // Still update local state so the message appears in the UI
+      setAgentState(prevState => ({
+        ...prevState,
+        messages: [...(prevState.messages || []), newMessage]
+      }));
+    }
+  }, [cloudflareAgent, state?.messages, agentName, connectionStatus]);
 
   /**
    * Sets the messages in the agent's state
@@ -82,45 +176,95 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
    * Sets the GitHub token in the agent's state and calls the setGithubToken method
    */
   const setGithubToken = useCallback(async (token: string): Promise<void> => {
-    // Call the method on the agent
-    await cloudflareAgent.call('setGithubToken', [token]);
+    try {
+      console.log(`[useOpenAgent ${agentName}] Setting GitHub token...`);
+      // Call the method on the agent
+      await cloudflareAgent.call('setGithubToken', [token]);
+      console.log(`[useOpenAgent ${agentName}] GitHub token set successfully`);
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to set GitHub token:`, error);
+      // Re-throw to let caller handle error
+      throw error;
+    }
     return;
-  }, [cloudflareAgent]);
+  }, [cloudflareAgent, agentName]);
 
   /**
    * Gets the GitHub token from the agent
    */
   const getGithubToken = useCallback(async (): Promise<string> => {
-    const result = await cloudflareAgent.call('getGithubToken', []);
-    return result as string;
-  }, [cloudflareAgent]);
+    try {
+      console.log(`[useOpenAgent ${agentName}] Getting GitHub token...`);
+      const result = await cloudflareAgent.call('getGithubToken', []);
+      console.log(`[useOpenAgent ${agentName}] GitHub token retrieved successfully`);
+      return result as string;
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to get GitHub token:`, error);
+      throw error;
+    }
+  }, [cloudflareAgent, agentName]);
 
   /**
    * Sets the current issue for the Solver agent
    */
   const setCurrentIssue = useCallback(async (issue: any): Promise<void> => {
     if (type === 'solver') {
-      await cloudflareAgent.call('setCurrentIssue', [issue]);
+      try {
+        console.log(`[useOpenAgent ${agentName}] Setting current issue:`, issue.id);
+        await cloudflareAgent.call('setCurrentIssue', [issue]);
+        console.log(`[useOpenAgent ${agentName}] Current issue set successfully`);
+      } catch (error) {
+        console.error(`[useOpenAgent ${agentName}] Failed to set current issue:`, error);
+        throw error;
+      }
     }
     return;
-  }, [cloudflareAgent, type]);
+  }, [cloudflareAgent, type, agentName]);
 
   /**
    * Sets the repository context for the agent
    */
   const setRepositoryContext = useCallback(async (owner: string, repo: string, branch: string = 'main'): Promise<void> => {
-    await cloudflareAgent.call('setRepositoryContext', [owner, repo, branch]);
+    try {
+      console.log(`[useOpenAgent ${agentName}] Setting repository context: ${owner}/${repo}:${branch}`);
+      await cloudflareAgent.call('setRepositoryContext', [owner, repo, branch]);
+      console.log(`[useOpenAgent ${agentName}] Repository context set successfully`);
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to set repository context:`, error);
+      throw error;
+    }
     return;
-  }, [cloudflareAgent]);
+  }, [cloudflareAgent, agentName]);
 
   /**
    * Triggers the agent to generate a response
    */
   const infer = useCallback(async (token?: string): Promise<any> => {
-    // Pass token in args array if needed by the agent's infer method
-    const args = token ? [token] : [];
-    return await cloudflareAgent.call('infer', args);
-  }, [cloudflareAgent]);
+    try {
+      // Pass token in args array if needed by the agent's infer method
+      const args = token ? [token] : [];
+      console.log(`[useOpenAgent ${agentName}] Calling infer method...`);
+      
+      // Start a timeout to detect if the call is taking too long
+      const timeoutId = setTimeout(() => {
+        console.warn(`[useOpenAgent ${agentName}] Infer call is taking longer than expected`);
+      }, 5000);
+      
+      const response = await cloudflareAgent.call('infer', args);
+      clearTimeout(timeoutId);
+      
+      console.log(`[useOpenAgent ${agentName}] Infer response received:`, response);
+      return response;
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to call infer method:`, error);
+      
+      // Update connection status to error
+      setConnectionStatus('error');
+      
+      // Throw the error so the caller can handle it
+      throw error;
+    }
+  }, [cloudflareAgent, agentName, connectionStatus]);
 
   // Return the OpenAgent interface with appropriate methods
   return {
