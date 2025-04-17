@@ -385,11 +385,31 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     }
   }, [cloudflareAgent, agentName]);
 
+  // Convert UIMessages to Messages to satisfy the interface
+  const convertUIMessagesToMessages = (uiMessages: UIMessage[]): Message[] => {
+    return uiMessages.map(uiMsg => ({
+      id: uiMsg.id,
+      role: uiMsg.role,
+      content: uiMsg.content,
+      parts: uiMsg.parts?.map(part => ({
+        type: part.type,
+        text: 'text' in part ? part.text : JSON.stringify(part)
+      }))
+    }));
+  };
+
+  // Create message adapter function for setMessages
+  const adaptSetMessages = (messages: Message[]) => {
+    // Convert Messages to UIMessages (simplified conversion assuming compatible structure)
+    const uiMessages = messages as unknown as UIMessage[];
+    setMessages(uiMessages);
+  };
+
   // Return the OpenAgent interface with appropriate methods
   return {
     state,
-    messages: state?.messages || [],
-    setMessages,
+    messages: convertUIMessagesToMessages(state?.messages || []),
+    setMessages: adaptSetMessages,
     handleSubmit,
     infer,
     setGithubToken,
