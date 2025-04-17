@@ -1,17 +1,11 @@
 import { type UIMessage } from "ai";
+import { BaseAgentState } from "../../common/types";
 
-// Define types for Solver state
-export interface SolverState {
-  messages: UIMessage[];
-  githubToken?: string;
+// Define types for Solver state - extends base agent state
+export interface SolverState extends BaseAgentState {
+  messages: UIMessage[]; // Override to specify UIMessage type
   currentIssue?: Issue;
-  currentRepoOwner?: string;
-  currentRepoName?: string;
-  currentBranch?: string;
   implementationSteps?: ImplementationStep[];
-  observations?: string[];
-  scratchpad?: string;
-  workingFilePath?: string;
   issueComments?: IssueComment[];
 }
 

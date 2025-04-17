@@ -1,7 +1,9 @@
-import { type Connection, type WSMessage } from "agents";
+import { Agent, type Connection, type WSMessage } from "agents";
 import { generateId, generateText, type ToolSet, type ToolResult } from "ai";
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { ToolContext, UIPart } from "@openagents/core";
+import type { Env } from "../../types";
+import type { UIPart } from "@openagents/core/src/chat/types";
+import type { ToolContext } from "@openagents/core/src/tools/toolContext";
 import { getFileContentsTool } from "../../common/tools/github/getFileContents";
 import { addIssueCommentTool } from "../../common/tools/github/addIssueComment";
 import { tools as commonTools } from "../../common/tools";
@@ -9,14 +11,13 @@ import { solverTools } from "./tools";
 import { getSolverSystemPrompt } from "./prompts";
 import { model } from "../../common/config";
 import type { SolverState, Issue, ImplementationStep } from "./types";
-import { OpenAgent } from "../../common/types";
 
 export const solverContext = new AsyncLocalStorage<Solver>();
 
 /**
- * Solver Agent that handles issue resolution in OpenAgents Projects
+ * Solver Agent implementation that handles GitHub and Linear issue resolution
  */
-export class Solver extends OpenAgent<SolverState> {
+export class Solver extends Agent<Env, SolverState> {
   initialState: SolverState = {
     messages: [],
     githubToken: undefined,
@@ -29,6 +30,27 @@ export class Solver extends OpenAgent<SolverState> {
   };
   tools: ToolSet = {};
 
+  protected ctx: any; // DurableObjectState type
+
+  constructor(ctx: any, env: Env) {
+    super(ctx, env);
+    this.ctx = ctx; // Store ctx for direct storage access
+    console.log("[Constructor] Solver instance created.");
+  }
+
+  /**
+   * Safely updates the agent's state by merging the provided partial state
+   * with the existing state. Ensures ...this.state is always included.
+   * @param partialState An object containing the state properties to update.
+   */
+  updateState(partialState: Partial<SolverState>) {
+    this.setState({
+      ...this.state,
+      ...partialState,
+    });
+    console.log('[updateState] Updated in-memory state via this.setState.');
+  }
+
   /**
    * Sets the current issue being worked on
    */
@@ -40,6 +62,23 @@ export class Solver extends OpenAgent<SolverState> {
     this.addAgentObservation(`Now working on issue #${issue.number}: ${issue.title}`);
 
     return { success: true, message: `Set current issue to #${issue.number}` };
+  }
+
+  /**
+   * Sets the current repository context
+   */
+  setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
+    console.log(`[setRepositoryContext] Setting context to ${owner}/${repo} on branch ${branch}`);
+
+    this.updateState({
+      currentRepoOwner: owner,
+      currentRepoName: repo,
+      currentBranch: branch
+    });
+
+    this.addAgentObservation(`Repository context set to ${owner}/${repo}:${branch}`);
+
+    return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
   }
 
   /**
@@ -67,6 +106,40 @@ export class Solver extends OpenAgent<SolverState> {
     });
 
     return true;
+  }
+
+  /**
+   * Sets the file currently being worked on
+   */
+  setCurrentFile(filePath: string) {
+    this.updateState({
+      workingFilePath: filePath
+    });
+
+    this.addAgentObservation(`Now working on file: ${filePath}`);
+  }
+
+  /**
+   * Adds an observation to the agent's state
+   */
+  addAgentObservation(observation: string) {
+    this.updateState({
+      observations: [...(this.state.observations || []), observation]
+    });
+  }
+
+  /**
+   * Updates the agent's scratchpad with agent thoughts
+   */
+  private updateScratchpad(thought: string) {
+    const timestamp = new Date().toISOString();
+    const formattedThought = `${timestamp}: ${thought}`;
+
+    this.updateState({
+      scratchpad: this.state.scratchpad
+        ? `${this.state.scratchpad}\n- ${formattedThought}`
+        : `- ${formattedThought}`
+    });
   }
 
   /**
