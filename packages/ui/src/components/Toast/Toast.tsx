@@ -72,7 +72,7 @@ export function Toast({
 
 // Toast provider
 export const ToastProvider = ({ children }: ToastProviderProps) => {
-  const [toasts, setToasts] = useState<Map<string, ToastOptions & { id: string }>>(new Map());
+  const [toasts, setToasts] = useState<Map<string, ToastOptions & { id: string; visible: boolean }>>(new Map());
 
   const removeToast = useCallback((id: string) => {
     setToasts(prev => {
@@ -82,58 +82,74 @@ export const ToastProvider = ({ children }: ToastProviderProps) => {
     });
   }, []);
 
-  const show = useCallback((options: ToastOptions) => {
+  const showToast = useCallback((options: ToastOptions) => {
     const id = generateId();
     setToasts(prev => {
       const newMap = new Map(prev);
-      newMap.set(id, { ...options, id });
+      newMap.set(id, { ...options, id, visible: true });
       return newMap;
     });
 
     // Auto-close if duration is provided
     if (options.duration && options.duration > 0) {
-      setTimeout(() => removeToast(id), options.duration);
+      setTimeout(() => hideToast(id), options.duration);
     }
+  }, []);
 
-    return id;
+  const hideToast = useCallback((id: string) => {
+    setToasts(prev => {
+      if (!prev.has(id)) return prev;
+      const newMap = new Map(prev);
+      const toast = newMap.get(id);
+      if (toast) {
+        newMap.set(id, { ...toast, visible: false });
+      }
+      setTimeout(() => removeToast(id), 300); // Remove after animation
+      return newMap;
+    });
   }, [removeToast]);
 
   const update = useCallback((id: string, options: ToastOptions) => {
     setToasts(prev => {
       if (!prev.has(id)) return prev;
-
       const newMap = new Map(prev);
-      newMap.set(id, { ...prev.get(id), ...options, id });
+      const toast = newMap.get(id);
+      if (toast) {
+        newMap.set(id, { ...toast, ...options });
+      }
       return newMap;
     });
   }, []);
-
-  const close = useCallback((id: string) => {
-    removeToast(id);
-  }, [removeToast]);
 
   const closeAll = useCallback(() => {
     setToasts(new Map());
   }, []);
 
-  const contextValue = {
-    show,
+  const contextValue: ToastContextType = {
+    show: (options: ToastOptions) => {
+      const id = generateId();
+      showToast({ ...options, id });
+      return id;
+    },
     update,
-    close,
+    close: hideToast,
     closeAll,
+    showToast,
+    hideToast,
   };
 
   return (
     <ToastContext.Provider value={contextValue}>
-      {children as React.ReactNode}
+      {children}
       <SafeAreaView style={$container} pointerEvents="box-none">
         {Array.from(toasts.values()).map((toast) => (
           <Toast
             key={toast.id}
+            visible={toast.visible}
             message={toast.message}
             type={toast.type}
             duration={toast.duration}
-            onClose={() => removeToast(toast.id)}
+            onClose={() => hideToast(toast.id)}
           />
         ))}
       </SafeAreaView>

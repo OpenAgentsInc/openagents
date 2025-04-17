@@ -28,13 +28,15 @@ export interface ToastProviderProps {
   children: React.ReactNode;
 }
 
-export interface ToastOptions extends Omit<ToastProps, 'message'> {
+export interface ToastOptions {
   /** Toast message */
   message: string;
-  /** Callback when toast is pressed */
-  onPress?: () => void;
+  /** Toast type */
   type?: 'success' | 'error' | 'info';
+  /** Duration in milliseconds before auto-close */
   duration?: number;
+  /** Optional ID for the toast */
+  id?: string;
 }
 
 export interface ToastContextType {
@@ -46,6 +48,8 @@ export interface ToastContextType {
   close: (id: string) => void;
   /** Close all toasts */
   closeAll: () => void;
+  /** Show a toast with the given options */
   showToast: (options: ToastOptions) => void;
+  /** Hide a toast by id */
   hideToast: (id: string) => void;
 }
