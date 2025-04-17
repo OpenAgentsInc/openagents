@@ -1,5 +1,5 @@
 import { type UIMessage } from "ai";
-import { BaseAgentState } from "../../common/types";
+import type { BaseAgentState } from "../../common/types";
 
 // Define types for Solver state - extends base agent state
 export interface SolverState extends BaseAgentState {
