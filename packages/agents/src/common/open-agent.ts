@@ -166,13 +166,12 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       // Format messages for the chat completion format
       let formattedMessages = [];
       
-      // Add system message if provided
-      if (system) {
-        formattedMessages.push({
-          role: "system",
-          content: system
-        });
-      }
+      // Add system message - either the one provided or the agent's own system prompt
+      const systemPrompt = system || this.getSystemPrompt();
+      formattedMessages.push({
+        role: "system",
+        content: systemPrompt
+      });
       
       // Add user and assistant messages from the conversation
       messages.forEach(msg => {

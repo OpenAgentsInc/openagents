@@ -462,30 +462,25 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
               variant="outline" 
               onClick={async () => {
                 try {
-                  // Create a test message
+                  // Create a test message with proper UIMessage typing including required parts array
                   const testMessage = { 
                     id: generateId(), 
-                    role: 'user', 
-                    content: `Test inference at ${new Date().toISOString()}`,
-                    parts: [{ type: 'text', text: `This is a test message for shared inference. Please respond briefly.` }]
+                    role: 'user' as const, 
+                    content: `This is a test message for shared inference. Please respond briefly.`,
+                    // Add the required parts array for UIMessage compatibility
+                    parts: [{
+                      type: 'text',
+                      text: `This is a test message for shared inference. Please respond briefly.`
+                    }]
                   };
                   
-                  // Get the system prompt to use in the inference request
-                  let systemPrompt = "";
-                  try {
-                    systemPrompt = await agent.getSystemPrompt();
-                    console.log("Got system prompt for inference, length:", systemPrompt.length);
-                  } catch (error) {
-                    console.error("Failed to get system prompt for inference:", error);
-                    systemPrompt = "You are a helpful AI assistant.";
-                  }
-                  
-                  // Run shared inference with the test message and system prompt
+                  // Run shared inference with just the test message
+                  // The agent will use its own system prompt automatically
                   console.log("Running shared inference...");
                   const result = await agent.sharedInfer({
                     // Use default Llama 4 model
                     messages: [testMessage],
-                    system: systemPrompt,
+                    // No need to fetch system prompt explicitly - agent will use its own
                     temperature: 0.7,
                     max_tokens: 500
                   });

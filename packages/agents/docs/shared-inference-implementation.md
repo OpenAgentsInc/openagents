@@ -25,7 +25,7 @@ The shared inference functionality is implemented in:
 
 3. **Message Formatting**
    - Properly formats messages for chat completion models
-   - Handles system prompts separately from conversation messages
+   - Automatically uses the agent's own system prompt if none is provided
    - Preserves message roles (user/assistant)
 
 4. **Response Handling**
@@ -44,6 +44,7 @@ The shared inference functionality is implemented in:
 
 ```typescript
 // Get a response from the default model (Llama 4)
+// The agent will use its own system prompt automatically
 const result = await agent.sharedInfer({
   messages: [
     { 
@@ -52,12 +53,18 @@ const result = await agent.sharedInfer({
       content: "What is the capital of France?"
     }
   ],
-  system: "You are a helpful assistant that provides brief, accurate answers.",
   temperature: 0.7,
   max_tokens: 500
 });
 
 console.log(result.content); // The AI-generated response
+
+// Optionally, you can override the system prompt
+const resultWithCustomPrompt = await agent.sharedInfer({
+  messages: [userMessage],
+  system: "You are a helpful assistant that provides brief, accurate answers.",
+  temperature: 0.7
+});
 ```
 
 ### Custom Model
