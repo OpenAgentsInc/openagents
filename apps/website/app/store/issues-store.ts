@@ -3,7 +3,7 @@ import { type LabelInterface } from '@/mock-data/labels';
 import { type Priority } from '@/mock-data/priorities';
 import { type Project } from '@/mock-data/projects';
 import { create } from 'zustand';
-import { BaseUser, IssueStatus as BaseIssueStatus } from '@openagents/core';
+import { type BaseUser, type IssueStatus as BaseIssueStatus } from '@openagents/core';
 
 // Re-export BaseUser for consistency
 export type User = BaseUser;
