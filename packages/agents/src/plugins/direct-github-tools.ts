@@ -1,11 +1,10 @@
-// @ts-nocheck
 /**
  * Direct GitHub tools implementation that bypasses MCP
  * This provides a direct API version of the GitHub tools for the Cloudflare Worker environment
  */
 
 // Helper function to make GitHub API requests
-async function callGitHubAPI(endpoint: string, options: RequestInit = {}, token?: string): Promise<any> {
+async function callGitHubAPI<T>(endpoint: string, options: RequestInit = {}, token?: string): Promise<T> {
   const url = `https://api.github.com${endpoint}`;
   const headers = {
     'Accept': 'application/vnd.github.v3+json',
@@ -28,7 +27,7 @@ async function callGitHubAPI(endpoint: string, options: RequestInit = {}, token?
     throw new Error(`GitHub API error (${response.status}): ${errorText}`);
   }
 
-  return response.json();
+  return response.json() as Promise<T>;
 }
 
 export const directGitHubTools = {

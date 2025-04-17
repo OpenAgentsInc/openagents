@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { generateId, UIMessage } from "ai";
+import { generateId, type UIMessage } from "ai";
 import { useAgent } from "agents/react";
 
 // Define agent types

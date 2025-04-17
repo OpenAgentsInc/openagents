@@ -53,7 +53,21 @@ export const getIssueDetails = tool({
           throw new Error(`GitHub API error (${response.status}): ${errorText}`);
         }
 
-        const data = await response.json();
+        // Define a type for GitHub issue response
+        interface GitHubIssue {
+          id: number;
+          number: number;
+          title: string;
+          body: string | null;
+          state: string;
+          html_url: string;
+          assignee: { login: string } | null;
+          labels: Array<{ name: string }>;
+          created_at: string;
+          updated_at: string;
+        }
+        
+        const data = await response.json() as GitHubIssue;
         
         // Map the response to our Issue type
         return {
@@ -65,7 +79,7 @@ export const getIssueDetails = tool({
           status: data.state === "open" ? "open" : "closed",
           url: data.html_url,
           assignee: data.assignee ? data.assignee.login : undefined,
-          labels: data.labels ? data.labels.map((label: any) => label.name) : [],
+          labels: data.labels ? data.labels.map(label => label.name) : [],
           created: new Date(data.created_at),
           updated: new Date(data.updated_at)
         };
@@ -171,7 +185,14 @@ export const updateIssueStatus = tool({
           }
         }
 
-        const data = await response.json();
+        // Define a type for GitHub issue update response
+        interface GitHubIssueUpdate {
+          id: number;
+          number: number;
+          updated_at: string;
+        }
+        
+        const data = await response.json() as GitHubIssueUpdate;
         
         return {
           success: true,

@@ -1,6 +1,6 @@
 import { type UIMessage } from "ai";
 import type { BaseAgentState } from "../../common/types";
-import { BaseIssue, ImplementationStep, IssueComment } from "@openagents/core";
+import type { BaseIssue, ImplementationStep, IssueComment } from "@openagents/core";
 
 // Define types for Solver state - extends base agent state
 export interface SolverState extends BaseAgentState {

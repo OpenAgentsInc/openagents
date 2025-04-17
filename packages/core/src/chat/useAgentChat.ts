@@ -1,10 +1,10 @@
-import { useChat, Message, UseChatOptions } from '@ai-sdk/react';
+import { useChat, type Message, type UseChatOptions } from '@ai-sdk/react';
 import { useState, useEffect, useRef } from 'react';
 import * as React from 'react';
 import { threadRepository, messageRepository } from '../db/repositories';
 import { getDatabase } from '../db/database';
-import { Thread } from '../db/types';
-import { UIMessage, toVercelMessage, fromVercelMessage } from './types';
+import type { Thread } from '../db/types';
+import { type UIMessage, toVercelMessage, fromVercelMessage } from './types';
 import { AgentRouterProvider } from '../agentrouter/provider';
 import { inferRouted } from '../agentrouter';
 
