@@ -52,10 +52,12 @@
     "ai": "^4.3.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
     "tailwind-merge": "^3.0.2",
     "workers-ai-provider": "^0.3.0",
     "zod": "^3.24.2"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   }
 }
