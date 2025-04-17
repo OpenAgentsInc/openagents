@@ -1,7 +1,7 @@
 import { type Connection, type WSMessage } from "agents";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { SolverState } from "./types";
-import { OpenAgent } from "../../common/types";
+import { OpenAgent } from "../../common/open-agent";
 
 export const solverContext = new AsyncLocalStorage<Solver>();
 
