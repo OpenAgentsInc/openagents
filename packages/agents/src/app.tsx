@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo, type ChangeEvent } from "react";
-import { useChat, type UseChatHelpers, type Message as UIMessage } from "@ai-sdk/react";
+import { useChat, type UseChatHelpers, type Message as UIMessage, type UseChatOptions } from "@ai-sdk/react";
 import { createAgentRouterProvider, useAgentChat, type UseAgentChatReturn, type UseAgentChatOptions } from "@openagents/core";
 import type { AgentRouterProvider } from "@openagents/core";
 import type { Message } from "ai";
@@ -62,14 +62,12 @@ interface ExtendedUseChatHelpers extends UseChatHelpers {
   send: (message: string, options?: any) => Promise<void>;
 }
 
-interface ExtendedUseChatOptions extends UseAgentChatOptions {
+interface ExtendedUseChatOptions extends UseChatOptions {
   agentRouterProvider: AgentRouterProvider;
   onStateUpdate?: (state: any) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
-  experimental_attachments?: FileList;
-  onFinish?: (message: Message) => void;
 }
 
 export default function Chat() {
@@ -82,6 +80,7 @@ export default function Chat() {
   const [rawState, setRawState] = useState<any>(null);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isContinuousRunActive, setIsContinuousRunActive] = useState<boolean | undefined>(false);
   const [attachment, setAttachment] = useState<File | null>(null);
@@ -128,7 +127,7 @@ export default function Chat() {
   };
 
   const agentOptions: ExtendedUseChatOptions = {
-    agentRouterProvider: createAgentRouterProvider("CODER"),
+    agentRouterProvider: createAgentRouterProvider("CODER", ""),
     onStateUpdate: (state: any) => {
       console.log("Agent state updated:", state);
       if (state.isContinuousRunActive !== undefined) {
@@ -137,18 +136,19 @@ export default function Chat() {
     },
     onConnect: () => {
       console.log("Agent connected");
+      setConnectionStatus('connected');
     },
     onDisconnect: () => {
       console.log("Agent disconnected");
+      setConnectionStatus('disconnected');
     },
     onError: (error: Error) => {
       console.error("Agent error:", getErrorMessage(error));
+      setConnectionError(getErrorMessage(error));
     }
   };
 
-  const agent = useChat({
-    ...agentOptions,
-  });
+  const agent = useChat(agentOptions) as ExtendedUseChatHelpers;
 
   // Handle toggling continuous run
   const handleToggleContinuousRun = () => {
@@ -159,11 +159,13 @@ export default function Chat() {
     console.log(`Sending command: ${command}`);
 
     try {
-      agent.send(JSON.stringify({
-        type: 'command',
-        command: command,
-      }));
-      console.log(`Sent ${command} command via WebSocket`);
+      if (agent.send) {
+        agent.send(JSON.stringify({
+          type: 'command',
+          command: command,
+        }));
+        console.log(`Sent ${command} command via WebSocket`);
+      }
     } catch (error) {
       console.error(`Error sending ${command} command:`, error);
       setConnectionError(`Failed to send ${command} command: ${getErrorMessage(error)}`);
@@ -175,11 +177,9 @@ export default function Chat() {
     input: agentInput,
     handleInputChange: handleAgentInputChange,
     handleSubmit: handleAgentSubmit,
-    addToolResult,
-    clearHistory,
   } = useAgentChat({
-    agent,
-    maxSteps: 5,
+    agentRouterProvider: agentOptions.agentRouterProvider,
+    maxSteps: 5
   });
 
   // Scroll to bottom when messages change
@@ -209,8 +209,24 @@ export default function Chat() {
     }
   };
 
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (!input.trim()) return;
+
+    const currentInput = input;
+    setInput("");
+
+    try {
+      await handleAgentSubmit(e);
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
+
+  const handleInputChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
+    handleAgentInputChange(e);
   };
 
   return (
@@ -264,7 +280,7 @@ export default function Chat() {
             size="md"
             shape="square"
             className="rounded-full h-9 w-9"
-            onClick={clearHistory}
+            onClick={handleAgentSubmit}
           >
             <Trash size={20} />
           </Button>
@@ -475,10 +491,11 @@ export default function Chat() {
                                       variant="primary"
                                       size="sm"
                                       onClick={() =>
-                                        addToolResult({
-                                          toolCallId,
-                                          result: APPROVAL.NO,
-                                        })
+                                        handleAgentInputChange({
+                                          target: {
+                                            value: APPROVAL.NO,
+                                          },
+                                        } as ChangeEvent<HTMLInputElement>)
                                       }
                                     >
                                       Reject
@@ -488,10 +505,11 @@ export default function Chat() {
                                         variant="primary"
                                         size="sm"
                                         onClick={() =>
-                                          addToolResult({
-                                            toolCallId,
-                                            result: APPROVAL.YES,
-                                          })
+                                          handleAgentInputChange({
+                                            target: {
+                                              value: APPROVAL.YES,
+                                            },
+                                          } as ChangeEvent<HTMLInputElement>)
                                         }
                                       >
                                         Approve
@@ -517,15 +535,7 @@ export default function Chat() {
 
         {/* Input Area */}
         <form
-          onSubmit={(e) =>
-            handleAgentSubmit(e, {
-              data: {
-                annotations: {
-                  hello: "world",
-                },
-              },
-            })
-          }
+          onSubmit={handleSubmit}
           className="p-3 bg-input-background absolute bottom-0 left-0 right-0 z-10 border-t border-neutral-300 dark:border-neutral-800"
         >
           <div className="flex items-center gap-2">
@@ -538,12 +548,12 @@ export default function Chat() {
                     : "Type your message..."
                 }
                 className="pl-4 pr-10 py-2 w-full rounded-full"
-                value={agentInput}
-                onChange={handleAgentInputChange}
+                value={input}
+                onChange={handleInputChange as unknown as (e: ChangeEvent<HTMLInputElement>) => void}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleAgentSubmit(e as unknown as React.FormEvent);
+                    handleSubmit(e as unknown as React.FormEvent<HTMLFormElement>);
                   }
                 }}
                 onValueChange={undefined}
@@ -554,7 +564,7 @@ export default function Chat() {
               type="submit"
               shape="square"
               className="rounded-full h-10 w-10 flex-shrink-0"
-              disabled={pendingToolCallConfirmation || !agentInput.trim()}
+              disabled={pendingToolCallConfirmation || !input.trim()}
             >
               <PaperPlaneRight size={16} />
             </Button>
