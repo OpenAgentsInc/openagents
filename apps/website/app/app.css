@@ -153,3 +153,30 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Fixed content that adapts to sidebar state */
+.fixed-content {
+  position: fixed;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  left: calc(var(--sidebar-width) + 0.5rem);
+  right: 0.5rem;
+  transition: left 0.2s ease-linear;
+  background-color: var(--background);
+  border-radius: 0.75rem;
+}
+
+/* Adjust when sidebar is collapsed */
+.peer-data-\[state\=collapsed\]:ml-2 ~ .fixed-content {
+  left: 0.5rem;
+}
+
+/* Mobile adjustments */
+@media (max-width: 1024px) {
+  .fixed-content {
+    position: static;
+    margin: 0;
+    height: 100%;
+    border-radius: 0;
+  }
+}
