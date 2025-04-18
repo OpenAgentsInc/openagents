@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useSession } from "~/lib/auth-client";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "~/components/ui/card";
-import { Input } from "~/components/ui/input";
-import { Button } from "~/components/ui/button";
-import { Label } from "~/components/ui/label";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Github, Save, CheckCircle, ExternalLink } from "lucide-react";
-import { HeaderSettings } from "~/components/layout/headers/settings/header";
+import { HeaderSettings } from "@/components/layout/headers/settings/header";
 import MainLayout from "@/components/layout/main-layout";
 
 /**
@@ -125,15 +125,18 @@ export default function SettingsPage() {
                 </div>
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between gap-2 border-t bg-muted/50 pt-6">
-              <Button 
-                variant="outline" 
+            <CardFooter className="flex justify-between gap-2 border-t pt-6">
+              <Button
+                variant="outline"
                 onClick={handleClearToken}
                 disabled={!token}
+                size="sm"
               >
                 Clear Token
               </Button>
-              <Button 
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handleSaveToken}
                 disabled={!token || saved}
                 className="flex items-center gap-1"
