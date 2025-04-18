@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -345,6 +345,23 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     }
   }, [connectionState, formattedIssue, formattedProject, formattedTeam, agent, agent.state]);
 
+  // Create an auto-scrolling messages container
+  const MessageContainer = ({ children }: { children: React.ReactNode }) => {
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    
+    // Scroll to bottom whenever messages change
+    useEffect(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [agent.messages]);
+    
+    return (
+      <div className="h-[400px] overflow-y-auto px-4 py-2">
+        {children}
+        <div ref={messagesEndRef} />
+      </div>
+    );
+  };
+  
   // Monitor the connection status
   useEffect(() => {
     let connectionStartTime: number | null = null;
@@ -385,20 +402,29 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle className="text-lg flex items-center">
-            <BotIcon className="h-5 w-5 mr-2" />
-            Solver Agent
+            {connectionState === 'connected' ? (
+              <>
+                <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
+                <span>Agent</span>
+              </>
+            ) : (
+              <>
+                <BotIcon className="h-5 w-5 mr-2" />
+                <span>Agent</span>
+              </>
+            )}
           </CardTitle>
-          <Badge
-            variant={
-              connectionState === 'connected' ? "success" :
+          {connectionState !== 'connected' && (
+            <Badge
+              variant={
                 connectionState === 'connecting' ? "warning" :
-                  connectionState === 'error' ? "destructive" : "secondary"
-            }
-          >
-            {connectionState === 'connected' ? "Connected" :
-              connectionState === 'connecting' ? "Connecting..." :
+                connectionState === 'error' ? "destructive" : "secondary"
+              }
+            >
+              {connectionState === 'connecting' ? "Connecting..." :
                 connectionState === 'error' ? "Error" : "Disconnected"}
-          </Badge>
+            </Badge>
+          )}
         </div>
       </CardHeader>
 
@@ -446,41 +472,79 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
         {connectionState === 'connected' && (
           <div className="py-2">
-            <div className="flex items-center">
-              <CheckCircle className="h-5 w-5 mr-2 text-green-500" />
-              <span className="font-medium">Solver Agent Connected</span>
-            </div>
-
-            {agent.messages.length > 0 && (
-              <>
+            <div className="rounded-md border">
+              {/* Use our auto-scrolling container */}
+              <MessageContainer>
                 {/* Debug log agent messages */}
                 {console.log("Agent messages:", JSON.stringify(agent.messages, null, 2))}
                 
-                <div className="mt-4 rounded-md border p-4">
-                  <h4 className="mb-3 font-medium border-b pb-2">Solver Agent Conversation</h4>
-                  
-                  {/* Convert agent messages to MessageList format */}
-                  <MessageList
-                    messages={agent.messages.map(message => ({
-                      id: message.id,
-                      role: message.role,
-                      content: message.content || '',
-                      createdAt: message.timestamp || new Date().toISOString(),
-                      parts: message.parts || [{ 
-                        type: "text", 
-                        text: message.content || '' 
+                {/* Convert agent messages to MessageList format */}
+                <MessageList
+                  messages={agent.messages.map(message => ({
+                    id: message.id,
+                    role: message.role,
+                    content: message.content || '',
+                    createdAt: message.timestamp || new Date().toISOString(),
+                    parts: message.parts || [{ 
+                      type: "text", 
+                      text: message.content || '' 
+                    }]
+                  }))}
+                  showTimeStamps={true}
+                />
+              </MessageContainer>
+              
+              {/* Add message input */}
+              <div className="px-4 py-3 border-t">
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
+                  if (input && input.value.trim()) {
+                    // Create a user message
+                    const userMessage = {
+                      id: generateId(),
+                      role: 'user' as const,
+                      content: input.value,
+                      parts: [{
+                        type: 'text' as const,
+                        text: input.value
                       }]
-                    }))}
-                    showTimeStamps={true}
+                    };
+                    
+                    // Add the user message to the agent
+                    agent.setMessages([...agent.messages, userMessage]);
+                    
+                    // Send the message to the agent and get a response
+                    agent.handleSubmit(input.value)
+                      .then(() => {
+                        console.log("Message sent to agent");
+                      })
+                      .catch(error => {
+                        console.error("Error sending message to agent:", error);
+                      });
+                    
+                    // Clear the input
+                    input.value = '';
+                  }
+                }} className="flex">
+                  <input 
+                    type="text" 
+                    name="message"
+                    placeholder="Send a message..."
+                    className="flex-1 min-w-0 bg-background border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                </div>
-              </>
-            )}
+                  <Button type="submit" size="sm" className="ml-2">
+                    Send
+                  </Button>
+                </form>
+              </div>
+            </div>
           </div>
         )}
       </CardContent>
 
       <CardFooter className="flex justify-between">
+        {/* Control buttons - commented out to simplify UI 
         {connectionState === 'connected' && (
           <div className="flex gap-2 flex-wrap">
             <Button
@@ -827,7 +891,9 @@ Key: ${formattedTeam.key || 'N/A'}`;
             </Dialog>
           </div>
         )}
+        */}
 
+        {/* We'll keep the connect button since it's essential for functionality */}
         <div>
           {/* Server-side rendering always shows initial state - Client will rehydrate */}
           {(!isClient || !isHydrated) ? (

@@ -612,11 +612,8 @@ You're currently viewing the issue page where users can see all details about th
             {/* Solver Agent Card */}
             <SolverConnector issue={issue} githubToken={getGithubToken()} />
 
-            {/* Chat Card */}
+            {/* Chat Card - Commented out as requested 
             <Card>
-              {/* <CardHeader>
-                <CardTitle>Issue Discussion</CardTitle>
-              </CardHeader> */}
               <CardContent>
                 <Chat
                   messages={messages}
@@ -628,6 +625,7 @@ You're currently viewing the issue page where users can see all details about th
                 />
               </CardContent>
             </Card>
+            */}
           </div>
 
           {/* Sidebar */}
