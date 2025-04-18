@@ -285,7 +285,15 @@ export default function IssueDetails() {
   const data = useLoaderData() as Route.IssueLoaderData;
   const { issue, options } = data;
   const submit = useSubmit();
-  const { updateIssueStatus } = useIssuesStore();
+  const { updateIssueStatus, setIssues } = useIssuesStore();
+  
+  // Update the issues store with the current issue data
+  useEffect(() => {
+    if (issue) {
+      // Add the current issue to the store to make it available for other components
+      setIssues([issue]);
+    }
+  }, [issue, setIssues]);
 
   /* ---- GitHub token helper ---- */
   const getGithubToken = () =>
