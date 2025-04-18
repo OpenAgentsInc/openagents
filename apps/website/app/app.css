@@ -101,6 +101,7 @@
 }
 
 .dark {
+  /* --background: #101011; */
   --background: #08090a;
   --foreground: oklch(0.885 0 0);
   --card: #090909;
@@ -128,7 +129,8 @@
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
+  --sidebar-accent: lch(7.133 2.333 272);
+  /* --sidebar-accent: oklch(0.274 0.006 286.033); */
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.552 0.016 285.938);

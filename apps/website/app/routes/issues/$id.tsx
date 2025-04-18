@@ -1,8 +1,10 @@
+// IssueDetails.tsx
 import { useLoaderData, useParams, useSubmit } from "react-router";
 import type { Route } from "../+types/issues";
 import type { ActionFunctionArgs } from "react-router";
 import MainLayout from '@/components/layout/main-layout';
 import { HeaderIssues } from '@/components/layout/headers/issues/header';
+import { useOpenAgent } from "@openagents/core";
 import { redirect } from "react-router";
 import { getIssueById, getWorkflowStates, getIssueLabels } from "@/lib/db/issue-helpers.server";
 import { getTeamsForUser } from "@/lib/db/team-helpers.server";
@@ -10,30 +12,29 @@ import { getUsers, getProjects } from "@/lib/db/project-helpers.server";
 import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/ui/card";
 import { formatDistanceToNow } from "date-fns";
 import { useIssuesStore, type Status, type User } from "@/store/issues-store";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { CalendarIcon, CheckCircle, Clock, Edit, LinkIcon, Tag, User as UserIcon } from "lucide-react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
+} from "@/components/ui/avatar";
+import { CalendarIcon, Clock, CheckCircle, AlertTriangle, BotIcon } from "lucide-react";
 import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
 import { useChat } from "@ai-sdk/react";
-import { Chat } from "@/components/ui/chat";
 import { SolverConnector } from "@/components/agent/solver-connector";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbSeparator,
-  BreadcrumbPage
-} from "@/components/ui/breadcrumb";
+import { SolverControls } from "@/components/agent/solver-controls";
+import { Spinner } from "@/components/ui/spinner";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
-
-  // Use the issue identifier from the loader data if available
   const issueName = loaderData?.issue?.identifier || "Issue Details";
 
   return [
@@ -44,33 +45,28 @@ export function meta({ params, location, data }: Route.MetaArgs) {
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   // Import auth only within loader (server-side only)
-  const { auth, requireAuth } = await import('@/lib/auth.server');
+  const { requireAuth } = await import('@/lib/auth.server');
   try {
     const { id } = params;
-
-    // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
 
     if (authResult.redirect) {
       return redirect(authResult.redirect);
     }
 
-    // Get user and session from the auth result
-    const { user, session } = authResult;
-
+    const { user } = authResult;
     const issue = await getIssueById(id as string);
 
     if (!issue) {
       throw new Error("Issue not found");
     }
 
-    // Load data needed for the issue detail view
     const [workflowStates, labels, teams, users, projects] = await Promise.all([
       getWorkflowStates(),
       getIssueLabels(),
       getTeamsForUser(user.id),
       getUsers(),
-      getProjects()
+      getProjects(),
     ]);
 
     return {
@@ -80,9 +76,9 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         labels,
         teams,
         users,
-        projects
+        projects,
       },
-      user
+      user,
     };
   } catch (error) {
     console.error("Error loading issue:", error);
@@ -93,43 +89,42 @@ export async function loader({ params, request }: Route.LoaderArgs) {
         labels: [],
         teams: [],
         users: [],
-        projects: []
-      }
+        projects: [],
+      },
     };
   }
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  // Import auth only within action (server-side only)
-  const { auth, requireAuth } = await import('@/lib/auth.server');
+  const { requireAuth } = await import('@/lib/auth.server');
   try {
-    // Check authentication with requireAuth helper
     const authResult = await requireAuth(request);
 
     if (authResult.redirect) {
       return redirect(authResult.redirect);
     }
 
-    const formData = await request.formData();
-    const action = formData.get("_action") as string;
-
-    // Forward to the main issues action handler
-    // Import dynamically to avoid circular imports
     const { action: issuesAction } = await import("../issues");
     return issuesAction({ request, params: {} } as ActionFunctionArgs);
   } catch (error) {
     console.error("Error handling issue action:", error);
     return {
       success: false,
-      error: "Failed to process issue action"
+      error: "Failed to process issue action",
     };
   }
 }
 
+/* ---------- UI helper components ---------- */
+
 function StatusBadge({ status }: { status: Status }) {
   return (
     <Badge
-      style={{ backgroundColor: `${status.color}20`, color: status.color, borderColor: status.color }}
+      style={{
+        backgroundColor: `${status.color}20`,
+        color: status.color,
+        borderColor: status.color,
+      }}
       variant="outline"
       className="py-1 px-2"
     >
@@ -141,7 +136,11 @@ function StatusBadge({ status }: { status: Status }) {
 function PriorityBadge({ priority }: { priority: Priority }) {
   return (
     <Badge
-      style={{ backgroundColor: `${priority.color}20`, color: priority.color, borderColor: priority.color }}
+      style={{
+        backgroundColor: `${priority.color}20`,
+        color: priority.color,
+        borderColor: priority.color,
+      }}
       variant="outline"
       className="py-1 px-2"
     >
@@ -153,7 +152,11 @@ function PriorityBadge({ priority }: { priority: Priority }) {
 function LabelBadge({ label }: { label: LabelInterface }) {
   return (
     <Badge
-      style={{ backgroundColor: `${label.color}20`, color: label.color, borderColor: label.color }}
+      style={{
+        backgroundColor: `${label.color}20`,
+        color: label.color,
+        borderColor: label.color,
+      }}
       variant="outline"
       className="py-1 px-2 text-xs"
     >
@@ -162,10 +165,18 @@ function LabelBadge({ label }: { label: LabelInterface }) {
   );
 }
 
-function ItemSection({ title, children }: { title: string, children: React.ReactNode }) {
+function ItemSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="border-b border-border pb-4 mb-4 last:border-0">
-      <h3 className="text-sm font-medium text-muted-foreground mb-2">{title}</h3>
+    <div className="border-b border-border pb-2 mb-2 last:border-0">
+      <h3 className="text-xs font-medium text-muted-foreground mb-1">
+        {title}
+      </h3>
       <div>{children}</div>
     </div>
   );
@@ -173,65 +184,47 @@ function ItemSection({ title, children }: { title: string, children: React.React
 
 function EditableDescription({ issue }: { issue: Issue }) {
   const [isEditing, setIsEditing] = useState(false);
-  const [description, setDescription] = useState(issue.description || '');
+  const [description, setDescription] = useState(issue.description || "");
   const [isSaving, setIsSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submit = useSubmit();
 
-  // Focus the textarea when entering edit mode
   useEffect(() => {
     if (isEditing && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [isEditing]);
 
-  const handleDoubleClick = () => {
-    setIsEditing(true);
-  };
-
   const handleSave = () => {
     setIsSaving(true);
-
-    // Create form data for the update
     const formData = new FormData();
-    formData.append('_action', 'update');
-    formData.append('id', issue.id);
-    formData.append('description', description);
-
-    console.log('Saving description update for issue:', issue.id);
-
-    // Submit the form using React Router's submit
+    formData.append("_action", "update");
+    formData.append("id", issue.id);
+    formData.append("description", description);
     submit(formData, {
-      method: 'post',
-      action: '/issues',
+      method: "post",
+      action: "/issues",
       replace: true,
-      navigate: false
+      navigate: false,
     });
-
-    // Set a flag in sessionStorage to reload after update (only in browser)
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      sessionStorage.setItem('pendingDescriptionUpdate', issue.id);
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      sessionStorage.setItem("pendingDescriptionUpdate", issue.id);
     }
-
-    // End editing mode
     setIsEditing(false);
     setIsSaving(false);
   };
 
   const handleCancel = () => {
-    // Reset to original description and exit edit mode
-    setDescription(issue.description || '');
+    setDescription(issue.description || "");
     setIsEditing(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Save on Ctrl+Enter or Cmd+Enter
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault(); // Prevent default to avoid submitting other forms
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
       handleSave();
     }
-    // Cancel on Escape
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       e.preventDefault();
       handleCancel();
     }
@@ -249,12 +242,8 @@ function EditableDescription({ issue }: { issue: Issue }) {
           placeholder="Add a description..."
         />
         <div className="flex gap-2 mt-2">
-          <Button
-            size="sm"
-            onClick={handleSave}
-            disabled={isSaving}
-          >
-            {isSaving ? 'Saving...' : 'Save'}
+          <Button size="sm" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save"}
           </Button>
           <Button
             size="sm"
@@ -275,188 +264,141 @@ function EditableDescription({ issue }: { issue: Issue }) {
   return (
     <div
       className="prose prose-sm dark:prose-invert max-w-none cursor-pointer hover:bg-secondary/10 p-2 rounded-md transition-colors"
-      onDoubleClick={handleDoubleClick}
+      onDoubleClick={() => setIsEditing(true)}
     >
       {description ? (
         <p>{description}</p>
       ) : (
-        <p className="text-muted-foreground italic">Double-click to add a description</p>
+        <p className="text-muted-foreground italic">
+          Double-click to add a description
+        </p>
       )}
     </div>
   );
 }
+
+/* ---------- Main component ---------- */
 
 export default function IssueDetails() {
   const { id } = useParams();
   const data = useLoaderData() as Route.IssueLoaderData;
   const { issue, options } = data;
   const submit = useSubmit();
-  const [activeTab, setActiveTab] = useState("details");
   const { updateIssueStatus } = useIssuesStore();
 
-  // Prepare issue details for the system prompt
-  const issueDetails = `
-Current Issue Details:
-- Identifier: ${issue.identifier}
-- Title: ${issue.title}
-- Description: ${issue.description || 'No description provided'}
-- Status: ${issue.status.name} (${issue.status.type})
-- Priority: ${issue.priority.name}
-${issue.assignee ? `- Assigned to: ${issue.assignee.name}` : '- Unassigned'}
-${issue.dueDate ? `- Due Date: ${new Date(issue.dueDate).toLocaleDateString()}` : '- No due date'}
-${issue.labels && issue.labels.length > 0 ? `- Labels: ${issue.labels.map(l => l.name).join(', ')}` : '- No labels'}
-${issue.project ? `
-Project Details:
-- Project: ${issue.project.name}
-- Color: ${issue.project.color}
-` : '- Not assigned to any project'}
-${issue.team ? `
-Team Details:
-- Team: ${issue.team.name}
-- Team Key: ${issue.team.key}
-` : ''}
-${issue.subissues && issue.subissues.length > 0 ? `- Has ${issue.subissues.length} subtasks` : '- No subtasks'}
-${issue.parentId ? `- Is a subtask of issue: ${issue.parentId}` : '- Is a top-level issue'}
-- Created: ${new Date(issue.createdAt).toLocaleString()}
-${issue.creator ? `- Created by: ${issue.creator.name}` : '- Creator unknown'}
-`;
+  /* ---- GitHub token helper ---- */
+  const getGithubToken = () =>
+    typeof window !== "undefined" && window.localStorage
+      ? localStorage.getItem("github_token") || ""
+      : "";
 
-  // Safe way to access localStorage with a check for browser environment
-  const getGithubToken = () => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return localStorage.getItem('github_token') || '';
-    }
-    return '';
-  };
+  /* ---- Solver agent setup (single instance to be shared) ---- */
+  const agent = useOpenAgent(issue.id, "solver");
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
-    api: `https://chat.openagents.com/chat`,
-    headers: {
-      'X-GitHub-Token': getGithubToken()
-    },
-    maxSteps: 25,
-    initialMessages: [{
-      id: '12309123',
-      role: 'system',
-      content: `You are an AI assistant integrated into OpenAgents - a comprehensive project management and issue tracking system.
-
-Project Context:
-- OpenAgents is a platform for AI agents using open protocols
-- The system includes web, mobile, and desktop applications
-- You're currently in the issue tracking module, similar to Linear or Jira
-
-Issue Tracking System:
-- Issues belong to Teams and can be assigned to Projects
-- Issues have workflow states: Triage, Backlog, Todo, In Progress, Done, Canceled
-- Issues have properties: title, description, priority, labels, assignees, due dates
-- Issues can have parent-child relationships and can reference other issues
-
-Team & Project Structure:
-- Teams are organizational units that own issues and define workflows
-- Projects group related issues and can belong to teams
-- Users can be members of multiple teams and projects with different roles
-- Teams can customize their workflow states and issue numbering
-
-${issueDetails}
-
-Your Role:
-- Help users understand this specific issue's details and context
-- Assist with improving the issue description if needed
-- Suggest appropriate status updates, labels, or priority changes
-- Provide technical guidance related to this issue's implementation
-- Answer questions about this issue, its project, and its team
-- Maintain a helpful, professional tone focused on productivity
-
-You're currently viewing the issue page where users can see all details about this issue, edit the description, change status, and discuss the issue through this chat interface. Be helpful and concise in your responses.`
-    }],
-  });
-
-  // Log first 14 characters of GitHub token (only in browser environment)
+  /* ---- Ensure agent has context when connected ---- */
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      console.log('GitHub token (first 14 chars):', (localStorage.getItem('github_token') || '').slice(0, 14));
-    }
-  }, []);
+    if (agent.connectionStatus === 'connected' &&
+      (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam)) {
 
-  // Check for pending updates from sessionStorage on load
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      const pendingUpdate = sessionStorage.getItem('pendingDescriptionUpdate');
-      if (pendingUpdate === id) {
-        // Clear the flag
-        sessionStorage.removeItem('pendingDescriptionUpdate');
-        // Reload once to get fresh data
-        window.location.reload();
+      console.log("Setting agent context from parent component...");
+
+      // Create formatted issue object
+      const formattedIssue = {
+        id: issue.id,
+        number: parseInt(issue.identifier.replace(/[^\d]/g, '')),
+        title: issue.title,
+        description: issue.description || "",
+        source: "openagents",
+        status: issue.status.type === 'done' ? 'closed' : 'open',
+        labels: issue.labels?.map((label: any) => label.name) || [],
+        assignee: issue.assignee?.name,
+        created: new Date(issue.createdAt),
+        updated: issue.updatedAt ? new Date(issue.updatedAt) : undefined
+      };
+
+      // Create formatted project object
+      const formattedProject = issue.project ? {
+        id: issue.project.id,
+        name: issue.project.name,
+        color: issue.project.color,
+        icon: issue.project.icon
+      } : undefined;
+
+      // Create formatted team object
+      const formattedTeam = issue.team ? {
+        id: issue.team.id,
+        name: issue.team.name,
+        key: issue.team.key || 'default'
+      } : undefined;
+
+      // Send context to agent
+      try {
+        const contextMessage = {
+          type: "set_context",
+          issue: formattedIssue,
+          project: formattedProject,
+          team: formattedTeam,
+          timestamp: new Date().toISOString()
+        };
+
+        agent.sendRawMessage(contextMessage);
+        console.log("✓ Agent context set successfully from parent component");
+      } catch (error) {
+        console.error("Failed to set agent context:", error);
       }
+    }
+  }, [agent.connectionStatus, agent.state, issue]);
+
+  /* ---- Chat setup (unchanged) ---- */
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
+    useChat({
+      api: `https://chat.openagents.com/chat`,
+      headers: { "X-GitHub-Token": getGithubToken() },
+      maxSteps: 25,
+      initialMessages: [
+        {
+          id: "12309123",
+          role: "system",
+          content: "You are an AI assistant integrated into OpenAgents...",
+        },
+      ],
+    });
+
+  /* ---- Effect hooks to refresh on updates ---- */
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem("pendingDescriptionUpdate") === id
+    ) {
+      window.sessionStorage.removeItem("pendingDescriptionUpdate");
+      window.location.reload();
     }
   }, [id]);
 
-  // Listen for fetch responses to update the UI
-  useEffect(() => {
-    const handleFetchResponse = (event: any) => {
-      // Check if this is an update to our issue
-      if (event.detail?.data?.success && event.detail?.formData) {
-        const formData = event.detail.formData;
-        if (formData.get('_action') === 'update' && formData.get('id') === id) {
-          // Only reload for our specific issue updates
-          setTimeout(() => {
-            window.location.reload();
-          }, 200);
-        }
-      }
-    };
-
-    // Listen for action response events
-    window.addEventListener('fetchresponse', handleFetchResponse);
-
-    return () => {
-      window.removeEventListener('fetchresponse', handleFetchResponse);
-    };
-  }, [id]);
-
-  // Handle status change
+  /* ---- Status update handler ---- */
   const handleStatusChange = (statusId: string) => {
-    const newStatus = options?.workflowStates?.find(state => state.id === statusId);
-    if (newStatus) {
-      const formData = new FormData();
-      formData.append("_action", "update");
-      formData.append("id", issue.id);
-      formData.append("stateId", statusId);
+    const newStatus = options?.workflowStates?.find(
+      (state) => state.id === statusId
+    );
+    if (!newStatus) return;
 
-      // For Done status, add extra data
-      if (newStatus.type === 'done') {
-        formData.append("completedAt", new Date().toISOString());
-        formData.append("isDone", "true");
-        if (issue.project?.id) {
-          formData.append("projectId", issue.project.id);
-        }
-        if (issue.team?.id) {
-          formData.append("teamId", issue.team.id);
-        }
-      }
-
-      // Update the UI optimistically
-      updateIssueStatus(issue.id, newStatus);
-
-      // Submit the form to save to the database
-      submit(formData, { method: "post", replace: true });
-    }
-  };
-
-  // Handle assignee change - commented out until needed
-  // This function is currently unused but kept for future reference
-  /*
-  const handleAssigneeChange = (userId: string | null) => {
     const formData = new FormData();
     formData.append("_action", "update");
     formData.append("id", issue.id);
-    formData.append("assigneeId", userId || "");
+    formData.append("stateId", statusId);
 
-    // Submit the form to save to the database
+    if (newStatus.type === "done") {
+      formData.append("completedAt", new Date().toISOString());
+      formData.append("isDone", "true");
+      if (issue.project?.id) formData.append("projectId", issue.project.id);
+      if (issue.team?.id) formData.append("teamId", issue.team.id);
+    }
+
+    updateIssueStatus(issue.id, newStatus);
     submit(formData, { method: "post", replace: true });
   };
-  */
 
+  /* ---- Error / Loading states ---- */
   if (data.error) {
     return (
       <MainLayout>
@@ -478,207 +420,125 @@ You're currently viewing the issue page where users can see all details about th
     );
   }
 
-  // Get creator and assignee details
   const creator = issue.creator || null;
   const assignee = issue.assignee || null;
 
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto px-6 pt-4">
-        {issue.project && (
-          <Breadcrumb className="mb-4">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink href={`/projects/${issue.project.id}`}>
-                  {issue.project.name}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>
-                  {issue.identifier}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Main content */}
-          <div className="md:col-span-2 space-y-6">
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-mono text-muted-foreground">
-                        {issue.identifier}
-                      </span>
-                      {issue.project && (
-                        <Badge variant="secondary" className="font-normal">
-                          {issue.project.name}
-                        </Badge>
-                      )}
-                    </div>
-                    <CardTitle className="text-xl font-semibold">{issue.title}</CardTitle>
-                  </div>
-                  {/* Edit button commented out until functionality is implemented
-                  <Button size="sm" variant="outline">
-                    <Edit className="h-4 w-4 mr-1" /> Edit
-                  </Button>
-                  */}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="details" value={activeTab} onValueChange={setActiveTab}>
-                  <TabsList className="mb-4">
-                    <TabsTrigger value="details">Details</TabsTrigger>
-                    <TabsTrigger value="activity">Activity</TabsTrigger>
-                    {issue.subissues && issue.subissues.length > 0 && (
-                      <TabsTrigger value="subtasks">Subtasks ({issue.subissues.length})</TabsTrigger>
-                    )}
-                  </TabsList>
-
-                  <TabsContent value="details" className="space-y-6">
-                    {/* Description section */}
-                    <div className="border rounded-md p-4 bg-background">
-                      <h2 className="text-sm font-medium text-muted-foreground mb-2">Description</h2>
-                      <EditableDescription issue={issue} />
-                    </div>
-
-                    {/* Other details as needed */}
-                    {issue.subissues && issue.subissues.length > 0 && (
-                      <div>
-                        <h2 className="text-sm font-medium text-muted-foreground mb-2">Subtasks</h2>
-                        <ul className="list-disc pl-5">
-                          {issue.subissues.map(subissueId => (
-                            <li key={subissueId}>
-                              <a href={`/issues/${subissueId}`} className="text-zinc-500 hover:underline">
-                                {subissueId}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="activity">
-                    <div className="space-y-4">
-                      <div className="flex items-start gap-3 p-3 border-b border-border">
-                        <Avatar className="h-8 w-8">
-                          {creator?.image ? (
-                            <AvatarImage src={creator.image} alt={creator.name} />
-                          ) : (
-                            <AvatarFallback>{creator?.name?.charAt(0) || '?'}</AvatarFallback>
-                          )}
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-center">
-                            <p className="text-sm font-medium">{creator?.name || 'Unknown'} created this issue</p>
-                            <span className="text-xs text-muted-foreground">
-                              {issue.createdAt ? formatDistanceToNow(new Date(issue.createdAt), { addSuffix: true }) : ''}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* You could add more activity items here from a real activity log */}
-                    </div>
-                  </TabsContent>
-
-                  {issue.subissues && issue.subissues.length > 0 && (
-                    <TabsContent value="subtasks">
-                      <div className="space-y-2">
-                        {issue.subissues.map(subissueId => (
-                          <Card key={subissueId} className="p-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <a href={`/issues/${subissueId}`} className="font-medium hover:underline">
-                                  {subissueId}
-                                </a>
-                              </div>
-                              <Button size="sm" variant="ghost">View</Button>
-                            </div>
-                          </Card>
-                        ))}
-                      </div>
-                    </TabsContent>
-                  )}
-                </Tabs>
-              </CardContent>
-            </Card>
-
-            {/* Solver Agent Card */}
-            <SolverConnector issue={issue} githubToken={getGithubToken()} />
-
-            {/* Chat Card */}
-            <Card>
-              {/* <CardHeader>
-                <CardTitle>Issue Discussion</CardTitle>
-              </CardHeader> */}
-              <CardContent>
-                <Chat
-                  messages={messages}
-                  input={input}
-                  handleInputChange={handleInputChange}
-                  handleSubmit={handleSubmit}
-                  isGenerating={isLoading}
-                  stop={stop}
-                />
-              </CardContent>
-            </Card>
+      <div className="container mx-auto px-6 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+          {/* ---------- Main column: SolverConnector full height ---------- */}
+          <div className="md:col-span-2 flex flex-col h-[calc(100vh-4rem)]">
+            <div className="flex-1 overflow-hidden">
+              <SolverConnector
+                issue={issue}
+                agent={agent}
+                githubToken={getGithubToken()}
+                className="w-full"
+              />
+            </div>
           </div>
 
-          {/* Sidebar */}
-          <div>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Issue details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <ItemSection title="Status">
-                  <div className="flex items-center gap-2">
-                    <StatusBadge status={issue.status} />
+          {/* ---------- Sidebar ---------- */}
+          <div className="flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
+            {/* Agent Controls Card */}
+            <SolverControls
+              issue={issue}
+              agent={agent}
+              githubToken={getGithubToken()}
+            />
 
-                    {/* Status change dropdown could go here */}
-                    {/* This would be a more advanced component in a real app */}
-                  </div>
+            {/* Issue Details Card */}
+            <Card className="shadow-sm flex flex-col h-full">
+              {/* Header with title & quick badges */}
+              <CardHeader className="py-2 px-3">
+                <CardTitle className="text-sm">{issue.title}</CardTitle>
+                <div className="flex items-center gap-2 mt-1">
+                  {issue.project && (
+                    <Badge
+                      variant="secondary"
+                      className="font-normal text-xs px-1 py-0"
+                    >
+                      {issue.project.name}
+                    </Badge>
+                  )}
+                  <StatusBadge status={issue.status} />
+                </div>
+              </CardHeader>
+
+              {/* Consolidated content */}
+              <CardContent className="p-3 space-y-2 overflow-y-auto">
+                {/* Description */}
+                <ItemSection title="Description">
+                  <EditableDescription issue={issue} />
                 </ItemSection>
 
+                {/* Subtasks */}
+                {issue.subissues && issue.subissues.length > 0 && (
+                  <ItemSection title="Subtasks">
+                    <ul className="list-disc pl-4 text-xs space-y-1">
+                      {issue.subissues.map((subId) => (
+                        <li key={subId}>
+                          <a
+                            href={`/issues/${subId}`}
+                            className="text-zinc-500 hover:underline"
+                          >
+                            {subId}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </ItemSection>
+                )}
+
+                {/* Status */}
+                <ItemSection title="Status">
+                  <StatusBadge status={issue.status} />
+                </ItemSection>
+
+                {/* Priority */}
                 <ItemSection title="Priority">
                   <PriorityBadge priority={issue.priority} />
                 </ItemSection>
 
+                {/* Assignee */}
                 <ItemSection title="Assignee">
                   <div className="flex items-center gap-2">
                     {assignee ? (
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
+                      <>
+                        <Avatar className="h-5 w-5">
                           {assignee.image ? (
-                            <AvatarImage src={assignee.image} alt={assignee.name} />
+                            <AvatarImage
+                              src={assignee.image}
+                              alt={assignee.name}
+                            />
                           ) : (
-                            <AvatarFallback>{assignee.name.charAt(0)}</AvatarFallback>
+                            <AvatarFallback className="text-xs">
+                              {assignee.name.charAt(0)}
+                            </AvatarFallback>
                           )}
                         </Avatar>
-                        <span>{assignee.name}</span>
-                      </div>
+                        <span className="text-xs">{assignee.name}</span>
+                      </>
                     ) : (
-                      <span className="text-muted-foreground">Unassigned</span>
+                      <span className="text-xs text-muted-foreground">
+                        Unassigned
+                      </span>
                     )}
                   </div>
                 </ItemSection>
 
+                {/* Project */}
                 {issue.project && (
                   <ItemSection title="Project">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-3 w-3 rounded-full"
+                    <div className="flex items-center gap-1">
+                      <span
+                        className="h-2 w-2 rounded-full"
                         style={{ backgroundColor: issue.project.color }}
                       />
                       <a
                         href={`/projects/${issue.project.id}`}
-                        className="text-zinc-500 hover:underline"
+                        className="text-xs text-zinc-500 hover:underline"
                       >
                         {issue.project.name}
                       </a>
@@ -686,63 +546,55 @@ You're currently viewing the issue page where users can see all details about th
                   </ItemSection>
                 )}
 
+                {/* Team */}
                 {issue.team && (
                   <ItemSection title="Team">
-                    <div className="flex items-center gap-2">
-                      <span>{issue.team.name}</span>
-                      <span className="text-xs text-muted-foreground">({issue.team.key})</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">{issue.team.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        ({issue.team.key})
+                      </span>
                     </div>
                   </ItemSection>
                 )}
 
+                {/* Labels */}
                 {issue.labels && issue.labels.length > 0 && (
                   <ItemSection title="Labels">
                     <div className="flex flex-wrap gap-1">
-                      {issue.labels.map(label => (
+                      {issue.labels.map((label) => (
                         <LabelBadge key={label.id} label={label} />
                       ))}
                     </div>
                   </ItemSection>
                 )}
 
+                {/* Created */}
                 <ItemSection title="Created">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-1 text-xs">
+                    <Clock className="h-3 w-3 text-muted-foreground" />
                     <span>
                       {issue.createdAt
-                        ? formatDistanceToNow(new Date(issue.createdAt), { addSuffix: true })
-                        : 'Unknown'}
+                        ? formatDistanceToNow(new Date(issue.createdAt), {
+                          addSuffix: true,
+                        })
+                        : "Unknown"}
                     </span>
                   </div>
                 </ItemSection>
 
+                {/* Due Date */}
                 {issue.dueDate && (
                   <ItemSection title="Due Date">
-                    <div className="flex items-center gap-2 text-sm">
-                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{new Date(issue.dueDate).toLocaleDateString()}</span>
+                    <div className="flex items-center gap-1 text-xs">
+                      <CalendarIcon className="h-3 w-3 text-muted-foreground" />
+                      <span>
+                        {new Date(issue.dueDate).toLocaleDateString()}
+                      </span>
                     </div>
                   </ItemSection>
                 )}
               </CardContent>
-              <CardFooter className="flex justify-between">
-                {/* Copy link button commented out until functionality is implemented
-                <Button variant="outline" size="sm">
-                  <LinkIcon className="h-4 w-4 mr-1" /> Copy Link
-                </Button>
-                */}
-                {/* Mark Done button kept functional as it has proper implementation */}
-                {/* {issue.status.type !== 'done' && (
-                  <Button variant="default" size="sm" onClick={() => {
-                    const doneState = options?.workflowStates?.find(state => state.type === 'done');
-                    if (doneState) {
-                      handleStatusChange(doneState.id);
-                    }
-                  }}>
-                    <CheckCircle className="h-4 w-4 mr-1" /> Mark Done
-                  </Button>
-                )} */}
-              </CardFooter>
             </Card>
           </div>
         </div>

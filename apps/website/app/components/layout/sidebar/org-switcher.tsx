@@ -37,24 +37,21 @@ export function OrgSwitcher() {
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
-          <div className="w-full flex gap-1 items-center pt-2">
-            <DropdownMenuTrigger asChild>
-              <SidebarMenuButton
-                variant="outline"
-                size="lg"
-                className="h-8 p-1 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-              >
-                {/* <div className="flex aspect-square size-6 items-center justify-center rounded bg-orange-500 text-sidebar-primary-foreground">
-                  LN
-                </div> */}
-                <div className="select-none grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">OpenAgents</span>
-                </div>
-                <ChevronsUpDown className="ml-auto" />
-              </SidebarMenuButton>
-            </DropdownMenuTrigger>
-
-            {/* <ThemeToggle /> */}
+          <div className="w-full flex items-center justify-between gap-1 pt-2">
+            <div className="flex-shrink">
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  variant="outline"
+                  size="lg"
+                  className="h-8 p-1 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                >
+                  <div className="select-none grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">OpenAgents</span>
+                  </div>
+                  <ChevronsUpDown className="ml-auto" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+            </div>
 
             <CreateNewIssue />
           </div>
@@ -64,41 +61,8 @@ export function OrgSwitcher() {
             align="end"
             sideOffset={4}
           >
-            {/* <DropdownMenuGroup>
-              <DropdownMenuItem asChild>
-                <Link to="/lndev-ui/settings">
-                  Settings
-                  <DropdownMenuShortcut>G then S</DropdownMenuShortcut>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem>Invite and manage members</DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem>Download desktop app</DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Switch Workspace</DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent>
-                  <DropdownMenuLabel>leonelngoya@gmail.com</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <div className="flex aspect-square size-6 items-center justify-center rounded bg-orange-500 text-sidebar-primary-foreground">
-                      LN
-                    </div>
-                    lndev-ui
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>Create or join workspace</DropdownMenuItem>
-                  <DropdownMenuItem>Add an account</DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub> */}
             <DropdownMenuItem onClick={handleSignOut}>
               Log out
-              {/* <DropdownMenuShortcut>⌥⇧Q</DropdownMenuShortcut> */}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

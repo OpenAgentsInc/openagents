@@ -3,16 +3,16 @@ import { z } from "zod";
 import { Solver, solverContext } from "./index";
 
 /**
- * Tool to fetch an issue from GitHub or Linear
+ * Tool to fetch an issue from OpenAgents Projects
  */
 export const getIssueDetails = tool({
-  description: "Fetch details about an issue from GitHub or Linear",
+  description: "Fetch details about an issue from OpenAgents Projects",
   parameters: z.object({
-    source: z.enum(["github", "linear"]).describe("The source platform for the issue"),
-    owner: z.string().optional().describe("The owner/organization (for GitHub issues)"),
-    repo: z.string().optional().describe("The repository name (for GitHub issues)"),
+    source: z.enum(["openagents", "github"]).describe("The source platform for the issue"),
+    owner: z.string().optional().describe("The owner/organization (if needed)"),
+    repo: z.string().optional().describe("The repository name (if needed)"),
     issueNumber: z.number().describe("The issue number/ID"),
-    teamId: z.string().optional().describe("The team ID (for Linear issues)")
+    teamId: z.string().optional().describe("The team ID (optional)")
   }),
   execute: async ({ source, owner, repo, issueNumber, teamId }) => {
     console.log(`[getIssueDetails] Fetching ${source} issue #${issueNumber}`);
@@ -84,12 +84,20 @@ export const getIssueDetails = tool({
           updated: new Date(data.updated_at)
         };
       } 
-      // Linear implementation would go here
-      else if (source === "linear") {
-        // For now, return a mock implementation
+      // OpenAgents Projects implementation
+      else if (source === "openagents") {
+        // For now, return the current issue from agent state
+        const currentIssue = agent.state.currentIssue;
+        if (currentIssue && currentIssue.id) {
+          return {
+            ...currentIssue,
+            message: "Retrieved issue from OpenAgents Projects"
+          };
+        }
+        
         return {
-          error: "Linear API integration is not yet implemented",
-          message: "Please use GitHub issues for now"
+          error: "Could not retrieve issue details",
+          message: "Issue details not found in agent state"
         };
       }
     } catch (error) {
@@ -103,11 +111,11 @@ export const getIssueDetails = tool({
  * Tool to update issue status
  */
 export const updateIssueStatus = tool({
-  description: "Update the status of an issue in GitHub or Linear",
+  description: "Update the status of an issue in OpenAgents Projects",
   parameters: z.object({
-    source: z.enum(["github", "linear"]).describe("The source platform for the issue"),
-    owner: z.string().optional().describe("The owner/organization (for GitHub issues)"),
-    repo: z.string().optional().describe("The repository name (for GitHub issues)"),
+    source: z.enum(["openagents", "github"]).describe("The source platform for the issue"),
+    owner: z.string().optional().describe("The owner/organization (if needed)"),
+    repo: z.string().optional().describe("The repository name (if needed)"),
     issueNumber: z.number().describe("The issue number/ID"),
     status: z.enum(["open", "in_progress", "review", "closed"]).describe("The new status for the issue"),
     comment: z.string().optional().describe("Optional comment to add with the status update")
@@ -205,12 +213,33 @@ export const updateIssueStatus = tool({
           message: `Issue #${issueNumber} updated to ${status}${comment ? " with comment" : ""}`
         };
       } 
-      // Linear implementation would go here
-      else if (source === "linear") {
-        // For now, return a mock implementation
+      // OpenAgents Projects implementation
+      else if (source === "openagents") {
+        // For now, update the issue in agent state
+        const currentIssue = agent.state.currentIssue;
+        if (currentIssue && currentIssue.id) {
+          const updatedIssue = {
+            ...currentIssue,
+            status: status,
+            updated: new Date()
+          };
+          
+          // Update agent state
+          await agent.setState({
+            ...agent.state,
+            currentIssue: updatedIssue
+          });
+          
+          return {
+            success: true,
+            issue: updatedIssue,
+            message: `Issue #${issueNumber} updated to ${status}${comment ? " with comment" : ""}`
+          };
+        }
+        
         return {
-          error: "Linear API integration is not yet implemented",
-          message: "Please use GitHub issues for now"
+          error: "Could not update issue status",
+          message: "Issue not found in agent state"
         };
       }
     } catch (error) {
