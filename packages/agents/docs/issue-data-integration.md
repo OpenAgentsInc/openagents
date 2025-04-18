@@ -588,6 +588,71 @@ else if (source === "openagents") {
 
 These changes ensure the agent properly references our own issue tracking system rather than external services.
 
+#### 10. Improved Test Message Button (April 18, 2025)
+
+We discovered that the "Send Test Message" button was using a direct message submission that bypassed the system prompt, resulting in responses that didn't reflect our updated context. We've improved this by:
+
+1. Switched the test message button to use the sharedInfer pattern:
+
+```typescript
+<Button
+  variant="outline"
+  onClick={async () => {
+    try {
+      // Create a user message with question about current issue
+      const testMessage = {
+        id: generateId(),
+        role: 'user' as const,
+        content: `What do you know about this issue? Please summarize the current context.`,
+        parts: [{
+          type: 'text' as const,
+          text: `What do you know about this issue? Please summarize the current context.`
+        }]
+      };
+      
+      console.log("Running test inference with system prompt...");
+      const result = await agent.sharedInfer({
+        model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+        messages: [testMessage],
+        temperature: 0.7,
+        max_tokens: 500
+      });
+      
+      // Add both the user message and the response to the chat
+      agent.setMessages([
+        ...agent.messages,
+        testMessage,
+        {
+          id: result.id,
+          role: 'assistant',
+          content: result.content
+        }
+      ]);
+    } catch (error) {
+      console.error("Error with test message:", error);
+    }
+  }}
+>
+  Send Test Message
+</Button>
+```
+
+2. Also updated the "Test Shared Inference" button to ask for more detailed context information:
+
+```typescript
+const testMessage = {
+  id: generateId(),
+  role: 'user' as const,
+  content: `Please detail everything you know about the current issue, project, and team context.`,
+  parts: [{
+    type: 'text' as const,
+    text: `Please detail everything you know about the current issue, project, and team context.`
+  }]
+};
+```
+
+This ensures that both test buttons correctly use the agent's system prompt and demonstrate our project and team context information.
+
 #### 8. Additional Fix - Core Hook Update (April 18, 2025)
 
 After testing the implementation, we discovered the `useOpenAgent` hook in `packages/core/src/agents/useOpenAgent.ts` was not passing project and team data to the agent. We made the following fixes:

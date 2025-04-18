@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -284,6 +284,66 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     }
   }, [agent.messages, connectionState]);
 
+  // Create ref at the component level, not inside the effect
+  const contextSetRef = React.useRef(false);
+  
+  // Add debug logging for context state
+  useEffect(() => {
+    if (connectionState === 'connected' && agent.state) {
+      console.log("Context state debug:", {
+        hasIssue: !!agent.state?.currentIssue,
+        hasProject: !!agent.state?.currentProject,
+        hasTeam: !!agent.state?.currentTeam,
+        contextSetRef: contextSetRef.current
+      });
+    }
+  }, [connectionState, agent.state]);
+  
+  // Ensure context is set when connected
+  useEffect(() => {
+    // Only proceed if connected
+    if (connectionState !== 'connected') {
+      // Reset the ref when disconnected so we can set context on next connection
+      contextSetRef.current = false;
+      return;
+    }
+    
+    // Check if we need to set context (either ref is false or state is missing context)
+    const needsContextSet = !contextSetRef.current || 
+                           !agent.state?.currentIssue || 
+                           !agent.state?.currentProject || 
+                           !agent.state?.currentTeam;
+                           
+    if (needsContextSet) {
+      // Mark as set to prevent infinite loop
+      contextSetRef.current = true;
+      
+      // Wait a brief moment to let the connection stabilize
+      setTimeout(() => {
+        // Send context data to ensure it's always set
+        console.log("Auto-sending context data on connection...");
+        try {
+          // Format in the same way the agent expects to receive state updates
+          const contextMessage = {
+            type: "set_context",
+            issue: formattedIssue,
+            project: formattedProject,
+            team: formattedTeam,
+            timestamp: new Date().toISOString()
+          };
+          
+          // Send the raw message
+          agent.sendRawMessage(contextMessage);
+          console.log("✓ Context auto-set on connection");
+        } catch (error) {
+          console.error("Failed to auto-set context:", error);
+        }
+      }, 500);
+    } else {
+      console.log("Context already set, skipping auto-set");
+    }
+  }, [connectionState, formattedIssue, formattedProject, formattedTeam, agent, agent.state]);
+
   // Monitor the connection status
   useEffect(() => {
     let connectionStartTime: number | null = null;
@@ -408,19 +468,68 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
           <div className="flex gap-2 flex-wrap">
             <Button
               variant="outline"
-              onClick={() => {
-                // Create a user message to send to the agent
-                const testMessage = `Test message sent at ${new Date().toISOString()}`;
-                console.log("Sending test message:", testMessage);
-
-                // Use the handleSubmit method to send a user message
-                agent.handleSubmit(testMessage)
-                  .then(() => {
-                    console.log("Test message submitted successfully");
-                  })
-                  .catch(error => {
-                    console.error("Error submitting test message:", error);
+              onClick={async () => {
+                try {
+                  // Create a user message with question about current issue
+                  const testMessage = {
+                    id: generateId(),
+                    role: 'user' as const,
+                    content: `What do you know about this issue? Please summarize the current context.`,
+                    parts: [{
+                      type: 'text' as const,
+                      text: `What do you know about this issue? Please summarize the current context.`
+                    }]
+                  };
+                  
+                  // Check if context is missing
+                  const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
+                  
+                  if (contextMissing) {
+                    console.log("Context not found, setting it before test inference...");
+                    // Format context message
+                    const contextMessage = {
+                      type: "set_context",
+                      issue: formattedIssue,
+                      project: formattedProject,
+                      team: formattedTeam,
+                      timestamp: new Date().toISOString()
+                    };
+                    
+                    // Send the raw message
+                    agent.sendRawMessage(contextMessage);
+                    console.log("Context set before test inference");
+                    
+                    // Brief delay to allow context to be processed
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                  } else {
+                    console.log("Context already exists, proceeding directly to inference");
+                  }
+                  
+                  console.log("Running test inference with system prompt...");
+                  const result = await agent.sharedInfer({
+                    model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                    messages: [testMessage],
+                    temperature: 0.7,
+                    max_tokens: 500
                   });
+                  
+                  console.log("Test message result:", result);
+                  
+                  // Add both the user message and the response to the chat
+                  agent.setMessages([
+                    ...agent.messages,
+                    testMessage,
+                    {
+                      id: result.id,
+                      role: 'assistant',
+                      content: result.content
+                    }
+                  ]);
+                  
+                  console.log("Test message and response added to chat");
+                } catch (error) {
+                  console.error("Error with test message:", error);
+                }
               }}
             >
               Send Test Message
@@ -500,13 +609,37 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                   const testMessage = {
                     id: generateId(),
                     role: 'user' as const,
-                    content: `This is a test message. Can you summarize what you know about the current issue?`,
+                    content: `Please detail everything you know about the current issue, project, and team context.`,
                     parts: [{
                       type: 'text' as const,
-                      text: `This is a test message. Can you summarize what you know about the current issue?`
+                      text: `Please detail everything you know about the current issue, project, and team context.`
                     }]
                   };
 
+                  // Check if any essential context is missing
+                  const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
+                  
+                  if (contextMissing) {
+                    console.log("Context not found, setting it before inference...");
+                    // Format context message
+                    const contextMessage = {
+                      type: "set_context",
+                      issue: formattedIssue,
+                      project: formattedProject,
+                      team: formattedTeam,
+                      timestamp: new Date().toISOString()
+                    };
+                    
+                    // Send the raw message
+                    agent.sendRawMessage(contextMessage);
+                    console.log("Context set before inference");
+                    
+                    // Brief delay to allow context to be processed
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                  } else {
+                    console.log("Context already exists, proceeding directly to inference");
+                  }
+                  
                   // Run shared inference with just the test message
                   // The agent will use its own system prompt automatically
                   console.log("Running shared inference...");
@@ -553,9 +686,10 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                   console.log("ProjectData exists:", !!agent.state.currentProject);
                   console.log("TeamData exists:", !!agent.state.currentTeam);
 
-                  // Let's try setting the project and team data again before fetching the prompt
-                  if (formattedProject && formattedTeam) {
-                    console.log("ATTEMPT TO RE-SET PROJECT AND TEAM BEFORE GETTING PROMPT");
+                  // Only set context if it's missing from the agent state
+                  if ((!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam) &&
+                      formattedIssue && formattedProject && formattedTeam) {
+                    console.log("Context missing in agent state, setting before fetching prompt");
 
                     try {
                       // Use raw message sending directly - this matches how the other buttons work
@@ -569,17 +703,18 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
                       // Send the raw message
                       agent.sendRawMessage(contextMessage);
-                      console.log("Context data re-sent successfully before fetching prompt");
+                      console.log("Context data sent successfully before fetching prompt");
 
                       // Wait a short time for the agent to process the context
                       setTimeout(() => {
                         fetchSystemPrompt();
                       }, 300);
                     } catch (err) {
-                      console.error("Failed to re-send context data:", err);
+                      console.error("Failed to send context data:", err);
                       fetchSystemPrompt();
                     }
                   } else {
+                    console.log("Context data already exists in agent state, fetching prompt directly");
                     fetchSystemPrompt();
                   }
 
