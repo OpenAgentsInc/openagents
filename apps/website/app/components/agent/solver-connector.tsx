@@ -378,15 +378,81 @@ export function SolverConnector({
 
                     // Add the user message to the agent
                     agent.setMessages([...agent.messages, userMessage]);
+                    
+                    try {
+                      console.log("Running shared inference with full message history...");
+                      
+                      // First make sure context is properly set
+                      const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
 
-                    // Send the message to the agent and get a response
-                    agent.handleSubmit(input.value)
-                      .then(() => {
-                        console.log("Message sent to agent");
-                      })
-                      .catch(error => {
-                        console.error("Error sending message to agent:", error);
+                      if (contextMissing) {
+                        console.log("Context missing before inference, attempting to have parent component set it");
+                        // The parent effect should trigger and set context
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                      }
+                      
+                      // Get all messages for the inference
+                      const allMessages = [...agent.messages, userMessage].map(message => ({
+                        id: message.id,
+                        role: message.role as UIMessage['role'],
+                        content: message.content || '',
+                        parts: [{
+                          type: 'text' as const,
+                          text: message.content || ''
+                        }] as TextUIPart[]
+                      }));
+                      
+                      // Run shared inference with full message history
+                      const result = await agent.sharedInfer({
+                        model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                        messages: allMessages,
+                        temperature: 0.7,
+                        max_tokens: 1000,
+                        stream: true
                       });
+                      
+                      console.log("Shared inference completed successfully");
+                      
+                      // Add the assistant's response to the message history if not already added
+                      if (result && result.id && result.content) {
+                        // Check if this response is already in the messages
+                        const responseExists = agent.messages.some(msg => msg.id === result.id);
+                        
+                        if (!responseExists) {
+                          console.log("Adding assistant response to message history:", result.content.substring(0, 50) + "...");
+                          
+                          // Create a proper assistant message
+                          const assistantMessage = {
+                            id: result.id,
+                            role: 'assistant' as const,
+                            content: result.content,
+                            parts: [{
+                              type: 'text' as const,
+                              text: result.content
+                            }]
+                          };
+                          
+                          // Update the messages with the new assistant response
+                          agent.setMessages([...agent.messages, assistantMessage]);
+                        } else {
+                          console.log("Assistant response already exists in message history");
+                        }
+                      } else {
+                        console.warn("Inference result is missing id or content, cannot add to history", result);
+                      }
+                    } catch (error) {
+                      console.error("Error with shared inference:", error);
+                      
+                      // Fallback to standard handleSubmit if shared inference fails
+                      console.log("Falling back to standard handleSubmit...");
+                      agent.handleSubmit(input.value)
+                        .then(() => {
+                          console.log("Message sent to agent via standard method");
+                        })
+                        .catch(fallbackError => {
+                          console.error("Error with fallback message send:", fallbackError);
+                        });
+                    }
 
                     // Clear the input
                     input.value = '';

@@ -396,55 +396,59 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
                     }]
                   };
 
-                  // Check if any essential context is missing
-                  const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
-
-                  if (contextMissing) {
-                    console.log("Context not found, setting it before inference...");
-                    // Format context message
-                    const contextMessage = {
-                      type: "set_context",
-                      issue: formattedIssue,
-                      project: formattedProject,
-                      team: formattedTeam,
-                      timestamp: new Date().toISOString()
-                    };
-
-                    // Send the raw message
-                    agent.sendRawMessage(contextMessage);
-                    console.log("Context set before inference");
-
-                    // Brief delay to allow context to be processed
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                  }
-
-                  // Run shared inference with just the test message
-                  console.log("Running shared inference...");
+                  // Add the message to the chat immediately for UI responsiveness
+                  agent.setMessages([...agent.messages, testMessage]);
+                  
+                  // Get all messages for the inference (full chat history)
+                  const allMessages = [...agent.messages].map(message => ({
+                    id: message.id,
+                    role: message.role as 'user' | 'assistant' | 'system',
+                    content: message.content || '',
+                    parts: [{
+                      type: 'text' as const,
+                      text: message.content || ''
+                    }]
+                  }));
+                  
+                  // Run shared inference with full message history
+                  console.log("Running shared inference with full history...");
                   const result = await agent.sharedInfer({
                     model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-                    messages: [testMessage],
+                    messages: allMessages,
                     temperature: 0.7,
-                    max_tokens: 500
+                    max_tokens: 1000,
+                    stream: true
                   });
-
-                  // Log the result
-                  console.log("Shared inference result:", result);
-
-                  // Add both the message and result to the chat
-                  agent.setMessages([
-                    ...agent.messages,
-                    testMessage,
-                    {
-                      id: result.id || generateId(),
-                      role: 'assistant',
-                      content: result.content || '',
-                      parts: result.parts || [{
-                        type: 'text' as const,
-                        text: result.content || ''
-                      }]
+                  
+                  console.log("Shared inference completed successfully");
+                  
+                  // Add the assistant's response to the message history if not already added
+                  if (result && result.id && result.content) {
+                    // Check if this response is already in the messages
+                    const responseExists = agent.messages.some(msg => msg.id === result.id);
+                    
+                    if (!responseExists) {
+                      console.log("Adding assistant response to message history:", result.content.substring(0, 50) + "...");
+                      
+                      // Create a proper assistant message
+                      const assistantMessage = {
+                        id: result.id,
+                        role: 'assistant' as const,
+                        content: result.content,
+                        parts: [{
+                          type: 'text' as const,
+                          text: result.content
+                        }]
+                      };
+                      
+                      // Update the messages with the new assistant response
+                      agent.setMessages([...agent.messages, assistantMessage]);
+                    } else {
+                      console.log("Assistant response already exists in message history");
                     }
-                  ]);
-
+                  } else {
+                    console.warn("Inference result is missing id or content, cannot add to history", result);
+                  }
                 } catch (error) {
                   console.error("Error running shared inference:", error);
                 }

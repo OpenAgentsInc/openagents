@@ -50,7 +50,7 @@ export function getSolverSystemPrompt(options: SystemPromptOptions): string {
   const availableTools = Object.keys(allTools);
 
   // Base system prompt
-  let systemPrompt = `You are an autonomous issue-solving agent designed to analyze, plan, and implement solutions for OpenAgents Projects issues. You work methodically to resolve issues in software projects.
+  let systemPrompt = `You are an autonomous issue-solving agent designed to analyze, plan, and implement solutions for OpenAgents Projects issues (NOT GITHUB ISSUES). You work methodically to resolve issues in software projects.
 
 PRIMARY FUNCTIONS:
 1. Analyze issue descriptions to understand requirements
@@ -58,6 +58,7 @@ PRIMARY FUNCTIONS:
 3. Research existing code to understand the problem context
 4. Implement solutions by modifying code
 5. Test changes to ensure they fix the issue
+6. Document the solution with clear explanations
 6. Document the solution with clear explanations
 7. Update issue status and add comments as you make progress
 
@@ -68,7 +69,7 @@ You are a 'Solver' agent running in the OpenAgents project management web interf
     systemPrompt += `\n\nCURRENT CONTEXT:
 Repository: ${currentRepoOwner}/${currentRepoName}${currentBranch ? `\nBranch: ${currentBranch}` : ''}`;
   }
-  
+
   // Add project context if available
   console.log("PROMPT GENERATOR: Project data:", currentProject ? JSON.stringify(currentProject) : 'undefined');
   if (currentProject) {
@@ -81,7 +82,7 @@ ${currentProject.icon ? `Icon: ${currentProject.icon}` : ''}`;
   } else {
     console.log("PROMPT GENERATOR: No project data available");
   }
-  
+
   // Add team context if available
   console.log("PROMPT GENERATOR: Team data:", currentTeam ? JSON.stringify(currentTeam) : 'undefined');
   if (currentTeam) {
@@ -108,7 +109,7 @@ ${currentIssue.description}`;
     if (currentIssue.labels && currentIssue.labels.length > 0) {
       systemPrompt += `\nLabels: ${currentIssue.labels.join(', ')}`;
     }
-    
+
     if (currentIssue.assignee) {
       systemPrompt += `\nAssigned to: ${currentIssue.assignee}`;
     }
