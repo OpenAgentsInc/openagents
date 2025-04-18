@@ -61,6 +61,9 @@ export function OrgSwitcher() {
             align="end"
             sideOffset={4}
           >
+            <DropdownMenuItem asChild>
+              <Link to="/settings">Settings</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleSignOut}>
               Log out
             </DropdownMenuItem>

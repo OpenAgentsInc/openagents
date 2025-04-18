@@ -258,6 +258,12 @@ function SidebarTrigger({
 }: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar()
 
+  // if screen size is not mobile, don't show the trigger
+  const isMobile = useIsMobile()
+  if (!isMobile) {
+    return null
+  }
+
   return (
     <Button
       data-sidebar="trigger"

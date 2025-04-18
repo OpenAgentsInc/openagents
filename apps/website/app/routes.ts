@@ -23,6 +23,7 @@ export default [
     route("members", "routes/members.tsx"),
     route("issues", "routes/issues.tsx"),
     route("issues/:id", "routes/issues/$id.tsx"),
+    route("settings", "routes/settings.tsx"),
   ]),
 
   // ---------------- Routes WITHOUT the global header ------------
