@@ -78,8 +78,9 @@ export function HeaderNav() {
               <>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbPage title={currentIssue?.title || ""} className="font-mono">
-                    {currentIssue?.identifier || issueId}
+                  <BreadcrumbPage className="font-normal">
+                    <span className="font-mono">{currentIssue?.identifier || issueId}</span>
+                    {currentIssue?.title && <span>: {currentIssue.title}</span>}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </>
