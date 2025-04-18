@@ -8,7 +8,7 @@ import { Solver, solverContext } from "./index";
 export const getIssueDetails = tool({
   description: "Fetch details about an issue from OpenAgents Projects",
   parameters: z.object({
-    source: z.enum(["openagents"]).describe("The source platform for the issue - use 'openagents'"),
+    source: z.enum(["openagents", "github"]).describe("The source platform for the issue"),
     owner: z.string().optional().describe("The owner/organization (if needed)"),
     repo: z.string().optional().describe("The repository name (if needed)"),
     issueNumber: z.number().describe("The issue number/ID"),
@@ -113,7 +113,7 @@ export const getIssueDetails = tool({
 export const updateIssueStatus = tool({
   description: "Update the status of an issue in OpenAgents Projects",
   parameters: z.object({
-    source: z.enum(["openagents"]).describe("The source platform for the issue - use 'openagents'"),
+    source: z.enum(["openagents", "github"]).describe("The source platform for the issue"),
     owner: z.string().optional().describe("The owner/organization (if needed)"),
     repo: z.string().optional().describe("The repository name (if needed)"),
     issueNumber: z.number().describe("The issue number/ID"),
