@@ -303,7 +303,7 @@ export function SolverConnector({
       <ScrollArea
         ref={viewportRef}
         className="flex-1 px-4 py-2 min-h-0"
-        style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100% - 60px)' }}
+        style={{ overscrollBehavior: 'contain' }}
       >
         {children}
       </ScrollArea>
@@ -314,7 +314,7 @@ export function SolverConnector({
   // This component just shows the UI based on the agent's state
 
   return (
-    <Card className={cn("h-full flex flex-col py-0", className)}>
+    <Card className={cn("h-full flex flex-col py-0 overflow-hidden", className)}>
       <CardContent className="flex-1 flex flex-col overflow-hidden p-0 pt-0">
         {connectionState === 'disconnected' && (
           <div className="flex flex-col items-center justify-center h-full overflow-auto">

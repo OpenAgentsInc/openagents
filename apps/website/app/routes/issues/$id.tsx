@@ -450,23 +450,21 @@ export default function IssueDetails() {
 
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto px-6 pt-2">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+      <div className="container mx-auto px-6 pt-2 h-full overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
           {/* ---------- Main column: SolverConnector full height ---------- */}
-          <div className="md:col-span-2 flex flex-col h-full">
-            <div className="flex-1 overflow-hidden">
-              <SolverConnector
-                issue={issue}
-                agent={agent}
-                githubToken={getGithubToken()}
-                className="w-full"
-              />
-            </div>
+          <div className="md:col-span-2 h-full overflow-hidden">
+            <SolverConnector
+              issue={issue}
+              agent={agent}
+              githubToken={getGithubToken()}
+              className="w-full h-full"
+            />
           </div>
 
           {/* ---------- Sidebar ---------- */}
           <ScrollArea 
-            className="h-full"
+            className="h-[calc(100vh-6rem)]"
             style={{ overscrollBehavior: 'contain' }}
           >
             <div className="flex flex-col pr-2">

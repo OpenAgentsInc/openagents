@@ -157,26 +157,36 @@
 /* Fixed content that adapts to sidebar state */
 .fixed-content {
   position: fixed;
-  top: 0.5rem;
-  bottom: 0.5rem;
-  left: calc(var(--sidebar-width) + 0.5rem);
-  right: 0.5rem;
-  transition: left 0.2s ease-linear;
-  background-color: var(--background);
-  border-radius: 0.75rem;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 0.5rem;
+  width: calc(100% - var(--sidebar-width) - 1rem);
+  transform: translateX(var(--sidebar-width));
+  transition: transform 0.2s ease-linear, width 0.2s ease-linear;
 }
 
-/* Adjust when sidebar is collapsed */
-.peer-data-\[state\=collapsed\]:ml-2 ~ .fixed-content {
-  left: 0.5rem;
+/* Adjust when sidebar is collapsed to icon mode */
+.peer-data-\[state\=collapsed\].peer-data-\[collapsible\=icon\] ~ .fixed-content {
+  width: calc(100% - var(--sidebar-width-icon) - 1rem);
+  transform: translateX(var(--sidebar-width-icon));
+}
+
+/* Adjust when sidebar is fully collapsed */
+.peer-data-\[state\=collapsed\].peer-data-\[collapsible\=offcanvas\] ~ .fixed-content {
+  width: calc(100% - 1rem);
+  transform: translateX(0);
 }
 
 /* Mobile adjustments */
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
   .fixed-content {
     position: static;
     margin: 0;
+    width: 100%;
+    transform: none;
     height: 100%;
-    border-radius: 0;
   }
 }
