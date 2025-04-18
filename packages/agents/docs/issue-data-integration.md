@@ -4,7 +4,7 @@
 
 ### Solver Agent Implementation
 
-The Solver agent is designed to analyze and implement solutions for GitHub and Linear issues. The current implementation consists of:
+The Solver agent is designed to analyze and implement solutions for issues in our OpenAgents Projects system. The current implementation consists of:
 
 1. **Agent Class**: `packages/agents/src/agents/solver/index.ts` - Implements the core Solver agent functionality, extending the OpenAgent class.
 2. **Agent State**: `packages/agents/src/agents/solver/types.ts` - Defines the SolverState interface that extends BaseAgentState.
@@ -32,8 +32,7 @@ For the Solver agent to have comprehensive context about an issue, it needs:
 ### Issue Data (Already Implemented)
 - Basic information (id, title, description, status)
 - Metadata (labels, assignee, creation date)
-- Source (GitHub, Linear)
-- Current state (open, closed, etc.)
+- Current state (open, in progress, completed, etc.)
 
 ### Project Data (To Be Added)
 - Project information (name, description, status)
@@ -238,7 +237,7 @@ This approach would be implemented after Option 1 is working successfully and th
 
 Both approaches need to ensure:
 
-1. **GitHub Token Handling**: GitHub tokens should never be logged or exposed publicly
+1. **Token Handling**: Authentication tokens should never be logged or exposed publicly
 2. **Permission Boundaries**: The Solver agent should only access issues the user has permission to view
 3. **Data Sanitization**: All data passed to the agent should be sanitized to prevent prompt injection
 
@@ -247,3 +246,257 @@ Both approaches need to ensure:
 The recommended approach is to start with client-side data passing (Option 1) for immediate implementation, as it requires minimal changes to the existing architecture while providing the Solver agent with the context it needs.
 
 In the longer term, moving to a worker-to-worker communication model (Option 2) would provide a more robust architecture that could better handle evolving data needs and increasing system complexity.
+
+## Implementation Log
+
+### Phase 1 Implementation - Client-Side Data Passing (April 17, 2025)
+
+The following changes were implemented to enable passing project and team context from the client to the Solver agent:
+
+#### 1. Enhanced State Types
+
+Updated `packages/agents/src/agents/solver/types.ts` to include project and team data in the agent state:
+
+```typescript
+export interface SolverState extends BaseAgentState {
+  messages: UIMessage[];
+  currentIssue?: BaseIssue;
+  currentProject?: BaseProject; // Added project context
+  currentTeam?: BaseTeam;       // Added team context
+  implementationSteps?: ImplementationStep[];
+  issueComments?: IssueComment[];
+}
+```
+
+Added necessary imports:
+
+```typescript
+import type { 
+  BaseIssue, 
+  BaseProject, 
+  BaseTeam, 
+  ImplementationStep, 
+  IssueComment 
+} from "@openagents/core";
+```
+
+#### 2. Extended Solver Agent Implementation
+
+Updated `packages/agents/src/agents/solver/index.ts` to add a method for setting issue with project and team context:
+
+```typescript
+async setCurrentIssue(issue: BaseIssue, project?: BaseProject, team?: BaseTeam) {
+  console.log("Setting current issue:", issue.id);
+  console.log("With project context:", project?.name || 'None');
+  console.log("With team context:", team?.name || 'None');
+  
+  try {
+    await this.setState({
+      ...this.state,
+      currentIssue: issue,
+      currentProject: project,
+      currentTeam: team
+    });
+    return true;
+  } catch (error) {
+    console.error("Error setting current issue:", error);
+    throw error;
+  }
+}
+```
+
+Added necessary imports:
+
+```typescript
+import { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
+```
+
+#### 3. Enhanced System Prompt Generation
+
+Updated `packages/agents/src/agents/solver/prompts.ts` to extract project and team data from state:
+
+```typescript
+const {
+  currentIssue,
+  currentProject,
+  currentTeam,
+  // ... other state properties
+} = state;
+```
+
+Added sections to include project and team context in the system prompt:
+
+```typescript
+// Add project context if available
+if (currentProject) {
+  systemPrompt += `\n\nPROJECT CONTEXT:
+Name: ${currentProject.name}
+${currentProject.id ? `ID: ${currentProject.id}` : ''}
+${currentProject.status ? `Status: ${currentProject.status}` : ''}
+${currentProject.priority ? `Priority: ${currentProject.priority}` : ''}
+${currentProject.health ? `Health: ${currentProject.health}` : ''}
+${currentProject.percentComplete !== undefined ? `Progress: ${currentProject.percentComplete}% complete` : ''}
+${currentProject.startDate ? `Start Date: ${new Date(currentProject.startDate).toLocaleDateString()}` : ''}`;
+}
+
+// Add team context if available
+if (currentTeam) {
+  systemPrompt += `\n\nTEAM CONTEXT:
+Name: ${currentTeam.name}
+${currentTeam.id ? `ID: ${currentTeam.id}` : ''}
+${currentTeam.key ? `Key: ${currentTeam.key}` : ''}
+${currentTeam.color ? `Color: ${currentTeam.color}` : ''}`;
+}
+```
+
+#### 4. Enhanced SolverConnector Component
+
+Updated `apps/website/app/components/agent/solver-connector.tsx` to create formatted project and team objects:
+
+```typescript
+// Create formatted project object if available
+const formattedProject = issue.project ? {
+  id: issue.project.id,
+  name: issue.project.name,
+  status: issue.project.status || '',
+  priority: issue.project.priority || '',
+  health: issue.project.health || '',
+  percentComplete: issue.project.percentComplete || 0,
+  startDate: issue.project.startDate,
+  owner: issue.project.owner ? {
+    id: issue.project.owner.id,
+    name: issue.project.owner.name
+  } : undefined
+} : undefined;
+
+// Create formatted team object if available
+const formattedTeam = issue.team ? {
+  id: issue.team.id,
+  name: issue.team.name,
+  key: issue.team.key || '',
+  color: issue.team.color || '',
+  icon: issue.team.icon || '',
+  owner: issue.team.owner ? {
+    id: issue.team.owner.id,
+    name: issue.team.owner.name
+  } : undefined
+} : undefined;
+```
+
+Modified the `setCurrentIssue` call to pass project and team data:
+
+```typescript
+if (agent.setCurrentIssue) {
+  console.log("Step 3: Setting current issue with project and team context...");
+  try {
+    await agent.setCurrentIssue(formattedIssue, formattedProject, formattedTeam);
+    console.log("✓ Current issue set successfully with project and team context");
+  } catch (error) {
+    console.error("✗ Failed to set current issue with context:", error);
+    throw new Error(`Failed to set current issue with context: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+}
+```
+
+Also updated the source identifier from "github" to "openagents" to reflect our own system:
+
+```typescript
+source: "openagents", // Using our own source identifier
+```
+
+#### 5. TypeScript Fixes
+
+Several adjustments were made to fix TypeScript errors and ensure type safety:
+
+- Changed import in `index.ts` to use type-only imports: 
+  ```typescript
+  import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
+  ```
+
+- Updated system prompt generation to use only properties defined in the BaseProject interface:
+  ```typescript
+  if (currentProject) {
+    systemPrompt += `\n\nPROJECT CONTEXT:
+  Name: ${currentProject.name}
+  ID: ${currentProject.id}
+  ${currentProject.color ? `Color: ${currentProject.color}` : ''}
+  ${currentProject.icon ? `Icon: ${currentProject.icon}` : ''}`;
+  }
+  ```
+
+- Updated SolverConnector component to create properly typed project and team objects:
+  ```typescript
+  // Create formatted project object
+  const formattedProject = issue.project ? {
+    id: issue.project.id,
+    name: issue.project.name,
+    color: issue.project.color,
+    icon: issue.project.icon
+  } : undefined;
+  
+  // Create formatted team object
+  const formattedTeam = issue.team ? {
+    id: issue.team.id,
+    name: issue.team.name,
+    key: issue.team.key || 'default'
+  } : undefined;
+  ```
+
+#### 6. Testing and Verification
+
+The implementation was verified by:
+- Checking TypeScript compilation with no errors
+- Reviewing code for consistency with existing patterns
+- Ensuring proper error handling in all new methods
+- Confirming that all objects adhere to their respective interfaces
+
+These changes enable the Solver agent to have complete context about the issue, project, and team when analyzing and solving issues in our OpenAgents Projects system.
+
+#### 7. Additional Fix - Core Hook Update (April 18, 2025)
+
+After testing the implementation, we discovered the `useOpenAgent` hook in `packages/core/src/agents/useOpenAgent.ts` was not passing project and team data to the agent. We made the following fixes:
+
+1. Updated the `setCurrentIssue` method in the hook to accept and pass project and team parameters:
+
+```typescript
+/**
+ * Sets the current issue for the Solver agent with optional project and team context
+ */
+const setCurrentIssue = useCallback(async (issue: any, project?: any, team?: any): Promise<void> => {
+  if (type === 'solver') {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Setting current issue:`, issue.id);
+      console.log(`[useOpenAgent ${agentName}] With project:`, project?.name || 'None');
+      console.log(`[useOpenAgent ${agentName}] With team:`, team?.name || 'None');
+      
+      if (cloudflareAgent && typeof cloudflareAgent.call === 'function') {
+        // Pass all three parameters to the agent
+        await cloudflareAgent.call('setCurrentIssue', [issue, project, team]);
+        console.log(`[useOpenAgent ${agentName}] Current issue set successfully with project and team context`);
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot set current issue: Agent not available or call not a function`);
+        throw new Error('Agent not available');
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to set current issue:`, error);
+      // Mark connection as error
+      if (connectionStatus !== 'error') {
+        setConnectionStatus('error');
+      }
+      throw error;
+    }
+  }
+}, [cloudflareAgent, type, agentName, connectionStatus]);
+```
+
+2. Updated the `OpenAgent` type interface to reflect the updated method signature:
+
+```typescript
+export type OpenAgent = {
+  // ...other methods
+  setCurrentIssue?: (issue: any, project?: any, team?: any) => Promise<void>; // Updated to include project and team
+  // ...other methods
+}
+```
+
+This fix completes the data passing chain from the UI component to the agent, ensuring that project and team context is properly transmitted and included in the agent's system prompt.

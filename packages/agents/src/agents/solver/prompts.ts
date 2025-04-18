@@ -27,6 +27,8 @@ export function getSolverSystemPrompt(options: SystemPromptOptions): string {
   // Extract values from state
   const {
     currentIssue,
+    currentProject,
+    currentTeam,
     currentRepoOwner,
     currentRepoName,
     currentBranch,
@@ -56,6 +58,23 @@ PRIMARY FUNCTIONS:
   if (currentRepoOwner && currentRepoName) {
     systemPrompt += `\n\nCURRENT CONTEXT:
 Repository: ${currentRepoOwner}/${currentRepoName}${currentBranch ? `\nBranch: ${currentBranch}` : ''}`;
+  }
+  
+  // Add project context if available
+  if (currentProject) {
+    systemPrompt += `\n\nPROJECT CONTEXT:
+Name: ${currentProject.name}
+ID: ${currentProject.id}
+${currentProject.color ? `Color: ${currentProject.color}` : ''}
+${currentProject.icon ? `Icon: ${currentProject.icon}` : ''}`;
+  }
+  
+  // Add team context if available
+  if (currentTeam) {
+    systemPrompt += `\n\nTEAM CONTEXT:
+Name: ${currentTeam.name}
+ID: ${currentTeam.id}
+Key: ${currentTeam.key}`;
   }
 
   // Add current issue context if available

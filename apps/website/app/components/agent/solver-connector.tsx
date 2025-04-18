@@ -50,7 +50,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     number: parseInt(issue.identifier.replace(/[^\d]/g, '')),
     title: issue.title,
     description: issue.description || "",
-    source: "github", // or "linear" depending on your source
+    source: "openagents", // Using our own source identifier
     status: issue.status.type === 'done' ? 'closed' : 'open',
     labels: issue.labels?.map((label: any) => label.name) || [],
     assignee: issue.assignee?.name,
@@ -58,9 +58,24 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     updated: issue.updatedAt ? new Date(issue.updatedAt) : undefined
   };
 
+  // Create formatted project object if available - using BaseProject interface
+  const formattedProject = issue.project ? {
+    id: issue.project.id,
+    name: issue.project.name,
+    color: issue.project.color,
+    icon: issue.project.icon
+  } : undefined;
+
+  // Create formatted team object if available - using BaseTeam interface
+  const formattedTeam = issue.team ? {
+    id: issue.team.id,
+    name: issue.team.name,
+    key: issue.team.key || 'default'
+  } : undefined;
+
   // Extract repository context from issue or use defaults
   const repoInfo = {
-    owner: "openagents", // Replace with dynamic value if available
+    owner: "openagentsinc", // Replace with dynamic value if available
     repo: "openagents",  // Replace with dynamic value if available
     branch: "main"      // Replace with dynamic value if available
   };
@@ -164,15 +179,15 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         }
       }
 
-      // Basic step 3: Set current issue
+      // Basic step 3: Set current issue with project and team context
       if (agent.setCurrentIssue) {
-        console.log("Step 3: Setting current issue...");
+        console.log("Step 3: Setting current issue with project and team context...");
         try {
-          await agent.setCurrentIssue(formattedIssue);
-          console.log("✓ Current issue set successfully");
+          await agent.setCurrentIssue(formattedIssue, formattedProject, formattedTeam);
+          console.log("✓ Current issue set successfully with project and team context");
         } catch (error) {
-          console.error("✗ Failed to set current issue:", error);
-          throw new Error(`Failed to set current issue: ${error instanceof Error ? error.message : "Unknown error"}`);
+          console.error("✗ Failed to set current issue with context:", error);
+          throw new Error(`Failed to set current issue with context: ${error instanceof Error ? error.message : "Unknown error"}`);
         }
       }
 

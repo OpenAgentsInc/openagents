@@ -43,7 +43,7 @@ export type OpenAgent = {
   sharedInfer: (props: InferProps) => Promise<InferResponse>; // New shared inference method
   setGithubToken: (token: string) => Promise<void>;
   getGithubToken: () => Promise<string>;
-  setCurrentIssue?: (issue: any) => Promise<void>;
+  setCurrentIssue?: (issue: any, project?: any, team?: any) => Promise<void>; // Updated to include project and team
   setRepositoryContext?: (owner: string, repo: string, branch?: string) => Promise<void>;
   addAgentObservation: (observation: string) => Promise<void>; // Add method to send observations
   sendRawMessage: (message: any) => void; // Add method to send raw WebSocket messages
@@ -340,16 +340,19 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   }, [cloudflareAgent, agentName, connectionStatus]);
 
   /**
-   * Sets the current issue for the Solver agent
+   * Sets the current issue for the Solver agent with optional project and team context
    */
-  const setCurrentIssue = useCallback(async (issue: any): Promise<void> => {
+  const setCurrentIssue = useCallback(async (issue: any, project?: any, team?: any): Promise<void> => {
     if (type === 'solver') {
       try {
         console.log(`[useOpenAgent ${agentName}] Setting current issue:`, issue.id);
+        console.log(`[useOpenAgent ${agentName}] With project:`, project?.name || 'None');
+        console.log(`[useOpenAgent ${agentName}] With team:`, team?.name || 'None');
         
         if (cloudflareAgent && typeof cloudflareAgent.call === 'function') {
-          await cloudflareAgent.call('setCurrentIssue', [issue]);
-          console.log(`[useOpenAgent ${agentName}] Current issue set successfully`);
+          // Pass all three parameters to the agent
+          await cloudflareAgent.call('setCurrentIssue', [issue, project, team]);
+          console.log(`[useOpenAgent ${agentName}] Current issue set successfully with project and team context`);
         } else {
           console.error(`[useOpenAgent ${agentName}] Cannot set current issue: Agent not available or call not a function`);
           throw new Error('Agent not available');

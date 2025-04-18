@@ -2,6 +2,7 @@ import { type Connection, type WSMessage } from "agents";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { SolverState } from "./types";
 import { OpenAgent } from "../../common/open-agent";
+import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
 
 export const solverContext = new AsyncLocalStorage<Solver>();
 
@@ -113,5 +114,31 @@ export class Solver extends OpenAgent<SolverState> {
       state: this.state,
       temperature: 0.7
     });
+  }
+  
+  /**
+   * Sets the current issue with project and team context
+   * @param issue The current issue being worked on
+   * @param project Optional project context
+   * @param team Optional team context
+   * @returns Promise resolving to true if successful
+   */
+  async setCurrentIssue(issue: BaseIssue, project?: BaseProject, team?: BaseTeam) {
+    console.log("Setting current issue:", issue.id);
+    console.log("With project context:", project?.name || 'None');
+    console.log("With team context:", team?.name || 'None');
+    
+    try {
+      await this.setState({
+        ...this.state,
+        currentIssue: issue,
+        currentProject: project,
+        currentTeam: team
+      });
+      return true;
+    } catch (error) {
+      console.error("Error setting current issue:", error);
+      throw error;
+    }
   }
 }
