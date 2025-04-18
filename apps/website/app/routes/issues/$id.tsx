@@ -368,18 +368,18 @@ export default function IssueDetails() {
       <div className="container mx-auto px-6 pt-2">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
           {/* ---------- Main column: SolverConnector full height ---------- */}
-          <div className="md:col-span-2 flex flex-col">
-            <div className="flex-1">
+          <div className="md:col-span-2 flex flex-col h-[calc(100vh-4rem)]">
+            <div className="flex-1 overflow-hidden">
               <SolverConnector
                 issue={issue}
                 githubToken={getGithubToken()}
-                className="h-full w-full"
+                className="w-full"
               />
             </div>
           </div>
 
           {/* ---------- Sidebar ---------- */}
-          <div className="flex flex-col">
+          <div className="flex flex-col h-[calc(100vh-8rem)] overflow-y-auto">
             <Card className="shadow-sm flex flex-col h-full">
               {/* Header with title & quick badges */}
               <CardHeader className="py-2 px-3">

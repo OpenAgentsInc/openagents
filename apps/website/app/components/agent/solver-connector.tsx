@@ -382,7 +382,7 @@ export function SolverConnector({
       <div
         ref={containerRef}
         className="flex-1 overflow-y-auto px-4 py-2 min-h-0"
-        style={{ overscrollBehavior: 'contain' }} // Prevent scroll chaining
+        style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100% - 60px)' }} // Prevent scroll chaining and set max height
       >
         {children}
       </div>
@@ -425,8 +425,8 @@ export function SolverConnector({
   }, [connectionState, agent.state]);
 
   return (
-    <Card className={cn("h-[600px]", className)}>
-      <CardHeader className="pb-2">
+    <Card className={cn("h-full flex flex-col", className)}>
+      <CardHeader className="pb-2 flex-shrink-0">
         <div className="flex justify-between items-center">
           <CardTitle className="text-lg flex items-center">
             {connectionState === 'connected' ? (
@@ -455,12 +455,12 @@ export function SolverConnector({
         </div>
       </CardHeader>
 
-      <CardContent className="flex flex-col h-[calc(100%-4rem)] overflow-hidden">
+      <CardContent className="flex-1 flex flex-col overflow-hidden p-0">
         {connectionState === 'disconnected' && (
-          <div className="text-center py-6">
+          <div className="text-center py-6 overflow-auto flex-1">
             <Terminal className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
             <h3 className="text-lg font-medium mb-2">Solver Agent Disconnected</h3>
-            <p className="text-muted-foreground mb-4">
+            <p className="text-muted-foreground mb-4 px-4">
               The Solver agent can analyze this issue and help implement a solution.
               It will create a structured plan and guide you through fixing the issue.
             </p>
@@ -468,20 +468,20 @@ export function SolverConnector({
         )}
 
         {connectionState === 'connecting' && (
-          <div className="text-center py-6">
+          <div className="text-center py-6 overflow-auto flex-1">
             <Spinner className="h-12 w-12 mx-auto mb-4" />
             <h3 className="text-lg font-medium mb-2">Connecting to Solver Agent</h3>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground px-4">
               Establishing connection and analyzing issue #{issue.identifier}...
             </p>
           </div>
         )}
 
         {connectionState === 'error' && (
-          <div className="text-center py-6">
+          <div className="text-center py-6 overflow-auto flex-1">
             <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
             <h3 className="text-lg font-medium mb-2">Connection Error</h3>
-            <p className="text-muted-foreground mb-4">
+            <p className="text-muted-foreground mb-4 px-4">
               {errorMessage || "Failed to connect to the Solver agent. Please try again."}
             </p>
             {retryCount < maxRetries && (
@@ -498,13 +498,10 @@ export function SolverConnector({
         )}
 
         {connectionState === 'connected' && (
-          <div className="py-2 h-full flex flex-col">
-            <div className="rounded-md border flex-1 flex flex-col overflow-hidden">
+          <div className="h-full flex flex-col">
+            <div className="rounded-md flex-1 flex flex-col overflow-hidden">
               {/* Use our auto-scrolling container */}
               <MessageContainer>
-                {/* Debug log agent messages */}
-                {/* {console.log("Agent messages:", JSON.stringify(agent.messages, null, 2))} */}
-
                 {/* Convert agent messages to MessageList format */}
                 <MessageList
                   messages={agent.messages.map(message => ({
@@ -522,7 +519,7 @@ export function SolverConnector({
               </MessageContainer>
 
               {/* Add message input */}
-              <div className="px-4 py-3 border-t">
+              <div className="px-4 py-3 border-t flex-shrink-0">
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;

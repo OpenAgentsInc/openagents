@@ -26,7 +26,7 @@ export default function MainLayout({
       <SidebarInset className="h-screen overflow-hidden flex flex-col lg:p-2">
         <div className="bg-container flex flex-col flex-1 overflow-hidden lg:border lg:rounded-md">
           <div className="z-40 flex-shrink-0">{header}</div>
-          <main className="flex-1 min-h-0 overflow-auto">{children}</main>
+          <main className="flex-1 min-h-0">{children}</main>
         </div>
       </SidebarInset>
     </SidebarProvider>
