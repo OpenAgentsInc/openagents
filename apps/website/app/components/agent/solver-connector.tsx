@@ -8,6 +8,7 @@ import { useOpenAgent } from "@openagents/core";
 import { generateId } from "ai";
 import { MessageList } from "@/components/ui/message-list";
 import { cn } from "@/lib/utils";
+import { Input } from "../ui/input";
 
 interface SolverConnectorProps {
   issue: any;  // The issue object from the parent component
@@ -425,37 +426,8 @@ export function SolverConnector({
   }, [connectionState, agent.state]);
 
   return (
-    <Card className={cn("h-full flex flex-col", className)}>
-      <CardHeader className="pb-2 flex-shrink-0">
-        <div className="flex justify-between items-center">
-          <CardTitle className="text-lg flex items-center">
-            {connectionState === 'connected' ? (
-              <>
-                <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
-                <span>Agent</span>
-              </>
-            ) : (
-              <>
-                <BotIcon className="h-5 w-5 mr-2" />
-                <span>Agent</span>
-              </>
-            )}
-          </CardTitle>
-          {connectionState !== 'connected' && (
-            <Badge
-              variant={
-                connectionState === 'connecting' ? "warning" :
-                  connectionState === 'error' ? "destructive" : "secondary"
-              }
-            >
-              {connectionState === 'connecting' ? "Connecting..." :
-                connectionState === 'error' ? "Error" : "Disconnected"}
-            </Badge>
-          )}
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex-1 flex flex-col overflow-hidden p-0">
+    <Card className={cn("py-0 h-full flex flex-col", className)}>
+      <CardContent className="flex-1 flex flex-col overflow-hidden p-0 pt-0">
         {connectionState === 'disconnected' && (
           <div className="text-center py-6 overflow-auto flex-1">
             <Terminal className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -550,14 +522,16 @@ export function SolverConnector({
                     // Clear the input
                     input.value = '';
                   }
-                }} className="flex">
-                  <input
+                }} className="flex flex-row items-center">
+                  <Input
                     type="text"
                     name="message"
+                    autoFocus
+                    autoComplete="off"
                     placeholder="Send a message..."
                     className="flex-1 min-w-0 bg-background border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
-                  <Button type="submit" size="sm" className="ml-2">
+                  <Button type="submit" size="sm" className="ml-2" variant="outline">
                     Send
                   </Button>
                 </form>
