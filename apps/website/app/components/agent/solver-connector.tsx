@@ -365,14 +365,20 @@ export function SolverConnector({
                   e.preventDefault();
                   const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
                   if (input && input.value.trim()) {
+                    // Store the input value before clearing
+                    const inputValue = input.value;
+                    
+                    // Clear the input field immediately
+                    input.value = '';
+                    
                     // Create a user message
                     const userMessage = {
                       id: generateId(),
                       role: 'user' as const,
-                      content: input.value,
+                      content: inputValue,
                       parts: [{
                         type: 'text' as const,
-                        text: input.value
+                        text: inputValue
                       }]
                     };
 
@@ -380,14 +386,23 @@ export function SolverConnector({
                     agent.setMessages([...agent.messages, userMessage]);
 
                     try {
-                      console.log("Running shared inference with full message history...");
-
-                      // First make sure context is properly set
+                      // First ensure we have context
                       const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
 
+                      // Set context if needed
                       if (contextMissing) {
-                        console.log("Context missing before inference, attempting to have parent component set it");
-                        // The parent effect should trigger and set context
+                        // Send context to ensure agent has issue information
+                        const contextMessage = {
+                          type: "set_context",
+                          issue: formattedIssue,
+                          project: formattedProject,
+                          team: formattedTeam,
+                          timestamp: new Date().toISOString()
+                        };
+
+                        agent.sendRawMessage(contextMessage);
+                        
+                        // Wait a moment for context to be processed
                         await new Promise(resolve => setTimeout(resolve, 300));
                       }
 
@@ -402,16 +417,43 @@ export function SolverConnector({
                         }] as TextUIPart[]
                       }));
 
-                      // Run shared inference with full message history
-                      const result = await agent.sharedInfer({
-                        model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-                        messages: allMessages,
-                        temperature: 0.7,
-                        max_tokens: 1000,
-                        // stream: true
-                      });
+                      // Get system prompt to ensure context is included
+                      let systemPrompt = null;
+                      try {
+                        systemPrompt = await agent.getSystemPrompt();
+                      } catch (promptError) {
+                        console.error("Error fetching system prompt:", promptError);
+                      }
 
-                      console.log("Shared inference completed successfully");
+                      // Run shared inference with full message history
+                      // Send the inference request
+                      const requestId = generateId();
+                      
+                      // Send the request with context data for reliability
+                      const response = await agent.sendRawMessage({
+                        type: "shared_infer",
+                        requestId: requestId,
+                        params: {
+                          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                          messages: allMessages,
+                          system: systemPrompt, 
+                          temperature: 0.7,
+                          max_tokens: 1000,
+                        },
+                        context: {
+                          issue: formattedIssue,
+                          project: formattedProject,
+                          team: formattedTeam
+                        },
+                        timestamp: new Date().toISOString()
+                      });
+                      
+                      // For async responses, just return and let the WebSocket handler update UI
+                      if (!response?.result || !response.result.id || !response.result.content) {
+                        return;
+                      }
+                      
+                      const result = response.result;
 
                       // Add the assistant's response to the message history if not already added
                       if (result && result.id && result.content) {
@@ -445,7 +487,7 @@ export function SolverConnector({
 
                       // Fallback to standard handleSubmit if shared inference fails
                       console.log("Falling back to standard handleSubmit...");
-                      agent.handleSubmit(input.value)
+                      agent.handleSubmit(inputValue)
                         .then(() => {
                           console.log("Message sent to agent via standard method");
                         })
@@ -454,8 +496,6 @@ export function SolverConnector({
                         });
                     }
 
-                    // Clear the input
-                    input.value = '';
                   }
                 }} className="flex flex-row items-center">
                   <Input

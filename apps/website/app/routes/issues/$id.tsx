@@ -297,10 +297,21 @@ export default function IssueDetails() {
 
   /* ---- Ensure agent has context when connected ---- */
   useEffect(() => {
-    if (agent.connectionStatus === 'connected' &&
-      (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam)) {
-
-      console.log("Setting agent context from parent component...");
+    // Log minimal agent status for debugging
+    console.debug("Agent status:", agent.connectionStatus);
+    
+    // Only set context if we're connected and either:
+    // 1. We have no context at all, or
+    // 2. Context exists but seems to be for a different issue or incorrect
+    const needsContext = agent.connectionStatus === 'connected' && (
+      !agent.state?.currentIssue || 
+      !agent.state?.currentProject || 
+      !agent.state?.currentTeam ||
+      (agent.state.currentIssue && agent.state.currentIssue.id !== issue.id)
+    );
+    
+    if (needsContext) {
+      console.debug("Setting context for issue:", issue.id);
 
       // Create formatted issue object
       const formattedIssue = {
@@ -342,10 +353,23 @@ export default function IssueDetails() {
         };
 
         agent.sendRawMessage(contextMessage);
-        console.log("✓ Agent context set successfully from parent component");
+        console.debug("Context sent for issue", issue.id);
+        
+        // Verify context is applied correctly (minimal logging)
+        setTimeout(async () => {
+          try {
+            const systemPrompt = await agent.getSystemPrompt();
+            const hasIssueContext = systemPrompt.includes("CURRENT ISSUE") && systemPrompt.includes(issue.title);
+            console.debug("Context verified:", hasIssueContext ? "✓" : "✗");
+          } catch (promptError) {
+            console.error("Error verifying context:", promptError);
+          }
+        }, 1000);
       } catch (error) {
-        console.error("Failed to set agent context:", error);
+        console.error("PARENT: Failed to set agent context:", error);
       }
+    } else if (agent.connectionStatus === 'connected') {
+      console.debug("Context already set for issue", issue.id);
     }
   }, [agent.connectionStatus, agent.state, issue]);
 

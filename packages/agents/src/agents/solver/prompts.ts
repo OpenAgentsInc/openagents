@@ -28,6 +28,20 @@ export function getSolverSystemPrompt(options: SystemPromptOptions): string {
     hasIssue: !!state.currentIssue,
     hasProject: !!state.currentProject,
     hasTeam: !!state.currentTeam,
+    issueDetails: state.currentIssue ? {
+      id: state.currentIssue.id,
+      title: state.currentIssue.title, 
+      number: state.currentIssue.number,
+      source: state.currentIssue.source
+    } : null,
+    projectDetails: state.currentProject ? {
+      id: state.currentProject.id,
+      name: state.currentProject.name
+    } : null,
+    teamDetails: state.currentTeam ? {
+      id: state.currentTeam.id,
+      name: state.currentTeam.name
+    } : null,
     stateKeys: Object.keys(state || {})
   }));
 

@@ -3,6 +3,7 @@
 import { Agent } from "agents";
 import { generateId, generateText } from "ai";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
+import type { SolverState } from "../agents/solver/types";
 import { createWorkersAI } from 'workers-ai-provider';
 import { env } from "cloudflare:workers"
 
@@ -152,10 +153,11 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       top_p = 0.95 
     } = props;
     
-    // Log the input parameters
+    // Log the input parameters with more details
     console.log("SHARED INFER CALLED WITH:", {
       model,
       messagesCount: messages.length,
+      systemProvidedExternally: !!system,
       systemPromptLength: system ? system.length : 0,
       temperature,
       max_tokens,
@@ -167,7 +169,36 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       let formattedMessages = [];
       
       // Add system message - either the one provided or the agent's own system prompt
-      const systemPrompt = system || this.getSystemPrompt();
+      // Important: this is where we get the system prompt if not provided
+      let systemPrompt;
+      if (system) {
+        console.log("Using externally provided system prompt");
+        systemPrompt = system;
+      } else {
+        console.log("Generating system prompt from agent state");
+        // Cast to any to avoid TypeScript errors since we can't know the exact properties 
+        // at this level in the class hierarchy
+        const state = this.state as any;
+        console.log("AGENT STATE DEBUG:", JSON.stringify({
+          hasIssue: state.currentIssue ? true : false,
+          hasProject: state.currentProject ? true : false,
+          hasTeam: state.currentTeam ? true : false,
+          issueSource: state.currentIssue ? state.currentIssue.source : null,
+          issueTitle: state.currentIssue ? state.currentIssue.title : null
+        }));
+        
+        systemPrompt = this.getSystemPrompt();
+        
+        // Log brief analysis of the generated system prompt
+        console.log("SYSTEM PROMPT ANALYSIS:", {
+          length: systemPrompt.length,
+          hasIssueContext: systemPrompt.includes("CURRENT ISSUE"),
+          hasProjectContext: systemPrompt.includes("PROJECT CONTEXT"),
+          hasTeamContext: systemPrompt.includes("TEAM CONTEXT"),
+          firstFewWords: systemPrompt.substring(0, 50) + "..."
+        });
+      }
+      
       formattedMessages.push({
         role: "system",
         content: systemPrompt
