@@ -291,17 +291,17 @@ export default function IssueDetails() {
     typeof window !== "undefined" && window.localStorage
       ? localStorage.getItem("github_token") || ""
       : "";
-      
+
   /* ---- Solver agent setup (single instance to be shared) ---- */
   const agent = useOpenAgent(issue.id, "solver");
-  
+
   /* ---- Ensure agent has context when connected ---- */
   useEffect(() => {
-    if (agent.connectionStatus === 'connected' && 
-        (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam)) {
-      
+    if (agent.connectionStatus === 'connected' &&
+      (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam)) {
+
       console.log("Setting agent context from parent component...");
-      
+
       // Create formatted issue object
       const formattedIssue = {
         id: issue.id,
@@ -315,7 +315,7 @@ export default function IssueDetails() {
         created: new Date(issue.createdAt),
         updated: issue.updatedAt ? new Date(issue.updatedAt) : undefined
       };
-      
+
       // Create formatted project object
       const formattedProject = issue.project ? {
         id: issue.project.id,
@@ -323,14 +323,14 @@ export default function IssueDetails() {
         color: issue.project.color,
         icon: issue.project.icon
       } : undefined;
-      
+
       // Create formatted team object
       const formattedTeam = issue.team ? {
         id: issue.team.id,
         name: issue.team.name,
         key: issue.team.key || 'default'
       } : undefined;
-      
+
       // Send context to agent
       try {
         const contextMessage = {
@@ -340,7 +340,7 @@ export default function IssueDetails() {
           team: formattedTeam,
           timestamp: new Date().toISOString()
         };
-        
+
         agent.sendRawMessage(contextMessage);
         console.log("✓ Agent context set successfully from parent component");
       } catch (error) {
@@ -442,12 +442,12 @@ export default function IssueDetails() {
           {/* ---------- Sidebar ---------- */}
           <div className="flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
             {/* Agent Controls Card */}
-            <SolverControls 
+            <SolverControls
               issue={issue}
               agent={agent}
               githubToken={getGithubToken()}
             />
-            
+
             {/* Issue Details Card */}
             <Card className="shadow-sm flex flex-col h-full">
               {/* Header with title & quick badges */}

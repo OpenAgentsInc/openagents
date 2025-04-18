@@ -310,7 +310,7 @@ export function SolverConnector({
   // This component just shows the UI based on the agent's state
 
   return (
-    <Card className={cn("h-full flex flex-col", className)}>
+    <Card className={cn("h-full flex flex-col py-0", className)}>
       <CardContent className="flex-1 flex flex-col overflow-hidden p-0 pt-0">
         {connectionState === 'disconnected' && (
           <div className="flex flex-col items-center justify-center h-full overflow-auto">
@@ -378,10 +378,10 @@ export function SolverConnector({
 
                     // Add the user message to the agent
                     agent.setMessages([...agent.messages, userMessage]);
-                    
+
                     try {
                       console.log("Running shared inference with full message history...");
-                      
+
                       // First make sure context is properly set
                       const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
 
@@ -390,7 +390,7 @@ export function SolverConnector({
                         // The parent effect should trigger and set context
                         await new Promise(resolve => setTimeout(resolve, 300));
                       }
-                      
+
                       // Get all messages for the inference
                       const allMessages = [...agent.messages, userMessage].map(message => ({
                         id: message.id,
@@ -401,26 +401,26 @@ export function SolverConnector({
                           text: message.content || ''
                         }] as TextUIPart[]
                       }));
-                      
+
                       // Run shared inference with full message history
                       const result = await agent.sharedInfer({
                         model: "@cf/meta/llama-4-scout-17b-16e-instruct",
                         messages: allMessages,
                         temperature: 0.7,
                         max_tokens: 1000,
-                        stream: true
+                        // stream: true
                       });
-                      
+
                       console.log("Shared inference completed successfully");
-                      
+
                       // Add the assistant's response to the message history if not already added
                       if (result && result.id && result.content) {
                         // Check if this response is already in the messages
                         const responseExists = agent.messages.some(msg => msg.id === result.id);
-                        
+
                         if (!responseExists) {
                           console.log("Adding assistant response to message history:", result.content.substring(0, 50) + "...");
-                          
+
                           // Create a proper assistant message
                           const assistantMessage = {
                             id: result.id,
@@ -431,7 +431,7 @@ export function SolverConnector({
                               text: result.content
                             }]
                           };
-                          
+
                           // Update the messages with the new assistant response
                           agent.setMessages([...agent.messages, assistantMessage]);
                         } else {
@@ -442,7 +442,7 @@ export function SolverConnector({
                       }
                     } catch (error) {
                       console.error("Error with shared inference:", error);
-                      
+
                       // Fallback to standard handleSubmit if shared inference fails
                       console.log("Falling back to standard handleSubmit...");
                       agent.handleSubmit(input.value)
