@@ -4,11 +4,12 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Terminal, Columns, BotIcon, PlugZap, Power, CheckCircle, AlertTriangle, BookOpen, FileCode2 } from "lucide-react";
-import { useOpenAgent } from "@openagents/core";
+import { useOpenAgent, type Message as AgentMessage } from "@openagents/core";
 import { generateId } from "ai";
 import { MessageList } from "@/components/ui/message-list";
 import { cn } from "@/lib/utils";
 import { Input } from "../ui/input";
+import type { TextUIPart, UIMessage } from "@ai-sdk/ui-utils";
 
 interface SolverConnectorProps {
   issue: any;  // The issue object from the parent component
@@ -18,6 +19,15 @@ interface SolverConnectorProps {
 
 // Connection states for the Solver agent
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+// Convert agent message to UI message
+const toUIMessage = (msg: AgentMessage): UIMessage => ({
+  ...msg,
+  parts: msg.parts?.map(part => ({
+    ...part,
+    type: 'text'
+  })) as TextUIPart[] || []
+});
 
 export function SolverConnector({
   issue,
@@ -478,13 +488,12 @@ export function SolverConnector({
                 <MessageList
                   messages={agent.messages.map(message => ({
                     id: message.id,
-                    role: message.role,
+                    role: message.role as UIMessage['role'],
                     content: message.content || '',
-                    createdAt: message.timestamp || new Date().toISOString(),
-                    parts: message.parts || [{
-                      type: "text",
+                    parts: [{
+                      type: 'text' as const,
                       text: message.content || ''
-                    }]
+                    }] as TextUIPart[]
                   }))}
                   showTimeStamps={true}
                 />
@@ -509,6 +518,20 @@ export function SolverConnector({
 
                     // Add the user message to the agent
                     agent.setMessages([...agent.messages, userMessage]);
+
+                    agent.sharedInfer({
+                      model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                      messages: [...agent.messages.map(message => ({
+                        id: message.id,
+                        role: message.role as UIMessage['role'],
+                        content: message.content || '',
+                        parts: [{
+                          type: 'text' as const,
+                          text: message.content || ''
+                        }] as TextUIPart[]
+                      })), userMessage],
+                      stream: true
+                    });
 
                     // Send the message to the agent and get a response
                     agent.handleSubmit(input.value)
