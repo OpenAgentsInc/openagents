@@ -381,14 +381,44 @@ export function SolverConnector({
 
                     try {
                       console.log("Running shared inference with full message history...");
+                      console.log("AGENT STATE DEBUG:", JSON.stringify({
+                        hasIssue: !!agent.state?.currentIssue,
+                        hasProject: !!agent.state?.currentProject,
+                        hasTeam: !!agent.state?.currentTeam,
+                        issueDetails: agent.state?.currentIssue ? {
+                          id: agent.state.currentIssue.id,
+                          title: agent.state.currentIssue.title,
+                          source: agent.state.currentIssue.source
+                        } : null
+                      }));
 
                       // First make sure context is properly set
                       const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
 
                       if (contextMissing) {
                         console.log("Context missing before inference, attempting to have parent component set it");
-                        // The parent effect should trigger and set context
-                        await new Promise(resolve => setTimeout(resolve, 300));
+                        
+                        // Format in the same way the agent expects to receive state updates
+                        const contextMessage = {
+                          type: "set_context",
+                          issue: formattedIssue,
+                          project: formattedProject,
+                          team: formattedTeam,
+                          timestamp: new Date().toISOString()
+                        };
+
+                        // Send the raw message
+                        console.log("MANUALLY SENDING CONTEXT BEFORE INFERENCE:", JSON.stringify(contextMessage));
+                        agent.sendRawMessage(contextMessage);
+                        
+                        // Wait a moment for context to be processed
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        console.log("STATE AFTER CONTEXT UPDATE:", JSON.stringify({
+                          hasIssue: !!agent.state?.currentIssue,
+                          hasProject: !!agent.state?.currentProject,
+                          hasTeam: !!agent.state?.currentTeam
+                        }));
                       }
 
                       // Get all messages for the inference
@@ -402,13 +432,39 @@ export function SolverConnector({
                         }] as TextUIPart[]
                       }));
 
-                      // Run shared inference with full message history
-                      const result = await agent.sharedInfer({
-                        model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-                        messages: allMessages,
-                        temperature: 0.7,
-                        max_tokens: 1000,
-                        // stream: true
+                      // Get the system prompt directly to ensure it contains context
+                      console.log("Explicitly fetching system prompt for inference...");
+                      let systemPrompt = null;
+                      try {
+                        systemPrompt = await agent.getSystemPrompt();
+                        console.log("SYSTEM PROMPT FETCHED:", systemPrompt.substring(0, 200) + "...");
+                        console.log("HAS ISSUE CONTEXT:", systemPrompt.includes("CURRENT ISSUE"));
+                        console.log("HAS PROJECT CONTEXT:", systemPrompt.includes("PROJECT CONTEXT"));
+                        console.log("HAS TEAM CONTEXT:", systemPrompt.includes("TEAM CONTEXT"));
+                      } catch (promptError) {
+                        console.error("Error fetching system prompt:", promptError);
+                      }
+
+                      // Run shared inference with full message history and explicit system prompt
+                      console.log("Starting shared inference with explicit system prompt...");
+                      const result = await agent.sendRawMessage({
+                        type: "shared_infer",
+                        requestId: generateId(),
+                        params: {
+                          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                          messages: allMessages,
+                          system: systemPrompt, // Explicitly pass the system prompt
+                          temperature: 0.7,
+                          max_tokens: 1000,
+                          // stream: true
+                        },
+                        // Also include context data in case agent needs to restore it
+                        context: {
+                          issue: formattedIssue,
+                          project: formattedProject,
+                          team: formattedTeam
+                        },
+                        timestamp: new Date().toISOString()
                       });
 
                       console.log("Shared inference completed successfully");

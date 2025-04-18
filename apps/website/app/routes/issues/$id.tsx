@@ -297,10 +297,29 @@ export default function IssueDetails() {
 
   /* ---- Ensure agent has context when connected ---- */
   useEffect(() => {
-    if (agent.connectionStatus === 'connected' &&
-      (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam)) {
-
-      console.log("Setting agent context from parent component...");
+    // Log agent status and state
+    console.log("PARENT: Agent status changed to:", agent.connectionStatus);
+    console.log("PARENT: Agent state:", agent.state ? JSON.stringify({
+      hasIssue: !!agent.state.currentIssue,
+      hasProject: !!agent.state.currentProject,
+      hasTeam: !!agent.state.currentTeam
+    }) : "No state available");
+    
+    // Only set context if we're connected and either:
+    // 1. We have no context at all, or
+    // 2. Context exists but seems to be for a different issue or incorrect
+    const needsContext = agent.connectionStatus === 'connected' && (
+      !agent.state?.currentIssue || 
+      !agent.state?.currentProject || 
+      !agent.state?.currentTeam ||
+      (agent.state.currentIssue && agent.state.currentIssue.id !== issue.id)
+    );
+    
+    if (needsContext) {
+      console.log("PARENT: Setting agent context - needed:", {
+        currentlySaved: agent.state?.currentIssue?.id,
+        shouldBe: issue.id
+      });
 
       // Create formatted issue object
       const formattedIssue = {
@@ -330,6 +349,12 @@ export default function IssueDetails() {
         name: issue.team.name,
         key: issue.team.key || 'default'
       } : undefined;
+      
+      console.log("PARENT: Sending context data:", JSON.stringify({
+        issue: { id: formattedIssue.id, title: formattedIssue.title, source: formattedIssue.source },
+        project: formattedProject ? { id: formattedProject.id, name: formattedProject.name } : undefined,
+        team: formattedTeam ? { id: formattedTeam.id, name: formattedTeam.name } : undefined
+      }));
 
       // Send context to agent
       try {
@@ -342,10 +367,41 @@ export default function IssueDetails() {
         };
 
         agent.sendRawMessage(contextMessage);
-        console.log("✓ Agent context set successfully from parent component");
+        console.log("✓ PARENT: Agent context sent successfully");
+        
+        // Check if context is being applied correctly after a delay
+        setTimeout(async () => {
+          console.log("PARENT: Context verification check after 1s");
+          console.log("PARENT: Agent state after delay:", agent.state ? JSON.stringify({
+            hasIssue: !!agent.state.currentIssue,
+            hasProject: !!agent.state.currentProject,
+            hasTeam: !!agent.state.currentTeam,
+            issueId: agent.state.currentIssue?.id
+          }) : "No state available");
+          
+          // Request the system prompt to verify context is actually being used
+          try {
+            const systemPrompt = await agent.getSystemPrompt();
+            console.log("PARENT: System prompt check:", {
+              length: systemPrompt.length,
+              hasIssue: systemPrompt.includes("CURRENT ISSUE"),
+              hasProject: systemPrompt.includes("PROJECT CONTEXT"),
+              hasTeam: systemPrompt.includes("TEAM CONTEXT"),
+              issueMatches: systemPrompt.includes(issue.title),
+              projectMatches: issue.project ? systemPrompt.includes(issue.project.name) : false
+            });
+          } catch (promptError) {
+            console.error("PARENT: Error getting system prompt:", promptError);
+          }
+        }, 1000);
       } catch (error) {
-        console.error("Failed to set agent context:", error);
+        console.error("PARENT: Failed to set agent context:", error);
       }
+    } else if (agent.connectionStatus === 'connected') {
+      console.log("PARENT: Context already set correctly", {
+        agentIssueId: agent.state?.currentIssue?.id,
+        expectedIssueId: issue.id
+      });
     }
   }, [agent.connectionStatus, agent.state, issue]);
 
