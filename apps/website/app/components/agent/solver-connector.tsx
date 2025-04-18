@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Terminal, Columns, BotIcon, PlugZap, Power, CheckCircle, AlertTriangle, BookOpen, FileCode2 } from "lucide-react";
 import { useOpenAgent } from "@openagents/core";
 import { generateId } from "ai";
+import { MessageList } from "@/components/ui/message-list";
 import {
   Dialog,
   DialogContent,
@@ -450,14 +451,30 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
               <span className="font-medium">Solver Agent Connected</span>
             </div>
 
-            {agent.messages.length > 1 && (
-              <div className="border rounded-md p-3 mt-4 bg-muted/50">
-                <h4 className="font-medium mb-2">Latest Update:</h4>
-                <p className="text-sm">
-                  {agent.messages[agent.messages.length - 1].content.substring(0, 150)}
-                  {agent.messages[agent.messages.length - 1].content.length > 150 ? '...' : ''}
-                </p>
-              </div>
+            {agent.messages.length > 0 && (
+              <>
+                {/* Debug log agent messages */}
+                {console.log("Agent messages:", JSON.stringify(agent.messages, null, 2))}
+                
+                <div className="mt-4 rounded-md border p-4">
+                  <h4 className="mb-3 font-medium border-b pb-2">Solver Agent Conversation</h4>
+                  
+                  {/* Convert agent messages to MessageList format */}
+                  <MessageList
+                    messages={agent.messages.map(message => ({
+                      id: message.id,
+                      role: message.role,
+                      content: message.content || '',
+                      createdAt: message.timestamp || new Date().toISOString(),
+                      parts: message.parts || [{ 
+                        type: "text", 
+                        text: message.content || '' 
+                      }]
+                    }))}
+                    showTimeStamps={true}
+                  />
+                </div>
+              </>
             )}
           </div>
         )}
