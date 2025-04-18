@@ -19,10 +19,16 @@ Messaging the agent through the issue chatbox appends a UIMessage (from AI SDK) 
 
 Relevant files:
 
+- `packages/agents/src/agents/solver/index.ts`
+  - Defines main Solver agent class
+- `packages/agents/src/common/open-agent.ts`
+  - Defines main OpenAgent class which agents like Solver extend
 - `packages/agents/src/agents/solver/prompts.ts`
   - Defines function to generate system prompt including relevant issue/project/team data
 - `packages/agents/src/agents/solver/types.ts`
   - `SolverState` has the state of the agent with messages, current issue/project/team, issue comments, implementation steps. It extends BaseAgentState
+- `packages/agents/src/agents/solver/tools.ts`
+  - `Defines tools specific to Solver`
 - `packages/agents/src/common/types.ts`
   - `BaseAgentState` has state common to all Cloudflare OpenAgents (for now Solver and Coder)
 - `apps/website/app/routes/issues/$id.tsx`
