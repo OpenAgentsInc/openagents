@@ -87,7 +87,7 @@ export interface BaseIssue {
   creator?: BaseUser;
 
   // Additional context
-  source?: 'github' | 'linear' | 'other'; // Where the issue originated
+  source?: 'github' | 'linear' | 'openagents' | 'other'; // Where the issue originated
   url?: string; // Link to issue in external system
 
   // Dates
