@@ -5,5 +5,4 @@ export { Solver } from './agents/solver';
 // Export the server as the default export
 export { default } from './server';
 
-// Also export common types
-export type { Env } from './common/env';
+// We don't need to export Env, it's available from worker-configuration.d.ts

@@ -4,6 +4,25 @@ import { generateId, type UIMessage } from "ai";
 // Explicitly import from the package
 import { useAgent } from "agents/react";
 
+// Define inference types locally to avoid circular imports
+export interface InferProps {
+  model: string;
+  messages: UIMessage[];
+  system?: string;
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  stream?: boolean;
+}
+
+export interface InferResponse {
+  id: string;
+  content: string;
+  role: string;
+  timestamp: string;
+  model: string;
+}
+
 // Define agent types
 type AgentType = 'coder' | 'solver';
 
@@ -21,10 +40,14 @@ export type OpenAgent = {
   setMessages: (messages: Message[]) => void;
   handleSubmit: (message: string) => Promise<void>; // Changed to async for compatibility
   infer: (token?: string) => Promise<any>;
+  sharedInfer: (props: InferProps) => Promise<InferResponse>; // New shared inference method
   setGithubToken: (token: string) => Promise<void>;
   getGithubToken: () => Promise<string>;
-  setCurrentIssue?: (issue: any) => Promise<void>;
+  setCurrentIssue?: (issue: any, project?: any, team?: any) => Promise<void>; // Updated to include project and team
   setRepositoryContext?: (owner: string, repo: string, branch?: string) => Promise<void>;
+  addAgentObservation: (observation: string) => Promise<void>; // Add method to send observations
+  sendRawMessage: (message: any) => void; // Add method to send raw WebSocket messages
+  getSystemPrompt: () => Promise<string>; // Method to get the agent's system prompt
   connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error';
   disconnect: () => void; // Method to properly disconnect
 }
@@ -131,6 +154,48 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
         }));
       }
     };
+    
+    const handleSocketMessage = (event: MessageEvent) => {
+      try {
+        // Parse the message
+        const data = JSON.parse(event.data);
+        
+        // Don't log state messages as they generate too much noise
+        if (data.type !== 'cf_agent_state') {
+          console.log(`[useOpenAgent ${agentName}] Received WebSocket message:`, data);
+        }
+        
+        // Handle different message types
+        if (data.type === 'prompt_response' && data.requestId) {
+          // Create the event name for this response
+          const eventName = `${agentName}:prompt_response:${data.requestId}`;
+          
+          // Create a custom event with the response data
+          const responseEvent = new CustomEvent(eventName, {
+            detail: data
+          });
+          
+          // Dispatch the event for the promise to handle
+          window.dispatchEvent(responseEvent);
+          console.log(`[useOpenAgent ${agentName}] Dispatched prompt response event for request ${data.requestId}`);
+        }
+        else if (data.type === 'infer_response' && data.requestId) {
+          // Create the event name for this inference response
+          const eventName = `${agentName}:infer_response:${data.requestId}`;
+          
+          // Create a custom event with the response data
+          const responseEvent = new CustomEvent(eventName, {
+            detail: data
+          });
+          
+          // Dispatch the event for the promise to handle
+          window.dispatchEvent(responseEvent);
+          console.log(`[useOpenAgent ${agentName}] Dispatched inference response event for request ${data.requestId}`);
+        }
+      } catch (error) {
+        console.error(`[useOpenAgent ${agentName}] Error handling WebSocket message:`, error);
+      }
+    };
 
     // If we already received a state update, we're already connected
     if (state && Object.keys(state).length > 0 && connectionStatus === 'disconnected') {
@@ -142,12 +207,14 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     cloudflareAgent.addEventListener('open', handleSocketOpen);
     cloudflareAgent.addEventListener('close', handleSocketClose);
     cloudflareAgent.addEventListener('error', handleSocketError);
+    cloudflareAgent.addEventListener('message', handleSocketMessage);
 
     return () => {
       // Clean up listeners
       cloudflareAgent.removeEventListener('open', handleSocketOpen);
       cloudflareAgent.removeEventListener('close', handleSocketClose);
       cloudflareAgent.removeEventListener('error', handleSocketError);
+      cloudflareAgent.removeEventListener('message', handleSocketMessage);
     };
   }, [cloudflareAgent, agentName, type, maxReconnectAttempts, connectionAttempts, state, connectionStatus]);
 
@@ -273,28 +340,36 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   }, [cloudflareAgent, agentName, connectionStatus]);
 
   /**
-   * Sets the current issue for the Solver agent
+   * Sets the current issue for the Solver agent with optional project and team context
    */
-  const setCurrentIssue = useCallback(async (issue: any): Promise<void> => {
+  const setCurrentIssue = useCallback(async (issue: any, project?: any, team?: any): Promise<void> => {
     if (type === 'solver') {
       try {
-        console.log(`[useOpenAgent ${agentName}] Setting current issue:`, issue.id);
+        console.log(`[useOpenAgent ${agentName}] AGENT DEBUG: Setting current issue with 3 params`);
+        console.log(`[useOpenAgent ${agentName}] Setting current issue ID:`, issue.id);
+        console.log(`[useOpenAgent ${agentName}] Project parameter:`, project ? JSON.stringify(project) : 'undefined');
+        console.log(`[useOpenAgent ${agentName}] Team parameter:`, team ? JSON.stringify(team) : 'undefined');
         
         if (cloudflareAgent && typeof cloudflareAgent.call === 'function') {
-          await cloudflareAgent.call('setCurrentIssue', [issue]);
-          console.log(`[useOpenAgent ${agentName}] Current issue set successfully`);
+          // Pass all three parameters to the agent
+          console.log(`[useOpenAgent ${agentName}] Calling agent method with params:`, JSON.stringify([issue, project, team]));
+          await cloudflareAgent.call('setCurrentIssue', [issue, project, team]);
+          console.log(`[useOpenAgent ${agentName}] Current issue set successfully with project and team context`);
         } else {
           console.error(`[useOpenAgent ${agentName}] Cannot set current issue: Agent not available or call not a function`);
           throw new Error('Agent not available');
         }
       } catch (error) {
         console.error(`[useOpenAgent ${agentName}] Failed to set current issue:`, error);
+        console.error(`[useOpenAgent ${agentName}] Error details:`, JSON.stringify(error));
         // Mark connection as error
         if (connectionStatus !== 'error') {
           setConnectionStatus('error');
         }
         throw error;
       }
+    } else {
+      console.warn(`[useOpenAgent ${agentName}] setCurrentIssue called on non-solver agent type: ${type}`);
     }
   }, [cloudflareAgent, type, agentName, connectionStatus]);
 
@@ -405,6 +480,196 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     setMessages(uiMessages);
   };
 
+  /**
+   * Adds an observation to the agent's state using direct message
+   */
+  const addAgentObservation = useCallback(async (observation: string): Promise<void> => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Adding agent observation: ${observation}`);
+      
+      // Instead of calling a method, send a direct message with a specific format
+      // that the agent's onMessage handler can recognize
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        const observationMessage = {
+          type: 'agent_observation',
+          content: observation,
+          timestamp: new Date().toISOString()
+        };
+        
+        cloudflareAgent.send(JSON.stringify(observationMessage));
+        console.log(`[useOpenAgent ${agentName}] Agent observation sent successfully`);
+        return Promise.resolve();
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot add observation: Agent not available or send not a function`);
+        throw new Error('Agent not available');
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to add agent observation:`, error);
+      // Mark connection as error if needed
+      if (connectionStatus !== 'error') {
+        setConnectionStatus('error');
+      }
+      throw error;
+    }
+  }, [cloudflareAgent, agentName, connectionStatus]);
+  
+  /**
+   * Sends a raw WebSocket message to the agent
+   */
+  const sendRawMessage = useCallback((message: any): void => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Sending raw message:`, message);
+      
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        // Send the raw message as JSON string
+        cloudflareAgent.send(typeof message === 'string' ? message : JSON.stringify(message));
+        console.log(`[useOpenAgent ${agentName}] Raw message sent successfully`);
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot send raw message: Agent not available or send not a function`);
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to send raw message:`, error);
+    }
+  }, [cloudflareAgent, agentName]);
+  
+  /**
+   * Gets the system prompt from the agent using WebSocket messaging
+   * This uses a special message type to request the system prompt
+   * and returns a Promise that resolves when the response is received
+   */
+  const getSystemPrompt = useCallback(async (): Promise<string> => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Getting system prompt via WebSocket message...`);
+      
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        // Create a unique request ID for this system prompt request
+        const requestId = `prompt_req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const eventName = `${agentName}:prompt_response:${requestId}`;
+        
+        // Create a promise that will be resolved when we get the response
+        const responsePromise = new Promise<string>((resolve, reject) => {
+          // Set a timeout to ensure we don't wait forever
+          const timeoutId = setTimeout(() => {
+            reject(new Error("Timeout waiting for system prompt response"));
+            // Remove the event listener after timeout
+            window.removeEventListener(eventName, handleResponse);
+          }, 10000); // 10 second timeout
+          
+          // Function to handle the response - properly typed for EventListener
+          const handleResponse = (event: Event) => {
+            clearTimeout(timeoutId);
+            // Cast to CustomEvent for type safety
+            const customEvent = event as CustomEvent;
+            const promptData = customEvent.detail;
+            resolve(promptData.prompt || "No system prompt received");
+            // Clean up by removing the event listener
+            window.removeEventListener(eventName, handleResponse);
+          };
+          
+          // Listen for the response event
+          window.addEventListener(eventName, handleResponse);
+          
+          // Send the request message
+          const message = {
+            type: "get_system_prompt",
+            requestId,
+            timestamp: new Date().toISOString()
+          };
+          
+          cloudflareAgent.send(JSON.stringify(message));
+          console.log(`[useOpenAgent ${agentName}] System prompt request sent with ID ${requestId}`);
+        });
+        
+        return await responsePromise;
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot get system prompt: Agent not available or send not a function`);
+        throw new Error('Agent not available');
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to get system prompt:`, error);
+      
+      // If we can't get the actual system prompt, return a fallback message
+      return `Failed to retrieve system prompt for ${type} agent. The agent may not be connected or the method is not implemented.`;
+    }
+  }, [cloudflareAgent, agentName, type]);
+  
+  /**
+   * Shared inference method using WebSocket messaging
+   * This uses a special message type to request inference
+   * and returns a Promise that resolves when the response is received
+   */
+  const sharedInfer = useCallback(async (props: InferProps): Promise<InferResponse> => {
+    try {
+      console.log(`[useOpenAgent ${agentName}] Running shared inference...`, {
+        model: props.model,
+        messagesCount: props.messages.length
+      });
+      
+      if (cloudflareAgent && typeof cloudflareAgent.send === 'function') {
+        // Create a unique request ID for this inference request
+        const requestId = `infer_req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const eventName = `${agentName}:infer_response:${requestId}`;
+        
+        // Create a promise that will be resolved when we get the response
+        const responsePromise = new Promise<InferResponse>((resolve, reject) => {
+          // Set a timeout to ensure we don't wait forever
+          const timeoutId = setTimeout(() => {
+            reject(new Error("Timeout waiting for inference response"));
+            // Remove the event listener after timeout
+            window.removeEventListener(eventName, handleResponse);
+          }, 30000); // 30 second timeout for inference
+          
+          // Function to handle the response - properly typed for EventListener
+          const handleResponse = (event: Event) => {
+            clearTimeout(timeoutId);
+            // Cast to CustomEvent for type safety
+            const customEvent = event as CustomEvent;
+            const responseData = customEvent.detail;
+            
+            if (responseData.error) {
+              reject(new Error(responseData.error));
+            } else {
+              resolve(responseData.result as InferResponse);
+            }
+            
+            // Clean up by removing the event listener
+            window.removeEventListener(eventName, handleResponse);
+          };
+          
+          // Listen for the response event
+          window.addEventListener(eventName, handleResponse);
+          
+          // Send the request message
+          const message = {
+            type: "shared_infer",
+            requestId,
+            params: props,
+            timestamp: new Date().toISOString()
+          };
+          
+          cloudflareAgent.send(JSON.stringify(message));
+          console.log(`[useOpenAgent ${agentName}] Inference request sent with ID ${requestId}`);
+        });
+        
+        return await responsePromise;
+      } else {
+        console.error(`[useOpenAgent ${agentName}] Cannot run inference: Agent not available or send not a function`);
+        throw new Error('Agent not available');
+      }
+    } catch (error) {
+      console.error(`[useOpenAgent ${agentName}] Failed to run inference:`, error);
+      
+      // Return a dummy error response
+      return {
+        id: generateId(),
+        content: `Error running inference: ${error instanceof Error ? error.message : String(error)}`,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        model: props.model
+      };
+    }
+  }, [cloudflareAgent, agentName]);
+
   // Return the OpenAgent interface with appropriate methods
   return {
     state,
@@ -412,8 +677,12 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
     setMessages: adaptSetMessages,
     handleSubmit,
     infer,
+    sharedInfer,           // New shared inference method
     setGithubToken,
     getGithubToken,
+    addAgentObservation,
+    sendRawMessage,        // Expose direct WebSocket messaging
+    getSystemPrompt,       // Method to get the agent's system prompt
     ...(type === 'solver' ? { setCurrentIssue } : {}),
     setRepositoryContext,  // Available for both agent types
     connectionStatus,      // Expose connection status to consumer components
