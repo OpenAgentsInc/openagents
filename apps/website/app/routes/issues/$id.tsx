@@ -30,6 +30,7 @@ import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
 import { useChat } from "@ai-sdk/react";
 import { SolverConnector } from "@/components/agent/solver-connector";
+import { SolverControls } from "@/components/agent/solver-controls";
 import { Spinner } from "@/components/ui/spinner";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
@@ -385,6 +386,13 @@ export default function IssueDetails() {
 
           {/* ---------- Sidebar ---------- */}
           <div className="flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
+            {/* Agent Controls Card */}
+            <SolverControls 
+              issue={issue}
+              githubToken={getGithubToken()}
+            />
+            
+            {/* Issue Details Card */}
             <Card className="shadow-sm flex flex-col h-full">
               {/* Header with title & quick badges */}
               <CardHeader className="py-2 px-3">
@@ -399,31 +407,6 @@ export default function IssueDetails() {
                     </Badge>
                   )}
                   <StatusBadge status={issue.status} />
-                </div>
-                
-                {/* Agent connection status badge */}
-                <div className="flex items-center mt-2">
-                  {agent.connectionStatus === 'connected' ? (
-                    <Badge variant="outline" className="border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30 text-xs">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Agent Connected
-                    </Badge>
-                  ) : agent.connectionStatus === 'connecting' ? (
-                    <Badge variant="outline" className="border-yellow-500 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30 text-xs">
-                      <Spinner className="h-3 w-3 mr-1" />
-                      Connecting...
-                    </Badge>
-                  ) : agent.connectionStatus === 'error' ? (
-                    <Badge variant="outline" className="border-red-500 text-red-600 bg-red-50 dark:bg-red-950/30 text-xs">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      Connection Error
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="border-gray-400 text-gray-600 bg-gray-50 dark:bg-gray-900/30 text-xs">
-                      <BotIcon className="h-3 w-3 mr-1" />
-                      Agent Inactive
-                    </Badge>
-                  )}
                 </div>
               </CardHeader>
 

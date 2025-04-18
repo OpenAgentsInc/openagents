@@ -436,52 +436,38 @@ export function SolverConnector({
   }, [connectionState, agent.state]);
 
   return (
-    <Card className={cn("py-0 h-full flex flex-col", className)}>
+    <Card className={cn("h-full flex flex-col", className)}>
       <CardContent className="flex-1 flex flex-col overflow-hidden p-0 pt-0">
         {connectionState === 'disconnected' && (
-          <div className="text-center py-6 overflow-auto flex-1">
-            <Terminal className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-medium mb-2">Solver Agent Disconnected</h3>
-            <p className="text-muted-foreground mb-4 px-4">
-              The Solver agent can analyze this issue and help implement a solution.
-              It will create a structured plan and guide you through fixing the issue.
+          <div className="flex flex-col items-center justify-center h-full overflow-auto">
+            <Terminal className="h-8 w-8 mb-2 text-muted-foreground" />
+            <p className="text-muted-foreground mb-2 text-center px-4 text-sm">
+              Please connect the agent using the controls in the sidebar.
             </p>
           </div>
         )}
 
         {connectionState === 'connecting' && (
-          <div className="text-center py-6 overflow-auto flex-1">
-            <Spinner className="h-12 w-12 mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">Connecting to Solver Agent</h3>
-            <p className="text-muted-foreground px-4">
-              Establishing connection and analyzing issue #{issue.identifier}...
+          <div className="flex flex-col items-center justify-center h-full overflow-auto">
+            <Spinner className="h-8 w-8 mb-2" />
+            <p className="text-muted-foreground text-center px-4 text-sm">
+              Connecting to agent...
             </p>
           </div>
         )}
 
         {connectionState === 'error' && (
-          <div className="text-center py-6 overflow-auto flex-1">
-            <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
-            <h3 className="text-lg font-medium mb-2">Connection Error</h3>
-            <p className="text-muted-foreground mb-4 px-4">
-              {errorMessage || "Failed to connect to the Solver agent. Please try again."}
+          <div className="flex flex-col items-center justify-center h-full overflow-auto">
+            <AlertTriangle className="h-8 w-8 mb-2 text-destructive" />
+            <p className="text-muted-foreground mb-2 text-center px-4 text-sm">
+              {errorMessage || "Connection error. Check the sidebar for options."}
             </p>
-            {retryCount < maxRetries && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={retryConnection}
-                className="mt-2"
-              >
-                Retry Connection
-              </Button>
-            )}
           </div>
         )}
 
         {connectionState === 'connected' && (
           <div className="h-full flex flex-col">
-            <div className="rounded-md flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden">
               {/* Use our auto-scrolling container */}
               <MessageContainer>
                 {/* Convert agent messages to MessageList format */}
@@ -518,20 +504,6 @@ export function SolverConnector({
 
                     // Add the user message to the agent
                     agent.setMessages([...agent.messages, userMessage]);
-
-                    agent.sharedInfer({
-                      model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-                      messages: [...agent.messages.map(message => ({
-                        id: message.id,
-                        role: message.role as UIMessage['role'],
-                        content: message.content || '',
-                        parts: [{
-                          type: 'text' as const,
-                          text: message.content || ''
-                        }] as TextUIPart[]
-                      })), userMessage],
-                      stream: true
-                    });
 
                     // Send the message to the agent and get a response
                     agent.handleSubmit(input.value)
