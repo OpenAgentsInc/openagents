@@ -297,13 +297,8 @@ export default function IssueDetails() {
 
   /* ---- Ensure agent has context when connected ---- */
   useEffect(() => {
-    // Log agent status and state
-    console.log("PARENT: Agent status changed to:", agent.connectionStatus);
-    console.log("PARENT: Agent state:", agent.state ? JSON.stringify({
-      hasIssue: !!agent.state.currentIssue,
-      hasProject: !!agent.state.currentProject,
-      hasTeam: !!agent.state.currentTeam
-    }) : "No state available");
+    // Log minimal agent status for debugging
+    console.debug("Agent status:", agent.connectionStatus);
     
     // Only set context if we're connected and either:
     // 1. We have no context at all, or
@@ -316,10 +311,7 @@ export default function IssueDetails() {
     );
     
     if (needsContext) {
-      console.log("PARENT: Setting agent context - needed:", {
-        currentlySaved: agent.state?.currentIssue?.id,
-        shouldBe: issue.id
-      });
+      console.debug("Setting context for issue:", issue.id);
 
       // Create formatted issue object
       const formattedIssue = {
@@ -349,12 +341,6 @@ export default function IssueDetails() {
         name: issue.team.name,
         key: issue.team.key || 'default'
       } : undefined;
-      
-      console.log("PARENT: Sending context data:", JSON.stringify({
-        issue: { id: formattedIssue.id, title: formattedIssue.title, source: formattedIssue.source },
-        project: formattedProject ? { id: formattedProject.id, name: formattedProject.name } : undefined,
-        team: formattedTeam ? { id: formattedTeam.id, name: formattedTeam.name } : undefined
-      }));
 
       // Send context to agent
       try {
@@ -367,41 +353,23 @@ export default function IssueDetails() {
         };
 
         agent.sendRawMessage(contextMessage);
-        console.log("✓ PARENT: Agent context sent successfully");
+        console.debug("Context sent for issue", issue.id);
         
-        // Check if context is being applied correctly after a delay
+        // Verify context is applied correctly (minimal logging)
         setTimeout(async () => {
-          console.log("PARENT: Context verification check after 1s");
-          console.log("PARENT: Agent state after delay:", agent.state ? JSON.stringify({
-            hasIssue: !!agent.state.currentIssue,
-            hasProject: !!agent.state.currentProject,
-            hasTeam: !!agent.state.currentTeam,
-            issueId: agent.state.currentIssue?.id
-          }) : "No state available");
-          
-          // Request the system prompt to verify context is actually being used
           try {
             const systemPrompt = await agent.getSystemPrompt();
-            console.log("PARENT: System prompt check:", {
-              length: systemPrompt.length,
-              hasIssue: systemPrompt.includes("CURRENT ISSUE"),
-              hasProject: systemPrompt.includes("PROJECT CONTEXT"),
-              hasTeam: systemPrompt.includes("TEAM CONTEXT"),
-              issueMatches: systemPrompt.includes(issue.title),
-              projectMatches: issue.project ? systemPrompt.includes(issue.project.name) : false
-            });
+            const hasIssueContext = systemPrompt.includes("CURRENT ISSUE") && systemPrompt.includes(issue.title);
+            console.debug("Context verified:", hasIssueContext ? "✓" : "✗");
           } catch (promptError) {
-            console.error("PARENT: Error getting system prompt:", promptError);
+            console.error("Error verifying context:", promptError);
           }
         }, 1000);
       } catch (error) {
         console.error("PARENT: Failed to set agent context:", error);
       }
     } else if (agent.connectionStatus === 'connected') {
-      console.log("PARENT: Context already set correctly", {
-        agentIssueId: agent.state?.currentIssue?.id,
-        expectedIssueId: issue.id
-      });
+      console.debug("Context already set for issue", issue.id);
     }
   }, [agent.connectionStatus, agent.state, issue]);
 

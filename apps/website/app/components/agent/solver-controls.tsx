@@ -385,14 +385,14 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
               className="w-full text-xs"
               onClick={async () => {
                 try {
-                  // Create a test message with proper typing
+                  // Create a concise context summary request with the current timestamp
                   const testMessage = {
                     id: generateId(),
                     role: 'user' as const,
-                    content: `Please detail everything you know about the current issue, project, and team context.`,
+                    content: `What issue are you currently working on?`,
                     parts: [{
                       type: 'text' as const,
-                      text: `Please detail everything you know about the current issue, project, and team context.`
+                      text: `What issue are you currently working on?`
                     }]
                   };
 
@@ -494,18 +494,10 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
                   // Extract the result from the response
                   const result = response?.result;
                   
-                  // Log raw result for debugging
-                  console.log("Result object:", result);
-                  
-                  // Don't show an error message immediately - WebSocket responses are asynchronous
+                  // For async responses, just return and let the WebSocket handler update UI
                   if (!result || !result.id || !result.content) {
-                    console.log("Waiting for async inference result via WebSocket...");
-                    // The server will add the result to messages state when available
-                    // We'll rely on useOpenAgent's internal WebSocket handler to update messages
                     return;
                   }
-                  
-                  console.log("Shared inference completed successfully");
                   
                   // Add the assistant's response to the message history if not already added
                   if (result && result.id && result.content) {

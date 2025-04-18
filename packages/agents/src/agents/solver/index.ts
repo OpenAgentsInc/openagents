@@ -25,17 +25,12 @@ export class Solver extends OpenAgent<SolverState> {
    * Logs the current state of the agent with a custom tag for debugging
    */
   private logState(tag: string) {
-    console.log(`STATE DEBUG [${tag}]:`, JSON.stringify({
+    console.debug(`State [${tag}]:`, {
       hasIssue: !!this.state.currentIssue,
       hasProject: !!this.state.currentProject,
       hasTeam: !!this.state.currentTeam,
-      issueDetails: this.state.currentIssue ? {
-        id: this.state.currentIssue.id,
-        title: this.state.currentIssue.title,
-        source: this.state.currentIssue.source
-      } : null,
-      updateCounter: this.stateUpdateCounter
-    }));
+      issueId: this.state.currentIssue?.id,
+    });
   }
   
   /**
@@ -43,15 +38,11 @@ export class Solver extends OpenAgent<SolverState> {
    * and ensure proper serialization of non-primitive objects
    */
   override async setState(partialState: Partial<SolverState>) {
-    // Increment debug counter
+    // Increment counter for tracking updates
     this.stateUpdateCounter++;
-    
-    // Log the state before update
-    this.logState(`Before setState ${this.stateUpdateCounter}`);
     
     try {
       // Create a complete state object that includes all required properties
-      // Start with current state as base
       const fullState: SolverState = {
         ...this.state
       };
@@ -74,12 +65,8 @@ export class Solver extends OpenAgent<SolverState> {
       
       // Call parent setState with our complete state
       await super.setState(fullState);
-      console.log(`SOLVER AGENT: State updated successfully (update #${this.stateUpdateCounter})`);
-      
-      // Log the state after update to verify changes
-      this.logState(`After setState ${this.stateUpdateCounter}`);
     } catch (error) {
-      console.error(`SOLVER AGENT: Error in setState (update #${this.stateUpdateCounter}):`, error);
+      console.error(`Error updating state:`, error);
     }
   }
 
