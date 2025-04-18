@@ -302,7 +302,7 @@ export function SolverConnector({
     return (
       <ScrollArea
         ref={viewportRef}
-        className="flex-1 px-4 py-2 min-h-0"
+        className="flex-1 px-4 min-h-0"
         style={{ overscrollBehavior: 'contain' }}
       >
         {children}
