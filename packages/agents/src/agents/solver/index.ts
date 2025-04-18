@@ -330,7 +330,41 @@ export class Solver extends OpenAgent<SolverState> {
               console.log("Using provided system prompt");
             }
             
+            // Run the inference
             const result = await this.sharedInfer(inferProps);
+            console.log("INFERENCE RESULT:", JSON.stringify({
+              id: result.id,
+              content: result.content?.substring(0, 50) + "..." || "No content",
+              role: result.role,
+              hasValidResponse: !!result.id && !!result.content
+            }));
+            
+            // Add the response to our messages array if it's not already there
+            const existingMessageIndex = this.state.messages.findIndex(msg => msg.id === result.id);
+            if (existingMessageIndex === -1 && result.id && result.content) {
+              console.log("Adding assistant response to agent state");
+              
+              // Format the assistant message with proper typing
+              const assistantMessage: any = {
+                id: result.id,
+                role: 'assistant' as const, // Use const assertion for literal type
+                content: result.content,
+                parts: [{
+                  type: 'text' as const, // Use const assertion for literal type
+                  text: result.content
+                }]
+              };
+              
+              // Update the messages array in state
+              await this.setState({
+                messages: [...this.state.messages, assistantMessage]
+              });
+              
+              // Verify the message was added
+              console.log("Messages array updated, now contains", this.state.messages.length, "messages");
+            } else if (existingMessageIndex !== -1) {
+              console.log("Response already exists in messages array at index", existingMessageIndex);
+            }
             
             // Send the inference result back to the client
             connection.send(JSON.stringify({

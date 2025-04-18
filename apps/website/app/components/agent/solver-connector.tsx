@@ -447,9 +447,13 @@ export function SolverConnector({
 
                       // Run shared inference with full message history and explicit system prompt
                       console.log("Starting shared inference with explicit system prompt...");
-                      const result = await agent.sendRawMessage({
+                      // Send the inference request
+                      const requestId = generateId();
+                      console.log(`Sending inference request with ID ${requestId}`);
+                      
+                      const response = await agent.sendRawMessage({
                         type: "shared_infer",
-                        requestId: generateId(),
+                        requestId: requestId,
                         params: {
                           model: "@cf/meta/llama-4-scout-17b-16e-instruct",
                           messages: allMessages,
@@ -466,7 +470,34 @@ export function SolverConnector({
                         },
                         timestamp: new Date().toISOString()
                       });
-
+                      
+                      console.log("Shared inference response:", response);
+                      
+                      // Extract the result from the response
+                      const result = response?.result;
+                      
+                      // Log raw result for debugging
+                      console.log("Result object:", result);
+                      
+                      // Check if we received a valid response
+                      if (!result || !result.id || !result.content) {
+                        console.error("Invalid inference result:", result);
+                        // Create a fallback error message
+                        const errorMsg = {
+                          id: generateId(),
+                          role: 'assistant' as const,
+                          content: "Sorry, I wasn't able to generate a proper response. Please try again.",
+                          parts: [{
+                            type: 'text' as const,
+                            text: "Sorry, I wasn't able to generate a proper response. Please try again."
+                          }]
+                        };
+                        
+                        // Add error message to the UI
+                        agent.setMessages([...agent.messages, errorMsg]);
+                        return;
+                      }
+                      
                       console.log("Shared inference completed successfully");
 
                       // Add the assistant's response to the message history if not already added
