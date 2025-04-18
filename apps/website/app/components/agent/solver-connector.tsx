@@ -381,7 +381,7 @@ export function SolverConnector({
     return (
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto px-4 py-2"
+        className="flex-1 overflow-y-auto px-4 py-2 min-h-0"
         style={{ overscrollBehavior: 'contain' }} // Prevent scroll chaining
       >
         {children}
@@ -425,7 +425,7 @@ export function SolverConnector({
   }, [connectionState, agent.state]);
 
   return (
-    <Card className={cn("flex flex-col h-full", className)}>
+    <Card className={cn("h-[600px]", className)}>
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle className="text-lg flex items-center">
@@ -455,7 +455,7 @@ export function SolverConnector({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col overflow-hidden">
+      <CardContent className="flex flex-col h-[calc(100%-4rem)] overflow-hidden">
         {connectionState === 'disconnected' && (
           <div className="text-center py-6">
             <Terminal className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -498,8 +498,8 @@ export function SolverConnector({
         )}
 
         {connectionState === 'connected' && (
-          <div className="py-2">
-            <div className="rounded-md border">
+          <div className="py-2 h-full flex flex-col">
+            <div className="rounded-md border flex-1 flex flex-col overflow-hidden">
               {/* Use our auto-scrolling container */}
               <MessageContainer>
                 {/* Debug log agent messages */}
