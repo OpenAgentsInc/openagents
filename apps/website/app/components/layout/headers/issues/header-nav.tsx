@@ -5,6 +5,15 @@ import { useSearchStore } from '@/store/search-store';
 import { SearchIcon } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Notifications } from './notifications';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+  BreadcrumbPage
+} from "@/components/ui/breadcrumb";
+import { useParams, useLocation } from 'react-router';
 
 export function HeaderNav() {
   const { isSearchOpen, toggleSearch, closeSearch, setSearchQuery, searchQuery } =
@@ -38,12 +47,36 @@ export function HeaderNav() {
     };
   }, [isSearchOpen, closeSearch, searchQuery]);
 
+  // Get current path parameters for breadcrumbs
+  const params = useParams();
+  const location = useLocation();
+  
+  // Check if we're on an issue page
+  const isIssuePage = location.pathname.includes('/issues/') && params.id;
+  
+  // Get project and issue identifier from path/query params if needed
+  // In a real app, you'd get this from a data context or loader data
+  
   return (
     <div className="w-full flex justify-between items-center border-b py-1.5 px-6 h-10">
       <div className="flex items-center gap-2">
         <SidebarTrigger className="" />
-        <div className="flex items-center gap-1">
-          <span className="text-sm font-medium">Issues</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium">Issues</span>
+          
+          {isIssuePage && (
+            <Breadcrumb className="ml-2">
+              <BreadcrumbList className="text-xs">
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/issues" className="text-xs">All</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="mx-1" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="text-xs font-mono">{params.id}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          )}
         </div>
       </div>
 

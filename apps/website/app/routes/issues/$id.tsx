@@ -164,8 +164,8 @@ function LabelBadge({ label }: { label: LabelInterface }) {
 
 function ItemSection({ title, children }: { title: string, children: React.ReactNode }) {
   return (
-    <div className="border-b border-border pb-4 mb-4 last:border-0">
-      <h3 className="text-sm font-medium text-muted-foreground mb-2">{title}</h3>
+    <div className="border-b border-border pb-2 mb-2 last:border-0">
+      <h3 className="text-xs font-medium text-muted-foreground mb-1">{title}</h3>
       <div>{children}</div>
     </div>
   );
@@ -484,73 +484,48 @@ You're currently viewing the issue page where users can see all details about th
 
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto px-6 pt-4">
-        {issue.project && (
-          <Breadcrumb className="mb-4">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink href={`/projects/${issue.project.id}`}>
-                  {issue.project.name}
-                </BreadcrumbLink>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>
-                  {issue.identifier}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="container mx-auto px-6 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Main content */}
-          <div className="md:col-span-2 space-y-6">
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
+          <div className="md:col-span-2 space-y-4">
+            <Card className="shadow-sm">
+              <CardHeader className="py-2 px-4">
+                <div className="flex justify-between items-center">
                   <div className="flex flex-col">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-mono text-muted-foreground">
-                        {issue.identifier}
-                      </span>
+                    <CardTitle className="text-base font-medium">{issue.title}</CardTitle>
+                    <div className="flex items-center gap-2 mt-1">
                       {issue.project && (
-                        <Badge variant="secondary" className="font-normal">
+                        <Badge variant="secondary" className="font-normal text-xs px-1 py-0">
                           {issue.project.name}
                         </Badge>
                       )}
+                      <StatusBadge status={issue.status} />
                     </div>
-                    <CardTitle className="text-xl font-semibold">{issue.title}</CardTitle>
                   </div>
-                  {/* Edit button commented out until functionality is implemented
-                  <Button size="sm" variant="outline">
-                    <Edit className="h-4 w-4 mr-1" /> Edit
-                  </Button>
-                  */}
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-3">
                 <Tabs defaultValue="details" value={activeTab} onValueChange={setActiveTab}>
-                  <TabsList className="mb-4">
-                    <TabsTrigger value="details">Details</TabsTrigger>
-                    <TabsTrigger value="activity">Activity</TabsTrigger>
+                  <TabsList className="mb-2 h-8">
+                    <TabsTrigger value="details" className="text-xs px-2 py-1">Details</TabsTrigger>
+                    <TabsTrigger value="activity" className="text-xs px-2 py-1">Activity</TabsTrigger>
                     {issue.subissues && issue.subissues.length > 0 && (
-                      <TabsTrigger value="subtasks">Subtasks ({issue.subissues.length})</TabsTrigger>
+                      <TabsTrigger value="subtasks" className="text-xs px-2 py-1">Subtasks ({issue.subissues.length})</TabsTrigger>
                     )}
                   </TabsList>
 
-                  <TabsContent value="details" className="space-y-6">
+                  <TabsContent value="details" className="space-y-3">
                     {/* Description section */}
-                    <div className="border rounded-md p-4 bg-background">
-                      <h2 className="text-sm font-medium text-muted-foreground mb-2">Description</h2>
+                    <div className="border rounded-md p-2 bg-background">
+                      <h2 className="text-xs font-medium text-muted-foreground mb-1">Description</h2>
                       <EditableDescription issue={issue} />
                     </div>
 
                     {/* Other details as needed */}
                     {issue.subissues && issue.subissues.length > 0 && (
                       <div>
-                        <h2 className="text-sm font-medium text-muted-foreground mb-2">Subtasks</h2>
-                        <ul className="list-disc pl-5">
+                        <h2 className="text-xs font-medium text-muted-foreground mb-1">Subtasks</h2>
+                        <ul className="list-disc pl-4 text-xs">
                           {issue.subissues.map(subissueId => (
                             <li key={subissueId}>
                               <a href={`/issues/${subissueId}`} className="text-zinc-500 hover:underline">
@@ -564,18 +539,18 @@ You're currently viewing the issue page where users can see all details about th
                   </TabsContent>
 
                   <TabsContent value="activity">
-                    <div className="space-y-4">
-                      <div className="flex items-start gap-3 p-3 border-b border-border">
-                        <Avatar className="h-8 w-8">
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2 py-2 border-b border-border">
+                        <Avatar className="h-6 w-6">
                           {creator?.image ? (
                             <AvatarImage src={creator.image} alt={creator.name} />
                           ) : (
-                            <AvatarFallback>{creator?.name?.charAt(0) || '?'}</AvatarFallback>
+                            <AvatarFallback className="text-xs">{creator?.name?.charAt(0) || '?'}</AvatarFallback>
                           )}
                         </Avatar>
                         <div className="flex-1">
                           <div className="flex justify-between items-center">
-                            <p className="text-sm font-medium">{creator?.name || 'Unknown'} created this issue</p>
+                            <p className="text-xs font-medium">{creator?.name || 'Unknown'} created this issue</p>
                             <span className="text-xs text-muted-foreground">
                               {issue.createdAt ? formatDistanceToNow(new Date(issue.createdAt), { addSuffix: true }) : ''}
                             </span>
@@ -589,16 +564,16 @@ You're currently viewing the issue page where users can see all details about th
 
                   {issue.subissues && issue.subissues.length > 0 && (
                     <TabsContent value="subtasks">
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         {issue.subissues.map(subissueId => (
-                          <Card key={subissueId} className="p-3">
+                          <Card key={subissueId} className="p-2">
                             <div className="flex items-center justify-between">
                               <div>
-                                <a href={`/issues/${subissueId}`} className="font-medium hover:underline">
+                                <a href={`/issues/${subissueId}`} className="text-xs font-medium hover:underline">
                                   {subissueId}
                                 </a>
                               </div>
-                              <Button size="sm" variant="ghost">View</Button>
+                              <Button size="sm" variant="ghost" className="h-6 text-xs">View</Button>
                             </div>
                           </Card>
                         ))}
@@ -630,17 +605,14 @@ You're currently viewing the issue page where users can see all details about th
 
           {/* Sidebar */}
           <div>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Issue details</CardTitle>
+            <Card className="shadow-sm">
+              <CardHeader className="py-2 px-3">
+                <CardTitle className="text-sm">Details</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="p-3 space-y-2">
                 <ItemSection title="Status">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <StatusBadge status={issue.status} />
-
-                    {/* Status change dropdown could go here */}
-                    {/* This would be a more advanced component in a real app */}
                   </div>
                 </ItemSection>
 
@@ -651,32 +623,32 @@ You're currently viewing the issue page where users can see all details about th
                 <ItemSection title="Assignee">
                   <div className="flex items-center gap-2">
                     {assignee ? (
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-6 w-6">
+                      <div className="flex items-center gap-1">
+                        <Avatar className="h-5 w-5">
                           {assignee.image ? (
                             <AvatarImage src={assignee.image} alt={assignee.name} />
                           ) : (
-                            <AvatarFallback>{assignee.name.charAt(0)}</AvatarFallback>
+                            <AvatarFallback className="text-xs">{assignee.name.charAt(0)}</AvatarFallback>
                           )}
                         </Avatar>
-                        <span>{assignee.name}</span>
+                        <span className="text-xs">{assignee.name}</span>
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">Unassigned</span>
+                      <span className="text-xs text-muted-foreground">Unassigned</span>
                     )}
                   </div>
                 </ItemSection>
 
                 {issue.project && (
                   <ItemSection title="Project">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <div
-                        className="h-3 w-3 rounded-full"
+                        className="h-2 w-2 rounded-full"
                         style={{ backgroundColor: issue.project.color }}
                       />
                       <a
                         href={`/projects/${issue.project.id}`}
-                        className="text-zinc-500 hover:underline"
+                        className="text-xs text-zinc-500 hover:underline"
                       >
                         {issue.project.name}
                       </a>
@@ -686,8 +658,8 @@ You're currently viewing the issue page where users can see all details about th
 
                 {issue.team && (
                   <ItemSection title="Team">
-                    <div className="flex items-center gap-2">
-                      <span>{issue.team.name}</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">{issue.team.name}</span>
                       <span className="text-xs text-muted-foreground">({issue.team.key})</span>
                     </div>
                   </ItemSection>
@@ -704,8 +676,8 @@ You're currently viewing the issue page where users can see all details about th
                 )}
 
                 <ItemSection title="Created">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-1 text-xs">
+                    <Clock className="h-3 w-3 text-muted-foreground" />
                     <span>
                       {issue.createdAt
                         ? formatDistanceToNow(new Date(issue.createdAt), { addSuffix: true })
@@ -716,8 +688,8 @@ You're currently viewing the issue page where users can see all details about th
 
                 {issue.dueDate && (
                   <ItemSection title="Due Date">
-                    <div className="flex items-center gap-2 text-sm">
-                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex items-center gap-1 text-xs">
+                      <CalendarIcon className="h-3 w-3 text-muted-foreground" />
                       <span>{new Date(issue.dueDate).toLocaleDateString()}</span>
                     </div>
                   </ItemSection>
