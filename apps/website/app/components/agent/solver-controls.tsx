@@ -385,14 +385,14 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
               className="w-full text-xs"
               onClick={async () => {
                 try {
-                  // Create a test message with proper typing
+                  // Create a concise context summary request with the current timestamp
                   const testMessage = {
                     id: generateId(),
                     role: 'user' as const,
-                    content: `Please detail everything you know about the current issue, project, and team context.`,
+                    content: `What issue are you currently working on?`,
                     parts: [{
                       type: 'text' as const,
-                      text: `Please detail everything you know about the current issue, project, and team context.`
+                      text: `What issue are you currently working on?`
                     }]
                   };
 
@@ -410,17 +410,94 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
                     }]
                   }));
                   
-                  // Run shared inference with full message history
-                  console.log("Running shared inference with full history...");
-                  const result = await agent.sharedInfer({
-                    model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-                    messages: allMessages,
-                    temperature: 0.7,
-                    max_tokens: 1000,
-                    stream: true
+                  // Check if context is present
+                  console.log("AGENT STATE BEFORE INFERENCE:", JSON.stringify({
+                    hasIssue: !!agent.state?.currentIssue,
+                    hasProject: !!agent.state?.currentProject,
+                    hasTeam: !!agent.state?.currentTeam,
+                    issueDetails: agent.state?.currentIssue ? {
+                      id: agent.state.currentIssue.id,
+                      title: agent.state.currentIssue.title,
+                      source: agent.state.currentIssue.source
+                    } : null
+                  }));
+                  
+                  // Make sure context is set
+                  const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
+                  if (contextMissing) {
+                    console.log("Context missing, setting it now...");
+                    
+                    // Set context
+                    const contextMessage = {
+                      type: "set_context",
+                      issue: formattedIssue,
+                      project: formattedProject,
+                      team: formattedTeam,
+                      timestamp: new Date().toISOString()
+                    };
+                    
+                    console.log("MANUALLY SENDING CONTEXT BEFORE INFERENCE:", JSON.stringify(contextMessage));
+                    agent.sendRawMessage(contextMessage);
+                    
+                    // Wait for context to be processed
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    console.log("STATE AFTER CONTEXT UPDATE:", JSON.stringify({
+                      hasIssue: !!agent.state?.currentIssue,
+                      hasProject: !!agent.state?.currentProject,
+                      hasTeam: !!agent.state?.currentTeam
+                    }));
+                  }
+                
+                  // Get system prompt explicitly
+                  console.log("Fetching system prompt for inference...");
+                  let systemPrompt = null;
+                  try {
+                    systemPrompt = await agent.getSystemPrompt();
+                    console.log("SYSTEM PROMPT RETRIEVED:", systemPrompt.substring(0, 200) + "...");
+                    console.log("SYSTEM PROMPT CONTENT CHECK:", {
+                      hasIssue: systemPrompt.includes("CURRENT ISSUE"),
+                      hasProject: systemPrompt.includes("PROJECT CONTEXT"),
+                      hasTeam: systemPrompt.includes("TEAM CONTEXT")
+                    });
+                  } catch (promptError) {
+                    console.error("Error fetching system prompt:", promptError);
+                  }
+                  
+                  // Run shared inference with full message history and explicit system prompt
+                  console.log("Running shared inference with explicit system prompt...");
+                  const requestId = generateId();
+                  console.log(`Sending inference request with ID ${requestId}`);
+                  
+                  const response = await agent.sendRawMessage({
+                    type: "shared_infer",
+                    requestId: requestId,
+                    params: {
+                      model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                      messages: allMessages,
+                      system: systemPrompt, // Explicitly include system prompt
+                      temperature: 0.7,
+                      max_tokens: 1000,
+                      stream: true
+                    },
+                    // Also include context data in case agent needs to restore it
+                    context: {
+                      issue: formattedIssue,
+                      project: formattedProject,
+                      team: formattedTeam
+                    },
+                    timestamp: new Date().toISOString()
                   });
                   
-                  console.log("Shared inference completed successfully");
+                  console.log("Shared inference response:", response);
+                  
+                  // Extract the result from the response
+                  const result = response?.result;
+                  
+                  // For async responses, just return and let the WebSocket handler update UI
+                  if (!result || !result.id || !result.content) {
+                    return;
+                  }
                   
                   // Add the assistant's response to the message history if not already added
                   if (result && result.id && result.content) {
