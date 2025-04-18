@@ -686,24 +686,6 @@ You're currently viewing the issue page where users can see all details about th
                   </ItemSection>
                 )}
               </CardContent>
-              <CardFooter className="flex justify-between">
-                {/* Copy link button commented out until functionality is implemented
-                <Button variant="outline" size="sm">
-                  <LinkIcon className="h-4 w-4 mr-1" /> Copy Link
-                </Button>
-                */}
-                {/* Mark Done button kept functional as it has proper implementation */}
-                {/* {issue.status.type !== 'done' && (
-                  <Button variant="default" size="sm" onClick={() => {
-                    const doneState = options?.workflowStates?.find(state => state.type === 'done');
-                    if (doneState) {
-                      handleStatusChange(doneState.id);
-                    }
-                  }}>
-                    <CheckCircle className="h-4 w-4 mr-1" /> Mark Done
-                  </Button>
-                )} */}
-              </CardFooter>
             </Card>
           </div>
         </div>
