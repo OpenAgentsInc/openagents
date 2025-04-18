@@ -31,15 +31,15 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isStartingSolver, setIsStartingSolver] = useState(false);
-  
+
   // For consistent server/client rendering, force hydration after mount
   const [isHydrated, setIsHydrated] = useState(false);
-  
+
   // State for system prompt dialog
   const [systemPrompt, setSystemPrompt] = useState<string>('Loading...');
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
-  
+
   useEffect(() => {
     setIsHydrated(true);
   }, []);
@@ -74,29 +74,29 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     // Use the agent's connection status directly
     console.log("Agent connection status:", agent.connectionStatus);
     setConnectionState(agent.connectionStatus);
-    
+
     // If there's an error, set an error message
     if (agent.connectionStatus === 'error') {
       setErrorMessage("Connection to Solver agent failed or was lost.");
     }
-    
+
     // Use the agent-specific event names
     const agentName = `solver-${issue.id}`;
     const connectedEventName = `agent:${agentName}:connected`;
     const disconnectedEventName = `agent:${agentName}:disconnected`;
     const errorEventName = `agent:${agentName}:error`;
-    
+
     // Add event listeners to track WebSocket connection status
     const handleConnected = (event: Event) => {
       console.log("Solver UI: Received connection event", event);
       setConnectionState('connected');
     };
-    
+
     const handleDisconnected = (event: Event) => {
       console.log("Solver UI: Received disconnection event", event);
       setConnectionState('disconnected');
     };
-    
+
     const handleError = (event: Event) => {
       console.log("Solver UI: Received connection error event", event);
       setConnectionState('error');
@@ -132,7 +132,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       console.log("Issue ID:", issue.id);
       console.log("Issue Identifier:", issue.identifier);
       console.log("Token (first 10 chars):", githubToken.substring(0, 10) + "...");
-      
+
       // Add timeout promise to detect stalled connections
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error("Connection timed out. The agent server may be unreachable.")), 30000);
@@ -140,7 +140,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
       // Basic step 1: Set GitHub token
       console.log("Step 1: Setting GitHub token...");
-      
+
       try {
         await Promise.race([
           agent.setGithubToken(githubToken),
@@ -180,7 +180,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       console.log("Step 4: Sending initial prompt to agent...");
       const initialPrompt = `I need help with issue ${issue.identifier}: "${issue.title}". Please analyze this issue and suggest a plan to solve it.`;
       console.log("Initial prompt:", initialPrompt);
-      
+
       try {
         await agent.handleSubmit(initialPrompt);
         console.log("✓ Initial prompt sent successfully");
@@ -212,11 +212,11 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
   // This can be used to determine if the button should be disabled
   const isConnectButtonDisabled = isStartingSolver || !githubToken;
-  
+
   // Add a retry mechanism
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
-  
+
   const retryConnection = useCallback(() => {
     if (retryCount < maxRetries) {
       setRetryCount(prev => prev + 1);
@@ -232,13 +232,13 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   // Disconnect from the Solver agent
   const disconnectFromSolver = () => {
     console.log("Disconnecting from Solver agent...");
-    
+
     // Use the proper disconnect method to close the WebSocket
     agent.disconnect();
-    
+
     // Also update local UI state
     setConnectionState('disconnected');
-    
+
     console.log("Successfully disconnected from Solver agent");
   };
 
@@ -249,22 +249,22 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       console.log("Agent has messages, connection might be working");
     }
   }, [agent.messages, connectionState]);
-  
+
   // Monitor the connection status
   useEffect(() => {
     let connectionStartTime: number | null = null;
     const connectionTimeout = 15000; // 15 seconds timeout
-    
+
     if (connectionState === 'connecting') {
       connectionStartTime = Date.now();
     }
-    
+
     // Check connection status periodically
     const intervalId = setInterval(() => {
       if (connectionState === 'connecting' && connectionStartTime) {
         const elapsedTime = Date.now() - connectionStartTime;
         console.log(`Still connecting... (${Math.round(elapsedTime / 1000)}s elapsed)`);
-        
+
         // If we've been connecting for more than the timeout, consider it an error
         if (elapsedTime > connectionTimeout) {
           console.error("Connection timeout exceeded");
@@ -280,7 +280,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         }
       }
     }, 3000);
-    
+
     // Cleanup interval
     return () => clearInterval(intervalId);
   }, [connectionState, agent.state]);
@@ -337,9 +337,9 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
               {errorMessage || "Failed to connect to the Solver agent. Please try again."}
             </p>
             {retryCount < maxRetries && (
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={retryConnection}
                 className="mt-2"
               >
@@ -372,13 +372,13 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       <CardFooter className="flex justify-between">
         {connectionState === 'connected' && (
           <div className="flex gap-2 flex-wrap">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 // Create a user message to send to the agent
                 const testMessage = `Test message sent at ${new Date().toISOString()}`;
                 console.log("Sending test message:", testMessage);
-                
+
                 // Use the handleSubmit method to send a user message
                 agent.handleSubmit(testMessage)
                   .then(() => {
@@ -391,14 +391,14 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             >
               Send Test Message
             </Button>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               onClick={() => {
                 // Use the raw message sending capability
                 const observation = `UI Observation at ${new Date().toISOString()}`;
                 console.log("Sending raw observation message to agent:", observation);
-                
+
                 // Format the message as a direct WebSocket message
                 // This should match how the agent's onMessage handler expects it
                 const message = {
@@ -407,7 +407,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                   timestamp: new Date().toISOString(),
                   issueId: issue.id
                 };
-                
+
                 // Send the raw message directly via WebSocket
                 agent.sendRawMessage(message);
               }}
@@ -415,32 +415,32 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
               Add Observation
             </Button>
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 // Send a status update message
                 const status = `Status update at ${new Date().toISOString()}`;
                 console.log("Sending status update message:", status);
-                
+
                 const message = {
                   type: "status_update",
                   content: status,
                   timestamp: new Date().toISOString(),
                   issueId: issue.id
                 };
-                
+
                 agent.sendRawMessage(message);
               }}
             >
               Send Status Update
             </Button>
 
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 // Send a custom command message that the agent might understand
                 console.log("Sending custom command message");
-                
+
                 const message = {
                   type: "command",
                   command: "analyze_issue",
@@ -451,53 +451,51 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                     context: "ui-testing"
                   }
                 };
-                
+
                 agent.sendRawMessage(message);
               }}
             >
               Send Command
             </Button>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               onClick={async () => {
                 try {
                   // Create a test message with proper UIMessage typing including required parts array
-                  const testMessage = { 
-                    id: generateId(), 
-                    role: 'user' as const, 
+                  const testMessage = {
+                    id: generateId(),
+                    role: 'user' as const,
                     content: `This is a test message for shared inference. Please respond briefly.`,
-                    // Add the required parts array for UIMessage compatibility
                     parts: [{
-                      type: 'text',
+                      type: 'text' as const,
                       text: `This is a test message for shared inference. Please respond briefly.`
                     }]
                   };
-                  
+
                   // Run shared inference with just the test message
                   // The agent will use its own system prompt automatically
                   console.log("Running shared inference...");
                   const result = await agent.sharedInfer({
-                    // Use default Llama 4 model
+                    model: "@cf/meta/llama-4-scout-17b-16e-instruct",
                     messages: [testMessage],
-                    // No need to fetch system prompt explicitly - agent will use its own
                     temperature: 0.7,
                     max_tokens: 500
                   });
-                  
+
                   // Log the result
                   console.log("Shared inference result:", result);
-                  
+
                   // Add the result to the messages
                   agent.setMessages([
-                    ...agent.messages, 
-                    { 
-                      id: result.id, 
-                      role: 'assistant', 
-                      content: result.content 
+                    ...agent.messages,
+                    {
+                      id: result.id,
+                      role: 'assistant',
+                      content: result.content
                     }
                   ]);
-                  
+
                 } catch (error) {
                   console.error("Error running shared inference:", error);
                 }
@@ -505,17 +503,17 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             >
               Test Shared Inference
             </Button>
-            
-            <Dialog 
-              open={promptDialogOpen} 
+
+            <Dialog
+              open={promptDialogOpen}
               onOpenChange={(open) => {
                 setPromptDialogOpen(open);
-                
+
                 // When opening the dialog, fetch the system prompt
                 if (open) {
                   setIsLoadingPrompt(true);
                   setSystemPrompt('Loading system prompt...');
-                  
+
                   // Fetch the system prompt
                   agent.getSystemPrompt()
                     .then(prompt => {
@@ -563,7 +561,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             </Dialog>
           </div>
         )}
-        
+
         <div>
           {/* Server-side rendering always shows initial state - Client will rehydrate */}
           {(!isClient || !isHydrated) ? (
