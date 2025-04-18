@@ -13,6 +13,7 @@ import type { TextUIPart, UIMessage } from "@ai-sdk/ui-utils";
 
 interface SolverConnectorProps {
   issue: any;  // The issue object from the parent component
+  agent: any;  // The agent instance passed from parent
   githubToken: string;
   className?: string;
 }
@@ -31,6 +32,7 @@ const toUIMessage = (msg: AgentMessage): UIMessage => ({
 
 export function SolverConnector({
   issue,
+  agent,  // Now receiving the agent instance from parent
   githubToken,
   className = "",
 }: SolverConnectorProps & { className?: string }) {
@@ -87,9 +89,8 @@ export function SolverConnector({
     branch: "main"      // Replace with dynamic value if available
   };
 
-  // Use the OpenAgent hook to connect to the Solver agent
-  // Don't add "solver-" prefix here since useOpenAgent already adds it
-  const agent = useOpenAgent(issue.id, "solver");
+  // Agent instance is now passed from parent
+  // No need to create a new hook instance
 
   // Sync connection state from the agent hook
   useEffect(() => {
@@ -101,41 +102,7 @@ export function SolverConnector({
     if (agent.connectionStatus === 'error') {
       setErrorMessage("Connection to Solver agent failed or was lost.");
     }
-
-    // Use the agent-specific event names
-    const agentName = `solver-${issue.id}`;
-    const connectedEventName = `agent:${agentName}:connected`;
-    const disconnectedEventName = `agent:${agentName}:disconnected`;
-    const errorEventName = `agent:${agentName}:error`;
-
-    // Add event listeners to track WebSocket connection status
-    const handleConnected = (event: Event) => {
-      console.log("Solver UI: Received connection event", event);
-      setConnectionState('connected');
-    };
-
-    const handleDisconnected = (event: Event) => {
-      console.log("Solver UI: Received disconnection event", event);
-      setConnectionState('disconnected');
-    };
-
-    const handleError = (event: Event) => {
-      console.log("Solver UI: Received connection error event", event);
-      setConnectionState('error');
-      setErrorMessage("Connection to Solver agent failed or was lost.");
-    };
-
-    // Listen to agent-specific events to avoid recursion
-    window.addEventListener(connectedEventName, handleConnected);
-    window.addEventListener(disconnectedEventName, handleDisconnected);
-    window.addEventListener(errorEventName, handleError);
-
-    return () => {
-      window.removeEventListener(connectedEventName, handleConnected);
-      window.removeEventListener(disconnectedEventName, handleDisconnected);
-      window.removeEventListener(errorEventName, handleError);
-    };
-  }, [agent.connectionStatus, agent.state, issue.id]);
+  }, [agent.connectionStatus]);
 
   // Handle connection to the Solver agent
   const connectToSolver = async () => {
@@ -283,73 +250,12 @@ export function SolverConnector({
     console.log("Successfully disconnected from Solver agent");
   };
 
-  // Update connection state based on agent messages
+  // Log connection status only
   useEffect(() => {
-    // If we get messages when disconnected, we may be connected
-    if (agent.messages.length > 0 && connectionState === 'disconnected') {
-      console.log("Agent has messages, connection might be working");
+    if (connectionState === 'connected') {
+      console.log("SolverConnector: Connected to agent");
     }
-  }, [agent.messages, connectionState]);
-
-  // Create ref at the component level, not inside the effect
-  const contextSetRef = React.useRef(false);
-
-  // Add debug logging for context state
-  useEffect(() => {
-    if (connectionState === 'connected' && agent.state) {
-      console.log("Context state debug:", {
-        hasIssue: !!agent.state?.currentIssue,
-        hasProject: !!agent.state?.currentProject,
-        hasTeam: !!agent.state?.currentTeam,
-        contextSetRef: contextSetRef.current
-      });
-    }
-  }, [connectionState, agent.state]);
-
-  // Ensure context is set when connected
-  useEffect(() => {
-    // Only proceed if connected
-    if (connectionState !== 'connected') {
-      // Reset the ref when disconnected so we can set context on next connection
-      contextSetRef.current = false;
-      return;
-    }
-
-    // Check if we need to set context (either ref is false or state is missing context)
-    const needsContextSet = !contextSetRef.current ||
-      !agent.state?.currentIssue ||
-      !agent.state?.currentProject ||
-      !agent.state?.currentTeam;
-
-    if (needsContextSet) {
-      // Mark as set to prevent infinite loop
-      contextSetRef.current = true;
-
-      // Wait a brief moment to let the connection stabilize
-      setTimeout(() => {
-        // Send context data to ensure it's always set
-        console.log("Auto-sending context data on connection...");
-        try {
-          // Format in the same way the agent expects to receive state updates
-          const contextMessage = {
-            type: "set_context",
-            issue: formattedIssue,
-            project: formattedProject,
-            team: formattedTeam,
-            timestamp: new Date().toISOString()
-          };
-
-          // Send the raw message
-          agent.sendRawMessage(contextMessage);
-          console.log("✓ Context auto-set on connection");
-        } catch (error) {
-          console.error("Failed to auto-set context:", error);
-        }
-      }, 500);
-    } else {
-      console.log("Context already set, skipping auto-set");
-    }
-  }, [connectionState, formattedIssue, formattedProject, formattedTeam, agent, agent.state]);
+  }, [connectionState]);
 
   // Create a message container that starts scrolled to the bottom
   const MessageContainer = ({ children }: { children: React.ReactNode }) => {
@@ -400,40 +306,8 @@ export function SolverConnector({
     );
   };
 
-  // Monitor the connection status
-  useEffect(() => {
-    let connectionStartTime: number | null = null;
-    const connectionTimeout = 15000; // 15 seconds timeout
-
-    if (connectionState === 'connecting') {
-      connectionStartTime = Date.now();
-    }
-
-    // Check connection status periodically
-    const intervalId = setInterval(() => {
-      if (connectionState === 'connecting' && connectionStartTime) {
-        const elapsedTime = Date.now() - connectionStartTime;
-        console.log(`Still connecting... (${Math.round(elapsedTime / 1000)}s elapsed)`);
-
-        // If we've been connecting for more than the timeout, consider it an error
-        if (elapsedTime > connectionTimeout) {
-          console.error("Connection timeout exceeded");
-          setConnectionState('error');
-          setErrorMessage("Connection timed out. The agent server may be unreachable.");
-        }
-      } else if (connectionState === 'connected') {
-        // Periodically check if our connection is still valid by checking for agent state
-        if (!agent.state || Object.keys(agent.state).length === 0) {
-          console.warn("Connected but no agent state - connection may be stale");
-        } else {
-          console.log("Connection confirmed with valid agent state");
-        }
-      }
-    }, 3000);
-
-    // Cleanup interval
-    return () => clearInterval(intervalId);
-  }, [connectionState, agent.state]);
+  // No connection monitoring needed - handled by parent component
+  // This component just shows the UI based on the agent's state
 
   return (
     <Card className={cn("h-full flex flex-col", className)}>

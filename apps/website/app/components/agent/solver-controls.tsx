@@ -20,13 +20,14 @@ const isClient = typeof window !== "undefined";
 
 interface SolverControlsProps {
   issue: any;  // The issue object from the parent component
+  agent: any;  // The agent instance passed from parent
   githubToken: string;
 }
 
 // Connection states for the Solver agent
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-export function SolverControls({ issue, githubToken }: SolverControlsProps) {
+export function SolverControls({ issue, agent, githubToken }: SolverControlsProps) {
   // Use default state for server-side rendering, then update on client
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -80,14 +81,13 @@ export function SolverControls({ issue, githubToken }: SolverControlsProps) {
     branch: "main"      // Replace with dynamic value if available
   };
 
-  // Use the OpenAgent hook to connect to the Solver agent
-  // Don't add "solver-" prefix here since useOpenAgent already adds it
-  const agent = useOpenAgent(issue.id, "solver");
+  // Agent instance is now passed from parent
+  // No need to create a new hook instance
 
   // Sync connection state from the agent hook
   useEffect(() => {
     // Use the agent's connection status directly
-    console.log("Agent connection status:", agent.connectionStatus);
+    console.log("Agent connection status in controls:", agent.connectionStatus);
     setConnectionState(agent.connectionStatus);
 
     // If there's an error, set an error message

@@ -292,8 +292,62 @@ export default function IssueDetails() {
       ? localStorage.getItem("github_token") || ""
       : "";
       
-  /* ---- Solver agent setup ---- */
+  /* ---- Solver agent setup (single instance to be shared) ---- */
   const agent = useOpenAgent(issue.id, "solver");
+  
+  /* ---- Ensure agent has context when connected ---- */
+  useEffect(() => {
+    if (agent.connectionStatus === 'connected' && 
+        (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam)) {
+      
+      console.log("Setting agent context from parent component...");
+      
+      // Create formatted issue object
+      const formattedIssue = {
+        id: issue.id,
+        number: parseInt(issue.identifier.replace(/[^\d]/g, '')),
+        title: issue.title,
+        description: issue.description || "",
+        source: "openagents",
+        status: issue.status.type === 'done' ? 'closed' : 'open',
+        labels: issue.labels?.map((label: any) => label.name) || [],
+        assignee: issue.assignee?.name,
+        created: new Date(issue.createdAt),
+        updated: issue.updatedAt ? new Date(issue.updatedAt) : undefined
+      };
+      
+      // Create formatted project object
+      const formattedProject = issue.project ? {
+        id: issue.project.id,
+        name: issue.project.name,
+        color: issue.project.color,
+        icon: issue.project.icon
+      } : undefined;
+      
+      // Create formatted team object
+      const formattedTeam = issue.team ? {
+        id: issue.team.id,
+        name: issue.team.name,
+        key: issue.team.key || 'default'
+      } : undefined;
+      
+      // Send context to agent
+      try {
+        const contextMessage = {
+          type: "set_context",
+          issue: formattedIssue,
+          project: formattedProject,
+          team: formattedTeam,
+          timestamp: new Date().toISOString()
+        };
+        
+        agent.sendRawMessage(contextMessage);
+        console.log("✓ Agent context set successfully from parent component");
+      } catch (error) {
+        console.error("Failed to set agent context:", error);
+      }
+    }
+  }, [agent.connectionStatus, agent.state, issue]);
 
   /* ---- Chat setup (unchanged) ---- */
   const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
@@ -378,6 +432,7 @@ export default function IssueDetails() {
             <div className="flex-1 overflow-hidden">
               <SolverConnector
                 issue={issue}
+                agent={agent}
                 githubToken={getGithubToken()}
                 className="w-full"
               />
@@ -389,6 +444,7 @@ export default function IssueDetails() {
             {/* Agent Controls Card */}
             <SolverControls 
               issue={issue}
+              agent={agent}
               githubToken={getGithubToken()}
             />
             
