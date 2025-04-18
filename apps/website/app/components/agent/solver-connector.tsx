@@ -479,22 +479,12 @@ export function SolverConnector({
                       // Log raw result for debugging
                       console.log("Result object:", result);
                       
-                      // Check if we received a valid response
+                      // Don't show an error message immediately - WebSocket responses may be asynchronous
+                      // Instead, wait for the actual response to come back through the WebSocket
                       if (!result || !result.id || !result.content) {
-                        console.error("Invalid inference result:", result);
-                        // Create a fallback error message
-                        const errorMsg = {
-                          id: generateId(),
-                          role: 'assistant' as const,
-                          content: "Sorry, I wasn't able to generate a proper response. Please try again.",
-                          parts: [{
-                            type: 'text' as const,
-                            text: "Sorry, I wasn't able to generate a proper response. Please try again."
-                          }]
-                        };
-                        
-                        // Add error message to the UI
-                        agent.setMessages([...agent.messages, errorMsg]);
+                        console.log("Waiting for async inference result via WebSocket...");
+                        // The server will add the result to messages state when available
+                        // We'll rely on useOpenAgent's internal WebSocket handler to update messages
                         return;
                       }
                       
