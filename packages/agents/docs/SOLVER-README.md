@@ -28,7 +28,9 @@ Relevant files:
 - `packages/agents/src/agents/solver/types.ts`
   - `SolverState` has the state of the agent with messages, current issue/project/team, issue comments, implementation steps. It extends BaseAgentState
 - `packages/agents/src/agents/solver/tools.ts`
-  - `Defines tools specific to Solver`
+  - Defines tools specific to Solver
+- `packages/agents/src/common/tools/index.ts`
+  - Defines tools common to all OpenAgents
 - `packages/agents/src/common/types.ts`
   - `BaseAgentState` has state common to all Cloudflare OpenAgents (for now Solver and Coder)
 - `apps/website/app/routes/issues/$id.tsx`
