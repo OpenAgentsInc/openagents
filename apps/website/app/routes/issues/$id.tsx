@@ -28,7 +28,7 @@ import { CalendarIcon, Clock } from "lucide-react";
 import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
 import { useChat } from "@ai-sdk/react";
-import { SolverConnector } from "@/components/agent/solver-connector-updated";
+import { SolverConnector } from "@/components/agent/solver-connector";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
@@ -366,7 +366,7 @@ export default function IssueDetails() {
   return (
     <MainLayout header={<HeaderIssues />}>
       <div className="container mx-auto px-6 pt-2">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-screen">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
           {/* ---------- Main column: SolverConnector full height ---------- */}
           <div className="md:col-span-2 flex flex-col">
             <div className="flex-1">

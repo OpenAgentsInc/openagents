@@ -1,137 +1,123 @@
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { SidebarTrigger } from '@/components/ui/sidebar';
-import { useSearchStore } from '@/store/search-store';
-import { SearchIcon } from 'lucide-react';
-import { useEffect, useRef } from 'react';
-import { Notifications } from './notifications';
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Input } from "@/components/ui/input";
+import { useSearchStore } from "@/store/search-store";
+import { SearchIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbSeparator,
-  BreadcrumbPage
+  BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
-import { useParams, useLocation } from 'react-router';
+import { useParams, useLocation } from "react-router";
 
 export function HeaderNav() {
-  const { isSearchOpen, toggleSearch, closeSearch, setSearchQuery, searchQuery } =
-    useSearchStore();
+  /* ---------- search state ---------- */
+  const {
+    isSearchOpen,
+    toggleSearch,
+    closeSearch,
+    setSearchQuery,
+    searchQuery,
+  } = useSearchStore();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
-  const previousValueRef = useRef<string>('');
+  const previousValueRef = useRef("");
 
   useEffect(() => {
-    if (isSearchOpen && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
+    if (isSearchOpen && searchInputRef.current) searchInputRef.current.focus();
   }, [isSearchOpen]);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const clickOutside = (e: MouseEvent) => {
       if (
         searchContainerRef.current &&
-        !searchContainerRef.current.contains(event.target as Node) &&
-        isSearchOpen
+        !searchContainerRef.current.contains(e.target as Node) &&
+        isSearchOpen &&
+        searchQuery.trim() === ""
       ) {
-        if (searchQuery.trim() === '') {
-          closeSearch();
-        }
+        closeSearch();
       }
     };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    document.addEventListener("mousedown", clickOutside);
+    return () => document.removeEventListener("mousedown", clickOutside);
   }, [isSearchOpen, closeSearch, searchQuery]);
 
-  // Get current path parameters for breadcrumbs
+  /* ---------- breadcrumbs ---------- */
   const params = useParams();
   const location = useLocation();
-  
-  // Check if we're on an issue page
-  const isIssuePage = location.pathname.includes('/issues/') && params.id;
-  
-  // Get project and issue identifier from path/query params if needed
-  // In a real app, you'd get this from a data context or loader data
-  
+  const isIssuePage = location.pathname.includes("/issues/") && params.id;
+  const issueId = params.id as string | undefined;
+
   return (
-    <div className="w-full flex justify-between items-center border-b py-1.5 px-6 h-10">
-      <div className="flex items-center gap-2">
-        <SidebarTrigger className="" />
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium">Issues</span>
-          
-          {isIssuePage && (
-            <Breadcrumb className="ml-2">
-              <BreadcrumbList className="text-xs">
+    <div className="w-full h-full flex items-center justify-between px-6 text-xs">
+      {/* -------- left: sidebar + breadcrumb -------- */}
+      <div className="flex items-center gap-3">
+        <SidebarTrigger />
+
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              {isIssuePage ? (
+                <BreadcrumbLink href="/issues">Issues</BreadcrumbLink>
+              ) : (
+                <BreadcrumbPage>Issues</BreadcrumbPage>
+              )}
+            </BreadcrumbItem>
+
+            {isIssuePage && (
+              <>
+                <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbLink href="/issues" className="text-xs">All</BreadcrumbLink>
+                  <BreadcrumbPage className="font-mono">{issueId}</BreadcrumbPage>
                 </BreadcrumbItem>
-                <BreadcrumbSeparator className="mx-1" />
-                <BreadcrumbItem>
-                  <BreadcrumbPage className="text-xs font-mono">{params.id}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
-          )}
-        </div>
+              </>
+            )}
+          </BreadcrumbList>
+        </Breadcrumb>
       </div>
 
+      {/* -------- right: (optional) search -------- */}
       <div className="flex items-center gap-2">
         {isSearchOpen ? (
           <div
             ref={searchContainerRef}
-            className="relative flex items-center justify-center w-64 transition-all duration-200 ease-in-out"
+            className="relative flex items-center w-64"
           >
-            <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+            <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              type="search"
               ref={searchInputRef}
+              type="search"
               value={searchQuery}
               onChange={(e) => {
                 previousValueRef.current = searchQuery;
-                const newValue = e.target.value;
-                setSearchQuery(newValue);
+                const v = e.target.value;
+                setSearchQuery(v);
 
-                if (previousValueRef.current && newValue === '') {
-                  const inputEvent = e.nativeEvent as InputEvent;
+                if (previousValueRef.current && v === "") {
+                  const ev = e.nativeEvent as InputEvent;
                   if (
-                    inputEvent.inputType !== 'deleteContentBackward' &&
-                    inputEvent.inputType !== 'deleteByCut'
+                    ev.inputType !== "deleteContentBackward" &&
+                    ev.inputType !== "deleteByCut"
                   ) {
                     closeSearch();
                   }
                 }
               }}
-              placeholder="Search issues..."
+              placeholder="Search issues…"
               className="pl-8 h-7 text-sm"
               onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  if (searchQuery.trim() === '') {
-                    closeSearch();
-                  } else {
-                    setSearchQuery('');
-                  }
+                if (e.key === "Escape") {
+                  searchQuery.trim() === "" ? closeSearch() : setSearchQuery("");
                 }
               }}
             />
           </div>
         ) : (
-          <>
-            {/* <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleSearch}
-              className="h-8 w-8"
-              aria-label="Search"
-            >
-              <SearchIcon className="h-4 w-4" />
-            </Button>
-            <Notifications /> */}
-          </>
+          /* Hook up your search / notification buttons here if desired */
+          <></>
         )}
       </div>
     </div>

@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 // Add special client directive to address hydration issues
 const isClient = typeof window !== "undefined";
@@ -22,12 +23,17 @@ const isClient = typeof window !== "undefined";
 interface SolverConnectorProps {
   issue: any;  // The issue object from the parent component
   githubToken: string;
+  className?: string;
 }
 
 // Connection states for the Solver agent
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
+export function SolverConnector({
+  issue,
+  githubToken,
+  className = "",
+}: SolverConnectorProps & { className?: string }) {
   // Use default state for server-side rendering, then update on client
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -386,7 +392,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     return (
       <div
         ref={containerRef}
-        className="h-[400px] overflow-y-auto px-4 py-2"
+        className="flex-1 overflow-y-auto px-4 py-2"
         style={{ overscrollBehavior: 'contain' }} // Prevent scroll chaining
       >
         {children}
@@ -430,7 +436,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   }, [connectionState, agent.state]);
 
   return (
-    <Card className="mb-6">
+    <Card className={cn("flex flex-col h-full", className)}>
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center">
           <CardTitle className="text-lg flex items-center">
@@ -460,7 +466,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="flex-1 flex flex-col overflow-hidden">
         {connectionState === 'disconnected' && (
           <div className="text-center py-6">
             <Terminal className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
@@ -923,7 +929,6 @@ Key: ${formattedTeam.key || 'N/A'}`;
             </Dialog>
           </div>
         )}
-        */}
 
         {/* We'll keep the connect button since it's essential for functionality */}
         <div>
