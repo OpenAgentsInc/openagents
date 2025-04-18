@@ -18,6 +18,7 @@ import {
   CardTitle,
   CardContent,
 } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDistanceToNow } from "date-fns";
 import { useIssuesStore, type Status, type User } from "@/store/issues-store";
 import {
@@ -284,7 +285,15 @@ export default function IssueDetails() {
   const data = useLoaderData() as Route.IssueLoaderData;
   const { issue, options } = data;
   const submit = useSubmit();
-  const { updateIssueStatus } = useIssuesStore();
+  const { updateIssueStatus, setIssues } = useIssuesStore();
+  
+  // Update the issues store with the current issue data
+  useEffect(() => {
+    if (issue) {
+      // Add the current issue to the store to make it available for other components
+      setIssues([issue]);
+    }
+  }, [issue, setIssues]);
 
   /* ---- GitHub token helper ---- */
   const getGithubToken = () =>
@@ -299,17 +308,17 @@ export default function IssueDetails() {
   useEffect(() => {
     // Log minimal agent status for debugging
     console.debug("Agent status:", agent.connectionStatus);
-    
+
     // Only set context if we're connected and either:
     // 1. We have no context at all, or
     // 2. Context exists but seems to be for a different issue or incorrect
     const needsContext = agent.connectionStatus === 'connected' && (
-      !agent.state?.currentIssue || 
-      !agent.state?.currentProject || 
+      !agent.state?.currentIssue ||
+      !agent.state?.currentProject ||
       !agent.state?.currentTeam ||
       (agent.state.currentIssue && agent.state.currentIssue.id !== issue.id)
     );
-    
+
     if (needsContext) {
       console.debug("Setting context for issue:", issue.id);
 
@@ -354,7 +363,7 @@ export default function IssueDetails() {
 
         agent.sendRawMessage(contextMessage);
         console.debug("Context sent for issue", issue.id);
-        
+
         // Verify context is applied correctly (minimal logging)
         setTimeout(async () => {
           try {
@@ -449,178 +458,181 @@ export default function IssueDetails() {
 
   return (
     <MainLayout header={<HeaderIssues />}>
-      <div className="container mx-auto px-6 pt-2">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1">
+      <div className="container mx-auto px-6 pt-2 h-full overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
           {/* ---------- Main column: SolverConnector full height ---------- */}
-          <div className="md:col-span-2 flex flex-col h-[calc(100vh-4rem)]">
-            <div className="flex-1 overflow-hidden">
-              <SolverConnector
-                issue={issue}
-                agent={agent}
-                githubToken={getGithubToken()}
-                className="w-full"
-              />
-            </div>
-          </div>
-
-          {/* ---------- Sidebar ---------- */}
-          <div className="flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
-            {/* Agent Controls Card */}
-            <SolverControls
+          <div className="md:col-span-2 h-full overflow-hidden">
+            <SolverConnector
               issue={issue}
               agent={agent}
               githubToken={getGithubToken()}
+              className="w-full h-full"
             />
+          </div>
 
-            {/* Issue Details Card */}
-            <Card className="shadow-sm flex flex-col h-full">
-              {/* Header with title & quick badges */}
-              <CardHeader className="py-2 px-3">
-                <CardTitle className="text-sm">{issue.title}</CardTitle>
-                <div className="flex items-center gap-2 mt-1">
-                  {issue.project && (
-                    <Badge
-                      variant="secondary"
-                      className="font-normal text-xs px-1 py-0"
-                    >
-                      {issue.project.name}
-                    </Badge>
-                  )}
-                  <StatusBadge status={issue.status} />
-                </div>
-              </CardHeader>
+          {/* ---------- Sidebar ---------- */}
+          <ScrollArea 
+            className="h-[calc(100vh-6rem)]"
+            style={{ overscrollBehavior: 'contain' }}
+          >
+            <div className="flex flex-col pr-2">
+              {/* Agent Controls Card */}
+              <SolverControls
+                issue={issue}
+                agent={agent}
+                githubToken={getGithubToken()}
+              />
 
-              {/* Consolidated content */}
-              <CardContent className="p-3 space-y-2 overflow-y-auto">
-                {/* Description */}
-                <ItemSection title="Description">
-                  <EditableDescription issue={issue} />
-                </ItemSection>
-
-                {/* Subtasks */}
-                {issue.subissues && issue.subissues.length > 0 && (
-                  <ItemSection title="Subtasks">
-                    <ul className="list-disc pl-4 text-xs space-y-1">
-                      {issue.subissues.map((subId) => (
-                        <li key={subId}>
-                          <a
-                            href={`/issues/${subId}`}
-                            className="text-zinc-500 hover:underline"
-                          >
-                            {subId}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </ItemSection>
-                )}
-
-                {/* Status */}
-                <ItemSection title="Status">
-                  <StatusBadge status={issue.status} />
-                </ItemSection>
-
-                {/* Priority */}
-                <ItemSection title="Priority">
-                  <PriorityBadge priority={issue.priority} />
-                </ItemSection>
-
-                {/* Assignee */}
-                <ItemSection title="Assignee">
-                  <div className="flex items-center gap-2">
-                    {assignee ? (
-                      <>
-                        <Avatar className="h-5 w-5">
-                          {assignee.image ? (
-                            <AvatarImage
-                              src={assignee.image}
-                              alt={assignee.name}
-                            />
-                          ) : (
-                            <AvatarFallback className="text-xs">
-                              {assignee.name.charAt(0)}
-                            </AvatarFallback>
-                          )}
-                        </Avatar>
-                        <span className="text-xs">{assignee.name}</span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        Unassigned
-                      </span>
-                    )}
-                  </div>
-                </ItemSection>
-
-                {/* Project */}
-                {issue.project && (
-                  <ItemSection title="Project">
-                    <div className="flex items-center gap-1">
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: issue.project.color }}
-                      />
-                      <a
-                        href={`/projects/${issue.project.id}`}
-                        className="text-xs text-zinc-500 hover:underline"
+              {/* Issue Details Card */}
+              <Card className="shadow-sm flex flex-col">
+                {/* Header with title & quick badges */}
+                <CardHeader className="py-2 px-3">
+                  <CardTitle className="text-sm">{issue.title}</CardTitle>
+                  <div className="flex items-center gap-2 mt-1">
+                    {issue.project && (
+                      <Badge
+                        variant="secondary"
+                        className="font-normal text-xs px-1 py-0"
                       >
                         {issue.project.name}
-                      </a>
-                    </div>
-                  </ItemSection>
-                )}
-
-                {/* Team */}
-                {issue.team && (
-                  <ItemSection title="Team">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs">{issue.team.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        ({issue.team.key})
-                      </span>
-                    </div>
-                  </ItemSection>
-                )}
-
-                {/* Labels */}
-                {issue.labels && issue.labels.length > 0 && (
-                  <ItemSection title="Labels">
-                    <div className="flex flex-wrap gap-1">
-                      {issue.labels.map((label) => (
-                        <LabelBadge key={label.id} label={label} />
-                      ))}
-                    </div>
-                  </ItemSection>
-                )}
-
-                {/* Created */}
-                <ItemSection title="Created">
-                  <div className="flex items-center gap-1 text-xs">
-                    <Clock className="h-3 w-3 text-muted-foreground" />
-                    <span>
-                      {issue.createdAt
-                        ? formatDistanceToNow(new Date(issue.createdAt), {
-                          addSuffix: true,
-                        })
-                        : "Unknown"}
-                    </span>
+                      </Badge>
+                    )}
+                    <StatusBadge status={issue.status} />
                   </div>
-                </ItemSection>
+                </CardHeader>
 
-                {/* Due Date */}
-                {issue.dueDate && (
-                  <ItemSection title="Due Date">
+                {/* Consolidated content */}
+                <CardContent className="p-3 space-y-2">
+                  {/* Description */}
+                  <ItemSection title="Description">
+                    <EditableDescription issue={issue} />
+                  </ItemSection>
+
+                  {/* Subtasks */}
+                  {issue.subissues && issue.subissues.length > 0 && (
+                    <ItemSection title="Subtasks">
+                      <ul className="list-disc pl-4 text-xs space-y-1">
+                        {issue.subissues.map((subId) => (
+                          <li key={subId}>
+                            <a
+                              href={`/issues/${subId}`}
+                              className="text-zinc-500 hover:underline"
+                            >
+                              {subId}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </ItemSection>
+                  )}
+
+                  {/* Status */}
+                  <ItemSection title="Status">
+                    <StatusBadge status={issue.status} />
+                  </ItemSection>
+
+                  {/* Priority */}
+                  <ItemSection title="Priority">
+                    <PriorityBadge priority={issue.priority} />
+                  </ItemSection>
+
+                  {/* Assignee */}
+                  <ItemSection title="Assignee">
+                    <div className="flex items-center gap-2">
+                      {assignee ? (
+                        <>
+                          <Avatar className="h-5 w-5">
+                            {assignee.image ? (
+                              <AvatarImage
+                                src={assignee.image}
+                                alt={assignee.name}
+                              />
+                            ) : (
+                              <AvatarFallback className="text-xs">
+                                {assignee.name.charAt(0)}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                          <span className="text-xs">{assignee.name}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          Unassigned
+                        </span>
+                      )}
+                    </div>
+                  </ItemSection>
+
+                  {/* Project */}
+                  {issue.project && (
+                    <ItemSection title="Project">
+                      <div className="flex items-center gap-1">
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: issue.project.color }}
+                        />
+                        <a
+                          href={`/projects/${issue.project.id}`}
+                          className="text-xs text-zinc-500 hover:underline"
+                        >
+                          {issue.project.name}
+                        </a>
+                      </div>
+                    </ItemSection>
+                  )}
+
+                  {/* Team */}
+                  {issue.team && (
+                    <ItemSection title="Team">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs">{issue.team.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({issue.team.key})
+                        </span>
+                      </div>
+                    </ItemSection>
+                  )}
+
+                  {/* Labels */}
+                  {issue.labels && issue.labels.length > 0 && (
+                    <ItemSection title="Labels">
+                      <div className="flex flex-wrap gap-1">
+                        {issue.labels.map((label) => (
+                          <LabelBadge key={label.id} label={label} />
+                        ))}
+                      </div>
+                    </ItemSection>
+                  )}
+
+                  {/* Created */}
+                  <ItemSection title="Created">
                     <div className="flex items-center gap-1 text-xs">
-                      <CalendarIcon className="h-3 w-3 text-muted-foreground" />
+                      <Clock className="h-3 w-3 text-muted-foreground" />
                       <span>
-                        {new Date(issue.dueDate).toLocaleDateString()}
+                        {issue.createdAt
+                          ? formatDistanceToNow(new Date(issue.createdAt), {
+                            addSuffix: true,
+                          })
+                          : "Unknown"}
                       </span>
                     </div>
                   </ItemSection>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+
+                  {/* Due Date */}
+                  {issue.dueDate && (
+                    <ItemSection title="Due Date">
+                      <div className="flex items-center gap-1 text-xs">
+                        <CalendarIcon className="h-3 w-3 text-muted-foreground" />
+                        <span>
+                          {new Date(issue.dueDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </ItemSection>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </ScrollArea>
         </div>
       </div>
     </MainLayout>

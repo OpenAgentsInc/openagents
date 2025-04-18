@@ -1,6 +1,7 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { useSearchStore } from "@/store/search-store";
+import { useIssuesStore } from "@/store/issues-store";
 import { SearchIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import {
@@ -50,6 +51,10 @@ export function HeaderNav() {
   const location = useLocation();
   const isIssuePage = location.pathname.includes("/issues/") && params.id;
   const issueId = params.id as string | undefined;
+  
+  /* ---------- issue data ---------- */
+  const { getIssueById } = useIssuesStore();
+  const currentIssue = isIssuePage && issueId ? getIssueById(issueId) : undefined;
 
   return (
     <div className="w-full h-full flex items-center justify-between px-6 text-xs">
@@ -60,8 +65,10 @@ export function HeaderNav() {
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              {isIssuePage ? (
-                <BreadcrumbLink href="/issues">Issues</BreadcrumbLink>
+              {isIssuePage && currentIssue?.project ? (
+                <BreadcrumbLink href={`/projects/${currentIssue.project.id}`}>
+                  {currentIssue.project.name}
+                </BreadcrumbLink>
               ) : (
                 <BreadcrumbPage>Issues</BreadcrumbPage>
               )}
@@ -71,7 +78,10 @@ export function HeaderNav() {
               <>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbPage className="font-mono">{issueId}</BreadcrumbPage>
+                  <BreadcrumbPage className="font-normal">
+                    <span className="font-mono">{currentIssue?.identifier || issueId}</span>
+                    {currentIssue?.title && <span>: {currentIssue.title}</span>}
+                  </BreadcrumbPage>
                 </BreadcrumbItem>
               </>
             )}

@@ -23,10 +23,10 @@ export default function MainLayout({
       <AppSidebar />
 
       {/* This element reacts to the sidebar via peer‑data classes */}
-      <SidebarInset className="h-screen overflow-hidden flex flex-col lg:p-2">
-        <div className="bg-container flex flex-col flex-1 overflow-hidden lg:border lg:rounded-md">
+      <SidebarInset className="h-screen overflow-hidden lg:p-2">
+        <div className="bg-background z-10 flex flex-col flex-1 overflow-hidden lg:border fixed-content">
           <div className="z-40 flex-shrink-0">{header}</div>
-          <main className="flex-1 min-h-0">{children}</main>
+          <main className="flex-1 overflow-auto">{children}</main>
         </div>
       </SidebarInset>
     </SidebarProvider>

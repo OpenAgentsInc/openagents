@@ -9,6 +9,7 @@ import { generateId } from "ai";
 import { MessageList } from "@/components/ui/message-list";
 import { cn } from "@/lib/utils";
 import { Input } from "../ui/input";
+import { ScrollArea } from "../ui/scroll-area";
 import type { TextUIPart, UIMessage } from "@ai-sdk/ui-utils";
 
 interface SolverConnectorProps {
@@ -259,20 +260,21 @@ export function SolverConnector({
 
   // Create a message container that starts scrolled to the bottom
   const MessageContainer = ({ children }: { children: React.ReactNode }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLDivElement>(null);
     const isInitialRender = useRef(true);
 
     // Position scroll at bottom after DOM is updated
     useLayoutEffect(() => {
-      if (containerRef.current) {
+      const viewport = viewportRef.current?.querySelector('[data-slot="scroll-area-viewport"]');
+      if (viewport instanceof HTMLDivElement) {
         // Set scroll to bottom on render
-        containerRef.current.scrollTop = containerRef.current.scrollHeight;
+        viewport.scrollTop = viewport.scrollHeight;
 
         if (isInitialRender.current) {
           // If it's the first render, also schedule another scroll after images/content load
           setTimeout(() => {
-            if (containerRef.current) {
-              containerRef.current.scrollTop = containerRef.current.scrollHeight;
+            if (viewport instanceof HTMLDivElement) {
+              viewport.scrollTop = viewport.scrollHeight;
             }
           }, 100);
           isInitialRender.current = false;
@@ -282,27 +284,29 @@ export function SolverConnector({
 
     // When new messages arrive, scroll to bottom if already near bottom
     useEffect(() => {
-      if (!isInitialRender.current && containerRef.current) {
-        const container = containerRef.current;
-        const isNearBottom =
-          container.scrollHeight - container.clientHeight <=
-          container.scrollTop + 100; // Within 100px of bottom
+      if (!isInitialRender.current) {
+        const viewport = viewportRef.current?.querySelector('[data-slot="scroll-area-viewport"]');
+        if (viewport instanceof HTMLDivElement) {
+          const isNearBottom =
+            viewport.scrollHeight - viewport.clientHeight <=
+            viewport.scrollTop + 100; // Within 100px of bottom
 
-        if (isNearBottom) {
-          // Immediately jump to bottom without animation
-          container.scrollTop = container.scrollHeight;
+          if (isNearBottom) {
+            // Immediately jump to bottom without animation
+            viewport.scrollTop = viewport.scrollHeight;
+          }
         }
       }
     }, [agent.messages]);
 
     return (
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto px-4 py-2 min-h-0"
-        style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100% - 60px)' }} // Prevent scroll chaining and set max height
+      <ScrollArea
+        ref={viewportRef}
+        className="flex-1 px-4 min-h-0"
+        style={{ overscrollBehavior: 'contain' }}
       >
         {children}
-      </div>
+      </ScrollArea>
     );
   };
 
@@ -310,7 +314,7 @@ export function SolverConnector({
   // This component just shows the UI based on the agent's state
 
   return (
-    <Card className={cn("h-full flex flex-col py-0", className)}>
+    <Card className={cn("h-full flex flex-col py-0 overflow-hidden", className)}>
       <CardContent className="flex-1 flex flex-col overflow-hidden p-0 pt-0">
         {connectionState === 'disconnected' && (
           <div className="flex flex-col items-center justify-center h-full overflow-auto">
@@ -367,10 +371,10 @@ export function SolverConnector({
                   if (input && input.value.trim()) {
                     // Store the input value before clearing
                     const inputValue = input.value;
-                    
+
                     // Clear the input field immediately
                     input.value = '';
-                    
+
                     // Create a user message
                     const userMessage = {
                       id: generateId(),
@@ -401,7 +405,7 @@ export function SolverConnector({
                         };
 
                         agent.sendRawMessage(contextMessage);
-                        
+
                         // Wait a moment for context to be processed
                         await new Promise(resolve => setTimeout(resolve, 300));
                       }
@@ -428,7 +432,7 @@ export function SolverConnector({
                       // Run shared inference with full message history
                       // Send the inference request
                       const requestId = generateId();
-                      
+
                       // Send the request with context data for reliability
                       const response = await agent.sendRawMessage({
                         type: "shared_infer",
@@ -436,7 +440,7 @@ export function SolverConnector({
                         params: {
                           model: "@cf/meta/llama-4-scout-17b-16e-instruct",
                           messages: allMessages,
-                          system: systemPrompt, 
+                          system: systemPrompt,
                           temperature: 0.7,
                           max_tokens: 1000,
                         },
@@ -447,12 +451,12 @@ export function SolverConnector({
                         },
                         timestamp: new Date().toISOString()
                       });
-                      
+
                       // For async responses, just return and let the WebSocket handler update UI
                       if (!response?.result || !response.result.id || !response.result.content) {
                         return;
                       }
-                      
+
                       const result = response.result;
 
                       // Add the assistant's response to the message history if not already added
