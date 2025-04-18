@@ -132,6 +132,11 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
 
   // Handle connection to the Solver agent
   const connectToSolver = async () => {
+    console.log("===== DEEP DEBUG START =====");
+    console.log("Issue data:", issue);
+    console.log("Formatted issue:", formattedIssue);
+    console.log("Formatted project:", formattedProject);
+    console.log("Formatted team:", formattedTeam);
     if (!githubToken) {
       setErrorMessage("GitHub token is required. Please set it in your account settings.");
       setConnectionState('error');
@@ -180,15 +185,29 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       }
 
       // Basic step 3: Set current issue with project and team context
-      if (agent.setCurrentIssue) {
-        console.log("Step 3: Setting current issue with project and team context...");
-        try {
-          await agent.setCurrentIssue(formattedIssue, formattedProject, formattedTeam);
-          console.log("✓ Current issue set successfully with project and team context");
-        } catch (error) {
-          console.error("✗ Failed to set current issue with context:", error);
-          throw new Error(`Failed to set current issue with context: ${error instanceof Error ? error.message : "Unknown error"}`);
-        }
+      console.log("Step 3: Setting current issue with project and team context...");
+      console.log("Project data being passed:", formattedProject ? JSON.stringify(formattedProject) : 'undefined');
+      console.log("Team data being passed:", formattedTeam ? JSON.stringify(formattedTeam) : 'undefined');
+
+      try {
+        // Use raw message sending directly - this matches how the other agent buttons work
+        console.log("Sending issue, project and team context via raw message...");
+
+        // Format in the same way the agent expects to receive state updates
+        const contextMessage = {
+          type: "set_context",
+          issue: formattedIssue,
+          project: formattedProject,
+          team: formattedTeam,
+          timestamp: new Date().toISOString()
+        };
+
+        // Send the raw message
+        agent.sendRawMessage(contextMessage);
+        console.log("✓ Context message sent successfully");
+      } catch (error) {
+        console.error("✗ Failed to send context message:", error);
+        throw new Error(`Failed to send context: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
 
       // Basic step 4: Submit initial prompt
@@ -481,10 +500,10 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                   const testMessage = {
                     id: generateId(),
                     role: 'user' as const,
-                    content: `This is a test message for shared inference. Please respond briefly.`,
+                    content: `This is a test message. Can you summarize what you know about the current issue?`,
                     parts: [{
                       type: 'text' as const,
-                      text: `This is a test message for shared inference. Please respond briefly.`
+                      text: `This is a test message. Can you summarize what you know about the current issue?`
                     }]
                   };
 
@@ -529,17 +548,97 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                   setIsLoadingPrompt(true);
                   setSystemPrompt('Loading system prompt...');
 
-                  // Fetch the system prompt
-                  agent.getSystemPrompt()
-                    .then(prompt => {
-                      setSystemPrompt(prompt);
-                      setIsLoadingPrompt(false);
-                    })
-                    .catch(error => {
-                      console.error("Error fetching system prompt:", error);
-                      setSystemPrompt(`Failed to load system prompt: ${error.message || 'Unknown error'}`);
-                      setIsLoadingPrompt(false);
-                    });
+                  console.log("====== FETCHING SYSTEM PROMPT ======");
+                  console.log("Agent state:", agent.state);
+                  console.log("ProjectData exists:", !!agent.state.currentProject);
+                  console.log("TeamData exists:", !!agent.state.currentTeam);
+
+                  // Let's try setting the project and team data again before fetching the prompt
+                  if (formattedProject && formattedTeam) {
+                    console.log("ATTEMPT TO RE-SET PROJECT AND TEAM BEFORE GETTING PROMPT");
+
+                    try {
+                      // Use raw message sending directly - this matches how the other buttons work
+                      const contextMessage = {
+                        type: "set_context",
+                        issue: formattedIssue,
+                        project: formattedProject,
+                        team: formattedTeam,
+                        timestamp: new Date().toISOString()
+                      };
+
+                      // Send the raw message
+                      agent.sendRawMessage(contextMessage);
+                      console.log("Context data re-sent successfully before fetching prompt");
+
+                      // Wait a short time for the agent to process the context
+                      setTimeout(() => {
+                        fetchSystemPrompt();
+                      }, 300);
+                    } catch (err) {
+                      console.error("Failed to re-send context data:", err);
+                      fetchSystemPrompt();
+                    }
+                  } else {
+                    fetchSystemPrompt();
+                  }
+
+                  function fetchSystemPrompt() {
+                    // Fetch the system prompt
+                    agent.getSystemPrompt()
+                      .then(prompt => {
+                        console.log("System prompt received from agent:", prompt.substring(0, 100) + "...");
+
+                        // Check if it has our project/team sections
+                        const hasProjectSection = prompt.includes("PROJECT CONTEXT:");
+                        const hasTeamSection = prompt.includes("TEAM CONTEXT:");
+
+                        console.log("Prompt analysis:", {
+                          hasProjectSection,
+                          hasTeamSection,
+                          length: prompt.length
+                        });
+
+                        if (!hasProjectSection && !hasTeamSection) {
+                          console.warn("WARNING: System prompt does not contain project or team sections");
+                          console.warn("This may indicate the agent server is not using the updated code");
+
+                          // Create a manually enhanced prompt for demonstration
+                          if (formattedProject || formattedTeam) {
+                            let enhancedPrompt = prompt;
+
+                            if (formattedProject) {
+                              enhancedPrompt += `\n\nPROJECT CONTEXT (CLIENT-SIDE FALLBACK):
+Name: ${formattedProject.name}
+ID: ${formattedProject.id}
+${formattedProject.color ? `Color: ${formattedProject.color}` : ''}
+${formattedProject.icon ? `Icon: ${formattedProject.icon}` : ''}`;
+                            }
+
+                            if (formattedTeam) {
+                              enhancedPrompt += `\n\nTEAM CONTEXT (CLIENT-SIDE FALLBACK):
+Name: ${formattedTeam.name}
+ID: ${formattedTeam.id}
+Key: ${formattedTeam.key || 'N/A'}`;
+                            }
+
+                            console.log("Created enhanced prompt with client-side fallback");
+                            setSystemPrompt(enhancedPrompt);
+                          } else {
+                            setSystemPrompt(prompt);
+                          }
+                        } else {
+                          setSystemPrompt(prompt);
+                        }
+
+                        setIsLoadingPrompt(false);
+                      })
+                      .catch(error => {
+                        console.error("Error fetching system prompt:", error);
+                        setSystemPrompt(`Failed to load system prompt: ${error.message || 'Unknown error'}`);
+                        setIsLoadingPrompt(false);
+                      });
+                  }
                 }
               }}
             >

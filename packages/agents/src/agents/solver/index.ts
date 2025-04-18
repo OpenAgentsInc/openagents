@@ -32,6 +32,11 @@ export class Solver extends OpenAgent<SolverState> {
       }
 
       console.log("ON MESSAGE RECEIVED:", safeMessageForLogging);
+      console.log("CURRENT STATE before handling message:", JSON.stringify({
+        hasIssue: !!this.state.currentIssue,
+        hasProject: !!this.state.currentProject,
+        hasTeam: !!this.state.currentTeam
+      }));
       
       // Handle specific message types
       switch (parsedMessage.type) {
@@ -39,6 +44,11 @@ export class Solver extends OpenAgent<SolverState> {
           // Handle system prompt request
           const requestId = parsedMessage.requestId;
           console.log(`Handling system prompt request with ID ${requestId}`);
+          console.log("State before generating system prompt:", JSON.stringify({
+            hasIssue: !!this.state.currentIssue,
+            hasProject: !!this.state.currentProject,
+            hasTeam: !!this.state.currentTeam
+          }));
           
           // Get the system prompt
           const systemPrompt = this.getSystemPrompt();
@@ -51,6 +61,33 @@ export class Solver extends OpenAgent<SolverState> {
             timestamp: new Date().toISOString()
           }));
           console.log(`System prompt sent back for request ${requestId}`);
+          break;
+          
+        case "set_context":
+          // Handle context setting message with issue, project and team data
+          console.log("Received context data from client");
+          console.log("Issue data:", parsedMessage.issue ? `ID: ${parsedMessage.issue.id}` : 'None');
+          console.log("Project data:", parsedMessage.project ? `ID: ${parsedMessage.project.id}` : 'None');
+          console.log("Team data:", parsedMessage.team ? `ID: ${parsedMessage.team.id}` : 'None');
+          
+          try {
+            // Update the agent's state with the new context
+            await this.setState({
+              ...this.state,
+              currentIssue: parsedMessage.issue,
+              currentProject: parsedMessage.project,
+              currentTeam: parsedMessage.team
+            });
+            
+            console.log("Context set successfully");
+            console.log("State after context update:", JSON.stringify({
+              hasIssue: !!this.state.currentIssue,
+              hasProject: !!this.state.currentProject,
+              hasTeam: !!this.state.currentTeam
+            }));
+          } catch (error) {
+            console.error("Error setting context:", error);
+          }
           break;
           
         case "observation":
@@ -110,10 +147,30 @@ export class Solver extends OpenAgent<SolverState> {
    * Overrides the base implementation to use the Solver-specific system prompt
    */
   getSystemPrompt() {
-    return getSolverSystemPrompt({ 
+    console.log("SOLVER AGENT: getSystemPrompt called - debug state", JSON.stringify({
+      hasIssue: !!this.state.currentIssue,
+      hasProject: !!this.state.currentProject,
+      hasTeam: !!this.state.currentTeam,
+      projectDetails: this.state.currentProject ? {
+        id: this.state.currentProject.id,
+        name: this.state.currentProject.name,
+        color: this.state.currentProject.color
+      } : null,
+      teamDetails: this.state.currentTeam ? {
+        id: this.state.currentTeam.id,
+        name: this.state.currentTeam.name,
+        key: this.state.currentTeam.key
+      } : null
+    }));
+    
+    const systemPrompt = getSolverSystemPrompt({ 
       state: this.state,
       temperature: 0.7
     });
+    
+    console.log("SOLVER AGENT: Generated system prompt begins with:", systemPrompt.substring(0, 200) + "...");
+    
+    return systemPrompt;
   }
   
   /**
@@ -124,20 +181,38 @@ export class Solver extends OpenAgent<SolverState> {
    * @returns Promise resolving to true if successful
    */
   async setCurrentIssue(issue: BaseIssue, project?: BaseProject, team?: BaseTeam) {
-    console.log("Setting current issue:", issue.id);
-    console.log("With project context:", project?.name || 'None');
-    console.log("With team context:", team?.name || 'None');
+    console.log("SOLVER AGENT: Setting current issue with projects and teams");
+    console.log("Issue ID:", issue.id);
+    console.log("Issue title:", issue.title);
+    console.log("Project data:", project ? JSON.stringify(project) : 'undefined');
+    console.log("Team data:", team ? JSON.stringify(team) : 'undefined');
     
     try {
+      // Log current state before update
+      console.log("Current state before update:", JSON.stringify({
+        hasIssue: !!this.state.currentIssue,
+        hasProject: !!this.state.currentProject,
+        hasTeam: !!this.state.currentTeam
+      }));
+      
       await this.setState({
         ...this.state,
         currentIssue: issue,
         currentProject: project,
         currentTeam: team
       });
+      
+      // Log state after update to verify data was stored
+      console.log("State after update:", JSON.stringify({
+        hasIssue: !!this.state.currentIssue,
+        hasProject: !!this.state.currentProject,
+        hasTeam: !!this.state.currentTeam
+      }));
+      
       return true;
     } catch (error) {
       console.error("Error setting current issue:", error);
+      console.error("Error details:", JSON.stringify(error));
       throw error;
     }
   }

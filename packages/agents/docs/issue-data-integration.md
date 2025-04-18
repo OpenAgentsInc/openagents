@@ -452,7 +452,143 @@ The implementation was verified by:
 
 These changes enable the Solver agent to have complete context about the issue, project, and team when analyzing and solving issues in our OpenAgents Projects system.
 
-#### 7. Additional Fix - Core Hook Update (April 18, 2025)
+#### 7. Critical Fix - Using Raw Messages Instead of RPC Calls (April 18, 2025)
+
+After initial deployment, we discovered a critical issue:
+
+```
+Error: Method setCurrentIssue is not callable
+```
+
+This error indicates that the agent's server implementation is rejecting the `setCurrentIssue` method calls from the client. The root cause appears to be that the Cloudflare Agent SDK doesn't allow calling this custom method through the RPC interface.
+
+To resolve this issue, we changed the approach:
+
+1. Instead of using `agent.setCurrentIssue()` to call a method on the server, we're now using `agent.sendRawMessage()` to send a WebSocket message directly:
+
+```typescript
+// Format in the same way the agent expects to receive state updates
+const contextMessage = {
+  type: "set_context",
+  issue: formattedIssue,
+  project: formattedProject,
+  team: formattedTeam,
+  timestamp: new Date().toISOString()
+};
+
+// Send the raw message
+agent.sendRawMessage(contextMessage);
+```
+
+2. We added a new message handler in the Solver agent to process this message type:
+
+```typescript
+case "set_context":
+  // Handle context setting message with issue, project and team data
+  console.log("Received context data from client");
+  console.log("Issue data:", parsedMessage.issue ? `ID: ${parsedMessage.issue.id}` : 'None');
+  console.log("Project data:", parsedMessage.project ? `ID: ${parsedMessage.project.id}` : 'None');
+  console.log("Team data:", parsedMessage.team ? `ID: ${parsedMessage.team.id}` : 'None');
+  
+  try {
+    // Update the agent's state with the new context
+    await this.setState({
+      ...this.state,
+      currentIssue: parsedMessage.issue,
+      currentProject: parsedMessage.project,
+      currentTeam: parsedMessage.team
+    });
+    
+    console.log("Context set successfully");
+    console.log("State after context update:", JSON.stringify({
+      hasIssue: !!this.state.currentIssue,
+      hasProject: !!this.state.currentProject,
+      hasTeam: !!this.state.currentTeam
+    }));
+  } catch (error) {
+    console.error("Error setting context:", error);
+  }
+  break;
+```
+
+3. We also fixed the "View System Prompt" functionality to use the same raw message approach with a slight delay to allow processing:
+
+```typescript
+// Use raw message sending directly
+const contextMessage = {
+  type: "set_context",
+  issue: formattedIssue,
+  project: formattedProject,
+  team: formattedTeam,
+  timestamp: new Date().toISOString()
+};
+
+// Send the raw message
+agent.sendRawMessage(contextMessage);
+
+// Wait a short time for the agent to process the context
+setTimeout(() => {
+  fetchSystemPrompt();
+}, 300);
+```
+
+This approach aligns with how the other agent interactions (like Test Message, Add Observation, etc.) are already implemented, providing a more consistent communication pattern.
+
+#### 9. OpenAgents Branding - Removing GitHub/Linear References (April 18, 2025)
+
+We updated the agent's prompt and tools to properly reference OpenAgents Projects instead of GitHub/Linear:
+
+1. Updated the system prompt intro to mention OpenAgents Projects:
+
+```typescript
+let systemPrompt = `You are an autonomous issue-solving agent designed to analyze, plan, and implement solutions for OpenAgents Projects issues. You work methodically to resolve issues in software projects.
+
+// ...
+
+You are a 'Solver' agent running in the OpenAgents project management web interface.`;
+```
+
+2. Updated the GUIDELINES to reference OpenAgents Projects:
+
+```typescript
+systemPrompt += `\n\nGUIDELINES:
+1. FOLLOW A METHODICAL APPROACH to issue resolution - understand, plan, implement, test
+2. USE TOOLS to gather information and interact with OpenAgents Projects issues
+// ...
+`;
+```
+
+3. Modified the tool descriptions:
+
+```typescript
+export const getIssueDetails = tool({
+  description: "Fetch details about an issue from OpenAgents Projects",
+  parameters: z.object({
+    source: z.enum(["openagents"]).describe("The source platform for the issue - use 'openagents'"),
+    // ...
+  }),
+```
+
+4. Implemented OpenAgents Projects-specific tool functionality:
+
+```typescript
+// OpenAgents Projects implementation
+else if (source === "openagents") {
+  // For now, return the current issue from agent state
+  const currentIssue = agent.state.currentIssue;
+  if (currentIssue && currentIssue.id) {
+    return {
+      ...currentIssue,
+      message: "Retrieved issue from OpenAgents Projects"
+    };
+  }
+  // ...
+}
+```
+
+These changes ensure the agent properly references our own issue tracking system rather than external services.
+
+#### 8. Additional Fix - Core Hook Update (April 18, 2025)
 
 After testing the implementation, we discovered the `useOpenAgent` hook in `packages/core/src/agents/useOpenAgent.ts` was not passing project and team data to the agent. We made the following fixes:
 

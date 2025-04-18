@@ -345,12 +345,14 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   const setCurrentIssue = useCallback(async (issue: any, project?: any, team?: any): Promise<void> => {
     if (type === 'solver') {
       try {
-        console.log(`[useOpenAgent ${agentName}] Setting current issue:`, issue.id);
-        console.log(`[useOpenAgent ${agentName}] With project:`, project?.name || 'None');
-        console.log(`[useOpenAgent ${agentName}] With team:`, team?.name || 'None');
+        console.log(`[useOpenAgent ${agentName}] AGENT DEBUG: Setting current issue with 3 params`);
+        console.log(`[useOpenAgent ${agentName}] Setting current issue ID:`, issue.id);
+        console.log(`[useOpenAgent ${agentName}] Project parameter:`, project ? JSON.stringify(project) : 'undefined');
+        console.log(`[useOpenAgent ${agentName}] Team parameter:`, team ? JSON.stringify(team) : 'undefined');
         
         if (cloudflareAgent && typeof cloudflareAgent.call === 'function') {
           // Pass all three parameters to the agent
+          console.log(`[useOpenAgent ${agentName}] Calling agent method with params:`, JSON.stringify([issue, project, team]));
           await cloudflareAgent.call('setCurrentIssue', [issue, project, team]);
           console.log(`[useOpenAgent ${agentName}] Current issue set successfully with project and team context`);
         } else {
@@ -359,12 +361,15 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
         }
       } catch (error) {
         console.error(`[useOpenAgent ${agentName}] Failed to set current issue:`, error);
+        console.error(`[useOpenAgent ${agentName}] Error details:`, JSON.stringify(error));
         // Mark connection as error
         if (connectionStatus !== 'error') {
           setConnectionStatus('error');
         }
         throw error;
       }
+    } else {
+      console.warn(`[useOpenAgent ${agentName}] setCurrentIssue called on non-solver agent type: ${type}`);
     }
   }, [cloudflareAgent, type, agentName, connectionStatus]);
 

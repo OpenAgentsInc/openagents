@@ -24,6 +24,13 @@ export function getSolverSystemPrompt(options: SystemPromptOptions): string {
     temperature = 0.7,
   } = options;
 
+  console.log("PROMPT GENERATOR: Initializing with state:", JSON.stringify({
+    hasIssue: !!state.currentIssue,
+    hasProject: !!state.currentProject,
+    hasTeam: !!state.currentTeam,
+    stateKeys: Object.keys(state || {})
+  }));
+
   // Extract values from state
   const {
     currentIssue,
@@ -43,7 +50,7 @@ export function getSolverSystemPrompt(options: SystemPromptOptions): string {
   const availableTools = Object.keys(allTools);
 
   // Base system prompt
-  let systemPrompt = `You are an autonomous issue-solving agent designed to analyze, plan, and implement solutions for GitHub and Linear issues. You work methodically to resolve issues in software projects.
+  let systemPrompt = `You are an autonomous issue-solving agent designed to analyze, plan, and implement solutions for OpenAgents Projects issues. You work methodically to resolve issues in software projects.
 
 PRIMARY FUNCTIONS:
 1. Analyze issue descriptions to understand requirements
@@ -52,7 +59,9 @@ PRIMARY FUNCTIONS:
 4. Implement solutions by modifying code
 5. Test changes to ensure they fix the issue
 6. Document the solution with clear explanations
-7. Update issue status and add comments as you make progress`;
+7. Update issue status and add comments as you make progress
+
+You are a 'Solver' agent running in the OpenAgents project management web interface.`;
 
   // Add repository context if available
   if (currentRepoOwner && currentRepoName) {
@@ -61,20 +70,28 @@ Repository: ${currentRepoOwner}/${currentRepoName}${currentBranch ? `\nBranch: $
   }
   
   // Add project context if available
+  console.log("PROMPT GENERATOR: Project data:", currentProject ? JSON.stringify(currentProject) : 'undefined');
   if (currentProject) {
+    console.log("PROMPT GENERATOR: Adding project context to prompt");
     systemPrompt += `\n\nPROJECT CONTEXT:
 Name: ${currentProject.name}
 ID: ${currentProject.id}
 ${currentProject.color ? `Color: ${currentProject.color}` : ''}
 ${currentProject.icon ? `Icon: ${currentProject.icon}` : ''}`;
+  } else {
+    console.log("PROMPT GENERATOR: No project data available");
   }
   
   // Add team context if available
+  console.log("PROMPT GENERATOR: Team data:", currentTeam ? JSON.stringify(currentTeam) : 'undefined');
   if (currentTeam) {
+    console.log("PROMPT GENERATOR: Adding team context to prompt");
     systemPrompt += `\n\nTEAM CONTEXT:
 Name: ${currentTeam.name}
 ID: ${currentTeam.id}
 Key: ${currentTeam.key}`;
+  } else {
+    console.log("PROMPT GENERATOR: No team data available");
   }
 
   // Add current issue context if available
@@ -153,7 +170,7 @@ ${scratchpad}`;
   // Add usage guidelines
   systemPrompt += `\n\nGUIDELINES:
 1. FOLLOW A METHODICAL APPROACH to issue resolution - understand, plan, implement, test
-2. USE TOOLS to gather information and interact with GitHub/Linear issues
+2. USE TOOLS to gather information and interact with OpenAgents Projects issues
 3. ANALYZE ISSUE CONTEXT before suggesting solutions
 4. BREAK DOWN COMPLEX ISSUES into manageable steps
 5. FOLLOW CODE STANDARDS and patterns in the existing codebase
