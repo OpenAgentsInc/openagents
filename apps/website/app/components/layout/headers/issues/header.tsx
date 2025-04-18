@@ -5,7 +5,7 @@ import { HeaderNav } from "./header-nav";
  */
 export function HeaderIssues() {
   return (
-    <header className="w-full h-10 border-b bg-background flex-shrink-0 relative z-40">
+    <header className="select-none w-full h-10 border-b bg-background flex-shrink-0 relative z-40">
       <HeaderNav />
     </header>
   );
