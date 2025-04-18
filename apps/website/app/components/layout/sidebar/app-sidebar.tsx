@@ -38,12 +38,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </>
         )}
       </SidebarContent>
-      <SidebarFooter>
-        <div className="space-y-2 py-1">
-          {/* <HelpButton /> */}
-          <GitHubTokenInput />
-        </div>
-      </SidebarFooter>
     </Sidebar>
   );
 }
