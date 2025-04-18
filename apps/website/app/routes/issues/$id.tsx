@@ -20,7 +20,7 @@ import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
 import { useChat } from "@ai-sdk/react";
 import { Chat } from "@/components/ui/chat";
-import { SolverConnector } from "@/components/agent/solver-connector";
+import { SolverConnector } from "@/components/agent/solver-connector-updated";
 import {
   Breadcrumb,
   BreadcrumbItem,

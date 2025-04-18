@@ -211,12 +211,27 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         throw new Error(`Failed to send context: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
 
-      // Basic step 4: Submit initial prompt
+      // Basic step 4: Submit initial prompt using the combination of methods we know works
       console.log("Step 4: Sending initial prompt to agent...");
       const initialPrompt = `I need help with issue ${issue.identifier}: "${issue.title}". Please analyze this issue and suggest a plan to solve it.`;
       console.log("Initial prompt:", initialPrompt);
 
       try {
+        // Add a user message to the message list first
+        const userMessage = {
+          id: generateId(),
+          role: 'user' as const,
+          content: initialPrompt,
+          parts: [{
+            type: 'text' as const,
+            text: initialPrompt
+          }]
+        };
+        
+        // Set the messages with the new user message
+        agent.setMessages([...agent.messages, userMessage]);
+        
+        // Then submit via handleSubmit
         await agent.handleSubmit(initialPrompt);
         console.log("✓ Initial prompt sent successfully");
       } catch (error) {
@@ -224,15 +239,9 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         throw new Error(`Failed to send initial prompt: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
 
-      // Basic step 5: Start inference
-      console.log("Step 5: Starting agent inference...");
-      try {
-        await agent.infer(githubToken);
-        console.log("✓ Agent inference started successfully");
-      } catch (error) {
-        console.error("✗ Failed to start agent inference:", error);
-        throw new Error(`Failed to start agent inference: ${error instanceof Error ? error.message : "Unknown error"}`);
-      }
+      // Skip the inference step since the agent doesn't support this method
+      console.log("Step 5: Initial setup complete");
+      console.log("✓ Agent connection and setup successful");
 
       console.log("=== AGENT CONNECTION PROCESS COMPLETE ===");
       setConnectionState('connected');
@@ -286,8 +295,8 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   }, [agent.messages, connectionState]);
 
   // Create ref at the component level, not inside the effect
-  const contextSetRef = React.useRef(false);
-
+  const contextSetRef = useRef(false);
+  
   // Add debug logging for context state
   useEffect(() => {
     if (connectionState === 'connected' && agent.state) {
@@ -299,7 +308,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       });
     }
   }, [connectionState, agent.state]);
-
+  
   // Ensure context is set when connected
   useEffect(() => {
     // Only proceed if connected
@@ -308,17 +317,17 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       contextSetRef.current = false;
       return;
     }
-
+    
     // Check if we need to set context (either ref is false or state is missing context)
-    const needsContextSet = !contextSetRef.current ||
-      !agent.state?.currentIssue ||
-      !agent.state?.currentProject ||
-      !agent.state?.currentTeam;
-
+    const needsContextSet = !contextSetRef.current || 
+                           !agent.state?.currentIssue || 
+                           !agent.state?.currentProject || 
+                           !agent.state?.currentTeam;
+                           
     if (needsContextSet) {
       // Mark as set to prevent infinite loop
       contextSetRef.current = true;
-
+      
       // Wait a brief moment to let the connection stabilize
       setTimeout(() => {
         // Send context data to ensure it's always set
@@ -332,7 +341,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             team: formattedTeam,
             timestamp: new Date().toISOString()
           };
-
+          
           // Send the raw message
           agent.sendRawMessage(contextMessage);
           console.log("✓ Context auto-set on connection");
@@ -349,13 +358,13 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
   const MessageContainer = ({ children }: { children: React.ReactNode }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const isInitialRender = useRef(true);
-
+    
     // Position scroll at bottom after DOM is updated
     useLayoutEffect(() => {
       if (containerRef.current) {
         // Set scroll to bottom on render
         containerRef.current.scrollTop = containerRef.current.scrollHeight;
-
+        
         if (isInitialRender.current) {
           // If it's the first render, also schedule another scroll after images/content load
           setTimeout(() => {
@@ -367,24 +376,24 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
         }
       }
     }, [agent.messages.length]);
-
+    
     // When new messages arrive, scroll to bottom if already near bottom
     useEffect(() => {
       if (!isInitialRender.current && containerRef.current) {
         const container = containerRef.current;
-        const isNearBottom =
-          container.scrollHeight - container.clientHeight <=
+        const isNearBottom = 
+          container.scrollHeight - container.clientHeight <= 
           container.scrollTop + 100; // Within 100px of bottom
-
+        
         if (isNearBottom) {
           // Immediately jump to bottom without animation
           container.scrollTop = container.scrollHeight;
         }
       }
     }, [agent.messages]);
-
+    
     return (
-      <div
+      <div 
         ref={containerRef}
         className="h-[400px] overflow-y-auto px-4 py-2"
         style={{ overscrollBehavior: 'contain' }} // Prevent scroll chaining
@@ -393,7 +402,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       </div>
     );
   };
-
+  
   // Monitor the connection status
   useEffect(() => {
     let connectionStartTime: number | null = null;
@@ -450,7 +459,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
             <Badge
               variant={
                 connectionState === 'connecting' ? "warning" :
-                  connectionState === 'error' ? "destructive" : "secondary"
+                connectionState === 'error' ? "destructive" : "secondary"
               }
             >
               {connectionState === 'connecting' ? "Connecting..." :
@@ -509,7 +518,7 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
               <MessageContainer>
                 {/* Debug log agent messages */}
                 {/* {console.log("Agent messages:", JSON.stringify(agent.messages, null, 2))} */}
-
+                
                 {/* Convert agent messages to MessageList format */}
                 <MessageList
                   messages={agent.messages.map(message => ({
@@ -517,50 +526,86 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
                     role: message.role,
                     content: message.content || '',
                     createdAt: message.timestamp || new Date().toISOString(),
-                    parts: message.parts || [{
-                      type: "text",
-                      text: message.content || ''
+                    parts: message.parts || [{ 
+                      type: "text", 
+                      text: message.content || '' 
                     }]
                   }))}
                   showTimeStamps={true}
                 />
               </MessageContainer>
-
+              
               {/* Add message input */}
               <div className="px-4 py-3 border-t">
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
                   if (input && input.value.trim()) {
-                    // Create a user message
-                    const userMessage = {
-                      id: generateId(),
-                      role: 'user' as const,
-                      content: input.value,
-                      parts: [{
-                        type: 'text' as const,
-                        text: input.value
-                      }]
-                    };
-
-                    // Add the user message to the agent
-                    agent.setMessages([...agent.messages, userMessage]);
-
-                    // Send the message to the agent and get a response
-                    agent.handleSubmit(input.value)
-                      .then(() => {
-                        console.log("Message sent to agent");
-                      })
-                      .catch(error => {
-                        console.error("Error sending message to agent:", error);
-                      });
-
+                    const userInput = input.value.trim();
+                    console.log("Sending message to agent:", userInput);
+                    
+                    try {
+                      // Add the user message to the UI first
+                      const userMessage = {
+                        id: generateId(),
+                        role: 'user' as const,
+                        content: userInput,
+                        parts: [{
+                          type: 'text' as const,
+                          text: userInput
+                        }]
+                      };
+                      agent.setMessages([...agent.messages, userMessage]);
+                      
+                      // Check if context is set, and if not, set it first
+                      if (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam) {
+                        console.log("Context not found, setting it before sending message...");
+                        // Format context message
+                        const contextMessage = {
+                          type: "set_context",
+                          issue: formattedIssue,
+                          project: formattedProject,
+                          team: formattedTeam,
+                          timestamp: new Date().toISOString()
+                        };
+                        
+                        // Send the raw message
+                        agent.sendRawMessage(contextMessage);
+                        console.log("Context set before sending message");
+                        
+                        // Brief delay to allow context to be processed
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                      }
+                      
+                      // Use the proven method that works reliably
+                      console.log("Sending message via handleSubmit");
+                      
+                      // Just use handleSubmit which should trigger the agent to process the message
+                      await agent.handleSubmit(userInput);
+                      console.log("Message sent via handleSubmit");
+                    } catch (error) {
+                      console.error("Error sending message to agent:", error);
+                      
+                      // Add error message to chat
+                      const errorMessage = {
+                        id: generateId(),
+                        role: 'assistant' as const,
+                        content: "Sorry, there was an error processing your message. Please try again.",
+                        parts: [{
+                          type: 'text' as const,
+                          text: "Sorry, there was an error processing your message. Please try again."
+                        }]
+                      };
+                      
+                      agent.setMessages([...agent.messages, errorMessage]);
+                    }
+                    
                     // Clear the input
                     input.value = '';
                   }
                 }} className="flex">
-                  <input
-                    type="text"
+                  <input 
+                    type="text" 
                     name="message"
                     placeholder="Send a message..."
                     className="flex-1 min-w-0 bg-background border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -576,355 +621,6 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
       </CardContent>
 
       <CardFooter className="flex justify-between">
-        {/* Control buttons - commented out to simplify UI
-        {connectionState === 'connected' && (
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  // Create a user message with question about current issue
-                  const testMessage = {
-                    id: generateId(),
-                    role: 'user' as const,
-                    content: `What do you know about this issue? Please summarize the current context.`,
-                    parts: [{
-                      type: 'text' as const,
-                      text: `What do you know about this issue? Please summarize the current context.`
-                    }]
-                  };
-
-                  // Check if context is missing
-                  const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
-
-                  if (contextMissing) {
-                    console.log("Context not found, setting it before test inference...");
-                    // Format context message
-                    const contextMessage = {
-                      type: "set_context",
-                      issue: formattedIssue,
-                      project: formattedProject,
-                      team: formattedTeam,
-                      timestamp: new Date().toISOString()
-                    };
-
-                    // Send the raw message
-                    agent.sendRawMessage(contextMessage);
-                    console.log("Context set before test inference");
-
-                    // Brief delay to allow context to be processed
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                  } else {
-                    console.log("Context already exists, proceeding directly to inference");
-                  }
-
-                  console.log("Running test inference with system prompt...");
-                  const result = await agent.sharedInfer({
-                    model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-                    messages: [testMessage],
-                    temperature: 0.7,
-                    max_tokens: 500
-                  });
-
-                  console.log("Test message result:", result);
-
-                  // Add both the user message and the response to the chat
-                  agent.setMessages([
-                    ...agent.messages,
-                    testMessage,
-                    {
-                      id: result.id,
-                      role: 'assistant',
-                      content: result.content
-                    }
-                  ]);
-
-                  console.log("Test message and response added to chat");
-                } catch (error) {
-                  console.error("Error with test message:", error);
-                }
-              }}
-            >
-              Send Test Message
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => {
-                // Use the raw message sending capability
-                const observation = `UI Observation at ${new Date().toISOString()}`;
-                console.log("Sending raw observation message to agent:", observation);
-
-                // Format the message as a direct WebSocket message
-                // This should match how the agent's onMessage handler expects it
-                const message = {
-                  type: "observation",
-                  content: observation,
-                  timestamp: new Date().toISOString(),
-                  issueId: issue.id
-                };
-
-                // Send the raw message directly via WebSocket
-                agent.sendRawMessage(message);
-              }}
-            >
-              Add Observation
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => {
-                // Send a status update message
-                const status = `Status update at ${new Date().toISOString()}`;
-                console.log("Sending status update message:", status);
-
-                const message = {
-                  type: "status_update",
-                  content: status,
-                  timestamp: new Date().toISOString(),
-                  issueId: issue.id
-                };
-
-                agent.sendRawMessage(message);
-              }}
-            >
-              Send Status Update
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => {
-                // Send a custom command message that the agent might understand
-                console.log("Sending custom command message");
-
-                const message = {
-                  type: "command",
-                  command: "analyze_issue",
-                  timestamp: new Date().toISOString(),
-                  issueId: issue.id,
-                  params: {
-                    priority: "high",
-                    context: "ui-testing"
-                  }
-                };
-
-                agent.sendRawMessage(message);
-              }}
-            >
-              Send Command
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  // Create a test message with proper UIMessage typing including required parts array
-                  const testMessage = {
-                    id: generateId(),
-                    role: 'user' as const,
-                    content: `Please detail everything you know about the current issue, project, and team context.`,
-                    parts: [{
-                      type: 'text' as const,
-                      text: `Please detail everything you know about the current issue, project, and team context.`
-                    }]
-                  };
-
-                  // Check if any essential context is missing
-                  const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
-
-                  if (contextMissing) {
-                    console.log("Context not found, setting it before inference...");
-                    // Format context message
-                    const contextMessage = {
-                      type: "set_context",
-                      issue: formattedIssue,
-                      project: formattedProject,
-                      team: formattedTeam,
-                      timestamp: new Date().toISOString()
-                    };
-
-                    // Send the raw message
-                    agent.sendRawMessage(contextMessage);
-                    console.log("Context set before inference");
-
-                    // Brief delay to allow context to be processed
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                  } else {
-                    console.log("Context already exists, proceeding directly to inference");
-                  }
-
-                  // Run shared inference with just the test message
-                  // The agent will use its own system prompt automatically
-                  console.log("Running shared inference...");
-                  const result = await agent.sharedInfer({
-                    model: "@cf/meta/llama-4-scout-17b-16e-instruct",
-                    messages: [testMessage],
-                    temperature: 0.7,
-                    max_tokens: 500
-                  });
-
-                  // Log the result
-                  console.log("Shared inference result:", result);
-
-                  // Add the result to the messages
-                  agent.setMessages([
-                    ...agent.messages,
-                    {
-                      id: result.id,
-                      role: 'assistant',
-                      content: result.content
-                    }
-                  ]);
-
-                } catch (error) {
-                  console.error("Error running shared inference:", error);
-                }
-              }}
-            >
-              Test Shared Inference
-            </Button>
-
-            <Dialog
-              open={promptDialogOpen}
-              onOpenChange={(open) => {
-                setPromptDialogOpen(open);
-
-                // When opening the dialog, fetch the system prompt
-                if (open) {
-                  setIsLoadingPrompt(true);
-                  setSystemPrompt('Loading system prompt...');
-
-                  console.log("====== FETCHING SYSTEM PROMPT ======");
-                  console.log("Agent state:", agent.state);
-                  console.log("ProjectData exists:", !!agent.state.currentProject);
-                  console.log("TeamData exists:", !!agent.state.currentTeam);
-
-                  // Only set context if it's missing from the agent state
-                  if ((!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam) &&
-                      formattedIssue && formattedProject && formattedTeam) {
-                    console.log("Context missing in agent state, setting before fetching prompt");
-
-                    try {
-                      // Use raw message sending directly - this matches how the other buttons work
-                      const contextMessage = {
-                        type: "set_context",
-                        issue: formattedIssue,
-                        project: formattedProject,
-                        team: formattedTeam,
-                        timestamp: new Date().toISOString()
-                      };
-
-                      // Send the raw message
-                      agent.sendRawMessage(contextMessage);
-                      console.log("Context data sent successfully before fetching prompt");
-
-                      // Wait a short time for the agent to process the context
-                      setTimeout(() => {
-                        fetchSystemPrompt();
-                      }, 300);
-                    } catch (err) {
-                      console.error("Failed to send context data:", err);
-                      fetchSystemPrompt();
-                    }
-                  } else {
-                    console.log("Context data already exists in agent state, fetching prompt directly");
-                    fetchSystemPrompt();
-                  }
-
-                  function fetchSystemPrompt() {
-                    // Fetch the system prompt
-                    agent.getSystemPrompt()
-                      .then(prompt => {
-                        console.log("System prompt received from agent:", prompt.substring(0, 100) + "...");
-
-                        // Check if it has our project/team sections
-                        const hasProjectSection = prompt.includes("PROJECT CONTEXT:");
-                        const hasTeamSection = prompt.includes("TEAM CONTEXT:");
-
-                        console.log("Prompt analysis:", {
-                          hasProjectSection,
-                          hasTeamSection,
-                          length: prompt.length
-                        });
-
-                        if (!hasProjectSection && !hasTeamSection) {
-                          console.warn("WARNING: System prompt does not contain project or team sections");
-                          console.warn("This may indicate the agent server is not using the updated code");
-
-                          // Create a manually enhanced prompt for demonstration
-                          if (formattedProject || formattedTeam) {
-                            let enhancedPrompt = prompt;
-
-                            if (formattedProject) {
-                              enhancedPrompt += `\n\nPROJECT CONTEXT (CLIENT-SIDE FALLBACK):
-Name: ${formattedProject.name}
-ID: ${formattedProject.id}
-${formattedProject.color ? `Color: ${formattedProject.color}` : ''}
-${formattedProject.icon ? `Icon: ${formattedProject.icon}` : ''}`;
-                            }
-
-                            if (formattedTeam) {
-                              enhancedPrompt += `\n\nTEAM CONTEXT (CLIENT-SIDE FALLBACK):
-Name: ${formattedTeam.name}
-ID: ${formattedTeam.id}
-Key: ${formattedTeam.key || 'N/A'}`;
-                            }
-
-                            console.log("Created enhanced prompt with client-side fallback");
-                            setSystemPrompt(enhancedPrompt);
-                          } else {
-                            setSystemPrompt(prompt);
-                          }
-                        } else {
-                          setSystemPrompt(prompt);
-                        }
-
-                        setIsLoadingPrompt(false);
-                      })
-                      .catch(error => {
-                        console.error("Error fetching system prompt:", error);
-                        setSystemPrompt(`Failed to load system prompt: ${error.message || 'Unknown error'}`);
-                        setIsLoadingPrompt(false);
-                      });
-                  }
-                }
-              }}
-            >
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  View System Prompt
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center">
-                    <FileCode2 className="mr-2 h-5 w-5" />
-                    Solver Agent System Prompt
-                  </DialogTitle>
-                  <DialogDescription>
-                    This is the system prompt that guides the agent's behavior and capabilities.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="mt-4">
-                  {isLoadingPrompt ? (
-                    <div className="flex justify-center py-8">
-                      <Spinner className="h-8 w-8" />
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-muted rounded-md overflow-auto">
-                      <pre className="text-sm whitespace-pre-wrap font-mono" style={{ maxHeight: '60vh' }}>
-                        {systemPrompt}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        )}
-        */}
-
         {/* We'll keep the connect button since it's essential for functionality */}
         <div>
           {/* Server-side rendering always shows initial state - Client will rehydrate */}
