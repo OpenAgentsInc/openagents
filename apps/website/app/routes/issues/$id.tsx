@@ -379,7 +379,7 @@ export default function IssueDetails() {
           </div>
 
           {/* ---------- Sidebar ---------- */}
-          <div className="flex flex-col h-[calc(100vh-8rem)] overflow-y-auto">
+          <div className="flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
             <Card className="shadow-sm flex flex-col h-full">
               {/* Header with title & quick badges */}
               <CardHeader className="py-2 px-3">
