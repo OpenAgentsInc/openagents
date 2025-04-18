@@ -37,3 +37,5 @@ Relevant files:
   - Has the chat
 - `apps/website/app/components/agent/solver-controls.tsx`
   - Controls for Solver showing in issue page sidebar
+- `packages/agents/docs/shared-inference-implementation.md`
+  - Explains inference method used by the agents (may not be fully up to date)
