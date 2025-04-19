@@ -114,11 +114,116 @@ The Solver implementation is distributed across several key files:
 
 ### Web Interface Components
 
-The frontend components handle rendering and user interaction:
+The Solver agent's frontend interface is built from three main components that work together to provide a seamless user experience:
 
-- `apps/website/app/routes/issues/$id.tsx`: Main issue page
-- `apps/website/app/components/agent/solver-connector.tsx`: Chat interface
-- `apps/website/app/components/agent/solver-controls.tsx`: Sidebar controls
+#### 1. Main Issue Page (`apps/website/app/routes/issues/$id.tsx`)
+
+This component serves as the container for the entire issue view and is responsible for:
+
+- Loading issue data from the database using the `loader` function
+- Initializing the shared agent instance via the `useOpenAgent` hook
+- Managing the overall layout with a two-column design
+- Setting up the issue context and GitHub token handling
+- Handling issue status updates and other metadata changes
+- Synchronizing the Solver agent's state when the page loads
+
+The main page automatically retrieves the GitHub token from local storage and passes it to child components, ensuring secure token handling without exposing credentials in the UI state.
+
+```typescript
+// Example of agent initialization in the issue page
+const agent = useOpenAgent(issue.id, "solver");
+
+// Passing the agent instance to child components
+<SolverConnector
+  issue={issue}
+  agent={agent}
+  githubToken={getGithubToken()}
+  className="w-full h-full"
+/>
+```
+
+#### 2. Chat Interface (`apps/website/app/components/agent/solver-connector.tsx`)
+
+The chat interface handles direct user interaction with the agent and:
+
+- Displays message history with proper formatting
+- Provides a message input for user queries
+- Handles message submission and response rendering
+- Manages auto-scrolling behavior for new messages
+- Shows appropriate UI states (connecting, disconnected, error)
+- Implements context recovery if the agent loses state
+
+The component includes special handling for agent communication:
+
+```typescript
+// Example of message handling in the chat interface
+const handleSendMessage = async (message) => {
+  // Add message to UI immediately
+  agent.setMessages([...agent.messages, userMessage]);
+  
+  // Ensure context is available before sending
+  if (contextMissing) {
+    const contextMessage = {
+      type: "set_context",
+      issue: formattedIssue,
+      project: formattedProject,
+      team: formattedTeam
+    };
+    agent.sendRawMessage(contextMessage);
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+  
+  // Send the inference request
+  await agent.sendRawMessage({
+    type: "shared_infer",
+    params: { /* message parameters */ },
+    context: { issue, project, team }
+  });
+};
+```
+
+#### 3. Sidebar Controls (`apps/website/app/components/agent/solver-controls.tsx`)
+
+The sidebar controls provide user management of the agent and:
+
+- Display connection status with visual indicators
+- Offer connection/disconnection buttons
+- Provide debugging tools for agent operations
+- Allow viewing the system prompt
+- Include testing buttons for agent features
+- Handle error states and retries
+- Show contextual information based on agent state
+
+The component implements several agent control functions:
+
+```typescript
+// Example of agent connection in the controls component
+const connectToSolver = async () => {
+  setConnectionState('connecting');
+  
+  // First set the GitHub token
+  await agent.setGithubToken(githubToken);
+  
+  // Set repository context
+  await agent.setRepositoryContext(owner, repo, branch);
+  
+  // Send context message with issue data
+  agent.sendRawMessage({
+    type: "set_context",
+    issue: formattedIssue,
+    project: formattedProject,
+    team: formattedTeam
+  });
+  
+  // Send initial prompt and start inference
+  await agent.handleSubmit(initialPrompt);
+  await agent.infer(githubToken);
+  
+  setConnectionState('connected');
+};
+```
+
+These components work together to create a cohesive user experience, with the parent issue page coordinating the agent instance that is shared between the chat interface and control sidebar.
 
 ## Agent Capabilities
 
