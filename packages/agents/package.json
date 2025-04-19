@@ -11,7 +11,8 @@
     "types": "wrangler types",
     "format": "prettier --write .",
     "check": "prettier . --check && biome lint && tsc",
-    "t": "tsc --noEmit"
+    "t": "tsc --noEmit",
+    "extract-files": "node docs/extract-files.js"
   },
   "keywords": [
     "cloudflare",
