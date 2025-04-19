@@ -285,6 +285,44 @@ export class Solver extends OpenAgent<SolverState> {
           }
           break;
           
+        case "set_github_token":
+          // New message type specifically for setting GitHub token
+          console.log("Setting GitHub token via dedicated message");
+          
+          try {
+            const token = parsedMessage.token;
+            if (token && typeof token === 'string') {
+              console.log(`Setting GitHub token from message (length: ${token.length})`);
+              const result = this.setGithubToken(token);
+              console.log("✓ GitHub token set result:", result);
+              
+              // Send success response back to client
+              connection.send(JSON.stringify({
+                type: "token_response",
+                success: true,
+                message: "GitHub token set successfully",
+                timestamp: new Date().toISOString()
+              }));
+            } else {
+              console.error("No valid token provided in set_github_token message");
+              connection.send(JSON.stringify({
+                type: "token_response",
+                success: false,
+                message: "No valid token provided",
+                timestamp: new Date().toISOString()
+              }));
+            }
+          } catch (tokenError) {
+            console.error("✗ Failed to set GitHub token from message:", tokenError);
+            connection.send(JSON.stringify({
+              type: "token_response",
+              success: false,
+              message: "Failed to set token: " + String(tokenError),
+              timestamp: new Date().toISOString()
+            }));
+          }
+          break;
+          
         case "shared_infer":
           // Handle inference request
           console.log("Inference request received");
@@ -302,6 +340,27 @@ export class Solver extends OpenAgent<SolverState> {
           
           try {
             const inferProps = parsedMessage.params;
+            
+            // CRITICAL FIX: Check for GitHub token in params - but don't call setGithubToken directly
+            // Instead use it directly for this operation but recommend client use set_github_token message
+            if (inferProps.githubToken && typeof inferProps.githubToken === 'string') {
+              console.log(`Using GitHub token from inference params (length: ${inferProps.githubToken.length})`);
+              
+              // Update the state directly without calling setGithubToken method
+              this.updateState({
+                githubToken: inferProps.githubToken
+              } as Partial<SolverState>);
+              
+              console.log("✓ GitHub token applied to state");
+              
+              // Remove the token from the params to avoid leaking it in logs
+              delete inferProps.githubToken;
+              
+              // Add a note to encourage using the proper message type
+              this.addAgentObservation("Note: For more reliable token setting, use 'set_github_token' message type instead of parameter passing");
+            } else {
+              console.warn("No GitHub token found in inference params");
+            }
             
             // Check for context data in message
             if (parsedMessage.context) {

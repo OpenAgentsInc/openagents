@@ -10,6 +10,7 @@ export const GetFileContentsParams = z.object({
   repo: z.string().describe("Repository name"),
   path: z.string().describe("Path to the file"),
   branch: z.string().optional().describe("Branch, tag, or commit SHA"),
+  token: z.string().optional().describe("GitHub token (optional - will use agent token if not provided)"),
 });
 
 // --- Specific Error Types for this Tool ---
@@ -84,7 +85,7 @@ function githubRequestEffect(
 export const fetchFileContents = effectTool({
   description: "Fetches the contents of a specific file from a GitHub repository.",
   parameters: GetFileContentsParams,
-  execute: ({ owner, repo, path, branch }) => {
+  execute: ({ owner, repo, path, branch, token: explicitToken }) => {
     // Return an Effect for better error handling and composition
     return Effect.gen(function* () {
       // Access agent state via AsyncLocalStorage
@@ -97,12 +98,14 @@ export const fetchFileContents = effectTool({
         );
       }
 
-      const token = agent.state.githubToken;
+      // Try to get a token, checking both explicit parameter and agent state
+      let token = explicitToken || agent.state.githubToken;
       console.log("[fetchFileContents] Token check:", {
         agentExists: !!agent,
         stateExists: !!agent?.state,
         hasToken: !!token,
-        tokenLength: token ? token.length : 0
+        tokenLength: token ? token.length : 0,
+        hasExplicitToken: !!explicitToken
       });
         
       if (!token) {
@@ -110,11 +113,29 @@ export const fetchFileContents = effectTool({
         // This is an expected condition that should be reported to the user
         return yield* Effect.fail(
           new GitHubApiError({
-            message: "GitHub token is missing. Please reconnect the agent with a valid GitHub token.",
+            message: "GitHub token is missing. Please reconnect the agent with a valid GitHub token or provide a token parameter.",
             status: 401,
             url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}${branch ? `?ref=${branch}` : ''}`
           })
         );
+      }
+      
+      // If we received an explicit token but it's not in the agent state, update the state
+      if (explicitToken && (!agent.state.githubToken || agent.state.githubToken !== explicitToken)) {
+        console.log("[fetchFileContents] Updating agent state with token from parameters");
+        try {
+          // This is a side effect, but it's okay in this context to ensure future tool calls work
+          yield* Effect.tryPromise({
+            try: () => agent.setGithubToken(explicitToken),
+            catch: (error) => new GitHubApiError({
+              message: `Failed to update token in agent state: ${error}`,
+              url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+            })
+          });
+        } catch (e) {
+          console.error("[fetchFileContents] Error updating token:", e);
+          // Continue with the request even if the state update fails
+        }
       }
 
       // Construct API URL

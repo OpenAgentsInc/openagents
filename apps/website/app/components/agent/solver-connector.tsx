@@ -432,6 +432,19 @@ export function SolverConnector({
                       // Run shared inference with full message history
                       // Send the inference request
                       const requestId = generateId();
+                      
+                      // CRITICAL FIX: Re-set the GitHub token to ensure it's available
+                      // This adds redundancy to prevent token loss
+                      if (githubToken) {
+                        try {
+                          console.log("Re-setting GitHub token before inference (length:", githubToken.length, ")");
+                          await agent.setGithubToken(githubToken);
+                        } catch (tokenError) {
+                          console.error("Error re-setting GitHub token:", tokenError);
+                        }
+                      } else {
+                        console.warn("No GitHub token available to set before inference!");
+                      }
 
                       // Send the request with context data for reliability
                       const response = await agent.sendRawMessage({
@@ -443,6 +456,7 @@ export function SolverConnector({
                           system: systemPrompt,
                           temperature: 0.7,
                           max_tokens: 1000,
+                          githubToken: githubToken, // Explicitly pass token as parameter
                         },
                         context: {
                           issue: formattedIssue,

@@ -369,7 +369,12 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   }
 
   const setGithubToken = async (token: string): Promise<void> => {
-    await cloudflareAgent.call('setGithubToken', [token])
+    // DO NOT call 'setGithubToken' via RPC - this will fail with "Method is not callable"
+    // Instead, send a message to set the token
+    await cloudflareAgent.sendMessage(JSON.stringify({
+      type: 'set_github_token',
+      token: token
+    }))
     return
   }
 
@@ -437,8 +442,11 @@ export function SolverConnector({ issue, githubToken }: SolverConnectorProps) {
     setIsStartingSolver(true);
 
     try {
-      // Set GitHub token for the agent
-      await agent.setGithubToken(githubToken);
+      // Set GitHub token for the agent - IMPORTANT: Use message instead of direct method call
+      await agent.sendRawMessage({
+        type: "set_github_token",
+        token: githubToken
+      });
       
       // Set the current issue context
       if (agent.setCurrentIssue) {

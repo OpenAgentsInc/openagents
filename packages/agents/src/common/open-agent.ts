@@ -46,8 +46,11 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
   /**
    * Sets the GitHub token in the agent's state and ensures it's properly persisted
    * This method has been hardened to ensure token persistence
+   * 
+   * IMPORTANT: This must be defined as a regular method, not an async method,
+   * because async methods can't be called over the RPC interface.
    */
-  async setGithubToken(token: string) {
+  setGithubToken(token: string) {
     if (!token) {
       console.error("setGithubToken: Empty or null token was provided!");
       return { success: false, message: "GitHub token cannot be empty" };
@@ -60,9 +63,8 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
       githubToken: token
     } as Partial<T>);
 
-    // CRITICAL: Force a state persistence using setState directly
-    // This ensures the Durable Object persists the token immediately
-    await this.setState({
+    // Force a state persistence - but using syncState since we can't use async
+    this.setState({
       ...this.state,
       githubToken: token
     });
@@ -164,7 +166,15 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       } as ToolResultPart; // Type assertion for clarity
     }
 
-    console.log(`[executeToolEffect] Executing tool '${toolName}' with args:`, args);
+    // Add GitHub token to args for GitHub-related tools if not already present
+    let enhancedArgs = { ...args };
+    if ((toolName === 'fetchFileContents' || toolName === 'getFileContents') && 
+        !enhancedArgs.token && this.state.githubToken) {
+      console.log(`[executeToolEffect] Adding GitHub token to tool args (length: ${this.state.githubToken.length})`);
+      enhancedArgs.token = this.state.githubToken;
+    }
+
+    console.log(`[executeToolEffect] Executing tool '${toolName}' with args:`, enhancedArgs);
 
     try {
       // Execute the tool with standard Promise-based approach
@@ -172,7 +182,7 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
 
       // Call the tool's execute function with the expected arguments format
       const execFn = tool.execute as (a: any, o: any) => Promise<any>;
-      const resultValue = await Promise.resolve(execFn(args, {}));
+      const resultValue = await Promise.resolve(execFn(enhancedArgs, {}));
 
       console.log(`[executeToolEffect] Tool '${toolName}' completed successfully.`);
 
@@ -265,7 +275,8 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       system,
       temperature = 0.7,
       max_tokens = 1024,
-      top_p = 0.95
+      top_p = 0.95,
+      githubToken // Extract GitHub token if provided
     } = props;
 
     // Define the OpenRouter model identifier explicitly to avoid issues with CF AI models
@@ -275,12 +286,27 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     console.log("[sharedInfer] Using OpenRouter model:", openRouterModel);
 
     try {
+      // If a token was provided as a parameter, apply it directly to the state
+      if (githubToken && typeof githubToken === 'string') {
+        console.log(`[sharedInfer] Using GitHub token from parameters (length: ${githubToken.length})`);
+        try {
+          // Apply token directly to state instead of calling setGithubToken
+          this.updateState({
+            githubToken: githubToken
+          } as Partial<T>);
+          console.log("[sharedInfer] ✓ Token applied to state");
+        } catch (tokenError) {
+          console.error("[sharedInfer] ✗ Failed to apply token to state:", tokenError);
+        }
+      }
+      
       // Check GitHub token status before attempting any operations
       const hasValidToken = !!this.state.githubToken && this.state.githubToken.length > 0;
       console.log("[sharedInfer] GitHub token status:", {
         hasToken: hasValidToken,
         tokenLength: this.state.githubToken ? this.state.githubToken.length : 0, 
-        repoContext: `${this.state.currentRepoOwner || 'none'}/${this.state.currentRepoName || 'none'}`
+        repoContext: `${this.state.currentRepoOwner || 'none'}/${this.state.currentRepoName || 'none'}`,
+        tokenProvidedInParams: !!githubToken
       });
       
       // If we might need to use GitHub-related tools, warn about missing token
@@ -358,8 +384,30 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
 
         console.log(`[sharedInfer] LLM requested ${toolCalls.length} tool calls.`);
 
-        // Execute all tool calls concurrently
-        const toolExecutionPromises = toolCalls.map(toolCall => this.executeToolEffect(toolCall));
+        // Execute all tool calls concurrently, injecting GitHub token when appropriate
+        const toolExecutionPromises = toolCalls.map(toolCall => {
+          // Check if this is a GitHub-related tool call that might need a token
+          if (toolCall.toolName === 'fetchFileContents' || toolCall.toolName === 'getFileContents') {
+            // Clone the tool call and add token from params or state if not already present
+            const enhancedToolCall = { ...toolCall };
+            
+            // Use explicit token from params, or fallback to state
+            const tokenToUse = githubToken || this.state.githubToken;
+            
+            if (tokenToUse && !enhancedToolCall.args.token) {
+              enhancedToolCall.args = { 
+                ...enhancedToolCall.args,
+                token: tokenToUse
+              };
+              console.log(`[sharedInfer] Adding token to ${toolCall.toolName} call (token length: ${tokenToUse.length})`);
+            }
+            return this.executeToolEffect(enhancedToolCall);
+          } else {
+            // Use the original tool call for other tools
+            return this.executeToolEffect(toolCall);
+          }
+        });
+        
         const toolResultsList = await Promise.all(toolExecutionPromises);
 
         // Add assistant message with tool requests and the tool results message
