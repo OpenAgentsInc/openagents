@@ -1,8 +1,8 @@
 // Base OpenAgent class that implements common functionality for all agents
 
 import { Agent } from "agents";
-import { generateId, generateText } from "ai";
-import type { CoreMessage, ToolCallPart, ToolResultPart } from "ai"; // Correct type-only import
+import { generateId, generateText, streamText } from "ai";
+import type { CoreMessage, ToolCallPart, ToolResultPart, TextDeltaStreamPart } from "ai"; // Correct type-only import
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
 import { Effect, Runtime, Cause } from "effect"; // Correct imports
@@ -488,4 +488,300 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       };
     }
   } // End sharedInfer
+
+  /**
+   * Shared streaming inference method for all agents
+   * Uses Vercel AI SDK's streamText to stream responses in real-time
+   * Leverages Durable Objects' automatic state synchronization
+   */
+  async streamingInfer(props: InferProps): Promise<{ requestId: string, messageId: string }> {
+    try {
+      // Extract properties with defaults
+      const {
+        model: requestedModel = "anthropic/claude-3.5-sonnet", // Default to Claude via OpenRouter
+        messages: initialMessages,
+        system,
+        temperature = 0.7,
+        max_tokens = 1024,
+        top_p = 0.95,
+        githubToken, // Extract GitHub token if provided
+        requestId = generateId()
+      } = props;
+
+      // Define the OpenRouter model identifier explicitly to avoid issues with CF AI models
+      const openRouterModel = "anthropic/claude-3.5-sonnet";
+
+      console.log("[streamingInfer] Requested model:", requestedModel);
+      console.log("[streamingInfer] Using OpenRouter model:", openRouterModel);
+
+      // If token was provided, ensure it's in state
+      if (githubToken && typeof githubToken === 'string') {
+        console.log(`[streamingInfer] Using GitHub token from parameters (length: ${githubToken.length})`);
+        try {
+          // Apply token directly to state
+          this.state.githubToken = githubToken;
+          
+          // Use setState for persistence (this is synchronous)
+          this.setState({
+            ...this.state,
+            githubToken: githubToken
+          });
+          
+          console.log("[streamingInfer] ✓ Token applied directly to state");
+        } catch (tokenError) {
+          console.error("[streamingInfer] ✗ Failed to apply token to state:", tokenError);
+        }
+      }
+      
+      // Check GitHub token status before attempting any operations
+      const hasValidToken = !!this.state.githubToken && this.state.githubToken.length > 0;
+      console.log("[streamingInfer] GitHub token status:", {
+        hasToken: hasValidToken,
+        tokenLength: this.state.githubToken ? this.state.githubToken.length : 0, 
+        repoContext: `${this.state.currentRepoOwner || 'none'}/${this.state.currentRepoName || 'none'}`,
+        tokenProvidedInParams: !!githubToken
+      });
+
+      // Format messages for the AI model
+      let currentMessages: CoreMessage[] = [];
+
+      if (initialMessages && initialMessages.length > 0) {
+        currentMessages = initialMessages.map(msg => {
+          if (msg.role === 'system') {
+            return { role: 'system', content: msg.content };
+          } else if (msg.role === 'user') {
+            return { role: 'user', content: msg.content };
+          } else if (msg.role === 'assistant') {
+            return { role: 'assistant', content: msg.content };
+          } else {
+            return { role: 'user', content: msg.content };
+          }
+        });
+      }
+
+      const systemPrompt = system || this.getSystemPrompt();
+      if (systemPrompt) {
+        if (currentMessages.length > 0 && currentMessages[0].role === 'system') {
+          currentMessages[0] = { role: 'system', content: systemPrompt };
+        } else {
+          currentMessages.unshift({ role: 'system', content: systemPrompt });
+        }
+      }
+      console.log(`[streamingInfer] Prepared ${currentMessages.length} messages with system prompt`);
+
+      // Create and add a streaming placeholder message to state
+      const messageId = generateId();
+      const streamingMessage = {
+        id: messageId,
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+        timestamp: new Date().toISOString(),
+        streamRequestId: requestId
+      };
+
+      // Add streaming placeholder to messages array in state
+      // This will trigger UI updates for all connected clients automatically
+      this.updateState({
+        messages: [...this.state.messages, streamingMessage]
+      } as Partial<T>);
+
+      // Create OpenRouter provider
+      const openrouter = createOpenRouter({
+        apiKey: (this.env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
+      });
+      console.log("[streamingInfer] Created OpenRouter provider");
+
+      // Create a background process to handle streaming
+      (async () => {
+        try {
+          const asSolver = <T extends BaseAgentState>(agent: OpenAgent<T>): unknown => agent;
+
+          // Use solverContext for tool execution compatibility
+          await solverContext.run(asSolver(this) as Solver, async () => {
+            try {
+              // Set up streaming with the Vercel AI SDK
+              const { textStream, fullStream } = await streamText({
+                model: openrouter(openRouterModel),
+                messages: currentMessages,
+                tools: solverTools,
+                toolChoice: 'auto',
+                temperature,
+                maxTokens: max_tokens,
+                topP: top_p
+              });
+
+              // Initialize state for streaming
+              let accumulatedText = '';
+              const toolCalls: ToolCallPart[] = [];
+              
+              // Process all stream chunks as they arrive
+              for await (const chunk of fullStream) {
+                if (chunk.type === 'text-delta') {
+                  // Handle text delta (streamed tokens)
+                  accumulatedText += chunk.textDelta;
+                  
+                  // Update the streaming message in state with new accumulated text
+                  // DO state updates are automatically synchronized to all connected clients
+                  const updatedMessages = this.state.messages.map(msg => 
+                    msg.id === messageId 
+                      ? { ...msg, content: accumulatedText, isStreaming: true } 
+                      : msg
+                  );
+                  
+                  this.setState({
+                    ...this.state,
+                    messages: updatedMessages
+                  });
+                  
+                  // Log progress occasionally (not for every token to avoid log spam)
+                  if (accumulatedText.length % 100 === 0) {
+                    console.log(`[streamingInfer] Streaming progress: ${accumulatedText.length} chars`);
+                  }
+                } 
+                else if (chunk.type === 'tool-call') {
+                  // Collect tool calls for later handling
+                  toolCalls.push(chunk);
+                  console.log(`[streamingInfer] Received tool call: ${chunk.toolName}`);
+                }
+              }
+              
+              console.log(`[streamingInfer] Done receiving stream. Final length: ${accumulatedText.length} chars`);
+              
+              // Processing complete - handle any collected tool calls
+              if (toolCalls.length > 0) {
+                console.log(`[streamingInfer] Processing ${toolCalls.length} tool calls`);
+                
+                // Mark message as processing tools
+                const processingMessages = this.state.messages.map(msg => 
+                  msg.id === messageId 
+                    ? { ...msg, content: accumulatedText, isProcessingTools: true } 
+                    : msg
+                );
+                
+                this.setState({
+                  ...this.state,
+                  messages: processingMessages
+                });
+                
+                // Execute all tool calls in parallel, injecting GitHub token when appropriate
+                const toolExecutionPromises = toolCalls.map(toolCall => {
+                  // Check if this is a GitHub-related tool call that might need a token
+                  if (toolCall.toolName === 'fetchFileContents' || toolCall.toolName === 'getFileContents') {
+                    // Clone the tool call and add token from params or state if not already present
+                    const enhancedToolCall = { ...toolCall };
+                    
+                    // Use explicit token from params, or fallback to state
+                    const tokenToUse = githubToken || this.state.githubToken;
+                    
+                    if (tokenToUse && !enhancedToolCall.args.token) {
+                      enhancedToolCall.args = { 
+                        ...enhancedToolCall.args,
+                        token: tokenToUse
+                      };
+                      console.log(`[streamingInfer] Adding token to ${toolCall.toolName} call (token length: ${tokenToUse.length})`);
+                    }
+                    return this.executeToolEffect(enhancedToolCall);
+                  } else {
+                    // Use the original tool call for other tools
+                    return this.executeToolEffect(toolCall);
+                  }
+                });
+                
+                const toolResults = await Promise.all(toolExecutionPromises);
+                
+                // Add tool results to the accumulated text
+                for (const result of toolResults) {
+                  // Format tool results for display
+                  const toolDisplay = `\n\n**Tool Result (${result.toolName})**: ${
+                    JSON.stringify(result.result, null, 2)
+                  }\n\n`;
+                  
+                  accumulatedText += toolDisplay;
+                  
+                  // Update message content with tool results
+                  const updatedWithToolsMessages = this.state.messages.map(msg => 
+                    msg.id === messageId 
+                      ? { ...msg, content: accumulatedText, isProcessingTools: true } 
+                      : msg
+                  );
+                  
+                  this.setState({
+                    ...this.state,
+                    messages: updatedWithToolsMessages
+                  });
+                }
+                
+                console.log(`[streamingInfer] All tool calls processed. Final length: ${accumulatedText.length} chars`);
+              }
+              
+              // Mark streaming as complete in state
+              const finalMessages = this.state.messages.map(msg => 
+                msg.id === messageId 
+                  ? { 
+                      ...msg, 
+                      content: accumulatedText, 
+                      isStreaming: false, 
+                      isProcessingTools: false,
+                      completedAt: new Date().toISOString(),
+                      model: openRouterModel
+                    } 
+                  : msg
+              );
+              
+              this.setState({
+                ...this.state,
+                messages: finalMessages
+              });
+              
+              console.log(`[streamingInfer] Streaming complete, message updated in state`);
+            } catch (execError) {
+              console.error("[streamingInfer] Error during stream execution:", execError);
+              throw execError; // Re-throw for outer catch
+            }
+          });
+        } catch (streamError) {
+          console.error("[streamingInfer] Error in stream processing:", streamError);
+          
+          // Update message with error state
+          const errorMessages = this.state.messages.map(msg => 
+            msg.id === messageId 
+              ? { 
+                  ...msg, 
+                  content: `Error generating response: ${streamError instanceof Error ? streamError.message : String(streamError)}`, 
+                  isStreaming: false,
+                  isError: true
+                } 
+              : msg
+          );
+          
+          this.setState({
+            ...this.state,
+            messages: errorMessages
+          });
+        }
+      })();
+
+      // Return IDs needed for client tracking
+      return { requestId, messageId };
+    } catch (error) {
+      console.error("[streamingInfer] Error initializing stream:", error);
+      
+      // Propagate error as a proper message in state
+      const errorMessageId = generateId();
+      const errorMessage = {
+        id: errorMessageId,
+        role: 'assistant',
+        content: `Error generating response: ${error instanceof Error ? error.message : String(error)}`,
+        isError: true,
+        timestamp: new Date().toISOString()
+      };
+      
+      this.updateState({
+        messages: [...this.state.messages, errorMessage]
+      } as Partial<T>);
+      
+      return { requestId: props.requestId || generateId(), messageId: errorMessageId };
+    }
+  } // End streamingInfer
 } // End OpenAgent class

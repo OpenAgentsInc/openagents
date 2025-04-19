@@ -1232,7 +1232,7 @@ This approach results in users waiting until the entire response is generated be
 
 ## Streaming Implementation
 
-The refactoring will use Vercel AI SDK's `streamText` function to stream tokens to the client as they're generated:
+The refactoring will use Vercel AI SDK's `streamText` function to stream tokens to the client as they're generated, leveraging Cloudflare Durable Objects' state management and synchronization capabilities.
 
 ### 1. Backend Changes (`open-agent.ts`)
 
@@ -1242,8 +1242,9 @@ The refactoring will use Vercel AI SDK's `streamText` function to stream tokens 
 /**
  * Shared streaming inference method for all agents
  * Uses Vercel AI SDK's streamText to stream responses in real-time
+ * Leverages Durable Objects' automatic state synchronization
  */
-async streamingInfer(props: InferProps, onToken: (token: string, isComplete: boolean) => void): Promise<string> {
+async streamingInfer(props: InferProps): Promise<{ requestId: string, messageId: string }> {
   try {
     // Extract properties with defaults
     const {
@@ -1253,7 +1254,8 @@ async streamingInfer(props: InferProps, onToken: (token: string, isComplete: boo
       temperature = 0.7,
       max_tokens = 1024,
       top_p = 0.95,
-      githubToken
+      githubToken,
+      requestId = generateId()
     } = props;
 
     // Get the appropriate provider
@@ -1284,6 +1286,23 @@ async streamingInfer(props: InferProps, onToken: (token: string, isComplete: boo
 
     console.log(`[streamingInfer] Starting streaming inference with ${formattedMessages.length} messages`);
 
+    // Create and add a streaming placeholder message to state
+    const messageId = generateId();
+    const streamingMessage = {
+      id: messageId,
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+      timestamp: new Date().toISOString(),
+      streamRequestId: requestId
+    };
+
+    // Add streaming placeholder to messages array in state
+    // This will trigger UI updates for all connected clients automatically
+    this.updateState({
+      messages: [...this.state.messages, streamingMessage]
+    } as Partial<T>);
+
     // Use streamText from Vercel AI SDK
     const { textStream, fullStream } = await this.providers.streamText({
       model: openrouter("anthropic/claude-3.5-sonnet"),
@@ -1295,147 +1314,188 @@ async streamingInfer(props: InferProps, onToken: (token: string, isComplete: boo
       topP: top_p
     });
 
-    // Initialize accumulated text and event handlers
-    let accumulatedText = '';
-    const messageId = generateId();
-    let isComplete = false;
-    const toolCalls: ToolCallPart[] = [];
-    
-    // Set up handling of the full stream (includes text, tool calls, etc.)
+    // Create a background process to handle streaming
+    // We won't use callbacks - instead, we'll update state directly
+    // which will be automatically synced to all connected clients
     (async () => {
-      for await (const chunk of fullStream) {
-        if (chunk.type === 'text-delta') {
-          // Handle text delta (streamed tokens)
-          accumulatedText += chunk.textDelta;
-          onToken(chunk.textDelta, false);
-          
-          // Send WebSocket message with partial completion
-          this.websocket?.send(JSON.stringify({
-            type: 'streaming_response',
-            requestId: props.requestId,
-            delta: chunk.textDelta,
-            accumulatedText,
-            isComplete: false,
-            messageId
-          }));
-        } 
-        else if (chunk.type === 'tool-call') {
-          // Collect tool calls for later handling
-          toolCalls.push(chunk);
-          console.log(`[streamingInfer] Received tool call: ${chunk.toolName}`);
-        }
-      }
-      
-      // Processing complete - handle any collected tool calls
-      if (toolCalls.length > 0) {
-        console.log(`[streamingInfer] Processing ${toolCalls.length} tool calls`);
+      try {
+        // Initialize accumulated text
+        let accumulatedText = '';
+        const toolCalls: ToolCallPart[] = [];
         
-        // Execute all tool calls in parallel
-        const toolResults = await Promise.all(
-          toolCalls.map(toolCall => this.executeToolEffect(toolCall))
+        // Process all stream chunks as they arrive
+        for await (const chunk of fullStream) {
+          if (chunk.type === 'text-delta') {
+            // Handle text delta (streamed tokens)
+            accumulatedText += chunk.textDelta;
+            
+            // Update the streaming message in state with new accumulated text
+            // DO state updates are automatically synchronized to all clients
+            const updatedMessages = this.state.messages.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: accumulatedText, isStreaming: true } 
+                : msg
+            );
+            
+            this.setState({
+              ...this.state,
+              messages: updatedMessages
+            });
+          } 
+          else if (chunk.type === 'tool-call') {
+            // Collect tool calls for later handling
+            toolCalls.push(chunk);
+            console.log(`[streamingInfer] Received tool call: ${chunk.toolName}`);
+          }
+        }
+        
+        // Processing complete - handle any collected tool calls
+        if (toolCalls.length > 0) {
+          console.log(`[streamingInfer] Processing ${toolCalls.length} tool calls`);
+          
+          // Mark message as processing tools
+          const processingMessages = this.state.messages.map(msg => 
+            msg.id === messageId 
+              ? { ...msg, content: accumulatedText, isProcessingTools: true } 
+              : msg
+          );
+          
+          this.setState({
+            ...this.state,
+            messages: processingMessages
+          });
+          
+          // Execute all tool calls in parallel
+          const toolResults = await Promise.all(
+            toolCalls.map(toolCall => this.executeToolEffect(toolCall))
+          );
+          
+          // Add tool results to the accumulated text
+          for (const result of toolResults) {
+            // Format tool results for display
+            const toolDisplay = `\n\n**Tool Result (${result.toolName})**: ${
+              JSON.stringify(result.result, null, 2)
+            }\n\n`;
+            
+            accumulatedText += toolDisplay;
+            
+            // Update message content with tool results
+            const updatedWithToolsMessages = this.state.messages.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: accumulatedText, isProcessingTools: true } 
+                : msg
+            );
+            
+            this.setState({
+              ...this.state,
+              messages: updatedWithToolsMessages
+            });
+          }
+        }
+        
+        // Mark streaming as complete in state
+        const finalMessages = this.state.messages.map(msg => 
+          msg.id === messageId 
+            ? { 
+                ...msg, 
+                content: accumulatedText, 
+                isStreaming: false, 
+                isProcessingTools: false,
+                completedAt: new Date().toISOString()
+              } 
+            : msg
         );
         
-        // Add tool results to the accumulated text
-        for (const result of toolResults) {
-          // Format tool results for display
-          const toolDisplay = `\n\n**Tool Result (${result.toolName})**: ${
-            JSON.stringify(result.result, null, 2)
-          }\n\n`;
-          
-          accumulatedText += toolDisplay;
-          onToken(toolDisplay, false);
-          
-          // Send tool results via WebSocket
-          this.websocket?.send(JSON.stringify({
-            type: 'tool_response',
-            requestId: props.requestId,
-            toolName: result.toolName,
-            result: result.result,
-            messageId
-          }));
-        }
+        this.setState({
+          ...this.state,
+          messages: finalMessages
+        });
+        
+        console.log(`[streamingInfer] Streaming complete, message updated in state`);
+      } catch (streamError) {
+        console.error("[streamingInfer] Error in stream processing:", streamError);
+        
+        // Update message with error state
+        const errorMessages = this.state.messages.map(msg => 
+          msg.id === messageId 
+            ? { 
+                ...msg, 
+                content: `Error generating response: ${streamError instanceof Error ? streamError.message : String(streamError)}`, 
+                isStreaming: false,
+                isError: true
+              } 
+            : msg
+        );
+        
+        this.setState({
+          ...this.state,
+          messages: errorMessages
+        });
       }
-      
-      // Signal completion
-      isComplete = true;
-      onToken('', true);
-      
-      // Send completion message
-      this.websocket?.send(JSON.stringify({
-        type: 'streaming_complete',
-        requestId: props.requestId,
-        messageId,
-        completeText: accumulatedText,
-        model: model
-      }));
-      
-      // Create and add the complete message to the history
-      const assistantMessage = {
-        id: messageId,
-        role: 'assistant' as const,
-        content: accumulatedText,
-        timestamp: new Date().toISOString()
-      };
-      
-      this.updateState({
-        messages: [...this.state.messages, assistantMessage]
-      } as Partial<T>);
-      
-      console.log(`[streamingInfer] Streaming complete, message added to history`);
     })();
 
-    return messageId;
+    // Return IDs needed for client tracking
+    return { requestId, messageId };
   } catch (error) {
-    console.error("[streamingInfer] Error:", error);
+    console.error("[streamingInfer] Error initializing stream:", error);
     
-    // Send error message
-    const errorText = `Error generating response: ${error instanceof Error ? error.message : String(error)}`;
-    onToken(errorText, true);
+    // Propagate error as a proper message in state
+    const errorMessageId = generateId();
+    const errorMessage = {
+      id: errorMessageId,
+      role: 'assistant',
+      content: `Error generating response: ${error instanceof Error ? error.message : String(error)}`,
+      isError: true,
+      timestamp: new Date().toISOString()
+    };
     
-    // Send error via WebSocket
-    this.websocket?.send(JSON.stringify({
-      type: 'streaming_error',
-      requestId: props.requestId,
-      error: errorText
-    }));
+    this.updateState({
+      messages: [...this.state.messages, errorMessage]
+    } as Partial<T>);
     
-    return '';
+    return { requestId: props.requestId || generateId(), messageId: errorMessageId };
   }
 }
 ```
 
 ### 2. WebSocket Message Handler Changes
 
-Update the message handler in the OpenAgent class to handle streaming messages:
+Update the message handler in the OpenAgent class to handle streaming requests:
 
 ```typescript
 // In the WebSocket message handler
 if (parsedMessage.type === "shared_infer") {
-  // Previous implementation using generateText
-  // const inferResponse = await this.sharedInfer(parsedMessage.params);
-  // ...
-
-  // New implementation using streamText
-  const messageId = await this.streamingInfer(
-    parsedMessage.params,
-    (token, isComplete) => {
-      // Optional callback for token handling
-      // This callback is useful for internal processing
-    }
-  );
-
-  // No immediate response needed - everything is streamed via WebSocket
-  return {
-    type: "stream_started",
-    requestId: parsedMessage.requestId,
-    messageId
-  };
+  // Check if streaming is requested
+  if (parsedMessage.streaming === true) {
+    // Use streamText implementation
+    const { requestId, messageId } = await this.streamingInfer({
+      ...parsedMessage.params,
+      requestId: parsedMessage.requestId
+    });
+    
+    // Return initial acknowledgment - actual content will be streamed via state updates
+    return {
+      type: "stream_started",
+      requestId: parsedMessage.requestId || requestId,
+      messageId
+    };
+  } else {
+    // Use existing generateText implementation for non-streaming requests
+    const inferResponse = await this.sharedInfer(parsedMessage.params);
+    
+    // Return response data as usual
+    return {
+      type: "inference_response",
+      requestId: parsedMessage.requestId,
+      result: inferResponse
+    };
+  }
 }
 ```
 
 ### 3. Frontend Changes (`solver-connector.tsx`)
 
-Update the client-side code to handle streamed responses:
+Update the client-side code to work with streamed responses from state:
 
 ```typescript
 // In the form submission handler
@@ -1450,98 +1510,89 @@ const userMessage = {
 };
 agent.setMessages([...agent.messages, userMessage]);
 
-// Create a placeholder for the streaming response
-const assistantMessageId = generateId();
-const assistantPlaceholder = {
-  id: assistantMessageId,
-  role: 'assistant' as const,
-  content: '', // Start with empty content
-  isStreaming: true // Mark as streaming for UI
-};
-
-// Add placeholder to UI
-agent.setMessages([...agent.messages, userMessage, assistantPlaceholder]);
-
-// Set up event listener for streaming updates
-const streamEventHandler = (event: MessageEvent) => {
-  const data = JSON.parse(event.data);
-  
-  if (data.type === 'streaming_response' && data.messageId === assistantMessageId) {
-    // Update placeholder message with accumulated content
-    agent.setMessages(prevMessages => 
-      prevMessages.map(msg => 
-        msg.id === assistantMessageId 
-          ? { ...msg, content: data.accumulatedText, isStreaming: true } 
-          : msg
-      )
-    );
-  }
-  else if (data.type === 'streaming_complete' && data.messageId === assistantMessageId) {
-    // Update with final content and mark as complete
-    agent.setMessages(prevMessages => 
-      prevMessages.map(msg => 
-        msg.id === assistantMessageId 
-          ? { ...msg, content: data.completeText, isStreaming: false } 
-          : msg
-      )
-    );
-    
-    // Clean up event listener
-    agent.webSocket?.removeEventListener('message', streamEventHandler);
-  }
-  else if (data.type === 'streaming_error' && data.requestId === requestId) {
-    // Handle error
-    agent.setMessages(prevMessages => 
-      prevMessages.map(msg => 
-        msg.id === assistantMessageId 
-          ? { ...msg, content: data.error, isError: true, isStreaming: false } 
-          : msg
-      )
-    );
-    
-    // Clean up event listener
-    agent.webSocket?.removeEventListener('message', streamEventHandler);
-  }
-};
-
-// Add event listener for streaming events
-agent.webSocket?.addEventListener('message', streamEventHandler);
+// Generate a request ID for tracking
+const requestId = generateId();
 
 // Send the inference request with streaming flag
-await agent.sendRawMessage({
-  type: "shared_infer",
-  requestId: requestId,
-  streaming: true, // New flag to indicate streaming is desired
-  params: {
-    model: "anthropic/claude-3.5-sonnet",
-    messages: allMessages,
-    system: systemPrompt,
-    temperature: 0.7,
-    max_tokens: 1000,
-    githubToken: githubToken
-  },
-  context: {
-    issue: formattedIssue,
-    project: formattedProject,
-    team: formattedTeam
-  }
-});
+try {
+  await agent.sendRawMessage({
+    type: "shared_infer",
+    requestId: requestId,
+    streaming: true, // Request streaming response
+    params: {
+      model: "anthropic/claude-3.5-sonnet",
+      messages: allMessages,
+      system: systemPrompt,
+      temperature: 0.7,
+      max_tokens: 1000,
+      githubToken: githubToken
+    },
+    context: {
+      issue: formattedIssue,
+      project: formattedProject,
+      team: formattedTeam
+    }
+  });
+  
+  // No need to handle streaming updates manually - they will come through 
+  // automatic state updates from the Durable Object
+  
+} catch (error) {
+  console.error("Error with streaming inference:", error);
+  
+  // Fallback to standard handleSubmit if streaming inference fails
+  console.log("Falling back to standard handleSubmit...");
+  agent.handleSubmit(inputValue)
+    .then(() => {
+      console.log("Message sent to agent via standard method");
+    })
+    .catch(fallbackError => {
+      console.error("Error with fallback message send:", fallbackError);
+    });
+}
 ```
 
 ### 4. UI Enhancements for Streaming
 
-Update the message display component to show streaming indicators:
+Update the message display component to handle streaming state:
 
 ```tsx
 // In the MessageList component or equivalent
 {message.isStreaming && (
-  <div className="animate-pulse">
-    <span className="inline-block w-2 h-2 bg-primary rounded-full mr-1 animate-blink"></span>
-    <span className="inline-block w-2 h-2 bg-primary rounded-full mr-1 animate-blink animation-delay-200"></span>
-    <span className="inline-block w-2 h-2 bg-primary rounded-full animate-blink animation-delay-400"></span>
+  <div className="flex items-center mt-1">
+    <div className="animate-pulse flex space-x-1">
+      <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+      <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse delay-75"></span>
+      <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse delay-150"></span>
+    </div>
+  </div>
+)}
+
+{message.isProcessingTools && (
+  <div className="text-xs text-muted-foreground mt-1">
+    <span className="animate-pulse">Processing tool calls...</span>
   </div>
 )}
 ```
+
+## Implementation Advantages with Durable Objects
+
+By leveraging Cloudflare Durable Objects' state management and synchronization capabilities, this implementation has several advantages:
+
+1. **Automatic State Synchronization**
+   - All state updates are automatically synced to connected clients
+   - No need for manual WebSocket message handling for streaming updates
+   - Works seamlessly with client refreshes and reconnections
+
+2. **Resilience**
+   - If a client disconnects and reconnects, they'll immediately see the current state
+   - No reliance on client-side event listeners that would be lost on refresh
+   - State persists in the Durable Object until explicitly removed
+
+3. **Simplicity**
+   - Consistent state update pattern across all agent operations
+   - Frontend doesn't need special handling for streaming vs. non-streaming responses
+   - Reduces code complexity by using built-in Durable Object features
 
 ## Implementation Steps
 
@@ -1550,18 +1601,19 @@ Update the message display component to show streaming indicators:
 
 2. **Backend Implementation**
    - Add the `streamingInfer` method to OpenAgent class
-   - Update the WebSocket message handler to use streaming for inference requests
-   - Add streaming-specific WebSocket message types and handlers
+   - Update the WebSocket message handler to use streaming for streaming requests
+   - Implement state-based text streaming updates
 
 3. **Frontend Implementation**
-   - Add state management for streaming messages in solver-connector.tsx
-   - Implement WebSocket event listeners for streaming updates
-   - Update the UI to show streaming indicators and partial responses
+   - Update UI components to handle streaming message states
+   - Add visual indicators for streaming and tool processing
+   - Ensure compatibility with existing message display
 
 4. **Testing**
    - Test streaming functionality with various models
    - Verify tool call execution works correctly with streaming
-   - Ensure UI updates properly as tokens arrive
+   - Test client refresh scenarios to ensure state persistence
+   - Ensure UI updates properly as state changes
 
 ## Benefits of Streaming Implementation
 
@@ -1572,13 +1624,13 @@ Update the message display component to show streaming indicators:
 
 2. **Better Responsiveness**
    - The UI feels more interactive and alive
-   - Users can stop generation early if needed
    - Tool executions can be visible as they happen
+   - Provides transparency into the agent's thought process
 
 3. **Technical Advantages**
-   - More efficient use of the WebSocket connection
-   - Clearer separation of message handling logic
-   - Better error handling and recovery options
+   - Leverages Durable Objects' built-in state synchronization
+   - More resilient to client disconnections and refreshes
+   - Simpler frontend implementation with fewer moving parts
 
 This implementation maintains all existing functionality while adding real-time streaming capabilities, providing a significant user experience improvement for the Solver agent.
 
