@@ -9,14 +9,18 @@
   },
   "dependencies": {
     "@ai-sdk/react": "1.2.2",
+    "@effect/ai": "0.13.11",
+    "@effect/ai-anthropic": "0.3.12",
+    "@effect/ai-openai": "0.16.12",
+    "ai": "^4.3.4",
     "ajv": "^8.17.1",
+    "effect": "3.14.11",
     "partysocket": "^1.1.2",
     "rxdb": "^15.12.0",
     "rxjs": "^7.8.1",
     "universal-user-agent": "^7.0.2",
     "uuid": "^11.1.0",
-    "z-schema": "^6.0.2",
-    "ai": "^4.3.4"
+    "z-schema": "^6.0.2"
   },
   "peerDependencies": {
     "react": "19.1.0",
