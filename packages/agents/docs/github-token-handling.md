@@ -1,14 +1,18 @@
 # GitHub Token Handling Guide
 
-This document explains how to properly handle GitHub tokens with the Solver agent in OpenAgents.
+This document explains how to properly handle GitHub tokens with agents in OpenAgents.
 
-## Important Warning
+## Critical Warning
 
-**NEVER CALL `agent.setGithubToken()` directly from client code!** This method is not callable over RPC and will result in the error:
+**NEVER CALL `agent.setGithubToken()` DIRECTLY FROM CLIENT CODE!** 
+
+This method is not callable over RPC and will result in the error:
 
 ```
 RPC error: Error: Method setGithubToken is not callable
 ```
+
+This applies to any usage of `cloudflareAgent.call('setGithubToken', [token])` or similar RPC-style calls!
 
 ## Correct Token Handling
 
