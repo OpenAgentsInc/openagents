@@ -4,332 +4,200 @@ This document explains the Solver agent, a specialized autonomous agent designed
 
 ## Overview
 
-Solver runs in the OpenAgents Projects dashboard and is implemented as a Cloudflare Durable Object using their [Agents SDK](https://developers.cloudflare.com/agents/api-reference/).
+Solver runs in the OpenAgents Projects dashboard and is implemented as a Cloudflare Durable Object using their [Agents SDK](https://developers.cloudflare.com/agents/api-reference/). The agent interacts with users through a chat interface and works within the OpenAgents Projects data model:
 
-Basic data model for OA Projects:
 - Teams have Projects
 - Projects have Issues
 - Issues have Implementation Steps and Comments
 
+Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`, with one Solver per issue.
+
 ## Architecture
 
-Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. There is one Solver per issue.
+The Solver architecture consists of several key components working together:
 
-### Key Components
+### Issue Page Interface
 
-1. **Issue Page**
-   - Located at `/issues/{uuid-of-issue}`
-   - Features a chat interface with the agent
-   - Shows complete action history with tools
-   - Includes right sidebar with:
-     - Connection status
-     - Issue details
-     - Agent controls
+The main user interface is located at `/issues/{uuid-of-issue}` and provides:
 
-2. **State Management**
-   - Extends BaseAgentState with solver-specific properties:
-     - messages: Array of UIMessage objects for chat history
-     - currentIssue: Current BaseIssue being worked on
-     - currentProject: Project context information
-     - currentTeam: Team context information
-     - implementationSteps: Array of step objects
-     - issueComments: Array of comment objects
-   - Maintains messages array for chat history
-   - Tracks current issue/project/team context
-   - Includes implementation steps and observations
-   - Uses scratchpad for agent's internal planning
-   - Handles deep cloning of state objects to prevent reference issues
-   - Maintains state update counter for debugging
-   - Ensures proper serialization of non-primitive objects
-   - Implements state recovery from message history
-   - Validates state updates before applying changes
-   - Implements deep state cloning for stability
-   - Handles race conditions in state updates
-   - Supports proper error recovery
-   - Maintains proper message ordering
-   - Includes extensive console logging
-   - Validates all state mutations
+- A chat interface for communicating with the agent
+- Complete action history with tool usage
+- Right sidebar with connection status, issue details, and agent controls
 
-3. **Message Handling**
-   - Processes WebSocket messages for various operations:
-     - get_system_prompt: Retrieves current system prompt
-     - set_context: Updates issue/project/team context
-     - observation: Records agent observations
-     - status_update: Handles status changes
-     - command: Processes specific commands
-     - shared_infer: Handles inference requests
-   - Supports system prompt requests with context validation
-   - Handles context setting and updates with validation
-   - Manages observations and status updates
-   - Processes inference requests using Llama 4
-   - Includes extensive error handling and logging
-   - Redacts sensitive information in logs
-   - Implements context recovery from message history
-   - Validates message data before processing
-   - Maintains proper message ordering
-   - Supports proper error reporting
-   - Handles missing context gracefully
-   - Implements proper state serialization
-   - Includes comprehensive debugging logs
-   - Supports proper error recovery
+### State Management
+
+The Solver extends BaseAgentState with specialized properties to track and maintain issue context:
+
+```typescript
+export interface SolverState extends BaseAgentState {
+  messages: UIMessage[]; 
+  currentIssue?: BaseIssue;
+  currentProject?: BaseProject;
+  currentTeam?: BaseTeam;
+  implementationSteps?: ImplementationStep[];
+  issueComments?: IssueComment[];
+}
+```
+
+The state management system handles:
+
+- Message history persistence
+- Issue/project/team context tracking
+- Implementation step progress
+- Deep cloning of state objects to prevent reference issues
+- State recovery from message history when context is lost
+- Race condition handling in concurrent updates
+
+### Message Handling
+
+The WebSocket message handler processes various operation types:
+
+- `get_system_prompt`: Retrieves the current system prompt with context
+- `set_context`: Updates the issue/project/team context
+- `observation`: Records agent observations during operation
+- `status_update`: Handles status change notifications
+- `command`: Processes specific agent commands
+- `shared_infer`: Handles inference requests using Llama 4
+
+The handler includes robust security features like redacting sensitive information in logs and validation of message data before processing.
 
 ## Core Files
 
-1. `packages/agents/src/agents/solver/index.ts`
-   - Defines main Solver agent class extending OpenAgent
-   - Implements WebSocket message handling with type safety
-   - Manages state updates and context with validation
-   - Handles inference requests with context recovery
-   - Includes extensive logging for debugging
-   - Implements context recovery mechanisms
-   - Handles message validation and error reporting
-   - Manages assistant responses and message history
-   - Uses AsyncLocalStorage for context management
-   - Implements deep state cloning for stability
-   - Provides type-safe state access methods
-   - Includes comprehensive error handling
-   - Supports temperature-based behavior adjustment
-   - Maintains proper message ordering and state consistency
-   - Implements proper state serialization
-   - Handles race conditions effectively
-   - Supports proper error recovery
-   - Includes extensive debugging capabilities
-   - Validates all state mutations
-   - Maintains proper security practices
+The Solver implementation is distributed across several key files:
 
-2. `packages/agents/src/common/open-agent.ts`
-   - Base OpenAgent class that Solver extends
-   - Provides common functionality for all agents
-   - Manages repository context and GitHub integration
-   - Implements shared inference using Cloudflare Workers AI
-   - Handles base state management
-   - Defines core agent capabilities
-   - Implements shared tool handling
-   - Provides base WebSocket handling
-   - Manages GitHub token securely
-   - Implements proper state updates
-   - Handles repository context changes
-   - Maintains working file context
-   - Supports agent observations
-   - Implements scratchpad functionality
-   - Provides base system prompt
-   - Handles inference with Llama 4
-   - Supports proper error handling
-   - Includes comprehensive logging
-   - Implements proper state serialization
-   - Maintains proper security practices
+### Main Agent Implementation
 
-3. `packages/agents/src/agents/solver/prompts.ts`
-   - Generates dynamic system prompts based on current state
-   - Implements SystemPromptOptions interface for configuration:
-     - state: SolverState for current context
-     - model: Optional model information
-     - temperature: Optional temperature setting (default 0.7)
-   - Includes comprehensive context in prompts:
-     - Current issue details (title, number, status, description)
-     - Project information (name, ID, color, icon)
-     - Team context (name, ID, key)
-     - Implementation steps with status
-     - Recent observations (last 3)
-     - Available tools and descriptions
-     - Working file context
-   - Adapts prompt based on temperature settings:
-     - Low temperature (<0.3): Focus on precision
-     - High temperature (>0.7): More creative solutions
-   - Includes usage guidelines and methodical approach
-   - Handles missing context gracefully
-   - Supports model-specific prompt adjustments
-   - Implements proper error handling
-   - Provides detailed logging for debugging
-   - Maintains consistent prompt structure
-   - Supports dynamic tool inclusion
-   - Includes extensive console logging
-   - Properly formats multi-line sections
-   - Handles undefined/null values safely
-   - Supports rich context recovery
-   - Implements proper state validation
-   - Maintains proper security practices
+`packages/agents/src/agents/solver/index.ts` defines the main Solver class that extends OpenAgent and implements:
 
-4. `packages/agents/src/agents/solver/types.ts`
-   - Defines SolverState interface extending BaseAgentState:
-     - messages: UIMessage[] for chat history
-     - currentIssue?: BaseIssue for active issue
-     - currentProject?: BaseProject for project context
-     - currentTeam?: BaseTeam for team context
-     - implementationSteps?: ImplementationStep[] for tracking progress
-     - issueComments?: IssueComment[] for discussion history
-   - Defines SolverIssue interface extending BaseIssue
-   - Ensures type safety throughout the agent
-   - Supports proper TypeScript inference
-   - Enables IDE autocompletion
-   - Facilitates code maintenance
-   - Imports core types from @openagents/core
-   - Uses optional properties for flexibility
-   - Maintains strict type checking
-   - Enables proper state management
-   - Supports proper error handling
-   - Includes comprehensive documentation
+- WebSocket message handling with type safety
+- Context management and recovery mechanisms
+- Inference request processing
+- State serialization and deep cloning
+- Comprehensive error handling and logging
 
-5. `packages/agents/src/agents/solver/tools.ts`
-   - Defines solver-specific tools using the AI SDK:
-     - getIssueDetails: Fetches issue information from OpenAgents/GitHub
-     - updateIssueStatus: Updates issue status with optional comments
-     - createImplementationPlan: Generates step-by-step solution plans
-   - Implements comprehensive error handling
-   - Supports both OpenAgents and GitHub issues
-   - Uses Zod for parameter validation
-   - Maintains proper TypeScript types
-   - Handles GitHub API integration
-   - Supports status updates with comments
-   - Implements proper state management
-   - Uses solverContext for agent access
-   - Provides detailed error messages
-   - Supports async/await operations
-   - Includes extensive logging
-   - Handles API rate limiting
-   - Maintains proper security practices
-   - Supports proper error recovery
-   - Implements proper state validation
+### Base Agent Functionality
 
-6. `packages/agents/src/common/tools/index.ts`
-   - Defines tools common to all OpenAgents
-   - Implements shared functionality
-   - Provides base tool types
-   - Ensures proper type safety
-   - Includes comprehensive documentation
-   - Supports proper error handling
-   - Maintains consistent interfaces
-   - Implements proper validation
-   - Includes detailed logging
+`packages/agents/src/common/open-agent.ts` provides the foundation for all agents in the system:
 
-7. `packages/agents/src/common/types.ts`
-   - Defines BaseAgentState shared by all agents
-   - Implements core type definitions
-   - Ensures consistency across agents
-   - Provides proper type safety
-   - Includes comprehensive documentation
-   - Supports proper state management
-   - Maintains proper interfaces
-   - Implements proper validation
+- Common functionality shared across different agent types
+- Repository context and GitHub integration
+- Shared inference using Cloudflare Workers AI
+- Base WebSocket handling and state management
+- Secure token management
 
-8. Web Interface Components:
-   - `apps/website/app/routes/issues/$id.tsx`: Issue page
-   - `apps/website/app/components/agent/solver-connector.tsx`: Chat interface
-   - `apps/website/app/components/agent/solver-controls.tsx`: Sidebar controls
+### Dynamic Prompt Generation
+
+`packages/agents/src/agents/solver/prompts.ts` handles system prompt generation:
+
+- Creates dynamic prompts based on current state and context
+- Configures behavior through temperature settings
+- Incorporates comprehensive context including issue details, project information, team context, and implementation status
+- Adapts behavior based on temperature:
+  - Low temperature (<0.3): Focuses on precision and correctness
+  - High temperature (>0.7): Provides more creative solutions
+
+### Type Definitions
+
+`packages/agents/src/agents/solver/types.ts` provides TypeScript interfaces:
+
+- SolverState extending BaseAgentState with solver-specific properties
+- SolverIssue extending BaseIssue for specialized functionality
+- Type safety throughout the implementation
+
+### Tool Implementation
+
+`packages/agents/src/agents/solver/tools.ts` defines specialized tools:
+
+- `getIssueDetails`: Fetches comprehensive issue information
+- `updateIssueStatus`: Updates issue status with optional comments
+- `createImplementationPlan`: Generates step-by-step solution plans
+
+### Web Interface Components
+
+The frontend components handle rendering and user interaction:
+
+- `apps/website/app/routes/issues/$id.tsx`: Main issue page
+- `apps/website/app/components/agent/solver-connector.tsx`: Chat interface
+- `apps/website/app/components/agent/solver-controls.tsx`: Sidebar controls
 
 ## Agent Capabilities
 
-The Solver agent is designed to:
-1. Analyze issue descriptions and requirements
-2. Plan implementation steps methodically
-3. Research existing codebase context
-4. Implement solutions through code modifications
-5. Test changes for issue resolution
-6. Document solutions and reasoning
-7. Update issue status and progress
-8. Maintain context across interactions
-9. Recover from context loss
-10. Handle temperature-based behavior adjustments
-11. Support proper error recovery
-12. Maintain proper security practices
-13. Implement proper state validation
-14. Handle race conditions effectively
-15. Support comprehensive logging
+The Solver agent provides a comprehensive set of capabilities for issue resolution:
+
+1. **Analysis and Planning**
+   - Analyzes issue descriptions and requirements
+   - Plans implementation steps methodically
+   - Researches existing codebase context
+
+2. **Implementation**
+   - Implements solutions through code modifications
+   - Tests changes for issue resolution
+   - Documents solutions and reasoning
+
+3. **Progress Management**
+   - Updates issue status and progress
+   - Maintains context across interactions
+   - Recovers from context loss
+
+4. **Technical Robustness**
+   - Handles temperature-based behavior adjustments
+   - Implements proper error recovery
+   - Maintains security best practices
+   - Handles race conditions effectively
+   - Provides comprehensive logging
 
 ## Implementation Details
 
-- Uses Cloudflare Workers AI with Llama 4 for inference
-- Maintains persistent state through Durable Objects
-- Implements robust error handling and logging
-- Supports temperature-based behavior adjustment:
-  - Low temperature (<0.3): Focus on precision and correctness
-  - High temperature (>0.7): More creative and exploratory solutions
-- Uses TypeScript for type safety
-- Includes extensive debugging capabilities
-- Implements deep state cloning for stability
-- Handles WebSocket communication securely
-- Maintains message history with proper typing
-- Supports context recovery from message history
-- Implements proper state serialization
-- Validates all state updates
-- Handles race conditions in state updates
-- Provides comprehensive logging
-- Supports proper error reporting
-- Maintains proper security practices
-- Implements proper state validation
-- Handles undefined/null values safely
-- Supports rich context recovery
+The Solver uses several advanced techniques:
 
-## Additional Resources
-
-- `packages/agents/docs/shared-inference-implementation.md`: Details on the inference method used by agents (may need updates)
+- **Inference**: Cloudflare Workers AI with Llama 4
+- **State**: Persistent state through Durable Objects
+- **TypeScript**: Strong typing for code quality and maintainability
+- **WebSockets**: Real-time communication with clients
+- **State Cloning**: Deep cloning to prevent reference issues
+- **Context Recovery**: Rebuilding state from message history when needed
+- **Security**: Proper token handling and sensitive data redaction
 
 ## Usage
 
-When messaging the agent through the issue chatbox, messages are appended to the agent's `messages` array as UIMessages from the AI SDK. The agent processes these through its WebSocket handler and can respond using various tools and capabilities.
+When using the Solver agent through the issue chatbox:
 
-The agent maintains context across interactions and can adapt its behavior based on:
-- Current state of the issue
+1. Messages are appended to the agent's `messages` array as UIMessages
+2. The agent processes these through its WebSocket handler
+3. Responses are generated with appropriate context and tools
+
+The agent maintains context across interactions and adapts behavior based on:
+- Current issue state
 - Project and team context
 - Implementation progress
 - Temperature settings
 - Available tools
 - Recent observations
-- Working file context
-- Message history for recovery
-- State validation rules
-- Security practices
-- Error handling policies
-- Race condition handling
-- Logging requirements
-- Performance considerations
 
-### Guidelines for Interaction
+### Interaction Guidelines
 
-1. The agent follows a methodical approach to issue resolution:
-   - Understand requirements
-   - Plan implementation
-   - Research context
-   - Implement solution
-   - Test changes
-   - Document reasoning
-   - Update status
-   - Handle errors
-   - Maintain security
-   - Validate state
+The Solver follows a methodical approach to issue resolution:
 
-2. All changes are documented with:
-   - Clear explanations
-   - Implementation decisions
-   - Status updates
-   - Progress tracking
-   - File modifications
-   - Context information
-   - Error handling
-   - Security considerations
-   - State validation
-   - Performance impact
+1. **Understanding Phase**
+   - Analyzes issue requirements
+   - Researches context and background
+   - Plans implementation approach
 
-3. The agent can recover context from message history if state is lost:
-   - Searches message history for context
-   - Rebuilds state from found context
-   - Validates recovered state
-   - Maintains operation continuity
-   - Handles errors gracefully
-   - Ensures security
-   - Logs recovery process
-   - Updates status accordingly
-   - Notifies when complete
-   - Verifies consistency
+2. **Implementation Phase**
+   - Develops solution step-by-step
+   - Tests changes thoroughly
+   - Documents reasoning and decisions
 
-4. Temperature settings influence behavior:
-   - Lower (<0.3): More precise and careful
-   - Higher (>0.7): More creative while maintaining correctness
-   - Adapts prompts based on temperature
-   - Maintains consistency in approach
-   - Ensures proper validation
-   - Handles errors appropriately
-   - Logs behavior changes
-   - Updates status accordingly
-   - Maintains security
-   - Verifies results
+3. **Context Recovery**
+   - If state is lost, the agent can rebuild context from message history
+   - Validates recovered state for consistency
+   - Maintains continuity of operation
+
+4. **Temperature Adaptation**
+   - Lower temperature (<0.3): More precise and careful analysis
+   - Higher temperature (>0.7): More creative problem-solving
+   - Consistent validation regardless of temperature setting
+
+## Additional Resources
+
+For more details on the inference implementation, see `packages/agents/docs/shared-inference-implementation.md`.
