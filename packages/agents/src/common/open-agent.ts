@@ -44,13 +44,15 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
   }
 
   /**
-   * Sets the GitHub token in the agent's state and ensures it's properly persisted
-   * This method has been hardened to ensure token persistence
+   * PRIVATE METHOD - DO NOT CALL VIA RPC
    * 
-   * IMPORTANT: This must be defined as a regular method, not an async method,
-   * because async methods can't be called over the RPC interface.
+   * Sets the GitHub token in the agent's state.
+   * This method is NOT intended to be called via RPC.
+   * Clients should use the message passing approach instead:
+   * Send a message with: type: "set_github_token", token: "your-token"
    */
-  setGithubToken(token: string) {
+  // @private - Adding comment to make clear this isn't intended for RPC
+  private setGithubToken(token: string) {
     if (!token) {
       console.error("setGithubToken: Empty or null token was provided!");
       return { success: false, message: "GitHub token cannot be empty" };
@@ -86,6 +88,10 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     return { success: true, message: "GitHub token updated", tokenLength: token.length };
   }
 
+  /**
+   * Retrieves the GitHub token from the agent's state.
+   * This method is safe to call via RPC.
+   */
   getGithubToken() {
     return this.state.githubToken || "";
   }
@@ -297,11 +303,17 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       if (githubToken && typeof githubToken === 'string') {
         console.log(`[sharedInfer] Using GitHub token from parameters (length: ${githubToken.length})`);
         try {
-          // Apply token directly to state instead of calling setGithubToken
-          this.updateState({
+          // Apply token directly to state - NEVER call setGithubToken
+          // Apply directly to both the state object and persist via setState
+          this.state.githubToken = githubToken;
+          
+          // Use setState for persistence (this is synchronous)
+          this.setState({
+            ...this.state,
             githubToken: githubToken
-          } as Partial<T>);
-          console.log("[sharedInfer] ✓ Token applied to state");
+          });
+          
+          console.log("[sharedInfer] ✓ Token applied directly to state");
         } catch (tokenError) {
           console.error("[sharedInfer] ✗ Failed to apply token to state:", tokenError);
         }

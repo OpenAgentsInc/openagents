@@ -293,11 +293,18 @@ export class Solver extends OpenAgent<SolverState> {
             const token = parsedMessage.token;
             if (token && typeof token === 'string') {
               console.log(`Setting GitHub token from message (length: ${token.length})`);
-              // Don't call this.setGithubToken directly - use updateState instead
-              this.updateState({
+              
+              // IMPORTANT: Don't call this.setGithubToken - use direct state update
+              // This avoids any RPC callable method issues
+              this.setState({
+                ...this.state,
                 githubToken: token
-              } as Partial<SolverState>);
-              console.log("✓ GitHub token applied to state directly");
+              });
+              
+              console.log("✓ GitHub token applied directly to state");
+              
+              // Add an observation to record this action
+              this.addAgentObservation(`GitHub token updated (length: ${token.length})`);
               
               // Send success response back to client
               connection.send(JSON.stringify({

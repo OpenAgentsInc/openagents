@@ -128,35 +128,32 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
       console.log("Step 1: Setting GitHub token...");
 
       try {
-        // Set token with timeout
-        const tokenResult = await Promise.race([
-          agent.setGithubToken(githubToken),
+        // IMPORTANT: Don't call setGithubToken directly - use message passing
+        await Promise.race([
+          agent.sendRawMessage({
+            type: "set_github_token",
+            token: githubToken
+          }),
           timeoutPromise
         ]);
         
-        // Check if the token operation was successful
-        if (tokenResult && tokenResult.success) {
-          console.log("✓ GitHub token set successfully");
-          
-          // Double-check token persistence via a separate call
-          setTimeout(async () => {
-            try {
-              // Using a non-awaited promise to not block the connection flow
-              agent.sendRawMessage({
-                type: "command",
-                command: "verify_token"
-              });
-            } catch (e) {
-              console.warn("Token verification message failed:", e);
-            }
-          }, 500);
-        } else {
-          console.error("✗ GitHub token setting reported failure:", tokenResult);
-          throw new Error(`Failed to set GitHub token: ${JSON.stringify(tokenResult)}`);
-        }
+        console.log("✓ GitHub token set message sent successfully");
+        
+        // Double-check token persistence via a separate call
+        setTimeout(async () => {
+          try {
+            // Using a non-awaited promise to not block the connection flow
+            agent.sendRawMessage({
+              type: "command",
+              command: "verify_token"
+            });
+          } catch (e) {
+            console.warn("Token verification message failed:", e);
+          }
+        }, 500);
       } catch (error) {
-        console.error("✗ Failed to set GitHub token:", error);
-        throw new Error(`Failed to set GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
+        console.error("✗ Failed to send GitHub token message:", error);
+        throw new Error(`Failed to send GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
 
       // Basic step 2: Set repository context
@@ -604,9 +601,14 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
                   }
 
                   function fetchSystemPrompt() {
-                    // Fetch the system prompt
-                    agent.getSystemPrompt()
-                      .then(prompt => {
+                    // Fetch the system prompt by sending a message instead of direct RPC call
+                    agent.sendRawMessage({
+                      type: "get_system_prompt",
+                      requestId: "prompt_req_" + Date.now() + "_" + Math.random().toString(36).substring(2, 10)
+                    })
+                      .then(response => {
+                        // Extract the prompt from the response
+                        const prompt = response?.prompt || "Error: No prompt received from agent";
                         console.log("System prompt received from agent:", prompt.substring(0, 100) + "...");
 
                         // Check if it has our project/team sections
