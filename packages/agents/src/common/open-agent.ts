@@ -43,13 +43,45 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     console.log('[updateState] Updated in-memory state via this.setState.');
   }
 
-  setGithubToken(token: string) {
+  /**
+   * Sets the GitHub token in the agent's state and ensures it's properly persisted
+   * This method has been hardened to ensure token persistence
+   */
+  async setGithubToken(token: string) {
+    if (!token) {
+      console.error("setGithubToken: Empty or null token was provided!");
+      return { success: false, message: "GitHub token cannot be empty" };
+    }
+    
+    console.log(`setGithubToken: Setting GitHub token (length: ${token.length})`);
+    
+    // First, update the state with the new token
     this.updateState({
       githubToken: token
     } as Partial<T>);
 
-    console.log("GitHub token updated");
-    return { success: true, message: "GitHub token updated" };
+    // CRITICAL: Force a state persistence using setState directly
+    // This ensures the Durable Object persists the token immediately
+    await this.setState({
+      ...this.state,
+      githubToken: token
+    });
+    
+    // Double verify the token was properly set
+    if (this.state.githubToken !== token) {
+      console.error("setGithubToken: Token was not properly set in state after direct setState!");
+      return { success: false, message: "Failed to update GitHub token in state" };
+    }
+    
+    // Add an observation to record this action
+    try {
+      this.addAgentObservation(`GitHub token updated (length: ${token.length})`);
+    } catch (e) {
+      console.error("Failed to add observation:", e);
+    }
+
+    console.log("GitHub token updated successfully and persisted");
+    return { success: true, message: "GitHub token updated", tokenLength: token.length };
   }
 
   getGithubToken() {
@@ -153,28 +185,55 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       } as ToolResultPart;
 
     } catch (error) {
-      // Handle errors from tool execution
-      console.error(`[executeToolEffect] Tool '${toolName}' execution failed:`, error);
-
-      // Format a user-friendly error message
+      // Enhanced error handling with detailed logging
+      console.error(`[executeToolEffect] Tool '${toolName}' execution failed. Raw error:`, error);
+      
       // Check if this is an enriched error from our effectTool
-      const isEnrichedError = error instanceof Error &&
-        (error as any).effectError !== undefined;
-
-      // Create the base error message
-      let errorMessage = error instanceof Error
-        ? error.message
-        : `Tool '${toolName}' failed: ${String(error)}`;
-
-      // Log detailed information for debugging
-      console.error(`[executeToolEffect] ${errorMessage}`);
-
-      // If we have an enriched error with additional context, log it
+      const isEnrichedError = error instanceof Error && 
+                              (error as any).effectError !== undefined;
+      console.log(`[executeToolEffect] Is enriched error? ${isEnrichedError}`);
+      
+      // Access the GitHub token for debugging (to confirm if it's really missing)
+      console.log(`[executeToolEffect] Agent state check:`, { 
+        hasToken: !!this.state.githubToken,
+        tokenLength: this.state.githubToken ? this.state.githubToken.length : 0,
+        repoContext: `${this.state.currentRepoOwner || 'none'}/${this.state.currentRepoName || 'none'}`
+      });
+      
+      // Create a user-friendly error message
+      let errorMessage = "Tool execution failed.";
+      
+      if (error instanceof Error) {
+        // Use the error message directly
+        errorMessage = error.message;
+        
+        // Special handling for GitHub token errors (detected by message content)
+        if (error.message.includes("GitHub token")) {
+          errorMessage = `GitHub token is missing. Please make sure you've connected your GitHub account.`;
+          
+          // Try to set a diagnostic observation
+          try {
+            this.addAgentObservation("Error detected: GitHub token is missing or invalid");
+          } catch (e) {
+            console.error("Failed to add observation:", e);
+          }
+        }
+      } else {
+        // Fallback for non-Error objects
+        errorMessage = `Tool '${toolName}' failed: ${String(error)}`;
+      }
+      
+      console.log(`[executeToolEffect] Formatted error message: ${errorMessage}`);
+      
+      // Enhanced logging for enriched errors
       if (isEnrichedError) {
         const enrichedError = error as any;
-        console.log(`[executeToolEffect] Effect error details:`,
-          `Type: ${enrichedError.causeType}`,
-          enrichedError.effectError);
+        console.log("[executeToolEffect] Enriched error details:", {
+          causeType: enrichedError.causeType || 'unknown',
+          effectError: enrichedError.effectError || {},
+          hasOriginalError: !!enrichedError.originalError,
+          errorMessage: errorMessage
+        });
       }
 
       // Return error ToolResultPart with detailed information if available
@@ -216,8 +275,22 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     console.log("[sharedInfer] Using OpenRouter model:", openRouterModel);
 
     try {
+      // Check GitHub token status before attempting any operations
+      const hasValidToken = !!this.state.githubToken && this.state.githubToken.length > 0;
+      console.log("[sharedInfer] GitHub token status:", {
+        hasToken: hasValidToken,
+        tokenLength: this.state.githubToken ? this.state.githubToken.length : 0, 
+        repoContext: `${this.state.currentRepoOwner || 'none'}/${this.state.currentRepoName || 'none'}`
+      });
+      
+      // If we might need to use GitHub-related tools, warn about missing token
+      if (!hasValidToken) {
+        console.warn("[sharedInfer] No valid GitHub token found. GitHub-related tools will fail.");
+        this.addAgentObservation("Warning: No GitHub token available. GitHub operations will fail.");
+      }
+      
       const openrouter = createOpenRouter({
-        apiKey: (env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
+        apiKey: (this.env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
       });
       console.log("[sharedInfer] Created OpenRouter provider");
 

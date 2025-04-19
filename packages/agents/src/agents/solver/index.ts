@@ -239,7 +239,50 @@ export class Solver extends OpenAgent<SolverState> {
         case "command":
           // Handle command message
           console.log(`Command received: ${parsedMessage.command}`, parsedMessage.params);
-          // Implement command handling logic as needed
+          
+          // Command handler based on command type
+          switch (parsedMessage.command) {
+            case "verify_token":
+              // Verify GitHub token exists and report status
+              const hasToken = !!this.state.githubToken && this.state.githubToken.length > 0;
+              console.log("TOKEN VERIFICATION:", {
+                hasToken: hasToken,
+                tokenLength: this.state.githubToken ? this.state.githubToken.length : 0,
+                hasContext: !!this.state.currentIssue && !!this.state.currentProject
+              });
+              
+              // Send response back to client
+              connection.send(JSON.stringify({
+                type: "command_response",
+                command: "verify_token",
+                success: hasToken,
+                details: {
+                  hasToken: hasToken,
+                  tokenLength: this.state.githubToken ? this.state.githubToken.length : 0,
+                  contextStatus: {
+                    hasIssue: !!this.state.currentIssue,
+                    hasProject: !!this.state.currentProject
+                  }
+                },
+                timestamp: new Date().toISOString()
+              }));
+              
+              // If token is missing, also log an observation
+              if (!hasToken) {
+                this.addAgentObservation("Token verification failed: GitHub token is missing or empty.");
+              }
+              break;
+              
+            default:
+              console.log(`Unknown command: ${parsedMessage.command}`);
+              connection.send(JSON.stringify({
+                type: "command_error",
+                command: parsedMessage.command,
+                error: "Unknown command",
+                timestamp: new Date().toISOString()
+              }));
+              break;
+          }
           break;
           
         case "shared_infer":

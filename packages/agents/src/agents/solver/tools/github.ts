@@ -98,10 +98,22 @@ export const fetchFileContents = effectTool({
       }
 
       const token = agent.state.githubToken;
+      console.log("[fetchFileContents] Token check:", {
+        agentExists: !!agent,
+        stateExists: !!agent?.state,
+        hasToken: !!token,
+        tokenLength: token ? token.length : 0
+      });
+        
       if (!token) {
-        // Treat missing token as a defect for now
-        return yield* Effect.dieMessage(
-          "GitHub token is missing in agent state for fetchFileContents tool"
+        // Change from dieMessage to fail with GitHubApiError for better error handling
+        // This is an expected condition that should be reported to the user
+        return yield* Effect.fail(
+          new GitHubApiError({
+            message: "GitHub token is missing. Please reconnect the agent with a valid GitHub token.",
+            status: 401,
+            url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}${branch ? `?ref=${branch}` : ''}`
+          })
         );
       }
 

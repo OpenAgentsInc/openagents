@@ -128,11 +128,32 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
       console.log("Step 1: Setting GitHub token...");
 
       try {
-        await Promise.race([
+        // Set token with timeout
+        const tokenResult = await Promise.race([
           agent.setGithubToken(githubToken),
           timeoutPromise
         ]);
-        console.log("✓ GitHub token set successfully");
+        
+        // Check if the token operation was successful
+        if (tokenResult && tokenResult.success) {
+          console.log("✓ GitHub token set successfully");
+          
+          // Double-check token persistence via a separate call
+          setTimeout(async () => {
+            try {
+              // Using a non-awaited promise to not block the connection flow
+              agent.sendRawMessage({
+                type: "command",
+                command: "verify_token"
+              });
+            } catch (e) {
+              console.warn("Token verification message failed:", e);
+            }
+          }, 500);
+        } else {
+          console.error("✗ GitHub token setting reported failure:", tokenResult);
+          throw new Error(`Failed to set GitHub token: ${JSON.stringify(tokenResult)}`);
+        }
       } catch (error) {
         console.error("✗ Failed to set GitHub token:", error);
         throw new Error(`Failed to set GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
