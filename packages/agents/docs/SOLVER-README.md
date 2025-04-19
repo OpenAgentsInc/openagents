@@ -224,8 +224,12 @@ const connectToSolver = async () => {
     team: formattedTeam
   });
 
-  // Send initial prompt and start inference
+  // Send initial prompt
   await agent.handleSubmit(initialPrompt);
+
+  // Start inference - this properly passes the token via params
+  // Never try to directly obtain the system prompt via agent.getSystemPrompt() - use message passing instead
+  // Example: agent.sendRawMessage({ type: "get_system_prompt", requestId: "some-id" })
   await agent.infer(githubToken);
 
   setConnectionState('connected');
@@ -343,8 +347,18 @@ The secure handling of GitHub tokens is a critical aspect of the Solver agent ar
    - It's sent to the agent via a secure WebSocket connection when establishing a connection
 
 2. **Token Storage**
-   - The token is stored in the agent's state using the `setGithubToken` method
-   - It's kept in the `githubToken` property of the `BaseAgentState` interface
+   - **⚠️ IMPORTANT:** The token must be sent using message passing, NOT direct method calls
+     ```typescript
+     // CORRECT WAY - Send via message
+     agent.sendRawMessage({
+       type: "set_github_token",
+       token: githubToken
+     });
+
+     // INCORRECT WAY - Will cause RPC error
+     // agent.setGithubToken(githubToken) // THIS WILL FAIL!
+     ```
+   - On the server side, the token is stored in `githubToken` property of the `BaseAgentState`
    - This state is maintained by Cloudflare's Durable Object storage mechanism
    - The token is never persisted to disk or any external storage system
    - State is specific to the individual agent instance (one per issue)
@@ -490,6 +504,170 @@ if (agent) {
   // Access other state properties or agent methods...
 }
 ```
+
+## 7. How to Add New Tools to the Solver Agent
+
+Adding new capabilities to the Solver agent involves creating and registering tools. These tools allow the agent (guided by the LLM) to perform specific actions, like fetching data, updating issues, or interacting with external APIs.
+
+We currently support two primary ways to implement tool logic:
+
+1.  **Standard `async/await` Tools:** Suitable for simpler tasks or integrating existing Promise-based logic.
+2.  **Effect-based Tools:** Recommended for more complex tasks involving intricate asynchronous flows, robust error handling, or potential dependency management needs. Leveraging the `effectTool` factory simplifies integration.
+
+**Steps to Add a New Tool:**
+
+**Step 1: Define the Tool's Purpose and Parameters**
+
+*   Clearly define what the tool should do.
+*   Determine the necessary input parameters.
+*   Use **Zod** to define the schema for these parameters. This schema is used by the Vercel AI SDK to validate the arguments provided by the LLM.
+
+    ```typescript
+    // Example: Define parameters for a new tool
+    import { z } from "zod";
+
+    const MyNewToolParams = z.object({
+      targetId: z.string().describe("The ID of the target resource."),
+      optionalFlag: z.boolean().optional().describe("An optional flag."),
+    });
+    ```
+
+**Step 2: Implement the Tool's Execution Logic**
+
+Choose **one** of the following implementation methods:
+
+**Method A: Standard `async/await` Tool**
+
+*   Use this for straightforward, Promise-based operations.
+*   Use the standard `tool()` function from the `ai` package.
+*   The `execute` function should be `async` and return a `Promise` resolving to the tool's result. Standard `try/catch` can be used for error handling, throwing regular `Error` objects.
+
+    ```typescript
+    // Example: Standard async tool implementation
+    import { tool } from "ai";
+    import { z } from "zod"; // Assuming Zod parameters defined above
+
+    export const myStandardTool = tool({
+        description: "A brief description of what this standard tool does.",
+        parameters: MyNewToolParams, // Use the Zod schema from Step 1
+        execute: async ({ targetId, optionalFlag }) => {
+            console.log(`Executing standard tool for ${targetId}`);
+            try {
+                // Your async logic here (e.g., fetch, simple processing)
+                const result = await somePromiseBasedOperation(targetId, optionalFlag);
+                // Return the successful result
+                return { success: true, data: result };
+            } catch (error) {
+                console.error("Standard tool failed:", error);
+                // Throw a standard error for executeToolEffect to catch
+                throw new Error(`Standard tool failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        },
+    });
+    ```
+
+**Method B: Effect-based Tool (Recommended for Complexity/Robustness)**
+
+*   Use this for complex operations needing robust, typed error handling, composition, or access to shared agent context/dependencies.
+*   Leverage the custom `effectTool()` factory function (`packages/agents/src/agents/solver/tools/effect-tool.ts`).
+*   Define specific, tagged error types using `Data.TaggedError` for the tool's potential failures.
+*   The `execute` function should return an `Effect<SuccessType, ErrorType, RequirementsType>`. Use `Effect.gen` for the implementation.
+*   Access agent state/context using `Effect.sync(() => solverContext.getStore())` if needed.
+*   The `effectTool` factory automatically handles running the `Effect` (`Effect.runPromise`) and converting Effect failures (`FiberFailure`/`Cause`) into standard `Error` objects enriched with details.
+
+    ```typescript
+    // Example: Effect-based tool implementation
+    import { effectTool } from "./effect-tool"; // Import the factory
+    import { Effect, Data } from "effect";
+    import { z } from "zod"; // Assuming Zod parameters defined above
+    import { solverContext } from "../index"; // If agent context is needed
+
+    // Define specific errors
+    class MyToolApiError extends Data.TaggedError("MyToolApiError")<{ reason: string }> {}
+    class MyToolProcessingError extends Data.TaggedError("MyToolProcessingError")<{ details: string }> {}
+    type MyToolError = MyToolApiError | MyToolProcessingError;
+
+    export const myEffectTool = effectTool({
+        description: "A brief description of what this Effect tool does.",
+        parameters: MyNewToolParams, // Use the Zod schema from Step 1
+        // Execute returns an Effect directly
+        execute: ({ targetId, optionalFlag }): Effect.Effect<{ outcome: string }, MyToolError, never> => {
+            return Effect.gen(function*() {
+                console.log(`Executing Effect tool for ${targetId}`);
+
+                // Example: Access agent state if needed
+                const agent = yield* Effect.sync(() => solverContext.getStore());
+                const token = agent?.state.githubToken; // Use token safely
+
+                // Wrap async/fallible operations in Effect
+                const apiResult = yield* Effect.tryPromise({
+                    try: () => someApiCall(targetId, token),
+                    catch: (unknown) => new MyToolApiError({ reason: `API call failed: ${unknown}` })
+                });
+
+                if (!apiResult.success) {
+                    return yield* Effect.fail(new MyToolProcessingError({ details: "Processing failed after API call" }));
+                }
+
+                // Return the successful result
+                return { outcome: `Processed ${apiResult.data}` };
+            }); // R is 'never' if no explicit services are required yet
+        },
+    });
+    ```
+
+**Step 3: Register the Tool**
+
+*   **File:** `packages/agents/src/agents/solver/tools.ts`
+*   **Action:** Import your new tool (either `myStandardTool` or `myEffectTool`) and add it to the `solverTools` exported object. Ensure the key matches the name the LLM should use. Update the `SolverToolName` type if necessary.
+
+    ```typescript
+    // packages/agents/src/agents/solver/tools.ts
+    import { getIssueDetails /*...*/ } from "./tools/issueManagement";
+    import { fetchFileContents } from "./tools/github";
+    import { myStandardTool } from "./tools/myStandardTool"; // Import new standard tool
+    import { myEffectTool } from "./tools/myEffectTool";   // Import new Effect tool
+
+    export const solverTools = {
+      getIssueDetails,
+      updateIssueStatus,
+      createImplementationPlan,
+      fetchFileContents,
+      myStandardTool, // Add the new standard tool
+      myEffectTool,   // Add the new Effect tool
+      // ... any other solver-specific tools
+    };
+
+    export type SolverToolName = keyof typeof solverTools;
+    ```
+
+**Step 4: Update the System Prompt**
+
+*   **File:** `packages/agents/src/agents/solver/prompts.ts` (`getSolverSystemPrompt` function).
+*   **Action:** Add the new tool's name and description to the "Available tools" section within the system prompt string. This makes the LLM aware that the tool exists and how to use it.
+
+    ```typescript
+    // Inside getSolverSystemPrompt...
+    // ...
+    systemPrompt += `\n\nAvailable tools:`;
+    availableTools.forEach(toolName => {
+        // Existing logic to get toolObj...
+        if (toolObj) {
+            systemPrompt += `\n- \`${toolName}\`: ${toolObj.description || 'No description available'}`;
+        }
+    });
+    // Ensure your new tool's details are included here based on the solverTools object.
+    // ...
+    ```
+
+**Step 5: Test**
+
+*   Run the agent locally (`wrangler dev` + `npm run dev` for website).
+*   Interact with the agent via the chat interface, crafting prompts that should trigger your new tool.
+*   Verify the tool executes correctly (check logs, expected outcomes).
+*   Test failure cases for the tool and ensure errors are handled gracefully and reported back appropriately.
+
+By following these steps, you can extend the Solver agent's capabilities by adding either standard async tools or more robust, type-safe Effect-based tools using the provided `effectTool` factory.
 
 ### GitHub Token Scope Requirements
 
@@ -1057,16 +1235,54 @@ This approach aims to leverage the strengths of both Cloudflare Durable Objects 
 
 [**Effect Framework Considerations for Solver Agent (`packages/agents/docs/solver-effect-considerations.md`)**](/packages/agents/docs/SOLVER-README.md)
 
+## Troubleshooting Common Issues
+
+### "Method is not callable" Error
+
+If you receive a "Method is not callable" error:
+- You are trying to call a method directly via RPC that isn't callable
+- Most commonly this happens with `setGithubToken` or `getSystemPrompt`
+- **Solution**: Use message passing instead of direct method calls
+
+```typescript
+// INCORRECT - Will cause "Method setGithubToken is not callable" error
+await agent.setGithubToken(token);
+
+// CORRECT - Use message passing
+await agent.sendRawMessage({
+  type: "set_github_token",
+  token: token
+});
+
+// INCORRECT - Will cause "Method getSystemPrompt is not callable" error
+const prompt = await agent.getSystemPrompt();
+
+// CORRECT - Use message passing
+const response = await agent.sendRawMessage({
+  type: "get_system_prompt",
+  requestId: "prompt-" + Date.now()
+});
+const prompt = response.prompt;
+```
+
+### Agent Not Found Error
+
+If you receive a "Agent not found" error:
+- Verify that your agent is properly registered in the `server.ts` file
+- Check that the agent name in the URL path matches the key in the agentConfig
+
+### State Not Persisting
+
+If agent state is not persisting between requests:
+- Ensure that you're using the `setState` method and not modifying state directly
+- Check that the agent's ID is consistent between requests
+- Verify that state is properly initialized
+
 ## Resources
 
 - [Vercel AI SDK Documentation](https://sdk.vercel.ai/docs)
 - [OpenRouter Provider Documentation](https://sdk.vercel.ai/providers/community-providers/openrouter)
 - [Workers AI Provider Documentation](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai)
-
-## Additional Resources
-
-- [Vercel AI SDK Documentation](https://sdk.vercel.ai/docs)
-- [OpenRouter Provider Documentation](https://sdk.vercel.ai/providers/community-providers/openrouter)
-- [Workers AI Provider Documentation](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai)
+- [GitHub Token Handling Guide](/packages/agents/docs/github-token-handling.md)
 - [Cloudflare Workers AI Documentation](https://developers.cloudflare.com/workers-ai/)
 - [Llama 4 Model Information](https://ai.meta.com/llama/)
