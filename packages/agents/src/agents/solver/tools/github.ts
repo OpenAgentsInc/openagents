@@ -91,15 +91,37 @@ export const fetchFileContents = effectTool({
       // Access agent state via AsyncLocalStorage
       const agent = yield* Effect.sync(() => solverContext.getStore());
       
+      // Debug agent context status
+      console.log("[fetchFileContents] Agent context check:", {
+        contextExists: !!agent,
+        contextType: agent ? typeof agent : 'undefined',
+        hasState: agent && 'state' in agent,
+        stateHasToken: agent && 'state' in agent && 'githubToken' in agent.state,
+      });
+      
+      // Try to recover without dying if agent context is missing but we have an explicit token
       if (!agent) {
-        // This is likely a programming error if context is missing
-        return yield* Effect.dieMessage(
-          "Agent context not found for fetchFileContents tool"
-        );
+        if (explicitToken) {
+          console.log("[fetchFileContents] Agent context missing but explicit token provided - continuing");
+          // We can proceed with the explicit token
+        } else {
+          // This is likely a programming error if context is missing
+          return yield* Effect.fail(
+            new GitHubApiError({
+              message: "Agent context not found for fetchFileContents tool. This is likely an internal error.",
+              status: 500,
+              url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}${branch ? `?ref=${branch}` : ''}`
+            })
+          );
+        }
       }
 
       // Try to get a token, checking both explicit parameter and agent state
-      let token = explicitToken || agent.state.githubToken;
+      // Handle the case where agent might be null
+      let token = explicitToken;
+      if (agent && agent.state && agent.state.githubToken) {
+        token = token || agent.state.githubToken;
+      }
       console.log("[fetchFileContents] Token check:", {
         agentExists: !!agent,
         stateExists: !!agent?.state,
@@ -121,17 +143,23 @@ export const fetchFileContents = effectTool({
       }
       
       // If we received an explicit token but it's not in the agent state, update the state
-      if (explicitToken && (!agent.state.githubToken || agent.state.githubToken !== explicitToken)) {
+      if (agent && agent.state && explicitToken && 
+          (!agent.state.githubToken || agent.state.githubToken !== explicitToken)) {
         console.log("[fetchFileContents] Updating agent state with token from parameters");
         try {
-          // This is a side effect, but it's okay in this context to ensure future tool calls work
-          yield* Effect.tryPromise({
-            try: () => agent.setGithubToken(explicitToken),
-            catch: (error) => new GitHubApiError({
-              message: `Failed to update token in agent state: ${error}`,
-              url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
-            })
-          });
+          // Only try to update agent state if agent exists and has state
+          if (typeof agent.updateState === 'function') {
+            // Use updateState instead of setGithubToken to avoid async method issues
+            yield* Effect.tryPromise({
+              try: () => Promise.resolve(agent.updateState({ githubToken: explicitToken })),
+              catch: (error) => new GitHubApiError({
+                message: `Failed to update token in agent state: ${error}`,
+                url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+              })
+            });
+          } else {
+            console.warn("[fetchFileContents] Agent exists but updateState method not found");
+          }
         } catch (e) {
           console.error("[fetchFileContents] Error updating token:", e);
           // Continue with the request even if the state update fails

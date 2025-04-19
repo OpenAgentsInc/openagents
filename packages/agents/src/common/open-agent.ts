@@ -154,6 +154,9 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
   private async executeToolEffect(toolCall: ToolCallPart): Promise<ToolResultPart> {
     const { toolName, args, toolCallId } = toolCall;
     const tool = solverTools[toolName as SolverToolName];
+    
+    // For type casting
+    const asSolver = <T extends BaseAgentState>(agent: OpenAgent<T>): unknown => agent;
 
     // --- Check if tool exists ---
     if (!tool || typeof tool.execute !== 'function') {
@@ -177,12 +180,16 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     console.log(`[executeToolEffect] Executing tool '${toolName}' with args:`, enhancedArgs);
 
     try {
-      // Execute the tool with standard Promise-based approach
+      // Execute the tool with standard Promise-based approach, but INSIDE the solver context
       console.log(`[executeToolEffect] Executing tool '${toolName}'...`);
-
-      // Call the tool's execute function with the expected arguments format
-      const execFn = tool.execute as (a: any, o: any) => Promise<any>;
-      const resultValue = await Promise.resolve(execFn(enhancedArgs, {}));
+      
+      // CRITICAL FIX: Ensure tool execution happens within the solver context
+      // This is especially important for Effect-based tools that access the solver context
+      const resultValue = await solverContext.run(asSolver(this) as Solver, async () => {
+        // Call the tool's execute function with the expected arguments format
+        const execFn = tool.execute as (a: any, o: any) => Promise<any>;
+        return await Promise.resolve(execFn(enhancedArgs, {}));
+      });
 
       console.log(`[executeToolEffect] Tool '${toolName}' completed successfully.`);
 
@@ -359,8 +366,9 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
         const asSolver = <T extends BaseAgentState>(agent: OpenAgent<T>): unknown => agent;
 
         // Ensure AsyncLocalStorage context is set for tool execution
+        // We need to wrap the ENTIRE tool execution flow in the context, not just the initial model call
         const result = await solverContext.run(asSolver(this) as Solver, async () => {
-          return generateText({
+          const textResult = await generateText({
             model: openrouter(openRouterModel), // Use the explicitly defined OpenRouter model
             messages: currentMessages,
             tools: solverTools,
@@ -369,6 +377,8 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
             maxTokens: max_tokens,
             topP: top_p
           });
+          
+          return textResult;
         });
 
         const { text, toolCalls, finishReason, usage } = result;
