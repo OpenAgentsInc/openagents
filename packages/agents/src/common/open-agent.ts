@@ -137,39 +137,16 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     try {
       let resultValue: unknown;
 
-      // --- Explicit check for the known Effect-based tool ---
-      // TODO: Replace this with a more robust detection mechanism (metadata, type guard)
-      if (toolName === 'fetchFileContents') {
-        // 1. Cast the tool.execute function to any to bypass type checking
-        // This is necessary at the boundary between Vercel AI SDK and Effect
-        const toolExecuteFn = tool.execute as any;
-        
-        // 2. Call the execute function to get the Effect object
-        // We need to use the empty options object that Vercel AI SDK expects
-        const toolEffect = toolExecuteFn(args, {});
-
-        // 3. Verify it's actually an Effect (runtime check for safety)
-        if (!Effect.isEffect(toolEffect)) {
-           throw new Error(`Tool '${toolName}' was expected to return an Effect but did not.`);
-        }
-
-        // 4. Run the Effect using the Runtime
-        // Runtime.runPromise returns Promise<A> or throws FiberFailure containing Cause<E>
-        console.log(`[executeToolEffect] Running Effect for tool '${toolName}'...`);
-        // We need to use unsafeRunPromise due to type constraints at this boundary
-        // This is acceptable since we're already at the Effect-Promise boundary
-        resultValue = await (Effect as any).unsafeRunPromise(toolEffect);
-        console.log(`[executeToolEffect] Effect for tool '${toolName}' completed successfully.`);
-
-      } else {
-        // --- Handle standard Promise-based or synchronous tools ---
-        console.log(`[executeToolEffect] Executing standard tool '${toolName}'...`);
-        // Call the tool's execute function with the expected arguments format
-        // Need to use type assertions since TypeScript can't verify tool args at runtime
-        const execFn = tool.execute as (a: any, o: any) => Promise<any>;
-        resultValue = await Promise.resolve(execFn(args, {}));
-        console.log(`[executeToolEffect] Standard tool '${toolName}' completed successfully.`);
-      }
+      // We no longer need special handling for Effect-based tools
+      // since effectTool wraps them in Promises
+      console.log(`[executeToolEffect] Executing tool '${toolName}'...`);
+      
+      // Call the tool's execute function with the expected arguments format
+      const execFn = tool.execute as (a: any, o: any) => Promise<any>;
+      resultValue = await Promise.resolve(execFn(args, {}));
+      console.log(`[executeToolEffect] Tool '${toolName}' completed successfully.`);
+      // Note: Our effectTool factory automatically wraps Effect-based tools in Promises,
+      // so we no longer need special handling here for Effect-based vs standard tools
 
       // --- Return success ToolResultPart ---
       return {
