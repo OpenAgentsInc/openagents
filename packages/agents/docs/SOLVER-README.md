@@ -378,6 +378,160 @@ The secure handling of GitHub tokens is a critical aspect of the Solver agent ar
 
 The token flow ensures that GitHub credentials are securely handled while enabling the agent to perform authenticated operations against the GitHub API on behalf of the user.
 
+## Development and Architecture Details
+
+This section provides additional technical details for developers working with the Solver agent.
+
+### OpenAgents Projects Ecosystem
+
+The Solver agent is part of the broader OpenAgents Projects ecosystem, which includes:
+
+- **Web Interface**: The primary user-facing application at `apps/website/`
+- **Core Package**: Shared types and utilities at `packages/core/`
+- **Agents Package**: This package, containing the implementation of all agents
+- **Chat Server**: For handling more general chat interactions
+
+Solver is one of several agent types, each designed for specific purposes:
+
+1. **Solver Agent**: For analyzing and implementing solutions to project issues
+2. **PR Reviewer Agent**: For code review (planned)
+3. **Document Agent**: For knowledge management (planned)
+
+These agents don't directly interact with each other, but share the same UI components, core functionality, and infrastructure.
+
+### Durable Object Lifecycle
+
+Solver agents are implemented as Cloudflare Durable Objects with these characteristics:
+
+- **Lifetime**: Instances persist as long as they're actively used
+- **Eviction**: After a period of inactivity (typically 24-72 hours), Cloudflare may evict the DO
+- **State Persistence**: State stored in the DO survives until eviction
+- **Context Loss**: Occurs primarily during code deployments or when instances are evicted and recreated
+
+Context recovery is handled by:
+1. Storing rich context in message history
+2. Implementing logic to extract context from historical messages
+3. Reconstructing state when context is detected as missing
+
+In practice, context loss is relatively infrequent but can happen during deployments or after extended periods of inactivity.
+
+### State Recovery Details
+
+When context loss is detected (usually when key state properties are missing), the agent:
+
+1. Searches the message history for context indicators like "issue" and "context"
+2. Extracts structured information about the issue, project, and team
+3. Rebuilds the state object with the extracted information
+4. Validates the reconstructed state for consistency
+5. Uses the recovered state for the current operation
+
+This process happens automatically and is triggered by missing context in critical operations like inference or system prompt generation.
+
+### Cloudflare Workers AI Configuration
+
+The Solver agent uses Cloudflare Workers AI with these specifics:
+
+- **Default Model**: `@cf/meta/llama-4-scout-17b-16e-instruct`
+- **Context Window**: 32K tokens
+- **Cost**: Free tier through Cloudflare Workers
+- **Typical Latency**: 2-5 seconds for responses (varies by message complexity)
+- **Temperature Control**: Set by the caller when needed, default 0.7
+  - Can be dynamically adjusted per operation for different behavior characteristics
+
+### Tool Extension
+
+To add a new tool to the Solver agent:
+
+1. Define the tool using the Vercel AI SDK's `tool()` function:
+   ```typescript
+   export const myNewTool = tool({
+     description: "Description of what the tool does",
+     parameters: z.object({
+       param1: z.string().describe("Parameter description"),
+       param2: z.number().optional().describe("Optional parameter")
+     }),
+     execute: async ({ param1, param2 }) => {
+       // Implementation
+       return { result: "Success", data: {...} };
+     }
+   });
+   ```
+
+2. Add the tool to the exported tools in either:
+   - `packages/agents/src/common/tools/index.ts` for base tools
+   - `packages/agents/src/agents/solver/tools.ts` for solver-specific tools
+
+3. Reference the new tool in prompt generation if needed:
+   ```typescript
+   // In prompts.ts
+   `You have access to the following tools:
+   - existingTool: Description
+   - myNewTool: Description of what the tool does`
+   ```
+
+All tools have access to the agent context through the `solverContext` AsyncLocalStorage instance.
+
+### GitHub Token Scope Requirements
+
+For the Solver agent to function properly with GitHub, the token provided by the user needs these scopes:
+
+- `repo`: Full control of private repositories
+  - `repo:status`: Access commit status
+  - `repo_deployment`: Access deployment status
+  - `public_repo`: Access public repositories
+  - `repo:invite`: Access repository invitations
+
+For issue-only operations (no code changes), a more limited scope is possible:
+- `repo`: (Limited to issues, pull requests)
+  - `read:packages`: Read packages
+  - `read:user`: Read user information
+
+The token is used for:
+1. Fetching issue details from GitHub repositories
+2. Updating issue statuses
+3. Adding comments to issues
+4. Accessing repository content for code context
+5. (If configured) Making code changes via Pull Requests
+
+### Development Environment
+
+To develop and test the Solver agent locally:
+
+1. **Setup Cloudflare Environment**:
+   - Clone the repository
+   - Install dependencies with `npm install`
+   - Set up Cloudflare Wrangler with `npm i -g wrangler`
+   - Login to Cloudflare with `wrangler login`
+
+2. **Local Development**:
+   - Start the development server with `wrangler dev`
+   - Run the website with `npm run dev`
+   - Connect to the local agent instance using the development tools
+
+3. **Testing WebSocket Communication**:
+   - Use the browser's developer tools to monitor WebSocket traffic
+   - Develop against the mock agent in development mode before deploying
+
+4. **Deployment**:
+   - Publish to Cloudflare with `wrangler publish`
+   - Note that deploying new code causes existing DO instances to restart, potentially losing in-memory state
+
+### Monitoring and Debugging
+
+Solver has extensive logging:
+
+- **Console Logs**: Detailed debug information is sent to Cloudflare logs
+- **State Snapshots**: Critical state is logged at key decision points
+- **Error Tracking**: All errors are logged with stack traces
+- **Message Tracing**: Agent messages include timestamps and request IDs
+
+All GitHub tokens and sensitive information are redacted from logs automatically.
+
+For local debugging, use:
+- Browser developer tools to inspect WebSocket traffic
+- Cloudflare dashboard for Worker logs
+- `wrangler tail` for real-time log streaming
+
 ## Additional Resources
 
-For more details on the inference implementation, see `packages/agents/docs/shared-inference-implementation.md`.
+For more details on the inference implementation, see `packages/agents/docs/shared-inference-implementation.md`
