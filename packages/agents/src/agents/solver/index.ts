@@ -429,50 +429,95 @@ export class Solver extends OpenAgent<SolverState> {
               console.log("Using provided system prompt");
             }
             
-            // Run the inference
-            const result = await this.sharedInfer(inferProps);
-            console.log("INFERENCE RESULT:", JSON.stringify({
-              id: result.id,
-              content: result.content?.substring(0, 50) + "..." || "No content",
-              role: result.role,
-              hasValidResponse: !!result.id && !!result.content
-            }));
-            
-            // Add the response to our messages array if it's not already there
-            const existingMessageIndex = this.state.messages.findIndex(msg => msg.id === result.id);
-            if (existingMessageIndex === -1 && result.id && result.content) {
-              console.log("Adding assistant response to agent state");
+            // Check if this is a streaming request
+            if (parsedMessage.streaming === true) {
+              console.log("Streaming inference requested - using streamingInfer method");
               
-              // Format the assistant message with proper typing
-              const assistantMessage: any = {
+              try {
+                // Use streamText implementation instead of generateText
+                const { requestId, messageId } = await this.streamingInfer({
+                  ...inferProps,
+                  requestId: parsedMessage.requestId
+                });
+                
+                console.log("STREAMING STARTED:", JSON.stringify({
+                  requestId,
+                  messageId,
+                  streamingRequested: true,
+                }));
+                
+                // Send an acknowledgment that streaming has started
+                // The actual content will be streamed via state updates
+                connection.send(JSON.stringify({
+                  type: "stream_started",
+                  requestId: parsedMessage.requestId || requestId,
+                  messageId,
+                  timestamp: new Date().toISOString()
+                }));
+                
+                console.log(`Streaming started for request ${parsedMessage.requestId}`);
+                
+                // No need to add messages to state or send response here
+                // The streamingInfer method handles all state updates directly
+                // and clients will receive the updates through their existing DO state synchronization
+              } catch (streamError) {
+                console.error("Error starting streaming inference:", streamError);
+                connection.send(JSON.stringify({
+                  type: "stream_error",
+                  requestId: parsedMessage.requestId,
+                  error: streamError instanceof Error ? streamError.message : String(streamError),
+                  timestamp: new Date().toISOString()
+                }));
+              }
+            } else {
+              // Use standard non-streaming inference for backward compatibility
+              console.log("Standard non-streaming inference requested");
+              
+              // Run the inference using generateText
+              const result = await this.sharedInfer(inferProps);
+              console.log("INFERENCE RESULT:", JSON.stringify({
                 id: result.id,
-                role: 'assistant' as const, // Use const assertion for literal type
-                content: result.content,
-                parts: [{
-                  type: 'text' as const, // Use const assertion for literal type
-                  text: result.content
-                }]
-              };
+                content: result.content?.substring(0, 50) + "..." || "No content",
+                role: result.role,
+                hasValidResponse: !!result.id && !!result.content
+              }));
               
-              // Update the messages array in state
-              await this.setState({
-                messages: [...this.state.messages, assistantMessage]
-              });
+              // Add the response to our messages array if it's not already there
+              const existingMessageIndex = this.state.messages.findIndex(msg => msg.id === result.id);
+              if (existingMessageIndex === -1 && result.id && result.content) {
+                console.log("Adding assistant response to agent state");
+                
+                // Format the assistant message with proper typing
+                const assistantMessage: any = {
+                  id: result.id,
+                  role: 'assistant' as const, // Use const assertion for literal type
+                  content: result.content,
+                  parts: [{
+                    type: 'text' as const, // Use const assertion for literal type
+                    text: result.content
+                  }]
+                };
+                
+                // Update the messages array in state
+                await this.setState({
+                  messages: [...this.state.messages, assistantMessage]
+                });
+                
+                // Verify the message was added
+                console.log("Messages array updated, now contains", this.state.messages.length, "messages");
+              } else if (existingMessageIndex !== -1) {
+                console.log("Response already exists in messages array at index", existingMessageIndex);
+              }
               
-              // Verify the message was added
-              console.log("Messages array updated, now contains", this.state.messages.length, "messages");
-            } else if (existingMessageIndex !== -1) {
-              console.log("Response already exists in messages array at index", existingMessageIndex);
+              // Send the inference result back to the client
+              connection.send(JSON.stringify({
+                type: "infer_response",
+                requestId: parsedMessage.requestId,
+                result: result,
+                timestamp: new Date().toISOString()
+              }));
+              console.log(`Inference result sent back for request ${parsedMessage.requestId}`);
             }
-            
-            // Send the inference result back to the client
-            connection.send(JSON.stringify({
-              type: "infer_response",
-              requestId: parsedMessage.requestId,
-              result: result,
-              timestamp: new Date().toISOString()
-            }));
-            console.log(`Inference result sent back for request ${parsedMessage.requestId}`);
           } catch (error) {
             console.error("Error performing inference:", error);
             connection.send(JSON.stringify({
