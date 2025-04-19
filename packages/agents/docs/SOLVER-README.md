@@ -613,6 +613,153 @@ For more implementation details, see the full documentation in `packages/agents/
 
 A future refactoring is planned to migrate the shared inference system to use the Vercel AI SDK. This aims to provide greater flexibility, easier access to a wider range of models (e.g., via OpenRouter), and a more standardized provider interface.
 
+## Implementing Tool Calls with Effect and Durable Objects
+
+As we explore integrating the Effect framework, a key area for incremental adoption is the implementation of the agent's **tool calls**. This approach leverages the synergy between Durable Objects (DOs) providing the durable execution environment and Effect managing the correctness and complexity of the tool's internal logic.
+
+**Core Principles:**
+
+1.  **DO Manages State/Environment:** The Durable Object instance remains the source of truth for persistent state (`this.state`) and provides access to environment bindings (`this.env`).
+2.  **Effect Executes Logic:** The core logic within a tool's `execute` function is implemented as an `Effect<SuccessType, ErrorType, RequirementsType>`. This makes error handling explicit (`ErrorType`) and dependencies (`RequirementsType`) type-safe.
+3.  **Boundary Invocation:** The agent's core framework (whether based on Vercel AI SDK, Cloudflare Agents SDK, or a custom solution) is responsible for triggering the tool execution and *running* the returned `Effect` to get its final result or handle its failure.
+
+**Implementation Steps:**
+
+1.  **Define the Tool Signature:**
+    *   **Option A (Complementing Vercel AI SDK - Recommended Initial Step):** Continue using `tool()` from `ai` primarily for defining the `description` and `parameters` (using Zod). The `execute` function, however, will return an `Effect` instead of a `Promise`.
+        ```typescript
+        import { tool } from "ai";
+        import { z } from "zod";
+        import { Effect, Data } from "effect";
+        import { solverContext } from "./index"; // To access agent state/methods initially
+
+        // Define specific, tagged error types for the tool
+        class GitHubApiError extends Data.TaggedError("GitHubApiError")<{ message: string; status?: number }> {}
+        class IssueNotFoundError extends Data.TaggedError("IssueNotFoundError")<{ issueNumber: number }> {}
+        type GetIssueDetailsError = GitHubApiError | IssueNotFoundError;
+
+        export const getIssueDetails = tool({
+            description: "Fetches comprehensive issue information.",
+            parameters: z.object({
+              owner: z.string(),
+              repo: z.string(),
+              issueNumber: z.number(),
+            }),
+            // Execute now returns an Effect
+            execute: ({ owner, repo, issueNumber }): Effect.Effect<BaseIssue, GetIssueDetailsError, never> => {
+                return Effect.gen(function*() {
+                    // Access agent instance/state (initial approach)
+                    const agent = solverContext.getStore();
+                    if (!agent) {
+                        // This scenario needs careful error modeling - maybe a defect?
+                        return yield* Effect.dieMessage("Agent context not found");
+                    }
+                    const token = agent.state.githubToken;
+                    if (!token) {
+                        // Or a typed error if token absence is expected sometimes
+                        return yield* Effect.dieMessage("GitHub token missing");
+                    }
+
+                    const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
+
+                    // Wrap async/fallible operations
+                    const response = yield* Effect.tryPromise({
+                        try: () => fetch(url, { /* headers with token */ }),
+                        catch: (unknown) => new GitHubApiError({ message: `Network error: ${unknown}` })
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            return yield* Effect.fail(new IssueNotFoundError({ issueNumber }));
+                        }
+                        const errorText = yield* Effect.promise(() => response.text());
+                        return yield* Effect.fail(new GitHubApiError({ message: errorText, status: response.status }));
+                    }
+
+                    const data: GitHubIssue = yield* Effect.tryPromise({
+                         try: () => response.json() as Promise<GitHubIssue>,
+                         catch: (unknown) => new GitHubApiError({ message: `JSON parsing error: ${unknown}` })
+                    });
+
+                    // Map to BaseIssue type (success value)
+                    const issue: BaseIssue = { /* ... map data ... */ };
+                    return issue;
+                }); // Dependencies ('never' for now)
+            }
+        });
+        ```
+    *   **Option B (Effect-Native - Future Possibility):** Replace `tool()` entirely. Use `effect/Schema` for parameter validation and define tools as plain objects or within a registry. Effect's `Schema` offers powerful validation and transformation capabilities that integrate seamlessly with the rest of the Effect ecosystem, potentially replacing Zod if adopted more broadly. This requires building or adapting the agent framework part that selects and invokes the tool based on LLM output.
+
+2.  **Implement `execute` Logic as an `Effect`:**
+    *   Use `Effect.gen` for readable, `async/await`-like code.
+    *   Wrap promise-based operations (like `fetch`) with `Effect.tryPromise` or `Effect.try`.
+    *   Map caught errors to specific, typed errors (using `Data.TaggedError` is recommended).
+    *   Access shared resources (like the GitHub token from `agent.state` or `env.AI`) initially via mechanisms like `AsyncLocalStorage` (`solverContext`) or direct access (`this`). Mark these down as dependencies (`R`) to be potentially managed via `Context`/`Layer` in later phases.
+
+3.  **Run the `Effect` at the Boundary:**
+    *   The code *calling* the tool's `execute` function (likely within the main agent logic or a custom tool-handling framework) needs to run the returned `Effect`.
+    *   Use `Effect.runPromise` (or `Effect.runSync` if the effect is guaranteed synchronous) to execute the logic. Wrap this call in a standard `try/catch` block, as `Effect.runPromise` will reject with a `FiberFailure` containing the `Cause` if the Effect fails or defects.
+
+        ```typescript
+        // Inside the agent's tool invocation logic...
+        import { Effect, Runtime, Cause, Exit } from "effect";
+
+        async function invokeTool(toolCall: /* parsed LLM tool call */) {
+            const toolDefinition = findToolDefinition(toolCall.name); // Find our tool definition
+            const params = toolCall.arguments; // Assume parsed arguments
+
+            // 1. Validate params (if using Zod from Vercel SDK, this happens before execute)
+            //    If using Schema, validation could be part of the Effect itself.
+
+            // 2. Execute returns an Effect
+            const toolEffect = toolDefinition.execute(params);
+
+            // 3. Run the Effect
+            try {
+                // Consider using a custom Runtime if Layers are involved later
+                const result = await Runtime.runPromise(Runtime.defaultRuntime)(toolEffect);
+                // Format success result for LLM
+                return { type: "tool_result", result: result };
+            } catch (fiberFailure) { // Catches FiberFailure
+                const cause = (fiberFailure as any).cause as Cause.Cause<GetIssueDetailsError>; // Extract Cause
+
+                // Analyze the Cause to provide a meaningful error message to the LLM
+                let errorMessage = "Tool execution failed.";
+                if (Cause.isFailType(cause)) {
+                   // Handle specific *expected* errors defined in the Effect's E type
+                   const error = cause.error; // This is our GetIssueDetailsError
+                   if (error._tag === "IssueNotFoundError") {
+                       errorMessage = `Issue ${error.issueNumber} not found.`;
+                   } else if (error._tag === "GitHubApiError") {
+                       errorMessage = `GitHub API Error: ${error.status ? `(${error.status}) ` : ''}${error.message}`;
+                   }
+                } else if (Cause.isDieType(cause)) {
+                    // Handle unexpected errors/defects - might indicate a bug
+                    console.error("Tool defected:", cause.defect);
+                    errorMessage = "An internal error occurred in the tool.";
+                } else if (Cause.isInterruptType(cause)) {
+                    // Handle interruption (e.g., agent was stopped)
+                    errorMessage = "Tool execution was interrupted.";
+                }
+                // Format error result for LLM
+                return { type: "tool_error", error: errorMessage };
+            }
+        }
+        ```
+
+4.  **Handle Results and Errors:**
+    *   Map the success value (`A`) from the executed Effect into the format expected by the agent framework / LLM.
+    *   Map the failure `Cause` into an appropriate error message for the LLM. Analyze the `Cause` (using `Cause.isFailType`, `Cause.isDieType`, etc.) to distinguish between expected failures (`E`), unexpected defects, or interruptions, and format the response accordingly.
+
+**Replacing vs. Complementing Vercel AI SDK:**
+
+*   **Complementing:** Initially, using Effect *within* the `execute` function called by `tool()` is the path of least resistance. You leverage Vercel's LLM interaction handling and Zod parameter validation but gain Effect's benefits for the execution logic itself.
+*   **Replacing:** Effect's `Schema` could replace Zod for parameter validation. Effect's core could orchestrate the entire tool call lifecycle (parsing LLM output, finding/calling the tool `Effect`, running it, formatting results). This offers deeper integration but requires building more of the surrounding framework. Effect doesn't inherently provide the specific LLM function/tool calling *protocol* handling like the Vercel SDK does, so you'd be rebuilding that layer.
+
+**Recommendation:** Start by **complementing** the existing tool definition approach (Option A). Refactor the `execute` logic into `Effect`. This immediately improves the robustness and testability of the core tool logic. Evaluating a full replacement of the `tool()` function can be considered later, potentially alongside a broader adoption of `effect/Schema`.
+
+This incremental strategy allows harnessing Effect's power for correctness within the DO's reliable environment, focusing first on the complex logic within tool calls.
+
 # Vercel AI SDK Integration Plan
 
 This section outlines the plan for refactoring the shared inference system to use the Vercel AI SDK, providing more flexibility and model options.
