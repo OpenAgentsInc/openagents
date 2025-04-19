@@ -6,6 +6,17 @@ The OpenAgents Agent Framework provides a modular and extensible architecture fo
 
 - [Agent Architecture Refactoring](./agent-architecture-refactoring.md) - Overview of the modular agent architecture design
 - [Agent Implementation Guide](./agent-implementation-guide.md) - Step-by-step guide for implementing new agent types
+- [GitHub Token Handling Guide](./github-token-handling.md) - **IMPORTANT**: How to correctly handle GitHub tokens
+- [Agent Client Integration Guide](./agent-client-integration.md) - Proper client-side integration patterns
+
+### ⚠️ Critical Warning
+
+When working with GitHub tokens, **NEVER** call `setGithubToken` directly via RPC! This will cause this error:
+```
+RPC error: Error: Method setGithubToken is not callable
+```
+
+Instead, use message passing as documented in the [GitHub Token Handling Guide](./github-token-handling.md).
 
 ## Quick Start
 

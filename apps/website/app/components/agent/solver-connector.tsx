@@ -138,13 +138,17 @@ export function SolverConnector({
 
       try {
         await Promise.race([
-          agent.setGithubToken(githubToken),
+          // IMPORTANT: Don't call setGithubToken directly - use message passing
+          agent.sendRawMessage({
+            type: "set_github_token",
+            token: githubToken
+          }),
           timeoutPromise
         ]);
-        console.log("✓ GitHub token set successfully");
+        console.log("✓ GitHub token set message sent successfully");
       } catch (error) {
-        console.error("✗ Failed to set GitHub token:", error);
-        throw new Error(`Failed to set GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
+        console.error("✗ Failed to send GitHub token message:", error);
+        throw new Error(`Failed to send GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
 
       // Basic step 2: Set repository context
@@ -424,7 +428,21 @@ export function SolverConnector({
                       // Get system prompt to ensure context is included
                       let systemPrompt = null;
                       try {
-                        systemPrompt = await agent.getSystemPrompt();
+                        // Use message passing instead of direct RPC call
+                        const promptRequestId = "prompt_req_" + Date.now() + "_" + Math.random().toString(36).substring(2, 10);
+                        
+                        // Send the request via message
+                        const promptResponse = await agent.sendRawMessage({
+                          type: "get_system_prompt",
+                          requestId: promptRequestId
+                        });
+                        
+                        // Extract the prompt from the response
+                        systemPrompt = promptResponse?.prompt;
+                        
+                        if (!systemPrompt) {
+                          console.warn("No system prompt returned from agent");
+                        }
                       } catch (promptError) {
                         console.error("Error fetching system prompt:", promptError);
                       }
@@ -432,17 +450,35 @@ export function SolverConnector({
                       // Run shared inference with full message history
                       // Send the inference request
                       const requestId = generateId();
+                      
+                      // CRITICAL FIX: Re-set the GitHub token to ensure it's available
+                      // This adds redundancy to prevent token loss
+                      if (githubToken) {
+                        try {
+                          console.log("Re-setting GitHub token before inference (length:", githubToken.length, ")");
+                          // IMPORTANT: Don't call setGithubToken directly - use message passing
+                          agent.sendRawMessage({
+                            type: "set_github_token",
+                            token: githubToken
+                          });
+                        } catch (tokenError) {
+                          console.error("Error re-setting GitHub token:", tokenError);
+                        }
+                      } else {
+                        console.warn("No GitHub token available to set before inference!");
+                      }
 
                       // Send the request with context data for reliability
                       const response = await agent.sendRawMessage({
                         type: "shared_infer",
                         requestId: requestId,
                         params: {
-                          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                          model: "anthropic/claude-3.5-sonnet", // Using OpenRouter model
                           messages: allMessages,
                           system: systemPrompt,
                           temperature: 0.7,
                           max_tokens: 1000,
+                          githubToken: githubToken, // Explicitly pass token as parameter
                         },
                         context: {
                           issue: formattedIssue,

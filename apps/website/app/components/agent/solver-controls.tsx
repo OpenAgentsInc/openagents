@@ -128,14 +128,32 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
       console.log("Step 1: Setting GitHub token...");
 
       try {
+        // IMPORTANT: Don't call setGithubToken directly - use message passing
         await Promise.race([
-          agent.setGithubToken(githubToken),
+          agent.sendRawMessage({
+            type: "set_github_token",
+            token: githubToken
+          }),
           timeoutPromise
         ]);
-        console.log("✓ GitHub token set successfully");
+        
+        console.log("✓ GitHub token set message sent successfully");
+        
+        // Double-check token persistence via a separate call
+        setTimeout(async () => {
+          try {
+            // Using a non-awaited promise to not block the connection flow
+            agent.sendRawMessage({
+              type: "command",
+              command: "verify_token"
+            });
+          } catch (e) {
+            console.warn("Token verification message failed:", e);
+          }
+        }, 500);
       } catch (error) {
-        console.error("✗ Failed to set GitHub token:", error);
-        throw new Error(`Failed to set GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
+        console.error("✗ Failed to send GitHub token message:", error);
+        throw new Error(`Failed to send GitHub token: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
 
       // Basic step 2: Set repository context
@@ -473,7 +491,7 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
                     type: "shared_infer",
                     requestId: requestId,
                     params: {
-                      model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                      model: "anthropic/claude-3.5-sonnet", // Using OpenRouter model
                       messages: allMessages,
                       system: systemPrompt, // Explicitly include system prompt
                       temperature: 0.7,
@@ -583,9 +601,14 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
                   }
 
                   function fetchSystemPrompt() {
-                    // Fetch the system prompt
-                    agent.getSystemPrompt()
-                      .then(prompt => {
+                    // Fetch the system prompt by sending a message instead of direct RPC call
+                    agent.sendRawMessage({
+                      type: "get_system_prompt",
+                      requestId: "prompt_req_" + Date.now() + "_" + Math.random().toString(36).substring(2, 10)
+                    })
+                      .then(response => {
+                        // Extract the prompt from the response
+                        const prompt = response?.prompt || "Error: No prompt received from agent";
                         console.log("System prompt received from agent:", prompt.substring(0, 100) + "...");
 
                         // Check if it has our project/team sections
