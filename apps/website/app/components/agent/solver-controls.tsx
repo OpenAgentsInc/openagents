@@ -473,7 +473,7 @@ export function SolverControls({ issue, agent, githubToken }: SolverControlsProp
                     type: "shared_infer",
                     requestId: requestId,
                     params: {
-                      model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+                      model: "anthropic/claude-3.5-sonnet", // Using OpenRouter model
                       messages: allMessages,
                       system: systemPrompt, // Explicitly include system prompt
                       temperature: 0.7,

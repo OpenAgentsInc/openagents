@@ -137,11 +137,11 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     try {
       // Execute the tool with standard Promise-based approach
       console.log(`[executeToolEffect] Executing tool '${toolName}'...`);
-      
+
       // Call the tool's execute function with the expected arguments format
       const execFn = tool.execute as (a: any, o: any) => Promise<any>;
       const resultValue = await Promise.resolve(execFn(args, {}));
-      
+
       console.log(`[executeToolEffect] Tool '${toolName}' completed successfully.`);
 
       // Return success ToolResultPart
@@ -155,37 +155,37 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     } catch (error) {
       // Handle errors from tool execution
       console.error(`[executeToolEffect] Tool '${toolName}' execution failed:`, error);
-      
+
       // Format a user-friendly error message
       // Check if this is an enriched error from our effectTool
-      const isEnrichedError = error instanceof Error && 
-                             (error as any).effectError !== undefined;
-      
+      const isEnrichedError = error instanceof Error &&
+        (error as any).effectError !== undefined;
+
       // Create the base error message
-      let errorMessage = error instanceof Error 
-        ? error.message 
+      let errorMessage = error instanceof Error
+        ? error.message
         : `Tool '${toolName}' failed: ${String(error)}`;
-      
+
       // Log detailed information for debugging
       console.error(`[executeToolEffect] ${errorMessage}`);
-      
+
       // If we have an enriched error with additional context, log it
       if (isEnrichedError) {
         const enrichedError = error as any;
-        console.log(`[executeToolEffect] Effect error details:`, 
-                   `Type: ${enrichedError.causeType}`, 
-                   enrichedError.effectError);
+        console.log(`[executeToolEffect] Effect error details:`,
+          `Type: ${enrichedError.causeType}`,
+          enrichedError.effectError);
       }
-      
+
       // Return error ToolResultPart with detailed information if available
       return {
         type: 'tool-result',
         toolCallId,
         toolName,
-        result: { 
+        result: {
           error: errorMessage,
           // Add detailed error information if available (from effectTool)
-          ...(isEnrichedError && { 
+          ...(isEnrichedError && {
             errorDetails: (error as any).effectError,
             errorType: (error as any).causeType
           })
@@ -199,9 +199,9 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
    * Handles multi-turn tool calls.
    */
   async sharedInfer(props: InferProps): Promise<InferResponse> {
-    // ... (Parameter extraction and OpenRouter setup remain the same) ...
+    // Extract parameters from props, but explicitly set OpenRouter model
     const {
-      model = "anthropic/claude-3.5-sonnet",
+      model: requestedModel = "anthropic/claude-3.5-sonnet",
       messages: initialMessages,
       system,
       temperature = 0.7,
@@ -209,11 +209,15 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       top_p = 0.95
     } = props;
 
-    console.log("[sharedInfer] Starting inference with model:", model);
+    // Define the OpenRouter model identifier explicitly to avoid issues with CF AI models
+    const openRouterModel = "anthropic/claude-3.5-sonnet";
+
+    console.log("[sharedInfer] Requested model:", requestedModel);
+    console.log("[sharedInfer] Using OpenRouter model:", openRouterModel);
 
     try {
       const openrouter = createOpenRouter({
-        apiKey: (this.env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
+        apiKey: (env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
       });
       console.log("[sharedInfer] Created OpenRouter provider");
 
@@ -234,7 +238,7 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
           }
         });
       }
-      
+
       const systemPrompt = system || this.getSystemPrompt();
       if (systemPrompt) {
         if (currentMessages.length > 0 && currentMessages[0].role === 'system') {
@@ -258,7 +262,7 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
         // Ensure AsyncLocalStorage context is set for tool execution
         const result = await solverContext.run(asSolver(this) as Solver, async () => {
           return generateText({
-            model: openrouter(model),
+            model: openrouter(openRouterModel), // Use the explicitly defined OpenRouter model
             messages: currentMessages,
             tools: solverTools,
             toolChoice: 'auto',
@@ -309,18 +313,35 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
         content: textResponse, // Final text after potential tool use
         role: "assistant",
         timestamp: new Date().toISOString(),
-        model: model
+        model: openRouterModel // Use the explicitly defined OpenRouter model
       };
 
     } catch (error) {
-      // ... (Error handling remains the same) ...
-       console.error("[sharedInfer] Error during AI inference:", error);
+      // Enhanced error logging to help debug OpenRouter issues
+      console.error("[sharedInfer] Error during AI inference:", error);
+
+      // Log more details about the error when available
+      if (error instanceof Error) {
+        if ((error as any).cause) {
+          console.error("[sharedInfer] Error cause:", (error as any).cause);
+        }
+        if ((error as any).data) {
+          console.error("[sharedInfer] Error data:", (error as any).data);
+        }
+        if ((error as any).response) {
+          try {
+            console.error("[sharedInfer] Error response:", JSON.stringify((error as any).response));
+          } catch (e) {
+            console.error("[sharedInfer] Error response (non-stringifiable):", (error as any).response);
+          }
+        }
+      }
       return {
         id: generateId(),
         content: `Error generating response: ${error instanceof Error ? error.message : String(error)}`,
         role: "assistant",
         timestamp: new Date().toISOString(),
-        model: model
+        model: openRouterModel // Use the explicitly defined OpenRouter model
       };
     }
   } // End sharedInfer
