@@ -22,13 +22,20 @@ export function effectTool<P extends ZodSchema, R>(
   const promiseExecute = (params: any, options: {}) => {
     const effect = definition.execute(params, options);
     return Effect.runPromise(effect).catch((fiberFailure) => {
-      // Extract the cause from the FiberFailure
-      const cause = (fiberFailure as any).cause;
+      // Safely extract the cause from the FiberFailure
+      const cause = fiberFailure && typeof fiberFailure === 'object' ? (fiberFailure as any).cause : undefined;
+      
+      // Log the fiber failure for debugging
+      console.log("[effectTool] Caught FiberFailure:", {
+        hasFiberFailure: !!fiberFailure,
+        hasCause: !!cause,
+        causeType: cause && typeof cause === 'object' && '_tag' in cause ? cause._tag : 'unknown'
+      });
       let errorMessage = "Tool execution failed.";
       let errorDetails: Record<string, any> = {};
       
-      // Analyze the Cause to provide a meaningful error message
-      if (Cause.isFailType(cause)) {
+      // Safely check that cause exists before analyzing
+      if (cause && Cause.isFailType(cause)) {
         const error = cause.error;
         if (error && typeof error === 'object' && '_tag' in error) {
           // Tagged errors (from Data.TaggedError) include rich type information
@@ -44,20 +51,42 @@ export function effectTool<P extends ZodSchema, R>(
         } else {
           errorMessage = String(error);
         }
-      } else if (Cause.isDieType(cause)) {
+      } else if (cause && Cause.isDieType(cause)) {
         // Handle defects - indicating programming errors
         console.error("Tool defected:", cause.defect);
         errorMessage = "Internal error in tool execution.";
         errorDetails = { defect: String(cause.defect) };
-      } else if (Cause.isInterruptType(cause)) {
+      } else if (cause && Cause.isInterruptType(cause)) {
         errorMessage = "Tool execution was interrupted.";
         errorDetails = { interrupted: true };
+      } else {
+        // Handle case where cause is undefined or doesn't match known types
+        errorMessage = `Unknown error in tool execution: ${String(fiberFailure)}`;
+        errorDetails = { 
+          unknownError: true,
+          fiberFailureString: String(fiberFailure),
+          fiberFailureType: typeof fiberFailure
+        };
+        console.error("[effectTool] Unrecognized failure:", fiberFailure);
       }
       
       // Create a custom error object with details from the Cause analysis
       const enrichedError = new Error(errorMessage);
       (enrichedError as any).effectError = errorDetails;
-      (enrichedError as any).causeType = cause ? cause._tag : 'unknown';
+      
+      // Safely access cause._tag with proper null checks
+      (enrichedError as any).causeType = 
+        cause && typeof cause === 'object' && '_tag' in cause ? 
+        cause._tag : 'unknown';
+      
+      // Add the original error for troubleshooting
+      (enrichedError as any).originalError = fiberFailure;
+      
+      console.log("[effectTool] Created enriched error:", {
+        message: errorMessage,
+        errorDetails,
+        causeType: (enrichedError as any).causeType
+      });
       
       // Throw the enriched error that will be caught by executeToolEffect
       throw enrichedError;
