@@ -353,3 +353,8 @@ export const solverTools = {
   createImplementationPlan,
   fetchFileContents
 };
+
+/**
+ * Type definition for solver tool names
+ */
+export type SolverToolName = keyof typeof solverTools;

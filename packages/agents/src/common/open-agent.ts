@@ -2,10 +2,15 @@
 
 import { Agent } from "agents";
 import { generateId, generateText } from "ai";
+import type { CoreMessage, ToolCallPart, ToolResultPart } from "ai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
-import type { SolverState } from "../agents/solver/types";
-import { createWorkersAI } from 'workers-ai-provider';
-import { env } from "cloudflare:workers"
+import { Effect, Runtime, Cause } from "effect";
+import { solverTools } from "../agents/solver/tools";
+import type { SolverToolName } from "../agents/solver/tools";
+import { solverContext } from "../agents/solver/index";
+import type { Solver } from "../agents/solver/index";
+import { env } from "cloudflare:workers";
 
 /**
  * Base OpenAgent class that implements common functionality for all agent types
@@ -137,121 +142,240 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
   }
 
   /**
+   * Helper function to execute a tool using Effect and return a toolResult part
+   */
+  private async executeToolEffect(toolCall: ToolCallPart): Promise<ToolResultPart> {
+    const { toolName, args, toolCallId } = toolCall;
+    const tool = solverTools[toolName as SolverToolName];
+
+    if (!tool) {
+      return {
+        type: 'tool-result',
+        toolCallId,
+        toolName,
+        result: { error: `Tool '${toolName}' not found` }
+      } as ToolResultPart;
+    }
+
+    console.log(`[executeToolEffect] Executing tool ${toolName} with args:`, args);
+
+    try {
+      // Simple approach to tool execution that works with any tool type
+      let resultValue;
+      
+      if (!tool.execute || typeof tool.execute !== 'function') {
+        throw new Error(`Tool '${toolName}' has no execute method`);
+      }
+      
+      // TypeScript needs help understanding this function call
+      // We use 'any' here because we're at a boundary between systems
+      const execFn = tool.execute as any; 
+      resultValue = await execFn(args);
+
+      console.log(`[executeToolEffect] Tool ${toolName} executed successfully`);
+      return {
+        type: 'tool-result',
+        toolCallId,
+        toolName,
+        result: resultValue
+      } as ToolResultPart;
+    } catch (error) {
+      console.error(`[executeToolEffect] Tool ${toolName} execution failed:`, error);
+      
+      // Handle FiberFailure from Effect-based tools
+      if (error && (error as any).cause) {
+        const cause = (error as any).cause as Cause.Cause<any>;
+        let errorMessage = `Tool '${toolName}' failed.`;
+        
+        // Analyze the Cause to provide meaningful error message
+        if (Cause.isFailType(cause)) {
+          const specificError = cause.error;
+          // Handle different error types based on their _tag
+          if (specificError && specificError._tag) {
+            if (specificError._tag === "FileNotFoundError") {
+              errorMessage = `File not found: ${specificError.path} in ${specificError.owner}/${specificError.repo}${specificError.branch ? ` (branch: ${specificError.branch})` : ''}`;
+            } else if (specificError._tag === "GitHubApiError") {
+              errorMessage = `GitHub API Error: ${specificError.status ? `(${specificError.status}) ` : ''}${specificError.message}`;
+            } else if (specificError._tag === "InvalidPathError") {
+              errorMessage = `Invalid path: ${specificError.message}`;
+            } else if (specificError._tag === "ContentDecodingError") {
+              errorMessage = `Content decoding error: ${specificError.message}`;
+            } else {
+              errorMessage = `Error (${specificError._tag}): ${specificError.message || JSON.stringify(specificError)}`;
+            }
+          }
+        } else if (Cause.isDieType(cause)) {
+          // Handle defects (bugs in our code)
+          console.error("Tool defected:", cause.defect);
+          errorMessage = "Internal error in tool execution.";
+        } else if (Cause.isInterruptType(cause)) {
+          errorMessage = "Tool execution was interrupted.";
+        }
+        
+        return {
+          type: 'tool-result',
+          toolCallId,
+          toolName,
+          result: { error: errorMessage }
+        } as ToolResultPart;
+      }
+      
+      // Handle standard errors
+      return {
+        type: 'tool-result',
+        toolCallId,
+        toolName,
+        result: { error: error instanceof Error ? error.message : String(error) }
+      } as ToolResultPart;
+    }
+  }
+
+  /**
    * Shared inference method for all agents
-   * Uses Cloudflare Workers AI with Llama 4 to generate responses
+   * Uses Vercel AI SDK with OpenRouter to generate responses
    * @param props Inference properties including model, messages, and system prompt
    * @returns Response from the AI model
    */
   async sharedInfer(props: InferProps): Promise<InferResponse> {
-    // Default to Llama 4 Scout if no model specified
+    // Extract model and parameters from props
     const { 
-      model = "@cf/meta/llama-4-scout-17b-16e-instruct", 
-      messages, 
+      model = "anthropic/claude-3.5-sonnet", 
+      messages: initialMessages, 
       system, 
       temperature = 0.7, 
       max_tokens = 1024, 
       top_p = 0.95 
     } = props;
     
-    // Log the input parameters with more details
-    console.log("SHARED INFER CALLED WITH:", {
-      model,
-      messagesCount: messages.length,
-      systemProvidedExternally: !!system,
-      systemPromptLength: system ? system.length : 0,
-      temperature,
-      max_tokens,
-      top_p
-    });
-    
+    console.log("[sharedInfer] Starting inference with model:", model);
+
     try {
-      // Format messages for the chat completion format
-      let formattedMessages = [];
+      // --- Prepare shared resources ---
+      const openrouter = createOpenRouter({ 
+        apiKey: (this.env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
+      });
       
-      // Add system message - either the one provided or the agent's own system prompt
-      // Important: this is where we get the system prompt if not provided
-      let systemPrompt;
-      if (system) {
-        console.log("Using externally provided system prompt");
-        systemPrompt = system;
-      } else {
-        console.log("Generating system prompt from agent state");
-        // Cast to any to avoid TypeScript errors since we can't know the exact properties 
-        // at this level in the class hierarchy
-        const state = this.state as any;
-        console.log("AGENT STATE DEBUG:", JSON.stringify({
-          hasIssue: state.currentIssue ? true : false,
-          hasProject: state.currentProject ? true : false,
-          hasTeam: state.currentTeam ? true : false,
-          issueSource: state.currentIssue ? state.currentIssue.source : null,
-          issueTitle: state.currentIssue ? state.currentIssue.title : null
-        }));
-        
-        systemPrompt = this.getSystemPrompt();
-        
-        // Log brief analysis of the generated system prompt
-        console.log("SYSTEM PROMPT ANALYSIS:", {
-          length: systemPrompt.length,
-          hasIssueContext: systemPrompt.includes("CURRENT ISSUE"),
-          hasProjectContext: systemPrompt.includes("PROJECT CONTEXT"),
-          hasTeamContext: systemPrompt.includes("TEAM CONTEXT"),
-          firstFewWords: systemPrompt.substring(0, 50) + "..."
+      console.log("[sharedInfer] Created OpenRouter provider");
+      
+      // Maximum number of tool roundtrips to prevent infinite loops
+      const maxToolRoundtrips = 5;
+
+      // Prepare initial message list and system prompt
+      let currentMessages: CoreMessage[] = [];
+      
+      // Format initialMessages into CoreMessage format
+      if (initialMessages && initialMessages.length > 0) {
+        currentMessages = initialMessages.map(msg => {
+          // Convert to CoreMessage by explicit role assignment
+          if (msg.role === 'system') {
+            return { role: 'system', content: msg.content };
+          } else if (msg.role === 'user') {
+            return { role: 'user', content: msg.content };
+          } else if (msg.role === 'assistant') {
+            return { role: 'assistant', content: msg.content };
+          } else {
+            // Default to user for other roles like 'data'
+            return { role: 'user', content: msg.content };
+          }
         });
       }
       
-      formattedMessages.push({
-        role: "system",
-        content: systemPrompt
-      });
+      // Get system prompt and ensure it's at the start of messages
+      const systemPrompt = system || this.getSystemPrompt();
+      if (systemPrompt) {
+        // Update or insert system message
+        if (currentMessages.length > 0 && currentMessages[0].role === 'system') {
+          currentMessages[0] = { role: 'system', content: systemPrompt };
+        } else {
+          currentMessages.unshift({ role: 'system', content: systemPrompt });
+        }
+      }
       
-      // Add user and assistant messages from the conversation
-      messages.forEach(msg => {
-        formattedMessages.push({
-          role: msg.role,
-          content: msg.content
+      console.log(`[sharedInfer] Prepared ${currentMessages.length} messages with system prompt`);
+
+      // --- Tool Execution Loop ---
+      let textResponse = ''; // Store the final text response
+      let toolCallsResult: ToolCallPart[] | undefined;
+      let toolResultsList: ToolResultPart[] = [];
+
+      for (let i = 0; i < maxToolRoundtrips; i++) {
+        console.log(`[sharedInfer] Starting LLM Call ${i + 1}`);
+
+        // Create a type assertion function to ensure this is compatible with Solver
+        const asSolver = <T extends BaseAgentState>(agent: OpenAgent<T>): unknown => agent;
+        
+        // Ensure agent instance is available via solverContext
+        const result = await solverContext.run(asSolver(this) as Solver, async () => {
+          return generateText({
+            model: openrouter(model),
+            messages: currentMessages,
+            tools: solverTools,
+            toolChoice: 'auto',
+            temperature,
+            maxTokens: max_tokens,
+            topP: top_p
+          });
         });
-      });
+
+        const { text, toolCalls, finishReason, usage } = result;
+        
+        console.log(`[sharedInfer] LLM Call ${i + 1} finished. Reason: ${finishReason}`);
+        console.log(`[sharedInfer] LLM Usage: Prompt ${usage?.promptTokens}, Completion ${usage?.completionTokens}`);
+
+        // Store the text response from this call
+        textResponse = text;
+        toolCallsResult = toolCalls;
+        toolResultsList = []; // Reset results for this roundtrip
+
+        // If no tool calls, break the loop
+        if (!toolCalls || toolCalls.length === 0) {
+          console.log('[sharedInfer] No tool calls made by LLM. Exiting loop.');
+          break;
+        }
+
+        console.log(`[sharedInfer] LLM requested ${toolCalls.length} tool calls.`);
+
+        // Execute tool calls
+        const toolExecutionPromises = toolCalls.map(toolCall => this.executeToolEffect(toolCall));
+        const results = await Promise.all(toolExecutionPromises);
+        toolResultsList = results;
+
+        // Add the assistant message with tool calls and the tool results
+        currentMessages.push({
+          role: 'assistant',
+          content: [{ type: 'text', text }, ...toolCalls]
+        });
+        
+        currentMessages.push({
+          role: 'tool',
+          content: results
+        });
+
+        // Check if max roundtrips reached
+        if (i === maxToolRoundtrips - 1) {
+          console.warn('[sharedInfer] Maximum tool roundtrips reached.');
+          textResponse = textResponse + "\n\n(Maximum tool steps reached)";
+          break;
+        }
+      }
+
+      console.log("[sharedInfer] Inference completed successfully");
       
-      // Log the formatted messages for debugging
-      console.log(`Formatted ${formattedMessages.length} messages for AI inference`);
-      
-      // Use Workers AI binding to call the model
-      // @ts-expect-error The Env type may not be correctly defined in TypeScript
-      const result = await this.env.AI.run(model, {
-        messages: formattedMessages,
-        temperature,
-        max_tokens,
-        top_p
-      });
-      
-      // The result structure depends on the model used
-      // For LLM chat models, the result may be either a string or an object with a response field
-      const responseText = typeof result === 'string' ? result : 
-                         (result as any).response || 
-                         (result as any).text || 
-                         (result as any).generated_text || 
-                         "No content generated";
-      
-      console.log("AI inference successful:", {
-        responseLength: responseText.length,
-        model: model
-      });
-      
-      // Return a properly formatted response
+      // Return a properly formatted response with the final text
       return {
         id: generateId(),
-        content: responseText,
+        content: textResponse,
         role: "assistant",
         timestamp: new Date().toISOString(),
         model: model
       };
     } catch (error) {
-      console.error("Error during AI inference:", error);
+      console.error("[sharedInfer] Error during AI inference:", error);
       
       // Return a response with the error message
       return {
         id: generateId(),
-        content: `Error generating response with Llama 4: ${error instanceof Error ? error.message : String(error)}`,
+        content: `Error generating response: ${error instanceof Error ? error.message : String(error)}`,
         role: "assistant",
         timestamp: new Date().toISOString(),
         model: model
