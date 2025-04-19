@@ -224,8 +224,12 @@ const connectToSolver = async () => {
     team: formattedTeam
   });
 
-  // Send initial prompt and start inference
+  // Send initial prompt 
   await agent.handleSubmit(initialPrompt);
+  
+  // Start inference - this properly passes the token via params
+  // Never try to directly obtain the system prompt via agent.getSystemPrompt() - use message passing instead
+  // Example: agent.sendRawMessage({ type: "get_system_prompt", requestId: "some-id" })
   await agent.infer(githubToken);
 
   setConnectionState('connected');
@@ -343,8 +347,18 @@ The secure handling of GitHub tokens is a critical aspect of the Solver agent ar
    - It's sent to the agent via a secure WebSocket connection when establishing a connection
 
 2. **Token Storage**
-   - The token is stored in the agent's state using the `setGithubToken` method
-   - It's kept in the `githubToken` property of the `BaseAgentState` interface
+   - **⚠️ IMPORTANT:** The token must be sent using message passing, NOT direct method calls
+     ```typescript
+     // CORRECT WAY - Send via message
+     agent.sendRawMessage({
+       type: "set_github_token",
+       token: githubToken
+     });
+     
+     // INCORRECT WAY - Will cause RPC error
+     // agent.setGithubToken(githubToken) // THIS WILL FAIL!
+     ```
+   - On the server side, the token is stored in `githubToken` property of the `BaseAgentState`
    - This state is maintained by Cloudflare's Durable Object storage mechanism
    - The token is never persisted to disk or any external storage system
    - State is specific to the individual agent instance (one per issue)
@@ -1057,16 +1071,54 @@ This approach aims to leverage the strengths of both Cloudflare Durable Objects 
 
 [**Effect Framework Considerations for Solver Agent (`packages/agents/docs/solver-effect-considerations.md`)**](/packages/agents/docs/SOLVER-README.md)
 
+## Troubleshooting Common Issues
+
+### "Method is not callable" Error
+
+If you receive a "Method is not callable" error:
+- You are trying to call a method directly via RPC that isn't callable
+- Most commonly this happens with `setGithubToken` or `getSystemPrompt`
+- **Solution**: Use message passing instead of direct method calls
+
+```typescript
+// INCORRECT - Will cause "Method setGithubToken is not callable" error
+await agent.setGithubToken(token);
+
+// CORRECT - Use message passing
+await agent.sendRawMessage({
+  type: "set_github_token",
+  token: token
+});
+
+// INCORRECT - Will cause "Method getSystemPrompt is not callable" error
+const prompt = await agent.getSystemPrompt();
+
+// CORRECT - Use message passing
+const response = await agent.sendRawMessage({
+  type: "get_system_prompt",
+  requestId: "prompt-" + Date.now()
+});
+const prompt = response.prompt;
+```
+
+### Agent Not Found Error
+
+If you receive a "Agent not found" error:
+- Verify that your agent is properly registered in the `server.ts` file
+- Check that the agent name in the URL path matches the key in the agentConfig
+
+### State Not Persisting
+
+If agent state is not persisting between requests:
+- Ensure that you're using the `setState` method and not modifying state directly
+- Check that the agent's ID is consistent between requests
+- Verify that state is properly initialized
+
 ## Resources
 
 - [Vercel AI SDK Documentation](https://sdk.vercel.ai/docs)
 - [OpenRouter Provider Documentation](https://sdk.vercel.ai/providers/community-providers/openrouter)
 - [Workers AI Provider Documentation](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai)
-
-## Additional Resources
-
-- [Vercel AI SDK Documentation](https://sdk.vercel.ai/docs)
-- [OpenRouter Provider Documentation](https://sdk.vercel.ai/providers/community-providers/openrouter)
-- [Workers AI Provider Documentation](https://sdk.vercel.ai/providers/community-providers/cloudflare-workers-ai)
+- [GitHub Token Handling Guide](/packages/agents/docs/github-token-handling.md)
 - [Cloudflare Workers AI Documentation](https://developers.cloudflare.com/workers-ai/)
 - [Llama 4 Model Information](https://ai.meta.com/llama/)
