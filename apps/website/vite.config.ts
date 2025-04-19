@@ -28,4 +28,22 @@ export default defineConfig({
     // This helps ensure proper deduplication of packages
     dedupe: ['react', 'react-dom', 'agents', 'agents/react'],
   },
+  // Add HMR specific configuration to improve stability
+  server: {
+    hmr: {
+      // Add a timeout for HMR connections
+      timeout: 5000,
+      // Reduce HMR connection errors
+      protocol: 'ws',
+      host: 'localhost',
+      // Prevent multiple redundant HMR updates
+      overlay: false,
+    },
+    // Improve watch behavior to prevent multiple rapid updates
+    watch: {
+      usePolling: false,
+      // Increase the throttle delay to prevent multiple rapid refreshes
+      interval: 500,
+    },
+  },
 });
