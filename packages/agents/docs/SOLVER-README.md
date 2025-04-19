@@ -198,6 +198,81 @@ The Solver follows a methodical approach to issue resolution:
    - Higher temperature (>0.7): More creative problem-solving
    - Consistent validation regardless of temperature setting
 
+## Tool Architecture and GitHub Token Handling
+
+The Solver agent leverages a robust tool architecture that spans both base functionality and solver-specific capabilities. Tools are implemented using the Vercel AI SDK's `tool()` function, which provides type-safe parameter validation using Zod schemas.
+
+### Tool Hierarchy
+
+Tools are organized into two main categories:
+
+1. **Base Agent Tools** (`packages/agents/src/common/tools/index.ts`)
+   - Scheduling tools: `scheduleTask`, `listSystemSchedules`, `deleteSystemSchedule`
+   - Repository context: `setRepositoryContext`
+   - Utility tools: `getLocalTime`, `getWeatherInformation`
+
+   These tools are available to all agent types and handle cross-cutting concerns that aren't specific to any particular agent use case.
+
+2. **Solver-Specific Tools** (`packages/agents/src/agents/solver/tools.ts`)
+   - Issue management: `getIssueDetails`, `updateIssueStatus`
+   - Planning: `createImplementationPlan`
+
+   These tools implement functionality specific to the Solver agent's role in managing issues and implementing solutions.
+
+### GitHub Token Flow
+
+The secure handling of GitHub tokens is a critical aspect of the Solver agent architecture. Here's how GitHub token authentication works:
+
+1. **Token Origin**
+   - The GitHub token originates from the user through the web interface
+   - It's sent to the agent via a secure WebSocket connection when establishing a connection
+
+2. **Token Storage**
+   - The token is stored in the agent's state using the `setGithubToken` method
+   - It's kept in the `githubToken` property of the `BaseAgentState` interface
+   - This state is maintained by Cloudflare's Durable Object storage mechanism
+   - The token is never persisted to disk or any external storage system
+   - State is specific to the individual agent instance (one per issue)
+
+3. **Token Usage in Tools**
+   - When a GitHub API tool is invoked, it retrieves the token from the agent's state:
+     ```typescript
+     const agent = solverContext.getStore();
+     const token = agent.state.githubToken;
+     ```
+   - The token is used in API requests with proper authorization headers:
+     ```typescript
+     const response = await fetch(url, {
+       headers: {
+         'Authorization': `Bearer ${token}`,
+         'Accept': 'application/vnd.github.v3+json',
+         'User-Agent': 'OpenAgents'
+       }
+     });
+     ```
+   - All token usage is scoped to the specific operations required by the tool
+
+4. **Security Measures**
+   - Tokens are redacted in all logs to prevent exposure:
+     ```typescript
+     const safeMessageForLogging = { ...parsedMessage };
+     if (safeMessageForLogging.githubToken) {
+       safeMessageForLogging.githubToken = "[REDACTED]";
+     }
+     ```
+   - WebSocket connections use TLS encryption for secure transit
+   - Tokens are never exposed to other agents or users
+   - Token validation happens at the time of API requests
+   - No token persistence beyond the agent's runtime state
+
+5. **Token Lifecycle**
+   - Tokens live only for the duration of the agent session
+   - When an agent instance is stopped or evicted from memory, the token is discarded
+   - New connections require re-authentication with a fresh token
+   - No automatic token refresh is implemented; expired tokens must be replaced manually
+
+The token flow ensures that GitHub credentials are securely handled while enabling the agent to perform authenticated operations against the GitHub API on behalf of the user.
+
 ## Additional Resources
 
 For more details on the inference implementation, see `packages/agents/docs/shared-inference-implementation.md`.
