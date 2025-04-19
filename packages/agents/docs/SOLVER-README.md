@@ -891,7 +891,7 @@ An **incremental adoption plan** is being evaluated, starting with potentially r
 
 **For a detailed analysis of Effect's relevance to this project and the proposed incremental adoption strategy, please refer to the dedicated document:**
 
-[**Effect Framework Considerations for Solver Agent (`packages/agents/docs/solver-effect-considerations.md`)**](/solver-effect-considerations.md)
+[**Effect Framework Considerations for Solver Agent (`packages/agents/docs/solver-effect-considerations.md`)**](/packages/agents/docs/SOLVER-README.md)
 
 ## Resources
 
