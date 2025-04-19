@@ -2,7 +2,7 @@
 
 import { Agent } from "agents";
 import { generateId, generateText, streamText } from "ai";
-import type { CoreMessage, ToolCallPart, ToolResultPart, TextDeltaStreamPart } from "ai"; // Correct type-only import
+import type { CoreMessage, ToolCallPart, ToolResultPart, TextStreamPart } from "ai"; // Correct type-only import
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
 import { Effect, Runtime, Cause } from "effect"; // Correct imports
@@ -176,11 +176,14 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     }
 
     // Add GitHub token to args for GitHub-related tools if not already present
-    let enhancedArgs = { ...args };
-    if ((toolName === 'fetchFileContents' || toolName === 'getFileContents') && 
-        !enhancedArgs.token && this.state.githubToken) {
+    let enhancedArgs = typeof args === 'object' && args !== null ? { ...args as Record<string, any> } : {};
+    if ((toolName === 'fetchFileContents' || ['getFileContents', 'fetchFileContents'].includes(toolName as string)) && 
+        typeof enhancedArgs === 'object' && !('token' in enhancedArgs) && this.state.githubToken) {
       console.log(`[executeToolEffect] Adding GitHub token to tool args (length: ${this.state.githubToken.length})`);
-      enhancedArgs.token = this.state.githubToken;
+      enhancedArgs = {
+        ...enhancedArgs,
+        token: this.state.githubToken
+      } as any; // Type assertion to avoid TypeScript errors with specific tool parameter types
     }
 
     console.log(`[executeToolEffect] Executing tool '${toolName}' with args:`, enhancedArgs);
@@ -409,18 +412,25 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
         // Execute all tool calls concurrently, injecting GitHub token when appropriate
         const toolExecutionPromises = toolCalls.map(toolCall => {
           // Check if this is a GitHub-related tool call that might need a token
-          if (toolCall.toolName === 'fetchFileContents' || toolCall.toolName === 'getFileContents') {
+          // Use string comparison to avoid TypeScript literal type errors
+          const toolName = toolCall.toolName as string;
+          if (toolName === 'fetchFileContents' || toolName === 'getFileContents') {
             // Clone the tool call and add token from params or state if not already present
             const enhancedToolCall = { ...toolCall };
             
             // Use explicit token from params, or fallback to state
             const tokenToUse = githubToken || this.state.githubToken;
             
-            if (tokenToUse && !enhancedToolCall.args.token) {
+            if (tokenToUse && 
+                typeof enhancedToolCall.args === 'object' && 
+                enhancedToolCall.args !== null && 
+                !('token' in enhancedToolCall.args)) {
+              
+              // This is a type assertion to avoid TypeScript errors with tool parameters
               enhancedToolCall.args = { 
-                ...enhancedToolCall.args,
+                ...(enhancedToolCall.args as Record<string, any>),
                 token: tokenToUse
-              };
+              } as any; // Type assertion to avoid TypeScript errors with specific tool parameter types
               console.log(`[sharedInfer] Adding token to ${toolCall.toolName} call (token length: ${tokenToUse.length})`);
             }
             return this.executeToolEffect(enhancedToolCall);
@@ -666,17 +676,26 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
                 
                 // Execute all tool calls in parallel, injecting GitHub token when appropriate
                 const toolExecutionPromises = toolCalls.map(toolCall => {
-                  // Check if this is a GitHub-related tool call that might need a token
-                  if (toolCall.toolName === 'fetchFileContents' || toolCall.toolName === 'getFileContents') {
+                  // Check for GitHub-related tool names
+                  const isGithubTool = toolCall.toolName === 'fetchFileContents' || 
+                                       ['getFileContents', 'fetchFileContents'].includes(toolCall.toolName as string);
+                                       
+                  if (isGithubTool) {
                     // Clone the tool call and add token from params or state if not already present
                     const enhancedToolCall = { ...toolCall };
                     
                     // Use explicit token from params, or fallback to state
                     const tokenToUse = githubToken || this.state.githubToken;
                     
-                    if (tokenToUse && !enhancedToolCall.args.token) {
+                    // Safely check and enhance args if they're an object
+                    if (tokenToUse && 
+                        typeof enhancedToolCall.args === 'object' && 
+                        enhancedToolCall.args !== null && 
+                        !('token' in enhancedToolCall.args)) {
+                      
+                      // Create a new args object with the token added
                       enhancedToolCall.args = { 
-                        ...enhancedToolCall.args,
+                        ...(enhancedToolCall.args as Record<string, any>),
                         token: tokenToUse
                       };
                       console.log(`[streamingInfer] Adding token to ${toolCall.toolName} call (token length: ${tokenToUse.length})`);
