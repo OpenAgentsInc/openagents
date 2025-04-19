@@ -992,7 +992,7 @@ The refactoring will implement two key providers:
    ```typescript
    import { createOpenRouter } from '@openrouter/ai-sdk-provider';
    import { createWorkersAI } from 'workers-ai-provider';
-   import { generateText, generateObject } from 'ai';
+   import { generateText, generateObject, streamText } from 'ai';
    import { modelMap } from './models';
 
    // Provider factory
@@ -1024,7 +1024,8 @@ The refactoring will implement two key providers:
          };
        },
        generateText,
-       generateObject
+       generateObject,
+       streamText
      };
    }
 
@@ -1198,6 +1199,388 @@ This refactoring will provide:
 4. **Phase 4: Frontend Integration**
    - Update any frontend code that depends on specific model IDs
    - Add UI components for model selection if needed
+
+# Streaming Text Implementation Plan
+
+This section outlines the implementation plan for replacing `generateText` with `streamText` to provide real-time streaming responses to the user interface.
+
+## Current Implementation
+
+Currently, the solution uses `generateText` from Vercel AI SDK which returns a complete response only after the entire generation is finished:
+
+```typescript
+// Current implementation with generateText
+const { text } = await this.providers.generateText({
+  model: provider.chatModel(modelId),
+  messages: formattedMessages,
+  temperature,
+  maxTokens: max_tokens,
+  topP: top_p
+});
+
+// Return the complete response at once
+return {
+  id: generateId(),
+  content: text,
+  role: "assistant",
+  timestamp: new Date().toISOString(),
+  model: model
+};
+```
+
+This approach results in users waiting until the entire response is generated before seeing any text, which can lead to a poor user experience for longer responses.
+
+## Streaming Implementation
+
+The refactoring will use Vercel AI SDK's `streamText` function to stream tokens to the client as they're generated:
+
+### 1. Backend Changes (`open-agent.ts`)
+
+#### New Streaming Inference Method
+
+```typescript
+/**
+ * Shared streaming inference method for all agents
+ * Uses Vercel AI SDK's streamText to stream responses in real-time
+ */
+async streamingInfer(props: InferProps, onToken: (token: string, isComplete: boolean) => void): Promise<string> {
+  try {
+    // Extract properties with defaults
+    const {
+      model = "anthropic/claude-3.5-sonnet", // Default to Claude via OpenRouter
+      messages,
+      system,
+      temperature = 0.7,
+      max_tokens = 1024,
+      top_p = 0.95,
+      githubToken
+    } = props;
+
+    // Get the appropriate provider
+    const openrouter = createOpenRouter({
+      apiKey: (this.env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
+    });
+    
+    // If token was provided, ensure it's in state
+    if (githubToken && typeof githubToken === 'string') {
+      this.state.githubToken = githubToken;
+      this.setState({
+        ...this.state,
+        githubToken: githubToken
+      });
+    }
+
+    // Format messages for the AI model
+    const formattedMessages = [];
+    const systemPrompt = system || this.getSystemPrompt();
+    
+    if (systemPrompt) {
+      formattedMessages.push({ role: 'system', content: systemPrompt });
+    }
+
+    if (messages && messages.length > 0) {
+      formattedMessages.push(...messages);
+    }
+
+    console.log(`[streamingInfer] Starting streaming inference with ${formattedMessages.length} messages`);
+
+    // Use streamText from Vercel AI SDK
+    const { textStream, fullStream } = await this.providers.streamText({
+      model: openrouter("anthropic/claude-3.5-sonnet"),
+      messages: formattedMessages,
+      tools: solverTools,
+      toolChoice: 'auto',
+      temperature,
+      maxTokens: max_tokens,
+      topP: top_p
+    });
+
+    // Initialize accumulated text and event handlers
+    let accumulatedText = '';
+    const messageId = generateId();
+    let isComplete = false;
+    const toolCalls: ToolCallPart[] = [];
+    
+    // Set up handling of the full stream (includes text, tool calls, etc.)
+    (async () => {
+      for await (const chunk of fullStream) {
+        if (chunk.type === 'text-delta') {
+          // Handle text delta (streamed tokens)
+          accumulatedText += chunk.textDelta;
+          onToken(chunk.textDelta, false);
+          
+          // Send WebSocket message with partial completion
+          this.websocket?.send(JSON.stringify({
+            type: 'streaming_response',
+            requestId: props.requestId,
+            delta: chunk.textDelta,
+            accumulatedText,
+            isComplete: false,
+            messageId
+          }));
+        } 
+        else if (chunk.type === 'tool-call') {
+          // Collect tool calls for later handling
+          toolCalls.push(chunk);
+          console.log(`[streamingInfer] Received tool call: ${chunk.toolName}`);
+        }
+      }
+      
+      // Processing complete - handle any collected tool calls
+      if (toolCalls.length > 0) {
+        console.log(`[streamingInfer] Processing ${toolCalls.length} tool calls`);
+        
+        // Execute all tool calls in parallel
+        const toolResults = await Promise.all(
+          toolCalls.map(toolCall => this.executeToolEffect(toolCall))
+        );
+        
+        // Add tool results to the accumulated text
+        for (const result of toolResults) {
+          // Format tool results for display
+          const toolDisplay = `\n\n**Tool Result (${result.toolName})**: ${
+            JSON.stringify(result.result, null, 2)
+          }\n\n`;
+          
+          accumulatedText += toolDisplay;
+          onToken(toolDisplay, false);
+          
+          // Send tool results via WebSocket
+          this.websocket?.send(JSON.stringify({
+            type: 'tool_response',
+            requestId: props.requestId,
+            toolName: result.toolName,
+            result: result.result,
+            messageId
+          }));
+        }
+      }
+      
+      // Signal completion
+      isComplete = true;
+      onToken('', true);
+      
+      // Send completion message
+      this.websocket?.send(JSON.stringify({
+        type: 'streaming_complete',
+        requestId: props.requestId,
+        messageId,
+        completeText: accumulatedText,
+        model: model
+      }));
+      
+      // Create and add the complete message to the history
+      const assistantMessage = {
+        id: messageId,
+        role: 'assistant' as const,
+        content: accumulatedText,
+        timestamp: new Date().toISOString()
+      };
+      
+      this.updateState({
+        messages: [...this.state.messages, assistantMessage]
+      } as Partial<T>);
+      
+      console.log(`[streamingInfer] Streaming complete, message added to history`);
+    })();
+
+    return messageId;
+  } catch (error) {
+    console.error("[streamingInfer] Error:", error);
+    
+    // Send error message
+    const errorText = `Error generating response: ${error instanceof Error ? error.message : String(error)}`;
+    onToken(errorText, true);
+    
+    // Send error via WebSocket
+    this.websocket?.send(JSON.stringify({
+      type: 'streaming_error',
+      requestId: props.requestId,
+      error: errorText
+    }));
+    
+    return '';
+  }
+}
+```
+
+### 2. WebSocket Message Handler Changes
+
+Update the message handler in the OpenAgent class to handle streaming messages:
+
+```typescript
+// In the WebSocket message handler
+if (parsedMessage.type === "shared_infer") {
+  // Previous implementation using generateText
+  // const inferResponse = await this.sharedInfer(parsedMessage.params);
+  // ...
+
+  // New implementation using streamText
+  const messageId = await this.streamingInfer(
+    parsedMessage.params,
+    (token, isComplete) => {
+      // Optional callback for token handling
+      // This callback is useful for internal processing
+    }
+  );
+
+  // No immediate response needed - everything is streamed via WebSocket
+  return {
+    type: "stream_started",
+    requestId: parsedMessage.requestId,
+    messageId
+  };
+}
+```
+
+### 3. Frontend Changes (`solver-connector.tsx`)
+
+Update the client-side code to handle streamed responses:
+
+```typescript
+// In the form submission handler
+const inputValue = input.value;
+input.value = '';
+
+// Add user message to UI immediately
+const userMessage = {
+  id: generateId(),
+  role: 'user' as const,
+  content: inputValue
+};
+agent.setMessages([...agent.messages, userMessage]);
+
+// Create a placeholder for the streaming response
+const assistantMessageId = generateId();
+const assistantPlaceholder = {
+  id: assistantMessageId,
+  role: 'assistant' as const,
+  content: '', // Start with empty content
+  isStreaming: true // Mark as streaming for UI
+};
+
+// Add placeholder to UI
+agent.setMessages([...agent.messages, userMessage, assistantPlaceholder]);
+
+// Set up event listener for streaming updates
+const streamEventHandler = (event: MessageEvent) => {
+  const data = JSON.parse(event.data);
+  
+  if (data.type === 'streaming_response' && data.messageId === assistantMessageId) {
+    // Update placeholder message with accumulated content
+    agent.setMessages(prevMessages => 
+      prevMessages.map(msg => 
+        msg.id === assistantMessageId 
+          ? { ...msg, content: data.accumulatedText, isStreaming: true } 
+          : msg
+      )
+    );
+  }
+  else if (data.type === 'streaming_complete' && data.messageId === assistantMessageId) {
+    // Update with final content and mark as complete
+    agent.setMessages(prevMessages => 
+      prevMessages.map(msg => 
+        msg.id === assistantMessageId 
+          ? { ...msg, content: data.completeText, isStreaming: false } 
+          : msg
+      )
+    );
+    
+    // Clean up event listener
+    agent.webSocket?.removeEventListener('message', streamEventHandler);
+  }
+  else if (data.type === 'streaming_error' && data.requestId === requestId) {
+    // Handle error
+    agent.setMessages(prevMessages => 
+      prevMessages.map(msg => 
+        msg.id === assistantMessageId 
+          ? { ...msg, content: data.error, isError: true, isStreaming: false } 
+          : msg
+      )
+    );
+    
+    // Clean up event listener
+    agent.webSocket?.removeEventListener('message', streamEventHandler);
+  }
+};
+
+// Add event listener for streaming events
+agent.webSocket?.addEventListener('message', streamEventHandler);
+
+// Send the inference request with streaming flag
+await agent.sendRawMessage({
+  type: "shared_infer",
+  requestId: requestId,
+  streaming: true, // New flag to indicate streaming is desired
+  params: {
+    model: "anthropic/claude-3.5-sonnet",
+    messages: allMessages,
+    system: systemPrompt,
+    temperature: 0.7,
+    max_tokens: 1000,
+    githubToken: githubToken
+  },
+  context: {
+    issue: formattedIssue,
+    project: formattedProject,
+    team: formattedTeam
+  }
+});
+```
+
+### 4. UI Enhancements for Streaming
+
+Update the message display component to show streaming indicators:
+
+```tsx
+// In the MessageList component or equivalent
+{message.isStreaming && (
+  <div className="animate-pulse">
+    <span className="inline-block w-2 h-2 bg-primary rounded-full mr-1 animate-blink"></span>
+    <span className="inline-block w-2 h-2 bg-primary rounded-full mr-1 animate-blink animation-delay-200"></span>
+    <span className="inline-block w-2 h-2 bg-primary rounded-full animate-blink animation-delay-400"></span>
+  </div>
+)}
+```
+
+## Implementation Steps
+
+1. **Update Dependencies**
+   - Ensure the latest version of the Vercel AI SDK with streaming support is installed
+
+2. **Backend Implementation**
+   - Add the `streamingInfer` method to OpenAgent class
+   - Update the WebSocket message handler to use streaming for inference requests
+   - Add streaming-specific WebSocket message types and handlers
+
+3. **Frontend Implementation**
+   - Add state management for streaming messages in solver-connector.tsx
+   - Implement WebSocket event listeners for streaming updates
+   - Update the UI to show streaming indicators and partial responses
+
+4. **Testing**
+   - Test streaming functionality with various models
+   - Verify tool call execution works correctly with streaming
+   - Ensure UI updates properly as tokens arrive
+
+## Benefits of Streaming Implementation
+
+1. **Improved User Experience**
+   - Immediate feedback as text is generated
+   - Reduced perceived latency especially for long responses
+   - Allows users to begin reading responses before completion
+
+2. **Better Responsiveness**
+   - The UI feels more interactive and alive
+   - Users can stop generation early if needed
+   - Tool executions can be visible as they happen
+
+3. **Technical Advantages**
+   - More efficient use of the WebSocket connection
+   - Clearer separation of message handling logic
+   - Better error handling and recovery options
+
+This implementation maintains all existing functionality while adding real-time streaming capabilities, providing a significant user experience improvement for the Solver agent.
 
 ## Architectural Considerations: Exploring Synergy with the Effect Framework
 

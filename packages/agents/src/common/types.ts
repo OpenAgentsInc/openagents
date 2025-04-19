@@ -19,6 +19,8 @@ export interface InferProps {
   max_tokens?: number;
   top_p?: number;
   stream?: boolean;
+  streaming?: boolean; // Flag to use streamText instead of generateText
+  requestId?: string; // Request ID for tracking streaming responses
   githubToken?: string; // GitHub token for API operations
 }
 
