@@ -532,6 +532,95 @@ For local debugging, use:
 - Cloudflare dashboard for Worker logs
 - `wrangler tail` for real-time log streaming
 
+## Shared Inference System
+
+The Solver agent uses a shared inference system implemented in the base `OpenAgent` class. This system provides a unified way for all agents to access AI models through Cloudflare Workers AI.
+
+### Implementation Details
+
+The shared inference system is implemented in the `sharedInfer` method of the `OpenAgent` class:
+
+```typescript
+async sharedInfer(props: InferProps): Promise<InferResponse> {
+  // Default to Llama 4 Scout if no model specified
+  const { 
+    model = "@cf/meta/llama-4-scout-17b-16e-instruct", 
+    messages, 
+    system, 
+    temperature = 0.7, 
+    max_tokens = 1024, 
+    top_p = 0.95 
+  } = props;
+  
+  // Format conversation for LLM input
+  let formattedMessages = [];
+  
+  // Use provided system prompt or generate one from agent state
+  let systemPrompt = system || this.getSystemPrompt();
+  formattedMessages.push({ role: "system", content: systemPrompt });
+  
+  // Add user and assistant messages
+  messages.forEach(msg => {
+    formattedMessages.push({ role: msg.role, content: msg.content });
+  });
+  
+  // Call the Cloudflare Workers AI API
+  const result = await this.env.AI.run(model, {
+    messages: formattedMessages,
+    temperature,
+    max_tokens,
+    top_p
+  });
+  
+  // Process and return the response
+  return {
+    id: generateId(),
+    content: extractResponseText(result),
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    model: model
+  };
+}
+```
+
+### Key Features
+
+1. **Model Access**: Provides access to Cloudflare's AI models, defaulting to Llama 4 Scout
+2. **Dynamic System Prompts**: Automatically generates system prompts based on agent state
+3. **Flexible Parameters**: Supports model-specific parameters like temperature and max tokens
+4. **Context Awareness**: Includes agent context in system prompts
+5. **Consistent Response Format**: Standardizes response format across different models
+6. **Error Handling**: Gracefully handles inference errors with informative messages
+
+### Usage in Solver Agent
+
+The Solver agent uses the shared inference system in several ways:
+
+1. **Initial Analysis**: When first connected to analyze issues
+2. **User Interactions**: To respond to user messages in the chat interface
+3. **Tool Integration**: Some tools may use inference for specific tasks
+4. **System Prompt Generation**: To create dynamic prompts based on current context
+
+When the user sends a message through the chat interface, this triggers a message flow that:
+
+1. Formats the conversation history and user message
+2. Ensures context is available for the system prompt
+3. Calls `sharedInfer` with appropriate parameters
+4. Processes the response and adds it to the message history
+5. Displays the response to the user
+
+### Advanced Configuration
+
+For specialized use cases, the inference system can be configured with:
+
+- Different model selections (e.g., smaller models for faster responses)
+- Custom temperature settings (lower for precise answers, higher for creative ones)
+- Token limits to control response length
+- Custom system prompts for specific behaviors
+
+For more implementation details, see the full documentation in `packages/agents/docs/shared-inference-implementation.md`.
+
 ## Additional Resources
 
-For more details on the inference implementation, see `packages/agents/docs/shared-inference-implementation.md`
+- [Cloudflare Workers AI Documentation](https://developers.cloudflare.com/workers-ai/)
+- [Llama 4 Model Information](https://ai.meta.com/llama/)
