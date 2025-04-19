@@ -870,6 +870,29 @@ This refactoring will provide:
    - Update any frontend code that depends on specific model IDs
    - Add UI components for model selection if needed
 
+## Architectural Considerations: Exploring the Effect Framework
+
+While the current Solver Agent implementation effectively utilizes Cloudflare Durable Objects, WebSockets, and standard TypeScript `async/await` patterns, we are exploring the potential benefits of incrementally adopting the [Effect framework](https://effect.website/) for future development and refactoring.
+
+**Why Consider Effect?**
+
+The Solver Agent deals with complex asynchronous operations (LLM inference, tool execution, external API calls), potential failures across these operations, state management within a distributed context (Durable Objects), and managing dependencies like GitHub tokens and API clients. Effect offers a functional programming paradigm within TypeScript designed to address these challenges more robustly and explicitly:
+
+1.  **Explicit Error Handling:** Effect tracks potential errors (`E` in `Effect<A, E, R>`) in the type system, moving beyond `try/catch` to make failure paths explicit and force developers to handle them, potentially increasing reliability.
+2.  **Structured Concurrency:** Provides powerful, composable tools for managing concurrent operations (like multiple tool calls or background tasks) safely, including built-in interruption handling.
+3.  **Dependency Management:** Formalizes the management of dependencies (`R` in `Effect<A, E, R>`) like API clients or configuration using `Context` and `Layer`, which can improve testability and modularity.
+4.  **Rich Ecosystem:** Offers built-in, composable solutions for common patterns like retries (`Schedule`), resource management (`Scope`), caching (`Cache`), and more, potentially reducing boilerplate code.
+
+**Current Status & Plan**
+
+We believe adopting Effect could lead to a more reliable, maintainable, and testable Solver Agent over time. However, it represents a significant paradigm shift requiring careful consideration and learning.
+
+An **incremental adoption plan** is being evaluated, starting with potentially refactoring the internal logic of specific tools before considering broader changes to core agent logic or dependency management.
+
+**For a detailed analysis of Effect's relevance to this project and the proposed incremental adoption strategy, please refer to the dedicated document:**
+
+[**Effect Framework Considerations for Solver Agent (`packages/agents/docs/solver-effect-considerations.md`)**](./docs/solver-effect-considerations.md)
+
 ## Resources
 
 - [Vercel AI SDK Documentation](https://sdk.vercel.ai/docs)
