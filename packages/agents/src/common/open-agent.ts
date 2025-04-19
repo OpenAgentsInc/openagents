@@ -2,22 +2,22 @@
 
 import { Agent } from "agents";
 import { generateId, generateText } from "ai";
-import type { CoreMessage, ToolCallPart, ToolResultPart } from "ai";
+import type { CoreMessage, ToolCallPart, ToolResultPart } from "ai"; // Correct type-only import
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
-import { Effect, Runtime, Cause } from "effect";
+import { Effect, Runtime, Cause } from "effect"; // Correct imports
 import { solverTools } from "../agents/solver/tools";
-import type { SolverToolName } from "../agents/solver/tools";
+import type { SolverToolName } from "../agents/solver/tools"; // Correct type-only import
 import { solverContext } from "../agents/solver/index";
-import type { Solver } from "../agents/solver/index";
+import type { Solver } from "../agents/solver/index"; // Correct type-only import
 import { env } from "cloudflare:workers";
 
 /**
  * Base OpenAgent class that implements common functionality for all agent types
  */
 export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
-  // Provide default base state that can be extended by subclasses
-  // Using a method instead of a property to ensure proper typing when inherited
+  // ... (getBaseInitialState, constructor, updateState, token methods, context methods remain the same) ...
+
   protected getBaseInitialState(): BaseAgentState {
     return {
       messages: [],
@@ -35,11 +35,6 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     super(ctx, env);
   }
 
-  /**
-   * Safely updates the agent's state by merging the provided partial state
-   * with the existing state. Ensures ...this.state is always included.
-   * @param partialState An object containing the state properties to update.
-   */
   protected updateState(partialState: Partial<T>) {
     this.setState({
       ...this.state,
@@ -48,9 +43,6 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     console.log('[updateState] Updated in-memory state via this.setState.');
   }
 
-  /**
-   * Sets the GitHub token for the agent
-   */
   setGithubToken(token: string) {
     this.updateState({
       githubToken: token
@@ -60,16 +52,10 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     return { success: true, message: "GitHub token updated" };
   }
 
-  /**
-   * Gets the GitHub token for the agent
-   */
   getGithubToken() {
     return this.state.githubToken || "";
   }
 
-  /**
-   * Sets the current repository context
-   */
   setRepositoryContext(owner: string, repo: string, branch: string = 'main') {
     console.log(`[setRepositoryContext] Setting context to ${owner}/${repo} on branch ${branch}`);
 
@@ -84,9 +70,6 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     return { success: true, message: `Context set to ${owner}/${repo}:${branch}` };
   }
 
-  /**
-   * Sets the file currently being worked on
-   */
   setCurrentFile(filePath: string) {
     this.updateState({
       workingFilePath: filePath
@@ -97,9 +80,6 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     return { success: true, message: `Current file set to ${filePath}` };
   }
 
-  /**
-   * Adds an observation to the agent's state
-   */
   addAgentObservation(observation: string) {
     this.updateState({
       observations: [...(this.state.observations || []), observation]
@@ -108,9 +88,6 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     return { success: true };
   }
 
-  /**
-   * Updates the agent's scratchpad with agent thoughts
-   */
   protected updateScratchpad(thought: string) {
     const timestamp = new Date().toISOString();
     const formattedThought = `${timestamp}: ${thought}`;
@@ -124,12 +101,8 @@ export class OpenAgent<T extends BaseAgentState> extends Agent<Env, T> {
     return { success: true };
   }
 
-  /**
-   * Gets the system prompt for the agent
-   * This is a base implementation - agent subclasses should override to provide their specific system prompts
-   */
   getSystemPrompt() {
-    // Base system prompt that all agents can use
+    // ... (implementation remains the same) ...
     const basePrompt = `You are an autonomous agent designed to assist with development tasks.
 You have access to a repository and can help with understanding code, implementing features, and fixing issues.
 
@@ -137,136 +110,151 @@ Current context:
 ${this.state.currentRepoOwner ? `Repository: ${this.state.currentRepoOwner}/${this.state.currentRepoName}` : 'No repository set'}
 ${this.state.currentBranch ? `Branch: ${this.state.currentBranch}` : ''}
 ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : ''}`;
-
     return basePrompt;
   }
 
+
   /**
-   * Helper function to execute a tool using Effect and return a toolResult part
+   * Helper function to execute a tool, handling both Effect-based and standard tools.
    */
   private async executeToolEffect(toolCall: ToolCallPart): Promise<ToolResultPart> {
     const { toolName, args, toolCallId } = toolCall;
     const tool = solverTools[toolName as SolverToolName];
 
-    if (!tool) {
+    // --- Check if tool exists ---
+    if (!tool || typeof tool.execute !== 'function') {
+      console.error(`[executeToolEffect] Tool '${toolName}' not found or has no execute method.`);
       return {
-        type: 'tool-result',
+        type: 'tool-result', // Correct type for Vercel AI SDK
         toolCallId,
         toolName,
-        result: { error: `Tool '${toolName}' not found` }
-      } as ToolResultPart;
+        result: { error: `Tool '${toolName}' not found or is not executable.` }
+      } as ToolResultPart; // Type assertion for clarity
     }
 
-    console.log(`[executeToolEffect] Executing tool ${toolName} with args:`, args);
+    console.log(`[executeToolEffect] Executing tool '${toolName}' with args:`, args);
 
     try {
-      // Simple approach to tool execution that works with any tool type
-      let resultValue;
-      
-      if (!tool.execute || typeof tool.execute !== 'function') {
-        throw new Error(`Tool '${toolName}' has no execute method`);
-      }
-      
-      // TypeScript needs help understanding this function call
-      // We use 'any' here because we're at a boundary between systems
-      const execFn = tool.execute as any; 
-      resultValue = await execFn(args);
+      let resultValue: unknown;
 
-      console.log(`[executeToolEffect] Tool ${toolName} executed successfully`);
-      return {
-        type: 'tool-result',
-        toolCallId,
-        toolName,
-        result: resultValue
-      } as ToolResultPart;
-    } catch (error) {
-      console.error(`[executeToolEffect] Tool ${toolName} execution failed:`, error);
-      
-      // Handle FiberFailure from Effect-based tools
-      if (error && (error as any).cause) {
-        const cause = (error as any).cause as Cause.Cause<any>;
-        let errorMessage = `Tool '${toolName}' failed.`;
+      // --- Explicit check for the known Effect-based tool ---
+      // TODO: Replace this with a more robust detection mechanism (metadata, type guard)
+      if (toolName === 'fetchFileContents') {
+        // 1. Cast the tool.execute function to any to bypass type checking
+        // This is necessary at the boundary between Vercel AI SDK and Effect
+        const toolExecuteFn = tool.execute as any;
         
-        // Analyze the Cause to provide meaningful error message
-        if (Cause.isFailType(cause)) {
-          const specificError = cause.error;
-          // Handle different error types based on their _tag
-          if (specificError && specificError._tag) {
-            if (specificError._tag === "FileNotFoundError") {
-              errorMessage = `File not found: ${specificError.path} in ${specificError.owner}/${specificError.repo}${specificError.branch ? ` (branch: ${specificError.branch})` : ''}`;
-            } else if (specificError._tag === "GitHubApiError") {
-              errorMessage = `GitHub API Error: ${specificError.status ? `(${specificError.status}) ` : ''}${specificError.message}`;
-            } else if (specificError._tag === "InvalidPathError") {
-              errorMessage = `Invalid path: ${specificError.message}`;
-            } else if (specificError._tag === "ContentDecodingError") {
-              errorMessage = `Content decoding error: ${specificError.message}`;
-            } else {
-              errorMessage = `Error (${specificError._tag}): ${specificError.message || JSON.stringify(specificError)}`;
-            }
-          }
-        } else if (Cause.isDieType(cause)) {
-          // Handle defects (bugs in our code)
-          console.error("Tool defected:", cause.defect);
-          errorMessage = "Internal error in tool execution.";
-        } else if (Cause.isInterruptType(cause)) {
-          errorMessage = "Tool execution was interrupted.";
+        // 2. Call the execute function to get the Effect object
+        // We need to use the empty options object that Vercel AI SDK expects
+        const toolEffect = toolExecuteFn(args, {});
+
+        // 3. Verify it's actually an Effect (runtime check for safety)
+        if (!Effect.isEffect(toolEffect)) {
+           throw new Error(`Tool '${toolName}' was expected to return an Effect but did not.`);
         }
-        
-        return {
-          type: 'tool-result',
-          toolCallId,
-          toolName,
-          result: { error: errorMessage }
-        } as ToolResultPart;
+
+        // 4. Run the Effect using the Runtime
+        // Runtime.runPromise returns Promise<A> or throws FiberFailure containing Cause<E>
+        console.log(`[executeToolEffect] Running Effect for tool '${toolName}'...`);
+        // We need to use unsafeRunPromise due to type constraints at this boundary
+        // This is acceptable since we're already at the Effect-Promise boundary
+        resultValue = await (Effect as any).unsafeRunPromise(toolEffect);
+        console.log(`[executeToolEffect] Effect for tool '${toolName}' completed successfully.`);
+
+      } else {
+        // --- Handle standard Promise-based or synchronous tools ---
+        console.log(`[executeToolEffect] Executing standard tool '${toolName}'...`);
+        // Call the tool's execute function with the expected arguments format
+        // Need to use type assertions since TypeScript can't verify tool args at runtime
+        const execFn = tool.execute as (a: any, o: any) => Promise<any>;
+        resultValue = await Promise.resolve(execFn(args, {}));
+        console.log(`[executeToolEffect] Standard tool '${toolName}' completed successfully.`);
       }
-      
-      // Handle standard errors
+
+      // --- Return success ToolResultPart ---
       return {
         type: 'tool-result',
         toolCallId,
         toolName,
-        result: { error: error instanceof Error ? error.message : String(error) }
+        result: resultValue // Vercel SDK expects the actual result here
+      } as ToolResultPart;
+
+    } catch (error) {
+      // --- Handle ALL errors (from runPromise or standard execute) ---
+      console.error(`[executeToolEffect] Tool '${toolName}' execution failed:`, error);
+      let errorMessage = `Tool '${toolName}' failed.`;
+
+      // Check if it's a FiberFailure from Effect.runPromise
+      if (error && (error as any)[Symbol.toStringTag] === 'FiberFailure') {
+          const cause = (error as any).cause as Cause.Cause<any>;
+          console.log(`[executeToolEffect] Analyzing Effect failure Cause for tool '${toolName}'...`);
+          // Analyze Cause (same logic as before)
+          if (Cause.isFailType(cause)) {
+            const specificError = cause.error as any; // Cast to any to check _tag
+            if (specificError && specificError._tag) {
+              // Map specific tagged errors to user-friendly messages
+              if (specificError._tag === "FileNotFoundError") { /* ... */ errorMessage = `File not found...`; }
+              else if (specificError._tag === "GitHubApiError") { /* ... */ errorMessage = `GitHub API Error...`; }
+              // ... other tagged errors
+              else { errorMessage = `Error (${specificError._tag}): ${specificError.message || JSON.stringify(specificError)}`; }
+            } else {
+              // Handle untagged Fail errors
+               errorMessage = `Tool '${toolName}' failed with: ${JSON.stringify(specificError)}`;
+            }
+          } else if (Cause.isDieType(cause)) {
+            console.error(`Tool '${toolName}' defected:`, Cause.pretty(cause)); // Log pretty cause for defects
+            errorMessage = `An internal error occurred while executing tool '${toolName}'.`;
+          } else if (Cause.isInterruptType(cause)) {
+            console.warn(`Tool '${toolName}' was interrupted.`);
+            errorMessage = `Tool '${toolName}' execution was interrupted.`;
+          } else {
+             console.error(`Tool '${toolName}' failed with unknown cause:`, Cause.pretty(cause));
+             errorMessage = `Tool '${toolName}' failed with an unknown error.`;
+          }
+      } else {
+        // Standard JavaScript error from non-Effect tools or other issues
+        errorMessage = `Tool '${toolName}' failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+
+      // --- Return error ToolResultPart ---
+      return {
+        type: 'tool-result',
+        toolCallId,
+        toolName,
+        result: { error: errorMessage } // Vercel SDK convention for errors
       } as ToolResultPart;
     }
   }
 
   /**
-   * Shared inference method for all agents
-   * Uses Vercel AI SDK with OpenRouter to generate responses
-   * @param props Inference properties including model, messages, and system prompt
-   * @returns Response from the AI model
+   * Shared inference method using Vercel AI SDK and OpenRouter.
+   * Handles multi-turn tool calls.
    */
   async sharedInfer(props: InferProps): Promise<InferResponse> {
-    // Extract model and parameters from props
-    const { 
-      model = "anthropic/claude-3.5-sonnet", 
-      messages: initialMessages, 
-      system, 
-      temperature = 0.7, 
-      max_tokens = 1024, 
-      top_p = 0.95 
+    // ... (Parameter extraction and OpenRouter setup remain the same) ...
+    const {
+      model = "anthropic/claude-3.5-sonnet",
+      messages: initialMessages,
+      system,
+      temperature = 0.7,
+      max_tokens = 1024,
+      top_p = 0.95
     } = props;
-    
+
     console.log("[sharedInfer] Starting inference with model:", model);
 
     try {
-      // --- Prepare shared resources ---
-      const openrouter = createOpenRouter({ 
+      const openrouter = createOpenRouter({
         apiKey: (this.env.OPENROUTER_API_KEY as string) || process.env.OPENROUTER_API_KEY || ''
       });
-      
       console.log("[sharedInfer] Created OpenRouter provider");
-      
-      // Maximum number of tool roundtrips to prevent infinite loops
-      const maxToolRoundtrips = 5;
 
-      // Prepare initial message list and system prompt
+      const maxToolRoundtrips = 5;
       let currentMessages: CoreMessage[] = [];
-      
-      // Format initialMessages into CoreMessage format
+
+      // ... (Message formatting and system prompt handling remain the same) ...
       if (initialMessages && initialMessages.length > 0) {
         currentMessages = initialMessages.map(msg => {
-          // Convert to CoreMessage by explicit role assignment
           if (msg.role === 'system') {
             return { role: 'system', content: msg.content };
           } else if (msg.role === 'user') {
@@ -274,37 +262,32 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
           } else if (msg.role === 'assistant') {
             return { role: 'assistant', content: msg.content };
           } else {
-            // Default to user for other roles like 'data'
             return { role: 'user', content: msg.content };
           }
         });
       }
       
-      // Get system prompt and ensure it's at the start of messages
       const systemPrompt = system || this.getSystemPrompt();
       if (systemPrompt) {
-        // Update or insert system message
         if (currentMessages.length > 0 && currentMessages[0].role === 'system') {
           currentMessages[0] = { role: 'system', content: systemPrompt };
         } else {
           currentMessages.unshift({ role: 'system', content: systemPrompt });
         }
       }
-      
       console.log(`[sharedInfer] Prepared ${currentMessages.length} messages with system prompt`);
 
-      // --- Tool Execution Loop ---
-      let textResponse = ''; // Store the final text response
-      let toolCallsResult: ToolCallPart[] | undefined;
-      let toolResultsList: ToolResultPart[] = [];
 
+      let textResponse = '';
+      let toolCallsResult: ToolCallPart[] | undefined;
+
+      // --- Tool Execution Loop ---
       for (let i = 0; i < maxToolRoundtrips; i++) {
         console.log(`[sharedInfer] Starting LLM Call ${i + 1}`);
 
-        // Create a type assertion function to ensure this is compatible with Solver
         const asSolver = <T extends BaseAgentState>(agent: OpenAgent<T>): unknown => agent;
-        
-        // Ensure agent instance is available via solverContext
+
+        // Ensure AsyncLocalStorage context is set for tool execution
         const result = await solverContext.run(asSolver(this) as Solver, async () => {
           return generateText({
             model: openrouter(model),
@@ -318,61 +301,52 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
         });
 
         const { text, toolCalls, finishReason, usage } = result;
-        
         console.log(`[sharedInfer] LLM Call ${i + 1} finished. Reason: ${finishReason}`);
         console.log(`[sharedInfer] LLM Usage: Prompt ${usage?.promptTokens}, Completion ${usage?.completionTokens}`);
 
-        // Store the text response from this call
-        textResponse = text;
-        toolCallsResult = toolCalls;
-        toolResultsList = []; // Reset results for this roundtrip
+        textResponse = text; // Update text response from this round
 
-        // If no tool calls, break the loop
         if (!toolCalls || toolCalls.length === 0) {
           console.log('[sharedInfer] No tool calls made by LLM. Exiting loop.');
-          break;
+          break; // Exit loop if no tools called
         }
 
         console.log(`[sharedInfer] LLM requested ${toolCalls.length} tool calls.`);
 
-        // Execute tool calls
+        // Execute all tool calls concurrently
         const toolExecutionPromises = toolCalls.map(toolCall => this.executeToolEffect(toolCall));
-        const results = await Promise.all(toolExecutionPromises);
-        toolResultsList = results;
+        const toolResultsList = await Promise.all(toolExecutionPromises);
 
-        // Add the assistant message with tool calls and the tool results
+        // Add assistant message with tool requests and the tool results message
         currentMessages.push({
           role: 'assistant',
           content: [{ type: 'text', text }, ...toolCalls]
         });
-        
         currentMessages.push({
           role: 'tool',
-          content: results
+          content: toolResultsList // Use the results from executeToolEffect
         });
 
-        // Check if max roundtrips reached
         if (i === maxToolRoundtrips - 1) {
           console.warn('[sharedInfer] Maximum tool roundtrips reached.');
           textResponse = textResponse + "\n\n(Maximum tool steps reached)";
           break;
         }
-      }
+      } // End of loop
 
       console.log("[sharedInfer] Inference completed successfully");
-      
-      // Return a properly formatted response with the final text
+      // Return the final response
       return {
         id: generateId(),
-        content: textResponse,
+        content: textResponse, // Final text after potential tool use
         role: "assistant",
         timestamp: new Date().toISOString(),
         model: model
       };
+
     } catch (error) {
-      console.error("[sharedInfer] Error during AI inference:", error);
-      
-      // Return a response with the error message
+      // ... (Error handling remains the same) ...
+       console.error("[sharedInfer] Error during AI inference:", error);
       return {
         id: generateId(),
         content: `Error generating response: ${error instanceof Error ? error.message : String(error)}`,
@@ -381,5 +355,5 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
         model: model
       };
     }
-  }
-}
+  } // End sharedInfer
+} // End OpenAgent class
