@@ -468,10 +468,29 @@ export function SolverConnector({
                         console.warn("No GitHub token available to set before inference!");
                       }
 
-                      // Send the request with context data for reliability
+                      // Create an empty placeholder for streaming
+                      // This will be updated automatically as state changes come in
+                      const assistantMessageId = generateId();
+                      const assistantPlaceholder = {
+                        id: assistantMessageId,
+                        role: 'assistant' as const,
+                        content: '', // Start with empty content
+                        isStreaming: true, // Mark as streaming for UI
+                        parts: [{
+                          type: 'text' as const,
+                          text: ''
+                        }]
+                      };
+
+                      // Add placeholder to UI immediately, before the request is sent
+                      // This lets the user know the agent is working on a response
+                      agent.setMessages([...agent.messages, assistantPlaceholder]);
+                      
+                      // Send the request with streaming enabled and context data for reliability
                       const response = await agent.sendRawMessage({
                         type: "shared_infer",
                         requestId: requestId,
+                        streaming: true, // Request streaming response
                         params: {
                           model: "anthropic/claude-3.5-sonnet", // Using OpenRouter model
                           messages: allMessages,
@@ -488,21 +507,24 @@ export function SolverConnector({
                         timestamp: new Date().toISOString()
                       });
 
-                      // For async responses, just return and let the WebSocket handler update UI
-                      if (!response?.result || !response.result.id || !response.result.content) {
-                        return;
-                      }
-
-                      const result = response.result;
-
-                      // Add the assistant's response to the message history if not already added
-                      if (result && result.id && result.content) {
-                        // Check if this response is already in the messages
-                        const responseExists = agent.messages.some(msg => msg.id === result.id);
-
-                        if (!responseExists) {
-                          console.log("Adding assistant response to message history:", result.content.substring(0, 50) + "...");
-
+                      console.log("Streaming inference request sent, response:", response);
+                      
+                      // For streaming responses, the state updates come from the Durable Object
+                      // automatically via the useOpenAgent hook, so we don't need to handle them here
+                      
+                      // If we get a non-streaming response, handle it for backward compatibility
+                      if (response?.result) {
+                        const result = response.result;
+                        
+                        // Is this a non-streaming response?
+                        if (result && result.id && result.content) {
+                          console.log("Received non-streaming response:", result.content.substring(0, 50) + "...");
+                          
+                          // Remove our placeholder message
+                          agent.setMessages(
+                            agent.messages.filter(msg => msg.id !== assistantMessageId)
+                          );
+                          
                           // Create a proper assistant message
                           const assistantMessage = {
                             id: result.id,
@@ -516,11 +538,7 @@ export function SolverConnector({
 
                           // Update the messages with the new assistant response
                           agent.setMessages([...agent.messages, assistantMessage]);
-                        } else {
-                          console.log("Assistant response already exists in message history");
                         }
-                      } else {
-                        console.warn("Inference result is missing id or content, cannot add to history", result);
                       }
                     } catch (error) {
                       console.error("Error with shared inference:", error);

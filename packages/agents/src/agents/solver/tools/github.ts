@@ -147,18 +147,26 @@ export const fetchFileContents = effectTool({
           (!agent.state.githubToken || agent.state.githubToken !== explicitToken)) {
         console.log("[fetchFileContents] Updating agent state with token from parameters");
         try {
-          // Only try to update agent state if agent exists and has state
-          if (typeof agent.updateState === 'function') {
-            // Use updateState instead of setGithubToken to avoid async method issues
-            yield* Effect.tryPromise({
-              try: () => Promise.resolve(agent.updateState({ githubToken: explicitToken })),
-              catch: (error) => new GitHubApiError({
-                message: `Failed to update token in agent state: ${error}`,
-                url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
-              })
-            });
+          // Since updateState is protected, directly update the state
+          if (agent.state) {
+            // Set the token directly in the state
+            agent.state.githubToken = explicitToken;
+            
+            // Manually trigger a state save if the agent has a setState method
+            if (typeof agent.setState === 'function') {
+              yield* Effect.tryPromise({
+                try: () => Promise.resolve(agent.setState({
+                  ...agent.state,
+                  githubToken: explicitToken
+                })),
+                catch: (error) => new GitHubApiError({
+                  message: `Failed to update token in agent state: ${error}`,
+                  url: `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+                })
+              });
+            }
           } else {
-            console.warn("[fetchFileContents] Agent exists but updateState method not found");
+            console.warn("[fetchFileContents] Agent exists but state is not available");
           }
         } catch (e) {
           console.error("[fetchFileContents] Error updating token:", e);

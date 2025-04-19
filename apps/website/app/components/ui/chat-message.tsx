@@ -85,6 +85,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
   toolInvocations = [],
   parts = [],
   onRateResponse,
+  isStreaming = false,
+  isProcessingTools = false,
+  isError = false,
 }) => {
   const files = useMemo(() => {
     return experimental_attachments?.map((attachment: Attachment) => {
@@ -252,6 +255,35 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
                   return null;
                 }
               })}
+              
+              {/* Streaming indicator for assistant messages */}
+              {isStreaming && (
+                <div className="flex items-center px-3 py-1">
+                  <div className="animate-pulse flex space-x-1">
+                    <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+                    <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse delay-75"></span>
+                    <span className="inline-block w-2 h-2 bg-primary rounded-full animate-pulse delay-150"></span>
+                  </div>
+                  <span className="text-xs text-muted-foreground ml-2">Generating...</span>
+                </div>
+              )}
+              
+              {/* Tool processing indicator for assistant messages */}
+              {isProcessingTools && (
+                <div className="flex items-center px-3 py-1">
+                  <div className="animate-pulse mr-2">
+                    <span className="inline-block w-4 h-4 rounded-full border-2 border-transparent border-t-primary animate-spin"></span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Processing tool calls...</span>
+                </div>
+              )}
+              
+              {/* Error indicator for assistant messages */}
+              {isError && (
+                <div className="flex items-center px-3 py-1 text-destructive">
+                  <span className="text-xs">An error occurred during response generation</span>
+                </div>
+              )}
             </div>
             <CopyButton content={content} copyMessage="Copied to clipboard" isUser={false} />
           </div>
