@@ -91,7 +91,11 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Provides base WebSocket handling
 
 3. `packages/agents/src/agents/solver/prompts.ts`
-   - Generates system prompts for the Solver agent
+   - Generates dynamic system prompts based on current state
+   - Implements SystemPromptOptions interface for configuration:
+     - state: SolverState for current context
+     - model: Optional model information
+     - temperature: Optional temperature setting (default 0.7)
    - Includes comprehensive context in prompts:
      - Current issue details (title, number, status, description)
      - Project information (name, ID, color, icon)
@@ -110,27 +114,48 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Provides detailed logging for debugging
    - Maintains consistent prompt structure
    - Supports dynamic tool inclusion
+   - Includes extensive console logging for debugging
+   - Properly formats multi-line prompt sections
+   - Handles undefined/null values safely
+   - Supports rich context recovery
 
 4. `packages/agents/src/agents/solver/types.ts`
-   - Defines SolverState interface extending BaseAgentState
-   - Includes typed properties:
-     - messages: UIMessage[]
-     - currentIssue?: BaseIssue
-     - currentProject?: BaseProject
-     - currentTeam?: BaseTeam
-     - implementationSteps?: ImplementationStep[]
-     - issueComments?: IssueComment[]
-   - Defines SolverIssue interface for future extensions
+   - Defines SolverState interface extending BaseAgentState:
+     - messages: UIMessage[] for chat history
+     - currentIssue?: BaseIssue for active issue
+     - currentProject?: BaseProject for project context
+     - currentTeam?: BaseTeam for team context
+     - implementationSteps?: ImplementationStep[] for tracking progress
+     - issueComments?: IssueComment[] for discussion history
+   - Defines SolverIssue interface extending BaseIssue
    - Ensures type safety throughout the agent
    - Supports proper TypeScript inference
    - Enables IDE autocompletion
    - Facilitates code maintenance
+   - Imports core types from @openagents/core
+   - Uses optional properties for flexibility
+   - Maintains strict type checking
+   - Enables proper state management
 
 5. `packages/agents/src/agents/solver/tools.ts`
-   - Defines tools specific to Solver agent
-   - Complements common tools from `src/common/tools`
-   - Implements issue-specific operations
-   - Provides type-safe tool definitions
+   - Defines solver-specific tools using the AI SDK:
+     - getIssueDetails: Fetches issue information from OpenAgents/GitHub
+     - updateIssueStatus: Updates issue status with optional comments
+     - createImplementationPlan: Generates step-by-step solution plans
+   - Implements comprehensive error handling
+   - Supports both OpenAgents and GitHub issues
+   - Uses Zod for parameter validation
+   - Maintains proper TypeScript types
+   - Handles GitHub API integration
+   - Supports status updates with comments
+   - Implements proper state management
+   - Uses solverContext for agent access
+   - Provides detailed error messages
+   - Supports async/await operations
+   - Includes extensive logging
+   - Handles API rate limiting
+   - Maintains proper security practices
+   - Supports proper error recovery
 
 6. `packages/agents/src/common/tools/index.ts`
    - Defines tools common to all OpenAgents
