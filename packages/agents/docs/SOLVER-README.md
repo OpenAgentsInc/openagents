@@ -43,6 +43,12 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Ensures proper serialization of non-primitive objects
    - Implements state recovery from message history
    - Validates state updates before applying changes
+   - Implements deep state cloning for stability
+   - Handles race conditions in state updates
+   - Supports proper error recovery
+   - Maintains proper message ordering
+   - Includes extensive console logging
+   - Validates all state mutations
 
 3. **Message Handling**
    - Processes WebSocket messages for various operations:
@@ -61,6 +67,11 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Implements context recovery from message history
    - Validates message data before processing
    - Maintains proper message ordering
+   - Supports proper error reporting
+   - Handles missing context gracefully
+   - Implements proper state serialization
+   - Includes comprehensive debugging logs
+   - Supports proper error recovery
 
 ## Core Files
 
@@ -79,6 +90,12 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Includes comprehensive error handling
    - Supports temperature-based behavior adjustment
    - Maintains proper message ordering and state consistency
+   - Implements proper state serialization
+   - Handles race conditions effectively
+   - Supports proper error recovery
+   - Includes extensive debugging capabilities
+   - Validates all state mutations
+   - Maintains proper security practices
 
 2. `packages/agents/src/common/open-agent.ts`
    - Base OpenAgent class that Solver extends
@@ -89,6 +106,18 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Defines core agent capabilities
    - Implements shared tool handling
    - Provides base WebSocket handling
+   - Manages GitHub token securely
+   - Implements proper state updates
+   - Handles repository context changes
+   - Maintains working file context
+   - Supports agent observations
+   - Implements scratchpad functionality
+   - Provides base system prompt
+   - Handles inference with Llama 4
+   - Supports proper error handling
+   - Includes comprehensive logging
+   - Implements proper state serialization
+   - Maintains proper security practices
 
 3. `packages/agents/src/agents/solver/prompts.ts`
    - Generates dynamic system prompts based on current state
@@ -114,10 +143,12 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Provides detailed logging for debugging
    - Maintains consistent prompt structure
    - Supports dynamic tool inclusion
-   - Includes extensive console logging for debugging
-   - Properly formats multi-line prompt sections
+   - Includes extensive console logging
+   - Properly formats multi-line sections
    - Handles undefined/null values safely
    - Supports rich context recovery
+   - Implements proper state validation
+   - Maintains proper security practices
 
 4. `packages/agents/src/agents/solver/types.ts`
    - Defines SolverState interface extending BaseAgentState:
@@ -136,6 +167,8 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Uses optional properties for flexibility
    - Maintains strict type checking
    - Enables proper state management
+   - Supports proper error handling
+   - Includes comprehensive documentation
 
 5. `packages/agents/src/agents/solver/tools.ts`
    - Defines solver-specific tools using the AI SDK:
@@ -156,16 +189,28 @@ Each Solver is a unique instance with an ID format of `solver/{uuid-of-issue}`. 
    - Handles API rate limiting
    - Maintains proper security practices
    - Supports proper error recovery
+   - Implements proper state validation
 
 6. `packages/agents/src/common/tools/index.ts`
    - Defines tools common to all OpenAgents
    - Implements shared functionality
    - Provides base tool types
+   - Ensures proper type safety
+   - Includes comprehensive documentation
+   - Supports proper error handling
+   - Maintains consistent interfaces
+   - Implements proper validation
+   - Includes detailed logging
 
 7. `packages/agents/src/common/types.ts`
    - Defines BaseAgentState shared by all agents
    - Implements core type definitions
    - Ensures consistency across agents
+   - Provides proper type safety
+   - Includes comprehensive documentation
+   - Supports proper state management
+   - Maintains proper interfaces
+   - Implements proper validation
 
 8. Web Interface Components:
    - `apps/website/app/routes/issues/$id.tsx`: Issue page
@@ -185,6 +230,11 @@ The Solver agent is designed to:
 8. Maintain context across interactions
 9. Recover from context loss
 10. Handle temperature-based behavior adjustments
+11. Support proper error recovery
+12. Maintain proper security practices
+13. Implement proper state validation
+14. Handle race conditions effectively
+15. Support comprehensive logging
 
 ## Implementation Details
 
@@ -205,6 +255,10 @@ The Solver agent is designed to:
 - Handles race conditions in state updates
 - Provides comprehensive logging
 - Supports proper error reporting
+- Maintains proper security practices
+- Implements proper state validation
+- Handles undefined/null values safely
+- Supports rich context recovery
 
 ## Additional Resources
 
@@ -223,6 +277,12 @@ The agent maintains context across interactions and can adapt its behavior based
 - Recent observations
 - Working file context
 - Message history for recovery
+- State validation rules
+- Security practices
+- Error handling policies
+- Race condition handling
+- Logging requirements
+- Performance considerations
 
 ### Guidelines for Interaction
 
@@ -233,6 +293,10 @@ The agent maintains context across interactions and can adapt its behavior based
    - Implement solution
    - Test changes
    - Document reasoning
+   - Update status
+   - Handle errors
+   - Maintain security
+   - Validate state
 
 2. All changes are documented with:
    - Clear explanations
@@ -241,15 +305,31 @@ The agent maintains context across interactions and can adapt its behavior based
    - Progress tracking
    - File modifications
    - Context information
+   - Error handling
+   - Security considerations
+   - State validation
+   - Performance impact
 
 3. The agent can recover context from message history if state is lost:
    - Searches message history for context
    - Rebuilds state from found context
    - Validates recovered state
    - Maintains operation continuity
+   - Handles errors gracefully
+   - Ensures security
+   - Logs recovery process
+   - Updates status accordingly
+   - Notifies when complete
+   - Verifies consistency
 
 4. Temperature settings influence behavior:
    - Lower (<0.3): More precise and careful
    - Higher (>0.7): More creative while maintaining correctness
    - Adapts prompts based on temperature
    - Maintains consistency in approach
+   - Ensures proper validation
+   - Handles errors appropriately
+   - Logs behavior changes
+   - Updates status accordingly
+   - Maintains security
+   - Verifies results
