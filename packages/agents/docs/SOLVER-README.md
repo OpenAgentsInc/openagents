@@ -870,24 +870,37 @@ This refactoring will provide:
    - Update any frontend code that depends on specific model IDs
    - Add UI components for model selection if needed
 
-## Architectural Considerations: Exploring the Effect Framework
+## Architectural Considerations: Exploring Synergy with the Effect Framework
 
-While the current Solver Agent implementation effectively utilizes Cloudflare Durable Objects, WebSockets, and standard TypeScript `async/await` patterns, we are exploring the potential benefits of incrementally adopting the [Effect framework](https://effect.website/) for future development and refactoring.
+While the current Solver Agent implementation effectively utilizes Cloudflare Durable Objects (DOs) for state persistence and reliable execution, we are actively exploring the [Effect framework](https://effect.website/) as a potential enhancement for managing the internal complexity and further improving the correctness of the agent's logic.
 
-**Why Consider Effect?**
+**The Synergy: Durable Objects + Effect**
 
-The Solver Agent deals with complex asynchronous operations (LLM inference, tool execution, external API calls), potential failures across these operations, state management within a distributed context (Durable Objects), and managing dependencies like GitHub tokens and API clients. Effect offers a functional programming paradigm within TypeScript designed to address these challenges more robustly and explicitly:
+As noted by contributors familiar with both systems, Durable Objects and Effect could offer a powerful synergy:
 
-1.  **Explicit Error Handling:** Effect tracks potential errors (`E` in `Effect<A, E, R>`) in the type system, moving beyond `try/catch` to make failure paths explicit and force developers to handle them, potentially increasing reliability.
-2.  **Structured Concurrency:** Provides powerful, composable tools for managing concurrent operations (like multiple tool calls or background tasks) safely, including built-in interruption handling.
-3.  **Dependency Management:** Formalizes the management of dependencies (`R` in `Effect<A, E, R>`) like API clients or configuration using `Context` and `Layer`, which can improve testability and modularity.
-4.  **Rich Ecosystem:** Offers built-in, composable solutions for common patterns like retries (`Schedule`), resource management (`Scope`), caching (`Cache`), and more, potentially reducing boilerplate code.
+-   **Durable Objects Provide:** The robust, scalable, and persistent execution environment. They handle the state durability, instance lifecycle, and the fundamental single-threaded execution model per instance, ensuring basic state consistency.
+-   **Effect Provides:** A highly structured, type-safe, and composable way to manage the *computations and workflows happening inside* the DO's handlers (`onMessage`, `fetch`, `alarm`, tool executions).
 
-**Current Status & Plan**
+**Why Consider Effect for Solver?**
 
-We believe adopting Effect could lead to a more reliable, maintainable, and testable Solver Agent over time. However, it represents a significant paradigm shift requiring careful consideration and learning.
+The Solver agent, despite the DO's guarantees, still faces internal complexities:
 
-An **incremental adoption plan** is being evaluated, starting with potentially refactoring the internal logic of specific tools before considering broader changes to core agent logic or dependency management.
+1.  **Complex Asynchronous Flows:** Handling LLM inference, multiple tool calls (like GitHub API interactions), and WebSocket communication involves intricate asynchronous logic. Standard `async/await` and Promises can become hard to reason about, especially concerning error propagation and cancellation.
+2.  **Robust Error Handling:** While `try/catch` works, Effect promotes tracking errors (`E` in `Effect<A, E, R>`) explicitly in the type system. This forces comprehensive error handling, leading to more predictable behavior and potentially preventing unhandled exceptions within the DO that might lead to inconsistent states or require complex recovery logic. Effect's `Cause` type also provides much richer detail on failures (including defects/unexpected errors).
+3.  **Structured Concurrency:** Effect's fiber-based concurrency model allows for safer management of concurrent internal tasks *within* a single request or operation (e.g., running multiple analysis steps in parallel). It includes robust, composable interruption handling, which aligns well with potential DO termination or WebSocket disconnections.
+4.  **Resource Management:** Operations within the agent might acquire resources (e.g., temporary tokens, timeouts). Effect's `Scope` ensures these resources are reliably released, even if errors or interruptions occur during the agent's execution within the DO.
+5.  **Dependency Management & Testability:** Managing dependencies like the GitHub client, AI client, or specific configurations within the agent class can be improved. Effect's `Layer` system provides a composable and highly testable way to handle these dependencies, separating them clearly from the agent's core state and logic.
+
+Essentially, Effect could serve as the engine for the *business logic execution* running reliably *inside* the durable container provided by Cloudflare DOs, focusing on improving the **correctness** and **maintainability** of that internal logic.
+
+**Current Status & Path Forward**
+
+We believe adopting Effect could significantly enhance the Solver Agent's robustness and maintainability. Given the paradigm shift, we plan an **incremental adoption**:
+
+1.  **Initial Focus:** Refactoring the logic within specific, isolated **tool execution functions** (`packages/agents/src/agents/solver/tools.ts`) to use Effect. This allows us to gain experience and benefits with minimal disruption to the core agent lifecycle.
+2.  **Future Steps:** Gradually introduce Effect's dependency management (`Context`, `Layer`) and potentially refactor more complex asynchronous flows within the main agent handlers, carefully considering the integration points with the Durable Object's structure and lifecycle.
+
+This approach aims to leverage the strengths of both Cloudflare Durable Objects (for durability and state) and Effect (for correctness and composability of internal logic).
 
 **For a detailed analysis of Effect's relevance to this project and the proposed incremental adoption strategy, please refer to the dedicated document:**
 
