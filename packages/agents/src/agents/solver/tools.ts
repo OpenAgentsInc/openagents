@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { Solver, solverContext } from "./index";
+import { fetchFileContents } from './tools/github';
 
 /**
  * Tool to fetch an issue from OpenAgents Projects
@@ -349,5 +350,6 @@ export const createImplementationPlan = tool({
 export const solverTools = {
   getIssueDetails,
   updateIssueStatus,
-  createImplementationPlan
+  createImplementationPlan,
+  fetchFileContents
 };
