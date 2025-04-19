@@ -25,16 +25,22 @@ export function effectTool<P extends ZodSchema, R>(
       // Extract the cause from the FiberFailure
       const cause = (fiberFailure as any).cause;
       let errorMessage = "Tool execution failed.";
+      let errorDetails: Record<string, any> = {};
       
       // Analyze the Cause to provide a meaningful error message
       if (Cause.isFailType(cause)) {
         const error = cause.error;
         if (error && typeof error === 'object' && '_tag' in error) {
-          // Tagged errors (from Data.TaggedError) include type information
-          const taggedError = error as { _tag: string, message?: string };
+          // Tagged errors (from Data.TaggedError) include rich type information
+          const taggedError = error as { _tag: string, message?: string, [key: string]: any };
+          
+          // Create a user-friendly error message
           errorMessage = `${taggedError._tag}: ${
             taggedError.message || JSON.stringify(error)
           }`;
+          
+          // Include all properties from the tagged error for context
+          errorDetails = { ...error };
         } else {
           errorMessage = String(error);
         }
@@ -42,10 +48,19 @@ export function effectTool<P extends ZodSchema, R>(
         // Handle defects - indicating programming errors
         console.error("Tool defected:", cause.defect);
         errorMessage = "Internal error in tool execution.";
+        errorDetails = { defect: String(cause.defect) };
+      } else if (Cause.isInterruptType(cause)) {
+        errorMessage = "Tool execution was interrupted.";
+        errorDetails = { interrupted: true };
       }
       
-      // Throw a user-friendly error that will be caught by executeToolEffect
-      throw new Error(errorMessage);
+      // Create a custom error object with details from the Cause analysis
+      const enrichedError = new Error(errorMessage);
+      (enrichedError as any).effectError = errorDetails;
+      (enrichedError as any).causeType = cause ? cause._tag : 'unknown';
+      
+      // Throw the enriched error that will be caught by executeToolEffect
+      throw enrichedError;
     });
   };
 

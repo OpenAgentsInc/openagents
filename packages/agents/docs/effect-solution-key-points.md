@@ -28,8 +28,24 @@ export function effectTool<P extends z.ZodType<any, any, any>, R>(
     return Effect.runPromise(effect).catch((fiberFailure) => {
       // Extract and analyze the cause for rich error reporting
       const cause = (fiberFailure as any).cause;
-      // ... error handling with Cause analysis ...
-      throw new Error(errorMessage);
+      let errorMessage = "Tool execution failed.";
+      let errorDetails = {};
+      
+      // Rich Cause analysis to extract detailed error information
+      if (Cause.isFailType(cause)) {
+        // Extract information from TaggedError or other errors
+        // ...
+      } else if (Cause.isDieType(cause)) {
+        // Handle defects (programming errors)
+        // ...
+      }
+      
+      // Create an enriched error that preserves detailed information
+      const enrichedError = new Error(errorMessage);
+      (enrichedError as any).effectError = errorDetails;
+      (enrichedError as any).causeType = cause._tag;
+      
+      throw enrichedError;
     });
   };
 
@@ -94,7 +110,29 @@ private async executeToolEffect(toolCall: ToolCallPart): Promise<ToolResultPart>
       result: resultValue
     } as ToolResultPart;
   } catch (error) {
-    // Error handling...
+    // Check if this is an enriched error from our effectTool
+    const isEnrichedError = error instanceof Error && 
+                           (error as any).effectError !== undefined;
+    
+    // Create the base error message
+    let errorMessage = error instanceof Error 
+      ? error.message 
+      : `Tool '${toolName}' failed: ${String(error)}`;
+    
+    // Return error with detailed information if available
+    return {
+      type: 'tool-result',
+      toolCallId,
+      toolName,
+      result: { 
+        error: errorMessage,
+        // Include additional error details from effectTool if available
+        ...(isEnrichedError && { 
+          errorDetails: (error as any).effectError,
+          errorType: (error as any).causeType
+        })
+      }
+    } as ToolResultPart;
   }
 }
 ```
@@ -102,16 +140,20 @@ private async executeToolEffect(toolCall: ToolCallPart): Promise<ToolResultPart>
 ## Tool Design Principles
 - Use `never` for the R type parameter if no explicit requirements 
 - Wrap context access in `Effect.sync()`
-- Use tagged errors for precise type-safe error handling
+- Use tagged errors from `Data.TaggedError` for precise type-safe error handling
 - Let the effectTool factory handle the conversion to Promise
 - Separate error handling logic from business logic
+- Preserve detailed error information across the Effect-Promise boundary
+- Return structured error details to the LLM for better error handling
 
 ## Benefits
 1. **Type Safety**: Maintain strong typing within the Effect-based tools
 2. **Composability**: Leverage Effect's composable async operations
-3. **Error Handling**: Use Effect's rich error handling capabilities
-4. **Clean Boundary**: The `effectTool` factory handles all the boundary complexity
-5. **Maintainability**: The design pattern is consistent and easy to understand
+3. **Rich Error Handling**: Get detailed error information with Effect's Cause analysis
+4. **Error Context Preservation**: Maintain error context across the Effect-Promise boundary
+5. **Clean Boundary**: The `effectTool` factory handles all the boundary complexity
+6. **Maintainability**: The design pattern is consistent and easy to understand
+7. **Improved LLM Responses**: Structured error details help the LLM respond more accurately to errors
 
 ## Future Considerations
 - Create a dedicated tool registry/factory system for more flexibility

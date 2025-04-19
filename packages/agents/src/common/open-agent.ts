@@ -135,20 +135,16 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
     console.log(`[executeToolEffect] Executing tool '${toolName}' with args:`, args);
 
     try {
-      let resultValue: unknown;
-
-      // We no longer need special handling for Effect-based tools
-      // since effectTool wraps them in Promises
+      // Execute the tool with standard Promise-based approach
       console.log(`[executeToolEffect] Executing tool '${toolName}'...`);
       
       // Call the tool's execute function with the expected arguments format
       const execFn = tool.execute as (a: any, o: any) => Promise<any>;
-      resultValue = await Promise.resolve(execFn(args, {}));
+      const resultValue = await Promise.resolve(execFn(args, {}));
+      
       console.log(`[executeToolEffect] Tool '${toolName}' completed successfully.`);
-      // Note: Our effectTool factory automatically wraps Effect-based tools in Promises,
-      // so we no longer need special handling here for Effect-based vs standard tools
 
-      // --- Return success ToolResultPart ---
+      // Return success ToolResultPart
       return {
         type: 'tool-result',
         toolCallId,
@@ -157,48 +153,43 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
       } as ToolResultPart;
 
     } catch (error) {
-      // --- Handle ALL errors (from runPromise or standard execute) ---
+      // Handle errors from tool execution
       console.error(`[executeToolEffect] Tool '${toolName}' execution failed:`, error);
-      let errorMessage = `Tool '${toolName}' failed.`;
-
-      // Check if it's a FiberFailure from Effect.runPromise
-      if (error && (error as any)[Symbol.toStringTag] === 'FiberFailure') {
-          const cause = (error as any).cause as Cause.Cause<any>;
-          console.log(`[executeToolEffect] Analyzing Effect failure Cause for tool '${toolName}'...`);
-          // Analyze Cause (same logic as before)
-          if (Cause.isFailType(cause)) {
-            const specificError = cause.error as any; // Cast to any to check _tag
-            if (specificError && specificError._tag) {
-              // Map specific tagged errors to user-friendly messages
-              if (specificError._tag === "FileNotFoundError") { /* ... */ errorMessage = `File not found...`; }
-              else if (specificError._tag === "GitHubApiError") { /* ... */ errorMessage = `GitHub API Error...`; }
-              // ... other tagged errors
-              else { errorMessage = `Error (${specificError._tag}): ${specificError.message || JSON.stringify(specificError)}`; }
-            } else {
-              // Handle untagged Fail errors
-               errorMessage = `Tool '${toolName}' failed with: ${JSON.stringify(specificError)}`;
-            }
-          } else if (Cause.isDieType(cause)) {
-            console.error(`Tool '${toolName}' defected:`, Cause.pretty(cause)); // Log pretty cause for defects
-            errorMessage = `An internal error occurred while executing tool '${toolName}'.`;
-          } else if (Cause.isInterruptType(cause)) {
-            console.warn(`Tool '${toolName}' was interrupted.`);
-            errorMessage = `Tool '${toolName}' execution was interrupted.`;
-          } else {
-             console.error(`Tool '${toolName}' failed with unknown cause:`, Cause.pretty(cause));
-             errorMessage = `Tool '${toolName}' failed with an unknown error.`;
-          }
-      } else {
-        // Standard JavaScript error from non-Effect tools or other issues
-        errorMessage = `Tool '${toolName}' failed: ${error instanceof Error ? error.message : String(error)}`;
+      
+      // Format a user-friendly error message
+      // Check if this is an enriched error from our effectTool
+      const isEnrichedError = error instanceof Error && 
+                             (error as any).effectError !== undefined;
+      
+      // Create the base error message
+      let errorMessage = error instanceof Error 
+        ? error.message 
+        : `Tool '${toolName}' failed: ${String(error)}`;
+      
+      // Log detailed information for debugging
+      console.error(`[executeToolEffect] ${errorMessage}`);
+      
+      // If we have an enriched error with additional context, log it
+      if (isEnrichedError) {
+        const enrichedError = error as any;
+        console.log(`[executeToolEffect] Effect error details:`, 
+                   `Type: ${enrichedError.causeType}`, 
+                   enrichedError.effectError);
       }
-
-      // --- Return error ToolResultPart ---
+      
+      // Return error ToolResultPart with detailed information if available
       return {
         type: 'tool-result',
         toolCallId,
         toolName,
-        result: { error: errorMessage } // Vercel SDK convention for errors
+        result: { 
+          error: errorMessage,
+          // Add detailed error information if available (from effectTool)
+          ...(isEnrichedError && { 
+            errorDetails: (error as any).effectError,
+            errorType: (error as any).causeType
+          })
+        }
       } as ToolResultPart;
     }
   }
