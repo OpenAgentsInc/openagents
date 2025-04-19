@@ -239,7 +239,98 @@ export class Solver extends OpenAgent<SolverState> {
         case "command":
           // Handle command message
           console.log(`Command received: ${parsedMessage.command}`, parsedMessage.params);
-          // Implement command handling logic as needed
+          
+          // Command handler based on command type
+          switch (parsedMessage.command) {
+            case "verify_token":
+              // Verify GitHub token exists and report status
+              const hasToken = !!this.state.githubToken && this.state.githubToken.length > 0;
+              console.log("TOKEN VERIFICATION:", {
+                hasToken: hasToken,
+                tokenLength: this.state.githubToken ? this.state.githubToken.length : 0,
+                hasContext: !!this.state.currentIssue && !!this.state.currentProject
+              });
+              
+              // Send response back to client
+              connection.send(JSON.stringify({
+                type: "command_response",
+                command: "verify_token",
+                success: hasToken,
+                details: {
+                  hasToken: hasToken,
+                  tokenLength: this.state.githubToken ? this.state.githubToken.length : 0,
+                  contextStatus: {
+                    hasIssue: !!this.state.currentIssue,
+                    hasProject: !!this.state.currentProject
+                  }
+                },
+                timestamp: new Date().toISOString()
+              }));
+              
+              // If token is missing, also log an observation
+              if (!hasToken) {
+                this.addAgentObservation("Token verification failed: GitHub token is missing or empty.");
+              }
+              break;
+              
+            default:
+              console.log(`Unknown command: ${parsedMessage.command}`);
+              connection.send(JSON.stringify({
+                type: "command_error",
+                command: parsedMessage.command,
+                error: "Unknown command",
+                timestamp: new Date().toISOString()
+              }));
+              break;
+          }
+          break;
+          
+        case "set_github_token":
+          // New message type specifically for setting GitHub token
+          console.log("Setting GitHub token via dedicated message");
+          
+          try {
+            const token = parsedMessage.token;
+            if (token && typeof token === 'string') {
+              console.log(`Setting GitHub token from message (length: ${token.length})`);
+              
+              // IMPORTANT: Don't call this.setGithubToken - use direct state update
+              // This avoids any RPC callable method issues
+              this.setState({
+                ...this.state,
+                githubToken: token
+              });
+              
+              console.log("✓ GitHub token applied directly to state");
+              
+              // Add an observation to record this action
+              this.addAgentObservation(`GitHub token updated (length: ${token.length})`);
+              
+              // Send success response back to client
+              connection.send(JSON.stringify({
+                type: "token_response",
+                success: true,
+                message: "GitHub token set successfully",
+                timestamp: new Date().toISOString()
+              }));
+            } else {
+              console.error("No valid token provided in set_github_token message");
+              connection.send(JSON.stringify({
+                type: "token_response",
+                success: false,
+                message: "No valid token provided",
+                timestamp: new Date().toISOString()
+              }));
+            }
+          } catch (tokenError) {
+            console.error("✗ Failed to set GitHub token from message:", tokenError);
+            connection.send(JSON.stringify({
+              type: "token_response",
+              success: false,
+              message: "Failed to set token: " + String(tokenError),
+              timestamp: new Date().toISOString()
+            }));
+          }
           break;
           
         case "shared_infer":
@@ -259,6 +350,27 @@ export class Solver extends OpenAgent<SolverState> {
           
           try {
             const inferProps = parsedMessage.params;
+            
+            // CRITICAL FIX: Check for GitHub token in params - but don't call setGithubToken directly
+            // Instead use it directly for this operation but recommend client use set_github_token message
+            if (inferProps.githubToken && typeof inferProps.githubToken === 'string') {
+              console.log(`Using GitHub token from inference params (length: ${inferProps.githubToken.length})`);
+              
+              // Update the state directly without calling setGithubToken method
+              this.updateState({
+                githubToken: inferProps.githubToken
+              } as Partial<SolverState>);
+              
+              console.log("✓ GitHub token applied to state");
+              
+              // Remove the token from the params to avoid leaking it in logs
+              delete inferProps.githubToken;
+              
+              // Add a note to encourage using the proper message type
+              this.addAgentObservation("Note: For more reliable token setting, use 'set_github_token' message type instead of parameter passing");
+            } else {
+              console.warn("No GitHub token found in inference params");
+            }
             
             // Check for context data in message
             if (parsedMessage.context) {

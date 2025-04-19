@@ -395,7 +395,12 @@ export function useOpenAgent(id: string, type: AgentType = "coder"): OpenAgent {
   }, [cloudflareAgent]);
   
   const setGithubToken = useCallback(async (token: string): Promise<void> => {
-    await cloudflareAgent.call('setGithubToken', [token]);
+    // NEVER call 'setGithubToken' directly with RPC - this will fail with "Method is not callable" error
+    // Instead, send a message to set the token
+    await cloudflareAgent.sendMessage(JSON.stringify({
+      type: 'set_github_token',
+      token: token
+    }));
     return;
   }, [cloudflareAgent]);
   
@@ -495,8 +500,12 @@ export function MyAgentConnector({ sessionId, apiToken }: MyAgentConnectorProps)
     setIsStartingAgent(true);
 
     try {
-      // Set API token
-      await agent.setGithubToken(apiToken);
+      // Set API token - NEVER call setGithubToken directly
+      // Instead, send a message to set the token
+      await agent.sendRawMessage({
+        type: "set_github_token",
+        token: apiToken
+      });
       
       // Initial message
       await agent.handleSubmit(`Hello! I need assistance with data analysis.`);

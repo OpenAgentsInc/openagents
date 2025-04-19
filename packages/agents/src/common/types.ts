@@ -19,6 +19,7 @@ export interface InferProps {
   max_tokens?: number;
   top_p?: number;
   stream?: boolean;
+  githubToken?: string; // GitHub token for API operations
 }
 
 // Define inference response type

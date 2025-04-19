@@ -206,8 +206,12 @@ The component implements several agent control functions:
 const connectToSolver = async () => {
   setConnectionState('connecting');
 
-  // First set the GitHub token
-  await agent.setGithubToken(githubToken);
+  // First set the GitHub token - IMPORTANT: Use message type instead of direct method call
+  // NEVER call agent.setGithubToken directly - it's not callable over RPC and will cause an error
+  await agent.sendRawMessage({
+    type: "set_github_token",
+    token: githubToken
+  });
 
   // Set repository context
   await agent.setRepositoryContext(owner, repo, branch);
