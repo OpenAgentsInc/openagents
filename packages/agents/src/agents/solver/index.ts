@@ -1,6 +1,18 @@
 import { Agent, type Connection, type WSMessage } from "agents";
 import type { UIMessage } from "ai";
-import { Effect, Cause, Data, Exit, Runtime } from "effect";
+import {
+  Effect,
+  Cause,
+  Data,
+  Exit,
+  Runtime,
+  Logger,
+  LogLevel,
+  FiberRefs,
+  FiberRef,
+  FiberId,
+  HashSet // Import HashSet if using Option 4 later
+} from "effect";
 import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
 
 // Define the state to hold context
@@ -14,12 +26,24 @@ type SolverState = {
 // Define potential errors for this operation
 class ParseError extends Data.TaggedError("ParseError")<{ cause: unknown }> { }
 class SetStateError extends Data.TaggedError("SetStateError")<{ cause: unknown }> { }
-// Define the union of possible errors for the handleMessageEffect
 type HandleMessageError = ParseError | SetStateError;
+
+// Configure the runtime with Debug level logging
+const customizedRuntime = Runtime.make({
+  context: Runtime.defaultRuntime.context,
+  runtimeFlags: Runtime.defaultRuntime.runtimeFlags,
+  fiberRefs: FiberRefs.updateAs(
+    Runtime.defaultRuntime.fiberRefs,
+    {
+      fiberId: FiberId.none,
+      fiberRef: FiberRef.currentMinimumLogLevel,
+      value: LogLevel.Debug
+    }
+  )
+});
 
 export class Solver extends Agent<Env, SolverState> {
 
-  // Initial state needs to align with the type
   initialState: SolverState = {
     messages: [],
     currentIssue: undefined,
@@ -32,70 +56,94 @@ export class Solver extends Agent<Env, SolverState> {
    */
   async onMessage(connection: Connection, message: WSMessage) {
 
-    // Define the Effect workflow for handling the message
-    // The Effect can fail with HandleMessageError and has no requirements (R = never)
     const handleMessageEffect: Effect.Effect<void, HandleMessageError, never> =
-      Effect.gen(this, function* (self) { // Use `this` for context
-        // Note: `self` here is the Effect adapter, typically named `_` or `$`
-
-        // 1. Try parsing the message
+      Effect.gen(this, function* (self) {
         const parsedMessage = yield* Effect.try({
           try: () => JSON.parse(message as string),
           catch: (unknown) => new ParseError({ cause: unknown })
         });
 
-        // Use structured logging via Effect.log* and annotations
-        yield* Effect.logInfo("ON MESSAGE RECEIVED:").pipe(Effect.annotateLogs(parsedMessage));
+        // Log message receipt with separator for better visibility
+        yield* Effect.logInfo(`━━━━━━━━━━ Incoming WebSocket Message ━━━━━━━━━━`).pipe(
+          Effect.annotateLogs({
+            messageType: parsedMessage.type,
+            requestId: parsedMessage.requestId || 'undefined'
+          })
+        );
 
-        // 2. Check message type and update state if it's set_context
+        // Format the payload with custom indentation and structure
+        const formattedJson = JSON.stringify(parsedMessage, null, 2)
+          .replace(/\\"/g, '"')  // Remove escaped quotes
+          .replace(/"/g, "'");   // Use single quotes instead
+
+        const prettyPayload = formattedJson
+          .split('\n')
+          .map(line => `│ ${line}`)
+          .join('\n');
+
+        yield* Effect.logDebug(`Payload Details:\n${prettyPayload}\n└${'─'.repeat(50)}`);
+
         if (parsedMessage.type === 'set_context') {
           const { issue, project, team } = parsedMessage;
 
-          // Minimal validation (Effect Schema could enhance this later)
           if (!issue?.id || !project?.id || !team?.id) {
-            yield* Effect.logWarning("Received set_context message with missing data.");
-            // Returning void here, effectively skipping the update for this message.
-            // Could also yield* Effect.fail(...) if this is considered an error.
+            yield* Effect.logWarning(`⚠️  Missing Required Context Data`).pipe(
+              Effect.annotateLogs({
+                messageType: parsedMessage.type,
+                missingFields: [
+                  !issue?.id && 'issue.id',
+                  !project?.id && 'project.id',
+                  !team?.id && 'team.id'
+                ].filter(Boolean).join(', ')
+              })
+            );
             return;
           }
 
-          // 3. Describe the state update as an Effect using `this.setState`
           yield* Effect.tryPromise({
-            // Make the try function async and await setState
             try: async () => {
-              // Spread current state and override specific fields for partial update
-              this.setState({
-                ...this.state, // Include existing state (like messages)
+              await this.setState({
+                ...this.state,
                 currentIssue: issue,
                 currentProject: project,
                 currentTeam: team
-                // Consider deep cloning here if BaseIssue/Project/Team are complex
-                // and if setState doesn't handle it automatically.
               });
             },
             catch: (unknown) => new SetStateError({ cause: unknown })
           });
 
-          yield* Effect.logInfo("Agent context state updated successfully.");
+          yield* Effect.logInfo(`✓ Context Updated Successfully`).pipe(
+            Effect.annotateLogs({
+              issueId: issue.id,
+              projectName: project.name,
+              teamKey: team.key
+            })
+          );
 
-        } else {
-          // Log other message types for debugging if needed
-          yield* Effect.logDebug(`Unhandled message type: ${parsedMessage.type}`);
+        } else if (parsedMessage.type === 'get_system_prompt') {
+          yield* Effect.logDebug(`⚙️  Processing: ${parsedMessage.type}`);
+          // TODO: Implement get_system_prompt logic
         }
-      }); // Dependencies R = never for now
+        else {
+          yield* Effect.logDebug(`⚠️  Unhandled Message Type: ${parsedMessage.type}`);
+        }
+      });
 
-    // Run the Effect workflow
-    // Using the default runtime for now. A custom runtime might be used
-    // later if Layers for dependencies (like AI clients, GitHub clients) are introduced.
-    const exit = await Runtime.runPromiseExit(Runtime.defaultRuntime)(handleMessageEffect);
+    // Run with the customized runtime
+    const exit = await Runtime.runPromiseExit(customizedRuntime)(handleMessageEffect);
 
-    // Handle potential failures from the Effect workflow
     if (Exit.isFailure(exit)) {
-      // Log the detailed failure cause using Effect's pretty printing
-      Cause.pretty(exit.cause).split("\n").forEach(line => console.error(line));
-
-      // Optionally, send a generic error back to the client if appropriate
-      // connection.send(JSON.stringify({ type: "error", message: "Failed to process your request." }));
+      await Runtime.runPromise(customizedRuntime)(
+        Effect.logError(`❌ Message Processing Failed`).pipe(
+          Effect.annotateLogs({
+            failureCause: Cause.pretty(exit.cause)
+              .replace(/\\"/g, '"')  // Remove escaped quotes
+              .split('\n')
+              .map(line => `│ ${line}`)
+              .join('\n')
+          })
+        )
+      );
     }
   }
 }
