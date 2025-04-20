@@ -27,12 +27,13 @@ export class ChatError extends Data.TaggedError("ChatError")<{ cause: unknown }>
 export type HandleMessageError = ParseError | StateUpdateError;
 
 // --- Service Definitions ---
-export interface OpenAIConfig {
+export interface AnthropicConfig {
   readonly apiKey: string;
   readonly fetch: typeof fetch;
+  readonly model?: string;
 }
 
-export class OpenAIConfig extends Context.Tag("OpenAIConfig")<OpenAIConfig, OpenAIConfig>() { }
+export class AnthropicConfig extends Context.Tag("AnthropicConfig")<AnthropicConfig, AnthropicConfig>() { }
 
 export interface AiClientService {
   readonly getApiKey: () => Effect.Effect<string>;

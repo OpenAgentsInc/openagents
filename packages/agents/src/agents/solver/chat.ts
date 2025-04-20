@@ -2,23 +2,24 @@ import { Effect, Layer } from "effect";
 import type { UIMessage } from "ai";
 import { FetchHttpClient } from "@effect/platform";
 import type { SolverState, TextUIPart } from "./types";
-import { ChatError, OpenAIConfig } from "./types";
+import { ChatError, AnthropicConfig } from "./types";
 import { env } from "cloudflare:workers";
 
 // --- Service Implementation (Layers) ---
 
-// Layer for the OpenAI Client using Fetch
-const OpenAiClientLive = Layer.succeed(
-  OpenAIConfig,
+// Layer for the Anthropic Client using Fetch
+const AnthropicClientLive = Layer.succeed(
+  AnthropicConfig,
   {
-    apiKey: env.OPENAI_API_KEY || "",
-    fetch: globalThis.fetch
-  } as OpenAIConfig
+    apiKey: env.ANTHROPIC_API_KEY || "",
+    fetch: globalThis.fetch,
+    model: "claude-3-5-sonnet-latest"
+  } as AnthropicConfig
 );
 
 // Combined AI chat layers with FetchHttpClient
 export const AiChatLayers = Layer.merge(
-  OpenAiClientLive,
+  AnthropicClientLive,
   FetchHttpClient.layer
 );
 
@@ -30,7 +31,7 @@ export const AiChatLayers = Layer.merge(
 export const createChatEffect = (
   currentState: SolverState,
   userMessageContent: string
-): Effect.Effect<UIMessage, ChatError, never> =>
+): Effect.Effect<UIMessage, ChatError, AnthropicConfig> =>
   Effect.gen(function* (_) {
     // Create user message with proper parts
     const userTextPart: TextUIPart = {
@@ -56,7 +57,13 @@ export const createChatEffect = (
       }.`;
 
     try {
-      // Simulate AI response for now - replace with actual implementation
+      // Preparation for actual Anthropic API call
+      // Get API key and client from Effect context
+      const anthropicConfig = yield* _(AnthropicConfig);
+      const apiKey = anthropicConfig.apiKey;
+      const model = anthropicConfig.model || "claude-3-sonnet-20240229";
+
+      // For now, simulate the response - this would be replaced with actual API call
       const responseContent = `I understand you're working on ${currentState.currentIssue?.title}. How can I help?`;
 
       // Format the AI response with proper parts
@@ -71,6 +78,7 @@ export const createChatEffect = (
         content: responseContent,
         createdAt: new Date(),
         parts: [assistantTextPart]
+        // model is not part of UIMessage interface, so we remove it
       };
 
       return assistantMessage;
@@ -87,7 +95,7 @@ export const createChatEffect = (
  */
 export const createInitialChatEffect = (
   currentState: SolverState
-): Effect.Effect<UIMessage, ChatError, never> => {
+): Effect.Effect<UIMessage, ChatError, AnthropicConfig> => {
   const initialMessage = `Context loaded for issue #${currentState.currentIssue?.number}: "${currentState.currentIssue?.title}". How can I assist?`;
   return createChatEffect(currentState, initialMessage);
 };
