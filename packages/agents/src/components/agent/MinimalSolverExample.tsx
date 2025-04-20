@@ -1,5 +1,5 @@
 // src/components/agent/MinimalSolverExample.tsx
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useOpenAgent_Minimal } from "../../hooks/useOpenAgent_Minimal";
 import { MinimalSolverConnector } from "./MinimalSolverConnector";
 import { MinimalSolverControls } from "./MinimalSolverControls";
