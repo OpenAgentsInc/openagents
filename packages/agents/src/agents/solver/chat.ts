@@ -4,6 +4,8 @@ import { FetchHttpClient } from "@effect/platform";
 import type { SolverState, TextUIPart } from "./types";
 import { ChatError, AnthropicConfig } from "./types";
 import { env } from "cloudflare:workers";
+import { formatToolsForAnthropic, executeToolByName } from "./effect-tools";
+import { solverTools } from "./tools";
 
 // --- Service Implementation (Layers) ---
 
@@ -47,11 +49,25 @@ export const createChatEffect = (
     // Combine messages for context
     const messagesForLLM = [...currentState.messages, userMessage];
 
-    // Generate system prompt based on current context
-    const systemPrompt = `You are Solver Agent, helping with issue: ${currentState.currentIssue?.title ?? 'Unknown'
-      }. Project: ${currentState.currentProject?.name ?? 'Unknown'
-      }. Team: ${currentState.currentTeam?.name ?? 'Unknown'
-      }.`;
+    // Generate system prompt based on current context with tool usage guidelines
+    const systemPrompt = `You are Solver Agent, an AI assistant that helps analyze, plan, and implement solutions for project issues.
+    
+Current Context:
+- Issue: ${currentState.currentIssue?.title ?? 'Unknown'}
+- Project: ${currentState.currentProject?.name ?? 'Unknown'}
+- Team: ${currentState.currentTeam?.name ?? 'Unknown'}
+
+You have access to tools that allow you to:
+1. Fetch issue details
+2. Update issue status
+3. Create implementation plans
+
+Use these tools when appropriate to help solve the user's issue. When using tools:
+- Be specific and precise with your inputs
+- Interpret tool outputs and explain them to the user
+- Make helpful, actionable recommendations based on tool results
+
+Your goal is to provide practical assistance and guide the user through addressing their issue.`;
 
     try {
       // Preparation for actual Anthropic API call
@@ -104,11 +120,16 @@ export const createChatEffect = (
           }
         });
         
-        // Build request body
+        // Get tools formatted for Anthropic
+        const formattedTools = formatToolsForAnthropic();
+        
+        // Build request body with tools
         const requestBody = {
           model: model || "claude-3-5-sonnet-latest",
           messages: formattedMessages,
           system: systemPrompt,
+          tools: formattedTools,
+          tool_choice: "auto", // Let the model decide when to use tools
           max_tokens: 1000,
           temperature: 0.7
         };
@@ -154,11 +175,84 @@ export const createChatEffect = (
           catch: error => new ChatError({ cause: error })
         }));
         
-        // Type assertion for the response format
-        const responseData = jsonData as { content: Array<{ type: string, text: string }> };
+        // Type assertion for the response format including potential tool calls
+        const responseData = jsonData as { 
+          content: Array<{ type: string, text: string }>,
+          tool_calls?: Array<{
+            id: string,
+            name: string, 
+            input: Record<string, any>
+          }>
+        };
         
         // Extract content from the Anthropic response
-        responseContent = responseData.content[0].text;
+        responseContent = responseData.content.filter(c => c.type === "text")
+                         .map(c => c.text)
+                         .join("");
+        
+        // Check if there are tool calls to process
+        if (responseData.tool_calls && responseData.tool_calls.length > 0) {
+          yield* eff(Effect.logInfo(`Processing ${responseData.tool_calls.length} tool calls from Anthropic response`));
+          
+          // Add a message to the response indicating tool usage
+          responseContent += "\n\n[Processing tool calls...]";
+          
+          // Log tool calls first
+          for (const toolCall of responseData.tool_calls) {
+            yield* eff(Effect.logInfo(`Will execute tool: ${toolCall.name}`, {
+              toolCallId: toolCall.id,
+              input: JSON.stringify(toolCall.input)
+            }));
+          }
+          
+          // Execute each tool call and collect results
+          // Execute tools one by one within the Effect context
+          const toolResults = [];
+          for (const toolCall of responseData.tool_calls) {
+            try {
+              // Execute the tool using Effect.tryPromise
+              const result = yield* eff(Effect.tryPromise({
+                try: () => executeToolByName(toolCall.name, toolCall.input),
+                catch: error => new ChatError({ cause: error })
+              }));
+              
+              yield* eff(Effect.logInfo(`Tool execution result for ${toolCall.name}:`, {
+                success: !result.error,
+                result: JSON.stringify(result).substring(0, 100)
+              }));
+              
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: result
+              });
+            } catch (error) {
+              yield* eff(Effect.logError(`Tool execution failed for ${toolCall.name}:`, { error }));
+              
+              toolResults.push({
+                tool_call_id: toolCall.id,
+                output: { error: String(error) }
+              });
+            }
+          }
+          
+          // All tool calls have been executed and logged
+          
+          // Append tool results to the conversation
+          responseContent += "\n\n### Tool Results\n\n";
+          for (const result of toolResults) {
+            const toolName = responseData.tool_calls.find(t => t.id === result.tool_call_id)?.name || "unknown";
+            const resultOutput = result.output.error 
+              ? `Error: ${result.output.error}`
+              : JSON.stringify(result.output, null, 2);
+              
+            responseContent += `**${toolName}**: ${resultOutput}\n\n`;
+          }
+          
+          // If we had tool calls, we should send a follow-up request to process the results
+          // In a production implementation, we would send another API request to Anthropic
+          // with the original messages + tool results
+          yield* eff(Effect.logInfo("Tool results processed. In a full implementation, would send follow-up request."));
+        }
         
         yield* eff(Effect.logInfo("Received Anthropic API response", { 
           responseLength: responseContent.length,
