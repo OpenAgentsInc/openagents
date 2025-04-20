@@ -3,6 +3,7 @@ import type { UIMessage } from "ai";
 import { FetchHttpClient } from "@effect/platform";
 import type { SolverState, TextUIPart } from "./types";
 import { ChatError, OpenAIConfig } from "./types";
+import { env } from "cloudflare:workers";
 
 // --- Service Implementation (Layers) ---
 
@@ -10,7 +11,7 @@ import { ChatError, OpenAIConfig } from "./types";
 const OpenAiClientLive = Layer.succeed(
   OpenAIConfig,
   {
-    apiKey: process.env.OPENAI_API_KEY || "",
+    apiKey: env.OPENAI_API_KEY || "",
     fetch: globalThis.fetch
   } as OpenAIConfig
 );
