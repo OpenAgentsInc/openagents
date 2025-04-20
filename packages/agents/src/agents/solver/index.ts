@@ -1,107 +1,111 @@
 import { Agent, type Connection, type WSMessage } from "agents";
-import type { UIMessage } from "ai";
+import { type UIMessage } from "ai"; // Keep for message structure
 import {
-  Exit,
-  Runtime,
-  LogLevel,
-  FiberRefs,
-  FiberRef,
-  FiberId,
-  Cause,
-  Effect,
-  Layer,
-  pipe
+    Effect, Cause, Data, Exit, Runtime, Logger, LogLevel, FiberRefs, FiberRef, FiberId
 } from "effect";
-import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
-import { createHandleMessageEffect } from "./handleMessage";
-import { AnthropicConfig } from "./types";
-import { solverContext } from "./tools";
-import { SolverToolsImplementationLayer } from "./effect-tools";
 
-// Define the state to hold context
+// --- Minimal State ---
 export type SolverState = {
   messages: UIMessage[];
-  currentIssue?: BaseIssue;
-  currentProject?: BaseProject;
-  currentTeam?: BaseTeam;
-  githubToken?: string;
 };
 
-// Configure the runtime with Debug level logging only
-const customizedRuntime = Runtime.make({
-  context: Runtime.defaultRuntime.context,
-  runtimeFlags: Runtime.defaultRuntime.runtimeFlags,
-  fiberRefs: FiberRefs.updateAs(
-    Runtime.defaultRuntime.fiberRefs,
-    {
-      fiberId: FiberId.none,
-      fiberRef: FiberRef.currentMinimumLogLevel,
-      value: LogLevel.Debug
-    }
-  )
+// --- Minimal Error Types ---
+class ParseError extends Data.TaggedError("ParseError")<{ cause: unknown }> {}
+class StateUpdateError extends Data.TaggedError("StateUpdateError")<{ cause: unknown }> {}
+type HandleMessageError = ParseError | StateUpdateError;
+
+// --- Basic Runtime ---
+const basicRuntime = Runtime.make({
+    context: Runtime.defaultRuntime.context,
+    runtimeFlags: Runtime.defaultRuntime.runtimeFlags,
+    fiberRefs: FiberRefs.updateAs( // Set log level
+        Runtime.defaultRuntime.fiberRefs, {
+            fiberId: FiberId.none,
+            fiberRef: FiberRef.currentMinimumLogLevel,
+            value: LogLevel.Debug // Keep Debug for initial setup
+        }
+    )
 });
+// --- End Runtime ---
 
 export class Solver extends Agent<Env, SolverState> {
+
   initialState: SolverState = {
-    messages: [],
-    currentIssue: undefined,
-    currentProject: undefined,
-    currentTeam: undefined,
-    githubToken: undefined
+      messages: []
   };
 
   /**
-   * Handles incoming WebSocket messages using Effect
+   * Minimal Message Handler using Effect
    */
   async onMessage(connection: Connection, message: WSMessage) {
-    // Create a basic default Anthropic config for use in the context
-    const defaultAnthropicConfig = {
-      apiKey: process.env.ANTHROPIC_API_KEY || "",
-      fetch: globalThis.fetch,
-      model: "claude-3-5-sonnet-latest"
-    };
-    
-    // Set the solver instance in AsyncLocalStorage context for tools
-    return await solverContext.run(this, async () => {
-      // Create the Anthropic config layer
-      const anthropicConfigLayer = Layer.succeed(
-        AnthropicConfig,
-        defaultAnthropicConfig as AnthropicConfig
+
+    const handleMessageEffect = Effect.gen(this, function*(self) {
+        // 1. Parse
+        const parsedMessage = yield* Effect.try({
+            try: () => JSON.parse(message as string) as { type: string; content?: string; [key: string]: any },
+            catch: (unknown) => new ParseError({ cause: unknown })
+        });
+
+        yield* Effect.logInfo(`Received: ${parsedMessage.type}`);
+        yield* Effect.logDebug("Payload:", parsedMessage);
+
+        // 2. Handle ONLY simple chat messages
+        if (parsedMessage.type === 'chat_message' && parsedMessage.content) {
+            const userMessageContent = parsedMessage.content as string;
+
+            yield* Effect.logInfo(`Processing chat message: "${userMessageContent.substring(0, 30)}..."`);
+
+            // Create simple UIMessage objects for state
+            const userMessage: UIMessage = {
+                id: `user_${Date.now()}`,
+                role: 'user',
+                content: userMessageContent,
+                createdAt: new Date()
+            };
+
+            const assistantResponse: UIMessage = {
+                id: `asst_${Date.now()}`,
+                role: "assistant",
+                content: `Echo: ${userMessageContent}`, // Simple echo
+                createdAt: new Date()
+             };
+
+            // 3. Update State
+            yield* Effect.tryPromise({
+                try: () => this.setState({
+                    // Ensure messages array always exists and append
+                    messages: [...(this.state.messages || []), userMessage, assistantResponse]
+                }),
+                catch: (unknown) => new StateUpdateError({ cause: unknown })
+            });
+            yield* Effect.logInfo("State updated with user message and echo response.");
+
+            // 4. Send Response Back (Optional - state update might suffice)
+            // If the client hook *doesn't* automatically update based on setState broadcast,
+            // you might need to send the response explicitly.
+            // connection.send(JSON.stringify({ type: 'agent_response', message: assistantResponse }));
+            // yield* Effect.logDebug("Sent explicit response.");
+
+        } else {
+           yield* Effect.logDebug(`Ignoring unhandled message type: ${parsedMessage.type}`);
+        }
+      }).pipe(
+          // Tag potential errors from this specific workflow
+          Effect.mapError(error => error as HandleMessageError) // Simple cast for this minimal example
       );
-      
-      // Create the message handling effect
-      const handleMessageEffect = createHandleMessageEffect(this, message as string);
-      
-      // Run with the customized runtime and provide the Anthropic config layer
-      const exit = await Runtime.runPromiseExit(customizedRuntime)(
-        handleMessageEffect.pipe(
-          Effect.provide(anthropicConfigLayer)
-        )
-      );
-      
-      if (Exit.isFailure(exit)) {
-        await Runtime.runPromise(customizedRuntime)(
-          Effect.logError(`❌ Message Processing Failed`).pipe(
-            Effect.annotateLogs({
-              failureCause: Cause.pretty(exit.cause)
-                .replace(/\\"/g, '"')  // Remove escaped quotes
-                .split('\n')
-                .map(line => `│ ${line}`)
-                .join('\n')
-            })
-          )
+
+    // Run the Effect
+    const exit = await Runtime.runPromiseExit(basicRuntime)(handleMessageEffect);
+
+    // Handle Failures
+    if (Exit.isFailure(exit)) {
+        await Runtime.runPromise(basicRuntime)(
+            Effect.logError(`Message handling failed`, { failureCause: Cause.pretty(exit.cause) })
         );
-      }
-    });
-  }
-  
-  /**
-   * Set GitHub token for API access
-   */
-  setGitHubToken(token: string): void {
-    this.setState({ 
-      ...this.state, 
-      githubToken: token 
-    });
-  }
-}
+        // Optionally send error back to client if needed
+        // connection.send(JSON.stringify({ type: 'error', message: 'Processing failed' }));
+    }
+  } // End onMessage
+
+  // Removed other methods like chat(), setGitHubToken() etc.
+} // End Solver Class
