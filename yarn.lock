@@ -8438,7 +8438,7 @@ ee-first@1.1.1:
   resolved "https://registry.yarnpkg.com/ee-first/-/ee-first-1.1.1.tgz#590c61156b0ae2f4f0255732a158b266bc56b21d"
   integrity sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==
 
-effect@^3.14.11:
+effect@3.14.11:
   version "3.14.11"
   resolved "https://registry.yarnpkg.com/effect/-/effect-3.14.11.tgz#41a16b83f59e57dc205a15e0db8933d2f4370b30"
   integrity sha512-PPfiu7QRtmmrgH6VWZp/rY1S8SSLJofx5betRuTPGG868G3f0C7yvPOa6SZPLG5ra2yCd1Vfm7cdeI26ZVGGlA==
