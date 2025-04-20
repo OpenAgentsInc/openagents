@@ -9,9 +9,11 @@ import {
   FiberId,
   Cause,
   Effect,
+  Layer
 } from "effect";
 import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
 import { createHandleMessageEffect } from "./handleMessage";
+import { AnthropicConfig } from "./types";
 
 // Define the state to hold context
 export type SolverState = {
@@ -21,7 +23,7 @@ export type SolverState = {
   currentTeam?: BaseTeam;
 };
 
-// Configure the runtime with Debug level logging
+// Configure the runtime with Debug level logging only
 const customizedRuntime = Runtime.make({
   context: Runtime.defaultRuntime.context,
   runtimeFlags: Runtime.defaultRuntime.runtimeFlags,
@@ -49,8 +51,19 @@ export class Solver extends Agent<Env, SolverState> {
   async onMessage(connection: Connection, message: WSMessage) {
     const handleMessageEffect = createHandleMessageEffect(this, message as string);
 
-    // Run with the customized runtime
-    const exit = await Runtime.runPromiseExit(customizedRuntime)(handleMessageEffect);
+    // Create a basic default Anthropic config for use in the context
+    const defaultAnthropicConfig = {
+      apiKey: process.env.ANTHROPIC_API_KEY || "",
+      fetch: globalThis.fetch,
+      model: "claude-3-sonnet-20240229"
+    };
+
+    // Run with the customized runtime and provide the AnthropicConfig
+    const exit = await Runtime.runPromiseExit(customizedRuntime)(
+      handleMessageEffect.pipe(
+        Effect.provideService(AnthropicConfig, defaultAnthropicConfig as AnthropicConfig)
+      )
+    );
 
     if (Exit.isFailure(exit)) {
       await Runtime.runPromise(customizedRuntime)(

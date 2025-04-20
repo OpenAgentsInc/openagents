@@ -58,8 +58,20 @@ export const createChatEffect = (
 
     try {
       // Preparation for actual Anthropic API call
-      // Get API key and client from Effect context
-      const anthropicConfig = yield* _(AnthropicConfig);
+      // Get API key and client from Effect context, or use defaults for testing
+      let anthropicConfig;
+      try {
+        anthropicConfig = yield* _(AnthropicConfig);
+      } catch (e) {
+        // Provide default config if it's not in the context
+        anthropicConfig = {
+          apiKey: process.env.ANTHROPIC_API_KEY || "",
+          fetch: globalThis.fetch,
+          model: "claude-3-sonnet-20240229"
+        };
+        yield* _(Effect.logWarning("Using default AnthropicConfig"));
+      }
+      
       const apiKey = anthropicConfig.apiKey;
       const model = anthropicConfig.model || "claude-3-sonnet-20240229";
 
