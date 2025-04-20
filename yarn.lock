@@ -147,6 +147,14 @@
     "@jridgewell/gen-mapping" "^0.3.5"
     "@jridgewell/trace-mapping" "^0.3.24"
 
+"@anthropic-ai/tokenizer@^0.0.4":
+  version "0.0.4"
+  resolved "https://registry.yarnpkg.com/@anthropic-ai/tokenizer/-/tokenizer-0.0.4.tgz#d1f5dab07bbf9289414dad1f7c57b812b27bb857"
+  integrity sha512-EHRKbxlxlc8W4KCBEseByJ7YwyYCmgu9OyN59H9+IYIGPoKv8tXyQXinkeGDI+cI8Tiuz9wk2jZb/kK7AyvL7g==
+  dependencies:
+    "@types/node" "^18.11.18"
+    tiktoken "^1.0.10"
+
 "@asamuzakjp/css-color@^3.1.1":
   version "3.1.2"
   resolved "https://registry.yarnpkg.com/@asamuzakjp/css-color/-/css-color-3.1.2.tgz#4efb1abb3bfbb5982df66bd6e71fea21e3a29fbe"
@@ -1178,6 +1186,18 @@
   version "3.0.3"
   resolved "https://registry.yarnpkg.com/@csstools/css-tokenizer/-/css-tokenizer-3.0.3.tgz#a5502c8539265fecbd873c1e395a890339f119c2"
   integrity sha512-UJnjoFsmxfKUdNYdWgOB0mWUypuLvAfQPH1+pyvRJs6euowbFkFC6P13w1l8mJyi3vxYMxc9kld5jZEGRQs6bw==
+
+"@effect/ai-anthropic@^0.3.12":
+  version "0.3.12"
+  resolved "https://registry.yarnpkg.com/@effect/ai-anthropic/-/ai-anthropic-0.3.12.tgz#7c7745f6155317b14df75bc42dc41f4d08c37ea5"
+  integrity sha512-IjLvFCNEuIH27hjSlBVEUTPWeMwMvCsWZqDRtyyLYdT9wfWJ80KF0k9nVy+5Ptx/UuIR79q13TS1jWkjwJU82A==
+  dependencies:
+    "@anthropic-ai/tokenizer" "^0.0.4"
+
+"@effect/ai@^0.13.11":
+  version "0.13.11"
+  resolved "https://registry.yarnpkg.com/@effect/ai/-/ai-0.13.11.tgz#949030443a86ce03186f5a0a2b2a0a092ef06747"
+  integrity sha512-l1hPPW4gPVk54WBPoDwTOHG3BOhuL4eRv/L7+pvYFlVfuVXWlHz7dOcOqnT/4wJz1/vf8OFwAO7zxjJERelrDA==
 
 "@effect/platform@^0.80.11":
   version "0.80.11"
@@ -5816,6 +5836,13 @@
   integrity sha512-u0HuPQwe/dHrItgHHpmw3N2fYCR6x4ivMNbPHRkBVP4CvN+kiRrKHWk3i8tXiO/joPwXLMYvF9TTF0eqgHIuOw==
   dependencies:
     undici-types "~6.21.0"
+
+"@types/node@^18.11.18":
+  version "18.19.86"
+  resolved "https://registry.yarnpkg.com/@types/node/-/node-18.19.86.tgz#a7e1785289c343155578b9d84a0e3e924deb948b"
+  integrity sha512-fifKayi175wLyKyc5qUfyENhQ1dCNI1UNjp653d8kuYcPQN5JhX3dGuP/XmvPTg/xRBn1VTLpbmi+H/Mr7tLfQ==
+  dependencies:
+    undici-types "~5.26.4"
 
 "@types/node@^20", "@types/node@^20.11.27":
   version "20.17.30"
@@ -16725,6 +16752,11 @@ through@2:
   resolved "https://registry.yarnpkg.com/through/-/through-2.3.8.tgz#0dd4c9ffaabc357960b1b724115d7e0e86a2e1f5"
   integrity sha512-w89qg7PI8wAdvX60bMDP+bFoD5Dvhm9oLheFp5O4a2QF0cSBGsBX4qZmadPMvVqlLJBBci+WqGGOAPvcDeNSVg==
 
+tiktoken@^1.0.10:
+  version "1.0.20"
+  resolved "https://registry.yarnpkg.com/tiktoken/-/tiktoken-1.0.20.tgz#a6d7ce757c009e7b4bc757aee7d512187b4b92a6"
+  integrity sha512-zVIpXp84kth/Ni2me1uYlJgl2RZ2EjxwDaWLeDY/s6fZiyO9n1QoTOM5P7ZSYfToPvAvwYNMbg5LETVYVKyzfQ==
+
 timers-browserify@^2.0.4:
   version "2.0.12"
   resolved "https://registry.yarnpkg.com/timers-browserify/-/timers-browserify-2.0.12.tgz#44a45c11fbf407f34f97bccd1577c652361b00ee"
@@ -17134,6 +17166,11 @@ underscore@~1.13.2:
   version "1.13.7"
   resolved "https://registry.yarnpkg.com/underscore/-/underscore-1.13.7.tgz#970e33963af9a7dda228f17ebe8399e5fbe63a10"
   integrity sha512-GMXzWtsc57XAtguZgaQViUOzs0KTkk8ojr3/xAxXLITqf/3EMwxC0inyETfDFjH/Krbhuep0HNbbjI9i/q3F3g==
+
+undici-types@~5.26.4:
+  version "5.26.5"
+  resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-5.26.5.tgz#bcd539893d00b56e964fd2657a4866b221a65617"
+  integrity sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==
 
 undici-types@~6.19.2:
   version "6.19.8"
