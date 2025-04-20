@@ -6,9 +6,8 @@ import type { CoreMessage, ToolCallPart, ToolResultPart, TextStreamPart } from "
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { BaseAgentState, InferProps, InferResponse } from "./types";
 import { Effect, Runtime, Cause } from "effect"; // Correct imports
-import { solverTools } from "../agents/solver/tools";
+import { solverTools, solverContext } from "../agents/solver/tools";
 import type { SolverToolName } from "../agents/solver/tools"; // Correct type-only import
-import { solverContext } from "../agents/solver/index";
 import type { Solver } from "../agents/solver/index"; // Correct type-only import
 import { env } from "cloudflare:workers";
 
@@ -156,6 +155,7 @@ ${this.state.workingFilePath ? `Current file: ${this.state.workingFilePath}` : '
 
   /**
    * Helper function to execute a tool, handling both Effect-based and standard tools.
+   * @param toolCall The tool call to execute
    */
   private async executeToolEffect(toolCall: ToolCallPart): Promise<ToolResultPart> {
     const { toolName, args, toolCallId } = toolCall;

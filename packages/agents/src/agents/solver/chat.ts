@@ -12,7 +12,7 @@ const OpenAiClientLive = Layer.succeed(
   {
     apiKey: process.env.OPENAI_API_KEY || "",
     fetch: globalThis.fetch
-  }
+  } as OpenAIConfig
 );
 
 // Combined AI chat layers with FetchHttpClient
