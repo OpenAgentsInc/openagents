@@ -286,7 +286,7 @@ export default function IssueDetails() {
   const { issue, options } = data;
   const submit = useSubmit();
   const { updateIssueStatus, setIssues } = useIssuesStore();
-  
+
   // Update the issues store with the current issue data
   useEffect(() => {
     if (issue) {
@@ -382,21 +382,6 @@ export default function IssueDetails() {
     }
   }, [agent.connectionStatus, agent.state, issue]);
 
-  /* ---- Chat setup (unchanged) ---- */
-  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
-    useChat({
-      api: `https://chat.openagents.com/chat`,
-      headers: { "X-GitHub-Token": getGithubToken() },
-      maxSteps: 25,
-      initialMessages: [
-        {
-          id: "12309123",
-          role: "system",
-          content: "You are an AI assistant integrated into OpenAgents...",
-        },
-      ],
-    });
-
   /* ---- Effect hooks to refresh on updates ---- */
   useEffect(() => {
     if (
@@ -471,7 +456,7 @@ export default function IssueDetails() {
           </div>
 
           {/* ---------- Sidebar ---------- */}
-          <ScrollArea 
+          <ScrollArea
             className="h-[calc(100vh-6rem)]"
             style={{ overscrollBehavior: 'contain' }}
           >
