@@ -1,68 +1,79 @@
-import { Effect } from "effect";
+import { Effect, Context, Data, Layer } from "effect";
 import { solverTools } from "./tools";
 import { solverContext } from "./tools";
+import type { SolverState } from "./types";
 
-// --- Utility functions for tool formatting ---
+// --- Tool-specific Error Types ---
+export class GetIssueDetailsError extends Data.TaggedError("GetIssueDetailsError")<{ message: string; status?: number }> {}
+export class UpdateIssueStatusError extends Data.TaggedError("UpdateIssueStatusError")<{ message: string; status?: number }> {}
+export class CreatePlanError extends Data.TaggedError("CreatePlanError")<{ message: string }> {}
+export class ToolContextError extends Data.TaggedError("ToolContextError")<{ message: string }> {}
+export class ToolNotFoundError extends Data.TaggedError("ToolNotFoundError")<{ name: string }> {}
+export class ToolExecutionError extends Data.TaggedError("ToolExecutionError")<{ name: string; cause: unknown }> {}
 
-// Format our tools for Anthropic's API
-export function formatToolsForAnthropic() {
-  return Object.entries(solverTools).map(([name, toolObj]) => {
-    // Get tool definition and cast to any to avoid TypeScript errors
-    const tool = toolObj as any;
-    
-    // Extract parameter information from Zod schema
-    const parameterProperties: Record<string, { type: string, description: string }> = {};
-    const requiredParams: string[] = [];
-    
-    // Process each parameter in the Zod schema
-    Object.entries((tool.parameters as any)._def.shape()).forEach(([paramName, paramSchema]) => {
-      // Extract the type and description
-      // This is a simplified approach - in a real implementation you would
-      // need to handle more complex Zod schemas
-      const anyParamSchema = paramSchema as any;
-      const isOptional = anyParamSchema.constructor?.name === 'ZodOptional';
-      const baseSchema = isOptional ? anyParamSchema._def?.innerType : anyParamSchema;
-      
-      let type = 'string'; // Default type
-      if (baseSchema?.constructor?.name === 'ZodNumber') {
-        type = 'number';
-      } else if (baseSchema?.constructor?.name === 'ZodBoolean') {
-        type = 'boolean';
-      } else if (baseSchema?.constructor?.name === 'ZodArray') {
-        type = 'array';
-      } else if (baseSchema?.constructor?.name === 'ZodObject') {
-        type = 'object';
-      }
-      
-      // Get description if available
-      const description = baseSchema?.description || paramName;
-      
-      // Add to properties
-      parameterProperties[paramName] = {
-        type,
-        description
-      };
-      
-      // If not optional, add to required list
-      if (!isOptional) {
-        requiredParams.push(paramName);
-      }
-    });
-    
-    // Format for Anthropic's API
-    return {
-      name,
-      description: tool.description,
-      input_schema: {
-        type: "object",
-        properties: parameterProperties,
-        required: requiredParams
-      }
-    };
-  });
+// --- Service Tag for Agent Context ---
+export interface AgentContextService {
+  readonly getSolverState: Effect.Effect<SolverState, never, never>;
+  readonly updateSolverState: (update: Partial<SolverState>) => Effect.Effect<SolverState, never, never>;
 }
 
-// Execute a tool by name with params
+// --- Format Tools for Anthropic API ---
+export function formatToolsForAnthropic() {
+  const formattedTools = [];
+  
+  // Format GetIssueDetails
+  formattedTools.push({
+    name: "GetIssueDetails",
+    description: "Fetches comprehensive issue information from GitHub.",
+    input_schema: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "Repository owner" },
+        repo: { type: "string", description: "Repository name" },
+        issueNumber: { type: "number", description: "Issue number" }
+      },
+      required: ["owner", "repo", "issueNumber"]
+    }
+  });
+  
+  // Format UpdateIssueStatus
+  formattedTools.push({
+    name: "UpdateIssueStatus",
+    description: "Updates the status of a GitHub issue.",
+    input_schema: {
+      type: "object",
+      properties: {
+        owner: { type: "string", description: "Repository owner" },
+        repo: { type: "string", description: "Repository name" },
+        issueNumber: { type: "number", description: "Issue number" },
+        status: { type: "string", description: "New status (e.g., 'open', 'closed')" },
+        comment: { type: "string", description: "Optional comment to add" }
+      },
+      required: ["owner", "repo", "issueNumber", "status"]
+    }
+  });
+  
+  // Format CreateImplementationPlan
+  formattedTools.push({
+    name: "CreateImplementationPlan",
+    description: "Creates a step-by-step implementation plan for the current issue.",
+    input_schema: {
+      type: "object",
+      properties: {
+        steps: { 
+          type: "array", 
+          description: "Optional custom steps for the plan",
+          items: { type: "string" } 
+        }
+      },
+      required: []
+    }
+  });
+  
+  return formattedTools;
+}
+
+// Execute a tool by name with params - this uses the underlying Vercel AI SDK tools
 export async function executeToolByName(
   toolName: string, 
   params: Record<string, any>
@@ -76,8 +87,6 @@ export async function executeToolByName(
     const tool = solverTools[toolName as keyof typeof solverTools];
     
     // Execute the tool with type assertion to avoid TypeScript errors
-    // This is safe because we're passing the exact parameters from Anthropic
-    // which match the tool's schema
     const options = {}; // Empty options object required by Vercel AI SDK
     const result = await (tool.execute as any)(params, options);
     return result;
@@ -86,3 +95,6 @@ export async function executeToolByName(
     return { error: String(error) };
   }
 }
+
+// --- Toolkit Implementation Layer ---
+export const SolverToolsImplementationLayer = Layer.empty;

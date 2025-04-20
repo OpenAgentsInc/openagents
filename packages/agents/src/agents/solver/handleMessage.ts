@@ -1,8 +1,9 @@
 import { Effect, Data } from "effect";
 import type { Agent } from "agents";
+import type { UIMessage } from "ai";
 import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
 import type { SolverState } from "./index";
-import { createInitialChatEffect } from "./chat";
+import { createInitialChatEffect, createChatEffect } from "./chat";
 import { ChatError, AnthropicConfig } from "./types";
 
 // Define potential errors for this operation
@@ -108,7 +109,87 @@ export const createHandleMessageEffect = (
       } catch (error) {
         yield* Effect.logError(`❌ Failed to generate initial chat message`, { error });
       }
+    } else if (parsedMessage.type === 'chat') {
+      const { message: userMessage } = parsedMessage;
+      
+      if (!userMessage) {
+        yield* Effect.logWarning(`⚠️ Missing user message in chat request`);
+        return;
+      }
+      
+      yield* Effect.logInfo(`Processing chat message: ${userMessage.substring(0, 100)}${userMessage.length > 100 ? '...' : ''}`);
+      
+      try {
+        // Create user message object with required parts field
+        const newUserMessage: UIMessage = {
+          id: `user_${Date.now()}`,
+          role: 'user',
+          content: userMessage,
+          createdAt: new Date(),
+          parts: [{
+            type: 'text',
+            text: userMessage
+          }]
+        };
+        
+        // Add user message to state
+        yield* Effect.tryPromise({
+          try: async () => {
+            agent.setState({
+              ...agent.state,
+              messages: [...agent.state.messages, newUserMessage]
+            });
+          },
+          catch: (unknown) => new SetStateError({ cause: unknown })
+        });
+        
+        // Get updated state with the new user message
+        const currentState = agent.state;
+        
+        // Generate AI response
+        const chatEffect = createChatEffect(currentState, userMessage);
+        const assistantMessage = yield* chatEffect;
+        
+        // Add assistant message to state
+        yield* Effect.tryPromise({
+          try: async () => {
+            agent.setState({
+              ...agent.state,
+              messages: [...agent.state.messages, assistantMessage]
+            });
+          },
+          catch: (unknown) => new SetStateError({ cause: unknown })
+        });
+        
+        yield* Effect.logInfo(`✓ Chat response sent`).pipe(
+          Effect.annotateLogs({
+            messageId: assistantMessage.id,
+            content: assistantMessage.content.substring(0, 100) + (assistantMessage.content.length > 100 ? '...' : '')
+          })
+        );
+      } catch (error) {
+        yield* Effect.logError(`❌ Failed to process chat message`, { error });
+      }
+    } else if (parsedMessage.type === 'set_github_token') {
+      const { token } = parsedMessage;
+      
+      if (!token) {
+        yield* Effect.logWarning(`⚠️ Missing GitHub token in request`);
+        return;
+      }
+      
+      yield* Effect.tryPromise({
+        try: async () => {
+          agent.setState({
+            ...agent.state,
+            githubToken: token
+          });
+        },
+        catch: (unknown) => new SetStateError({ cause: unknown })
+      });
+      
+      yield* Effect.logInfo(`✓ GitHub token updated successfully`);
     } else {
-      yield* Effect.logDebug(`⚠️  Unhandled Message Type: ${parsedMessage.type}`);
+      yield* Effect.logDebug(`⚠️ Unhandled Message Type: ${parsedMessage.type}`);
     }
   });
