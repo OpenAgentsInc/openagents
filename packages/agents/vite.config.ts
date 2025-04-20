@@ -5,6 +5,11 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      external: ["@effect/ai-anthropic", "@effect/ai"], //, , "@effect/platform", "@effect/platform/FetchHttpClient"
+    }
+  },
   plugins: [cloudflare(), react(), tailwindcss()],
   resolve: {
     alias: {
