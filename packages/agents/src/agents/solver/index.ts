@@ -6,12 +6,10 @@ import {
   Data,
   Exit,
   Runtime,
-  Logger,
   LogLevel,
   FiberRefs,
   FiberRef,
   FiberId,
-  HashSet // Import HashSet if using Option 4 later
 } from "effect";
 import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
 
@@ -102,7 +100,7 @@ export class Solver extends Agent<Env, SolverState> {
 
           yield* Effect.tryPromise({
             try: async () => {
-              await this.setState({
+              this.setState({
                 ...this.state,
                 currentIssue: issue,
                 currentProject: project,
