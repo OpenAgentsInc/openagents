@@ -1,18 +1,12 @@
 import { Effect, Data } from "effect";
 import type { Agent } from "agents";
 import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
+import type { SolverState } from "./index";
 
 // Define potential errors for this operation
 export class ParseError extends Data.TaggedError("ParseError")<{ cause: unknown }> { }
 export class SetStateError extends Data.TaggedError("SetStateError")<{ cause: unknown }> { }
 export type HandleMessageError = ParseError | SetStateError;
-
-export type SolverState = {
-  messages: any[]; // Using any[] since UIMessage type isn't available here
-  currentIssue?: BaseIssue;
-  currentProject?: BaseProject;
-  currentTeam?: BaseTeam;
-};
 
 export const createHandleMessageEffect = (
   agent: Agent<any, SolverState>,

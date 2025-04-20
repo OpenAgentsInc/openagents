@@ -1,4 +1,5 @@
 import { Agent, type Connection, type WSMessage } from "agents";
+import type { UIMessage } from "ai";
 import {
   Exit,
   Runtime,
@@ -9,7 +10,16 @@ import {
   Cause,
   Effect,
 } from "effect";
-import { createHandleMessageEffect, type SolverState } from "./handleMessage";
+import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
+import { createHandleMessageEffect } from "./handleMessage";
+
+// Define the state to hold context
+export type SolverState = {
+  messages: UIMessage[];
+  currentIssue?: BaseIssue;
+  currentProject?: BaseProject;
+  currentTeam?: BaseTeam;
+};
 
 // Configure the runtime with Debug level logging
 const customizedRuntime = Runtime.make({
@@ -26,7 +36,6 @@ const customizedRuntime = Runtime.make({
 });
 
 export class Solver extends Agent<Env, SolverState> {
-
   initialState: SolverState = {
     messages: [],
     currentIssue: undefined,
