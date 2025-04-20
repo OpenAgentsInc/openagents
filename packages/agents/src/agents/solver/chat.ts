@@ -123,13 +123,13 @@ Your goal is to provide practical assistance and guide the user through addressi
         // Get tools formatted for Anthropic
         const formattedTools = formatToolsForAnthropic();
         
-        // Build request body with tools
+        // Build request body with tools and correct tool_choice format
         const requestBody = {
           model: model || "claude-3-5-sonnet-latest",
           messages: formattedMessages,
           system: systemPrompt,
           tools: formattedTools,
-          tool_choice: "auto", // Let the model decide when to use tools
+          tool_choice: { type: "auto" }, // Using object format with type: "auto" - this is what Anthropic expects
           max_tokens: 1000,
           temperature: 0.7
         };

@@ -395,10 +395,15 @@ export function SolverConnector({
 
                     try {
                       // First ensure we have context
-                      const contextMissing = !agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam;
+                      // Check if we have valid context - but only do this once per session
+                      // by keeping track of whether we've sent context already
+                      const contextSentKey = `solver_context_sent_${formattedIssue.id}`;
+                      const contextWasSent = sessionStorage.getItem(contextSentKey) === 'true';
+                      const contextMissing = !contextWasSent && (!agent.state?.currentIssue || !agent.state?.currentProject || !agent.state?.currentTeam);
 
-                      // Set context if needed
+                      // Set context if needed - but only once per session
                       if (contextMissing) {
+                        console.log("Context missing, sending context info...");
                         // Send context to ensure agent has issue information
                         const contextMessage = {
                           type: "set_context",
@@ -409,6 +414,13 @@ export function SolverConnector({
                         };
 
                         agent.sendRawMessage(contextMessage);
+                        
+                        // Mark that we've sent context for this issue in this session
+                        try {
+                          sessionStorage.setItem(contextSentKey, 'true');
+                        } catch (e) {
+                          console.warn("Could not store context sent flag in sessionStorage:", e);
+                        }
 
                         // Wait a moment for context to be processed
                         await new Promise(resolve => setTimeout(resolve, 300));
@@ -451,21 +463,30 @@ export function SolverConnector({
                       // Send the inference request
                       const requestId = generateId();
                       
-                      // CRITICAL FIX: Re-set the GitHub token to ensure it's available
-                      // This adds redundancy to prevent token loss
-                      if (githubToken) {
+                      // Only set GitHub token again if it hasn't been set in this session
+                      const tokenSentKey = "solver_github_token_sent";
+                      const tokenWasSent = sessionStorage.getItem(tokenSentKey) === 'true';
+                      
+                      if (githubToken && !tokenWasSent) {
                         try {
-                          console.log("Re-setting GitHub token before inference (length:", githubToken.length, ")");
+                          console.log("Setting GitHub token before inference (length:", githubToken.length, ")");
                           // IMPORTANT: Don't call setGithubToken directly - use message passing
                           agent.sendRawMessage({
                             type: "set_github_token",
                             token: githubToken
                           });
+                          
+                          // Remember that we've set the token
+                          try {
+                            sessionStorage.setItem(tokenSentKey, 'true');
+                          } catch (e) {
+                            console.warn("Could not store token sent flag in sessionStorage:", e);
+                          }
                         } catch (tokenError) {
-                          console.error("Error re-setting GitHub token:", tokenError);
+                          console.error("Error setting GitHub token:", tokenError);
                         }
-                      } else {
-                        console.warn("No GitHub token available to set before inference!");
+                      } else if (!githubToken) {
+                        console.warn("No GitHub token available for inference!");
                       }
 
                       // Create an empty placeholder for streaming
@@ -487,25 +508,16 @@ export function SolverConnector({
                       agent.setMessages([...agent.messages, assistantPlaceholder]);
                       
                       // Send the request with streaming enabled and context data for reliability
-                      const response = await agent.sendRawMessage({
-                        type: "shared_infer",
+                      // Use a simpler chat message approach to avoid creating multiple WebSocket connections
+                      const chatMessage = {
+                        type: "chat",
+                        message: inputValue,
                         requestId: requestId,
-                        streaming: true, // Request streaming response
-                        params: {
-                          model: "anthropic/claude-3.5-sonnet", // Using OpenRouter model
-                          messages: allMessages,
-                          system: systemPrompt,
-                          temperature: 0.7,
-                          max_tokens: 1000,
-                          githubToken: githubToken, // Explicitly pass token as parameter
-                        },
-                        context: {
-                          issue: formattedIssue,
-                          project: formattedProject,
-                          team: formattedTeam
-                        },
                         timestamp: new Date().toISOString()
-                      });
+                      };
+                      
+                      // Send a simpler chat message instead of shared_infer to avoid duplicate connections
+                      const response = await agent.sendRawMessage(chatMessage);
 
                       console.log("Streaming inference request sent, response:", response);
                       
