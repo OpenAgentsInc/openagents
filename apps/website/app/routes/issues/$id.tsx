@@ -28,11 +28,11 @@ import {
 import { CalendarIcon, Clock, CheckCircle, AlertTriangle, BotIcon } from "lucide-react";
 import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
-// Import our minimal agent hook
-import { useOpenAgent_Minimal } from "@openagents/core/dist/hooks/useOpenAgent_Minimal";
-// Import our minimal components
-import { MinimalSolverConnector } from "@openagents/core/dist/components/agent/MinimalSolverConnector";
-import { MinimalSolverControls } from "@openagents/core/dist/components/agent/MinimalSolverControls";
+// Import our minimal agent hook - using original hook as fallback
+import { useOpenAgent } from "@openagents/core";
+// We'll use the original components since the imports are having issues
+import { SolverConnector } from "@/components/agent/solver-connector";
+import { SolverControls } from "@/components/agent/solver-controls";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
@@ -301,8 +301,8 @@ export default function IssueDetails() {
       ? localStorage.getItem("github_token") || ""
       : "";
 
-  /* ---- Use our minimal agent hook ---- */
-  const agent = useOpenAgent_Minimal(issue.id, "solver");
+  /* ---- Use standard agent hook, but with session tracking for state ---- */
+  const agent = useOpenAgent(issue.id, "solver");
 
   /* ---- Status update handler ---- */
   const handleStatusChange = (statusId: string) => {
@@ -358,8 +358,10 @@ export default function IssueDetails() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
           {/* ---------- Main column: MinimalSolverConnector full height ---------- */}
           <div className="md:col-span-2 h-full overflow-hidden">
-            <MinimalSolverConnector
+            <SolverConnector
+              issue={issue}
               agent={agent}
+              githubToken={getGithubToken()}
               className="w-full h-full"
             />
           </div>
@@ -371,8 +373,10 @@ export default function IssueDetails() {
           >
             <div className="flex flex-col pr-2">
               {/* Agent Controls Card */}
-              <MinimalSolverControls
+              <SolverControls
+                issue={issue}
                 agent={agent}
+                githubToken={getGithubToken()}
               />
 
               {/* Issue Details Card */}
