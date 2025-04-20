@@ -117,12 +117,7 @@ export class Solver extends Agent<Env, SolverState> {
               teamKey: team.key
             })
           );
-
-        } else if (parsedMessage.type === 'get_system_prompt') {
-          yield* Effect.logDebug(`⚙️  Processing: ${parsedMessage.type}`);
-          // TODO: Implement get_system_prompt logic
-        }
-        else {
+        } else {
           yield* Effect.logDebug(`⚠️  Unhandled Message Type: ${parsedMessage.type}`);
         }
       });
