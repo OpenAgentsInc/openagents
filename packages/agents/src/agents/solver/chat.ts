@@ -65,18 +65,20 @@ export const createChatEffect = (
       } catch (e) {
         // Provide default config if it's not in the context
         anthropicConfig = {
-          apiKey: process.env.ANTHROPIC_API_KEY || "",
+          apiKey: env.ANTHROPIC_API_KEY || "",
           fetch: globalThis.fetch,
-          model: "claude-3-sonnet-20240229"
+          model: "claude-3-5-sonnet-latest"
         };
         yield* _(Effect.logWarning("Using default AnthropicConfig"));
       }
-      
+
       const apiKey = anthropicConfig.apiKey;
-      const model = anthropicConfig.model || "claude-3-sonnet-20240229";
+      const model = anthropicConfig.model || "claude-3-5-sonnet-latest";
 
       // For now, simulate the response - this would be replaced with actual API call
-      const responseContent = `I understand you're working on ${currentState.currentIssue?.title}. How can I help?`;
+      // const responseContent = `I understand you're working on ${currentState.currentIssue?.title}. How can I help?`;
+
+      // Now implement the actual API call
 
       // Format the AI response with proper parts
       const assistantTextPart: TextUIPart = {
