@@ -4,6 +4,12 @@ import {
     Effect, Cause, Data, Exit, Runtime, Logger, LogLevel, FiberRefs, FiberRef, FiberId
 } from "effect";
 
+// Define a minimal TextUIPart for compatibility
+type TextUIPart = {
+    type: 'text';
+    text: string;
+};
+
 // --- Minimal State ---
 export type SolverState = {
   messages: UIMessage[];
@@ -55,27 +61,35 @@ export class Solver extends Agent<Env, SolverState> {
 
             yield* Effect.logInfo(`Processing chat message: "${userMessageContent.substring(0, 30)}..."`);
 
-            // Create simple UIMessage objects for state
+            // Create simple UIMessage objects for state with parts
             const userMessage: UIMessage = {
                 id: `user_${Date.now()}`,
                 role: 'user',
                 content: userMessageContent,
-                createdAt: new Date()
+                createdAt: new Date(),
+                parts: [{ 
+                    type: 'text', 
+                    text: userMessageContent 
+                }]
             };
 
             const assistantResponse: UIMessage = {
                 id: `asst_${Date.now()}`,
                 role: "assistant",
                 content: `Echo: ${userMessageContent}`, // Simple echo
-                createdAt: new Date()
+                createdAt: new Date(),
+                parts: [{ 
+                    type: 'text', 
+                    text: `Echo: ${userMessageContent}` 
+                }]
              };
 
             // 3. Update State
             yield* Effect.tryPromise({
-                try: () => this.setState({
+                try: () => Promise.resolve(this.setState({
                     // Ensure messages array always exists and append
                     messages: [...(this.state.messages || []), userMessage, assistantResponse]
-                }),
+                })),
                 catch: (unknown) => new StateUpdateError({ cause: unknown })
             });
             yield* Effect.logInfo("State updated with user message and echo response.");

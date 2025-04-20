@@ -43,7 +43,10 @@ export function useOpenAgent_Minimal(agentId: string, agentType: string): Minima
   // --- Connection Status ---
   useEffect(() => {
     if (!cloudflareAgent) return;
-    const ws = cloudflareAgent.getWebSocket(); // Get underlying WebSocket if possible/needed
+    
+    // Use private property access for WebSocket
+    // This is a workaround since getWebSocket() isn't exposed in the type
+    const ws = (cloudflareAgent as any)._socket; 
     if (!ws) return;
 
     const handleOpen = () => setConnectionStatus('connected');
@@ -70,7 +73,7 @@ export function useOpenAgent_Minimal(agentId: string, agentType: string): Minima
 
   // --- Send Message ---
   const sendMessage = useCallback((content: string) => {
-    if (cloudflareAgent && cloudflareAgent.readyState === WebSocket.OPEN) {
+    if (cloudflareAgent) {
       const messagePayload = {
         type: "chat_message", // Use the type expected by the backend
         content: content,
@@ -79,14 +82,14 @@ export function useOpenAgent_Minimal(agentId: string, agentType: string): Minima
       console.log(`[Hook ${agentName}] Sending chat message:`, messagePayload);
       cloudflareAgent.send(JSON.stringify(messagePayload));
     } else {
-      console.error(`[Hook ${agentName}] Cannot send message, WebSocket not open.`);
+      console.error(`[Hook ${agentName}] Cannot send message, agent not available.`);
     }
   }, [cloudflareAgent, agentName]);
   // --- End Send Message ---
 
   // --- Disconnect ---
   const disconnect = useCallback(() => {
-    if (cloudflareAgent && cloudflareAgent.readyState !== WebSocket.CLOSED) {
+    if (cloudflareAgent) {
        console.log(`[Hook ${agentName}] Disconnecting...`);
        cloudflareAgent.close();
     }
