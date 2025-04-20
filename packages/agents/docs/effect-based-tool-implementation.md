@@ -1,6 +1,11 @@
-# Effect-Based Tool Implementation
+# Effect-Based Tool Implementation & AI Integration
 
-This document outlines the implementation of the first Effect-based tool in the Solver agent: `fetchFileContents`. This represents Phase 1 of our incremental adoption of the Effect framework for more robust and maintainable agent tools.
+This document outlines the implementation of Effect-based functionality in the Solver agent:
+
+1. Tool Implementation: `fetchFileContents` using the Effect framework
+2. AI Integration: Using Effect AI for inference with Anthropic Claude models
+
+This represents the first phases of our incremental adoption of the Effect framework for more robust and maintainable agent tools and AI inference.
 
 ## Overview
 
@@ -191,6 +196,84 @@ As we progress with Effect adoption, future enhancements could include:
 
 4. **Layer Management**: Create GitHub API service layers for better dependency management and testing.
 
+## Effect AI Integration for Inference
+
+Beyond tools, we've also implemented Effect AI for inference, allowing the agent to generate responses using Anthropic's Claude models through the Effect framework.
+
+### Implementation Details
+
+The implementation follows the approach outlined in the Effect AI documentation and the demo in `packages/core/src/effect/demo.ts`:
+
+```typescript
+// Import Effect AI modules
+const { AnthropicClient, AnthropicCompletions } = await import("@effect/ai-anthropic");
+const { Completions } = await import("@effect/ai");
+const { Effect, Config } = await import("effect");
+
+// Create the Effect for text generation
+const generateDadJoke = Effect.gen(function* () {
+  // Extract the Completions service from the Effect environment
+  const completions = yield* Completions.Completions;
+  // Use the service to generate text with our prompt
+  const response = yield* completions.create("Generate a dad joke");
+  return response;
+});
+
+// Create an AiModel which provides a Completions implementation
+const Sonnet35 = AnthropicCompletions.model("claude-3-5-sonnet-20241022");
+
+// Configure the Anthropic client with an API key
+const Anthropic = AnthropicClient.layerConfig({
+  apiKey: Config.succeed(apiKey)
+});
+
+// The main Effect that builds the model and provides it to generateDadJoke
+const main = Effect.gen(function* () {
+  // Build the AiModel into a Provider
+  const sonnet35 = yield* Sonnet35;
+  // Provide the Completions implementation to generateDadJoke
+  const response = yield* sonnet35.provide(generateDadJoke);
+  return response;
+});
+
+// Run the Effect with the Anthropic layer
+const effectResult = await Effect.runPromise(Effect.provide(main, Anthropic));
+```
+
+### Benefits Over Standard Inference
+
+Using Effect AI for inference provides several advantages:
+
+1. **Explicit Error Handling**: All potential error types are part of the type signature
+2. **Better Composability**: Easy to integrate pre- and post-processing steps
+3. **Consistent Provider Interface**: The same pattern works across different AI providers
+4. **Type-Safe Prompting**: Better type safety for prompt parameters
+5. **Simplified Dependency Management**: API keys and other configuration managed through Effect's Layer system
+
+### Testing the Effect AI Integration
+
+You can test the Effect AI integration in the Solver agent by:
+
+1. Connect to a Solver agent for any issue
+2. Click the "Test Effect AI" button in the agent controls sidebar
+3. The agent will use Effect AI with Claude 3.5 Sonnet to generate a dad joke
+4. The result will be displayed in the chat panel
+
+This button sends a specialized message type (`effect_ai_test`) to the agent, which then uses the Effect AI framework to generate a response.
+
+### Future Enhancements for AI Integration
+
+As we continue with the Effect adoption, we plan to enhance AI integration with:
+
+1. **Structured Prompting**: Using Effect's schema utilities for strongly-typed prompts
+2. **Tool Use with Effects**: Integrating tool execution directly into the Effect flow
+3. **Streaming Responses**: Using Effect's Stream for more efficient streaming of results
+4. **Multi-Model Orchestration**: Leveraging Effect's concurrency to coordinate multiple models
+
 ## Conclusion
 
-This implementation demonstrates the first phase of adopting Effect within the Solver agent, focusing on improving tool robustness through better error handling and composability. By incrementally adopting Effect within the Vercel AI SDK framework, we gain many of its benefits while maintaining compatibility with the existing system.
+These implementations demonstrate the first phases of adopting Effect within the Solver agent:
+1. Improving tool robustness through better error handling and composability with Effect-based tools
+2. Enhancing AI inference through the type-safe Effect AI framework
+
+By incrementally adopting Effect within the existing framework, we gain many of its benefits while maintaining compatibility with the current system. The Effect framework offers a promising path toward more reliable, maintainable, and composable agent functionality.

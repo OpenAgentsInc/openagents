@@ -861,6 +861,55 @@ Key: ${formattedTeam.key || 'N/A'}`;
             >
               Send Command
             </Button>
+
+            {/* Test Effect AI Integration */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 dark:hover:bg-blue-900"
+              onClick={async () => {
+                try {
+                  // Create a user message
+                  const testMessage = {
+                    id: generateId(),
+                    role: 'user' as const,
+                    content: `Generate a dad joke using Effect AI`,
+                    parts: [{
+                      type: 'text' as const,
+                      text: `Generate a dad joke using Effect AI`
+                    }]
+                  };
+
+                  // Add the user message to the agent
+                  agent.setMessages([...agent.messages, testMessage]);
+
+                  // Send message to trigger Effect AI implementation
+                  await agent.sendRawMessage({
+                    type: "effect_ai_test",
+                    requestId: generateId(),
+                    prompt: "Generate a dad joke",
+                    timestamp: new Date().toISOString()
+                  });
+
+                  console.log("Effect AI test message sent to agent");
+                } catch (error) {
+                  console.error("Error testing Effect AI:", error);
+                  
+                  // Add error message to chat to show user
+                  const errorMessage = {
+                    id: generateId(),
+                    role: 'assistant' as const,
+                    content: `Error testing Effect AI: ${error instanceof Error ? error.message : String(error)}`,
+                    isError: true,
+                    timestamp: new Date().toISOString()
+                  };
+                  
+                  agent.setMessages([...agent.messages, errorMessage]);
+                }
+              }}
+            >
+              Test Effect AI
+            </Button>
           </>
         )}
       </CardFooter>
