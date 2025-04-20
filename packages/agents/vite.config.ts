@@ -6,8 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   build: {
+    // We'll bundle all dependencies for the Cloudflare Worker
     rollupOptions: {
-      external: ["@effect/ai-anthropic", "@effect/ai"], //, , "@effect/platform", "@effect/platform/FetchHttpClient"
+      // No externals - this way everything gets bundled
     }
   },
   plugins: [cloudflare(), react(), tailwindcss()],

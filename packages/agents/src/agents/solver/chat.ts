@@ -4,8 +4,6 @@ import { FetchHttpClient } from "@effect/platform";
 import type { SolverState, TextUIPart } from "./types";
 import { ChatError, AnthropicConfig } from "./types";
 import { env } from "cloudflare:workers";
-import { AnthropicCompletions, AnthropicClient } from "@effect/ai-anthropic";
-import { Completions } from "@effect/ai";
 
 // --- Service Implementation (Layers) ---
 
@@ -13,17 +11,14 @@ import { Completions } from "@effect/ai";
 const AnthropicConfigLive = Layer.succeed(
   AnthropicConfig,
   {
-    apiKey: process.env.ANTHROPIC_API_KEY || "",
+    apiKey: env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "",
     fetch: globalThis.fetch,
     model: "claude-3-5-sonnet-latest"
   } as AnthropicConfig
 );
 
-// Combined AI chat layers with FetchHttpClient
-export const AiChatLayers = Layer.merge(
-  AnthropicConfigLive,
-  FetchHttpClient.layer
-);
+// FetchHttpClient layer for making HTTP requests
+export const FetchHttpClientLayer = FetchHttpClient.layer;
 
 // --- Chat Effect Creation ---
 
@@ -34,7 +29,7 @@ export const createChatEffect = (
   currentState: SolverState,
   userMessageContent: string
 ): Effect.Effect<UIMessage, ChatError, AnthropicConfig> =>
-  Effect.gen(function* (_) {
+  Effect.gen(function* (eff) {
     // Create user message with proper parts
     const userTextPart: TextUIPart = {
       type: 'text',
@@ -63,83 +58,131 @@ export const createChatEffect = (
       // Get API key and client from Effect context, or use defaults for testing
       let anthropicConfig;
       try {
-        anthropicConfig = yield* _(AnthropicConfig);
+        anthropicConfig = yield* eff(AnthropicConfig);
       } catch (e) {
         // Provide default config if it's not in the context
         anthropicConfig = {
-          apiKey: env.ANTHROPIC_API_KEY || "",
+          apiKey: env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "",
           fetch: globalThis.fetch,
           model: "claude-3-5-sonnet-latest"
         };
-        yield* _(Effect.logWarning("Using default AnthropicConfig"));
+        yield* eff(Effect.logWarning("Using default AnthropicConfig"));
       }
 
       const apiKey = anthropicConfig.apiKey;
       const model = anthropicConfig.model || "claude-3-5-sonnet-latest";
 
       // Implement the actual API call using Effect AI
-      yield* _(Effect.logInfo("Making Anthropic API call", { model }));
+      yield* eff(Effect.logInfo("Making Anthropic API call", { model }));
       
-      // For now, we'll simulate the API call due to compatibility issues with the Effect AI library
-      // In a production environment, you would use the Effect AI library properly
-      
-      // Simulate API call with a more sophisticated response
+      // Initialize responseContent variable to hold either API response or fallback
       let responseContent = '';
       
-      if (currentState.currentIssue) {
-        responseContent = `I'm your Solver agent, ready to help with issue #${currentState.currentIssue.number}: "${currentState.currentIssue.title}".
+      // Direct Anthropic API call using fetch
+      try {
+        // Configure the API request
+        const apiUrl = "https://api.anthropic.com/v1/messages";
+        const headers = {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01"
+        };
         
+        // Prepare messages in Anthropic format
+        const formattedMessages = messagesForLLM.map(msg => {
+          if (msg.role === "user" || msg.role === "assistant") {
+            return {
+              role: msg.role,
+              content: msg.content
+            };
+          } else {
+            // Default to user for any other role types
+            return {
+              role: "user",
+              content: msg.content
+            };
+          }
+        });
+        
+        // Build request body
+        const requestBody = {
+          model: model || "claude-3-5-sonnet-latest",
+          messages: formattedMessages,
+          system: systemPrompt,
+          max_tokens: 1000,
+          temperature: 0.7
+        };
+        
+        // Log the request for debugging
+        yield* eff(Effect.logInfo("Sending Anthropic API request", { 
+          model: requestBody.model,
+          messageCount: formattedMessages.length,
+          systemPromptLength: systemPrompt.length
+        }));
+        
+        // Make the API request
+        const response = yield* eff(Effect.tryPromise({
+          try: () => fetch(apiUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(requestBody)
+          }),
+          catch: error => new ChatError({ cause: error })
+        }));
+        
+        // Check for HTTP errors
+        if (!response.ok) {
+          const errorText = yield* eff(Effect.tryPromise({
+            try: () => response.text(),
+            catch: error => new ChatError({ cause: error })
+          }));
+          
+          yield* eff(Effect.logError("Anthropic API error", { 
+            status: response.status, 
+            statusText: response.statusText,
+            body: errorText
+          }));
+          
+          throw new ChatError({ 
+            cause: new Error(`Anthropic API error: ${response.status} ${response.statusText}`) 
+          });
+        }
+        
+        // Parse the response
+        const jsonData = yield* eff(Effect.tryPromise({
+          try: () => response.json(),
+          catch: error => new ChatError({ cause: error })
+        }));
+        
+        // Type assertion for the response format
+        const responseData = jsonData as { content: Array<{ type: string, text: string }> };
+        
+        // Extract content from the Anthropic response
+        responseContent = responseData.content[0].text;
+        
+        yield* eff(Effect.logInfo("Received Anthropic API response", { 
+          responseLength: responseContent.length,
+          preview: responseContent.substring(0, 100) + (responseContent.length > 100 ? "..." : "")
+        }));
+      } catch (error) {
+        // Fallback response if the API call fails
+        yield* eff(Effect.logError("Failed to call Anthropic API, using fallback response", { 
+          error: error instanceof Error ? error.message : String(error)
+        }));
+        
+        // Generate a fallback response
+        if (currentState.currentIssue) {
+          responseContent = `I'm your Solver agent, ready to help with issue #${currentState.currentIssue.number}: "${currentState.currentIssue.title}".
+          
 Based on the issue description, I can assist with analyzing requirements, researching solutions, planning implementation steps, and providing guidance throughout the development process.
 
 What specific aspect of this issue would you like me to help with first?`;
-      } else {
-        responseContent = `I'm your Solver agent, ready to help. What project issue would you like assistance with?`;
+        } else {
+          responseContent = `I'm your Solver agent, ready to help. What project issue would you like assistance with?`;
+        }
       }
       
-      // Here's what the actual API call would look like using Effect AI:
-      /*
-      // Create an Anthropic client with the config from context
-      const anthropicClientLayer = AnthropicClient.layer({
-        apiKey,
-        fetch: anthropicConfig.fetch
-      });
-      
-      // Create a Claude model
-      const Claude = AnthropicCompletions.model(model || "claude-3-5-sonnet-latest");
-      
-      // Prepare the system and user messages
-      const systemMessage = systemPrompt;
-      const messages = messagesForLLM.map(msg => ({
-        role: msg.role === "user" || msg.role === "assistant" ? msg.role : "user",
-        content: msg.content
-      }));
-
-      // Make the API call
-      const completionEffect = Effect.gen(function*(_: any) {
-        // Get the completions service
-        const completions = yield* _(Completions);
-        
-        // Define the prompt with system instructions and conversation history
-        const prompt = {
-          system: systemMessage,
-          messages: messages
-        };
-        
-        // Get completion from the model
-        const response = yield* _(completions.create(Claude, prompt));
-        return response;
-      }).pipe(
-        Effect.provide(anthropicClientLayer),
-        Effect.catchAll(error => 
-          Effect.fail(new ChatError({ cause: error }))
-        )
-      );
-      
-      // Execute the completion effect
-      const responseContent = yield* completionEffect;
-      */
-      
-      yield* _(Effect.logInfo("Generated response for the user", { 
+      yield* eff(Effect.logInfo("Generated response for the user", { 
         responseLength: responseContent.length,
         preview: responseContent.substring(0, 100) + (responseContent.length > 100 ? "..." : "")
       }));
@@ -161,8 +204,8 @@ What specific aspect of this issue would you like me to help with first?`;
 
       return assistantMessage;
     } catch (error) {
-      yield* _(Effect.logError("AI completion failed", { error }));
-      return yield* _(Effect.fail(new ChatError({ cause: error })));
+      yield* eff(Effect.logError("AI completion failed", { error }));
+      return yield* eff(Effect.fail(new ChatError({ cause: error })));
     }
   }).pipe(
     Effect.withLogSpan("agentChatCompletion")
