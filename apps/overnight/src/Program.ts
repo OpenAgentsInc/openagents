@@ -1,17 +1,25 @@
 import * as Effect from "effect/Effect"
 import * as Either from "effect/Either"
+import * as Layer from "effect/Layer"
 import { 
   GitHubApiClient, 
-  FileNotFoundError, 
-  GitHubApiError,
+  FileNotFoundError as FileNotFoundError, 
+  GitHubApiError as FileApiError,
   createGitHubApiClient
 } from "./github/GitHubApi.js"
+import {
+  GitHubIssueClient,
+  IssueNotFoundError,
+  GitHubApiError as IssueApiError,
+  createGitHubIssueClient
+} from "./github/GitHubIssueApi.js"
 
-// Example of using the GitHub API client
+// Example of using the GitHub API clients
 const program = Effect.gen(function*() {
   console.log("Starting GitHub API test...")
   
-  // First, get the GitHub client from the context
+  // PART 1: Testing GitHub File API
+  console.log("\n--- Testing GitHub File API ---")
   const githubClient = yield* GitHubApiClient
   
   // Try to fetch a file that doesn't exist
@@ -29,7 +37,7 @@ const program = Effect.gen(function*() {
     
     if (error instanceof FileNotFoundError) {
       yield* Effect.log(`File not found error: ${error.message}`)
-    } else if (error instanceof GitHubApiError) {
+    } else if (error instanceof FileApiError) {
       yield* Effect.log(`GitHub API error: ${error.message}`)
     } else {
       yield* Effect.log(`Unknown error: ${String(error)}`)
@@ -60,13 +68,76 @@ const program = Effect.gen(function*() {
     yield* Effect.log(`File found: ${file.name}`)
     yield* Effect.log(`Content (first 200 chars): ${Buffer.from(file.content, "base64").toString("utf-8").substring(0, 200)}...`)
   }
+  
+  // PART 2: Testing GitHub Issue API
+  console.log("\n--- Testing GitHub Issue API ---")
+  const issueClient = yield* GitHubIssueClient
+  
+  // Try to fetch an issue that doesn't exist
+  const nonExistentIssue = yield* Effect.either(
+    issueClient.fetchIssue({
+      owner: "openagentsinc",
+      repo: "openagents",
+      issueNumber: 999999
+    })
+  )
+  
+  // Log the result of the fetch attempt
+  if (Either.isLeft(nonExistentIssue)) {
+    const error = nonExistentIssue.left
+    
+    if (error instanceof IssueNotFoundError) {
+      yield* Effect.log(`Issue not found error: ${error.message}`)
+    } else if (error instanceof IssueApiError) {
+      yield* Effect.log(`GitHub API error: ${error.message}`)
+    } else {
+      yield* Effect.log(`Unknown error: ${String(error)}`)
+    }
+  } else {
+    const issue = nonExistentIssue.right
+    yield* Effect.log(`Issue found: #${issue.number} - ${issue.title}`)
+    yield* Effect.log(`Body (first 100 chars): ${issue.body.substring(0, 100)}...`)
+  }
+  
+  // Try to fetch an issue that exists
+  yield* Effect.log("Now attempting to fetch a real issue that exists...")
+  
+  // Change this to a valid issue number in the openagents repo
+  // or leave as is to see the not found error
+  const ISSUE_NUMBER = 1
+  
+  const validIssueResult = yield* Effect.either(
+    issueClient.fetchIssue({
+      owner: "openagentsinc",
+      repo: "openagents",
+      issueNumber: ISSUE_NUMBER
+    })
+  )
+  
+  // Log the result
+  if (Either.isLeft(validIssueResult)) {
+    const error = validIssueResult.left
+    yield* Effect.log(`Error fetching real issue: ${error.message}`)
+  } else {
+    const issue = validIssueResult.right
+    yield* Effect.log(`Issue found: #${issue.number} - ${issue.title}`)
+    yield* Effect.log(`State: ${issue.state}`)
+    yield* Effect.log(`Created by: ${issue.user.login}`)
+    yield* Effect.log(`Labels: ${issue.labels.map(l => l.name).join(", ")}`)
+    yield* Effect.log(`Body (first 100 chars): ${issue.body.substring(0, 100)}...`)
+  }
 })
 
-// Create a layer with our real HTTP client implementation
-// Add your GitHub token here if you have one, to avoid rate limits
-const MainLayer = createGitHubApiClient("https://api.github.com")
+// Create layers with real API clients
+// Add your GitHub token here if you have one to avoid rate limits
+const token = undefined // "your_github_token_here"
+const fileApiLayer = createGitHubApiClient("https://api.github.com", token)
+const issueApiLayer = createGitHubIssueClient("https://api.github.com", token)
 
-// Run the program with the layer
+// Combine the layers
+const MainLayer = Layer.merge(fileApiLayer, issueApiLayer)
+
+// Run the program with the combined layer
 Effect.runPromise(
   program.pipe(
     Effect.provide(MainLayer)
