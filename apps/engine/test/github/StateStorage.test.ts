@@ -1,6 +1,6 @@
 import { FileSystem } from "@effect/platform"
 import { describe, expect, it, vi } from "@effect/vitest"
-import { Effect, Layer, Either } from "effect"
+import { Effect, Either, Layer } from "effect"
 import * as path from "node:path"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import {
@@ -308,9 +308,9 @@ describe("State Storage", () => {
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
 
       // Act
-      const effectToTest = Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId))
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
       const result = await Effect.runPromise(Effect.either(Effect.provide(effectToTest, testLayer)))
-      
+
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
@@ -339,9 +339,9 @@ describe("State Storage", () => {
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
 
       // Act
-      const effectToTest = Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId))
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
       const result = await Effect.runPromise(Effect.either(Effect.provide(effectToTest, testLayer)))
-      
+
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
@@ -371,9 +371,9 @@ describe("State Storage", () => {
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
 
       // Act
-      const effectToTest = Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId))
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
       const result = await Effect.runPromise(Effect.either(Effect.provide(effectToTest, testLayer)))
-      
+
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
@@ -453,7 +453,7 @@ describe("State Storage", () => {
   describe("createAgentStateForIssue", () => {
     it("should create and save initial state for issue", async () => {
       // Arrange - Create separate mocks for each dependency method
-      const getIssueMock = vi.fn().mockImplementation(() => 
+      const getIssueMock = vi.fn().mockImplementation(() =>
         Effect.succeed({
           title: "Test Issue Title",
           body: "Test issue description with details",
@@ -462,8 +462,8 @@ describe("State Storage", () => {
           html_url: "https://github.com/user/repo/issues/123"
         })
       )
-      
-      const saveAgentStateMock = vi.fn().mockImplementation((state) => 
+
+      const saveAgentStateMock = vi.fn().mockImplementation((state) =>
         Effect.succeed({
           ...state,
           timestamps: {
@@ -472,7 +472,7 @@ describe("State Storage", () => {
           }
         })
       )
-      
+
       // Create a mock GitHub client with all required methods
       const mockGithubClient = {
         getIssue: getIssueMock,
@@ -489,11 +489,11 @@ describe("State Storage", () => {
           return Effect.gen(function*() {
             // Call the mocked getIssue
             const issue = yield* getIssueMock(owner, repo, issueNumber)
-            
+
             // Generate a unique instance ID
             const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
-            const now = "2025-04-22T12:05:00Z"  // Fixed timestamp for testing
-            
+            const now = "2025-04-22T12:05:00Z" // Fixed timestamp for testing
+
             // Create initial agent state
             const initialState: AgentState = {
               agent_info: {
@@ -581,10 +581,10 @@ describe("State Storage", () => {
                 github_token_available: true
               }
             }
-            
+
             // Call the mocked saveAgentState
             const savedState = yield* saveAgentStateMock(initialState)
-            
+
             return savedState
           })
         }),
@@ -617,7 +617,7 @@ describe("State Storage", () => {
       // Assert - Verify our mocks were called with expected params
       expect(getIssueMock).toHaveBeenCalledWith("user", "repo", 123)
       expect(saveAgentStateMock).toHaveBeenCalled()
-      
+
       // Verify the structure of the returned state
       expect(result.agent_info.type).toBe("solver")
       expect(result.agent_info.state_schema_version).toBe("1.1")
