@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>OpenAgents Engine</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="/htmx.min.js"></script>
+  <script src="/ws.js"></script>
+  <script src="/tailwind.js"></script>
+  <link rel="stylesheet" href="/styles.css" type="text/tailwindcss">
+</head>
+
+<body class="fixed w-screen bg-black text-white font-mono m-0 p-5 h-screen box-border" hx-ext="ws">
+  <div ws-connect="ws://localhost:3000/ws">
+    <div class="flex flex-col gap-2 text-sm">
+      <div class="flex items-center gap-2">
+        <span class="text-neutral-400">Connection:</span>
+        <span class="text-red-500" id="connection-status">Disconnected</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-neutral-400">Agent Status:</span>
+        <span id="agent-status">Waiting for status...</span>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

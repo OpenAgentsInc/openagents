@@ -3,6 +3,24 @@ import * as fs from "node:fs"
 import * as Http from "node:http"
 import * as Https from "node:https"
 import * as path from "node:path"
+import * as dotenv from "dotenv"
+
+// Load environment variables from .env file
+const loadConfig = Effect.try({
+  try: () => {
+    dotenv.config()
+    const config = {
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY
+    }
+
+    if (!config.anthropicApiKey) {
+      throw new Error("ANTHROPIC_API_KEY is required but not found in environment")
+    }
+
+    return config
+  },
+  catch: (error) => new Error(`Failed to load configuration: ${error}`)
+})
 
 // Public directory path
 const publicDir = path.join(process.cwd(), "public")
@@ -192,130 +210,127 @@ const createHttpServer = () => {
   return server
 }
 
-// Modify expandJokeWithClaude to use SSE
+// Modify expandJokeWithClaude to use Effect
 const expandJokeWithClaude = (joke: string) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY
-
-  if (!apiKey) {
-    error("ANTHROPIC_API_KEY environment variable not set")
-    broadcastSSE("expansion", "<span class='error'>API key not configured</span>")
-    return
-  }
-
-  try {
-    log("Setting up request to Anthropic API")
-    const options = {
-      hostname: "api.anthropic.com",
-      path: "/v1/messages",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "x-api-key": apiKey,
-        "anthropic-beta": "messages-2023-12-15"
+  Effect.runPromise(loadConfig).then(config => {
+    try {
+      log("Setting up request to Anthropic API")
+      const options = {
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "x-api-key": config.anthropicApiKey,
+          "anthropic-beta": "messages-2023-12-15"
+        }
       }
-    }
 
-    // Prepare the request payload
-    const prompt = `You are a comedian writer. You've just been given this dad joke:
+      // Prepare the request payload
+      const prompt = `You are a comedian writer. You've just been given this dad joke:
 
 "${joke}"
 
 Expand this into a 2-paragraph comedic short story that elaborates on the joke while keeping it family-friendly.
 Don't repeat the original joke verbatim. Just create a funny short story inspired by the joke.`
 
-    const data = JSON.stringify({
-      model: "claude-3-haiku-20240307",
-      max_tokens: 1000,
-      stream: true,
-      messages: [
-        { role: "user", content: prompt }
-      ]
-    })
+      const data = JSON.stringify({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 1000,
+        stream: true,
+        messages: [
+          { role: "user", content: prompt }
+        ]
+      })
 
-    // Make the request
-    log("Sending request to Anthropic API")
-    const req = Https.request(options, (apiRes) => {
-      log(`Anthropic API response status: ${apiRes.statusCode} ${apiRes.statusMessage}`)
+      // Make the request
+      log("Sending request to Anthropic API")
+      const req = Https.request(options, (apiRes) => {
+        log(`Anthropic API response status: ${apiRes.statusCode} ${apiRes.statusMessage}`)
 
-      // Start fresh with each request
-      let storyContent = ""
+        // Start fresh with each request
+        let storyContent = ""
 
-      // Initialize with blank content
-      broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story'></p></div>`)
+        // Initialize with blank content
+        broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story'></p></div>`)
 
-      apiRes.on("data", (chunk) => {
-        const lines = chunk.toString().split("\n").filter((line: string) => line.trim() !== "")
+        apiRes.on("data", (chunk) => {
+          const lines = chunk.toString().split("\n").filter((line: string) => line.trim() !== "")
 
-        for (const line of lines) {
-          try {
-            // Check if it's a data line
-            if (line.startsWith("data: ")) {
-              const jsonPart = line.slice(6) // Remove "data: " prefix
+          for (const line of lines) {
+            try {
+              // Check if it's a data line
+              if (line.startsWith("data: ")) {
+                const jsonPart = line.slice(6) // Remove "data: " prefix
 
-              // Check for [DONE] marker
-              if (jsonPart.trim() === "[DONE]") {
-                log("Received [DONE] marker")
-                // Process and preserve line breaks for final message
-                const finalContent = storyContent.replace(/\n/g, "<br>");
-                // Log final content length
-                log(`FINAL content length: ${storyContent.length} chars`);
-                log(`Final content with line breaks: ${finalContent.substring(0, 100)}...`);
+                // Check for [DONE] marker
+                if (jsonPart.trim() === "[DONE]") {
+                  log("Received [DONE] marker")
+                  // Process and preserve line breaks for final message
+                  const finalContent = storyContent.replace(/\n/g, "<br>");
+                  // Log final content length
+                  log(`FINAL content length: ${storyContent.length} chars`);
+                  log(`Final content with line breaks: ${finalContent.substring(0, 100)}...`);
 
-                // Add timestamp to ensure fresh rendering
-                const timestamp = Date.now();
+                  // Add timestamp to ensure fresh rendering
+                  const timestamp = Date.now();
 
-                // Send final complete message - add "complete" class to signal it's done
-                broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story complete' data-ts="${timestamp}">${finalContent}</p></div>`)
-                continue
+                  // Send final complete message - add "complete" class to signal it's done
+                  broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story complete' data-ts="${timestamp}">${finalContent}</p></div>`)
+                  continue
+                }
+
+                const data = JSON.parse(jsonPart)
+
+                // If it has delta content, send it to the client
+                if (data.type === "content_block_delta" && data.delta && data.delta.text) {
+                  const text = data.delta.text
+                  storyContent += text
+                  log(`Streaming expansion chunk: ${text}`)
+
+                  // Process and preserve line breaks for proper display
+                  const processedContent = storyContent.replace(/\n/g, "<br>");
+                  // Log length of current content to verify it's growing
+                  log(`Current content length: ${storyContent.length} chars`);
+
+                  // For debugging, let's add a counter to make each response unique
+                  // This ensures browser doesn't cache incorrectly
+                  const timestamp = Date.now();
+
+                  // Send complete content each time to refresh the entire div
+                  broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story' data-ts="${timestamp}">${processedContent}</p></div>`)
+                }
               }
-
-              const data = JSON.parse(jsonPart)
-
-              // If it has delta content, send it to the client
-              if (data.type === "content_block_delta" && data.delta && data.delta.text) {
-                const text = data.delta.text
-                storyContent += text
-                log(`Streaming expansion chunk: ${text}`)
-
-                // Process and preserve line breaks for proper display
-                const processedContent = storyContent.replace(/\n/g, "<br>");
-                // Log length of current content to verify it's growing
-                log(`Current content length: ${storyContent.length} chars`);
-
-                // For debugging, let's add a counter to make each response unique
-                // This ensures browser doesn't cache incorrectly
-                const timestamp = Date.now();
-
-                // Send complete content each time to refresh the entire div
-                broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story' data-ts="${timestamp}">${processedContent}</p></div>`)
-              }
+            } catch (parseErr) {
+              log(`Error parsing line: ${line}`)
+              log(`Parse error: ${parseErr}`)
             }
-          } catch (parseErr) {
-            log(`Error parsing line: ${line}`)
-            log(`Parse error: ${parseErr}`)
           }
-        }
+        })
+
+        apiRes.on("end", () => {
+          log("Anthropic API stream ended")
+        })
       })
 
-      apiRes.on("end", () => {
-        log("Anthropic API stream ended")
+      req.on("error", (err) => {
+        error(`Error making request to Anthropic API: ${err.message}`)
+        broadcastSSE("expansion", "<span class='error'>Error connecting to language model API</span>")
       })
-    })
 
-    req.on("error", (err) => {
-      error(`Error making request to Anthropic API: ${err.message}`)
-      broadcastSSE("expansion", "<span class='error'>Error connecting to language model API</span>")
-    })
+      // Send the request
+      req.write(data)
+      req.end()
 
-    // Send the request
-    req.write(data)
-    req.end()
-
-  } catch (err) {
-    error(`Exception setting up Anthropic request: ${err}`)
-    broadcastSSE("expansion", "<span class='error'>Error setting up expansion request</span>")
-  }
+    } catch (err) {
+      error(`Exception setting up Anthropic request: ${err}`)
+      broadcastSSE("expansion", "<span class='error'>Error setting up expansion request</span>")
+    }
+  }).catch(err => {
+    error(`Failed to load configuration: ${err}`)
+    broadcastSSE("expansion", "<span class='error'>Failed to load API configuration</span>")
+  })
 }
 
 // Export the function to start the server

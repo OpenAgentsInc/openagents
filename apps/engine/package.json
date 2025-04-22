@@ -31,6 +31,7 @@
     "@effect/ai-anthropic": "^0.3.13",
     "@effect/platform": "^0.80.12",
     "@effect/platform-node": "^0.76.22",
+    "dotenv": "^16.4.5",
     "effect": "latest"
   },
   "devDependencies": {
