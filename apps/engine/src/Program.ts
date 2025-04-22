@@ -106,73 +106,34 @@ const startServer = Effect.gen(function*(_) {
         return frame
       }
 
-      // Send welcome message
-      log("Sending welcome message to WebSocket client")
-      // Create HTML for the welcome message - HTMX will swap this by ID
-      const welcomeHtml =
-        `<div id="messages" hx-swap-oob="beforeend"><div class="message">Connected to WebSocket</div></div>`
-      socket.write(createTextFrame(welcomeHtml))
+      // Send connection status and agent status
+      log("Client connected, sending initial status")
+
+      // Update connection status to Connected
+      // Make sure we're replacing the whole element with class included
+      const connectionStatusHtml =
+        `<div id="connection-status" hx-swap-oob="true" class="status-value connected">Connected</div>`
+      socket.write(createTextFrame(connectionStatusHtml))
+
+      // Set agent status to Ready (hardcoded for now)
+      const agentStatusHtml = `<div id="agent-status" hx-swap-oob="true" class="status-value ready">Ready</div>`
+      socket.write(createTextFrame(agentStatusHtml))
 
       // Handle data from client
       socket.on("data", (buffer) => {
         log(`Received WebSocket data of length: ${buffer.length} bytes`)
-        // Simple WebSocket frame parsing - handle ping message
-        if (buffer.length >= 6 && (buffer[0] & 0x0f) === 0x01) { // Text frame
-          const secondByte = buffer[1]
-          const isMasked = (secondByte & 0x80) !== 0
-          const length = secondByte & 0x7f
-
-          if (isMasked && length <= 125) {
-            const maskingKey = buffer.slice(2, 6)
-            const data = Buffer.alloc(length)
-
-            // Unmask the data
-            for (let i = 0; i < length; i++) {
-              data[i] = buffer[i + 6] ^ maskingKey[i % 4]
-            }
-
-            // Check for ping message
-            const message = data.toString()
-            log(`Decoded WebSocket message: "${message}"`)
-
-            // Get current timestamp for the message
-            const timestamp = new Date().toLocaleTimeString()
-
-            if (message === "ping") {
-              log("Received ping message, sending pong response")
-
-              // Create HTML response for pong - add to messages and update response area
-              const pongHtml =
-                `<div id="messages" hx-swap-oob="beforeend"><div class="message">Ping received at ${timestamp}</div></div><div id="response" hx-swap-oob="innerHTML"><div class="message received">PONG! (Response time: ${timestamp})</div></div>`
-              socket.write(createTextFrame(pongHtml))
-            } else if (message.startsWith("{") && message.includes("message")) {
-              // This is likely a message from the form
-              let parsedMessage
-
-              try {
-                parsedMessage = JSON.parse(message)
-              } catch {
-                // Using catch without a parameter to avoid linting errors
-                log(`Failed to parse message: ${message}`)
-                return
-              }
-
-              if (parsedMessage && parsedMessage.message) {
-                log(`Received form message: ${parsedMessage.message}`)
-
-                // Create HTML response for user message
-                const messageHtml =
-                  `<div id="messages" hx-swap-oob="beforeend"><div class="message">You: ${parsedMessage.message}</div><div class="message received">Server: Received your message at ${timestamp}</div></div>`
-                socket.write(createTextFrame(messageHtml))
-              }
-            }
-          }
-        }
+        // For now, we're not expecting any messages from the client
+        // Future implementation can handle client requests here
       })
 
       // Handle connection close
       socket.on("end", () => {
         log("WebSocket connection closed")
+
+        // Note: We cannot update the UI when connection is closed because
+        // we no longer have a connection to send the update over.
+        // The HTMX websocket extension will automatically handle disconnection
+        // state on the client side.
       })
 
       // Handle socket errors

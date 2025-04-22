@@ -11,98 +11,90 @@
       background-color: black;
       color: white;
       font-family: monospace;
+      margin: 0;
+      padding: 20px;
+      height: 100vh;
+      box-sizing: border-box;
       display: flex;
       justify-content: center;
       align-items: center;
-      height: 100vh;
-      margin: 0;
-      overflow: hidden;
-      position: fixed;
-      width: 100%;
+    }
+
+    .status-container {
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 30px;
+      margin: 0 auto;
+      width: 500px;
+      background-color: #111;
+    }
+
+    .status-title {
+      font-size: 24px;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #333;
+      gap: 80px;
+      /* Add space between label and value */
+    }
+
+    .status-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .status-label {
+      font-weight: bold;
+      color: #999;
+      font-size: 18px;
+    }
+
+    .status-value {
+      color: #fff;
+      font-size: 18px;
+      font-weight: 500;
+    }
+
+    .status-value.connected {
+      color: #4caf50;
+    }
+
+    .status-value.disconnected {
+      color: #ff5252;
+    }
+
+    .status-value.ready {
+      color: #4caf50;
+    }
+
+    .status-value.busy {
+      color: #ff9800;
     }
   </style>
 </head>
 
 <body hx-ext="ws">
   <div ws-connect="ws://localhost:3000/ws">
-    <h1>WebSocket Test</h1>
-    <div id="messages" class="message-container"></div>
+    <div class="status-container">
+      <div class="status-item">
+        <div class="status-label">Connection:</div>
+        <div class="status-value disconnected" id="connection-status">Disconnected</div>
+      </div>
 
-    <div class="controls">
-      <button id="ping-btn" ws-send="ping">Send Ping</button>
-      <div id="response" class="response-area">Response will appear here...</div>
+      <div class="status-item">
+        <div class="status-label">Agent Status:</div>
+        <div class="status-value" id="agent-status">Waiting for status...</div>
+      </div>
     </div>
-
-    <form ws-send>
-      <input type="text" name="message" placeholder="Type a message...">
-      <button type="submit">Send</button>
-    </form>
   </div>
-
-  <style>
-    .message-container {
-      margin: 20px 0;
-      padding: 10px;
-      border: 1px solid #555;
-      min-height: 100px;
-      max-height: 300px;
-      overflow-y: auto;
-      width: 100%;
-    }
-
-    .controls {
-      margin: 20px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .response-area {
-      margin-top: 10px;
-      padding: 10px;
-      background-color: #222;
-      border-radius: 4px;
-      min-height: 40px;
-    }
-
-    .message {
-      margin: 5px 0;
-      padding: 5px;
-      background-color: #333;
-      border-radius: 4px;
-    }
-
-    .received {
-      color: #77ff77;
-    }
-
-    button {
-      background-color: #333;
-      color: white;
-      border: 1px solid #555;
-      padding: 8px 12px;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-
-    button:hover {
-      background-color: #444;
-    }
-
-    input {
-      background-color: #333;
-      color: white;
-      border: 1px solid #555;
-      padding: 8px;
-      margin-right: 10px;
-      border-radius: 4px;
-    }
-
-    form {
-      margin-top: 20px;
-      display: flex;
-    }
-  </style>
 </body>
 
 </html>
