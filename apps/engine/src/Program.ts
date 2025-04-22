@@ -112,11 +112,11 @@ const startServer = Effect.gen(function* (_) {
       // Update connection status to Connected
       // Make sure we're replacing the whole element with class included
       const connectionStatusHtml =
-        `<div id="connection-status" hx-swap-oob="true" class="text-lg font-medium text-green-500">Connected</div>`
+        `<div id="connection-status" hx-swap-oob="true" class="font-medium text-green-500">Connected</div>`
       socket.write(createTextFrame(connectionStatusHtml))
 
       // Set agent status to Ready (hardcoded for now)
-      const agentStatusHtml = `<div id="agent-status" hx-swap-oob="true" class="text-lg font-medium text-green-500">Ready</div>`
+      const agentStatusHtml = `<div id="agent-status" hx-swap-oob="true" class="font-medium text-green-500">Ready</div>`
       socket.write(createTextFrame(agentStatusHtml))
 
       // Handle data from client
