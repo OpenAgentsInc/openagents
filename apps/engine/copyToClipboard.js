@@ -19,6 +19,7 @@ const __dirname = path.dirname(__filename);
 // Array of files to copy, in order
 const filesToCopy = [
   // Documentation files
+  'docs/20250422-1430-phase2a-testfix-impl.md',
   'docs/20250422-1300-agent-state-implementation-plan.md',
   'docs/20250422-1256-nextsteps.md',
   'docs/20250422-1255-specsofar.md',
@@ -32,15 +33,21 @@ const filesToCopy = [
   'src/Program.ts',
   'src/index.ts',
 
-  // GitHub related source files
+  // GitHub related source files - Fixed files
+  'src/github/PlanManager.ts',
+  'src/github/TaskExecutor.ts',
   'src/github/GitHubTools.ts',
   'src/github/GitHub.ts',
   'src/github/GitHubTypes.ts',
+  'src/github/AgentStateTypes.ts',
 
-  // Test files
-  'test/Dummy.test.ts',
+  // Test files - Fixed files
+  'test/github/PlanManager.test.ts',
+  'test/github/TaskExecutor.test.ts',
+  'test/github/StateStorage.test.ts',
   'test/github/GitHub.test.ts',
-  'test/github/GitHubTools.test.ts'
+  'test/github/GitHubTools.test.ts',
+  'test/github/AgentStateTypes.test.ts'
 ];
 
 // Function to get file extension
