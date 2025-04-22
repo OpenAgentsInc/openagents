@@ -3,7 +3,7 @@ import { Effect, Layer, Either } from "effect"
 import { TaskExecutor, TaskExecutorLayer } from "../../src/github/TaskExecutor.js"
 import { PlanManager } from "../../src/github/PlanManager.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
-import type { AgentState, PlanStep } from "../../src/github/AgentStateTypes.js"
+import type { AgentState } from "../../src/github/AgentStateTypes.js"
 
 // Create a basic fixture for testing
 const createTestState = (): AgentState => ({
@@ -151,9 +151,9 @@ describe("TaskExecutor", () => {
       const MockPlanManager = Layer.succeed(
         PlanManager,
         {
-          addPlanStep: vi.fn(),
+          addPlanStep: vi.fn().mockReturnValue(Effect.succeed({})),
           updateStepStatus: updateStepStatusMock,
-          addToolCallToStep: vi.fn(),
+          addToolCallToStep: vi.fn().mockReturnValue(Effect.succeed({})),
           getCurrentStep: getCurrentStepMock,
           _tag: "PlanManager" as const
         }
@@ -163,14 +163,14 @@ describe("TaskExecutor", () => {
         GitHubClient,
         {
           saveAgentState: saveAgentStateMock,
-          getIssue: vi.fn(),
-          listIssues: vi.fn(),
-          getIssueComments: vi.fn(),
-          createIssueComment: vi.fn(),
-          getRepository: vi.fn(),
-          updateIssue: vi.fn(),
-          loadAgentState: vi.fn(),
-          createAgentStateForIssue: vi.fn(),
+          getIssue: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          listIssues: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          getIssueComments: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          createIssueComment: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          getRepository: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          updateIssue: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          loadAgentState: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          createAgentStateForIssue: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
           _tag: "GitHubClient" as const
         }
       )
@@ -246,9 +246,9 @@ describe("TaskExecutor", () => {
       const MockPlanManager = Layer.succeed(
         PlanManager,
         {
-          addPlanStep: vi.fn(),
+          addPlanStep: vi.fn().mockReturnValue(Effect.succeed({})),
           updateStepStatus: updateStepStatusMock,
-          addToolCallToStep: vi.fn(),
+          addToolCallToStep: vi.fn().mockReturnValue(Effect.succeed({})),
           getCurrentStep: getCurrentStepMock,
           _tag: "PlanManager" as const
         }
@@ -258,14 +258,14 @@ describe("TaskExecutor", () => {
         GitHubClient,
         {
           saveAgentState: saveAgentStateMock,
-          getIssue: vi.fn(),
-          listIssues: vi.fn(),
-          getIssueComments: vi.fn(),
-          createIssueComment: vi.fn(),
-          getRepository: vi.fn(),
-          updateIssue: vi.fn(),
-          loadAgentState: vi.fn(),
-          createAgentStateForIssue: vi.fn(),
+          getIssue: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          listIssues: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          getIssueComments: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          createIssueComment: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          getRepository: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          updateIssue: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          loadAgentState: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
+          createAgentStateForIssue: vi.fn().mockReturnValue(Effect.fail("Not mocked")),
           _tag: "GitHubClient" as const
         }
       )
@@ -286,7 +286,8 @@ describe("TaskExecutor", () => {
               let workingState = yield* planManager.updateStepStatus(currentState, currentStep.id, "in_progress")
               
               // SIMULATE ERROR - Using mocked Either result directly
-              const result = Either.left(mockError)
+              // Removed unused variable
+              // const result = Either.left(mockError)
               
               // Update status to error
               workingState = yield* planManager.updateStepStatus(

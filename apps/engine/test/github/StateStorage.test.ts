@@ -111,8 +111,8 @@ const createValidTestState = (): AgentState => ({
 })
 
 describe("State Storage", () => {
-  // Test state creation helpers
-  const getTestStatePath = (instanceId: string) => path.join(process.cwd(), "state", `${instanceId}.json`)
+  // Helper to get test state path - removed unused helper
+  // const getTestStatePath = (instanceId: string) => path.join(process.cwd(), "state", `${instanceId}.json`)
 
   beforeEach(() => {
     vi.clearAllMocks()

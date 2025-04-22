@@ -26,9 +26,9 @@ export const TaskExecutor = Effect.Tag<TaskExecutor>("TaskExecutor")
 export const TaskExecutorLayer = Layer.effect(
   TaskExecutor,
   Effect.gen(function*(_) {
-    // Get dependencies from the context
-    const planManager = yield* _(PlanManager)
-    const githubClient = yield* _(GitHubClient)
+    // Get dependencies from the context using proper types
+    const planManager: PlanManager = yield* _(PlanManager)
+    const githubClient: GitHubClient = yield* _(GitHubClient)
 
     return {
       executeNextStep: (currentState: AgentState) => Effect.gen(function*() {
