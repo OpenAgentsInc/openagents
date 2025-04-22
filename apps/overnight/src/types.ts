@@ -1,5 +1,5 @@
 // Custom types for Anthropic SDK extensions
-import { MessageParam, MessageCreateParamsBase, MessageCreateParams } from '@anthropic-ai/sdk/resources/messages';
+import { MessageParam, MessageCreateParams } from '@anthropic-ai/sdk/resources/messages';
 
 /**
  * Extends Anthropic SDK's MessageParam for conversation history

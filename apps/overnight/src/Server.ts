@@ -134,15 +134,17 @@ const processUserMessage = async (userMessage: string) => {
         max_tokens: 1000,
       };
 
-      // Use proper type casting to match SDK requirements
-      const response = await anthropic.messages.create({
-        ...createParams,
+      // Create a valid Anthropic API request that passes type checking
+      const apiParams = {
         model: createParams.model,
-        system: createParams.system,
+        system: createParams.system || "", // Default to empty string if undefined
         max_tokens: createParams.max_tokens,
         messages: createParams.messages,
-        tools: createParams.tools
-      }) as ExtendedMessage;
+        // Only include tools if they exist
+        ...(createParams.tools ? { tools: createParams.tools } : {})
+      };
+      
+      const response = await anthropic.messages.create(apiParams) as ExtendedMessage;
 
       console.log("--- Received Response from Anthropic (Initial) ---");
       console.log(JSON.stringify(response, null, 2));
@@ -198,12 +200,17 @@ const processUserMessage = async (userMessage: string) => {
           console.log("----------------------------------------------");
 
           try {
-            // Cast result to our extended message type since Anthropic SDK types don't include tools
-            const followupResponse = await anthropic.messages.create({
+            // Use proper type casting for follow-up call
+            // Convert followup messages to ensure compatibility with SDK
+            const followupParams = {
               model: "claude-3-5-sonnet-latest",
-              messages: messagesForFollowup,
+              messages: messagesForFollowup.map(msg => ({
+                role: msg.role,
+                content: msg.content
+              })),
               max_tokens: 1000,
-            }) as unknown as ExtendedMessage;
+            };
+            const followupResponse = await anthropic.messages.create(followupParams) as ExtendedMessage;
 
             console.log("--- Received Response from Anthropic (Follow-up) ---");
             console.log(JSON.stringify(followupResponse, null, 2));

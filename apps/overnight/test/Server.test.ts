@@ -32,8 +32,12 @@ vi.mock('effect', () => {
     }
   }
   
-  // Create a mock implementation for the Effect.Tag static method
-  MockTag.prototype.of = function() { return {}; };
+  // Add the 'of' method to the MockTag class instead of prototype
+  class MockTagWithOf extends MockTag {
+    of() { 
+      return {}; 
+    }
+  }
   
   return {
     Effect: {
@@ -46,7 +50,7 @@ vi.mock('effect', () => {
       succeed: vi.fn().mockReturnValue({}),
       Tag: vi.fn().mockImplementation((name: string) => {
         return function() {
-          return new MockTag(name);
+          return new MockTagWithOf(name);
         };
       })
     },
@@ -108,13 +112,10 @@ describe('Server', () => {
     processUserMessage: (message: string) => Promise<void>;
   }
   
-  let Server: ServerMock;
-  
+  // No need to store a variable if it's never used
   beforeEach(() => {
-    // Use a simpler approach that doesn't try to evaluate the actual Server.ts module
-    Server = { 
-      processUserMessage: mocksSetUp.processUserMessage
-    };
+    // Initialize mock function for each test
+    mocksSetUp.processUserMessage.mockReset();
   });
   
   afterEach(() => {
