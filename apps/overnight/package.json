@@ -14,14 +14,15 @@
     "directory": "dist"
   },
   "scripts": {
-    "dev": "node build/esm/Program.js",
-    "watch": "tsx watch src/Program.ts",
+    "dev": "tsx src/Server.ts",
+    "watch": "tsx watch src/Server.ts",
     "start": "pnpm build-and-run",
-    "build-and-run": "pnpm build-esm && pnpm dev",
+    "build-and-run": "pnpm build-esm && pnpm cli",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",
     "build-esm": "tsc -b tsconfig.build.json",
     "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
     "build-annotate": "babel build/esm --plugins annotate-pure-calls --out-dir build/esm --source-maps",
+    "cli": "node build/esm/Server.js",
     "check": "tsc -b tsconfig.json",
     "verify": "pnpm check && pnpm lint && pnpm test -- --run",
     "lint": "eslint \"**/{src,test,examples,scripts,dtslint}/**/*.{ts,mjs}\"",
@@ -33,8 +34,12 @@
     "copy": "node copyToClipboard.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.17.2",
+    "@effect/ai": "^0.13.11",
+    "@effect/ai-anthropic": "^0.3.12",
     "@effect/platform": "^0.80.11",
     "@effect/platform-node": "^0.76.21",
+    "dotenv": "^16.5.0",
     "effect": "latest"
   },
   "devDependencies": {
@@ -49,16 +54,18 @@
     "@eslint/compat": "1.1.1",
     "@eslint/eslintrc": "3.1.0",
     "@eslint/js": "9.10.0",
-    "@types/node": "^22.5.2",
+    "@types/node": "^22.14.1",
     "@typescript-eslint/eslint-plugin": "^8.4.0",
     "@typescript-eslint/parser": "^8.4.0",
     "babel-plugin-annotate-pure-calls": "^0.4.0",
+    "concurrently": "^9.1.2",
     "eslint": "^9.10.0",
     "eslint-import-resolver-typescript": "^3.6.3",
     "eslint-plugin-codegen": "^0.28.0",
     "eslint-plugin-import": "^2.30.0",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-sort-destructure-keys": "^2.0.0",
+    "nodemon": "^3.1.9",
     "tsx": "^4.17.0",
     "typescript": "^5.6.2",
     "vitest": "^3.1.2"
