@@ -1,6 +1,20 @@
-import * as path from "node:path"
 import { describe, expect, it, vi, beforeEach, afterEach } from "@effect/vitest"
 import { Effect } from "effect"
+
+// Use hoisted mocks to avoid initialization issues
+const fsMock = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn()
+}))
+
+// Mock modules before importing them
+vi.mock("node:fs", () => fsMock)
+
+// Import dependencies after mocks are set up
+import * as path from "node:path"
+import * as fs from "node:fs"
 import { 
   GitHubClient, 
   StateNotFoundError, 
@@ -9,15 +23,6 @@ import {
   GitHubClientLayer
 } from "../../src/github/GitHub.js"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
-import * as fs from "node:fs"
-
-// Mock the filesystem module
-vi.mock("node:fs", () => ({
-  existsSync: vi.fn(),
-  mkdirSync: vi.fn(),
-  writeFileSync: vi.fn(),
-  readFileSync: vi.fn()
-}))
 
 // Mock the Effect.logWarning function
 const logWarningSpy = vi.spyOn(Effect, 'logWarning').mockImplementation(() => Effect.void)
@@ -111,13 +116,10 @@ const createValidTestState = (): AgentState => ({
 })
 
 describe("State Storage", () => {
-  // Helper to get test state path - removed unused helper
-  // const getTestStatePath = (instanceId: string) => path.join(process.cwd(), "state", `${instanceId}.json`)
-
   beforeEach(() => {
     vi.clearAllMocks()
     // Default mock for existsSync
-    vi.mocked(fs.existsSync).mockReturnValue(true)
+    fsMock.existsSync.mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -145,8 +147,8 @@ describe("State Storage", () => {
       )
       
       // Assert
-      expect(fs.mkdirSync).toHaveBeenCalledWith(path.join(process.cwd(), "state"), { recursive: true })
-      expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect(fsMock.mkdirSync).toHaveBeenCalledWith(path.join(process.cwd(), "state"), { recursive: true })
+      expect(fsMock.writeFileSync).toHaveBeenCalledWith(
         expectedPath,
         expect.any(String) // We'll verify content separately
       )
@@ -156,7 +158,7 @@ describe("State Storage", () => {
       expect(result.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
       
       // Verify written content
-      const writtenContent = JSON.parse(vi.mocked(fs.writeFileSync).mock.calls[0][1] as string)
+      const writtenContent = JSON.parse(fsMock.writeFileSync.mock.calls[0][1] as string)
       expect(writtenContent.agent_info.instance_id).toBe(initialState.agent_info.instance_id)
       expect(writtenContent.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
     })
@@ -165,7 +167,7 @@ describe("State Storage", () => {
       // Arrange
       const initialState = createValidTestState()
       const mockError = new Error("Filesystem error")
-      vi.mocked(fs.writeFileSync).mockImplementation(() => { throw mockError })
+      fsMock.writeFileSync.mockImplementation(() => { throw mockError })
       
       // Act & Assert
       await expect(
@@ -184,7 +186,7 @@ describe("State Storage", () => {
       // Arrange
       const validState = createValidTestState()
       const instanceId = validState.agent_info.instance_id
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(validState))
+      fsMock.readFileSync.mockReturnValue(JSON.stringify(validState))
       
       // Act
       const result = await Effect.runPromise(
@@ -195,8 +197,8 @@ describe("State Storage", () => {
       )
       
       // Assert
-      expect(fs.existsSync).toHaveBeenCalled()
-      expect(fs.readFileSync).toHaveBeenCalledWith(
+      expect(fsMock.existsSync).toHaveBeenCalled()
+      expect(fsMock.readFileSync).toHaveBeenCalledWith(
         path.join(process.cwd(), "state", `${instanceId}.json`),
         "utf-8"
       )
@@ -206,7 +208,7 @@ describe("State Storage", () => {
     it("should throw StateNotFoundError when file doesn't exist", async () => {
       // Arrange
       const instanceId = "non-existent-id"
-      vi.mocked(fs.existsSync).mockReturnValue(false)
+      fsMock.existsSync.mockReturnValue(false)
       
       // Act & Assert
       await expect(
@@ -222,7 +224,7 @@ describe("State Storage", () => {
     it("should throw StateParseError when JSON is invalid", async () => {
       // Arrange
       const instanceId = "test-instance-id"
-      vi.mocked(fs.readFileSync).mockReturnValue("{ invalid json")
+      fsMock.readFileSync.mockReturnValue("{ invalid json")
       
       // Act & Assert
       await expect(
@@ -239,7 +241,7 @@ describe("State Storage", () => {
       // Arrange
       const instanceId = "test-instance-id"
       const invalidState = { not_valid: "missing required fields" }
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(invalidState))
+      fsMock.readFileSync.mockReturnValue(JSON.stringify(invalidState))
       
       // Act & Assert
       await expect(
@@ -262,7 +264,7 @@ describe("State Storage", () => {
         }
       }
       const instanceId = oldVersionState.agent_info.instance_id
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(oldVersionState))
+      fsMock.readFileSync.mockReturnValue(JSON.stringify(oldVersionState))
       
       // Act
       const result = await Effect.runPromise(
