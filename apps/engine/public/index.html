@@ -272,11 +272,8 @@
   </form>
 
   <div id="output-container">
-    <!-- These divs will be updated via SSE events -->
-    <div id="issue" sse-swap="issue">No issue selected. Please enter an issue number and click "Analyze GitHub Issue".
-    </div>
+    <!-- Only show analysis container -->
     <div id="analysis" sse-swap="analysis"></div>
-    <div id="error" sse-swap="error"></div>
   </div>
 
   <script>

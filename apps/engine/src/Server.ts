@@ -45,9 +45,13 @@ const broadcastSSE = (event: string, data: string): void => {
   // Format a standard SSE message
   const message = `event: ${event}\ndata: ${data}\n\n`
 
-  log(`Broadcasting ${event} event to ${clients.size} clients`)
-  // Don't truncate log output - no need
-
+  // Only log initial events and errors
+  if (event === "connected" || event === "status") {
+    log(`Broadcasting ${event} event to ${clients.size} clients`)
+  } else if (event === "analysis" && data.includes("error")) {
+    log(`Error: ${data.substring(data.indexOf("<span class=\"error\">") + 19, data.indexOf("</span>"))}`)
+  }
+  
   for (const client of clients.values()) {
     client.write(message)
   }
@@ -101,8 +105,8 @@ const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): voi
                 </div>
               `
 
-              broadcastSSE("issue", issueHtml)
-              broadcastSSE("analysis", "")
+              // Show issue details in the analysis div first
+              broadcastSSE("analysis", issueHtml)
               analyzeIssueWithClaude(parsedData)
             } else {
               throw new Error("Invalid issue data received")
@@ -110,25 +114,25 @@ const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): voi
           } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err)
             log(`Error parsing issue: ${errorMessage}`)
-            broadcastSSE("error", `<span class="error">Error fetching issue: ${errorMessage}</span>`)
+            broadcastSSE("analysis", `<span class="error">Error fetching issue: ${errorMessage}</span>`)
           }
         })
       })
 
       request.on("error", (err) => {
         log(`Error fetching issue: ${err.message}`)
-        broadcastSSE("error", `<span class="error">Error fetching issue: ${err.message}</span>`)
+        broadcastSSE("analysis", `<span class="error">Error fetching issue: ${err.message}</span>`)
       })
 
       request.end()
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       error(`Exception setting up GitHub request: ${errorMessage}`)
-      broadcastSSE("error", `<span class="error">Error setting up GitHub request: ${errorMessage}</span>`)
+      broadcastSSE("analysis", `<span class="error">Error setting up GitHub request: ${errorMessage}</span>`)
     }
   }).catch((err) => {
     error(`Failed to load configuration: ${err}`)
-    broadcastSSE("error", `<span class="error">Failed to load API configuration: ${err}</span>`)
+    broadcastSSE("analysis", `<span class="error">Failed to load API configuration: ${err}</span>`)
   })
 }
 
@@ -186,14 +190,15 @@ Please format your response as structured analysis with clear headings.`
       })
 
       // Make the request
-      log("Sending request to Anthropic API for issue analysis")
       const req = Https.request(options, (apiRes) => {
-        log(`Anthropic API response status: ${apiRes.statusCode} ${apiRes.statusMessage}`)
+        if (apiRes.statusCode !== 200) {
+          log(`Anthropic API response status: ${apiRes.statusCode} ${apiRes.statusMessage}`)
+        }
 
         // Start fresh with each request
         let analysisContent = ""
 
-        // Initialize with blank content
+        // Begin analysis section after issue display
         broadcastSSE("analysis", `<div><h3>Analysis:</h3><p class='analysis'></p></div>`)
 
         apiRes.on("data", (chunk) => {
@@ -207,11 +212,9 @@ Please format your response as structured analysis with clear headings.`
 
                 // Check for [DONE] marker
                 if (jsonPart.trim() === "[DONE]") {
-                  log("Received [DONE] marker")
                   // Process and preserve line breaks for final message
                   const finalContent = analysisContent.replace(/\n/g, "<br>")
-                  // Log final content length
-                  log(`FINAL content length: ${analysisContent.length} chars`)
+                  log("✓ Analysis completed")
 
                   // Add timestamp to ensure fresh rendering
                   const timestamp = Date.now()
@@ -230,12 +233,14 @@ Please format your response as structured analysis with clear headings.`
                 if (data.type === "content_block_delta" && data.delta && data.delta.text) {
                   const text = data.delta.text
                   analysisContent += text
-                  log(`Streaming analysis chunk: ${text}`)
-
+                  
+                  // Log deltas but only if they contain meaningful text (not just whitespace)
+                  if (text.trim().length > 0) {
+                    log(`Delta: ${text.trim()}`)
+                  }
+                  
                   // Process and preserve line breaks for proper display
                   const processedContent = analysisContent.replace(/\n/g, "<br>")
-                  // Log length of current content to verify it's growing
-                  log(`Current content length: ${analysisContent.length} chars`)
 
                   // For debugging, let's add a counter to make each response unique
                   // This ensures browser doesn't cache incorrectly
@@ -302,8 +307,6 @@ const getAgentStatus = (): {
 
 // Setup a route to handle the SSE connection
 const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void => {
-  log("New SSE connection established")
-
   // Set headers for SSE
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -313,7 +316,6 @@ const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void =
 
   // Send initial connection message
   broadcastSSE("connected", "SSE connection established")
-  log("Sent initial connection message")
 
   // Send initial status information
   const statusData = JSON.stringify({
@@ -326,11 +328,8 @@ const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void =
   const clientId = (++lastClientId).toString()
   clients.set(clientId, res)
 
-  log(`Client ${clientId} connected, total clients: ${clients.size}`)
-
   // Handle client disconnect
   req.on("close", () => {
-    log(`Client ${clientId} disconnected`)
     clients.delete(clientId)
   })
 
@@ -368,7 +367,7 @@ const createHttpServer = (): Http.Server => {
         const owner = formData.get("owner") || process.env.GITHUB_REPO_OWNER || "OpenAgentsInc"
         const repo = formData.get("repo") || process.env.GITHUB_REPO_NAME || "openagents"
         
-        log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}`)
+        log(`Analyzing GitHub issue #${issueNumber} from ${owner}/${repo}`)
         fetchGitHubIssue(owner, repo, issueNumber)
         
         res.writeHead(200, { "Content-Type": "text/plain" })
