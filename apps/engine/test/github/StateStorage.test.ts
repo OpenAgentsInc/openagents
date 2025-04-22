@@ -1,18 +1,17 @@
-/**
- * State Storage Test
- * 
- * Testing GitHub state storage functionality with alternative approach
- * that doesn't require mocking node:fs, to avoid ESM initialization issues.
- */
-import { describe, it, expect, vi, beforeEach, afterEach } from "@effect/vitest"
-import type { AgentState } from "../../src/github/AgentStateTypes.js"
-import {
-  StateNotFoundError,
-  StateParseError,
-  StateValidationError
+import * as path from "node:path"
+import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from "@effect/vitest"
+import { Effect, Layer } from "effect"
+import { 
+  GitHubClient, 
+  StateNotFoundError, 
+  StateParseError, 
+  StateValidationError,
+  GitHubClientLayer
 } from "../../src/github/GitHub.js"
+import { FileSystem } from "../../src/github/FileSystem.js"
+import type { AgentState } from "../../src/github/AgentStateTypes.js"
 
-// Create test fixture
+// Create a valid test state fixture
 const createValidTestState = (): AgentState => ({
   agent_info: {
     type: "solver",
@@ -100,82 +99,292 @@ const createValidTestState = (): AgentState => ({
   }
 })
 
-// Directly test error classes without GitHubClient and fs mocking
-describe("State Storage Error Handling", () => {
-  // Error tests - these don't need fs mocking
-  it("should have error classes defined with proper inheritance", () => {
-    // Verify error classes exist
-    expect(StateNotFoundError).toBeDefined()
-    expect(StateParseError).toBeDefined()
-    expect(StateValidationError).toBeDefined()
+describe("State Storage", () => {
+  let existsSyncMock: Mock
+  let mkdirSyncMock: Mock
+  let writeFileSyncMock: Mock
+  let readFileSyncMock: Mock
+  let logWarningSpy: Mock
+  
+  let MockFileSystemLayer: Layer.Layer<FileSystem>
+
+  beforeEach(() => {
+    // Initialize mocks
+    existsSyncMock = vi.fn()
+    mkdirSyncMock = vi.fn()
+    writeFileSyncMock = vi.fn()
+    readFileSyncMock = vi.fn()
+    logWarningSpy = vi.spyOn(Effect, "logWarning").mockReturnValue(Effect.void)
+
+    // Set default mock behavior
+    existsSyncMock.mockReturnValue(true)
+
+    // Create mock FileSystem layer
+    MockFileSystemLayer = Layer.succeed(
+      FileSystem,
+      {
+        existsSync: existsSyncMock,
+        mkdirSync: mkdirSyncMock,
+        writeFileSync: writeFileSyncMock,
+        readFileSync: readFileSyncMock
+      }
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  describe("Error Classes", () => {
+    it("should have error classes defined with proper inheritance", () => {
+      // Verify error classes exist
+      expect(StateNotFoundError).toBeDefined()
+      expect(StateParseError).toBeDefined()
+      expect(StateValidationError).toBeDefined()
+      
+      // Create instances to verify the inheritance
+      const notFoundErr = new StateNotFoundError("test-id")
+      const parseErr = new StateParseError("parse error")
+      const validationErr = new StateValidationError("validation error")
+      
+      // Check inheritance and properties
+      expect(notFoundErr).toBeInstanceOf(Error)
+      expect(notFoundErr.name).toBe("StateNotFoundError")
+      expect(notFoundErr.message).toContain("test-id")
+      
+      expect(parseErr).toBeInstanceOf(Error)
+      expect(parseErr.name).toBe("StateParseError")
+      expect(parseErr.message).toContain("parse error")
+      
+      expect(validationErr).toBeInstanceOf(Error)
+      expect(validationErr.name).toBe("StateValidationError")
+      expect(validationErr.message).toContain("validation error")
+    })
+  })
+
+  describe("saveAgentState", () => {
+    it("should save state to the correct path and update last_saved_at", async () => {
+      // Arrange
+      const initialState = createValidTestState()
+      const expectedPath = path.join(process.cwd(), "state", `${initialState.agent_info.instance_id}.json`)
+      
+      // Create the test layer with mock FileSystem
+      const testLayer = Layer.provide(GitHubClientLayer, MockFileSystemLayer)
+      
+      // Act
+      const result = await Effect.runPromise(
+        Effect.provide(
+          Effect.flatMap(GitHubClient, client => client.saveAgentState(initialState)) as Effect.Effect<AgentState, never, never>,
+          testLayer
+        )
+      )
+      
+      // Assert
+      expect(mkdirSyncMock).toHaveBeenCalledWith(path.join(process.cwd(), "state"), { recursive: true })
+      expect(writeFileSyncMock).toHaveBeenCalledWith(
+        expectedPath,
+        expect.any(String) // We'll verify content separately
+      )
+      
+      // Verify immutability and updated timestamp
+      expect(result).not.toBe(initialState)
+      expect(result.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
+      
+      // Verify written content
+      const writtenContent = JSON.parse(writeFileSyncMock.mock.calls[0][1] as string)
+      expect(writtenContent.agent_info.instance_id).toBe(initialState.agent_info.instance_id)
+      expect(writtenContent.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
+    })
     
-    // Create instances to verify the inheritance
-    const notFoundErr = new StateNotFoundError("test-id")
-    const parseErr = new StateParseError("parse error")
-    const validationErr = new StateValidationError("validation error")
-    
-    // Check inheritance and properties
-    expect(notFoundErr).toBeInstanceOf(Error)
-    expect(notFoundErr.name).toBe("StateNotFoundError")
-    expect(notFoundErr.message).toContain("test-id")
-    
-    expect(parseErr).toBeInstanceOf(Error)
-    expect(parseErr.name).toBe("StateParseError")
-    expect(parseErr.message).toContain("parse error")
-    
-    expect(validationErr).toBeInstanceOf(Error)
-    expect(validationErr.name).toBe("StateValidationError")
-    expect(validationErr.message).toContain("validation error")
+    it("should handle filesystem errors", async () => {
+      // Arrange
+      const initialState = createValidTestState()
+      const mockError = new Error("Filesystem error")
+      writeFileSyncMock.mockImplementation(() => { throw mockError })
+      
+      // Create the test layer with mock FileSystem
+      const testLayer = Layer.provide(GitHubClientLayer, MockFileSystemLayer)
+      
+      // Act & Assert
+      await expect(
+        Effect.runPromise(
+          Effect.provide(
+            Effect.flatMap(GitHubClient, client => client.saveAgentState(initialState)) as Effect.Effect<AgentState, never, never>,
+            testLayer
+          )
+        )
+      ).rejects.toThrow("Failed to save agent state")
+    })
   })
   
-  // Test that the error types follow the expected patterns
-  it("should provide informative error messages", () => {
-    const instanceId = "missing-instance"
-    const notFoundErr = new StateNotFoundError(instanceId)
-    expect(notFoundErr.message).toContain(instanceId)
-    expect(notFoundErr.name).toBe("StateNotFoundError")
+  describe("loadAgentState", () => {
+    it("should load and validate state successfully", async () => {
+      // Arrange
+      const validState = createValidTestState()
+      const instanceId = validState.agent_info.instance_id
+      readFileSyncMock.mockReturnValue(JSON.stringify(validState))
+      
+      // Create the test layer with mock FileSystem
+      const testLayer = Layer.provide(GitHubClientLayer, MockFileSystemLayer)
+      
+      // Act
+      const result = await Effect.runPromise(
+        Effect.provide(
+          Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, never, never>,
+          testLayer
+        )
+      )
+      
+      // Assert
+      expect(existsSyncMock).toHaveBeenCalled()
+      expect(readFileSyncMock).toHaveBeenCalledWith(
+        path.join(process.cwd(), "state", `${instanceId}.json`),
+        "utf-8"
+      )
+      expect(result).toEqual(validState)
+    })
     
-    const reason = "Invalid JSON syntax"
-    const parseErr = new StateParseError(reason)
-    expect(parseErr.message).toContain(reason)
-    expect(parseErr.name).toBe("StateParseError")
+    it("should throw StateNotFoundError when file doesn't exist", async () => {
+      // Arrange
+      const instanceId = "non-existent-id"
+      existsSyncMock.mockReturnValue(false)
+      
+      // Create the test layer with mock FileSystem
+      const testLayer = Layer.provide(GitHubClientLayer, MockFileSystemLayer)
+      
+      // Act & Assert
+      await expect(
+        Effect.runPromise(
+          Effect.provide(
+            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, never, never>,
+            testLayer
+          )
+        )
+      ).rejects.toBeInstanceOf(StateNotFoundError)
+    })
     
-    const validationMsg = "Missing required fields"
-    const validationErr = new StateValidationError(validationMsg)
-    expect(validationErr.message).toContain(validationMsg)
-    expect(validationErr.name).toBe("StateValidationError")
+    it("should throw StateParseError when JSON is invalid", async () => {
+      // Arrange
+      const instanceId = "test-instance-id"
+      readFileSyncMock.mockReturnValue("{ invalid json")
+      
+      // Create the test layer with mock FileSystem
+      const testLayer = Layer.provide(GitHubClientLayer, MockFileSystemLayer)
+      
+      // Act & Assert
+      await expect(
+        Effect.runPromise(
+          Effect.provide(
+            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, never, never>,
+            testLayer
+          )
+        )
+      ).rejects.toBeInstanceOf(StateParseError)
+    })
+    
+    it("should throw StateValidationError when state doesn't match schema", async () => {
+      // Arrange
+      const instanceId = "test-instance-id"
+      const invalidState = { not_valid: "missing required fields" }
+      readFileSyncMock.mockReturnValue(JSON.stringify(invalidState))
+      
+      // Create the test layer with mock FileSystem
+      const testLayer = Layer.provide(GitHubClientLayer, MockFileSystemLayer)
+      
+      // Act & Assert
+      await expect(
+        Effect.runPromise(
+          Effect.provide(
+            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, never, never>,
+            testLayer
+          )
+        )
+      ).rejects.toBeInstanceOf(StateValidationError)
+    })
+    
+    it("should log warning but succeed when schema version differs", async () => {
+      // Arrange
+      const oldVersionState = {
+        ...createValidTestState(),
+        agent_info: {
+          ...createValidTestState().agent_info,
+          state_schema_version: "1.0"
+        }
+      }
+      const instanceId = oldVersionState.agent_info.instance_id
+      readFileSyncMock.mockReturnValue(JSON.stringify(oldVersionState))
+      
+      // Create the test layer with mock FileSystem
+      const testLayer = Layer.provide(GitHubClientLayer, MockFileSystemLayer)
+      
+      // Act
+      const result = await Effect.runPromise(
+        Effect.provide(
+          Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, never, never>,
+          testLayer
+        )
+      )
+      
+      // Assert
+      expect(logWarningSpy).toHaveBeenCalled()
+      expect(result).toEqual(oldVersionState)
+    })
   })
   
-  // Test serialization behavior
-  it("should maintain error properties when serialized/deserialized", () => {
-    // Create error instance
-    const originalError = new StateNotFoundError("test-instance")
-    
-    // Serialize to JSON and back
-    const serialized = JSON.stringify(originalError)
-    const parsed = JSON.parse(serialized)
-    
-    // Verify properties survive serialization
-    expect(parsed.name).toBe("StateNotFoundError")
-    expect(parsed.message).toContain("test-instance")
+  describe("createAgentStateForIssue", () => {
+    it("should create and save initial state for issue", async () => {
+      // Arrange - Create a mock GitHubClient that includes our mock FileSystem
+      const mockGitHubClient = {
+        getIssue: vi.fn().mockReturnValue(Effect.succeed({
+          title: "Test Issue Title",
+          body: "Test issue description with details",
+          state: "open",
+          labels: [{ name: "bug" }, { name: "priority" }],
+          html_url: "https://github.com/user/repo/issues/123"
+        })),
+        saveAgentState: vi.fn().mockImplementation(state => Effect.succeed({
+          ...state,
+          timestamps: {
+            ...state.timestamps,
+            last_saved_at: "2025-04-22T12:05:00Z"
+          }
+        })),
+        listIssues: vi.fn().mockReturnValue(Effect.succeed({})),
+        getIssueComments: vi.fn().mockReturnValue(Effect.succeed([])),
+        createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
+        getRepository: vi.fn().mockReturnValue(Effect.succeed({})),
+        updateIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        loadAgentState: vi.fn().mockReturnValue(Effect.succeed({})),
+        createAgentStateForIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        _tag: "GitHubClient" as const
+      }
+      
+      const MockGitHubClientLayer = Layer.succeed(
+        GitHubClient,
+        mockGitHubClient
+      )
+      
+      // Combine with mock FileSystem
+      const testLayer = Layer.provide(MockGitHubClientLayer, MockFileSystemLayer)
+      
+      // Act
+      const result = await Effect.runPromise(
+        Effect.provide(
+          Effect.flatMap(GitHubClient, client => 
+            client.createAgentStateForIssue("user", "repo", 123)
+          ) as Effect.Effect<AgentState, never, never>,
+          testLayer
+        )
+      )
+      
+      // Assert
+      expect(mockGitHubClient.getIssue).toHaveBeenCalledWith("user", "repo", 123)
+      expect(mockGitHubClient.saveAgentState).toHaveBeenCalled()
+      expect(result.agent_info.type).toBe("solver")
+      expect(result.agent_info.state_schema_version).toBe("1.1")
+      expect(result.current_task.repo_owner).toBe("user")
+      expect(result.current_task.repo_name).toBe("repo")
+      expect(result.current_task.issue_number).toBe(123)
+    })
   })
 })
-
-// Detailed note about test limitations
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const technicalNote = `
-Technical limitation note: 
-
-The full StateStorage.test.ts implementation can't currently run in this ESM environment due to
-circular initialization issues with vi.mock("node:fs") and module imports. We're getting the error:
-"ReferenceError: Cannot access '__vi_import_0__' before initialization"
-
-This is a known issue with ES modules, vitest, and the order of execution for mocks.
-
-Potential solutions to fully test this in the future include:
-1. Extract fs operations to a separate injectable module
-2. Configure Vitest's setup.ts to handle mocks before any imports
-3. Use a different test runner that handles ESM mocking differently
-
-For now, we're testing the error classes and their behavior, which doesn't require fs mocking.
-`

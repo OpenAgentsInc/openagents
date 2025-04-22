@@ -1,11 +1,11 @@
 import { HttpBody, HttpClient, HttpClientError, HttpClientResponse } from "@effect/platform"
 import { NodeHttpClient } from "@effect/platform-node"
-import { Config, Console, Effect, Schema } from "effect"
-import * as fs from "node:fs"
+import { Config, Console, Effect, Layer, Schema } from "effect"
 import * as path from "node:path"
 import { AgentState as AgentStateSchema } from "./AgentStateTypes.js"
 import type { AgentState } from "./AgentStateTypes.js"
 import { GitHubIssue, GitHubIssueComment, GitHubRepository } from "./GitHubTypes.js"
+import { FileSystem } from "./FileSystem.js"
 
 /**
  * Error class for state storage operations
@@ -55,6 +55,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
   effect: Effect.gen(function*() {
     const httpClient = yield* HttpClient.HttpClient
     const githubApiKey = yield* Config.secret("GITHUB_API_KEY")
+    const fileSystem = yield* FileSystem
 
     // Configure HTTP client with GitHub API base URL and authentication
     const githubHttpClient = httpClient.pipe(
@@ -189,8 +190,8 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
 
         return yield* Effect.try({
           try: () => {
-            if (!fs.existsSync(stateDir)) {
-              fs.mkdirSync(stateDir, { recursive: true })
+            if (!fileSystem.existsSync(stateDir)) {
+              fileSystem.mkdirSync(stateDir, { recursive: true })
               Effect.logInfo("Created state directory")
             }
             return stateDir
@@ -221,7 +222,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         return yield* Effect.try({
           try: () => {
             // Write state to file
-            fs.writeFileSync(filePath, JSON.stringify(updatedState, null, 2))
+            fileSystem.writeFileSync(filePath, JSON.stringify(updatedState, null, 2))
             Effect.logInfo(`Saved agent state to ${filePath}`)
             return updatedState
           },
@@ -241,7 +242,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
 
         // Check if file exists
         const fileExists = yield* Effect.try({
-          try: () => fs.existsSync(filePath),
+          try: () => fileSystem.existsSync(filePath),
           catch: (error) => new StateStorageError(`Error checking if state file exists: ${error}`)
         })
 
@@ -252,7 +253,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         // Read file and parse JSON
         const parsedJson = yield* Effect.try({
           try: () => {
-            const stateJson = fs.readFileSync(filePath, "utf-8")
+            const stateJson = fileSystem.readFileSync(filePath, "utf-8")
             return JSON.parse(stateJson)
           },
           catch: (error) => new StateParseError(String(error))
@@ -410,5 +411,11 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
   })
 }) {}
 
-// Create the default layer for GitHub client
-export const GitHubClientLayer = GitHubClient.Default
+// Create the default layer for GitHub client with FileSystem service
+export const GitHubClientLive = Layer.provide(
+  GitHubClient.Default,
+  FileSystemLive
+)
+
+// Keep the original name as an alias for backward compatibility
+export const GitHubClientLayer = GitHubClientLive
