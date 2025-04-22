@@ -25,7 +25,8 @@
     "lint-fix": "pnpm lint --fix",
     "test": "vitest",
     "coverage": "vitest --coverage",
-    "verify": "pnpm check && pnpm lint && pnpm test -- --run"
+    "verify": "pnpm check && pnpm lint && pnpm test -- --run",
+    "copy": "node copyToClipboard.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
