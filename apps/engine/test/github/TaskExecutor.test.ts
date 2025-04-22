@@ -158,20 +158,23 @@ describe("TaskExecutor", () => {
         })
       )
 
+      // We need to include the _tag property for GitHubClient
+      const mockGitHubClient = {
+        saveAgentState: saveAgentStateMock,
+        getIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        listIssues: vi.fn().mockReturnValue(Effect.succeed({})),
+        getIssueComments: vi.fn().mockReturnValue(Effect.succeed({})),
+        createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
+        getRepository: vi.fn().mockReturnValue(Effect.succeed({})),
+        updateIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        loadAgentState: vi.fn().mockReturnValue(Effect.succeed({})),
+        createAgentStateForIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        _tag: "GitHubClient" as const // Required due to Effect's internal tagging
+      }
+
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
-        GitHubClient.of({
-          saveAgentState: saveAgentStateMock,
-          getIssue: vi.fn().mockReturnValue(Effect.succeed({})),
-          listIssues: vi.fn().mockReturnValue(Effect.succeed({})),
-          getIssueComments: vi.fn().mockReturnValue(Effect.succeed({})),
-          createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
-          getRepository: vi.fn().mockReturnValue(Effect.succeed({})),
-          updateIssue: vi.fn().mockReturnValue(Effect.succeed({})),
-          loadAgentState: vi.fn().mockReturnValue(Effect.succeed({})),
-          createAgentStateForIssue: vi.fn().mockReturnValue(Effect.succeed({})),
-          _tag: "GitHubClient" as const
-        })
+        mockGitHubClient
       )
 
       const TestLayer = Layer.mergeAll(MockPlanManager, MockGitHubClient)
@@ -236,7 +239,7 @@ describe("TaskExecutor", () => {
         return Effect.succeed(state)
       })
 
-      // Create the same mock layers as before
+      // Create the same mock layers with _tag property
       const MockPlanManager = Layer.succeed(
         PlanManager,
         PlanManager.of({
@@ -247,20 +250,23 @@ describe("TaskExecutor", () => {
         })
       )
 
+      // Include _tag for GitHubClient
+      const mockGitHubClient = {
+        saveAgentState: saveAgentStateMock,
+        getIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        listIssues: vi.fn().mockReturnValue(Effect.succeed({})),
+        getIssueComments: vi.fn().mockReturnValue(Effect.succeed({})),
+        createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
+        getRepository: vi.fn().mockReturnValue(Effect.succeed({})),
+        updateIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        loadAgentState: vi.fn().mockReturnValue(Effect.succeed({})),
+        createAgentStateForIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+        _tag: "GitHubClient" as const // Required due to Effect's internal tagging
+      }
+
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
-        GitHubClient.of({
-          saveAgentState: saveAgentStateMock,
-          getIssue: vi.fn().mockReturnValue(Effect.succeed({})),
-          listIssues: vi.fn().mockReturnValue(Effect.succeed({})),
-          getIssueComments: vi.fn().mockReturnValue(Effect.succeed({})),
-          createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
-          getRepository: vi.fn().mockReturnValue(Effect.succeed({})),
-          updateIssue: vi.fn().mockReturnValue(Effect.succeed({})),
-          loadAgentState: vi.fn().mockReturnValue(Effect.succeed({})),
-          createAgentStateForIssue: vi.fn().mockReturnValue(Effect.succeed({})),
-          _tag: "GitHubClient" as const
-        })
+        mockGitHubClient
       )
 
       // Create a mock TaskExecutor that will return an error state

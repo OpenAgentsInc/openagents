@@ -4,6 +4,7 @@ import type { AgentState, PlanStep, ToolCall } from "./AgentStateTypes.js"
 /**
  * Service for managing the execution plan within the agent state
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface PlanManager {
   /**
    * Add a new step to the plan

@@ -6,6 +6,7 @@ import { PlanManager } from "./PlanManager.js"
 /**
  * Service for executing tasks and managing agent state during execution
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface TaskExecutor {
   /**
    * Execute the next step in the agent's plan
