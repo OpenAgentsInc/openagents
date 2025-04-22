@@ -9,37 +9,33 @@ describe('Tool Schema', () => {
     
     // Check each tool in the schema
     for (const tool of TOOL_SCHEMAS) {
-      // Verify the tool has the expected type
-      expect(tool.type).toBe('custom');
+      // Verify the tool name and description
+      expect(typeof tool.name).toBe('string');
+      expect(typeof tool.description).toBe('string');
       
-      // Verify the function property is defined
-      expect(tool.function).toBeDefined();
-      expect(typeof tool.function.name).toBe('string');
-      expect(typeof tool.function.description).toBe('string');
-      
-      // Verify the parameters property is defined with correct format
-      expect(tool.function.parameters).toBeDefined();
-      expect(tool.function.parameters.type).toBe('object');
-      expect(tool.function.parameters.properties).toBeDefined();
-      expect(Array.isArray(tool.function.parameters.required)).toBe(true);
+      // Verify the input_schema property is defined with correct format
+      expect(tool.input_schema).toBeDefined();
+      expect(tool.input_schema.type).toBe('object');
+      expect(tool.input_schema.properties).toBeDefined();
+      expect(Array.isArray(tool.input_schema.required)).toBe(true);
     }
     
     // Check the specific tools
     const fileContentTool = TOOL_SCHEMAS.find(
-      tool => tool.function.name === 'GetGitHubFileContent'
+      tool => tool.name === 'GetGitHubFileContent'
     );
     expect(fileContentTool).toBeDefined();
-    expect(fileContentTool?.function.parameters.properties.owner).toBeDefined();
-    expect(fileContentTool?.function.parameters.properties.repo).toBeDefined();
-    expect(fileContentTool?.function.parameters.properties.path).toBeDefined();
-    expect(fileContentTool?.function.parameters.properties.ref).toBeDefined();
+    expect(fileContentTool?.input_schema.properties.owner).toBeDefined();
+    expect(fileContentTool?.input_schema.properties.repo).toBeDefined();
+    expect(fileContentTool?.input_schema.properties.path).toBeDefined();
+    expect(fileContentTool?.input_schema.properties.ref).toBeDefined();
     
     const issueTool = TOOL_SCHEMAS.find(
-      tool => tool.function.name === 'GetGitHubIssue'
+      tool => tool.name === 'GetGitHubIssue'
     );
     expect(issueTool).toBeDefined();
-    expect(issueTool?.function.parameters.properties.owner).toBeDefined();
-    expect(issueTool?.function.parameters.properties.repo).toBeDefined();
-    expect(issueTool?.function.parameters.properties.issueNumber).toBeDefined();
+    expect(issueTool?.input_schema.properties.owner).toBeDefined();
+    expect(issueTool?.input_schema.properties.repo).toBeDefined();
+    expect(issueTool?.input_schema.properties.issueNumber).toBeDefined();
   });
 });

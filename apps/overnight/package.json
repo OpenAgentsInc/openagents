@@ -34,7 +34,7 @@
     "copy": "node copyToClipboard.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.17.2",
+    "@anthropic-ai/sdk": "^0.39.0",
     "@effect/ai": "^0.13.11",
     "@effect/ai-anthropic": "^0.3.12",
     "@effect/platform": "^0.80.11",

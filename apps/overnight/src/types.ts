@@ -19,20 +19,18 @@ export interface MessageCreateParamsWithTools extends Omit<MessageCreateParamsBa
 
 /**
  * Tool Definition for Anthropic Claude
+ * Updated to match the latest Anthropic API format (v0.39.0)
  */
 export interface ToolDefinition {
-  type: 'custom';
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: 'object';
-      properties: Record<string, {
-        type: string;
-        description: string;
-      }>;
-      required: string[];
-    };
+  name: string;
+  description: string;
+  input_schema: {
+    type: 'object';
+    properties: Record<string, {
+      type: string;
+      description: string;
+    }>;
+    required: string[];
   };
 }
 
