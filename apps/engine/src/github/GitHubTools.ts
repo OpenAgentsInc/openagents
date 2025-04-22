@@ -164,7 +164,7 @@ export const GitHubToolsLayer = Layer.effect(
           yield* Console.log("🛠️ Tool called: SaveAgentState")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
           try {
-            const result = yield* github.saveAgentState(params.state)()
+            const result = yield* github.saveAgentState(params.state)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
             /* eslint-disable-next-line @typescript-eslint/no-unused-vars */

@@ -188,12 +188,16 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         const stateDir = path.join(process.cwd(), "state")
 
         const exists = yield* fileSystem.exists(stateDir).pipe(
-          Effect.catchAll((error) => Effect.fail(new StateStorageError(`Error checking if state directory exists: ${error}`)))
+          Effect.catchAll((error) =>
+            Effect.fail(new StateStorageError(`Error checking if state directory exists: ${error}`))
+          )
         )
 
         if (!exists) {
           yield* fileSystem.makeDirectory(stateDir, { recursive: true }).pipe(
-            Effect.catchAll((error) => Effect.fail(new StateStorageError(`Failed to create state directory: ${error}`))),
+            Effect.catchAll((error) =>
+              Effect.fail(new StateStorageError(`Failed to create state directory: ${error}`))
+            ),
             Effect.tap(() => Effect.logInfo("Created state directory"))
           )
         }
@@ -205,37 +209,38 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
     /**
      * Save agent state to a local JSON file
      */
-    const saveAgentState = (state: AgentState) => Effect.gen(function*() {
-      // First ensure state directory exists
-      const stateDir = yield* ensureStateDirectory()
-      const filePath = path.join(stateDir, `${state.agent_info.instance_id}.json`)
+    const saveAgentState = (state: AgentState) =>
+      Effect.gen(function*() {
+        // First ensure state directory exists
+        const stateDir = yield* ensureStateDirectory()
+        const filePath = path.join(stateDir, `${state.agent_info.instance_id}.json`)
 
-      // Create a new state object with updated timestamp (immutability)
-      const updatedState = {
-        ...state,
-        timestamps: {
-          ...state.timestamps,
-          last_saved_at: new Date().toISOString()
+        // Create a new state object with updated timestamp (immutability)
+        const updatedState = {
+          ...state,
+          timestamps: {
+            ...state.timestamps,
+            last_saved_at: new Date().toISOString()
+          }
         }
-      }
 
-      // Convert state to JSON string
-      const stateJson = yield* Effect.try({
-        try: () => JSON.stringify(updatedState, null, 2),
-        catch: (error) => new StateStorageError(`Failed to serialize state: ${error}`)
-      })
+        // Convert state to JSON string
+        const stateJson = yield* Effect.try({
+          try: () => JSON.stringify(updatedState, null, 2),
+          catch: (error) => new StateStorageError(`Failed to serialize state: ${error}`)
+        })
 
-      // Write state to file
-      yield* fileSystem.writeFileString(filePath, stateJson).pipe(
-        Effect.catchAll((error) => Effect.fail(new StateStorageError(`Failed to save agent state: ${error}`))),
-        Effect.tap(() => Effect.logInfo(`Saved agent state to ${filePath}`))
+        // Write state to file
+        yield* fileSystem.writeFileString(filePath, stateJson).pipe(
+          Effect.catchAll((error) => Effect.fail(new StateStorageError(`Failed to save agent state: ${error}`))),
+          Effect.tap(() => Effect.logInfo(`Saved agent state to ${filePath}`))
+        )
+
+        return updatedState
+      }).pipe(
+        Effect.catchAll((error: StateStorageError) => Effect.fail(error)),
+        Effect.tapError((error: StateStorageError) => Console.error(error.message))
       )
-
-      return updatedState
-    }).pipe(
-      Effect.catchAll((error: StateStorageError) => Effect.fail(error)),
-      Effect.tapError((error: StateStorageError) => Console.error(error.message))
-    )
 
     /**
      * Load agent state from a local JSON file
@@ -246,14 +251,16 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
 
         // Check if file exists
         const exists = yield* fileSystem.exists(filePath).pipe(
-          Effect.catchAll((error) => Effect.fail(new StateStorageError(`Error checking if state file exists: ${error}`)))
+          Effect.catchAll((error) =>
+            Effect.fail(new StateStorageError(`Error checking if state file exists: ${error}`))
+          )
         )
 
         if (!exists) {
           return yield* Effect.fail(new StateNotFoundError(instanceId))
         }
 
-        // Read file 
+        // Read file
         const stateJson = yield* fileSystem.readFileString(filePath, "utf-8").pipe(
           Effect.catchAll((error) => Effect.fail(new StateStorageError(`Failed to read state file: ${error}`)))
         )
@@ -395,7 +402,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         )
 
         // Save the initial state
-        const savedState = yield* saveAgentState(initialState)()
+        const savedState = yield* saveAgentState(initialState)
 
         yield* Effect.logInfo(`Created new agent state for issue #${issueNumber} with ID ${instanceId}`)
         return savedState

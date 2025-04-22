@@ -1,15 +1,15 @@
-import * as path from "node:path"
+import { FileSystem } from "@effect/platform"
 import { describe, expect, it, vi } from "@effect/vitest"
 import { Effect, Layer } from "effect"
-import { FileSystem } from "@effect/platform"
-import { 
-  GitHubClient, 
-  StateNotFoundError, 
-  StateParseError, 
-  StateValidationError,
-  GitHubClientLayer
-} from "../../src/github/GitHub.js"
+import * as path from "node:path"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
+import {
+  GitHubClient,
+  GitHubClientLayer,
+  StateNotFoundError,
+  StateParseError,
+  StateValidationError
+} from "../../src/github/GitHub.js"
 
 // Create a valid test state fixture
 const createValidTestState = (): AgentState => ({
@@ -129,21 +129,21 @@ describe("State Storage", () => {
       expect(StateNotFoundError).toBeDefined()
       expect(StateParseError).toBeDefined()
       expect(StateValidationError).toBeDefined()
-      
+
       // Create instances to verify the inheritance
       const notFoundErr = new StateNotFoundError("test-id")
       const parseErr = new StateParseError("parse error")
       const validationErr = new StateValidationError("validation error")
-      
+
       // Check inheritance and properties
       expect(notFoundErr).toBeInstanceOf(Error)
       expect(notFoundErr.name).toBe("StateNotFoundError")
       expect(notFoundErr.message).toContain("test-id")
-      
+
       expect(parseErr).toBeInstanceOf(Error)
       expect(parseErr.name).toBe("StateParseError")
       expect(parseErr.message).toContain("parse error")
-      
+
       expect(validationErr).toBeInstanceOf(Error)
       expect(validationErr.name).toBe("StateValidationError")
       expect(validationErr.message).toContain("validation error")
@@ -155,30 +155,34 @@ describe("State Storage", () => {
       // Arrange
       const initialState = createValidTestState()
       const expectedPath = path.join(process.cwd(), "state", `${initialState.agent_info.instance_id}.json`)
-      
+
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
       const makeDirectoryMock = vi.fn().mockImplementation(() => Effect.void)
       const writeFileStringMock = vi.fn().mockImplementation(() => Effect.void)
-      
+
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock,
         makeDirectory: makeDirectoryMock,
         writeFileString: writeFileStringMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, client => client.saveAgentState(initialState)) as Effect.Effect<AgentState, Error, never>,
+          Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)) as Effect.Effect<
+            AgentState,
+            Error,
+            never
+          >,
           testLayer
         )
       )
-      
+
       // Assert
       // Check if directory existence was checked
       expect(existsMock).toHaveBeenCalledWith(path.join(process.cwd(), "state"))
@@ -187,103 +191,113 @@ describe("State Storage", () => {
         expectedPath,
         expect.any(String) // content would be JSON string
       )
-      
+
       // Verify state was updated (immutability)
       expect(result).not.toBe(initialState)
       expect(result.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
-      
+
       // Verify the content that would have been written
       const callArgs = writeFileStringMock.mock.calls[0]
       const writtenContent = JSON.parse(callArgs[1])
       expect(writtenContent.agent_info.instance_id).toBe(initialState.agent_info.instance_id)
       expect(writtenContent.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
     })
-    
+
     it("should handle filesystem errors when writing file", async () => {
       // Arrange
       const initialState = createValidTestState()
       const mockError = new Error("Filesystem error")
-      
+
       // Create mock that will fail when writing
       const writeFileStringMock = vi.fn().mockImplementation(() => Effect.fail(mockError))
-      
+
       // Create the layer with failure mock
       const mockFileSystemLayer = createMockFileSystemLayer({
         writeFileString: writeFileStringMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.saveAgentState(initialState)) as Effect.Effect<AgentState, Error, never>,
+            Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)) as Effect.Effect<
+              AgentState,
+              Error,
+              never
+            >,
             testLayer
           )
         )
       ).rejects.toThrow(/Failed to save agent state/)
     })
-    
+
     it("should handle filesystem errors when checking directory", async () => {
       // Arrange
       const initialState = createValidTestState()
       const mockError = new Error("Permission denied")
-      
+
       // Create mock that will fail when checking existence
       const existsMock = vi.fn().mockImplementation(() => Effect.fail(mockError))
-      
+
       // Create the layer with failure mock
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.saveAgentState(initialState)) as Effect.Effect<AgentState, Error, never>,
+            Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)) as Effect.Effect<
+              AgentState,
+              Error,
+              never
+            >,
             testLayer
           )
         )
       ).rejects.toThrow(/Error checking if state directory exists/)
     })
   })
-  
+
   describe("loadAgentState", () => {
     it("should load and validate state successfully", async () => {
       // Arrange
       const validState = createValidTestState()
       const instanceId = validState.agent_info.instance_id
       const expectedPath = path.join(process.cwd(), "state", `${instanceId}.json`)
-      
+
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-      const readFileStringMock = vi.fn().mockImplementation(() => 
-        Effect.succeed(JSON.stringify(validState))
-      )
-      
+      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(JSON.stringify(validState)))
+
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock,
         readFileString: readFileStringMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, Error, never>,
+          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
+            AgentState,
+            Error,
+            never
+          >,
           testLayer
         )
       )
-      
+
       // Assert
       // Check if file existence was checked
       expect(existsMock).toHaveBeenCalledWith(expectedPath)
@@ -292,186 +306,204 @@ describe("State Storage", () => {
       // Verify returned state
       expect(result).toEqual(validState)
     })
-    
+
     it("should throw StateNotFoundError when file doesn't exist", async () => {
       // Arrange
       const instanceId = "non-existent-id"
-      
+
       // Create mock that indicates file doesn't exist
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(false))
-      
+
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, Error, never>,
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
+              AgentState,
+              Error,
+              never
+            >,
             testLayer
           )
         )
       ).rejects.toBeInstanceOf(StateNotFoundError)
     })
-    
+
     it("should throw StateParseError when JSON is invalid", async () => {
       // Arrange
       const instanceId = "test-instance-id"
-      
+
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-      const readFileStringMock = vi.fn().mockImplementation(() => 
-        Effect.succeed("{ invalid json")  // Invalid JSON
+      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed("{ invalid json") // Invalid JSON
       )
-      
+
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock,
         readFileString: readFileStringMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, Error, never>,
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
+              AgentState,
+              Error,
+              never
+            >,
             testLayer
           )
         )
       ).rejects.toBeInstanceOf(StateParseError)
     })
-    
+
     it("should throw StateValidationError when state doesn't match schema", async () => {
       // Arrange
       const instanceId = "test-instance-id"
       const invalidState = { not_valid: "missing required fields" }
-      
+
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-      const readFileStringMock = vi.fn().mockImplementation(() => 
-        Effect.succeed(JSON.stringify(invalidState))  // Valid JSON but invalid schema
+      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(JSON.stringify(invalidState)) // Valid JSON but invalid schema
       )
-      
+
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock,
         readFileString: readFileStringMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, Error, never>,
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
+              AgentState,
+              Error,
+              never
+            >,
             testLayer
           )
         )
       ).rejects.toBeInstanceOf(StateValidationError)
     })
-    
+
     it("should log warning but succeed when schema version differs", async () => {
       // Arrange
       const oldVersionState = {
         ...createValidTestState(),
         agent_info: {
           ...createValidTestState().agent_info,
-          state_schema_version: "1.0"  // Different schema version
+          state_schema_version: "1.0" // Different schema version
         }
       }
       const instanceId = oldVersionState.agent_info.instance_id
-      
+
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-      const readFileStringMock = vi.fn().mockImplementation(() => 
-        Effect.succeed(JSON.stringify(oldVersionState))
-      )
-      
+      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(JSON.stringify(oldVersionState)))
+
       // Create spy for logWarning
       const logWarningSpy = vi.spyOn(Effect, "logWarning")
-      
+
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock,
         readFileString: readFileStringMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, Error, never>,
+          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
+            AgentState,
+            Error,
+            never
+          >,
           testLayer
         )
       )
-      
+
       // Assert
       expect(logWarningSpy).toHaveBeenCalled()
       expect(result).toEqual(oldVersionState)
-      
+
       // Restore spy
       logWarningSpy.mockRestore()
     })
-    
+
     it("should handle filesystem errors when reading file", async () => {
       // Arrange
       const instanceId = "test-instance-id"
       const mockError = new Error("Read error")
-      
+
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
       const readFileStringMock = vi.fn().mockImplementation(() => Effect.fail(mockError))
-      
+
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
         exists: existsMock,
         readFileString: readFileStringMock
       })
-      
+
       // Create the combined test layer
       const testLayer = Layer.provide(GitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)) as Effect.Effect<AgentState, Error, never>,
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
+              AgentState,
+              Error,
+              never
+            >,
             testLayer
           )
         )
       ).rejects.toThrow(/Failed to read state file/)
     })
   })
-  
+
   describe("createAgentStateForIssue", () => {
     it("should create and save initial state for issue", async () => {
       // Arrange - Create mock GitHub client with essential implementation
       const mockGithubClient = {
-        getIssue: vi.fn().mockImplementation(() => Effect.succeed({
-          title: "Test Issue Title",
-          body: "Test issue description with details",
-          state: "open",
-          labels: [{ name: "bug" }, { name: "priority" }],
-          html_url: "https://github.com/user/repo/issues/123"
-        })),
-        saveAgentState: vi.fn().mockImplementation((state) => 
-          () => Effect.succeed({
+        getIssue: vi.fn().mockImplementation(() =>
+          Effect.succeed({
+            title: "Test Issue Title",
+            body: "Test issue description with details",
+            state: "open",
+            labels: [{ name: "bug" }, { name: "priority" }],
+            html_url: "https://github.com/user/repo/issues/123"
+          })
+        ),
+        saveAgentState: vi.fn().mockImplementation((state) => () =>
+          Effect.succeed({
             ...state,
             timestamps: {
               ...state.timestamps,
-              last_saved_at: "2025-04-22T12:05:00Z"  // Mock updated timestamp
+              last_saved_at: "2025-04-22T12:05:00Z" // Mock updated timestamp
             }
           })
         ),
@@ -486,10 +518,10 @@ describe("State Storage", () => {
             labels: [{ name: "bug" }, { name: "priority" }],
             html_url: `https://github.com/${owner}/${repo}/issues/${issueNumber}`
           }
-          
+
           const now = "2025-04-22T12:05:00Z" // Mock timestamp
           const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
-          
+
           const initialState: AgentState = {
             agent_info: {
               type: "solver",
@@ -576,10 +608,10 @@ describe("State Storage", () => {
               github_token_available: true
             }
           }
-          
+
           // Simulate that this would call saveAgentState internally
           mockGithubClient.saveAgentState(initialState)
-          
+
           return Effect.succeed(initialState)
         }),
         // Mock other required methods to avoid errors
@@ -591,29 +623,30 @@ describe("State Storage", () => {
         loadAgentState: vi.fn().mockImplementation(() => Effect.succeed({})),
         _tag: "GitHubClient" as const
       }
-      
+
       // Create mock GitHub client layer
       const mockGitHubClientLayer = Layer.succeed(
         GitHubClient,
         mockGithubClient
       )
-      
+
       // Create mock filesystem layer
       const mockFileSystemLayer = createMockFileSystemLayer()
-      
+
       // Combine layers
       const testLayer = Layer.provide(mockGitHubClientLayer, mockFileSystemLayer)
-      
+
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, client => 
-            client.createAgentStateForIssue("user", "repo", 123)
+          Effect.flatMap(
+            GitHubClient,
+            (client) => client.createAgentStateForIssue("user", "repo", 123)
           ) as Effect.Effect<AgentState, Error, never>,
           testLayer
         )
       )
-      
+
       // Assert
       expect(mockGithubClient.getIssue).toHaveBeenCalledWith("user", "repo", 123)
       expect(mockGithubClient.saveAgentState).toHaveBeenCalled()

@@ -38,7 +38,7 @@ export const TaskExecutorLayer = Layer.effect(
     const githubClient = yield* GitHubClient
 
     return {
-      executeNextStep: (currentState: AgentState) =>
+      executeNextStep: (currentState: AgentState): Effect.Effect<AgentState, Error, never> =>
         Effect.gen(function*() {
           // 1. Get current step
           const currentStep = yield* planManager.getCurrentStep(currentState)
@@ -106,12 +106,15 @@ export const TaskExecutorLayer = Layer.effect(
           }
 
           // 5. Save the final state
-          yield* githubClient.saveAgentState(workingState)()
+          yield* githubClient.saveAgentState(workingState)
           yield* Effect.logInfo(`Agent state saved for instance ${workingState.agent_info.instance_id}`)
 
           // 6. Return the final state
           return workingState
-        })
+        }).pipe(
+          // Ensure the error type is always Error
+          Effect.catchAll((error) => Effect.fail(error instanceof Error ? error : new Error(String(error))))
+        )
     }
   })
 )
