@@ -1,11 +1,10 @@
 import { it, describe, expect } from 'vitest';
 import { Effect, Layer } from 'effect';
-import { GitHubTools, GitHubToolsLive, FileContentParams, IssueParams } from '../src/AiService.js';
 import { mockGitHubFileClientLayer, GitHubFileClient } from '../src/github/FileClient.js';
 import { mockGitHubIssueClientLayer, GitHubIssueClient } from '../src/github/IssueClient.js';
 import { Buffer } from 'node:buffer';
 
-describe('AI Service', () => {
+describe('AI Service - GitHub Tools', () => {
   // Test the GetGitHubFileContent tool
   it('should handle the GetGitHubFileContent tool correctly', async () => {
     // Execute a real mock GitHub file request 
@@ -62,7 +61,10 @@ describe('AI Service', () => {
     const fileFailure = await Effect.runPromise(fileFailureRequest);
     
     expect(fileFailure._tag).toBe('Left');
-    expect(fileFailure.left.message).toContain('File not found');
+    // Access the error using Effect's Either pattern
+    if (fileFailure._tag === 'Left') {
+      expect(fileFailure.left.message).toContain('File not found');
+    }
   });
   
   // Test the GetGitHubIssue tool
@@ -122,6 +124,9 @@ describe('AI Service', () => {
     const issueFailure = await Effect.runPromise(issueFailureRequest);
     
     expect(issueFailure._tag).toBe('Left');
-    expect(issueFailure.left.message).toContain('rate limit exceeded');
+    // Access the error using Effect's Either pattern
+    if (issueFailure._tag === 'Left') {
+      expect(issueFailure.left.message).toContain('rate limit exceeded');
+    }
   });
 });
