@@ -1,6 +1,5 @@
-import { it, describe, expect, vi, afterEach } from 'vitest';
+import { it, describe, expect, vi, afterEach, beforeEach } from 'vitest';
 import { TOOL_SCHEMAS } from '../src/Tools.js';
-import { ExtendedMessageParam } from '../src/types.js';
 
 // Mock the entire Anthropic module
 vi.mock('@anthropic-ai/sdk', () => {
@@ -25,9 +24,10 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 // Mock the Effect module to avoid actual Effect executions
 vi.mock('effect', () => {
-  // Create a mock Tag class
+  // Create a mock Tag class with TypeScript types
   class MockTag {
-    constructor(name) {
+    name: string;
+    constructor(name: string) {
       this.name = name;
     }
   }
@@ -44,7 +44,7 @@ vi.mock('effect', () => {
       catchAll: vi.fn().mockReturnValue({}),
       fail: vi.fn().mockReturnValue({}),
       succeed: vi.fn().mockReturnValue({}),
-      Tag: vi.fn().mockImplementation((name) => {
+      Tag: vi.fn().mockImplementation((name: string) => {
         return function() {
           return new MockTag(name);
         };
@@ -103,8 +103,12 @@ describe('Server', () => {
   const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
   const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   
-  // Import the module after setting up mocks
-  let Server: any;
+  // Import the module after setting up mocks - use an interface to avoid unused variable warning
+  interface ServerMock {
+    processUserMessage: (message: string) => Promise<void>;
+  }
+  
+  let Server: ServerMock;
   
   beforeEach(() => {
     // Use a simpler approach that doesn't try to evaluate the actual Server.ts module

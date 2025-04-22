@@ -4,7 +4,8 @@ import {
   ContentBlockToolUse, 
   ContentBlockToolResult,
   ExtendedContentBlock,
-  ToolDefinition
+  ToolDefinition,
+  CustomTextBlock
 } from '../src/types.js';
 
 describe('Types', () => {
@@ -23,14 +24,20 @@ describe('Types', () => {
     const assistantMessage: ExtendedMessageParam = {
       role: 'assistant',
       content: [
-        { type: 'text', text: 'This is a text block' }
+        { 
+          type: 'text', 
+          text: 'This is a text block',
+          citations: null 
+        }
       ]
     };
     
     // Validate structure
     expect(assistantMessage.role).toBe('assistant');
     expect(Array.isArray(assistantMessage.content)).toBe(true);
-    expect(assistantMessage.content[0].type).toBe('text');
+    
+    const contentItem = assistantMessage.content[0] as CustomTextBlock;
+    expect(contentItem.type).toBe('text');
   });
   
   it('should properly structure ContentBlockToolUse', () => {
@@ -106,7 +113,8 @@ describe('Types', () => {
     // Create instances of each content block type
     const textBlock: ExtendedContentBlock = { 
       type: 'text', 
-      text: 'This is text' 
+      text: 'This is text',
+      citations: null
     };
     
     const toolUseBlock: ExtendedContentBlock = {

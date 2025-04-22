@@ -1,5 +1,5 @@
 // Custom types for Anthropic SDK extensions
-import { MessageParam, MessageCreateParamsBase, TextBlock } from '@anthropic-ai/sdk/resources/messages';
+import { MessageParam, MessageCreateParamsBase, MessageCreateParams } from '@anthropic-ai/sdk/resources/messages';
 
 /**
  * Extends Anthropic SDK's MessageParam for conversation history
@@ -10,11 +10,12 @@ export interface ExtendedMessageParam extends Omit<MessageParam, 'content'> {
 }
 
 /**
- * Extends Anthropic SDK's MessageCreateParamsBase to support tools
+ * Extends Anthropic SDK's MessageCreateParams to support tools with proper typing
  */
-export interface MessageCreateParamsWithTools extends Omit<MessageCreateParamsBase, 'messages'> {
+export interface MessageCreateParamsWithTools extends Omit<MessageCreateParams, 'messages' | 'system'> {
   tools?: ToolDefinition[];
   messages: ExtendedMessageParam[];
+  system?: string; // Make system explicitly optional string
 }
 
 /**
@@ -57,8 +58,15 @@ export interface ContentBlockToolResult {
 
 /**
  * Extended Content Block Type
+ * Updates the TextBlock to match the SDK v0.39.0
  */
-export type ExtendedContentBlock = TextBlock | ContentBlockToolUse | ContentBlockToolResult;
+export interface CustomTextBlock {
+  type: 'text';
+  text: string;
+  citations?: Array<{ start: number; end: number; text: string; }> | null; // Match SDK structure
+}
+
+export type ExtendedContentBlock = CustomTextBlock | ContentBlockToolUse | ContentBlockToolResult;
 
 /**
  * Message Response from Anthropic API with tools

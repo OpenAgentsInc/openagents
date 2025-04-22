@@ -1,4 +1,4 @@
-import { it, describe, expect, vi, afterEach } from 'vitest';
+import { it, describe, expect, vi, afterEach, beforeEach } from 'vitest';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { TOOL_SCHEMAS } from '../src/Tools.js';
 
@@ -10,7 +10,7 @@ vi.mock('@anthropic-ai/sdk', () => {
         messages: {
           create: vi.fn().mockResolvedValue({
             id: 'msg_mock123',
-            content: [{ type: 'text', text: 'This is a mock response from Anthropic' }],
+            content: [{ type: 'text', text: 'This is a mock response from Anthropic', citations: null }],
             role: 'assistant',
             model: 'claude-3-5-sonnet-latest',
             stop_reason: null,

@@ -134,8 +134,15 @@ const processUserMessage = async (userMessage: string) => {
         max_tokens: 1000,
       };
 
-      // Cast result to our extended message type since Anthropic SDK types don't include tools
-      const response = await anthropic.messages.create(createParams) as unknown as ExtendedMessage;
+      // Use proper type casting to match SDK requirements
+      const response = await anthropic.messages.create({
+        ...createParams,
+        model: createParams.model,
+        system: createParams.system,
+        max_tokens: createParams.max_tokens,
+        messages: createParams.messages,
+        tools: createParams.tools
+      }) as ExtendedMessage;
 
       console.log("--- Received Response from Anthropic (Initial) ---");
       console.log(JSON.stringify(response, null, 2));

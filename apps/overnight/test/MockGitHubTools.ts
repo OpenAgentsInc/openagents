@@ -1,5 +1,4 @@
 import { Effect } from 'effect';
-import { GitHubTools } from '../src/AiService.js';
 
 /**
  * Helper function to create a standalone mock GitHubTools implementation

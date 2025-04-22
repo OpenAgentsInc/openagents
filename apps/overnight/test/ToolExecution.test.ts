@@ -1,6 +1,4 @@
-import { it, describe, expect, vi } from 'vitest';
-import { Effect, Layer } from 'effect';
-import { GitHubTools } from '../src/AiService.js';
+import { it, describe, expect } from 'vitest';
 import { ContentBlockToolUse } from '../src/types.js';
 
 describe('Tool Execution', () => {
