@@ -2,10 +2,11 @@
  * Tool definitions for GitHub API tools
  */
 
-// Define the tool schemas manually (OpenAI function calling format)
+// Define the tool schemas for Anthropic's tools format
+// Based on error message, Anthropic expects 'custom' for type, not 'function'
 export const TOOL_SCHEMAS = [
   {
-    type: "function",
+    type: "custom",
     function: {
       name: "GetGitHubFileContent",
       description: "Fetches the UTF-8 text content of a specified file from a GitHub repository.",
@@ -34,7 +35,7 @@ export const TOOL_SCHEMAS = [
     }
   },
   {
-    type: "function",
+    type: "custom",
     function: {
       name: "GetGitHubIssue",
       description: "Fetches details (title, state, body) of a specific issue from a GitHub repository.",

@@ -21,7 +21,7 @@ export interface MessageCreateParamsWithTools extends Omit<MessageCreateParamsBa
  * Tool Definition for Anthropic Claude
  */
 export interface ToolDefinition {
-  type: 'function';
+  type: 'custom';
   function: {
     name: string;
     description: string;
