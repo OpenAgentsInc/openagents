@@ -1,9 +1,9 @@
+import * as dotenv from "dotenv"
 import { Effect } from "effect"
 import * as fs from "node:fs"
 import * as Http from "node:http"
 import * as Https from "node:https"
 import * as path from "node:path"
-import * as dotenv from "dotenv"
 
 // Load environment variables from .env file
 const loadConfig = Effect.try({
@@ -55,7 +55,7 @@ const broadcastSSE = (event: string, data: string): void => {
 
 // Get GitHub issue from GitHub API
 const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): void => {
-  Effect.runPromise(loadConfig).then(config => {
+  Effect.runPromise(loadConfig).then((config) => {
     try {
       log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}...`)
 
@@ -84,7 +84,7 @@ const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): voi
             const parsedData = JSON.parse(data)
             if (parsedData) {
               log(`Issue #${issueNumber} received: ${parsedData.title}`)
-              
+
               // Format the issue data for display
               const issueHtml = `
                 <div>
@@ -100,7 +100,7 @@ const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): voi
                   </div>
                 </div>
               `
-              
+
               broadcastSSE("issue", issueHtml)
               broadcastSSE("analysis", "")
               analyzeIssueWithClaude(parsedData)
@@ -126,7 +126,7 @@ const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): voi
       error(`Exception setting up GitHub request: ${errorMessage}`)
       broadcastSSE("error", `<span class="error">Error setting up GitHub request: ${errorMessage}</span>`)
     }
-  }).catch(err => {
+  }).catch((err) => {
     error(`Failed to load configuration: ${err}`)
     broadcastSSE("error", `<span class="error">Failed to load API configuration: ${err}</span>`)
   })
@@ -140,7 +140,7 @@ const analyzeIssueWithClaude = (issue: {
   state: string
   body: string
 }): void => {
-  Effect.runPromise(loadConfig).then(config => {
+  Effect.runPromise(loadConfig).then((config) => {
     try {
       log("Setting up request to Anthropic API")
       const options = {
@@ -217,7 +217,10 @@ Please format your response as structured analysis with clear headings.`
                   const timestamp = Date.now()
 
                   // Send final complete message - add "complete" class to signal it's done
-                  broadcastSSE("analysis", `<div><h3>Analysis:</h3><p class='analysis complete' data-ts="${timestamp}">${finalContent}</p></div>`)
+                  broadcastSSE(
+                    "analysis",
+                    `<div><h3>Analysis:</h3><p class='analysis complete' data-ts="${timestamp}">${finalContent}</p></div>`
+                  )
                   continue
                 }
 
@@ -239,7 +242,10 @@ Please format your response as structured analysis with clear headings.`
                   const timestamp = Date.now()
 
                   // Send complete content each time to refresh the entire div
-                  broadcastSSE("analysis", `<div><h3>Analysis:</h3><p class='analysis' data-ts="${timestamp}">${processedContent}</p></div>`)
+                  broadcastSSE(
+                    "analysis",
+                    `<div><h3>Analysis:</h3><p class='analysis' data-ts="${timestamp}">${processedContent}</p></div>`
+                  )
                 }
               }
             } catch (parseErr) {
@@ -262,13 +268,12 @@ Please format your response as structured analysis with clear headings.`
       // Send the request
       req.write(data)
       req.end()
-
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       error(`Exception setting up Anthropic request: ${errorMessage}`)
       broadcastSSE("analysis", `<span class='error'>Error setting up analysis request: ${errorMessage}</span>`)
     }
-  }).catch(err => {
+  }).catch((err) => {
     error(`Failed to load configuration: ${err}`)
     broadcastSSE("analysis", `<span class='error'>Failed to load API configuration: ${err}</span>`)
   })
@@ -355,10 +360,10 @@ const createHttpServer = (): Http.Server => {
       const issueNumber = parseInt(urlObj.searchParams.get("issue") || "1", 10)
       const owner = urlObj.searchParams.get("owner") || process.env.GITHUB_REPO_OWNER || "openagents"
       const repo = urlObj.searchParams.get("repo") || process.env.GITHUB_REPO_NAME || "openagents"
-      
+
       log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}`)
       fetchGitHubIssue(owner, repo, issueNumber)
-      
+
       res.writeHead(200, { "Content-Type": "text/plain" })
       res.end("Issue fetch initiated")
       return

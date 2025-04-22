@@ -6,7 +6,7 @@ import { GitHubTools } from "../../src/github/GitHubTools.js"
 vi.mock("../../src/github/GitHub.js", async () => {
   return {
     GitHubClient: {
-      Default: {},
+      Default: {}
     },
     GitHubClientLayer: {}
   }

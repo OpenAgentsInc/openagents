@@ -1,29 +1,25 @@
-import { Config, Console, Effect, Schema } from "effect"
-import { HttpClient, HttpClientResponse, HttpClientError, HttpBody } from "@effect/platform"
+import { HttpBody, HttpClient, HttpClientError, HttpClientResponse } from "@effect/platform"
 import { NodeHttpClient } from "@effect/platform-node"
+import { Config, Console, Effect, Schema } from "effect"
 import * as fs from "node:fs"
 import * as path from "node:path"
-import {
-  GitHubIssue,
-  GitHubIssueComment,
-  GitHubRepository,
-  AgentState
-} from "./GitHubTypes.js"
+import type { AgentState } from "./GitHubTypes.js"
+import { GitHubIssue, GitHubIssueComment, GitHubRepository } from "./GitHubTypes.js"
 
 /**
  * GitHub API client service implementation
  */
 export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient", {
   dependencies: [NodeHttpClient.layerUndici],
-  effect: Effect.gen(function* () {
+  effect: Effect.gen(function*() {
     const httpClient = yield* HttpClient.HttpClient
     const githubApiKey = yield* Config.secret("GITHUB_API_KEY")
 
     // Configure HTTP client with GitHub API base URL and authentication
     const githubHttpClient = httpClient.pipe(
       HttpClient.filterStatusOk,
-      HttpClient.mapRequest((request) => ({ 
-        ...request, 
+      HttpClient.mapRequest((request) => ({
+        ...request,
         url: `https://api.github.com${request.url}`,
         headers: {
           ...request.headers,
@@ -38,14 +34,16 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Get an issue from a GitHub repository
      */
     const getIssue = Effect.fn("GitHubClient.getIssue")(
-      function* (owner: string, repo: string, issueNumber: number) {
+      function*(owner: string, repo: string, issueNumber: number) {
         return yield* githubHttpClient.get(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
           acceptJson: true
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubIssue)),
           Effect.catchAll((error) => {
-            if (HttpClientError.isHttpClientError(error) && 
-                "status" in error && error.status === 404) {
+            if (
+              HttpClientError.isHttpClientError(error) &&
+              "status" in error && error.status === 404
+            ) {
               return Effect.fail(new Error(`Issue #${issueNumber} not found in ${owner}/${repo}`))
             }
             return Effect.fail(new Error(`GitHub API error: ${String(error)}`))
@@ -60,7 +58,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * List issues from a GitHub repository
      */
     const listIssues = Effect.fn("GitHubClient.listIssues")(
-      function* (owner: string, repo: string, state: "open" | "closed" | "all" = "open") {
+      function*(owner: string, repo: string, state: "open" | "closed" | "all" = "open") {
         return yield* githubHttpClient.get(`/repos/${owner}/${repo}/issues`, {
           acceptJson: true,
           urlParams: { state }
@@ -77,7 +75,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Get comments for an issue
      */
     const getIssueComments = Effect.fn("GitHubClient.getIssueComments")(
-      function* (owner: string, repo: string, issueNumber: number) {
+      function*(owner: string, repo: string, issueNumber: number) {
         return yield* githubHttpClient.get(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
           acceptJson: true
         }).pipe(
@@ -92,7 +90,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Create a comment on an issue
      */
     const createIssueComment = Effect.fn("GitHubClient.createIssueComment")(
-      function* (owner: string, repo: string, issueNumber: number, body: string) {
+      function*(owner: string, repo: string, issueNumber: number, body: string) {
         return yield* githubHttpClient.post(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
           acceptJson: true,
           body: yield* HttpBody.json({ body })
@@ -108,7 +106,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Get repository information
      */
     const getRepository = Effect.fn("GitHubClient.getRepository")(
-      function* (owner: string, repo: string) {
+      function*(owner: string, repo: string) {
         return yield* githubHttpClient.get(`/repos/${owner}/${repo}`, {
           acceptJson: true
         }).pipe(
@@ -123,12 +121,12 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Update an issue (status, title, body, labels, etc.)
      */
     const updateIssue = Effect.fn("GitHubClient.updateIssue")(
-      function* (owner: string, repo: string, issueNumber: number, updates: {
-        title?: string,
-        body?: string,
-        state?: "open" | "closed",
-        labels?: string[],
-        assignees?: string[]
+      function*(owner: string, repo: string, issueNumber: number, updates: {
+        title?: string
+        body?: string
+        state?: "open" | "closed"
+        labels?: Array<string>
+        assignees?: Array<string>
       }) {
         return yield* githubHttpClient.patch(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
           acceptJson: true,
@@ -145,17 +143,17 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Save agent state to a local JSON file
      */
     const saveAgentState = Effect.fn("GitHubClient.saveAgentState")(
-      function* (state: AgentState) {
+      function*(state: AgentState) {
         const stateDir = path.join(process.cwd(), "state")
         const filePath = path.join(stateDir, `${state.agent_info.instance_id}.json`)
-        
+
         return yield* Effect.try({
           try: () => {
             // Ensure state directory exists
             if (!fs.existsSync(stateDir)) {
               fs.mkdirSync(stateDir, { recursive: true })
             }
-            
+
             // Update the last saved timestamp
             const updatedState = {
               ...state,
@@ -164,7 +162,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
                 last_saved_at: new Date().toISOString()
               }
             }
-            
+
             // Write state to file
             fs.writeFileSync(filePath, JSON.stringify(updatedState, null, 2))
             return true
@@ -180,15 +178,15 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Load agent state from a local JSON file
      */
     const loadAgentState = Effect.fn("GitHubClient.loadAgentState")(
-      function* (instanceId: string) {
+      function*(instanceId: string) {
         const filePath = path.join(process.cwd(), "state", `${instanceId}.json`)
-        
+
         return yield* Effect.try({
           try: () => {
             if (!fs.existsSync(filePath)) {
               throw new Error(`State file for ${instanceId} not found`)
             }
-            
+
             const stateJson = fs.readFileSync(filePath, "utf-8")
             const state = JSON.parse(stateJson)
             return state as AgentState
@@ -204,14 +202,14 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      * Create a new agent state for a GitHub issue
      */
     const createAgentStateForIssue = Effect.fn("GitHubClient.createAgentStateForIssue")(
-      function* (owner: string, repo: string, issueNumber: number) {
+      function*(owner: string, repo: string, issueNumber: number) {
         // First, fetch the issue to get its details
         const issue: GitHubIssue = yield* getIssue(owner, repo, issueNumber)
-        
+
         // Generate a unique instance ID
         const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
         const now = new Date().toISOString()
-        
+
         // Create initial agent state
         const initialState: AgentState = {
           agent_info: {
@@ -299,10 +297,10 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
             github_token_available: true
           }
         }
-        
+
         // Save the initial state
         yield* saveAgentState(initialState)
-        
+
         return initialState
       }
     )
@@ -319,7 +317,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
       createAgentStateForIssue
     } as const
   })
-}) { }
+}) {}
 
 // Create the default layer for GitHub client
 export const GitHubClientLayer = GitHubClient.Default

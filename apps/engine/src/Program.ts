@@ -2,14 +2,14 @@ import { Completions } from "@effect/ai"
 import { AnthropicClient, AnthropicCompletions } from "@effect/ai-anthropic"
 import { NodeHttpClient } from "@effect/platform-node"
 import { Chunk, Config, Console, Effect, Layer, Option, Stream } from "effect"
-import { startServer } from "./Server.js"
 import { GitHubClientLayer } from "./github/GitHub.js"
 import { GitHubTools, GitHubToolsLayer } from "./github/GitHubTools.js"
+import { startServer } from "./Server.js"
 
 /**
  * Process a GitHub issue using AI and GitHub tools
  */
-const processGitHubIssue = Effect.gen(function* () {
+const processGitHubIssue = Effect.gen(function*() {
   yield* Console.log("🤖 Starting GitHub issue processing...")
   const completions = yield* Completions.Completions
   const { tools } = yield* GitHubTools
@@ -21,12 +21,12 @@ const processGitHubIssue = Effect.gen(function* () {
       const owner = process.env.GITHUB_REPO_OWNER || "openagents"
       const repo = process.env.GITHUB_REPO_NAME || "openagents"
       const issueNumber = parseInt(process.env.GITHUB_ISSUE_NUMBER || "1", 10)
-      
+
       return { owner, repo, issueNumber }
     },
     catch: (error) => new Error(`Failed to load configuration: ${error}`)
   })
-  
+
   yield* Console.log(`Processing issue #${config.issueNumber} from ${config.owner}/${config.repo}`)
 
   // Setup the agent prompt
@@ -59,7 +59,7 @@ IMPORTANT: Do not attempt to solve technical problems directly. Instead, focus o
       SaveAgentState: async () => ({})
     }
   }
-  
+
   // Stream the AI response with GitHub tools
   const streamResponse = completions.toolkitStream({
     input: prompt,
@@ -70,7 +70,7 @@ IMPORTANT: Do not attempt to solve technical problems directly. Instead, focus o
   // Process each chunk as it arrives
   const processStream = streamResponse.pipe(
     Stream.tap((chunk) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Extract the text content from the chunk's parts
         if (chunk.response && chunk.response.parts) {
           const parts = Chunk.toReadonlyArray(chunk.response.parts)
@@ -107,9 +107,9 @@ IMPORTANT: Do not attempt to solve technical problems directly. Instead, focus o
 const Claude3 = AnthropicCompletions.model("claude-3-5-sonnet-latest")
 
 // We're keeping this function for documentation purposes
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 // @ts-ignore - This function is used in the original code but not in our test version
-const _main = Effect.gen(function* () {
+const _main = Effect.gen(function*() {
   const claude3 = yield* Claude3
   return yield* claude3.provide(processGitHubIssue)
 })

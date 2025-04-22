@@ -12,7 +12,7 @@ vi.mock("@effect/platform", async () => {
         pipe: () => ({
           get: vi.fn(),
           post: vi.fn(),
-          patch: vi.fn(),
+          patch: vi.fn()
         })
       }
     },
@@ -36,7 +36,7 @@ vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
   mkdirSync: vi.fn(),
   writeFileSync: vi.fn(),
-  readFileSync: vi.fn(),
+  readFileSync: vi.fn()
 }))
 
 describe("GitHubClient", () => {
