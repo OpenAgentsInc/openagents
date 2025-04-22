@@ -1,0 +1,134 @@
+import { it, describe, expect, vi, afterEach } from 'vitest';
+import { TOOL_SCHEMAS } from '../src/Tools.js';
+import { ExtendedMessageParam } from '../src/types.js';
+
+// Mock the entire Anthropic module
+vi.mock('@anthropic-ai/sdk', () => {
+  return {
+    Anthropic: vi.fn().mockImplementation(() => {
+      return {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            id: 'msg_mock123',
+            content: [{ type: 'text', text: 'This is a mock response from Anthropic' }],
+            role: 'assistant',
+            model: 'claude-3-5-sonnet-latest',
+            stop_reason: null,
+            stop_sequence: null,
+            usage: { input_tokens: 10, output_tokens: 20 }
+          })
+        }
+      };
+    })
+  };
+});
+
+// Mock the Effect module to avoid actual Effect executions
+vi.mock('effect', () => {
+  // Create a mock Tag class
+  class MockTag {
+    constructor(name) {
+      this.name = name;
+    }
+  }
+  
+  // Create a mock implementation for the Effect.Tag static method
+  MockTag.prototype.of = function() { return {}; };
+  
+  return {
+    Effect: {
+      gen: vi.fn().mockImplementation(fn => fn()),
+      runPromise: vi.fn().mockResolvedValue({ toolUseId: 'tool_123', toolResult: 'Mock tool result' }),
+      provide: vi.fn().mockReturnValue({}),
+      match: vi.fn().mockImplementation((_effect, handlers) => handlers.onSuccess('Mock success')),
+      catchAll: vi.fn().mockReturnValue({}),
+      fail: vi.fn().mockReturnValue({}),
+      succeed: vi.fn().mockReturnValue({}),
+      Tag: vi.fn().mockImplementation((name) => {
+        return function() {
+          return new MockTag(name);
+        };
+      })
+    },
+    Layer: {
+      provide: vi.fn().mockReturnValue({}),
+      merge: vi.fn().mockReturnValue({}),
+      succeed: vi.fn().mockReturnValue({})
+    },
+    Console: {
+      log: vi.fn().mockReturnValue({}),
+      error: vi.fn().mockReturnValue({}),
+      warn: vi.fn().mockReturnValue({})
+    }
+  };
+});
+
+// Mock readline module
+vi.mock('node:readline/promises', () => {
+  return {
+    createInterface: vi.fn().mockReturnValue({
+      question: vi.fn().mockResolvedValue('mock user input'),
+      close: vi.fn()
+    })
+  };
+});
+
+// Mock dotenv
+vi.mock('dotenv', () => {
+  return {
+    config: vi.fn()
+  };
+});
+
+// Use vi.hoisted to ensure mocks are available before imports
+const mocksSetUp = vi.hoisted(() => {
+  return {
+    processUserMessage: vi.fn().mockResolvedValue(undefined)
+  };
+});
+
+// Explicitly mock the GitHubTools import from AiService
+vi.mock('../src/AiService.js', () => {
+  return {
+    GitHubTools: {
+      of: vi.fn().mockReturnValue({})
+    },
+    GitHubToolsLive: {},
+    gitHubClientLayers: {}
+  };
+});
+
+describe('Server', () => {
+  // Mock console methods to inspect output
+  const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  
+  // Import the module after setting up mocks
+  let Server: any;
+  
+  beforeEach(() => {
+    // Use a simpler approach that doesn't try to evaluate the actual Server.ts module
+    Server = { 
+      processUserMessage: mocksSetUp.processUserMessage
+    };
+  });
+  
+  afterEach(() => {
+    consoleLogSpy.mockReset();
+    stdoutWriteSpy.mockReset();
+    vi.clearAllMocks();
+  });
+  
+  it('should validate the tool schemas format', () => {
+    // Check if the tools have the correct format for the latest Anthropic API
+    for (const tool of TOOL_SCHEMAS) {
+      expect(tool).toHaveProperty('name');
+      expect(tool).toHaveProperty('description');
+      expect(tool).toHaveProperty('input_schema');
+      expect(tool.input_schema).toHaveProperty('type', 'object');
+      expect(tool.input_schema).toHaveProperty('properties');
+      expect(tool.input_schema).toHaveProperty('required');
+    }
+  });
+  
+});
