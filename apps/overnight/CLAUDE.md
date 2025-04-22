@@ -1,0 +1,30 @@
+# Overnight Development Guide
+
+## Project Context
+- This is the Overnight Coding Agent within a monorepo - focus ONLY on `/apps/overnight`
+- Purpose: Terminal-based autonomous agent for processing GitHub issues
+- Uses Effect framework for functional programming patterns
+
+## Build & Run Commands
+- Run dev server: `pnpm dev`
+- Run typechecks: `pnpm check` - ALWAYS run before finishing work
+- Run linter: `pnpm lint` or `pnpm lint-fix`
+- Run tests: `pnpm test -- --run` (use --run to avoid watch mode)
+- Run single test: `pnpm test -- --run "path/to/test.test.ts"`
+- Run tests with coverage: `pnpm coverage`
+
+## Code Style Guidelines
+- **TypeScript**: Strict mode with full type safety
+- **Imports**: Use Effect imports with proper namespacing
+- **Formatting**: 2-space indentation, 120 line width, no semicolons
+- **Naming**: Underscore prefix for unused variables (e.g., `_unused`)
+- **Types**: Use explicit typing rather than `any`
+- **Error Handling**: Use Effect's error handling patterns with proper boundaries
+- **Arrays**: Use generic array types (e.g., `Array<string>`)
+- **Quotes**: Always use double quotes for strings
+
+## Testing Requirements
+- Write unit tests for all core functionality
+- Create GitHub API mocks for testing
+- Test all error handling scenarios
+- Ensure all tests and typechecks pass before committing: `pnpm check && pnpm test -- --run`
