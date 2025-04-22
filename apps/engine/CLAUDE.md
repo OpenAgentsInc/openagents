@@ -15,6 +15,7 @@
 - Run all verification: `pnpm verify` (typecheck + lint + test)
 - Run tests: `pnpm test:run` (non-watch mode)
 - Run single test: `pnpm test -- --run "path/to/test.test.ts"`
+  - Note: IMPORTANT to do it like this, not `pnpm test {filepath}` because that will trigger watch mode
 - Run tests with coverage: `pnpm coverage`
 
 ## Code Style Guidelines
