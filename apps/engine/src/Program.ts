@@ -1,30 +1,20 @@
 import * as NodeContext from "@effect/platform-node/NodeContext"
 import * as crypto from "crypto"
 import * as Effect from "effect/Effect"
-import { createServer } from "http"
+import * as fs from "node:fs"
+import { createServer } from "node:http"
+import * as path from "node:path"
 
-// Create the HTML content
-const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <title>OpenAgents Engine</title>
-  <style>
-    body {
-      background-color: black;
-      color: white;
-      font-family: monospace;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
-  </style>
-</head>
-<body>
-  <h1>Hello world</h1>
-</body>
-</html>`
+// Simple logging functions
+const log = (message: string) => console.log(`[${new Date().toISOString()}] ${message}`)
+const error = (message: string) => console.error(`[${new Date().toISOString()}] ERROR: ${message}`)
+
+// Use process.cwd() to get the current working directory
+// This is more reliable than __dirname when dealing with compiled code
+const publicDir = path.join(process.cwd(), "public")
+
+// Log the resolved public directory path for debugging
+log(`Public directory path: ${publicDir}`)
 
 // Use Effect-style functions with Node.js primitives
 const startServer = Effect.gen(function*(_) {
@@ -34,28 +24,59 @@ const startServer = Effect.gen(function*(_) {
   const server = createServer((req, res) => {
     // Handle HTTP request
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`)
-    const path = url.pathname
+    const urlPath = url.pathname
 
-    if (path === "/") {
-      // Serve HTML for root path
-      res.writeHead(200, { "Content-Type": "text/html" })
-      res.end(htmlContent)
+    if (urlPath === "/") {
+      // Serve the index.html file
+      const indexPath = path.join(publicDir, "index.html")
+      log(`Attempting to serve index.html from: ${indexPath}`)
+
+      if (fs.existsSync(indexPath)) {
+        log(`Found index.html, serving content`)
+        const content = fs.readFileSync(indexPath, "utf8")
+        res.writeHead(200, { "Content-Type": "text/html" })
+        res.end(content)
+      } else {
+        error(`Index file not found at path: ${indexPath}`)
+        res.writeHead(404, { "Content-Type": "text/plain" })
+        res.end("Index file not found")
+      }
     } else {
-      // 404 for all other HTTP paths
-      res.writeHead(404)
-      res.end("Not Found")
+      // Check if the requested file exists in the public directory
+      const filePath = path.join(publicDir, urlPath)
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath)
+        let contentType = "text/plain"
+
+        if (ext === ".html") contentType = "text/html"
+        else if (ext === ".css") contentType = "text/css"
+        else if (ext === ".js") contentType = "text/javascript"
+
+        const content = fs.readFileSync(filePath)
+        res.writeHead(200, { "Content-Type": contentType })
+        res.end(content)
+      } else {
+        // 404 for all other HTTP paths
+        res.writeHead(404, { "Content-Type": "text/plain" })
+        res.end("Not Found")
+      }
     }
   })
 
   // WebSocket handling using basic Node.js
   server.on("upgrade", (req, socket, _head) => {
-    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`)
+    const wsUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`)
+    const wsPath = wsUrl.pathname
 
-    if (url.pathname === "/ws") {
+    log(`WebSocket upgrade request for path: ${wsPath}`)
+
+    if (wsPath === "/ws") {
       // This is a WebSocket upgrade request for /ws path
       const key = req.headers["sec-websocket-key"]
+      log(`WebSocket connection with key: ${key || "none"}`)
 
       if (!key) {
+        error("Missing Sec-WebSocket-Key header")
         socket.write("HTTP/1.1 400 Bad Request\r\n\r\n")
         socket.destroy()
         return
@@ -86,10 +107,12 @@ const startServer = Effect.gen(function*(_) {
       }
 
       // Send welcome message
+      log("Sending welcome message to WebSocket client")
       socket.write(createTextFrame("Connected to WebSocket"))
 
       // Handle data from client
       socket.on("data", (buffer) => {
+        log(`Received WebSocket data of length: ${buffer.length} bytes`)
         // Simple WebSocket frame parsing - handle ping message
         if (buffer.length >= 6 && (buffer[0] & 0x0f) === 0x01) { // Text frame
           const secondByte = buffer[1]
@@ -106,7 +129,11 @@ const startServer = Effect.gen(function*(_) {
             }
 
             // Check for ping message
-            if (data.toString() === "ping") {
+            const message = data.toString()
+            log(`Decoded WebSocket message: "${message}"`)
+
+            if (message === "ping") {
+              log("Received ping message, sending pong response")
               socket.write(createTextFrame("pong"))
             }
           }
@@ -115,7 +142,12 @@ const startServer = Effect.gen(function*(_) {
 
       // Handle connection close
       socket.on("end", () => {
-        // Connection closed
+        log("WebSocket connection closed")
+      })
+
+      // Handle socket errors
+      socket.on("error", (err) => {
+        error(`WebSocket error: ${err.message}`)
       })
     } else {
       // Not a WebSocket upgrade for our path
@@ -127,13 +159,15 @@ const startServer = Effect.gen(function*(_) {
   yield* _(Effect.promise(() =>
     new Promise<void>((resolve) => {
       server.listen(3000, () => {
+        log("Server started listening on port 3000")
         resolve()
       })
     })
   ))
 
-  yield* _(Effect.log("HTTP server started on http://localhost:3000"))
-  yield* _(Effect.log("WebSocket endpoint available at ws://localhost:3000/ws"))
+  // Replace Effect.log with our custom log function
+  log("HTTP server started on http://localhost:3000")
+  log("WebSocket endpoint available at ws://localhost:3000/ws")
 
   // Keep server running
   return yield* _(Effect.never)
