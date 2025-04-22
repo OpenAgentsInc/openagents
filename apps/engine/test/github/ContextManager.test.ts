@@ -239,7 +239,9 @@ describe("ContextManager", () => {
       // Verify immutability
       expect(newState).not.toBe(firstFocusState)
       expect(newState.execution_context).not.toBe(firstFocusState.execution_context)
-      expect(newState.execution_context.current_file_focus).not.toBe(firstFocusState.execution_context.current_file_focus)
+      expect(newState.execution_context.current_file_focus).not.toBe(
+        firstFocusState.execution_context.current_file_focus
+      )
     })
   })
 
@@ -268,7 +270,9 @@ describe("ContextManager", () => {
       // Verify immutability
       expect(newState).not.toBe(initialState)
       expect(newState.execution_context).not.toBe(initialState.execution_context)
-      expect(newState.execution_context.relevant_code_snippets).not.toBe(initialState.execution_context.relevant_code_snippets)
+      expect(newState.execution_context.relevant_code_snippets).not.toBe(
+        initialState.execution_context.relevant_code_snippets
+      )
     })
 
     it("should add multiple code snippets correctly", () => {
@@ -294,7 +298,9 @@ describe("ContextManager", () => {
       // Verify immutability
       expect(newState).not.toBe(firstSnippetState)
       expect(newState.execution_context).not.toBe(firstSnippetState.execution_context)
-      expect(newState.execution_context.relevant_code_snippets).not.toBe(firstSnippetState.execution_context.relevant_code_snippets)
+      expect(newState.execution_context.relevant_code_snippets).not.toBe(
+        firstSnippetState.execution_context.relevant_code_snippets
+      )
     })
   })
 
@@ -325,7 +331,9 @@ describe("ContextManager", () => {
       // Verify immutability
       expect(newState).not.toBe(initialState)
       expect(newState.execution_context).not.toBe(initialState.execution_context)
-      expect(newState.execution_context.external_references).not.toBe(initialState.execution_context.external_references)
+      expect(newState.execution_context.external_references).not.toBe(
+        initialState.execution_context.external_references
+      )
     })
 
     it("should add multiple external references correctly", () => {
@@ -351,7 +359,9 @@ describe("ContextManager", () => {
       // Verify immutability
       expect(newState).not.toBe(firstRefState)
       expect(newState.execution_context).not.toBe(firstRefState.execution_context)
-      expect(newState.execution_context.external_references).not.toBe(firstRefState.execution_context.external_references)
+      expect(newState.execution_context.external_references).not.toBe(
+        firstRefState.execution_context.external_references
+      )
     })
   })
 
@@ -362,9 +372,7 @@ describe("ContextManager", () => {
       const filePath = "src/main.ts"
 
       // Act
-      const newState = runWithContextManager<AgentState>((manager) =>
-        manager.addModifiedFile(initialState, filePath)
-      )
+      const newState = runWithContextManager<AgentState>((manager) => manager.addModifiedFile(initialState, filePath))
 
       // Assert
       const modifiedFiles = newState.execution_context.files_modified_in_session
@@ -374,7 +382,9 @@ describe("ContextManager", () => {
       // Verify immutability
       expect(newState).not.toBe(initialState)
       expect(newState.execution_context).not.toBe(initialState.execution_context)
-      expect(newState.execution_context.files_modified_in_session).not.toBe(initialState.execution_context.files_modified_in_session)
+      expect(newState.execution_context.files_modified_in_session).not.toBe(
+        initialState.execution_context.files_modified_in_session
+      )
     })
 
     it("should not add duplicate modified files", () => {
@@ -388,9 +398,7 @@ describe("ContextManager", () => {
       )
 
       // Act - try to add the same file again
-      const newState = runWithContextManager<AgentState>((manager) =>
-        manager.addModifiedFile(firstAddState, filePath)
-      )
+      const newState = runWithContextManager<AgentState>((manager) => manager.addModifiedFile(firstAddState, filePath))
 
       // Assert
       const modifiedFiles = newState.execution_context.files_modified_in_session
@@ -426,7 +434,9 @@ describe("ContextManager", () => {
       // Verify immutability
       expect(newState).not.toBe(firstFileState)
       expect(newState.execution_context).not.toBe(firstFileState.execution_context)
-      expect(newState.execution_context.files_modified_in_session).not.toBe(firstFileState.execution_context.files_modified_in_session)
+      expect(newState.execution_context.files_modified_in_session).not.toBe(
+        firstFileState.execution_context.files_modified_in_session
+      )
     })
   })
 
@@ -441,9 +451,7 @@ describe("ContextManager", () => {
       )
 
       // Act
-      const newState = runWithContextManager<AgentState>((manager) =>
-        manager.clearFileFocus(stateWithFocus)
-      )
+      const newState = runWithContextManager<AgentState>((manager) => manager.clearFileFocus(stateWithFocus))
 
       // Assert
       expect(newState.execution_context.current_file_focus).toBeNull()
@@ -460,9 +468,7 @@ describe("ContextManager", () => {
       expect(initialState.execution_context.current_file_focus).toBeNull()
 
       // Act
-      const newState = runWithContextManager<AgentState>((manager) =>
-        manager.clearFileFocus(initialState)
-      )
+      const newState = runWithContextManager<AgentState>((manager) => manager.clearFileFocus(initialState))
 
       // Assert
       expect(newState.execution_context.current_file_focus).toBeNull()

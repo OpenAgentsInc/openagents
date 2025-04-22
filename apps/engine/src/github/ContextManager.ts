@@ -83,14 +83,14 @@ export class ContextManager extends Effect.Tag("ContextManager")<
       filePath: string,
       relevantLines: ReadonlyArray<number>
     ) => Effect.Effect<AgentState>
-    
+
     addCodeSnippet: (
       state: AgentState,
       filePath: string,
       snippet: string,
       reason: string
     ) => Effect.Effect<AgentState>
-    
+
     addExternalReference: (
       state: AgentState,
       type: string,
@@ -98,12 +98,12 @@ export class ContextManager extends Effect.Tag("ContextManager")<
       relationship: string,
       source: string
     ) => Effect.Effect<AgentState>
-    
+
     addModifiedFile: (
       state: AgentState,
       filePath: string
     ) => Effect.Effect<AgentState>
-    
+
     clearFileFocus: (
       state: AgentState
     ) => Effect.Effect<AgentState>
@@ -118,44 +118,46 @@ const contextManagerImpl = {
     state: AgentState,
     filePath: string,
     relevantLines: ReadonlyArray<number>
-  ) => Effect.sync(() => {
-    const newFileFocus: FileFocus = {
-      path: filePath,
-      relevant_lines: [...relevantLines]
-    }
-
-    return {
-      ...state,
-      execution_context: {
-        ...state.execution_context,
-        current_file_focus: newFileFocus
+  ) =>
+    Effect.sync(() => {
+      const newFileFocus: FileFocus = {
+        path: filePath,
+        relevant_lines: [...relevantLines]
       }
-    }
-  }),
+
+      return {
+        ...state,
+        execution_context: {
+          ...state.execution_context,
+          current_file_focus: newFileFocus
+        }
+      }
+    }),
 
   addCodeSnippet: (
     state: AgentState,
     filePath: string,
     snippet: string,
     reason: string
-  ) => Effect.sync(() => {
-    const newSnippet: CodeSnippet = {
-      file_path: filePath,
-      snippet,
-      reason
-    }
-
-    return {
-      ...state,
-      execution_context: {
-        ...state.execution_context,
-        relevant_code_snippets: [
-          ...state.execution_context.relevant_code_snippets,
-          newSnippet
-        ]
+  ) =>
+    Effect.sync(() => {
+      const newSnippet: CodeSnippet = {
+        file_path: filePath,
+        snippet,
+        reason
       }
-    }
-  }),
+
+      return {
+        ...state,
+        execution_context: {
+          ...state.execution_context,
+          relevant_code_snippets: [
+            ...state.execution_context.relevant_code_snippets,
+            newSnippet
+          ]
+        }
+      }
+    }),
 
   addExternalReference: (
     state: AgentState,
@@ -163,52 +165,55 @@ const contextManagerImpl = {
     identifier: string,
     relationship: string,
     source: string
-  ) => Effect.sync(() => {
-    const newReference: ExternalReference = {
-      type,
-      identifier,
-      relationship,
-      source
-    }
-
-    return {
-      ...state,
-      execution_context: {
-        ...state.execution_context,
-        external_references: [
-          ...state.execution_context.external_references,
-          newReference
-        ]
+  ) =>
+    Effect.sync(() => {
+      const newReference: ExternalReference = {
+        type,
+        identifier,
+        relationship,
+        source
       }
-    }
-  }),
+
+      return {
+        ...state,
+        execution_context: {
+          ...state.execution_context,
+          external_references: [
+            ...state.execution_context.external_references,
+            newReference
+          ]
+        }
+      }
+    }),
 
   addModifiedFile: (
     state: AgentState,
     filePath: string
-  ) => Effect.sync(() => {
-    // Use a Set to avoid duplicates
-    const updatedFiles = new Set(state.execution_context.files_modified_in_session)
-    updatedFiles.add(filePath)
+  ) =>
+    Effect.sync(() => {
+      // Use a Set to avoid duplicates
+      const updatedFiles = new Set(state.execution_context.files_modified_in_session)
+      updatedFiles.add(filePath)
 
-    return {
-      ...state,
-      execution_context: {
-        ...state.execution_context,
-        files_modified_in_session: Array.from(updatedFiles)
+      return {
+        ...state,
+        execution_context: {
+          ...state.execution_context,
+          files_modified_in_session: Array.from(updatedFiles)
+        }
       }
-    }
-  }),
+    }),
 
   clearFileFocus: (
     state: AgentState
-  ) => Effect.sync(() => ({
-    ...state,
-    execution_context: {
-      ...state.execution_context,
-      current_file_focus: null
-    }
-  }))
+  ) =>
+    Effect.sync(() => ({
+      ...state,
+      execution_context: {
+        ...state.execution_context,
+        current_file_focus: null
+      }
+    }))
 }
 
 /**
