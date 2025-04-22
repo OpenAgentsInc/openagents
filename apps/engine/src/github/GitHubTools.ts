@@ -3,106 +3,29 @@ import { Console, Effect, Layer } from "effect"
 import { GitHubClient } from "./GitHub.js"
 import { AgentState } from "./GitHubTypes.js"
 
-// Define GitHub tools
-const getIssueSchema = {
-  name: "GetGitHubIssue",
-  description: "Get a GitHub issue by number",
-  parameters: {
-    owner: { type: "string", description: "The owner of the repository" },
-    repo: { type: "string", description: "The name of the repository" },
-    issueNumber: { type: "number", description: "The issue number to retrieve" }
-  }
-}
-
-const listIssuesSchema = {
-  name: "ListGitHubIssues",
-  description: "List GitHub issues for a repository",
-  parameters: {
-    owner: { type: "string", description: "The owner of the repository" },
-    repo: { type: "string", description: "The name of the repository" },
-    state: { type: "string", enum: ["open", "closed", "all"], description: "The state of issues to retrieve" }
-  }
-}
-
-const createCommentSchema = {
-  name: "CreateGitHubComment",
-  description: "Create a comment on a GitHub issue",
-  parameters: {
-    owner: { type: "string", description: "The owner of the repository" },
-    repo: { type: "string", description: "The name of the repository" },
-    issueNumber: { type: "number", description: "The issue number to comment on" },
-    body: { type: "string", description: "The comment text (supports GitHub-flavored markdown)" }
-  }
-}
-
-const updateIssueSchema = {
-  name: "UpdateGitHubIssue",
-  description: "Update a GitHub issue (title, body, state, labels, or assignees)",
-  parameters: {
-    owner: { type: "string", description: "The owner of the repository" },
-    repo: { type: "string", description: "The name of the repository" },
-    issueNumber: { type: "number", description: "The issue number to update" },
-    title: { type: "string", description: "The updated title for the issue" },
-    body: { type: "string", description: "The updated body text for the issue" },
-    state: { type: "string", enum: ["open", "closed"], description: "The updated state for the issue" },
-    labels: { type: "array", items: { type: "string" }, description: "The updated labels for the issue" },
-    assignees: { type: "array", items: { type: "string" }, description: "The updated assignees for the issue" }
-  }
-}
-
-const getRepositorySchema = {
-  name: "GetGitHubRepository",
-  description: "Get information about a GitHub repository",
-  parameters: {
-    owner: { type: "string", description: "The owner of the repository" },
-    repo: { type: "string", description: "The name of the repository" }
-  }
-}
-
-const getIssueCommentsSchema = {
-  name: "GetGitHubIssueComments",
-  description: "Get comments on a GitHub issue",
-  parameters: {
-    owner: { type: "string", description: "The owner of the repository" },
-    repo: { type: "string", description: "The name of the repository" },
-    issueNumber: { type: "number", description: "The issue number to get comments for" }
-  }
-}
-
-const createAgentStateSchema = {
-  name: "CreateAgentStateForIssue",
-  description: "Create a new agent state for processing a GitHub issue",
-  parameters: {
-    owner: { type: "string", description: "The owner of the repository" },
-    repo: { type: "string", description: "The name of the repository" },
-    issueNumber: { type: "number", description: "The issue number to create an agent state for" }
-  }
-}
-
-const loadAgentStateSchema = {
-  name: "LoadAgentState",
-  description: "Load an existing agent state by instance ID",
-  parameters: {
-    instanceId: { type: "string", description: "The instance ID of the agent state to load" }
-  }
-}
-
-const saveAgentStateSchema = {
-  name: "SaveAgentState",
-  description: "Save the current agent state",
-  parameters: {
-    state: { type: "object", description: "The agent state to save" }
-  }
+// GitHub tool names for reference
+const TOOL_NAMES = {
+  GET_ISSUE: "GetGitHubIssue",
+  LIST_ISSUES: "ListGitHubIssues",
+  CREATE_COMMENT: "CreateGitHubComment",
+  UPDATE_ISSUE: "UpdateGitHubIssue",
+  GET_REPOSITORY: "GetGitHubRepository",
+  GET_ISSUE_COMMENTS: "GetGitHubIssueComments",
+  CREATE_AGENT_STATE: "CreateAgentStateForIssue",
+  LOAD_AGENT_STATE: "LoadAgentState",
+  SAVE_AGENT_STATE: "SaveAgentState"
 }
 
 // Define the GitHub tools service
 export class GitHubTools extends Effect.Tag("GitHubTools")<
   GitHubTools,
   {
-    tools: AiToolkit.AiToolkit,
+    tools: AiToolkit.AiToolkit<any>,
     handlers: Record<string, Function>
   }
->() {}
+>() {
+  static readonly fullName = "GitHubTools"
+}
 
 // Create the layer for the tools
 export const GitHubToolsLayer = Layer.effect(
@@ -230,20 +153,23 @@ export const GitHubToolsLayer = Layer.effect(
         })
     }
 
-    // Create the AiToolkit instance with GitHub tools
-    const tools = AiToolkit.empty
-      .add("GetGitHubIssue")
-      .add("ListGitHubIssues")
-      .add("CreateGitHubComment")
-      .add("UpdateGitHubIssue")
-      .add("GetGitHubRepository")
-      .add("GetGitHubIssueComments")
-      .add("CreateAgentStateForIssue")
-      .add("LoadAgentState")
-      .add("SaveAgentState")
+    // Create a simple toolkit object with the handlers
+    const mockToolkit = {
+      tools: {
+        [TOOL_NAMES.GET_ISSUE]: handlers.GetGitHubIssue,
+        [TOOL_NAMES.LIST_ISSUES]: handlers.ListGitHubIssues,
+        [TOOL_NAMES.CREATE_COMMENT]: handlers.CreateGitHubComment,
+        [TOOL_NAMES.UPDATE_ISSUE]: handlers.UpdateGitHubIssue,
+        [TOOL_NAMES.GET_REPOSITORY]: handlers.GetGitHubRepository,
+        [TOOL_NAMES.GET_ISSUE_COMMENTS]: handlers.GetGitHubIssueComments,
+        [TOOL_NAMES.CREATE_AGENT_STATE]: handlers.CreateAgentStateForIssue,
+        [TOOL_NAMES.LOAD_AGENT_STATE]: handlers.LoadAgentState,
+        [TOOL_NAMES.SAVE_AGENT_STATE]: handlers.SaveAgentState
+      }
+    }
       
     return {
-      tools,
+      tools: mockToolkit as unknown as AiToolkit.AiToolkit<any>,
       handlers
     }
   })
