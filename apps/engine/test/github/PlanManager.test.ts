@@ -93,11 +93,14 @@ const createTestState = (): AgentState => ({
 
 describe("PlanManager", () => {
   // Helper to run effects with the PlanManager service
-  const runWithPlanManager = <A, E>(effect: (planManager: PlanManager) => Effect.Effect<A, E>) => {
-    return Effect.runSync(Effect.provide(
-      Effect.flatMap(PlanManager, effect),
-      PlanManagerLayer
-    ))
+  const runWithPlanManager = <A, E>(effectToRun: (planManager: PlanManager) => Effect.Effect<A, E>) => {
+    // Get the actual PlanManager instance from the layer
+    const planManager = PlanManagerLayer.build.pipe(
+      Effect.map(layer => layer(PlanManager))
+    ).pipe(Effect.runSync)
+    
+    // Run the effect with the actual PlanManager instance
+    return Effect.runSync(effectToRun(planManager))
   }
 
   describe("addPlanStep", () => {
@@ -270,23 +273,37 @@ describe("PlanManager", () => {
     it("should return the current step based on current_step_index", () => {
       // Arrange
       const initialState = createTestState()
-      initialState.current_task.current_step_index = 0
+      // Create a new state with the required index
+      const testState = {
+        ...initialState,
+        current_task: {
+          ...initialState.current_task,
+          current_step_index: 0
+        }
+      }
 
       // Act
-      const step = runWithPlanManager(planManager => planManager.getCurrentStep(initialState))
+      const step = runWithPlanManager(planManager => planManager.getCurrentStep(testState))
 
       // Assert
-      expect(step).toBe(initialState.plan[0])
+      expect(step).toBe(testState.plan[0])
     })
 
     it("should fail when current_step_index is invalid", () => {
       // Arrange
       const initialState = createTestState()
-      initialState.current_task.current_step_index = 999 // Invalid index
+      // Create a new state with an invalid index
+      const testState = {
+        ...initialState,
+        current_task: {
+          ...initialState.current_task,
+          current_step_index: 999 // Invalid index
+        }
+      }
 
       // Act & Assert
       expect(() => {
-        runWithPlanManager(planManager => planManager.getCurrentStep(initialState))
+        runWithPlanManager(planManager => planManager.getCurrentStep(testState))
       }).toThrow(/Invalid current_step_index/)
     })
   })

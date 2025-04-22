@@ -20,8 +20,7 @@ vi.mock("node:fs", () => ({
 }))
 
 // Mock the Effect.logWarning function
-const originalLogWarning = Effect.logWarning
-vi.spyOn(Effect, 'logWarning').mockImplementation((message) => Effect.succeed(undefined))
+const logWarningSpy = vi.spyOn(Effect, 'logWarning').mockImplementation(() => Effect.void)
 
 // Create a valid test state fixture
 const createValidTestState = (): AgentState => ({
@@ -112,13 +111,8 @@ const createValidTestState = (): AgentState => ({
 })
 
 describe("State Storage", () => {
-  const mockGitHubIssue = {
-    title: "Test Issue",
-    body: "This is a test issue description",
-    state: "open",
-    html_url: "https://github.com/user/repo/issues/123",
-    labels: [{ name: "bug" }]
-  }
+  // Test state creation helpers
+  const getTestStatePath = (instanceId: string) => path.join(process.cwd(), "state", `${instanceId}.json`)
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -260,11 +254,15 @@ describe("State Storage", () => {
     
     it("should log warning but succeed when schema version differs", async () => {
       // Arrange
-      const validState = createValidTestState()
-      // Change schema version
-      validState.agent_info.state_schema_version = "1.0"
-      const instanceId = validState.agent_info.instance_id
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(validState))
+      const oldVersionState = {
+        ...createValidTestState(),
+        agent_info: {
+          ...createValidTestState().agent_info,
+          state_schema_version: "1.0"
+        }
+      }
+      const instanceId = oldVersionState.agent_info.instance_id
+      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(oldVersionState))
       
       // Act
       const result = await Effect.runPromise(
@@ -275,8 +273,8 @@ describe("State Storage", () => {
       )
       
       // Assert
-      expect(Effect.logWarning).toHaveBeenCalled()
-      expect(result).toEqual(validState)
+      expect(logWarningSpy).toHaveBeenCalled()
+      expect(result).toEqual(oldVersionState)
     })
   })
 })

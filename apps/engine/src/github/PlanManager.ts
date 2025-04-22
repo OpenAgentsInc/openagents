@@ -52,7 +52,7 @@ export interface PlanManager {
 /**
  * Effect Tag for the PlanManager service
  */
-export const PlanManager = Effect.Tag<PlanManager>()
+export const PlanManager = Effect.Tag<PlanManager>("PlanManager")
 
 /**
  * Layer that provides the PlanManager implementation

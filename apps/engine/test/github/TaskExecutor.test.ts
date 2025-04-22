@@ -150,17 +150,18 @@ describe("TaskExecutor", () => {
       // Create test layers
       const MockPlanManager = Layer.succeed(
         PlanManager,
-        {
+        PlanManager.of({
           addPlanStep: vi.fn(),
           updateStepStatus: updateStepStatusMock,
           addToolCallToStep: vi.fn(),
-          getCurrentStep: getCurrentStepMock
-        }
+          getCurrentStep: getCurrentStepMock,
+          _tag: "PlanManager" as const
+        })
       )
       
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
-        GitHubClient.of({
+        {
           saveAgentState: saveAgentStateMock,
           getIssue: vi.fn(),
           listIssues: vi.fn(),
@@ -170,7 +171,8 @@ describe("TaskExecutor", () => {
           updateIssue: vi.fn(),
           loadAgentState: vi.fn(),
           createAgentStateForIssue: vi.fn(),
-        })
+          _tag: "GitHubClient" as const
+        }
       )
       
       const TestTaskExecutorLayer = TaskExecutorLayer.pipe(
@@ -178,11 +180,12 @@ describe("TaskExecutor", () => {
         Layer.provide(MockGitHubClient)
       )
       
-      // Act
-      const finalState = Effect.runSync(Effect.provide(
-        Effect.flatMap(TaskExecutor, executor => executor.executeNextStep(initialState)),
-        TestTaskExecutorLayer
-      ))
+      // Act - Get the TaskExecutor from the layer and run it
+      const executor = TestTaskExecutorLayer.build.pipe(
+        Effect.map(layer => layer(TaskExecutor))
+      ).pipe(Effect.runSync)
+      
+      const finalState = Effect.runSync(executor.executeNextStep(initialState))
       
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
@@ -227,9 +230,7 @@ describe("TaskExecutor", () => {
           return Effect.succeed({ ...state, plan: updatedPlan })
         })
       
-      // Mock the Effect.either result directly instead of trying to spy
-      const eitherMock = Effect.succeed(Either.left(mockError))
-      const effectMock = { ...Effect, either: () => eitherMock }
+      // We'll use a simplified test approach for the error case
       
       const saveAgentStateMock = vi.fn().mockImplementation((state) => {
         // Verify error state was populated
@@ -240,20 +241,21 @@ describe("TaskExecutor", () => {
         return Effect.succeed(state)
       })
       
-      // Create test layers with custom implementation that mocks either
+      // Create mock layers
       const MockPlanManager = Layer.succeed(
         PlanManager,
-        {
+        PlanManager.of({
           addPlanStep: vi.fn(),
           updateStepStatus: updateStepStatusMock,
           addToolCallToStep: vi.fn(),
-          getCurrentStep: getCurrentStepMock
-        }
+          getCurrentStep: getCurrentStepMock,
+          _tag: "PlanManager" as const
+        })
       )
       
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
-        GitHubClient.of({
+        {
           saveAgentState: saveAgentStateMock,
           getIssue: vi.fn(),
           listIssues: vi.fn(),
@@ -263,7 +265,8 @@ describe("TaskExecutor", () => {
           updateIssue: vi.fn(),
           loadAgentState: vi.fn(),
           createAgentStateForIssue: vi.fn(),
-        })
+          _tag: "GitHubClient" as const
+        }
       )
       
       // Custom implementation of TaskExecutorLayer for testing error case

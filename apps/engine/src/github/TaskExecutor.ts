@@ -104,6 +104,6 @@ export const TaskExecutorLayer = Layer.effect(
         // 6. Return the final state
         return workingState
       })
-    }
+    })
   })
 )
