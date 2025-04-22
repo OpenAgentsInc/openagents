@@ -1,5 +1,5 @@
-import { Effect, Either, Schema } from "effect"
 import { describe, expect, it } from "@effect/vitest"
+import { Effect, Either, Schema } from "effect"
 import {
   AgentInfo,
   AgentState,
@@ -26,7 +26,7 @@ import {
 } from "../../src/github/AgentStateTypes.js"
 
 // Helper function to wrap Schema.decodeUnknown in an Effect that we can test more easily
-function decodeSchema<A>(schema: Schema.Schema<A, any, any>, data: unknown) {
+function decodeSchema<A>(schema: Schema.Schema<A, any, never>, data: unknown) {
   return Schema.decodeUnknown(schema)(data)
 }
 
@@ -72,7 +72,7 @@ describe("AgentStateTypes - Schema Validation", () => {
     it("should fail if any timestamp is missing", () => {
       const invalidData = {
         created_at: "2024-03-20T10:00:00Z",
-        last_saved_at: "2024-03-20T11:00:00Z",
+        last_saved_at: "2024-03-20T11:00:00Z"
         // Missing last_action_at
       }
 
@@ -399,7 +399,7 @@ describe("AgentStateTypes - Schema Validation", () => {
     // This test was causing an error as tool_calls seems to be required in the schema
     // Adjusted to check the error instead
     it("should fail when tool_calls is missing", () => {
-      const { tool_calls, ...messageWithoutTools } = validConversationMessage
+      const { tool_calls: _toolCalls, ...messageWithoutTools } = validConversationMessage
       const result = Effect.runSync(Effect.either(decodeSchema(ConversationMessage, messageWithoutTools)))
       expect(Either.isLeft(result)).toBe(true)
     })
@@ -548,7 +548,6 @@ describe("AgentStateTypes - Schema Validation", () => {
 
     it("should accept valid literal values for type", () => {
       const validTypes = ["api_error", "tool_error", "internal"]
-      
       for (const type of validTypes) {
         const error = { ...validLastError, type }
         const decoded = Effect.runSync(decodeSchema(LastError, error))
@@ -561,7 +560,6 @@ describe("AgentStateTypes - Schema Validation", () => {
         ...validLastError,
         type: "unknown_error" // Not in the allowed literals
       }
-      
       const result = Effect.runSync(Effect.either(decodeSchema(LastError, invalidError)))
       expect(Either.isLeft(result)).toBe(true)
     })
@@ -749,8 +747,7 @@ describe("AgentStateTypes - Schema Validation", () => {
 
     it("should fail if a required top-level field is missing", () => {
       // Create a copy without the "current_task" field
-      const { current_task, ...invalidState } = validAgentState
-      
+      const { current_task: _currentTask, ...invalidState } = validAgentState
       const result = Effect.runSync(Effect.either(decodeSchema(AgentState, invalidState)))
       expect(Either.isLeft(result)).toBe(true)
     })
@@ -766,7 +763,6 @@ describe("AgentStateTypes - Schema Validation", () => {
           state_schema_version: "1.1"
         }
       }
-      
       const result = Effect.runSync(Effect.either(decodeSchema(AgentState, invalidAgentState)))
       expect(Either.isLeft(result)).toBe(true)
     })

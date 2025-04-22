@@ -1,7 +1,7 @@
 import type { AiToolkit } from "@effect/ai"
 import { Console, Effect, Layer } from "effect"
+import type { AgentState } from "./AgentStateTypes.js"
 import { GitHubClient } from "./GitHub.js"
-import type { AgentState } from "./GitHubTypes.js"
 
 // GitHub tool names for reference
 const TOOL_NAMES = {

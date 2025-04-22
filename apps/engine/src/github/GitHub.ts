@@ -3,8 +3,49 @@ import { NodeHttpClient } from "@effect/platform-node"
 import { Config, Console, Effect, Schema } from "effect"
 import * as fs from "node:fs"
 import * as path from "node:path"
-import type { AgentState } from "./GitHubTypes.js"
+import { AgentState as AgentStateSchema } from "./AgentStateTypes.js"
+import type { AgentState } from "./AgentStateTypes.js"
 import { GitHubIssue, GitHubIssueComment, GitHubRepository } from "./GitHubTypes.js"
+
+/**
+ * Error class for state storage operations
+ */
+export class StateStorageError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "StateStorageError"
+  }
+}
+
+/**
+ * Error class for state not found
+ */
+export class StateNotFoundError extends StateStorageError {
+  constructor(instanceId: string) {
+    super(`State file for ${instanceId} not found`)
+    this.name = "StateNotFoundError"
+  }
+}
+
+/**
+ * Error class for state parsing errors
+ */
+export class StateParseError extends StateStorageError {
+  constructor(message: string) {
+    super(`Failed to parse state: ${message}`)
+    this.name = "StateParseError"
+  }
+}
+
+/**
+ * Error class for state validation errors
+ */
+export class StateValidationError extends StateStorageError {
+  constructor(message: string) {
+    super(`State validation failed: ${message}`)
+    this.name = "StateValidationError"
+  }
+}
 
 /**
  * GitHub API client service implementation
@@ -140,34 +181,51 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
     )
 
     /**
+     * Ensure the state directory exists
+     */
+    const ensureStateDirectory = Effect.fn("GitHubClient.ensureStateDirectory")(
+      function*() {
+        const stateDir = path.join(process.cwd(), "state")
+
+        return yield* Effect.try({
+          try: () => {
+            if (!fs.existsSync(stateDir)) {
+              fs.mkdirSync(stateDir, { recursive: true })
+              Effect.logInfo("Created state directory")
+            }
+            return stateDir
+          },
+          catch: (error) => new StateStorageError(`Failed to create state directory: ${error}`)
+        })
+      }
+    )
+
+    /**
      * Save agent state to a local JSON file
      */
     const saveAgentState = Effect.fn("GitHubClient.saveAgentState")(
       function*(state: AgentState) {
-        const stateDir = path.join(process.cwd(), "state")
+        // First ensure state directory exists
+        const stateDir = yield* ensureStateDirectory()
         const filePath = path.join(stateDir, `${state.agent_info.instance_id}.json`)
+
+        // Create a new state object with updated timestamp (immutability)
+        const updatedState = {
+          ...state,
+          timestamps: {
+            ...state.timestamps,
+            last_saved_at: new Date().toISOString()
+          }
+        }
 
         return yield* Effect.try({
           try: () => {
-            // Ensure state directory exists
-            if (!fs.existsSync(stateDir)) {
-              fs.mkdirSync(stateDir, { recursive: true })
-            }
-
-            // Update the last saved timestamp
-            const updatedState = {
-              ...state,
-              timestamps: {
-                ...state.timestamps,
-                last_saved_at: new Date().toISOString()
-              }
-            }
-
             // Write state to file
             fs.writeFileSync(filePath, JSON.stringify(updatedState, null, 2))
-            return true
+            Effect.logInfo(`Saved agent state to ${filePath}`)
+            return updatedState
           },
-          catch: (error) => new Error(`Failed to save agent state: ${error}`)
+          catch: (error) => new StateStorageError(`Failed to save agent state: ${error}`)
         }).pipe(
           Effect.tapError((error) => Console.error(error.message))
         )
@@ -181,20 +239,44 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
       function*(instanceId: string) {
         const filePath = path.join(process.cwd(), "state", `${instanceId}.json`)
 
-        return yield* Effect.try({
-          try: () => {
-            if (!fs.existsSync(filePath)) {
-              throw new Error(`State file for ${instanceId} not found`)
-            }
+        // Check if file exists
+        const fileExists = yield* Effect.try({
+          try: () => fs.existsSync(filePath),
+          catch: (error) => new StateStorageError(`Error checking if state file exists: ${error}`)
+        })
 
+        if (!fileExists) {
+          return yield* Effect.fail(new StateNotFoundError(instanceId))
+        }
+
+        // Read file and parse JSON
+        const parsedJson = yield* Effect.try({
+          try: () => {
             const stateJson = fs.readFileSync(filePath, "utf-8")
-            const state = JSON.parse(stateJson)
-            return state as AgentState
+            return JSON.parse(stateJson)
           },
-          catch: (error) => new Error(`Failed to load agent state: ${error}`)
+          catch: (error) => new StateParseError(String(error))
         }).pipe(
           Effect.tapError((error) => Console.error(error.message))
         )
+
+        // Validate against schema
+        const validatedState = yield* Schema.decodeUnknown(AgentStateSchema)(parsedJson).pipe(
+          Effect.catchAll((error) => {
+            return Effect.fail(new StateValidationError(String(error)))
+          }),
+          Effect.tapError((error) => Console.error(error.message))
+        )
+
+        // Check schema version
+        if (validatedState.agent_info.state_schema_version !== "1.1") {
+          yield* Effect.logWarning(
+            `Loaded state with schema version ${validatedState.agent_info.state_schema_version}, expected 1.1. Migration might be needed.`
+          )
+        }
+
+        yield* Effect.logInfo(`Loaded agent state for ${instanceId}`)
+        return validatedState
       }
     )
 
@@ -216,7 +298,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
             type: "solver",
             version: "1.0.0",
             instance_id: instanceId,
-            state_schema_version: "1.0"
+            state_schema_version: "1.1" // Updated to match expected version
           },
           timestamps: {
             created_at: now,
@@ -298,10 +380,19 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
           }
         }
 
-        // Save the initial state
-        yield* saveAgentState(initialState)
+        // Validate the initial state against the schema
+        yield* Schema.decodeUnknown(AgentStateSchema)(initialState).pipe(
+          Effect.catchAll((error) => {
+            return Effect.fail(new StateValidationError(`Invalid initial state: ${error}`))
+          }),
+          Effect.tapError((error) => Console.error(error.message))
+        )
 
-        return initialState
+        // Save the initial state
+        const savedState = yield* saveAgentState(initialState)
+
+        yield* Effect.logInfo(`Created new agent state for issue #${issueNumber} with ID ${instanceId}`)
+        return savedState
       }
     )
 
