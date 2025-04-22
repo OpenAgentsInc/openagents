@@ -108,7 +108,10 @@ const startServer = Effect.gen(function*(_) {
 
       // Send welcome message
       log("Sending welcome message to WebSocket client")
-      socket.write(createTextFrame("Connected to WebSocket"))
+      // Create HTML for the welcome message - HTMX will swap this by ID
+      const welcomeHtml =
+        `<div id="messages" hx-swap-oob="beforeend"><div class="message">Connected to WebSocket</div></div>`
+      socket.write(createTextFrame(welcomeHtml))
 
       // Handle data from client
       socket.on("data", (buffer) => {
@@ -132,9 +135,36 @@ const startServer = Effect.gen(function*(_) {
             const message = data.toString()
             log(`Decoded WebSocket message: "${message}"`)
 
+            // Get current timestamp for the message
+            const timestamp = new Date().toLocaleTimeString()
+
             if (message === "ping") {
               log("Received ping message, sending pong response")
-              socket.write(createTextFrame("pong"))
+
+              // Create HTML response for pong - add to messages and update response area
+              const pongHtml =
+                `<div id="messages" hx-swap-oob="beforeend"><div class="message">Ping received at ${timestamp}</div></div><div id="response" hx-swap-oob="innerHTML"><div class="message received">PONG! (Response time: ${timestamp})</div></div>`
+              socket.write(createTextFrame(pongHtml))
+            } else if (message.startsWith("{") && message.includes("message")) {
+              // This is likely a message from the form
+              let parsedMessage
+
+              try {
+                parsedMessage = JSON.parse(message)
+              } catch {
+                // Using catch without a parameter to avoid linting errors
+                log(`Failed to parse message: ${message}`)
+                return
+              }
+
+              if (parsedMessage && parsedMessage.message) {
+                log(`Received form message: ${parsedMessage.message}`)
+
+                // Create HTML response for user message
+                const messageHtml =
+                  `<div id="messages" hx-swap-oob="beforeend"><div class="message">You: ${parsedMessage.message}</div><div class="message received">Server: Received your message at ${timestamp}</div></div>`
+                socket.write(createTextFrame(messageHtml))
+              }
             }
           }
         }

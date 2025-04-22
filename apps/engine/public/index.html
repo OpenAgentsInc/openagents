@@ -26,12 +26,83 @@
 <body hx-ext="ws">
   <div ws-connect="ws://localhost:3000/ws">
     <h1>WebSocket Test</h1>
-    <div id="messages"></div>
+    <div id="messages" class="message-container"></div>
+    
+    <div class="controls">
+      <button id="ping-btn" ws-send="ping">Send Ping</button>
+      <div id="response" class="response-area">Response will appear here...</div>
+    </div>
+    
     <form ws-send hx-trigger="submit" hx-prevent-default="true">
       <input type="text" name="message" placeholder="Type a message...">
       <button type="submit">Send</button>
     </form>
   </div>
+  
+  <style>
+    .message-container {
+      margin: 20px 0;
+      padding: 10px;
+      border: 1px solid #555;
+      min-height: 100px;
+      max-height: 300px;
+      overflow-y: auto;
+      width: 100%;
+    }
+    
+    .controls {
+      margin: 20px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    
+    .response-area {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #222;
+      border-radius: 4px;
+      min-height: 40px;
+    }
+    
+    .message {
+      margin: 5px 0;
+      padding: 5px;
+      background-color: #333;
+      border-radius: 4px;
+    }
+    
+    .received {
+      color: #77ff77;
+    }
+    
+    button {
+      background-color: #333;
+      color: white;
+      border: 1px solid #555;
+      padding: 8px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    
+    button:hover {
+      background-color: #444;
+    }
+    
+    input {
+      background-color: #333;
+      color: white;
+      border: 1px solid #555;
+      padding: 8px;
+      margin-right: 10px;
+      border-radius: 4px;
+    }
+    
+    form {
+      margin-top: 20px;
+      display: flex;
+    }
+  </style>
 </body>
 
 </html>
