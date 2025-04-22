@@ -50,9 +50,11 @@ The Overnight Coding Agent is a terminal-based application built with the Effect
    - Implement proper dependency injection patterns
 
 2. **GitHub API Client**
-   - Create typed wrappers around Octokit methods
+   - Create typed wrappers for GitHub API using Effect's Http client
+   - Implement tool requests and TypeSafe schemas for GitHub interactions
    - Implement pagination handling for API responses
-   - Ensure proper error handling for API failures
+   - Ensure proper error handling for API failures (rate limits, not found, etc)
+   - Use Effect's Context and Layer patterns for dependency injection
 
 3. **Logging & Monitoring**
    - Structured logging with configurable levels
@@ -91,7 +93,10 @@ The Overnight Coding Agent is a terminal-based application built with the Effect
 1. **GitHub API Client Tests**
    - Authentication flow tests
    - Rate limit handling tests
-   - Error response handling tests
+   - Error response handling tests (file not found, server errors) 
+   - Schema validation tests for responses
+   - Mock HTTP client tests for GitHub API interactions
+   - Tool request schema tests
    - Pagination tests
 
 2. **Issue Processing Tests**
