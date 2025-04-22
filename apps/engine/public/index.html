@@ -1,29 +1,190 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-  <title>OpenAgents Engine</title>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dad Joke Expander | Effect Streaming Demo</title>
   <script src="/htmx.min.js"></script>
-  <script src="/ws.js"></script>
-  <script src="/tailwind.js"></script>
-  <link rel="stylesheet" href="/styles.css" type="text/tailwindcss">
+  <script src="/sse.js"></script>
+  <style>
+    /* Add Berkeley Mono font */
+    @font-face {
+      font-family: 'Berkeley Mono';
+      src: url('/fonts/BerkeleyMono-Regular.woff2') format('woff2'),
+        url('/fonts/BerkeleyMono-Regular.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'Berkeley Mono';
+      src: url('/fonts/BerkeleyMono-Bold.woff2') format('woff2'),
+        url('/fonts/BerkeleyMono-Bold.woff') format('woff');
+      font-weight: bold;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'Berkeley Mono';
+      src: url('/fonts/BerkeleyMono-Italic.woff2') format('woff2'),
+        url('/fonts/BerkeleyMono-Italic.woff') format('woff');
+      font-weight: normal;
+      font-style: italic;
+      font-display: swap;
+    }
+
+    @font-face {
+      font-family: 'Berkeley Mono';
+      src: url('/fonts/BerkeleyMono-BoldItalic.woff2') format('woff2'),
+        url('/fonts/BerkeleyMono-BoldItalic.woff') format('woff');
+      font-weight: bold;
+      font-style: italic;
+      font-display: swap;
+    }
+
+    body {
+      font-family: 'Berkeley Mono', monospace;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem;
+      line-height: 1.5;
+      background-color: black;
+      color: white;
+      letter-spacing: -0.01rem;
+    }
+
+    h1 {
+      color: white;
+      font-weight: bold;
+    }
+
+    button {
+      background-color: black;
+      color: white;
+      border: 1px solid white;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 20px;
+      font-family: 'Berkeley Mono', monospace;
+      letter-spacing: -0.01rem;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background-color: white;
+      color: black;
+    }
+
+    #output-container div {
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 20px;
+      margin-bottom: 20px;
+      white-space: pre-wrap;
+      background-color: rgba(30, 30, 30, 0.3);
+      font-family: 'Berkeley Mono', monospace;
+      min-height: 50px;
+      height: auto;
+      overflow: visible;
+    }
+
+    code {
+      font-family: 'Berkeley Mono', monospace;
+      color: #4ff;
+      background-color: rgba(0, 0, 0, 0.3);
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    h3 {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+      padding-bottom: 5px;
+      margin-top: 0;
+    }
+  </style>
 </head>
 
-<body class="fixed w-screen bg-black text-white font-mono m-0 p-5 h-screen box-border" hx-ext="ws">
-  <div ws-connect="ws://localhost:3000/ws">
-    <div class="flex flex-col gap-2 text-sm">
-      <div class="flex items-center gap-2">
-        <span class="text-neutral-400">Connection:</span>
-        <span class="text-red-500" id="connection-status">Disconnected</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <span class="text-neutral-400">Agent Status:</span>
-        <span id="agent-status">Waiting for status...</span>
-      </div>
-    </div>
+<body hx-ext="sse" sse-connect="/sse">
+  <h1>Dad Joke Expander</h1>
+  <p>This demo fetches a dad joke from <code>icanhazdadjoke.com</code> and then streams an expanded story from Claude.
+  </p>
+
+  <!-- Trigger joke fetch via SSE -->
+  <button hx-post="/fetch-joke" hx-trigger="click" hx-swap="none">
+    Get Dad Joke & Story
+  </button>
+
+  <div id="output-container">
+    <!-- These divs will be updated via SSE events -->
+    <div id="test-message" sse-swap="test">No test message received</div>
+    <div id="test-broadcast" sse-swap="test-broadcast">No broadcast test received</div>
+    <div id="original-joke" sse-swap="joke">Waiting for joke...</div>
+    <div id="expansion" sse-swap="expansion" style="overflow: visible; height: auto; min-height: 300px;">Waiting for
+      expansion...</div>
   </div>
+
+  <style>
+    #output-container {
+      margin-top: 20px;
+    }
+
+    #original-joke {
+      margin-bottom: 20px;
+    }
+
+    #original-joke p,
+    #expansion p {
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+
+    .error {
+      color: #ff6b6b;
+      font-weight: bold;
+      font-family: 'Berkeley Mono', monospace;
+    }
+
+    .story {
+      line-height: 1.8;
+      font-family: 'Berkeley Mono', monospace;
+      letter-spacing: -0.01rem;
+      white-space: pre-wrap !important;
+      overflow-wrap: break-word;
+      min-height: 200px;
+      overflow: visible;
+      height: auto;
+      display: block;
+    }
+
+    .story.complete {
+      border-bottom: 2px solid #4ff;
+    }
+
+    /* Animation for cursor */
+    .story::after {
+      content: "_";
+      animation: cursor-blink 1s infinite;
+      font-weight: bold;
+    }
+
+    @keyframes cursor-blink {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0;
+      }
+    }
+  </style>
 </body>
 
 </html>

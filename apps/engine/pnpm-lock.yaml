@@ -13,6 +13,12 @@ importers:
 
   .:
     dependencies:
+      '@effect/ai':
+        specifier: ^0.13.12
+        version: 0.13.12(@effect/experimental@0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12)
+      '@effect/ai-anthropic':
+        specifier: ^0.3.13
+        version: 0.3.13(@effect/ai@0.13.12(@effect/experimental@0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/experimental@0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12)
       '@effect/platform':
         specifier: ^0.80.12
         version: 0.80.12(effect@3.14.12)
@@ -102,6 +108,9 @@ packages:
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
+
+  '@anthropic-ai/tokenizer@0.0.4':
+    resolution: {integrity: sha512-EHRKbxlxlc8W4KCBEseByJ7YwyYCmgu9OyN59H9+IYIGPoKv8tXyQXinkeGDI+cI8Tiuz9wk2jZb/kK7AyvL7g==}
 
   '@babel/cli@7.27.0':
     resolution: {integrity: sha512-bZfxn8DRxwiVzDO5CEeV+7IqXeCkzI4yYnrQbpwjT76CUyossQc6RYE7n+xfm0/2k40lPaCpW0FhxYs7EBAetw==}
@@ -197,6 +206,21 @@ packages:
 
   '@dprint/typescript@0.91.8':
     resolution: {integrity: sha512-tuKn4leCPItox1O4uunHcQF0QllDCvPWklnNQIh2PiWWVtRAGltJJnM4Cwj5AciplosD1Hiz7vAY3ew3crLb3A==}
+
+  '@effect/ai-anthropic@0.3.13':
+    resolution: {integrity: sha512-ExAxHscym4KPMlMnjYMIymc8UyEaps4MX4e2DqegQ0yE+nzSVZZQo/UEvawXCPbX5+F/aF+/mBPCjkYi0b54tw==}
+    peerDependencies:
+      '@effect/ai': ^0.13.12
+      '@effect/experimental': ^0.44.12
+      '@effect/platform': ^0.80.12
+      effect: ^3.14.12
+
+  '@effect/ai@0.13.12':
+    resolution: {integrity: sha512-M0jyakjUucrZm8SC7jT3CqD78jl51KddsUAYmwSBkUdSk1MXLL66qT/6DQdsh0w28YFi1H+1k2nFIpA4JVSWhw==}
+    peerDependencies:
+      '@effect/experimental': ^0.44.12
+      '@effect/platform': ^0.80.12
+      effect: ^3.14.12
 
   '@effect/build-utils@0.7.9':
     resolution: {integrity: sha512-I9tuSvKOnhF2NNsCzHulsUvEwJBQKqiZ1RtbJA+DfxqXZ9J1QSh4txnfnDC2D2bygMYuWqMJWg7TvAWun7cs6w==}
@@ -969,6 +993,9 @@ packages:
 
   '@types/minimatch@5.1.2':
     resolution: {integrity: sha512-K0VQKziLUWkVKiRVrx4a40iPaxTUefQmjtkQofBkYRcoaaL/8rhwDWww9qWbrgicNOgnpIsMxyNIUM4+n6dUIA==}
+
+  '@types/node@18.19.86':
+    resolution: {integrity: sha512-fifKayi175wLyKyc5qUfyENhQ1dCNI1UNjp653d8kuYcPQN5JhX3dGuP/XmvPTg/xRBn1VTLpbmi+H/Mr7tLfQ==}
 
   '@types/node@20.17.30':
     resolution: {integrity: sha512-7zf4YyHA+jvBNfVrk2Gtvs6x7E8V+YDW05bNfG2XkWDJfYRXrTiP/DsB2zSYTaHX0bGIujTBQdMVAhb+j7mwpg==}
@@ -2465,6 +2492,9 @@ packages:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
 
+  tiktoken@1.0.21:
+    resolution: {integrity: sha512-/kqtlepLMptX0OgbYD9aMYbM7EFrMZCL7EoHM8Psmg2FuhXoo/bH64KqOiZGGwa6oS9TPdSEDKBnV2LuB8+5vQ==}
+
   tinybench@2.9.0:
     resolution: {integrity: sha512-0+DUvqWMValLmha6lr4kD8iAMK1HzV0/aKnCtWb9v9641TnP/MFb7Pc2bxoxQjTXAErryXVgUOfv2YqNllqGeg==}
 
@@ -2544,6 +2574,9 @@ packages:
   unbox-primitive@1.1.0:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
     engines: {node: '>= 0.4'}
+
+  undici-types@5.26.5:
+    resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
 
   undici-types@6.19.8:
     resolution: {integrity: sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw==}
@@ -2705,6 +2738,11 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.8
       '@jridgewell/trace-mapping': 0.3.25
 
+  '@anthropic-ai/tokenizer@0.0.4':
+    dependencies:
+      '@types/node': 18.19.86
+      tiktoken: 1.0.21
+
   '@babel/cli@7.27.0(@babel/core@7.26.10)':
     dependencies:
       '@babel/core': 7.26.10
@@ -2841,6 +2879,20 @@ snapshots:
   '@dprint/formatter@0.4.1': {}
 
   '@dprint/typescript@0.91.8': {}
+
+  '@effect/ai-anthropic@0.3.13(@effect/ai@0.13.12(@effect/experimental@0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/experimental@0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12)':
+    dependencies:
+      '@anthropic-ai/tokenizer': 0.0.4
+      '@effect/ai': 0.13.12(@effect/experimental@0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12)
+      '@effect/experimental': 0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12)
+      '@effect/platform': 0.80.12(effect@3.14.12)
+      effect: 3.14.12
+
+  '@effect/ai@0.13.12(@effect/experimental@0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12))(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12)':
+    dependencies:
+      '@effect/experimental': 0.44.12(@effect/platform@0.80.12(effect@3.14.12))(effect@3.14.12)
+      '@effect/platform': 0.80.12(effect@3.14.12)
+      effect: 3.14.12
 
   '@effect/build-utils@0.7.9': {}
 
@@ -3414,6 +3466,10 @@ snapshots:
       '@types/unist': 2.0.11
 
   '@types/minimatch@5.1.2': {}
+
+  '@types/node@18.19.86':
+    dependencies:
+      undici-types: 5.26.5
 
   '@types/node@20.17.30':
     dependencies:
@@ -5153,6 +5209,8 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
+  tiktoken@1.0.21: {}
+
   tinybench@2.9.0: {}
 
   tinyexec@0.3.2: {}
@@ -5242,6 +5300,8 @@ snapshots:
       has-bigints: 1.1.0
       has-symbols: 1.1.0
       which-boxed-primitive: 1.1.1
+
+  undici-types@5.26.5: {}
 
   undici-types@6.19.8: {}
 
