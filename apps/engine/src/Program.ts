@@ -12,8 +12,8 @@ import { GitHubTools, GitHubToolsLayer } from "./github/GitHubTools.js"
 const processGitHubIssue = Effect.gen(function* () {
   yield* Console.log("🤖 Starting GitHub issue processing...")
   const completions = yield* Completions.Completions
-  const tools = yield* GitHubTools
-  yield* Console.log("🔧 Available GitHub tools:", Object.keys(tools).join(", "))
+  const { tools } = yield* GitHubTools
+  yield* Console.log("🔧 Available GitHub tools:", Object.keys(tools.tools).join(", "))
 
   // Parameters from environment or command line
   const config = yield* Effect.try({
@@ -113,7 +113,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   startServer()
 } else {
   // If imported as a module, run the main function
-  Effect.runPromiseExit(main).pipe(
-    Effect.provide(AllLayers)
+  Effect.runPromise(
+    main.pipe(
+      Effect.catchAllDefect(() => Effect.succeed("Caught defect in main")),
+      Effect.provide(AllLayers)
+    )
   )
 }

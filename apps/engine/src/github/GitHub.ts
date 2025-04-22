@@ -1,5 +1,5 @@
 import { Config, Console, Effect, Schema } from "effect"
-import { HttpClient, HttpClientResponse, HttpClientError } from "@effect/platform"
+import { HttpClient, HttpClientResponse, HttpClientError, HttpBody } from "@effect/platform"
 import { NodeHttpClient } from "@effect/platform-node"
 import * as fs from "node:fs"
 import * as path from "node:path"
@@ -93,10 +93,9 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      */
     const createIssueComment = Effect.fn("GitHubClient.createIssueComment")(
       function* (owner: string, repo: string, issueNumber: number, body: string) {
-        const jsonString = JSON.stringify({ body })
         return yield* githubHttpClient.post(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
           acceptJson: true,
-          body: jsonString
+          body: yield* HttpBody.json({ body })
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubIssueComment)),
           Effect.scoped,
@@ -131,10 +130,9 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         labels?: string[],
         assignees?: string[]
       }) {
-        const jsonString = JSON.stringify(updates)
         return yield* githubHttpClient.patch(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
           acceptJson: true,
-          body: jsonString
+          body: yield* HttpBody.json(updates)
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubIssue)),
           Effect.scoped,

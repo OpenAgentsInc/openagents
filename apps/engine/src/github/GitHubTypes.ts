@@ -119,7 +119,7 @@ export class CurrentTask extends Schema.Class<CurrentTask>("CurrentTask")({
 export class ToolCall extends Schema.Class<ToolCall>("ToolCall")({
   timestamp: Schema.String,
   tool_name: Schema.String,
-  parameters: Schema.Record(Schema.String, Schema.Unknown),
+  parameters: Schema.Struct({}),
   status: Schema.String,
   result_preview: Schema.String,
   full_result_ref: Schema.Union(Schema.String, Schema.Null)
@@ -137,9 +137,9 @@ export class PlanStep extends Schema.Class<PlanStep>("PlanStep")({
 }) { }
 
 export class ExecutionContext extends Schema.Class<ExecutionContext>("ExecutionContext")({
-  current_file_focus: Schema.Union(Schema.Record(Schema.String, Schema.Unknown), Schema.Null),
-  relevant_code_snippets: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
-  external_references: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
+  current_file_focus: Schema.Union(Schema.Struct({}), Schema.Null),
+  relevant_code_snippets: Schema.Array(Schema.Struct({})),
+  external_references: Schema.Array(Schema.Struct({})),
   files_modified_in_session: Schema.Array(Schema.String)
 }) { }
 
@@ -147,7 +147,7 @@ export class ConversationMessage extends Schema.Class<ConversationMessage>("Conv
   role: Schema.String,
   content: Schema.String,
   timestamp: Schema.String,
-  tool_calls: Schema.Union(Schema.Array(Schema.Record(Schema.String, Schema.Unknown)), Schema.Null)
+  tool_calls: Schema.Union(Schema.Array(Schema.Struct({})), Schema.Null)
 }) { }
 
 export class KeyDecision extends Schema.Class<KeyDecision>("KeyDecision")({
@@ -177,13 +177,13 @@ export class Metrics extends Schema.Class<Metrics>("Metrics")({
   session_start_time: Schema.String,
   total_time_spent_seconds: Schema.Number,
   llm_calls_made: Schema.Number,
-  llm_tokens_used: Schema.Record(Schema.String, Schema.Number),
+  llm_tokens_used: Schema.Struct({}),
   tools_called: Schema.Number,
   commits_made: Schema.Number
 }) { }
 
 export class ErrorState extends Schema.Class<ErrorState>("ErrorState")({
-  last_error: Schema.Union(Schema.Record(Schema.String, Schema.Unknown), Schema.Null),
+  last_error: Schema.Union(Schema.Struct({}), Schema.Null),
   consecutive_error_count: Schema.Number,
   retry_count_for_current_action: Schema.Number,
   blocked_reason: Schema.Union(Schema.String, Schema.Null)

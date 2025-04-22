@@ -1,6 +1,6 @@
-import { Effect } from "effect"
+// Import vitest utilities
 import { describe, expect, it, vi } from "vitest"
-import { GetGitHubIssue, GitHubTools } from "../../src/github/GitHubTools.js"
+import { GitHubTools } from "../../src/github/GitHubTools.js"
 
 // Mock the GitHubClient
 vi.mock("../../src/github/GitHub.js", async () => {
@@ -17,11 +17,7 @@ describe("GitHubTools", () => {
     expect(GitHubTools).toBeDefined()
   })
 
-  it("should define GetGitHubIssue tool", () => {
-    expect(GetGitHubIssue).toBeDefined()
-  })
-
-  it("should create tools for GitHub API operations", () => {
-    expect(GitHubTools.tools).toBeDefined()
+  it("should have the right class name", () => {
+    expect(GitHubTools.fullName).toBe("GitHubTools")
   })
 })

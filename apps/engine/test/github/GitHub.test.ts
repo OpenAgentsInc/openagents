@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+// Import vitest utilities
 import { describe, expect, it, vi } from "vitest"
 import { GitHubClient } from "../../src/github/GitHub.js"
 
