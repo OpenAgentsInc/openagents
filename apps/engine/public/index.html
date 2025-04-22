@@ -8,39 +8,13 @@
   <script src="/htmx.min.js"></script>
   <script src="/ws.js"></script>
   <script src="/tailwind.js"></script>
-  <style type="text/tailwindcss">
-    @font-face {
-      font-family: 'Berkeley Mono';
-      src: url('/fonts/BerkeleyMono-Regular.woff2') format('woff2'),
-        url('/fonts/BerkeleyMono-Regular.woff') format('woff');
-      font-weight: normal;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: 'Berkeley Mono';
-      src: url('/fonts/BerkeleyMono-Bold.woff2') format('woff2'),
-        url('/fonts/BerkeleyMono-Bold.woff') format('woff');
-      font-weight: bold;
-      font-style: normal;
-      font-display: swap;
-    }
-
-    @theme {
-      --font-mono: Berkeley Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-    }
-
-    .font-mono {
-      font-family: var(--font-mono);
-    }
-  </style>
+  <link rel="stylesheet" href="/styles.css" type="text/tailwindcss">
 </head>
 
 <body class="fixed w-screen bg-black text-white font-mono m-0 p-5 h-screen box-border flex justify-center items-center"
   hx-ext="ws">
   <div ws-connect="ws://localhost:3000/ws">
-    <div class="border border-neutral-600 rounded p-8 mx-auto w-[400px] bg-neutral-900 text-sm">
+    <div class="border border-neutral-600 rounded p-8 mx-auto w-[550px] bg-neutral-900 text-sm">
       <div
         class="flex justify-between mb-3 pb-3 border-b border-neutral-700 last:border-b-0 last:mb-0 last:pb-0 gap-20">
         <div class="font-bold text-neutral-400">Connection:</div>
