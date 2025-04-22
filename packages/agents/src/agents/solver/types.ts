@@ -1,25 +1,45 @@
-import { type UIMessage } from "ai";
-import type { BaseAgentState } from "../../common/types";
-import type {
-  BaseIssue,
-  BaseProject,
-  BaseTeam,
-  ImplementationStep,
-  IssueComment
-} from "@openagents/core";
+import { Data, Context, Effect } from "effect";
+import type { UIMessage } from "ai";
+import type { BaseIssue, BaseProject, BaseTeam } from "@openagents/core";
 
-// Define types for Solver state - extends base agent state
-export interface SolverState extends BaseAgentState {
-  messages: UIMessage[]; // Override to specify UIMessage type
+// --- UI Part Types ---
+export type TextUIPart = {
+  type: 'text';
+  text: string;
+};
+
+export type UIPart = TextUIPart;
+
+// --- State Definition ---
+export type SolverState = {
+  messages: UIMessage[];
   currentIssue?: BaseIssue;
-  currentProject?: BaseProject; // Project context
-  currentTeam?: BaseTeam; // Team context
-  implementationSteps?: ImplementationStep[];
-  issueComments?: IssueComment[];
+  currentProject?: BaseProject;
+  currentTeam?: BaseTeam;
+  githubToken?: string;
+};
+
+// --- Error Definitions ---
+export class ParseError extends Data.TaggedError("ParseError")<{ cause: unknown }> { }
+export class StateUpdateError extends Data.TaggedError("StateUpdateError")<{ cause: unknown }> { }
+export class ChatError extends Data.TaggedError("ChatError")<{ cause: unknown }> { }
+
+export type HandleMessageError = ParseError | StateUpdateError;
+
+// --- Service Definitions ---
+export interface AnthropicConfig {
+  readonly apiKey: string;
+  readonly fetch: typeof fetch;
+  readonly model?: string;
 }
 
-// Use the solver-specific issue type to add any solver-specific fields
-export interface SolverIssue extends BaseIssue {
-  // If needed, add solver-specific issue fields here
-  // For now, we can use the base issue type directly
+export class AnthropicConfig extends Context.Tag("AnthropicConfig")<AnthropicConfig, AnthropicConfig>() { }
+
+export interface AiClientService {
+  readonly getApiKey: () => Effect.Effect<string>;
 }
+
+export class AiClientService extends Context.Tag("AiClientService")<
+  AiClientService,
+  AiClientService
+>() { }
