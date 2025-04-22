@@ -118,8 +118,6 @@ export const GitHubApiClient = Context.GenericTag<GitHubApiClient>("GitHubApiCli
  */
 export class GitHubApiClientLive implements GitHubApiClient {
   constructor(
-    // We'll need baseUrl in the real implementation 
-    // but for the mock we just store it
     readonly baseUrl: string,
     private readonly token: Option.Option<string>
   ) {}
@@ -130,59 +128,84 @@ export class GitHubApiClientLive implements GitHubApiClient {
     GitHubFileContent, 
     FileNotFoundError | RateLimitExceededError | GitHubApiError
   > {
-    const { owner, repo, path } = params
+    const { owner, repo, path, ref = "main" } = params
     
-    // Capture these values so they can be used in the generator function
-    const token = this.token
+    // In a real implementation, we would use the Node fetch API directly
+    // For simplicity, we're doing a direct fetch here
+    // Ideally, this would be using Effect's HTTP client, but there are import issues
     
-    return Effect.gen(function*() {
-      // Simulate HTTP request
-      const headers: Record<string, string> = {}
-      
-      // Add auth token if available
-      if (Option.isSome(token)) {
-        headers["Authorization"] = `token ${token.value}`
-      }
-
-      try {
-        // In a real implementation, we would make the actual HTTP request
-        // For now, we'll simulate the GitHub API response
+    return Effect.tryPromise({
+      try: async () => {
+        // Create the request URL
+        const apiUrl = `${this.baseUrl}/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
         
-        // Simulate error conditions for testing
-        if (path === "nonexistent.md") {
-          return yield* Effect.fail(new FileNotFoundError(owner, repo, path))
+        // Set up headers
+        const headers: Record<string, string> = {
+          "Accept": "application/vnd.github.v3+json"
         }
         
-        if (path === "rate-limited.md") {
-          return yield* Effect.fail(new RateLimitExceededError(new Date(Date.now() + 3600000)))
+        // Add auth token if available
+        if (Option.isSome(this.token)) {
+          headers["Authorization"] = `token ${this.token.value}`
         }
         
-        if (path === "server-error.md") {
-          return yield* Effect.fail(new GitHubApiError({ message: "GitHub API error: 500 Internal Server Error" }))
+        // Make the request
+        const response = await fetch(apiUrl, { headers })
+        
+        // Handle rate limiting
+        const rateLimitRemaining = response.headers.get("x-ratelimit-remaining")
+        const rateLimitReset = response.headers.get("x-ratelimit-reset")
+        
+        if (rateLimitRemaining === "0" && rateLimitReset) {
+          const resetTime = new Date(parseInt(rateLimitReset) * 1000)
+          throw new RateLimitExceededError(resetTime)
         }
         
-        if (path === "invalid-response.md") {
-          // We'd decode the actual response with Schema.decode(GitHubFileContentSchema)
-          return yield* Effect.fail(new GitHubApiError({ 
+        // Handle 404
+        if (response.status === 404) {
+          throw new FileNotFoundError(owner, repo, path)
+        }
+        
+        // Handle other errors
+        if (!response.ok) {
+          throw new GitHubApiError({ 
+            message: `GitHub API error: ${response.status} ${response.statusText}`
+          })
+        }
+        
+        // Parse the response
+        const data = await response.json()
+        
+        // Validate the response shape
+        if (
+          typeof data.content !== "string" ||
+          typeof data.encoding !== "string" ||
+          typeof data.sha !== "string" ||
+          typeof data.name !== "string" ||
+          typeof data.path !== "string" ||
+          typeof data.size !== "number"
+        ) {
+          throw new GitHubApiError({ 
             message: "Invalid response format", 
-            cause: new Error("Missing required fields") 
-          }))
+            cause: new Error("Response doesn't match expected schema") 
+          })
         }
-
-        // Return a mock successful response
-        return {
-          name: path.split("/").pop() || "",
-          path,
-          sha: "abc123",
-          size: 5432,
-          content: "IyBUaGlzIGlzIGEgdGVzdCBmaWxl", // Base64 encoded "# This is a test file"
-          encoding: "base64"
+        
+        return data as GitHubFileContent
+      },
+      catch: (error) => {
+        // Handle errors that weren't caught in the try block
+        if (error instanceof FileNotFoundError || 
+            error instanceof RateLimitExceededError || 
+            error instanceof GitHubApiError) {
+          return error
         }
-      } catch (error) {
-        return yield* Effect.fail(new GitHubApiError({ 
-          message: "Failed to fetch file from GitHub", 
+        
+        // For any other errors, wrap them in a GitHubApiError
+        return new GitHubApiError({ 
+          message: `GitHub API error: ${error instanceof Error ? error.message : String(error)}`, 
           cause: error 
-        }))
+        })
       }
     })
   }

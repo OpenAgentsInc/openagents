@@ -6,10 +6,14 @@
 - Uses Effect framework for functional programming patterns
 
 ## Build & Run Commands
-- Run dev server: `pnpm dev`
+- Build and run in one step: `pnpm start` or `pnpm github`
+- Run with auto-reload: `pnpm watch`
+- Build only: `pnpm build-esm`
+- Run after build: `pnpm dev`
 - Run typechecks: `pnpm check` - ALWAYS run before finishing work
 - Run linter: `pnpm lint` or `pnpm lint-fix`
-- Run tests: `pnpm test -- --run` (use --run to avoid watch mode)
+- Run all verification: `pnpm verify` (typecheck + lint + test)
+- Run tests: `pnpm test:run` (non-watch mode)
 - Run single test: `pnpm test -- --run "path/to/test.test.ts"`
 - Run tests with coverage: `pnpm coverage`
 
@@ -27,4 +31,4 @@
 - Write unit tests for all core functionality
 - Create GitHub API mocks for testing
 - Test all error handling scenarios
-- Ensure all tests and typechecks pass before committing: `pnpm check && pnpm test -- --run`
+- Ensure all tests and typechecks pass before committing: `pnpm verify`
