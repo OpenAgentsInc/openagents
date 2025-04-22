@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
 import * as path from "node:path"
+import { describe, expect, it, vi } from "vitest"
 import { GitHubClient, StateNotFoundError, StateParseError, StateValidationError } from "../../src/github/GitHub.js"
 
 // Mock the filesystem module
@@ -27,7 +27,7 @@ describe("State Storage", () => {
   it("should have enhanced state storage functions in GitHubClient", () => {
     // Verify the service is defined
     expect(GitHubClient).toBeDefined()
-    
+
     // Just verify the service exists, not trying to check methods
     // which would require more complex mocking
     expect(GitHubClient.Default).toBeDefined()
