@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@effect/vitest"
+import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import type { AgentState, PlanStep, ToolCall } from "../../src/github/AgentStateTypes.js"
 
@@ -95,49 +95,55 @@ describe("PlanManager", () => {
   const runWithPlanManager = <A>(effectToRun: (planManager: any) => Effect.Effect<A, any>) => {
     // Create a simple mock object with the service methods
     const planManagerInstance = {
-      addPlanStep: (state: AgentState, description: string) => Effect.sync(() => {
-        // Generate a unique step ID
-        const stepId = `step-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-        
-        // Create the new step
-        const newStep = {
-          id: stepId,
-          step_number: state.plan.length + 1,
-          description,
-          status: "pending" as const,
-          start_time: null,
-          end_time: null,
-          result_summary: null,
-          tool_calls: []
-        }
-
-        // Return a new state with the step added to the plan
-        return {
-          ...state,
-          plan: [...state.plan, newStep],
-          metrics: {
-            ...state.metrics,
-            total_steps_in_plan: state.metrics.total_steps_in_plan + 1
-          }
-        }
-      }),
-      updateStepStatus: (state: AgentState, stepId: string, newStatus: PlanStep["status"], resultSummary: string | null = null) => 
+      addPlanStep: (state: AgentState, description: string) =>
         Effect.sync(() => {
-          const stepIndex = state.plan.findIndex(step => step.id === stepId)
-          
+          // Generate a unique step ID
+          const stepId = `step-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+
+          // Create the new step
+          const newStep = {
+            id: stepId,
+            step_number: state.plan.length + 1,
+            description,
+            status: "pending" as const,
+            start_time: null,
+            end_time: null,
+            result_summary: null,
+            tool_calls: []
+          }
+
+          // Return a new state with the step added to the plan
+          return {
+            ...state,
+            plan: [...state.plan, newStep],
+            metrics: {
+              ...state.metrics,
+              total_steps_in_plan: state.metrics.total_steps_in_plan + 1
+            }
+          }
+        }),
+      updateStepStatus: (
+        state: AgentState,
+        stepId: string,
+        newStatus: PlanStep["status"],
+        resultSummary: string | null = null
+      ) =>
+        Effect.sync(() => {
+          const stepIndex = state.plan.findIndex((step) => step.id === stepId)
+
           if (stepIndex === -1) {
             throw new Error(`Plan step with id ${stepId} not found`)
           }
 
           const now = new Date().toISOString()
           const originalStep = state.plan[stepIndex]
-          
+
           const updatedStep = {
             ...originalStep,
             status: newStatus,
             start_time: originalStep.start_time ?? (newStatus === "in_progress" ? now : null),
-            end_time: (newStatus === "completed" || newStatus === "skipped" || newStatus === "error") 
-              ? now 
+            end_time: (newStatus === "completed" || newStatus === "skipped" || newStatus === "error")
+              ? now
               : originalStep.end_time,
             result_summary: resultSummary !== null ? resultSummary : originalStep.result_summary
           }
@@ -145,7 +151,7 @@ describe("PlanManager", () => {
           const updatedPlan = [...state.plan]
           updatedPlan[stepIndex] = updatedStep
 
-          const stepsCompleted = updatedPlan.filter(step => step.status === "completed").length
+          const stepsCompleted = updatedPlan.filter((step) => step.status === "completed").length
 
           return {
             ...state,
@@ -156,10 +162,10 @@ describe("PlanManager", () => {
             }
           }
         }),
-      addToolCallToStep: (state: AgentState, stepId: string, toolCallData: Omit<ToolCall, "timestamp">) => 
+      addToolCallToStep: (state: AgentState, stepId: string, toolCallData: Omit<ToolCall, "timestamp">) =>
         Effect.sync(() => {
-          const stepIndex = state.plan.findIndex(step => step.id === stepId)
-          
+          const stepIndex = state.plan.findIndex((step) => step.id === stepId)
+
           if (stepIndex === -1) {
             throw new Error(`Plan step with id ${stepId} not found`)
           }
@@ -190,7 +196,7 @@ describe("PlanManager", () => {
         }),
       getCurrentStep: (state: AgentState) => {
         const index = state.current_task.current_step_index
-        
+
         if (index >= 0 && index < state.plan.length) {
           return Effect.succeed(state.plan[index])
         } else {
@@ -212,12 +218,12 @@ describe("PlanManager", () => {
       const description = "Implement fix"
 
       // Act
-      const newState = runWithPlanManager(planManager => planManager.addPlanStep(initialState, description))
+      const newState = runWithPlanManager((planManager) => planManager.addPlanStep(initialState, description))
 
       // Assert
       expect(newState.plan.length).toBe(initialPlanLength + 1)
       expect(newState.metrics.total_steps_in_plan).toBe(initialTotalSteps + 1)
-      
+
       const newStep = newState.plan[newState.plan.length - 1]
       expect(newStep.description).toBe(description)
       expect(newStep.step_number).toBe(initialPlanLength + 1)
@@ -226,7 +232,7 @@ describe("PlanManager", () => {
       expect(newStep.start_time).toBeNull()
       expect(newStep.end_time).toBeNull()
       expect(newStep.result_summary).toBeNull()
-      
+
       // Verify immutability
       expect(initialState).not.toBe(newState)
       expect(initialState.plan).not.toBe(newState.plan)
@@ -241,7 +247,9 @@ describe("PlanManager", () => {
       const stepId = initialState.plan[0].id
 
       // Act
-      const newState = runWithPlanManager(planManager => planManager.updateStepStatus(initialState, stepId, "in_progress"))
+      const newState = runWithPlanManager((planManager) =>
+        planManager.updateStepStatus(initialState, stepId, "in_progress")
+      )
 
       // Assert
       const updatedStep = newState.plan[0]
@@ -258,12 +266,12 @@ describe("PlanManager", () => {
       const resultSummary = "Successfully fixed issue"
 
       // First update to in_progress
-      const inProgressState = runWithPlanManager(planManager => 
+      const inProgressState = runWithPlanManager((planManager) =>
         planManager.updateStepStatus(initialState, stepId, "in_progress")
       )
-      
+
       // Act - update to completed
-      const newState = runWithPlanManager(planManager => 
+      const newState = runWithPlanManager((planManager) =>
         planManager.updateStepStatus(inProgressState, stepId, "completed", resultSummary)
       )
 
@@ -274,7 +282,7 @@ describe("PlanManager", () => {
       expect(updatedStep.end_time).not.toBeNull()
       expect(updatedStep.result_summary).toBe(resultSummary)
       expect(newState.metrics.steps_completed).toBe(1)
-      
+
       // Verify immutability
       expect(inProgressState).not.toBe(newState)
       expect(inProgressState.plan).not.toBe(newState.plan)
@@ -287,7 +295,7 @@ describe("PlanManager", () => {
       const errorMessage = "Failed: API timeout"
 
       // Act
-      const newState = runWithPlanManager(planManager => 
+      const newState = runWithPlanManager((planManager) =>
         planManager.updateStepStatus(initialState, stepId, "error", errorMessage)
       )
 
@@ -306,9 +314,7 @@ describe("PlanManager", () => {
 
       // Act & Assert
       expect(() => {
-        runWithPlanManager(planManager => 
-          planManager.updateStepStatus(initialState, nonExistentStepId, "completed")
-        )
+        runWithPlanManager((planManager) => planManager.updateStepStatus(initialState, nonExistentStepId, "completed"))
       }).toThrow(/not found/)
     })
   })
@@ -327,21 +333,21 @@ describe("PlanManager", () => {
       }
 
       // Act
-      const newState = runWithPlanManager(planManager => 
+      const newState = runWithPlanManager((planManager) =>
         planManager.addToolCallToStep(initialState, stepId, toolCallData)
       )
 
       // Assert
       const updatedStep = newState.plan[0]
       expect(updatedStep.tool_calls.length).toBe(1)
-      
+
       const addedToolCall = updatedStep.tool_calls[0]
       expect(addedToolCall.tool_name).toBe(toolCallData.tool_name)
       expect(addedToolCall.parameters).toEqual(toolCallData.parameters)
       expect(addedToolCall.status).toBe(toolCallData.status)
       expect(addedToolCall.result_preview).toBe(toolCallData.result_preview)
       expect(addedToolCall.timestamp).toBeDefined()
-      
+
       // Verify immutability
       expect(initialState).not.toBe(newState)
       expect(initialState.plan).not.toBe(newState.plan)
@@ -362,7 +368,7 @@ describe("PlanManager", () => {
 
       // Act & Assert
       expect(() => {
-        runWithPlanManager(planManager => 
+        runWithPlanManager((planManager) =>
           planManager.addToolCallToStep(initialState, nonExistentStepId, toolCallData)
         )
       }).toThrow(/not found/)
@@ -383,7 +389,7 @@ describe("PlanManager", () => {
       }
 
       // Act
-      const step = runWithPlanManager(planManager => planManager.getCurrentStep(testState))
+      const step = runWithPlanManager((planManager) => planManager.getCurrentStep(testState))
 
       // Assert
       expect(step).toBe(testState.plan[0])
@@ -403,7 +409,7 @@ describe("PlanManager", () => {
 
       // Act & Assert
       expect(() => {
-        runWithPlanManager(planManager => planManager.getCurrentStep(testState))
+        runWithPlanManager((planManager) => planManager.getCurrentStep(testState))
       }).toThrow(/Invalid current_step_index/)
     })
   })

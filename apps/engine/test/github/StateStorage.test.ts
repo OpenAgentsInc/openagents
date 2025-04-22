@@ -1,5 +1,17 @@
 // First, import vitest utilities
-import { describe, expect, it, vi, beforeEach, afterEach } from "@effect/vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "@effect/vitest"
+
+// Then import other modules
+import { Effect } from "effect"
+import * as path from "node:path"
+import type { AgentState } from "../../src/github/AgentStateTypes.js"
+import {
+  GitHubClient,
+  GitHubClientLayer,
+  StateNotFoundError,
+  StateParseError,
+  StateValidationError
+} from "../../src/github/GitHub.js"
 
 // Define mocks before any modules that use them
 const fsMock = {
@@ -11,18 +23,6 @@ const fsMock = {
 
 // Mock fs module
 vi.mock("node:fs", () => fsMock)
-
-// Then import other modules
-import * as path from "node:path"
-import { Effect } from "effect"
-import { 
-  GitHubClient, 
-  StateNotFoundError, 
-  StateParseError, 
-  StateValidationError,
-  GitHubClientLayer
-} from "../../src/github/GitHub.js"
-import type { AgentState } from "../../src/github/AgentStateTypes.js"
 
 // Mock Effect.logWarning after importing Effect
 const logWarningSpy = vi.spyOn(Effect, "logWarning").mockImplementation(() => Effect.void)
@@ -137,65 +137,67 @@ describe("State Storage", () => {
       // Arrange
       const initialState = createValidTestState()
       const expectedPath = path.join(process.cwd(), "state", `${initialState.agent_info.instance_id}.json`)
-      
+
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, client => client.saveAgentState(initialState)),
+          Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)),
           GitHubClientLayer
         )
       )
-      
+
       // Assert
       expect(fsMock.mkdirSync).toHaveBeenCalledWith(path.join(process.cwd(), "state"), { recursive: true })
       expect(fsMock.writeFileSync).toHaveBeenCalledWith(
         expectedPath,
         expect.any(String) // We'll verify content separately
       )
-      
+
       // Verify immutability and updated timestamp
       expect(result).not.toBe(initialState)
       expect(result.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
-      
+
       // Verify written content
       const writtenContent = JSON.parse(fsMock.writeFileSync.mock.calls[0][1] as string)
       expect(writtenContent.agent_info.instance_id).toBe(initialState.agent_info.instance_id)
       expect(writtenContent.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
     })
-    
+
     it("should handle filesystem errors", async () => {
       // Arrange
       const initialState = createValidTestState()
       const mockError = new Error("Filesystem error")
-      fsMock.writeFileSync.mockImplementation(() => { throw mockError })
-      
+      fsMock.writeFileSync.mockImplementation(() => {
+        throw mockError
+      })
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.saveAgentState(initialState)),
+            Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)),
             GitHubClientLayer
           )
         )
       ).rejects.toThrow("Failed to save agent state")
     })
   })
-  
+
   describe("loadAgentState", () => {
     it("should load and validate state successfully", async () => {
       // Arrange
       const validState = createValidTestState()
       const instanceId = validState.agent_info.instance_id
       fsMock.readFileSync.mockReturnValue(JSON.stringify(validState))
-      
+
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)),
+          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
           GitHubClientLayer
         )
       )
-      
+
       // Assert
       expect(fsMock.existsSync).toHaveBeenCalled()
       expect(fsMock.readFileSync).toHaveBeenCalledWith(
@@ -204,56 +206,56 @@ describe("State Storage", () => {
       )
       expect(result).toEqual(validState)
     })
-    
+
     it("should throw StateNotFoundError when file doesn't exist", async () => {
       // Arrange
       const instanceId = "non-existent-id"
       fsMock.existsSync.mockReturnValue(false)
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)),
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
             GitHubClientLayer
           )
         )
       ).rejects.toBeInstanceOf(StateNotFoundError)
     })
-    
+
     it("should throw StateParseError when JSON is invalid", async () => {
       // Arrange
       const instanceId = "test-instance-id"
       fsMock.readFileSync.mockReturnValue("{ invalid json")
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)),
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
             GitHubClientLayer
           )
         )
       ).rejects.toBeInstanceOf(StateParseError)
     })
-    
+
     it("should throw StateValidationError when state doesn't match schema", async () => {
       // Arrange
       const instanceId = "test-instance-id"
       const invalidState = { not_valid: "missing required fields" }
       fsMock.readFileSync.mockReturnValue(JSON.stringify(invalidState))
-      
+
       // Act & Assert
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)),
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
             GitHubClientLayer
           )
         )
       ).rejects.toBeInstanceOf(StateValidationError)
     })
-    
+
     it("should log warning but succeed when schema version differs", async () => {
       // Arrange
       const oldVersionState = {
@@ -265,15 +267,15 @@ describe("State Storage", () => {
       }
       const instanceId = oldVersionState.agent_info.instance_id
       fsMock.readFileSync.mockReturnValue(JSON.stringify(oldVersionState))
-      
+
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, client => client.loadAgentState(instanceId)),
+          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
           GitHubClientLayer
         )
       )
-      
+
       // Assert
       expect(logWarningSpy).toHaveBeenCalled()
       expect(result).toEqual(oldVersionState)

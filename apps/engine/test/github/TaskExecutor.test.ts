@@ -1,9 +1,9 @@
-import { describe, it, expect, vi } from "@effect/vitest"
+import { describe, expect, it, vi } from "@effect/vitest"
 import { Effect, Layer } from "effect"
-import { TaskExecutor, TaskExecutorLayer } from "../../src/github/TaskExecutor.js"
-import { PlanManager } from "../../src/github/PlanManager.js"
-import { GitHubClient } from "../../src/github/GitHub.js"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
+import { GitHubClient } from "../../src/github/GitHub.js"
+import { PlanManager } from "../../src/github/PlanManager.js"
+import { TaskExecutor, TaskExecutorLayer } from "../../src/github/TaskExecutor.js"
 
 // Create a basic fixture for testing
 const createTestState = (): AgentState => ({
@@ -109,10 +109,10 @@ describe("TaskExecutor", () => {
       // Arrange
       const initialState = createTestState()
       const currentStep = initialState.plan[0]
-      
+
       // Mock dependencies
       const getCurrentStepMock = vi.fn().mockReturnValue(Effect.succeed(currentStep))
-      
+
       const updateStepStatusMock = vi.fn()
         // First call: update to in_progress
         .mockImplementationOnce((state, id, status) => {
@@ -125,28 +125,28 @@ describe("TaskExecutor", () => {
         .mockImplementationOnce((state, id, status, summary) => {
           expect(status).toBe("completed")
           expect(summary).toBeDefined()
-          const updatedStep = { 
-            ...currentStep, 
-            status: "completed", 
+          const updatedStep = {
+            ...currentStep,
+            status: "completed",
             start_time: "2025-04-22T12:01:00Z",
             end_time: "2025-04-22T12:02:00Z",
             result_summary: summary
           }
           const updatedPlan = [updatedStep, initialState.plan[1]]
-          return Effect.succeed({ 
-            ...state, 
+          return Effect.succeed({
+            ...state,
             plan: updatedPlan,
             metrics: { ...state.metrics, steps_completed: 1 }
           })
         })
-      
+
       const saveAgentStateMock = vi.fn().mockImplementation((state) => {
         // Verify state was saved after all updates
         expect(state.plan[0].status).toBe("completed")
         expect(state.current_task.current_step_index).toBe(1) // Advanced to next step
         return Effect.succeed(state)
       })
-      
+
       // Create test layers
       const MockPlanManager = Layer.succeed(
         PlanManager,
@@ -157,7 +157,7 @@ describe("TaskExecutor", () => {
           getCurrentStep: getCurrentStepMock
         })
       )
-      
+
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
         GitHubClient.of({
@@ -173,37 +173,37 @@ describe("TaskExecutor", () => {
           _tag: "GitHubClient" as const
         })
       )
-      
+
       const TestLayer = Layer.mergeAll(MockPlanManager, MockGitHubClient)
-      
+
       // Act
       const finalState = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(TaskExecutor, executor => executor.executeNextStep(initialState)),
+          Effect.flatMap(TaskExecutor, (executor) => executor.executeNextStep(initialState)),
           Layer.provide(TaskExecutorLayer, TestLayer)
         )
       )
-      
+
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
       expect(updateStepStatusMock).toHaveBeenCalledTimes(2)
       expect(saveAgentStateMock).toHaveBeenCalledTimes(1)
-      
+
       // Verify step advancement
       expect(finalState.current_task.current_step_index).toBe(1)
       expect(finalState.plan[0].status).toBe("completed")
       expect(finalState.plan[0].result_summary).toBeDefined()
     })
-    
+
     it("should handle step execution failure correctly", async () => {
       // Arrange
       const initialState = createTestState()
       const currentStep = initialState.plan[0]
       const mockError = new Error("Simulated step failure!")
-      
+
       // Mock dependencies with failure path
       const getCurrentStepMock = vi.fn().mockReturnValue(Effect.succeed(currentStep))
-      
+
       const updateStepStatusMock = vi.fn()
         // First call: update to in_progress
         .mockImplementationOnce((state, id, status) => {
@@ -216,9 +216,9 @@ describe("TaskExecutor", () => {
         .mockImplementationOnce((state, id, status, summary) => {
           expect(status).toBe("error")
           expect(summary).toContain("Failed")
-          const updatedStep = { 
-            ...currentStep, 
-            status: "error", 
+          const updatedStep = {
+            ...currentStep,
+            status: "error",
             start_time: "2025-04-22T12:01:00Z",
             end_time: "2025-04-22T12:02:00Z",
             result_summary: summary
@@ -226,7 +226,7 @@ describe("TaskExecutor", () => {
           const updatedPlan = [updatedStep, initialState.plan[1]]
           return Effect.succeed({ ...state, plan: updatedPlan })
         })
-      
+
       const saveAgentStateMock = vi.fn().mockImplementation((state) => {
         // Verify error state was populated
         expect(state.plan[0].status).toBe("error")
@@ -235,7 +235,7 @@ describe("TaskExecutor", () => {
         expect(state.current_task.current_step_index).toBe(0) // Not advanced
         return Effect.succeed(state)
       })
-      
+
       // Create the same mock layers as before
       const MockPlanManager = Layer.succeed(
         PlanManager,
@@ -246,7 +246,7 @@ describe("TaskExecutor", () => {
           getCurrentStep: getCurrentStepMock
         })
       )
-      
+
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
         GitHubClient.of({
@@ -262,7 +262,7 @@ describe("TaskExecutor", () => {
           _tag: "GitHubClient" as const
         })
       )
-      
+
       // Create a mock TaskExecutor that will return an error state
       const ErrorTaskExecutorLayer = Layer.succeed(
         TaskExecutor,
@@ -291,34 +291,34 @@ describe("TaskExecutor", () => {
                 consecutive_error_count: 1
               }
             }
-            
+
             // Call the mocks to ensure they're called for test assertions
             getCurrentStepMock(initialState)
             updateStepStatusMock(initialState, initialState.plan[0].id, "in_progress")
             updateStepStatusMock(initialState, initialState.plan[0].id, "error", `Failed: ${mockError.message}`)
             saveAgentStateMock(errorState)
-            
+
             return Effect.succeed(errorState)
           }
         })
       )
-      
+
       // Compose our test layers
       const TestLayerWithMocks = Layer.mergeAll(MockPlanManager, MockGitHubClient)
-      
+
       // Act
       const finalState = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(TaskExecutor, executor => executor.executeNextStep(initialState)),
+          Effect.flatMap(TaskExecutor, (executor) => executor.executeNextStep(initialState)),
           Layer.provide(ErrorTaskExecutorLayer, TestLayerWithMocks)
         )
       )
-      
+
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
       expect(updateStepStatusMock).toHaveBeenCalledTimes(2)
       expect(saveAgentStateMock).toHaveBeenCalledTimes(1)
-      
+
       // Verify error handling
       expect(finalState.current_task.current_step_index).toBe(0) // Not advanced
       expect(finalState.plan[0].status).toBe("error")

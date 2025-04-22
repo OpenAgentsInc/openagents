@@ -18,6 +18,7 @@ export interface TaskExecutor {
 /**
  * Effect Tag for the TaskExecutor service
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class TaskExecutor extends Effect.Tag("TaskExecutor")<
   TaskExecutor,
   {

@@ -52,6 +52,7 @@ export interface PlanManager {
 /**
  * Effect Tag for the PlanManager service
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class PlanManager extends Effect.Tag("PlanManager")<
   PlanManager,
   {
