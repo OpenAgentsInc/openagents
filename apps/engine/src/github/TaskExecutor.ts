@@ -13,7 +13,7 @@ export interface TaskExecutor {
    * @param currentState Current agent state
    * @returns Updated agent state after step execution
    */
-  readonly executeNextStep: (currentState: AgentState) => Effect.Effect<AgentState, Error>
+  readonly executeNextStep: (currentState: AgentState) => Effect.Effect<AgentState, Error, never>
 }
 
 /**
@@ -23,7 +23,7 @@ export interface TaskExecutor {
 export class TaskExecutor extends Effect.Tag("TaskExecutor")<
   TaskExecutor,
   {
-    executeNextStep: (currentState: AgentState) => Effect.Effect<AgentState, Error>
+    executeNextStep: (currentState: AgentState) => Effect.Effect<AgentState, Error, never>
   }
 >() {}
 
@@ -106,7 +106,7 @@ export const TaskExecutorLayer = Layer.effect(
           }
 
           // 5. Save the final state
-          yield* githubClient.saveAgentState(workingState)
+          yield* githubClient.saveAgentState(workingState)()
           yield* Effect.logInfo(`Agent state saved for instance ${workingState.agent_info.instance_id}`)
 
           // 6. Return the final state

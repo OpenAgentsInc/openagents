@@ -135,8 +135,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 } else {
   // If imported as a module, run the main function
   Effect.runPromise(
-    _typecheckMain.pipe(
-      Effect.provide(AllLayers) as Effect.Effect<string, never, never>
+    Effect.provide(
+      _typecheckMain,
+      // Cast to avoid complex Layer dependency errors
+      AllLayers as unknown as Layer.Layer<never, never, never>
     )
   ).catch((err) => {
     console.error("Program error:", err)

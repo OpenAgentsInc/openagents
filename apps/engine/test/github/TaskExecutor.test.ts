@@ -144,7 +144,7 @@ describe("TaskExecutor", () => {
         // Verify state was saved after all updates
         expect(state.plan[0].status).toBe("completed")
         expect(state.current_task.current_step_index).toBe(1) // Advanced to next step
-        return Effect.succeed(state)
+        return () => Effect.succeed(state)
       })
 
       // Create test layers
@@ -236,7 +236,7 @@ describe("TaskExecutor", () => {
         expect(state.error_state.last_error).not.toBeNull()
         expect(state.error_state.consecutive_error_count).toBe(1)
         expect(state.current_task.current_step_index).toBe(0) // Not advanced
-        return Effect.succeed(state)
+        return () => Effect.succeed(state)
       })
 
       // Create the same mock layers with _tag property
@@ -273,7 +273,7 @@ describe("TaskExecutor", () => {
       const ErrorTaskExecutorLayer = Layer.succeed(
         TaskExecutor,
         TaskExecutor.of({
-          executeNextStep: (_currentState: AgentState): Effect.Effect<AgentState, Error> => {
+          executeNextStep: (_currentState: AgentState): Effect.Effect<AgentState, Error, never> => {
             // Create the error state with our expected values
             const errorState: AgentState = {
               ...initialState,
