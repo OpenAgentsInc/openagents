@@ -1,13 +1,13 @@
 {
-  "name": "@template/basic",
+  "name": "@openagents/engine",
   "version": "0.0.0",
   "type": "module",
   "packageManager": "pnpm@9.10.0",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "description": "A basic Effect package",
   "repository": {
     "type": "git",
-    "url": "<PLACEHOLDER>"
+    "url": "https://github.com/openagentsinc/openagents"
   },
   "publishConfig": {
     "access": "public",
