@@ -18,7 +18,7 @@ export interface TaskExecutor {
 /**
  * Effect Tag for the TaskExecutor service
  */
-export const TaskExecutor = Effect.Tag<TaskExecutor>()
+export const TaskExecutor = Effect.Tag<TaskExecutor>("TaskExecutor")
 
 /**
  * Layer that provides the TaskExecutor implementation
@@ -30,7 +30,7 @@ export const TaskExecutorLayer = Layer.effect(
     const planManager = yield* _(PlanManager)
     const githubClient = yield* _(GitHubClient)
 
-    return TaskExecutor.of({
+    return {
       executeNextStep: (currentState: AgentState) => Effect.gen(function*() {
         // 1. Get current step
         const currentStep = yield* planManager.getCurrentStep(currentState)
@@ -104,6 +104,6 @@ export const TaskExecutorLayer = Layer.effect(
         // 6. Return the final state
         return workingState
       })
-    })
+    }
   })
 )

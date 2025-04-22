@@ -150,13 +150,13 @@ describe("TaskExecutor", () => {
       // Create test layers
       const MockPlanManager = Layer.succeed(
         PlanManager,
-        PlanManager.of({
+        {
           addPlanStep: vi.fn(),
           updateStepStatus: updateStepStatusMock,
           addToolCallToStep: vi.fn(),
           getCurrentStep: getCurrentStepMock,
           _tag: "PlanManager" as const
-        })
+        }
       )
       
       const MockGitHubClient = Layer.succeed(
@@ -180,12 +180,13 @@ describe("TaskExecutor", () => {
         Layer.provide(MockGitHubClient)
       )
       
-      // Act - Get the TaskExecutor from the layer and run it
-      const executor = TestTaskExecutorLayer.build.pipe(
-        Effect.map(layer => layer(TaskExecutor))
-      ).pipe(Effect.runSync)
-      
-      const finalState = Effect.runSync(executor.executeNextStep(initialState))
+      // Act
+      const finalState = Effect.runSync(
+        Effect.provide(
+          Effect.flatMap(TaskExecutor, executor => executor.executeNextStep(initialState)),
+          TestTaskExecutorLayer
+        )
+      )
       
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
@@ -244,13 +245,13 @@ describe("TaskExecutor", () => {
       // Create mock layers
       const MockPlanManager = Layer.succeed(
         PlanManager,
-        PlanManager.of({
+        {
           addPlanStep: vi.fn(),
           updateStepStatus: updateStepStatusMock,
           addToolCallToStep: vi.fn(),
           getCurrentStep: getCurrentStepMock,
           _tag: "PlanManager" as const
-        })
+        }
       )
       
       const MockGitHubClient = Layer.succeed(
@@ -327,10 +328,12 @@ describe("TaskExecutor", () => {
       )
       
       // Act
-      const finalState = Effect.runSync(Effect.provide(
-        Effect.flatMap(TaskExecutor, executor => executor.executeNextStep(initialState)),
-        TestErrorTaskExecutorLayer
-      ))
+      const finalState = Effect.runSync(
+        Effect.provide(
+          Effect.flatMap(TaskExecutor, executor => executor.executeNextStep(initialState)),
+          TestErrorTaskExecutorLayer
+        )
+      )
       
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)

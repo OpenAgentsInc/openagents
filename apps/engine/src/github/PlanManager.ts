@@ -59,7 +59,7 @@ export const PlanManager = Effect.Tag<PlanManager>("PlanManager")
  */
 export const PlanManagerLayer = Layer.succeed(
   PlanManager,
-  PlanManager.of({
+  {
     addPlanStep: (state: AgentState, description: string) => Effect.sync(() => {
       // Generate a unique step ID
       const stepId = `step-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -175,5 +175,5 @@ export const PlanManagerLayer = Layer.succeed(
         return Effect.fail(new Error(`Invalid current_step_index: ${index}`))
       }
     }
-  })
+  }
 )
