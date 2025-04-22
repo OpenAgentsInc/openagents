@@ -1,0 +1,17 @@
+coverage/
+*.tsbuildinfo
+node_modules/
+.DS_Store
+tmp/
+dist/
+build/
+docs/
+scratchpad/*
+!scratchpad/tsconfig.json
+.direnv/
+.idea/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
