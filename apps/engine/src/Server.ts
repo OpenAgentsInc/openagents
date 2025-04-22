@@ -51,7 +51,7 @@ const broadcastSSE = (event: string, data: string): void => {
   } else if (event === "analysis" && data.includes("error")) {
     log(`Error: ${data.substring(data.indexOf("<span class=\"error\">") + 19, data.indexOf("</span>"))}`)
   }
-  
+
   for (const client of clients.values()) {
     client.write(message)
   }
@@ -233,12 +233,12 @@ Please format your response as structured analysis with clear headings.`
                 if (data.type === "content_block_delta" && data.delta && data.delta.text) {
                   const text = data.delta.text
                   analysisContent += text
-                  
+
                   // Log deltas but only if they contain meaningful text (not just whitespace)
                   if (text.trim().length > 0) {
                     log(`Delta: ${text.trim()}`)
                   }
-                  
+
                   // Process and preserve line breaks for proper display
                   const processedContent = analysisContent.replace(/\n/g, "<br>")
 
@@ -356,20 +356,20 @@ const createHttpServer = (): Http.Server => {
     if (url.startsWith("/fetch-issue") && req.method === "POST") {
       // Parse form data from the request body
       let body = ""
-      req.on("data", chunk => {
+      req.on("data", (chunk) => {
         body += chunk.toString()
       })
-      
+
       req.on("end", () => {
         // Parse the form data
         const formData = new URLSearchParams(body)
         const issueNumber = parseInt(formData.get("issue") || "1", 10)
         const owner = formData.get("owner") || process.env.GITHUB_REPO_OWNER || "OpenAgentsInc"
         const repo = formData.get("repo") || process.env.GITHUB_REPO_NAME || "openagents"
-        
+
         log(`Analyzing GitHub issue #${issueNumber} from ${owner}/${repo}`)
         fetchGitHubIssue(owner, repo, issueNumber)
-        
+
         res.writeHead(200, { "Content-Type": "text/plain" })
         res.end("Issue fetch initiated")
       })
@@ -389,23 +389,23 @@ const createHttpServer = (): Http.Server => {
       const indexPath = path.join(publicDir, "index.html")
       if (fs.existsSync(indexPath)) {
         let content = fs.readFileSync(indexPath, "utf8")
-        
+
         // Get the config values to inject into the HTML
         try {
           const config = Effect.runSync(loadConfig)
           // Replace placeholders with actual values
           content = content
-            .replace('value="GITHUB_REPO_OWNER"', `value="${config.githubRepoOwner}"`)
-            .replace('value="GITHUB_REPO_NAME"', `value="${config.githubRepo}"`)
+            .replace("value=\"GITHUB_REPO_OWNER\"", `value="${config.githubRepoOwner}"`)
+            .replace("value=\"GITHUB_REPO_NAME\"", `value="${config.githubRepo}"`)
         } catch (error) {
           const err = error instanceof Error ? error.message : String(error)
           log(`Warning: Failed to load config for HTML template: ${err}`)
           // Use fallback values if config loading fails
           content = content
-            .replace('value="GITHUB_REPO_OWNER"', 'value="OpenAgentsInc"')
-            .replace('value="GITHUB_REPO_NAME"', 'value="openagents"')
+            .replace("value=\"GITHUB_REPO_OWNER\"", "value=\"OpenAgentsInc\"")
+            .replace("value=\"GITHUB_REPO_NAME\"", "value=\"openagents\"")
         }
-        
+
         res.writeHead(200, { "Content-Type": "text/html" })
         res.end(content)
       } else {

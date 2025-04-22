@@ -1,7 +1,3 @@
-Okay, here are the detailed instructions specifically for **Phase 3.1: Implement the Agent State Model in `src/github/AgentStateTypes.ts`**.
-
----
-
 **Objective:** Fully define the TypeScript types and corresponding Effect `Schema.Class` definitions for the entire `AgentState` structure, strictly adhering to the specification outlined in `docs/agent-state.md`. This involves creating or updating classes for every field and nested object described in the example JSON.
 
 **Target File:** `src/github/AgentStateTypes.ts`
