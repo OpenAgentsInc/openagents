@@ -1,20 +1,29 @@
+import { AnthropicClient } from "@effect/ai-anthropic"
 import { Effect } from "effect"
 import * as fs from "node:fs"
 import * as Http from "node:http"
 import * as Https from "node:https"
 import * as path from "node:path"
 import * as dotenv from "dotenv"
+import { GitHubClient } from "./github/GitHub.js"
 
 // Load environment variables from .env file
 const loadConfig = Effect.try({
   try: () => {
     dotenv.config()
     const config = {
-      anthropicApiKey: process.env.ANTHROPIC_API_KEY
+      anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+      githubApiKey: process.env.GITHUB_API_KEY,
+      githubRepo: process.env.GITHUB_REPO_NAME || "openagents",
+      githubRepoOwner: process.env.GITHUB_REPO_OWNER || "openagents"
     }
 
     if (!config.anthropicApiKey) {
       throw new Error("ANTHROPIC_API_KEY is required but not found in environment")
+    }
+
+    if (!config.githubApiKey) {
+      throw new Error("GITHUB_API_KEY is required but not found in environment")
     }
 
     return config
@@ -33,52 +42,6 @@ const error = (message: string) => console.error(message)
 const clients = new Map<string, Http.ServerResponse>()
 let lastClientId = 0
 
-// Get a dad joke from icanhazdadjoke.com
-const fetchDadJoke = Effect.async<string, Error>((resume) => {
-  log("Fetching a dad joke...")
-
-  const request = Https.request({
-    hostname: "icanhazdadjoke.com",
-    path: "/",
-    method: "GET",
-    headers: {
-      "Accept": "application/json",
-      "User-Agent": "Effect Dad Joke Streamer (https://effect.website)"
-    }
-  }, (response) => {
-    let data = ""
-
-    response.on("data", (chunk) => data += chunk)
-
-    response.on("end", () => {
-      try {
-        if (data.trim() === '') {
-          throw new Error("Empty response received")
-        }
-
-        const parsedData = JSON.parse(data)
-        if (parsedData && parsedData.joke) {
-          log(`Joke received: ${parsedData.joke}`)
-          resume(Effect.succeed(parsedData.joke))
-        } else {
-          throw new Error("No joke found in response")
-        }
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err))
-        log(`Error parsing joke: ${error.message}`)
-        resume(Effect.fail(error))
-      }
-    })
-  })
-
-  request.on("error", (err) => {
-    log(`Error fetching joke: ${err.message}`)
-    resume(Effect.fail(err))
-  })
-
-  request.end()
-})
-
 // Function to send SSE message to all clients
 const broadcastSSE = (event: string, data: string) => {
   // Format a standard SSE message
@@ -92,28 +55,255 @@ const broadcastSSE = (event: string, data: string) => {
   }
 }
 
+// Get GitHub issue from GitHub API
+const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number) => {
+  return Effect.runPromise(loadConfig).then(config => {
+    try {
+      log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}...`)
+
+      const options = {
+        hostname: "api.github.com",
+        path: `/repos/${owner}/${repo}/issues/${issueNumber}`,
+        method: "GET",
+        headers: {
+          "Accept": "application/vnd.github.v3+json",
+          "Authorization": `token ${config.githubApiKey}`,
+          "User-Agent": "OpenAgents-Engine/1.0"
+        }
+      }
+
+      const request = Https.request(options, (response) => {
+        let data = ""
+
+        response.on("data", (chunk) => data += chunk)
+
+        response.on("end", () => {
+          try {
+            if (data.trim() === "") {
+              throw new Error("Empty response received")
+            }
+
+            const parsedData = JSON.parse(data)
+            if (parsedData) {
+              log(`Issue #${issueNumber} received:`, parsedData.title)
+              
+              // Format the issue data for display
+              const issueHtml = `
+                <div>
+                  <h3>GitHub Issue #${parsedData.number}: ${parsedData.title}</h3>
+                  <div class="issue-metadata">
+                    <span>Status: <strong>${parsedData.state}</strong></span>
+                    <span>Created by: <strong>${parsedData.user.login}</strong></span>
+                    <span>Created: <strong>${new Date(parsedData.created_at).toLocaleString()}</strong></span>
+                  </div>
+                  <div class="issue-body">
+                    <h4>Description:</h4>
+                    <p>${parsedData.body.replace(/\n/g, "<br>")}</p>
+                  </div>
+                </div>
+              `
+              
+              broadcastSSE("issue", issueHtml)
+              broadcastSSE("analysis", "")
+              analyzeIssueWithClaude(parsedData)
+            } else {
+              throw new Error("Invalid issue data received")
+            }
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            log(`Error parsing issue: ${errorMessage}`)
+            broadcastSSE("error", `<span class="error">Error fetching issue: ${errorMessage}</span>`)
+          }
+        })
+      })
+
+      request.on("error", (err) => {
+        log(`Error fetching issue: ${err.message}`)
+        broadcastSSE("error", `<span class="error">Error fetching issue: ${err.message}</span>`)
+      })
+
+      request.end()
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      error(`Exception setting up GitHub request: ${errorMessage}`)
+      broadcastSSE("error", `<span class="error">Error setting up GitHub request: ${errorMessage}</span>`)
+    }
+  }).catch(err => {
+    error(`Failed to load configuration: ${err}`)
+    broadcastSSE("error", `<span class="error">Failed to load API configuration: ${err}</span>`)
+  })
+}
+
+// Analyze a GitHub issue with Claude
+const analyzeIssueWithClaude = (issue: any) => {
+  Effect.runPromise(loadConfig).then(config => {
+    try {
+      log("Setting up request to Anthropic API")
+      const options = {
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "x-api-key": config.anthropicApiKey,
+          "anthropic-beta": "messages-2023-12-15"
+        }
+      }
+
+      // Prepare the request payload
+      const prompt = `You are an AI assistant tasked with analyzing GitHub issues. 
+I'll provide you with a GitHub issue, and I'd like you to:
+
+1. Summarize the main points of the issue
+2. Identify the type of issue (bug report, feature request, question, etc.)
+3. Suggest what additional information might be helpful (if any)
+4. Outline potential next steps for addressing this issue
+
+Here's the issue:
+
+Title: ${issue.title}
+Author: ${issue.user.login}
+Created: ${issue.created_at}
+Status: ${issue.state}
+
+Description:
+${issue.body}
+
+Please format your response as structured analysis with clear headings.`
+
+      const data = JSON.stringify({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 1000,
+        stream: true,
+        messages: [
+          { role: "user", content: prompt }
+        ]
+      })
+
+      // Make the request
+      log("Sending request to Anthropic API for issue analysis")
+      const req = Https.request(options, (apiRes) => {
+        log(`Anthropic API response status: ${apiRes.statusCode} ${apiRes.statusMessage}`)
+
+        // Start fresh with each request
+        let analysisContent = ""
+
+        // Initialize with blank content
+        broadcastSSE("analysis", `<div><h3>Analysis:</h3><p class='analysis'></p></div>`)
+
+        apiRes.on("data", (chunk) => {
+          const lines = chunk.toString().split("\n").filter((line: string) => line.trim() !== "")
+
+          for (const line of lines) {
+            try {
+              // Check if it's a data line
+              if (line.startsWith("data: ")) {
+                const jsonPart = line.slice(6) // Remove "data: " prefix
+
+                // Check for [DONE] marker
+                if (jsonPart.trim() === "[DONE]") {
+                  log("Received [DONE] marker")
+                  // Process and preserve line breaks for final message
+                  const finalContent = analysisContent.replace(/\n/g, "<br>")
+                  // Log final content length
+                  log(`FINAL content length: ${analysisContent.length} chars`)
+
+                  // Add timestamp to ensure fresh rendering
+                  const timestamp = Date.now()
+
+                  // Send final complete message - add "complete" class to signal it's done
+                  broadcastSSE("analysis", `<div><h3>Analysis:</h3><p class='analysis complete' data-ts="${timestamp}">${finalContent}</p></div>`)
+                  continue
+                }
+
+                const data = JSON.parse(jsonPart)
+
+                // If it has delta content, send it to the client
+                if (data.type === "content_block_delta" && data.delta && data.delta.text) {
+                  const text = data.delta.text
+                  analysisContent += text
+                  log(`Streaming analysis chunk: ${text}`)
+
+                  // Process and preserve line breaks for proper display
+                  const processedContent = analysisContent.replace(/\n/g, "<br>")
+                  // Log length of current content to verify it's growing
+                  log(`Current content length: ${analysisContent.length} chars`)
+
+                  // For debugging, let's add a counter to make each response unique
+                  // This ensures browser doesn't cache incorrectly
+                  const timestamp = Date.now()
+
+                  // Send complete content each time to refresh the entire div
+                  broadcastSSE("analysis", `<div><h3>Analysis:</h3><p class='analysis' data-ts="${timestamp}">${processedContent}</p></div>`)
+                }
+              }
+            } catch (parseErr) {
+              log(`Error parsing line: ${line}`)
+              log(`Parse error: ${parseErr}`)
+            }
+          }
+        })
+
+        apiRes.on("end", () => {
+          log("Anthropic API stream ended")
+        })
+      })
+
+      req.on("error", (err) => {
+        error(`Error making request to Anthropic API: ${err.message}`)
+        broadcastSSE("analysis", `<span class='error'>Error connecting to language model API: ${err.message}</span>`)
+      })
+
+      // Send the request
+      req.write(data)
+      req.end()
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      error(`Exception setting up Anthropic request: ${errorMessage}`)
+      broadcastSSE("analysis", `<span class='error'>Error setting up analysis request: ${errorMessage}</span>`)
+    }
+  }).catch(err => {
+    error(`Failed to load configuration: ${err}`)
+    broadcastSSE("analysis", `<span class='error'>Failed to load API configuration: ${err}</span>`)
+  })
+}
+
+// Get agent state
+const getAgentStatus = () => {
+  return {
+    status: "ready",
+    last_updated: new Date().toISOString(),
+    current_task: null,
+    progress: {
+      steps_completed: 0,
+      total_steps: 0
+    }
+  }
+}
+
 // Setup a route to handle the SSE connection
 const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse) => {
   log("New SSE connection established")
-  log("SSE Headers: " + JSON.stringify(req.headers))
 
   // Set headers for SSE
   res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive"
   })
 
-  // Send initial connection message - using the standard format
+  // Send initial connection message
   broadcastSSE("connected", "SSE connection established")
   log("Sent initial connection message")
 
-  // Wait a moment then send a test message
-  setTimeout(() => {
-    // Send all test messages via broadcast function for consistency
-    broadcastSSE("test", "This is a test event to confirm SSE is working")
-    broadcastSSE("test-broadcast", "Test broadcast via broadcastSSE function")
-  }, 1000)
+  // Send initial status information
+  const statusData = JSON.stringify({
+    connection: "connected",
+    agent: "ready"
+  })
+  broadcastSSE("status", statusData)
 
   // Add client to the list
   const clientId = (++lastClientId).toString()
@@ -146,27 +336,27 @@ const createHttpServer = () => {
       return
     }
 
-    // Handle joke fetch endpoint
-    if (url === "/fetch-joke" && req.method === "POST") {
-      fetchDadJoke.pipe(
-        Effect.match({
-          onSuccess: (joke) => {
-            // Preserve line breaks using <br> to ensure proper HTML display
-            const jokeWithLineBreaks = joke.replace(/\n/g, "<br>");
-            broadcastSSE("joke", `<div><h3>Original Dad Joke:</h3><p>${jokeWithLineBreaks}</p></div>`)
-            broadcastSSE("expansion", "")
-            expandJokeWithClaude(joke)
-            res.writeHead(200, { "Content-Type": "text/plain" })
-            res.end("Joke fetch initiated")
-          },
-          onFailure: (err) => {
-            error(`Error in fetch-joke: ${err.message}`)
-            res.writeHead(500, { "Content-Type": "text/plain" })
-            res.end("Error fetching joke")
-          }
-        }),
-        Effect.runPromise
-      )
+    // Handle fetch GitHub issue endpoint
+    if (url.startsWith("/fetch-issue") && req.method === "POST") {
+      // Check for issue number in query params
+      const urlObj = new URL(url, `http://${req.headers.host}`)
+      const issueNumber = parseInt(urlObj.searchParams.get("issue") || "1", 10)
+      const owner = urlObj.searchParams.get("owner") || process.env.GITHUB_REPO_OWNER || "openagents"
+      const repo = urlObj.searchParams.get("repo") || process.env.GITHUB_REPO_NAME || "openagents"
+      
+      log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}`)
+      fetchGitHubIssue(owner, repo, issueNumber)
+      
+      res.writeHead(200, { "Content-Type": "text/plain" })
+      res.end("Issue fetch initiated")
+      return
+    }
+
+    // Handle get agent status endpoint
+    if (url === "/agent-status" && req.method === "GET") {
+      const status = getAgentStatus()
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify(status))
       return
     }
 
@@ -184,7 +374,7 @@ const createHttpServer = () => {
       return
     }
 
-    // Serve static files (like font files)
+    // Serve static files (like CSS, JavaScript, and fonts)
     const filePath = path.join(publicDir, url)
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath)
@@ -208,129 +398,6 @@ const createHttpServer = () => {
   })
 
   return server
-}
-
-// Modify expandJokeWithClaude to use Effect
-const expandJokeWithClaude = (joke: string) => {
-  Effect.runPromise(loadConfig).then(config => {
-    try {
-      log("Setting up request to Anthropic API")
-      const options = {
-        hostname: "api.anthropic.com",
-        path: "/v1/messages",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "anthropic-version": "2023-06-01",
-          "x-api-key": config.anthropicApiKey,
-          "anthropic-beta": "messages-2023-12-15"
-        }
-      }
-
-      // Prepare the request payload
-      const prompt = `You are a comedian writer. You've just been given this dad joke:
-
-"${joke}"
-
-Expand this into a 2-paragraph comedic short story that elaborates on the joke while keeping it family-friendly.
-Don't repeat the original joke verbatim. Just create a funny short story inspired by the joke.`
-
-      const data = JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 1000,
-        stream: true,
-        messages: [
-          { role: "user", content: prompt }
-        ]
-      })
-
-      // Make the request
-      log("Sending request to Anthropic API")
-      const req = Https.request(options, (apiRes) => {
-        log(`Anthropic API response status: ${apiRes.statusCode} ${apiRes.statusMessage}`)
-
-        // Start fresh with each request
-        let storyContent = ""
-
-        // Initialize with blank content
-        broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story'></p></div>`)
-
-        apiRes.on("data", (chunk) => {
-          const lines = chunk.toString().split("\n").filter((line: string) => line.trim() !== "")
-
-          for (const line of lines) {
-            try {
-              // Check if it's a data line
-              if (line.startsWith("data: ")) {
-                const jsonPart = line.slice(6) // Remove "data: " prefix
-
-                // Check for [DONE] marker
-                if (jsonPart.trim() === "[DONE]") {
-                  log("Received [DONE] marker")
-                  // Process and preserve line breaks for final message
-                  const finalContent = storyContent.replace(/\n/g, "<br>");
-                  // Log final content length
-                  log(`FINAL content length: ${storyContent.length} chars`);
-                  log(`Final content with line breaks: ${finalContent.substring(0, 100)}...`);
-
-                  // Add timestamp to ensure fresh rendering
-                  const timestamp = Date.now();
-
-                  // Send final complete message - add "complete" class to signal it's done
-                  broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story complete' data-ts="${timestamp}">${finalContent}</p></div>`)
-                  continue
-                }
-
-                const data = JSON.parse(jsonPart)
-
-                // If it has delta content, send it to the client
-                if (data.type === "content_block_delta" && data.delta && data.delta.text) {
-                  const text = data.delta.text
-                  storyContent += text
-                  log(`Streaming expansion chunk: ${text}`)
-
-                  // Process and preserve line breaks for proper display
-                  const processedContent = storyContent.replace(/\n/g, "<br>");
-                  // Log length of current content to verify it's growing
-                  log(`Current content length: ${storyContent.length} chars`);
-
-                  // For debugging, let's add a counter to make each response unique
-                  // This ensures browser doesn't cache incorrectly
-                  const timestamp = Date.now();
-
-                  // Send complete content each time to refresh the entire div
-                  broadcastSSE("expansion", `<div><h3>Claude's Expansion:</h3><p class='story' data-ts="${timestamp}">${processedContent}</p></div>`)
-                }
-              }
-            } catch (parseErr) {
-              log(`Error parsing line: ${line}`)
-              log(`Parse error: ${parseErr}`)
-            }
-          }
-        })
-
-        apiRes.on("end", () => {
-          log("Anthropic API stream ended")
-        })
-      })
-
-      req.on("error", (err) => {
-        error(`Error making request to Anthropic API: ${err.message}`)
-        broadcastSSE("expansion", "<span class='error'>Error connecting to language model API</span>")
-      })
-
-      // Send the request
-      req.write(data)
-      req.end()
-
-    } catch (err) {
-      error(`Exception setting up Anthropic request: ${err}`)
-      broadcastSSE("expansion", "<span class='error'>Error setting up expansion request</span>")
-    }
-  }).catch(err => {
-    error(`Failed to load configuration: ${err}`)
-    broadcastSSE("expansion", "<span class='error'>Failed to load API configuration</span>")
-  })
 }
 
 // Export the function to start the server

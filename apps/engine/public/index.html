@@ -4,9 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dad Joke Expander | Effect Streaming Demo</title>
+  <title>GitHub Issue Solver | OpenAgents</title>
   <script src="/htmx.min.js"></script>
   <script src="/sse.js"></script>
+  <link rel="stylesheet" href="/styles.css">
   <style>
     /* Add Berkeley Mono font */
     @font-face {
@@ -80,6 +81,27 @@
       color: black;
     }
 
+    input[type="text"], input[type="number"] {
+      background-color: rgba(255, 255, 255, 0.1);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 10px;
+      border-radius: 4px;
+      font-family: 'Berkeley Mono', monospace;
+      margin-right: 10px;
+      width: 100px;
+    }
+
+    label {
+      margin-right: 10px;
+    }
+
+    .input-group {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
     #output-container div {
       border: 1px solid rgba(255, 255, 255, 0.5);
       border-radius: 4px;
@@ -107,41 +129,85 @@
       padding-bottom: 5px;
       margin-top: 0;
     }
-  </style>
-</head>
 
-<body hx-ext="sse" sse-connect="/sse">
-  <h1>Dad Joke Expander</h1>
-  <p>This demo fetches a dad joke from <code>icanhazdadjoke.com</code> and then streams an expanded story from Claude.
-  </p>
-
-  <!-- Trigger joke fetch via SSE -->
-  <button hx-post="/fetch-joke" hx-trigger="click" hx-swap="none">
-    Get Dad Joke & Story
-  </button>
-
-  <div id="output-container">
-    <!-- These divs will be updated via SSE events -->
-    <div id="test-message" sse-swap="test">No test message received</div>
-    <div id="test-broadcast" sse-swap="test-broadcast">No broadcast test received</div>
-    <div id="original-joke" sse-swap="joke">Waiting for joke...</div>
-    <div id="expansion" sse-swap="expansion" style="overflow: visible; height: auto; min-height: 300px;">Waiting for
-      expansion...</div>
-  </div>
-
-  <style>
-    #output-container {
-      margin-top: 20px;
-    }
-
-    #original-joke {
+    .status-container {
+      display: flex;
+      justify-content: space-between;
+      background-color: rgba(30, 30, 30, 0.5);
+      padding: 10px;
+      border-radius: 4px;
       margin-bottom: 20px;
     }
 
-    #original-joke p,
-    #expansion p {
-      white-space: pre-wrap;
+    .status-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .status-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .status-value {
+      font-weight: bold;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+
+    .status-value.connected {
+      color: #4caf50;
+    }
+
+    .status-value.disconnected {
+      color: #f44336;
+    }
+
+    .status-value.ready {
+      color: #4caf50;
+    }
+
+    .status-value.busy {
+      color: #ff9800;
+    }
+
+    .status-value.error {
+      color: #f44336;
+    }
+
+    .issue-metadata {
+      display: flex;
+      justify-content: space-between;
+      margin: 10px 0;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .issue-body {
+      margin-top: 15px;
+    }
+
+    .issue-body h4 {
+      margin-bottom: 10px;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .analysis, .issue-body p {
+      line-height: 1.8;
+      font-family: 'Berkeley Mono', monospace;
+      letter-spacing: -0.01rem;
+      white-space: pre-wrap !important;
       overflow-wrap: break-word;
+      min-height: 100px;
+      overflow: visible;
+      height: auto;
+      display: block;
+    }
+
+    .analysis.complete {
+      border-bottom: 2px solid #4ff;
     }
 
     .error {
@@ -150,41 +216,98 @@
       font-family: 'Berkeley Mono', monospace;
     }
 
-    .story {
-      line-height: 1.8;
-      font-family: 'Berkeley Mono', monospace;
-      letter-spacing: -0.01rem;
-      white-space: pre-wrap !important;
-      overflow-wrap: break-word;
-      min-height: 200px;
-      overflow: visible;
-      height: auto;
-      display: block;
-    }
-
-    .story.complete {
-      border-bottom: 2px solid #4ff;
-    }
-
     /* Animation for cursor */
-    .story::after {
+    .analysis:not(.complete)::after {
       content: "_";
       animation: cursor-blink 1s infinite;
       font-weight: bold;
     }
 
     @keyframes cursor-blink {
-
-      0%,
-      100% {
+      0%, 100% {
         opacity: 1;
       }
-
       50% {
         opacity: 0;
       }
     }
   </style>
+</head>
+
+<body hx-ext="sse" sse-connect="/sse">
+  <h1>GitHub Issue Solver</h1>
+  <p>This application connects to GitHub to analyze issues and assist with solving them using AI-powered tools.</p>
+
+  <div class="status-container">
+    <div class="status-item">
+      <span class="status-label">Connection</span>
+      <span id="connection-status" class="status-value disconnected">Disconnected</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">Agent Status</span>
+      <span id="agent-status" class="status-value ready">Ready</span>
+    </div>
+  </div>
+
+  <form hx-post="/fetch-issue" hx-trigger="submit" hx-swap="none">
+    <div class="input-group">
+      <label for="owner">Owner:</label>
+      <input type="text" id="owner" name="owner" value="openagents" placeholder="Repo Owner">
+      
+      <label for="repo">Repo:</label>
+      <input type="text" id="repo" name="repo" value="openagents" placeholder="Repo Name">
+      
+      <label for="issue">Issue #:</label>
+      <input type="number" id="issue" name="issue" value="1" min="1" placeholder="Issue Number">
+    </div>
+    
+    <button type="submit">
+      Analyze GitHub Issue
+    </button>
+  </form>
+
+  <div id="output-container">
+    <!-- These divs will be updated via SSE events -->
+    <div id="issue" sse-swap="issue">No issue selected. Please enter an issue number and click "Analyze GitHub Issue".</div>
+    <div id="analysis" sse-swap="analysis"></div>
+    <div id="error" sse-swap="error"></div>
+  </div>
+
+  <script>
+    // Update connection status based on SSE events
+    document.body.addEventListener('htmx:sseOpen', function() {
+      document.getElementById('connection-status').textContent = 'Connected';
+      document.getElementById('connection-status').className = 'status-value connected';
+    });
+
+    document.body.addEventListener('htmx:sseError', function() {
+      document.getElementById('connection-status').textContent = 'Disconnected';
+      document.getElementById('connection-status').className = 'status-value disconnected';
+    });
+
+    // Handle status updates from the server
+    document.addEventListener('htmx:sseMessage', function(event) {
+      if (event.detail.name === 'status') {
+        try {
+          const statusData = JSON.parse(event.detail.data);
+          
+          // Update connection status
+          if (statusData.connection) {
+            document.getElementById('connection-status').textContent = statusData.connection;
+            document.getElementById('connection-status').className = 'status-value ' + statusData.connection;
+          }
+          
+          // Update agent status
+          if (statusData.agent) {
+            document.getElementById('agent-status').textContent = statusData.agent;
+            document.getElementById('agent-status').className = 'status-value ' + statusData.agent;
+          }
+        } catch (e) {
+          console.error('Failed to parse status data:', e);
+        }
+      }
+    });
+  </script>
 </body>
 
 </html>

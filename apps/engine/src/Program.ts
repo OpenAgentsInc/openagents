@@ -1,87 +1,52 @@
 import { AiToolkit, Completions } from "@effect/ai"
 import { AnthropicClient, AnthropicCompletions } from "@effect/ai-anthropic"
-import { HttpClient, HttpClientResponse } from "@effect/platform"
 import { NodeHttpClient } from "@effect/platform-node"
-import { Array, Chunk, Config, Console, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Chunk, Config, Console, Effect, Layer, Option, Schema, Stream } from "effect"
 import { startServer } from "./Server.js"
+import { GitHubClientLayer } from "./github/GitHub.js"
+import { GitHubTools, GitHubToolsLayer } from "./github/GitHubTools.js"
 
-class DadJoke extends Schema.Class<DadJoke>("DadJoke")({
-  id: Schema.String,
-  joke: Schema.String
-}) { }
-
-class SearchResponse extends Schema.Class<SearchResponse>("SearchResponse")({
-  results: Schema.Array(DadJoke)
-}) { }
-
-class ICanHazDadJoke extends Effect.Service<ICanHazDadJoke>()("ICanHazDadJoke", {
-  dependencies: [NodeHttpClient.layerUndici],
-  effect: Effect.gen(function* () {
-    const httpClient = yield* HttpClient.HttpClient
-    const httpClientOk = httpClient.pipe(
-      HttpClient.filterStatusOk,
-      HttpClient.mapRequest((request) => ({ ...request, url: `https://icanhazdadjoke.com${request.url}` }))
-    )
-
-    const search = Effect.fn("ICanHazDadJoke.search")(
-      function* (params: typeof GetDadJoke.Type) {
-        return yield* httpClientOk.get("/search", {
-          acceptJson: true,
-          urlParams: { ...params }
-        }).pipe(
-          Effect.flatMap(HttpClientResponse.schemaBodyJson(SearchResponse)),
-          Effect.flatMap(({ results }) => Array.head(results)),
-          Effect.map((joke) => joke.joke),
-          Effect.scoped,
-          Effect.orDie
-        )
-      }
-    )
-
-    return {
-      search
-    } as const
-  })
-}) { }
-
-class GetDadJoke extends Schema.TaggedRequest<GetDadJoke>()("GetDadJoke", {
-  payload: {
-    searchTerm: Schema.String.annotations({
-      description: "The search term to use to find dad jokes"
-    })
-  },
-  success: Schema.String,
-  failure: Schema.Never
-}, {
-  description: "Get a hilarious dad joke from the icanhazdadjoke API"
-}) { }
-
-const DadJokeTools = AiToolkit.empty.add(GetDadJoke)
-
-const DadJokeToolsLayer = DadJokeTools.implement((handlers) =>
-  Effect.gen(function* () {
-    const icanhazdadjoke = yield* ICanHazDadJoke
-    return handlers
-      .handle("GetDadJoke", (params) => {
-        return Effect.gen(function* () {
-          yield* Console.log("🛠️ Tool called: GetDadJoke")
-          yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
-          const result = yield* icanhazdadjoke.search(params)
-          yield* Console.log("✅ Tool result:", result)
-          return result
-        })
-      })
-  })
-).pipe(Layer.provide(ICanHazDadJoke.Default))
-
-const streamingGenerateDadJoke = Effect.gen(function* () {
-  yield* Console.log("🤖 Starting streaming dad joke generation...")
+/**
+ * Process a GitHub issue using AI and GitHub tools
+ */
+const processGitHubIssue = Effect.gen(function* () {
+  yield* Console.log("🤖 Starting GitHub issue processing...")
   const completions = yield* Completions.Completions
-  const tools = yield* DadJokeTools
-  yield* Console.log("🔧 Available tools: GetDadJoke")
+  const tools = yield* GitHubTools
+  yield* Console.log("🔧 Available GitHub tools:", Object.keys(tools).join(", "))
 
+  // Parameters from environment or command line
+  const config = yield* Effect.try({
+    try: () => {
+      const owner = process.env.GITHUB_REPO_OWNER || "openagents"
+      const repo = process.env.GITHUB_REPO_NAME || "openagents"
+      const issueNumber = parseInt(process.env.GITHUB_ISSUE_NUMBER || "1", 10)
+      
+      return { owner, repo, issueNumber }
+    },
+    catch: (error) => new Error(`Failed to load configuration: ${error}`)
+  })
+  
+  yield* Console.log(`Processing issue #${config.issueNumber} from ${config.owner}/${config.repo}`)
+
+  // Setup the agent prompt
+  const prompt = `You are an AI assistant tasked with analyzing and processing GitHub issues. 
+You have access to GitHub API tools that allow you to retrieve issue details, create comments, and update issue status.
+
+First, use the GetGitHubIssue tool to retrieve details about issue #${config.issueNumber} in the ${config.owner}/${config.repo} repository.
+Then, analyze the issue and form a plan for addressing it. Create an agent state to track your progress using the CreateAgentStateForIssue tool.
+
+Based on the issue content:
+1. Summarize the issue's main points
+2. Identify the type of issue (bug, feature request, question, etc.)
+3. Determine what additional information might be needed
+4. Outline potential approaches to solving the issue
+
+IMPORTANT: Do not attempt to solve technical problems directly. Instead, focus on creating a clear plan and tracking system for addressing the issue.`
+
+  // Stream the AI response with GitHub tools
   const streamResponse = completions.toolkitStream({
-    input: "Generate a dad joke",
+    input: prompt,
     tools,
     concurrency: 1
   })
@@ -103,7 +68,7 @@ const streamingGenerateDadJoke = Effect.gen(function* () {
         }
         // Also log if we have a resolved value (happens with tool results)
         if (Option.isSome(chunk.value)) {
-          yield* Console.log(`💡 Result: "${chunk.value.value}"`)
+          yield* Console.log(`💡 Result: "${JSON.stringify(chunk.value.value).substring(0, 100)}..."`)
         }
       })
     ),
@@ -122,19 +87,26 @@ const streamingGenerateDadJoke = Effect.gen(function* () {
   throw new Error("No response received")
 })
 
-const Claude3 = AnthropicCompletions.model("claude-3-5-haiku-latest")
+// Setup Anthropic client configuration
+const Claude3 = AnthropicCompletions.model("claude-3-5-sonnet-latest")
 
+// Main function
 const main = Effect.gen(function* () {
   const claude3 = yield* Claude3
-  return yield* claude3.provide(streamingGenerateDadJoke)
+  return yield* claude3.provide(processGitHubIssue)
 })
 
+// Anthropic configuration layer
 const Anthropic = AnthropicClient.layerConfig({
   apiKey: Config.redacted("ANTHROPIC_API_KEY")
 })
 
-const AnthropicWithHttp = Layer.provide(Anthropic, NodeHttpClient.layerUndici)
-
+// Combined layers
+const AllLayers = Layer.mergeAll(
+  Layer.provide(Anthropic, NodeHttpClient.layerUndici),
+  GitHubClientLayer,
+  GitHubToolsLayer
+)
 
 // Start the server when running the program directly
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -142,7 +114,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 } else {
   // If imported as a module, run the main function
   main.pipe(
-    Effect.provide([AnthropicWithHttp, DadJokeToolsLayer]),
+    Effect.provide(AllLayers),
     Effect.runPromise
   )
 }
