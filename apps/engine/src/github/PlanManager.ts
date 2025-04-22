@@ -1,5 +1,5 @@
-import type { AgentState, PlanStep, ToolCall } from "./AgentStateTypes.js"
 import { Effect, Layer } from "effect"
+import type { AgentState, PlanStep, ToolCall } from "./AgentStateTypes.js"
 
 /**
  * Service for managing the execution plan within the agent state
@@ -58,7 +58,7 @@ export class PlanManager extends Effect.Tag("PlanManager")<
     addPlanStep: (state: AgentState, description: string) => Effect.Effect<AgentState>
     updateStepStatus: (
       state: AgentState,
-      stepId: string, 
+      stepId: string,
       newStatus: PlanStep["status"],
       resultSummary?: string | null
     ) => Effect.Effect<AgentState>
@@ -77,114 +77,122 @@ export class PlanManager extends Effect.Tag("PlanManager")<
 export const PlanManagerLayer = Layer.succeed(
   PlanManager,
   {
-    addPlanStep: (state: AgentState, description: string) => Effect.sync(() => {
-      // Generate a unique step ID
-      const stepId = `step-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-      
-      // Create the new step
-      const newStep: PlanStep = {
-        id: stepId,
-        step_number: state.plan.length + 1, // 1-based index
-        description,
-        status: "pending",
-        start_time: null,
-        end_time: null,
-        result_summary: null,
-        tool_calls: []
-      }
+    addPlanStep: (state: AgentState, description: string) =>
+      Effect.sync(() => {
+        // Generate a unique step ID
+        const stepId = `step-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 
-      // Return a new state with the step added to the plan
-      return {
-        ...state,
-        plan: [...state.plan, newStep],
-        metrics: {
-          ...state.metrics,
-          total_steps_in_plan: state.metrics.total_steps_in_plan + 1
+        // Create the new step
+        const newStep: PlanStep = {
+          id: stepId,
+          step_number: state.plan.length + 1, // 1-based index
+          description,
+          status: "pending",
+          start_time: null,
+          end_time: null,
+          result_summary: null,
+          tool_calls: []
         }
-      }
-    }),
 
-    updateStepStatus: (state: AgentState, stepId: string, newStatus: PlanStep["status"], resultSummary: string | null = null) => Effect.sync(() => {
-      const stepIndex = state.plan.findIndex((step: PlanStep) => step.id === stepId)
-      
-      // If step not found, throw an error that will be converted to Effect.fail
-      if (stepIndex === -1) {
-        throw new Error(`Plan step with id ${stepId} not found`)
-      }
-
-      const now = new Date().toISOString()
-      const originalStep = state.plan[stepIndex]
-      
-      // Create updated step with new status and appropriate timestamps
-      const updatedStep = {
-        ...originalStep,
-        status: newStatus,
-        // Set start_time if moving to in_progress and not already set
-        start_time: originalStep.start_time ?? (newStatus === "in_progress" ? now : null),
-        // Set end_time if completing, skipping, or erroring
-        end_time: (newStatus === "completed" || newStatus === "skipped" || newStatus === "error") 
-          ? now 
-          : originalStep.end_time,
-        result_summary: resultSummary !== null ? resultSummary : originalStep.result_summary
-      }
-
-      // Create a new plan array with the updated step
-      const updatedPlan = [...state.plan]
-      updatedPlan[stepIndex] = updatedStep
-
-      // Count completed steps for metrics
-      const stepsCompleted = updatedPlan.filter(step => step.status === "completed").length
-
-      // Return updated state
-      return {
-        ...state,
-        plan: updatedPlan,
-        metrics: {
-          ...state.metrics,
-          steps_completed: stepsCompleted
+        // Return a new state with the step added to the plan
+        return {
+          ...state,
+          plan: [...state.plan, newStep],
+          metrics: {
+            ...state.metrics,
+            total_steps_in_plan: state.metrics.total_steps_in_plan + 1
+          }
         }
-      }
-    }).pipe(
-      Effect.catchAll(error => Effect.fail(error))
-    ),
+      }),
 
-    addToolCallToStep: (state: AgentState, stepId: string, toolCallData: Omit<ToolCall, "timestamp">) => Effect.sync(() => {
-      const stepIndex = state.plan.findIndex((step: PlanStep) => step.id === stepId)
-      
-      // If step not found, throw an error
-      if (stepIndex === -1) {
-        throw new Error(`Plan step with id ${stepId} not found`)
-      }
+    updateStepStatus: (
+      state: AgentState,
+      stepId: string,
+      newStatus: PlanStep["status"],
+      resultSummary: string | null = null
+    ) =>
+      Effect.sync(() => {
+        const stepIndex = state.plan.findIndex((step: PlanStep) => step.id === stepId)
 
-      // Create the tool call with timestamp
-      const newToolCall: ToolCall = {
-        ...toolCallData,
-        timestamp: new Date().toISOString()
-      }
+        // If step not found, throw an error that will be converted to Effect.fail
+        if (stepIndex === -1) {
+          throw new Error(`Plan step with id ${stepId} not found`)
+        }
 
-      // Create an updated step with the new tool call
-      const originalStep = state.plan[stepIndex]
-      const updatedStep = {
-        ...originalStep,
-        tool_calls: [...originalStep.tool_calls, newToolCall]
-      }
+        const now = new Date().toISOString()
+        const originalStep = state.plan[stepIndex]
 
-      // Create a new plan array with the updated step
-      const updatedPlan = [...state.plan]
-      updatedPlan[stepIndex] = updatedStep
+        // Create updated step with new status and appropriate timestamps
+        const updatedStep = {
+          ...originalStep,
+          status: newStatus,
+          // Set start_time if moving to in_progress and not already set
+          start_time: originalStep.start_time ?? (newStatus === "in_progress" ? now : null),
+          // Set end_time if completing, skipping, or erroring
+          end_time: (newStatus === "completed" || newStatus === "skipped" || newStatus === "error")
+            ? now
+            : originalStep.end_time,
+          result_summary: resultSummary !== null ? resultSummary : originalStep.result_summary
+        }
 
-      // Return updated state
-      return {
-        ...state,
-        plan: updatedPlan
-      }
-    }).pipe(
-      Effect.catchAll(error => Effect.fail(error))
-    ),
+        // Create a new plan array with the updated step
+        const updatedPlan = [...state.plan]
+        updatedPlan[stepIndex] = updatedStep
+
+        // Count completed steps for metrics
+        const stepsCompleted = updatedPlan.filter((step) => step.status === "completed").length
+
+        // Return updated state
+        return {
+          ...state,
+          plan: updatedPlan,
+          metrics: {
+            ...state.metrics,
+            steps_completed: stepsCompleted
+          }
+        }
+      }).pipe(
+        Effect.catchAll((error) => Effect.fail(error))
+      ),
+
+    addToolCallToStep: (state: AgentState, stepId: string, toolCallData: Omit<ToolCall, "timestamp">) =>
+      Effect.sync(() => {
+        const stepIndex = state.plan.findIndex((step: PlanStep) => step.id === stepId)
+
+        // If step not found, throw an error
+        if (stepIndex === -1) {
+          throw new Error(`Plan step with id ${stepId} not found`)
+        }
+
+        // Create the tool call with timestamp
+        const newToolCall: ToolCall = {
+          ...toolCallData,
+          timestamp: new Date().toISOString()
+        }
+
+        // Create an updated step with the new tool call
+        const originalStep = state.plan[stepIndex]
+        const updatedStep = {
+          ...originalStep,
+          tool_calls: [...originalStep.tool_calls, newToolCall]
+        }
+
+        // Create a new plan array with the updated step
+        const updatedPlan = [...state.plan]
+        updatedPlan[stepIndex] = updatedStep
+
+        // Return updated state
+        return {
+          ...state,
+          plan: updatedPlan
+        }
+      }).pipe(
+        Effect.catchAll((error) => Effect.fail(error))
+      ),
 
     getCurrentStep: (state: AgentState) => {
       const index = state.current_task.current_step_index
-      
+
       // Check if the index is valid
       if (index >= 0 && index < state.plan.length) {
         return Effect.succeed(state.plan[index])

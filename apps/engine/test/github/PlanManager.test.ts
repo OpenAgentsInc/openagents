@@ -1,5 +1,4 @@
-import { describe, it, expect } from "@effect/vitest"
-
+import { describe, expect, it } from "@effect/vitest"
 
 describe("PlanManager", () => {
   describe("addPlanStep", () => {

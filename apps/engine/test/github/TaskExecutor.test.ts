@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@effect/vitest"
+import { describe, expect, it } from "@effect/vitest"
 
 describe("TaskExecutor", () => {
   describe("executeNextStep", () => {
@@ -6,7 +6,7 @@ describe("TaskExecutor", () => {
       // This is a placeholder test to pass verification
       expect(true).toBe(true)
     })
-    
+
     it("should handle step execution failure correctly", () => {
       // This is a placeholder test to pass verification
       expect(true).toBe(true)
