@@ -23,8 +23,15 @@
   </style>
 </head>
 
-<body>
-  <h1>Hello world</h1>
+<body hx-ext="ws">
+  <div ws-connect="ws://localhost:3000/ws">
+    <h1>WebSocket Test</h1>
+    <div id="messages"></div>
+    <form ws-send hx-trigger="submit" hx-prevent-default="true">
+      <input type="text" name="message" placeholder="Type a message...">
+      <button type="submit">Send</button>
+    </form>
+  </div>
 </body>
 
 </html>
