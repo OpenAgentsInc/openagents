@@ -21,7 +21,7 @@ export class GitHubTools extends Effect.Tag("GitHubTools")<
   GitHubTools,
   {
     tools: AiToolkit.AiToolkit<any>
-    handlers: Record<string, (...args: any[]) => any>
+    handlers: Record<string, (...args: Array<any>) => any>
   }
 >() {
   static readonly fullName = "GitHubTools"
@@ -42,6 +42,8 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.getIssue(params.owner, params.repo, params.issueNumber)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to get GitHub issue"))
           }
@@ -55,6 +57,7 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.listIssues(params.owner, params.repo, params.state || "open")
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to list GitHub issues"))
           }
@@ -68,6 +71,7 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.createIssueComment(params.owner, params.repo, params.issueNumber, params.body)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to create GitHub issue comment"))
           }
@@ -93,7 +97,8 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.updateIssue(owner, repo, issueNumber, updates)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
-          } catch (error) {
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+          } catch (_error) {
             return yield* Effect.fail(new Error("Failed to update GitHub issue"))
           }
         }),
@@ -106,6 +111,7 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.getRepository(params.owner, params.repo)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to get GitHub repository info"))
           }
@@ -119,6 +125,7 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.getIssueComments(params.owner, params.repo, params.issueNumber)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to get GitHub issue comments"))
           }
@@ -132,6 +139,7 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.createAgentStateForIssue(params.owner, params.repo, params.issueNumber)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to create agent state for issue"))
           }
@@ -145,6 +153,7 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.loadAgentState(params.instanceId)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to load agent state"))
           }
@@ -158,6 +167,7 @@ export const GitHubToolsLayer = Layer.effect(
             const result = yield* github.saveAgentState(params.state)
             yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
             return result
+          /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
           } catch (_error) {
             return yield* Effect.fail(new Error("Failed to save agent state"))
           }
