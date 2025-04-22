@@ -4,6 +4,7 @@ import type { AgentState, CodeSnippet, ExternalReference, FileFocus } from "./Ag
 /**
  * Service for managing the execution context within the agent state
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface ContextManager {
   /**
    * Sets the current file focus
@@ -74,7 +75,7 @@ export interface ContextManager {
 /**
  * Effect Tag for the ContextManager service
  */
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+/* eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging */
 export class ContextManager extends Effect.Tag("ContextManager")<
   ContextManager,
   {

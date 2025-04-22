@@ -177,12 +177,7 @@ const runWithContextManager = <A>(effectToRun: (manager: any) => Effect.Effect<A
   }
 
   // Directly run the effect provided by the test, passing the mock instance
-  try {
-    return Effect.runSync(effectToRun(contextManagerInstance)) as any
-  } catch (e) {
-    // Re-throw errors to fail the test as expected
-    throw e
-  }
+  return Effect.runSync(effectToRun(contextManagerInstance)) as any
 }
 
 describe("ContextManager", () => {
