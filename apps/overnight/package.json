@@ -29,7 +29,8 @@
     "test": "vitest",
     "test:run": "vitest --run",
     "coverage": "vitest --coverage",
-    "github": "pnpm build-and-run"
+    "github": "pnpm build-and-run",
+    "copy": "node copyToClipboard.js"
   },
   "dependencies": {
     "@effect/platform": "^0.80.11",
