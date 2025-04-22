@@ -3,9 +3,9 @@ import * as readline from "node:readline/promises";
 import { GitHubTools, GitHubToolsLive, FileContentParams, IssueParams, gitHubClientLayers } from "./AiService.js";
 import { GitHubConfigTag, createGitHubHttpExecutor } from "./github/Client.js";
 import { TOOL_SCHEMAS } from "./Tools.js";
-import { 
-  ContentBlockToolUse, 
-  MessageCreateParamsWithTools, 
+import {
+  ContentBlockToolUse,
+  MessageCreateParamsWithTools,
   ExtendedContentBlock,
   ExtendedMessageParam,
   ToolDefinition,
@@ -23,7 +23,7 @@ const conversation: ExtendedMessageParam[] = []; // Simple in-memory history
 // --- Create GitHub Layers ---
 const createGitHubConfig = () => {
   const githubToken = process.env.GITHUB_TOKEN;
-  
+
   return Layer.succeed(
     GitHubConfigTag,
     { baseUrl: "https://api.github.com", token: githubToken }
@@ -42,28 +42,28 @@ const createProgramLayer = () => {
 const processUserMessage = async (userMessage: string) => {
   // Add to conversation history
   conversation.push({ role: "user", content: userMessage });
-  
+
   console.log(`User: ${userMessage}`);
   console.log("Assistant: ");
-  
+
   // Create Anthropic client directly (outside Effect)
   const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY || "dummy-key",
   });
-  
+
   // Set up the Effect program that will handle GitHub tools
-  const program = Effect.gen(function*() {
+  const program = Effect.gen(function* () {
     // Get the GitHubTools service instance from the Effect context
     const githubTools = yield* GitHubTools;
-    
+
     // Create a helper function that will execute the GitHub tools
     const executeGitHubTool = (toolName: string, toolInput: Record<string, unknown>, toolUseId: string) => {
-      return Effect.gen(function*() {
+      return Effect.gen(function* () {
         yield* Console.log(`\n>>> Tool Call Requested: ${toolName}`);
         yield* Console.log(`>>> Tool Input: ${JSON.stringify(toolInput, null, 2)}`);
-        
+
         let toolResultEffect: Effect.Effect<string, string>;
-        
+
         // Execute the correct tool Effect based on the name
         if (toolName === "GetGitHubFileContent") {
           // Need to cast the dynamic toolInput to a properly typed parameter
@@ -86,7 +86,7 @@ const processUserMessage = async (userMessage: string) => {
           yield* Console.warn(`Unknown tool called: ${toolName}`);
           toolResultEffect = Effect.fail(`Unknown tool: ${toolName}`);
         }
-        
+
         // Execute the tool Effect and handle success/failure
         return yield* Effect.match(toolResultEffect, {
           onFailure: (errorString) => {
@@ -106,51 +106,51 @@ const processUserMessage = async (userMessage: string) => {
         });
       });
     };
-    
+
     // Return the function that can execute GitHub tools
     return executeGitHubTool;
   });
-  
+
   try {
     // Run the Effect program to get the tool execution function
     const programLayer = createProgramLayer();
     const executeGitHubTool = await Effect.runPromise(Effect.provide(program, programLayer));
-    
+
     // --- Initial API Call ---
     console.log("--- Sending Request to Anthropic (Initial) ---");
     const initialMessages = conversation.map(msg => ({ role: msg.role, content: msg.content }));
     console.log("Messages:", JSON.stringify(initialMessages, null, 2));
     console.log("Tools:", JSON.stringify(TOOL_SCHEMAS, null, 2));
     console.log("---------------------------------------------");
-    
+
     try {
       // Make the initial call to Anthropic (outside Effect)
       // Need to cast since Anthropic SDK doesn't support tools yet in TypeScript
       const createParams: MessageCreateParamsWithTools = {
-        model: "claude-3-haiku-20240307",
+        model: "claude-3-5-sonnet-latest",
         system: "You are a helpful coding assistant specialized in GitHub repositories. Use the provided tools to fetch GitHub files and issues when requested.",
         messages: initialMessages,
         tools: TOOL_SCHEMAS as ToolDefinition[],
         max_tokens: 1000,
       };
-      
+
       // Cast result to our extended message type since Anthropic SDK types don't include tools
       const response = await anthropic.messages.create(createParams) as unknown as ExtendedMessage;
-      
+
       console.log("--- Received Response from Anthropic (Initial) ---");
       console.log(JSON.stringify(response, null, 2));
       console.log("-----------------------------------------------");
-      
+
       // Process the response
       if (response.content && response.content.length > 0) {
         const firstItem = response.content[0] as ExtendedContentBlock;
-        
+
         if (firstItem.type === "text") {
           // Simple text response
           process.stdout.write(firstItem.text);
           conversation.push({ role: "assistant", content: firstItem.text });
           console.log("\n--- Interaction Complete (Text Response) ---");
-          
+
         } else if (firstItem.type === "tool_use") {
           // Tool call - need to extract details and execute the tool
           const typedItem = firstItem as ContentBlockToolUse;
@@ -158,7 +158,7 @@ const processUserMessage = async (userMessage: string) => {
           const toolName = toolUse.name;
           const toolInput = toolUse.input;
           const toolUseId = toolUse.id;
-          
+
           // Execute the tool using our Effect wrapper
           const { toolResult } = await Effect.runPromise(
             Effect.provide(
@@ -166,7 +166,7 @@ const processUserMessage = async (userMessage: string) => {
               programLayer
             )
           );
-          
+
           // --- Follow-up API Call with Tool Result ---
           // Create the proper continuation structure for Anthropic
           const userToolResult = {
@@ -179,29 +179,29 @@ const processUserMessage = async (userMessage: string) => {
               }
             ]
           };
-          
+
           const messagesForFollowup = [
             ...initialMessages, // Original conversation
             { role: "assistant" as const, content: [firstItem] }, // Assistant's tool_use message
             userToolResult // User message containing tool result
           ];
-          
+
           console.log("--- Sending Request to Anthropic (Follow-up) ---");
           console.log("Messages:", JSON.stringify(messagesForFollowup, null, 2));
           console.log("----------------------------------------------");
-          
+
           try {
             // Cast result to our extended message type since Anthropic SDK types don't include tools
             const followupResponse = await anthropic.messages.create({
-              model: "claude-3-haiku-20240307",
+              model: "claude-3-5-sonnet-latest",
               messages: messagesForFollowup,
               max_tokens: 1000,
             }) as unknown as ExtendedMessage;
-            
+
             console.log("--- Received Response from Anthropic (Follow-up) ---");
             console.log(JSON.stringify(followupResponse, null, 2));
             console.log("-------------------------------------------------");
-            
+
             // Process follow-up response
             if (followupResponse.content && followupResponse.content.length > 0) {
               const followupContent = followupResponse.content[0] as ExtendedContentBlock;
@@ -237,17 +237,17 @@ export const startCLI = async (): Promise<void> => {
   console.log("🤖 GitHub Agent CLI - Type your questions about GitHub repositories");
   console.log("Type 'exit' or 'quit' to end the session");
   console.log("-".repeat(60));
-  
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
   });
-  
+
   let running = true;
-  
+
   while (running) {
     const userInput = await rl.question("\n> ");
-    
+
     if (userInput.toLowerCase() === 'exit' || userInput.toLowerCase() === 'quit') {
       console.log("Goodbye! 👋");
       running = false;
@@ -255,7 +255,7 @@ export const startCLI = async (): Promise<void> => {
       await processUserMessage(userInput);
     }
   }
-  
+
   rl.close();
 };
 

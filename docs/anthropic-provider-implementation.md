@@ -35,7 +35,7 @@ Anthropic offers several Claude models with varying capabilities and price point
 | claude-3-opus       | 200K tokens   | Most powerful, best for complex reasoning      | Complex analysis, research, coding   |
 | claude-3-haiku      | 200K tokens   | Fastest, most economical                       | Quick responses, simple tasks        |
 | claude-3-sonnet     | 200K tokens   | Earlier model, balanced performance            | General purpose tasks                |
-| claude-3-haiku-20240307 | 200K tokens | Earlier version of Haiku                    | Quick processing, simple interactions |
+| claude-3-5-sonnet-latest | 200K tokens | Earlier version of Haiku                    | Quick processing, simple interactions |
 
 All of these models support:
 - Text generation
@@ -146,7 +146,7 @@ if (provider === "lmstudio") {
       await responseStream.write(`data: 3:${JSON.stringify(errorMsg)}\n\n`);
     });
   }
-  
+
   // For Anthropic models, use the Anthropic provider
   model = anthropicClient(MODEL);
   // Set Anthropic specific headers if needed
@@ -183,7 +183,7 @@ In the core models definition, add the Claude models:
 // Add to the MODELS array in @openagents/core
 export const MODELS = [
   // ... existing models
-  
+
   // Anthropic Claude models
   {
     id: "claude-3-7-sonnet",

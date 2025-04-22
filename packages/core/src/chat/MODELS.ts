@@ -734,8 +734,8 @@ export const CLAUDE_MODELS = {
       "completion": 0.015
     }
   },
-  "anthropic/claude-3-haiku-20240307": {
-    "id": "anthropic/claude-3-haiku-20240307",
+  "anthropic/claude-3-5-sonnet-latest": {
+    "id": "anthropic/claude-3-5-sonnet-latest",
     "name": "Claude 3 Haiku",
     "description": "Fastest model, excellent for simple tasks",
     "context_window": 48000,

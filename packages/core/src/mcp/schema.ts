@@ -1076,7 +1076,7 @@ export interface ModelHint {
    *  - `claude` should match any Claude model
    *
    * The client MAY also map the string to a different provider's model name or a different model family, as long as it fills a similar niche; for example:
-   *  - `gemini-1.5-flash` could match `claude-3-haiku-20240307`
+   *  - `gemini-1.5-flash` could match `claude-3-5-sonnet-latest`
    */
   name?: string;
 }

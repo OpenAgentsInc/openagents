@@ -29,22 +29,22 @@ console.log(`API Key found: ${OPENROUTER_API_KEY ? OPENROUTER_API_KEY.substring(
 // Simple test function
 async function testOpenRouterAPIKey() {
   const url = 'https://openrouter.ai/api/v1/chat/completions';
-  
+
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
     'HTTP-Referer': 'http://localhost:3001',
     'X-Title': 'API Key Test'
   };
-  
+
   const data = {
-    model: "anthropic/claude-3-haiku-20240307",
+    model: "anthropic/claude-3-5-sonnet-latest",
     messages: [
       { role: "user", content: "Say hello!" }
     ],
     max_tokens: 10
   };
-  
+
   try {
     console.log('Testing OpenRouter API key with a simple request...');
     const response = await fetch(url, {
@@ -52,9 +52,9 @@ async function testOpenRouterAPIKey() {
       headers: headers,
       body: JSON.stringify(data)
     });
-    
+
     const result = await response.json();
-    
+
     if (response.ok) {
       console.log('✅ API key is valid! Got response:');
       console.log(JSON.stringify(result, null, 2));

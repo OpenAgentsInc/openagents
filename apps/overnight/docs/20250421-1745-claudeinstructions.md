@@ -220,7 +220,7 @@ We will base this implementation on patterns observed in a similar project (`oae
 
           const resultStream = completions.toolkitStream(GitHubToolkit, {
             messages: [{ role: "user", content: prompt }],
-            model: "claude-3-haiku-20240307",
+            model: "claude-3-5-sonnet-latest",
             // Add system prompt if desired
              system: "You are a helpful assistant. Use tools when necessary. You can fetch GitHub files and issues."
           });
@@ -489,7 +489,7 @@ We will base this implementation on patterns observed in a similar project (`oae
             const completions = yield* Completions;
             const resultStream = completions.toolkitStream(GitHubToolkit, {
               messages: currentConversation,
-              model: "claude-3-haiku-20240307",
+              model: "claude-3-5-sonnet-latest",
               system: "You are a helpful coding assistant. Use tools to fetch GitHub files or issues when requested."
             });
 
