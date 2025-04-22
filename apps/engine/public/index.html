@@ -178,6 +178,31 @@
       color: #f44336;
     }
 
+    .status-value.in_progress,
+    .status-value.planning,
+    .status-value.researching,
+    .status-value.implementing {
+      color: #ff9800;
+    }
+
+    .status-value.completed {
+      color: #4caf50;
+    }
+
+    .status-value.blocked {
+      color: #f44336;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 8px 16px;
+      background-color: rgba(30, 30, 30, 0.5);
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+
     .issue-metadata {
       display: flex;
       justify-content: space-between;
@@ -236,10 +261,37 @@
         opacity: 0;
       }
     }
+
+    /* Plan steps styling */
+    .plan-step {
+      padding: 8px;
+      margin: 5px 0;
+      border-radius: 4px;
+      border-left: 3px solid #666;
+    }
+
+    .plan-step.pending {
+      border-left-color: #666;
+    }
+
+    .plan-step.in_progress {
+      border-left-color: #ff9800;
+      background-color: rgba(255, 152, 0, 0.1);
+    }
+
+    .plan-step.completed {
+      border-left-color: #4caf50;
+      background-color: rgba(76, 175, 80, 0.1);
+    }
+
+    .plan-step.error {
+      border-left-color: #f44336;
+      background-color: rgba(244, 67, 54, 0.1);
+    }
   </style>
 </head>
 
-<body hx-ext="sse" sse-connect="/sse">
+<body hx-ext="sse" sse-connect="/sse" sse-swap="agent_state">
   <h1>GitHub Issue Solver</h1>
   <p>This application connects to GitHub to analyze issues and assist with solving them using AI-powered tools.</p>
 
@@ -270,6 +322,30 @@
       Analyze GitHub Issue
     </button>
   </form>
+
+  <!-- Agent State Information Section -->
+  <h2>Agent Status</h2>
+  <div class="status-grid">
+    <div class="status-label">Instance ID:</div>
+    <div id="agent-instance-id" class="status-value">N/A</div>
+
+    <div class="status-label">Task Status:</div>
+    <div id="agent-task-status" class="status-value">Idle</div>
+
+    <div class="status-label">Current Step:</div>
+    <div id="agent-current-step" class="status-value">N/A</div>
+
+    <div class="status-label">Progress:</div>
+    <div id="agent-progress" class="status-value">0 / 0</div>
+
+    <div class="status-label">Last Error:</div>
+    <div id="agent-last-error" class="status-value">None</div>
+  </div>
+
+  <h2>Plan</h2>
+  <div id="agent-plan-steps">
+    <p>Waiting for plan...</p>
+  </div>
 
   <div id="output-container">
     <!-- Only show analysis container -->
@@ -307,6 +383,65 @@
           }
         } catch (e) {
           console.error('Failed to parse status data:', e);
+        }
+      } else if (event.detail.name === 'agent_state') {
+        // Handle agent state updates
+        try {
+          const data = JSON.parse(event.detail.data);
+          console.log("Received agent_state:", data);
+
+          // Update instance ID
+          const instanceEl = document.getElementById('agent-instance-id');
+          if (instanceEl) instanceEl.textContent = data.instanceId || 'N/A';
+
+          // Update task status
+          const taskStatusEl = document.getElementById('agent-task-status');
+          if (taskStatusEl) {
+            taskStatusEl.textContent = data.taskStatus || 'N/A';
+            taskStatusEl.className = 'status-value ' + (data.taskStatus || '');
+          }
+
+          // Update current step
+          const currentStepEl = document.getElementById('agent-current-step');
+          if (currentStepEl) {
+            currentStepEl.textContent = data.currentStepDescription || 'N/A';
+          }
+
+          // Update progress
+          const progressEl = document.getElementById('agent-progress');
+          if (progressEl) {
+            progressEl.textContent = `${data.stepsCompleted || 0} / ${data.totalSteps || 0}`;
+          }
+
+          // Update last error
+          const errorEl = document.getElementById('agent-last-error');
+          if (errorEl) {
+            if (data.lastError) {
+              errorEl.textContent = data.lastError.message;
+              errorEl.className = 'status-value error';
+            } else {
+              errorEl.textContent = 'None';
+              errorEl.className = 'status-value';
+            }
+          }
+
+          // Also update the main agent status
+          const agentStatusEl = document.getElementById('agent-status');
+          if (agentStatusEl) {
+            agentStatusEl.textContent = data.taskStatus || 'Ready';
+            agentStatusEl.className = 'status-value ' + (data.taskStatus || 'ready');
+          }
+
+          // If we implement plan display, update it here
+          // For now, just show the current step in the plan section
+          const planEl = document.getElementById('agent-plan-steps');
+          if (planEl) {
+            planEl.innerHTML = `<div class="plan-step ${data.taskStatus || 'pending'}">
+              <strong>Step ${data.currentStepNumber}:</strong> ${data.currentStepDescription || 'N/A'}
+            </div>`;
+          }
+        } catch (e) {
+          console.error('Failed to parse agent_state data:', e);
         }
       }
     });

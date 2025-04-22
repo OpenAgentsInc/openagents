@@ -1,9 +1,15 @@
+import { NodeContext } from "@effect/platform-node"
 import * as dotenv from "dotenv"
-import { Effect } from "effect"
+import { Effect, Layer, Ref } from "effect"
 import * as fs from "node:fs"
 import * as Http from "node:http"
-import * as Https from "node:https"
 import * as path from "node:path"
+import type { AgentState } from "./github/AgentStateTypes.js"
+import { ContextManagerLayer } from "./github/ContextManager.js"
+import { GitHubClient, GitHubClientLayer } from "./github/GitHub.js"
+import { MemoryManagerLayer } from "./github/MemoryManager.js"
+import { PlanManagerLayer } from "./github/PlanManager.js"
+import { TaskExecutor, TaskExecutorLayer } from "./github/TaskExecutor.js"
 
 // Load environment variables from .env file
 const loadConfig = Effect.try({
@@ -57,253 +63,27 @@ const broadcastSSE = (event: string, data: string): void => {
   }
 }
 
-// Get GitHub issue from GitHub API
-const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): void => {
-  Effect.runPromise(loadConfig).then((config) => {
-    try {
-      log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}...`)
+// Create a function to generate agent state updates for the UI
+const createAgentStateUpdate = (state: AgentState) => ({
+  instanceId: state.agent_info.instance_id,
+  taskStatus: state.current_task.status,
+  currentStepDescription: state.plan[state.current_task.current_step_index]?.description ?? "N/A",
+  currentStepNumber: state.plan[state.current_task.current_step_index]?.step_number ?? 0,
+  stepsCompleted: state.metrics.steps_completed,
+  totalSteps: state.metrics.total_steps_in_plan,
+  lastError: state.error_state.last_error
+    ? { message: state.error_state.last_error.message, type: state.error_state.last_error.type }
+    : null
+})
 
-      const options = {
-        hostname: "api.github.com",
-        path: `/repos/${owner}/${repo}/issues/${issueNumber}`,
-        method: "GET",
-        headers: {
-          "Accept": "application/vnd.github.v3+json",
-          "Authorization": `token ${config.githubApiKey}`,
-          "User-Agent": "OpenAgents-Engine/1.0"
-        }
-      }
-
-      const request = Https.request(options, (response) => {
-        let data = ""
-
-        response.on("data", (chunk) => data += chunk)
-
-        response.on("end", () => {
-          try {
-            if (data.trim() === "") {
-              throw new Error("Empty response received")
-            }
-
-            const parsedData = JSON.parse(data)
-            if (parsedData) {
-              log(`Issue #${issueNumber} received: ${parsedData.title}`)
-
-              // Format the issue data for display
-              const issueHtml = `
-                <div>
-                  <h3>GitHub Issue #${parsedData.number}: ${parsedData.title}</h3>
-                  <div class="issue-metadata">
-                    <span>Status: <strong>${parsedData.state}</strong></span>
-                    <span>Created by: <strong>${parsedData.user.login}</strong></span>
-                    <span>Created: <strong>${new Date(parsedData.created_at).toLocaleString()}</strong></span>
-                  </div>
-                  <div class="issue-body">
-                    <h4>Description:</h4>
-                    <p>${parsedData.body.replace(/\n/g, "<br>")}</p>
-                  </div>
-                </div>
-              `
-
-              // Show issue details in the analysis div first
-              broadcastSSE("analysis", issueHtml)
-              analyzeIssueWithClaude(parsedData)
-            } else {
-              throw new Error("Invalid issue data received")
-            }
-          } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : String(err)
-            log(`Error parsing issue: ${errorMessage}`)
-            broadcastSSE("analysis", `<span class="error">Error fetching issue: ${errorMessage}</span>`)
-          }
-        })
-      })
-
-      request.on("error", (err) => {
-        log(`Error fetching issue: ${err.message}`)
-        broadcastSSE("analysis", `<span class="error">Error fetching issue: ${err.message}</span>`)
-      })
-
-      request.end()
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      error(`Exception setting up GitHub request: ${errorMessage}`)
-      broadcastSSE("analysis", `<span class="error">Error setting up GitHub request: ${errorMessage}</span>`)
-    }
-  }).catch((err) => {
-    error(`Failed to load configuration: ${err}`)
-    broadcastSSE("analysis", `<span class="error">Failed to load API configuration: ${err}</span>`)
-  })
-}
-
-// Analyze a GitHub issue with Claude
-const analyzeIssueWithClaude = (issue: {
-  title: string
-  user: { login: string }
-  created_at: string
-  state: string
-  body: string
-}): void => {
-  Effect.runPromise(loadConfig).then((config) => {
-    try {
-      log("Setting up request to Anthropic API")
-      const options = {
-        hostname: "api.anthropic.com",
-        path: "/v1/messages",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "anthropic-version": "2023-06-01",
-          "x-api-key": config.anthropicApiKey,
-          "anthropic-beta": "messages-2023-12-15"
-        }
-      }
-
-      // Prepare the request payload
-      const prompt = `You are an AI assistant tasked with analyzing GitHub issues.
-I'll provide you with a GitHub issue, and I'd like you to:
-
-1. Summarize the main points of the issue
-2. Identify the type of issue (bug report, feature request, question, etc.)
-3. Suggest what additional information might be helpful (if any)
-4. Outline potential next steps for addressing this issue
-
-Here's the issue:
-
-Title: ${issue.title}
-Author: ${issue.user.login}
-Created: ${issue.created_at}
-Status: ${issue.state}
-
-Description:
-${issue.body}
-
-Please format your response as structured analysis with clear headings.`
-
-      const data = JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 1000,
-        stream: true,
-        messages: [
-          { role: "user", content: prompt }
-        ]
-      })
-
-      // Make the request
-      const req = Https.request(options, (apiRes) => {
-        if (apiRes.statusCode !== 200) {
-          log(`Anthropic API response status: ${apiRes.statusCode} ${apiRes.statusMessage}`)
-        }
-
-        // Start fresh with each request
-        let analysisContent = ""
-
-        // Begin analysis section after issue display
-        broadcastSSE("analysis", `<div><h3>Analysis:</h3><p class='analysis'></p></div>`)
-
-        apiRes.on("data", (chunk) => {
-          const lines = chunk.toString().split("\n").filter((line: string) => line.trim() !== "")
-
-          for (const line of lines) {
-            try {
-              // Check if it's a data line
-              if (line.startsWith("data: ")) {
-                const jsonPart = line.slice(6) // Remove "data: " prefix
-
-                // Check for [DONE] marker
-                if (jsonPart.trim() === "[DONE]") {
-                  // Process and preserve line breaks for final message
-                  const finalContent = analysisContent.replace(/\n/g, "<br>")
-                  log("✓ Analysis completed")
-
-                  // Add timestamp to ensure fresh rendering
-                  const timestamp = Date.now()
-
-                  // Send final complete message - add "complete" class to signal it's done
-                  broadcastSSE(
-                    "analysis",
-                    `<div><h3>Analysis:</h3><p class='analysis complete' data-ts="${timestamp}">${finalContent}</p></div>`
-                  )
-                  continue
-                }
-
-                const data = JSON.parse(jsonPart)
-
-                // If it has delta content, send it to the client
-                if (data.type === "content_block_delta" && data.delta && data.delta.text) {
-                  const text = data.delta.text
-                  analysisContent += text
-
-                  // Log deltas but only if they contain meaningful text (not just whitespace)
-                  if (text.trim().length > 0) {
-                    log(`Delta: ${text.trim()}`)
-                  }
-
-                  // Process and preserve line breaks for proper display
-                  const processedContent = analysisContent.replace(/\n/g, "<br>")
-
-                  // For debugging, let's add a counter to make each response unique
-                  // This ensures browser doesn't cache incorrectly
-                  const timestamp = Date.now()
-
-                  // Send complete content each time to refresh the entire div
-                  broadcastSSE(
-                    "analysis",
-                    `<div><h3>Analysis:</h3><p class='analysis' data-ts="${timestamp}">${processedContent}</p></div>`
-                  )
-                }
-              }
-            } catch (parseErr) {
-              log(`Error parsing line: ${line}`)
-              log(`Parse error: ${parseErr}`)
-            }
-          }
-        })
-
-        apiRes.on("end", () => {
-          log("Anthropic API stream ended")
-        })
-      })
-
-      req.on("error", (err) => {
-        error(`Error making request to Anthropic API: ${err.message}`)
-        broadcastSSE("analysis", `<span class='error'>Error connecting to language model API: ${err.message}</span>`)
-      })
-
-      // Send the request
-      req.write(data)
-      req.end()
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
-      error(`Exception setting up Anthropic request: ${errorMessage}`)
-      broadcastSSE("analysis", `<span class='error'>Error setting up analysis request: ${errorMessage}</span>`)
-    }
-  }).catch((err) => {
-    error(`Failed to load configuration: ${err}`)
-    broadcastSSE("analysis", `<span class='error'>Failed to load API configuration: ${err}</span>`)
-  })
-}
-
-// Get agent state
-const getAgentStatus = (): {
-  status: string
-  last_updated: string
-  current_task: null
-  progress: {
-    steps_completed: number
-    total_steps: number
-  }
-} => {
-  return {
-    status: "ready",
-    last_updated: new Date().toISOString(),
-    current_task: null,
-    progress: {
-      steps_completed: 0,
-      total_steps: 0
-    }
-  }
-}
+// Define the layer with all the needed services
+const AppLayer = Layer.mergeAll(
+  TaskExecutorLayer,
+  GitHubClientLayer,
+  PlanManagerLayer,
+  ContextManagerLayer,
+  MemoryManagerLayer
+).pipe(Layer.provide(NodeContext.layer))
 
 // Setup a route to handle the SSE connection
 const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void => {
@@ -368,17 +148,125 @@ const createHttpServer = (): Http.Server => {
         const repo = formData.get("repo") || process.env.GITHUB_REPO_NAME || "openagents"
 
         log(`Analyzing GitHub issue #${issueNumber} from ${owner}/${repo}`)
-        fetchGitHubIssue(owner, repo, issueNumber)
 
+        // Define the execution pipeline
+        const executionPipeline = Effect.gen(function*() {
+          // Get services from context
+          const githubClient = yield* GitHubClient
+          const taskExecutor = yield* TaskExecutor
+
+          // Generate unique instance ID
+          const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
+
+          // Try to load or create state
+          log(`Loading or creating state for ${instanceId}`)
+          const initialState = yield* githubClient.loadAgentState(instanceId).pipe(
+            Effect.catchAll((_err) => {
+              log(`State not found, creating new state for ${owner}/${repo}#${issueNumber}`)
+              return githubClient.createAgentStateForIssue(owner, repo, issueNumber)
+            })
+          )
+
+          // Create a Ref to hold the current state
+          const stateRef = yield* Ref.make(initialState)
+
+          // Send initial state update to UI
+          broadcastSSE("agent_state", JSON.stringify(createAgentStateUpdate(initialState)))
+
+          // Function to check if we should continue execution
+          const shouldContinue = (state: AgentState): boolean => {
+            const terminalStatuses = ["completed", "error", "blocked"]
+            if (terminalStatuses.includes(state.current_task.status)) {
+              return false
+            }
+            return true
+          }
+
+          // Define the execution loop with recursion
+          // @ts-expect-error TypeScript struggles with recursive Effect typing
+          const executeLoop: Effect.Effect<AgentState> = Effect.suspend(() =>
+            Effect.gen(function*(): Generator<any, AgentState> {
+              // Get current state
+              const currentState = yield* Ref.get(stateRef)
+
+              // Check if we should continue
+              if (!shouldContinue(currentState)) {
+                log(`Task ended with status: ${currentState.current_task.status}`)
+                return currentState
+              }
+
+              try {
+                // Execute next step
+                log(`Executing step ${currentState.current_task.current_step_index + 1}`)
+                const updatedState = yield* taskExecutor.executeNextStep(currentState)
+
+                // Update the state reference
+                yield* Ref.set(stateRef, updatedState)
+
+                // Broadcast updated state to UI
+                broadcastSSE("agent_state", JSON.stringify(createAgentStateUpdate(updatedState)))
+
+                // Continue execution recursively
+                return yield* executeLoop
+              } catch (err) {
+                const errorMsg = err instanceof Error ? err.message : String(err)
+                error(`Error executing step: ${errorMsg}`)
+
+                // Get current state again to update with error
+                const failedState = yield* Ref.get(stateRef)
+
+                // Update task status to error if not already set
+                if (failedState.current_task.status !== "error") {
+                  const errorState = {
+                    ...failedState,
+                    current_task: {
+                      ...failedState.current_task,
+                      status: "error"
+                    }
+                  }
+
+                  // Update state reference with error state
+                  yield* Ref.set(stateRef, errorState)
+
+                  // Broadcast error state to UI
+                  broadcastSSE("agent_state", JSON.stringify(createAgentStateUpdate(errorState)))
+                }
+
+                // End execution
+                return yield* Ref.get(stateRef)
+              }
+            })
+          )
+
+          // Start the execution loop
+          yield* executeLoop
+
+          // Return final state
+          return yield* Ref.get(stateRef)
+        })
+
+        // Run the execution pipeline with all required services
+        // @ts-expect-error TypeScript struggles with complex Effect typing
+        Effect.runFork(Effect.provide(executionPipeline, AppLayer))
+
+        // Immediately respond to the HTTP request
         res.writeHead(200, { "Content-Type": "text/plain" })
-        res.end("Issue fetch initiated")
+        res.end("Issue processing initiated")
       })
       return
     }
 
     // Handle get agent status endpoint
     if (url === "/agent-status" && req.method === "GET") {
-      const status = getAgentStatus()
+      const status = {
+        status: "ready",
+        last_updated: new Date().toISOString(),
+        current_task: null,
+        progress: {
+          steps_completed: 0,
+          total_steps: 0
+        }
+      }
       res.writeHead(200, { "Content-Type": "application/json" })
       res.end(JSON.stringify(status))
       return
