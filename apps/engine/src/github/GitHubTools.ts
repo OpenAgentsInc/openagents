@@ -1,6 +1,7 @@
 import { AiToolkit } from "@effect/ai"
 import { Console, Effect, Layer, Schema } from "effect"
 import { GitHubClient } from "./GitHub.js"
+import { GitHubIssue, GitHubIssueComment, GitHubRepository, AgentState } from "./GitHubTypes.js"
 
 /**
  * Tool for getting a GitHub issue
@@ -17,7 +18,7 @@ export class GetGitHubIssue extends Schema.TaggedRequest<GetGitHubIssue>()("GetG
       description: "The issue number to retrieve"
     })
   },
-  success: Schema.Any,
+  success: GitHubIssue,
   failure: Schema.Never
 }, {
   description: "Get a GitHub issue by number"
@@ -37,12 +38,15 @@ export class ListGitHubIssues extends Schema.TaggedRequest<ListGitHubIssues>()("
     state: Schema.Union(
       Schema.Literal("open"),
       Schema.Literal("closed"),
-      Schema.Literal("all")
-    ).optional().annotations({
+      Schema.Literal("all"),
+      Schema.Null
+    ).annotations({
       description: "The state of issues to retrieve (open, closed, or all). Defaults to open."
     })
   },
-  success: Schema.Any,
+  success: Schema.Struct({
+    issues: Schema.Array(GitHubIssue)
+  }),
   failure: Schema.Never
 }, {
   description: "List GitHub issues for a repository"
@@ -66,7 +70,7 @@ export class CreateGitHubComment extends Schema.TaggedRequest<CreateGitHubCommen
       description: "The comment text (supports GitHub-flavored markdown)"
     })
   },
-  success: Schema.Any,
+  success: GitHubIssueComment,
   failure: Schema.Never
 }, {
   description: "Create a comment on a GitHub issue"
@@ -86,26 +90,27 @@ export class UpdateGitHubIssue extends Schema.TaggedRequest<UpdateGitHubIssue>()
     issueNumber: Schema.Number.annotations({
       description: "The issue number to update"
     }),
-    title: Schema.String.optional().annotations({
+    title: Schema.Union(Schema.String, Schema.Null).annotations({
       description: "The updated title for the issue"
     }),
-    body: Schema.String.optional().annotations({
+    body: Schema.Union(Schema.String, Schema.Null).annotations({
       description: "The updated body text for the issue"
     }),
     state: Schema.Union(
       Schema.Literal("open"),
-      Schema.Literal("closed")
-    ).optional().annotations({
+      Schema.Literal("closed"),
+      Schema.Null
+    ).annotations({
       description: "The updated state for the issue (open or closed)"
     }),
-    labels: Schema.Array(Schema.String).optional().annotations({
+    labels: Schema.Union(Schema.Array(Schema.String), Schema.Null).annotations({
       description: "The updated labels for the issue"
     }),
-    assignees: Schema.Array(Schema.String).optional().annotations({
+    assignees: Schema.Union(Schema.Array(Schema.String), Schema.Null).annotations({
       description: "The updated assignees for the issue"
     })
   },
-  success: Schema.Any,
+  success: GitHubIssue,
   failure: Schema.Never
 }, {
   description: "Update a GitHub issue (title, body, state, labels, or assignees)"
@@ -123,7 +128,7 @@ export class GetGitHubRepository extends Schema.TaggedRequest<GetGitHubRepositor
       description: "The name of the repository"
     })
   },
-  success: Schema.Any,
+  success: GitHubRepository,
   failure: Schema.Never
 }, {
   description: "Get information about a GitHub repository"
@@ -144,7 +149,7 @@ export class GetGitHubIssueComments extends Schema.TaggedRequest<GetGitHubIssueC
       description: "The issue number to get comments for"
     })
   },
-  success: Schema.Any,
+  success: Schema.Array(GitHubIssueComment),
   failure: Schema.Never
 }, {
   description: "Get comments on a GitHub issue"
@@ -165,7 +170,7 @@ export class CreateAgentStateForIssue extends Schema.TaggedRequest<CreateAgentSt
       description: "The issue number to create an agent state for"
     })
   },
-  success: Schema.Any,
+  success: AgentState,
   failure: Schema.Never
 }, {
   description: "Create a new agent state for processing a GitHub issue"
@@ -180,7 +185,7 @@ export class LoadAgentState extends Schema.TaggedRequest<LoadAgentState>()("Load
       description: "The instance ID of the agent state to load"
     })
   },
-  success: Schema.Any,
+  success: AgentState,
   failure: Schema.Never
 }, {
   description: "Load an existing agent state by instance ID"
@@ -191,7 +196,7 @@ export class LoadAgentState extends Schema.TaggedRequest<LoadAgentState>()("Load
  */
 export class SaveAgentState extends Schema.TaggedRequest<SaveAgentState>()("SaveAgentState", {
   payload: {
-    state: Schema.Any.annotations({
+    state: AgentState.annotations({
       description: "The agent state to save"
     })
   },
@@ -219,7 +224,7 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
     const github = yield* GitHubClient
     
     return handlers
-      .handle("GetGitHubIssue", (params) => {
+      .handle("GetGitHubIssue", (params: GetGitHubIssue["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: GetGitHubIssue")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
@@ -228,16 +233,16 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
           return result
         })
       })
-      .handle("ListGitHubIssues", (params) => {
+      .handle("ListGitHubIssues", (params: ListGitHubIssues["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: ListGitHubIssues")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
-          const result = yield* github.listIssues(params.owner, params.repo, params.state)
+          const result = yield* github.listIssues(params.owner, params.repo, params.state || "open")
           yield* Console.log("✅ Tool result:", JSON.stringify(result, null, 2))
           return result
         })
       })
-      .handle("CreateGitHubComment", (params) => {
+      .handle("CreateGitHubComment", (params: CreateGitHubComment["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: CreateGitHubComment")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
@@ -246,7 +251,7 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
           return result
         })
       })
-      .handle("UpdateGitHubIssue", (params) => {
+      .handle("UpdateGitHubIssue", (params: UpdateGitHubIssue["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: UpdateGitHubIssue")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
@@ -256,7 +261,7 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
           return result
         })
       })
-      .handle("GetGitHubRepository", (params) => {
+      .handle("GetGitHubRepository", (params: GetGitHubRepository["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: GetGitHubRepository")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
@@ -265,7 +270,7 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
           return result
         })
       })
-      .handle("GetGitHubIssueComments", (params) => {
+      .handle("GetGitHubIssueComments", (params: GetGitHubIssueComments["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: GetGitHubIssueComments")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
@@ -274,7 +279,7 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
           return result
         })
       })
-      .handle("CreateAgentStateForIssue", (params) => {
+      .handle("CreateAgentStateForIssue", (params: CreateAgentStateForIssue["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: CreateAgentStateForIssue")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
@@ -283,7 +288,7 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
           return result
         })
       })
-      .handle("LoadAgentState", (params) => {
+      .handle("LoadAgentState", (params: LoadAgentState["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: LoadAgentState")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))
@@ -292,7 +297,7 @@ export const GitHubToolsLayer = GitHubTools.implement((handlers) =>
           return result
         })
       })
-      .handle("SaveAgentState", (params) => {
+      .handle("SaveAgentState", (params: SaveAgentState["payload"]) => {
         return Effect.gen(function* () {
           yield* Console.log("🛠️ Tool called: SaveAgentState")
           yield* Console.log("📝 Parameters:", JSON.stringify(params, null, 2))

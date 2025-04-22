@@ -1,7 +1,7 @@
-import { AiToolkit, Completions } from "@effect/ai"
+import { Completions } from "@effect/ai"
 import { AnthropicClient, AnthropicCompletions } from "@effect/ai-anthropic"
 import { NodeHttpClient } from "@effect/platform-node"
-import { Chunk, Config, Console, Effect, Layer, Option, Schema, Stream } from "effect"
+import { Chunk, Config, Console, Effect, Layer, Option, Stream } from "effect"
 import { startServer } from "./Server.js"
 import { GitHubClientLayer } from "./github/GitHub.js"
 import { GitHubTools, GitHubToolsLayer } from "./github/GitHubTools.js"
@@ -98,7 +98,7 @@ const main = Effect.gen(function* () {
 
 // Anthropic configuration layer
 const Anthropic = AnthropicClient.layerConfig({
-  apiKey: Config.redacted("ANTHROPIC_API_KEY")
+  apiKey: Config.secret("ANTHROPIC_API_KEY")
 })
 
 // Combined layers
@@ -113,8 +113,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   startServer()
 } else {
   // If imported as a module, run the main function
-  main.pipe(
-    Effect.provide(AllLayers),
-    Effect.runPromise
+  Effect.runPromiseExit(main).pipe(
+    Effect.provide(AllLayers)
   )
 }

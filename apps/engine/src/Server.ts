@@ -1,11 +1,9 @@
-import { AnthropicClient } from "@effect/ai-anthropic"
 import { Effect } from "effect"
 import * as fs from "node:fs"
 import * as Http from "node:http"
 import * as Https from "node:https"
 import * as path from "node:path"
 import * as dotenv from "dotenv"
-import { GitHubClient } from "./github/GitHub.js"
 
 // Load environment variables from .env file
 const loadConfig = Effect.try({
@@ -35,15 +33,15 @@ const loadConfig = Effect.try({
 const publicDir = path.join(process.cwd(), "public")
 
 // Function to log outside of Effect
-const log = (message: string) => console.log(message)
-const error = (message: string) => console.error(message)
+const log = (message: string): void => console.log(message)
+const error = (message: string): void => console.error(message)
 
 // Create a map to store SSE clients
 const clients = new Map<string, Http.ServerResponse>()
 let lastClientId = 0
 
 // Function to send SSE message to all clients
-const broadcastSSE = (event: string, data: string) => {
+const broadcastSSE = (event: string, data: string): void => {
   // Format a standard SSE message
   const message = `event: ${event}\ndata: ${data}\n\n`
 
@@ -56,8 +54,8 @@ const broadcastSSE = (event: string, data: string) => {
 }
 
 // Get GitHub issue from GitHub API
-const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number) => {
-  return Effect.runPromise(loadConfig).then(config => {
+const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number): void => {
+  Effect.runPromise(loadConfig).then(config => {
     try {
       log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}...`)
 
@@ -85,7 +83,7 @@ const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number) => {
 
             const parsedData = JSON.parse(data)
             if (parsedData) {
-              log(`Issue #${issueNumber} received:`, parsedData.title)
+              log(`Issue #${issueNumber} received: ${parsedData.title}`)
               
               // Format the issue data for display
               const issueHtml = `
@@ -135,7 +133,13 @@ const fetchGitHubIssue = (owner: string, repo: string, issueNumber: number) => {
 }
 
 // Analyze a GitHub issue with Claude
-const analyzeIssueWithClaude = (issue: any) => {
+const analyzeIssueWithClaude = (issue: {
+  title: string
+  user: { login: string }
+  created_at: string
+  state: string
+  body: string
+}): void => {
   Effect.runPromise(loadConfig).then(config => {
     try {
       log("Setting up request to Anthropic API")
@@ -271,7 +275,15 @@ Please format your response as structured analysis with clear headings.`
 }
 
 // Get agent state
-const getAgentStatus = () => {
+const getAgentStatus = (): {
+  status: string
+  last_updated: string
+  current_task: null
+  progress: {
+    steps_completed: number
+    total_steps: number
+  }
+} => {
   return {
     status: "ready",
     last_updated: new Date().toISOString(),
@@ -284,7 +296,7 @@ const getAgentStatus = () => {
 }
 
 // Setup a route to handle the SSE connection
-const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse) => {
+const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void => {
   log("New SSE connection established")
 
   // Set headers for SSE
@@ -325,7 +337,7 @@ const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse) => {
 }
 
 // Create a simple HTTP server
-const createHttpServer = () => {
+const createHttpServer = (): Http.Server => {
   const server = Http.createServer((req, res) => {
     const url = req.url || "/"
     log(`Request received: ${req.method} ${url}`)
@@ -401,7 +413,7 @@ const createHttpServer = () => {
 }
 
 // Export the function to start the server
-export const startServer = () => {
+export const startServer = (): void => {
   const server = createHttpServer()
   const port = 3000
 

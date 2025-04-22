@@ -1,13 +1,11 @@
-import { Config, Console, Effect } from "effect"
-import { HttpClient, HttpClientResponse } from "@effect/platform"
+import { Config, Console, Effect, Schema } from "effect"
+import { HttpClient, HttpClientResponse, HttpClientError } from "@effect/platform"
 import { NodeHttpClient } from "@effect/platform-node"
 import * as fs from "node:fs"
 import * as path from "node:path"
 import {
-  GitHubError,
   GitHubIssue,
   GitHubIssueComment,
-  GitHubIssueListResponse,
   GitHubRepository,
   AgentState
 } from "./GitHubTypes.js"
@@ -19,7 +17,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
   dependencies: [NodeHttpClient.layerUndici],
   effect: Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient
-    const githubApiKey = yield* Config.redacted("GITHUB_API_KEY")
+    const githubApiKey = yield* Config.secret("GITHUB_API_KEY")
 
     // Configure HTTP client with GitHub API base URL and authentication
     const githubHttpClient = httpClient.pipe(
@@ -30,7 +28,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         headers: {
           ...request.headers,
           "Accept": "application/vnd.github.v3+json",
-          "Authorization": `token ${githubApiKey.value}`,
+          "Authorization": `token ${githubApiKey}`,
           "User-Agent": "OpenAgents-Engine/1.0"
         }
       }))
@@ -45,17 +43,15 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
           acceptJson: true
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubIssue)),
-          Effect.catchTag("HttpClientResponseError", (error) => {
-            if (error.response.status === 404) {
+          Effect.catchAll((error) => {
+            if (HttpClientError.isHttpClientError(error) && 
+                "status" in error && error.status === 404) {
               return Effect.fail(new Error(`Issue #${issueNumber} not found in ${owner}/${repo}`))
             }
-            return Effect.fail(error)
-          }),
-          Effect.catchTag("ParseError", (error) => {
-            return Effect.fail(new Error(`Failed to parse GitHub response: ${error.message}`))
+            return Effect.fail(new Error(`GitHub API error: ${String(error)}`))
           }),
           Effect.scoped,
-          Effect.tapError((error) => Console.error(`Error fetching issue #${issueNumber}: ${error.message}`))
+          Effect.tapError((error) => Console.error(`Error fetching issue #${issueNumber}: ${error}`))
         )
       }
     )
@@ -72,7 +68,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
           Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(GitHubIssue))),
           Effect.map((issues) => ({ issues })),
           Effect.scoped,
-          Effect.tapError((error) => Console.error(`Error listing issues for ${owner}/${repo}: ${error.message}`))
+          Effect.tapError((error) => Console.error(`Error listing issues for ${owner}/${repo}: ${error}`))
         )
       }
     )
@@ -87,7 +83,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(Schema.Array(GitHubIssueComment))),
           Effect.scoped,
-          Effect.tapError((error) => Console.error(`Error fetching comments for issue #${issueNumber}: ${error.message}`))
+          Effect.tapError((error) => Console.error(`Error fetching comments for issue #${issueNumber}: ${error}`))
         )
       }
     )
@@ -97,13 +93,14 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
      */
     const createIssueComment = Effect.fn("GitHubClient.createIssueComment")(
       function* (owner: string, repo: string, issueNumber: number, body: string) {
+        const jsonString = JSON.stringify({ body })
         return yield* githubHttpClient.post(`/repos/${owner}/${repo}/issues/${issueNumber}/comments`, {
           acceptJson: true,
-          body: JSON.stringify({ body })
+          body: jsonString
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubIssueComment)),
           Effect.scoped,
-          Effect.tapError((error) => Console.error(`Error creating comment on issue #${issueNumber}: ${error.message}`))
+          Effect.tapError((error) => Console.error(`Error creating comment on issue #${issueNumber}: ${error}`))
         )
       }
     )
@@ -118,7 +115,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubRepository)),
           Effect.scoped,
-          Effect.tapError((error) => Console.error(`Error fetching repository ${owner}/${repo}: ${error.message}`))
+          Effect.tapError((error) => Console.error(`Error fetching repository ${owner}/${repo}: ${error}`))
         )
       }
     )
@@ -134,13 +131,14 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
         labels?: string[],
         assignees?: string[]
       }) {
+        const jsonString = JSON.stringify(updates)
         return yield* githubHttpClient.patch(`/repos/${owner}/${repo}/issues/${issueNumber}`, {
           acceptJson: true,
-          body: JSON.stringify(updates)
+          body: jsonString
         }).pipe(
           Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubIssue)),
           Effect.scoped,
-          Effect.tapError((error) => Console.error(`Error updating issue #${issueNumber}: ${error.message}`))
+          Effect.tapError((error) => Console.error(`Error updating issue #${issueNumber}: ${error}`))
         )
       }
     )
@@ -210,7 +208,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
     const createAgentStateForIssue = Effect.fn("GitHubClient.createAgentStateForIssue")(
       function* (owner: string, repo: string, issueNumber: number) {
         // First, fetch the issue to get its details
-        const issue = yield* getIssue(owner, repo, issueNumber)
+        const issue: GitHubIssue = yield* getIssue(owner, repo, issueNumber)
         
         // Generate a unique instance ID
         const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
@@ -238,7 +236,7 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
               title: issue.title,
               description_snippet: issue.body.slice(0, 200) + (issue.body.length > 200 ? "..." : ""),
               status: issue.state,
-              labels: issue.labels.map(l => l.name),
+              labels: issue.labels.map((l) => l.name),
               source_url: issue.html_url
             },
             status: "planning",
@@ -250,14 +248,14 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
               step_number: 1,
               description: "Analyze issue requirements and context",
               status: "pending",
-              start_time: undefined,
-              end_time: undefined,
-              result_summary: undefined,
+              start_time: null,
+              end_time: null,
+              result_summary: null,
               tool_calls: []
             }
           ],
           execution_context: {
-            current_file_focus: undefined,
+            current_file_focus: null,
             relevant_code_snippets: [],
             external_references: [],
             files_modified_in_session: []
@@ -283,10 +281,10 @@ export class GitHubClient extends Effect.Service<GitHubClient>()("GitHubClient",
             commits_made: 0
           },
           error_state: {
-            last_error: undefined,
+            last_error: null,
             consecutive_error_count: 0,
             retry_count_for_current_action: 0,
-            blocked_reason: undefined
+            blocked_reason: null
           },
           configuration: {
             agent_goal: `Resolve issue #${issueNumber}: ${issue.title}`,

@@ -18,7 +18,7 @@ export class GitHubLabel extends Schema.Class<GitHubLabel>("GitHubLabel")({
   id: Schema.Number,
   name: Schema.String,
   color: Schema.String,
-  description: Schema.String.optional()
+  description: Schema.Union(Schema.String, Schema.Null)
 }) { }
 
 /**
@@ -60,11 +60,11 @@ export class GitHubRepository extends Schema.Class<GitHubRepository>("GitHubRepo
   full_name: Schema.String,
   owner: GitHubUser,
   html_url: Schema.String,
-  description: Schema.String.optional(),
+  description: Schema.Union(Schema.String, Schema.Null),
   visibility: Schema.String,
   default_branch: Schema.String,
   open_issues_count: Schema.Number,
-  topics: Schema.Array(Schema.String).optional()
+  topics: Schema.Union(Schema.Array(Schema.String), Schema.Null)
 }) { }
 
 /**
@@ -79,7 +79,7 @@ export class GitHubIssueListResponse extends Schema.Class<GitHubIssueListRespons
  */
 export class GitHubError extends Schema.Class<GitHubError>("GitHubError")({
   message: Schema.String,
-  documentation_url: Schema.String.optional()
+  documentation_url: Schema.Union(Schema.String, Schema.Null)
 }) { }
 
 /**
@@ -111,7 +111,7 @@ export class CurrentTask extends Schema.Class<CurrentTask>("CurrentTask")({
   repo_name: Schema.String,
   repo_branch: Schema.String,
   issue_number: Schema.Number,
-  issue_details_cache: IssueDetailsCache.optional(),
+  issue_details_cache: Schema.Union(IssueDetailsCache, Schema.Null),
   status: Schema.String,
   current_step_index: Schema.Number
 }) { }
@@ -122,7 +122,7 @@ export class ToolCall extends Schema.Class<ToolCall>("ToolCall")({
   parameters: Schema.Record(Schema.String, Schema.Unknown),
   status: Schema.String,
   result_preview: Schema.String,
-  full_result_ref: Schema.String.optional()
+  full_result_ref: Schema.Union(Schema.String, Schema.Null)
 }) { }
 
 export class PlanStep extends Schema.Class<PlanStep>("PlanStep")({
@@ -130,14 +130,14 @@ export class PlanStep extends Schema.Class<PlanStep>("PlanStep")({
   step_number: Schema.Number,
   description: Schema.String,
   status: Schema.String,
-  start_time: Schema.String.optional(),
-  end_time: Schema.String.optional(),
-  result_summary: Schema.String.optional(),
+  start_time: Schema.Union(Schema.String, Schema.Null),
+  end_time: Schema.Union(Schema.String, Schema.Null),
+  result_summary: Schema.Union(Schema.String, Schema.Null),
   tool_calls: Schema.Array(ToolCall)
 }) { }
 
 export class ExecutionContext extends Schema.Class<ExecutionContext>("ExecutionContext")({
-  current_file_focus: Schema.Record(Schema.String, Schema.Unknown).optional(),
+  current_file_focus: Schema.Union(Schema.Record(Schema.String, Schema.Unknown), Schema.Null),
   relevant_code_snippets: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
   external_references: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)),
   files_modified_in_session: Schema.Array(Schema.String)
@@ -147,7 +147,7 @@ export class ConversationMessage extends Schema.Class<ConversationMessage>("Conv
   role: Schema.String,
   content: Schema.String,
   timestamp: Schema.String,
-  tool_calls: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)).optional()
+  tool_calls: Schema.Union(Schema.Array(Schema.Record(Schema.String, Schema.Unknown)), Schema.Null)
 }) { }
 
 export class KeyDecision extends Schema.Class<KeyDecision>("KeyDecision")({
@@ -183,10 +183,10 @@ export class Metrics extends Schema.Class<Metrics>("Metrics")({
 }) { }
 
 export class ErrorState extends Schema.Class<ErrorState>("ErrorState")({
-  last_error: Schema.Record(Schema.String, Schema.Unknown).optional(),
+  last_error: Schema.Union(Schema.Record(Schema.String, Schema.Unknown), Schema.Null),
   consecutive_error_count: Schema.Number,
   retry_count_for_current_action: Schema.Number,
-  blocked_reason: Schema.String.optional()
+  blocked_reason: Schema.Union(Schema.String, Schema.Null)
 }) { }
 
 export class LLMConfig extends Schema.Class<LLMConfig>("LLMConfig")({
