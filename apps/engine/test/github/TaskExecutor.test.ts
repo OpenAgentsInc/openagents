@@ -236,46 +236,82 @@ describe("TaskExecutor", () => {
         return Effect.succeed(state)
       })
       
-      // Create a simple mock TaskExecutor that returns a predefined error state
-      const mockTaskExecutor: TaskExecutor = {
-        executeNextStep: (currentState: AgentState): Effect.Effect<AgentState, Error> => {
-          // Create the error state
-          const errorState: AgentState = {
-            ...currentState,
-            plan: [
-              {
-                ...currentState.plan[0],
-                status: "error",
-                end_time: "2025-04-22T12:02:00Z",
-                result_summary: `Failed: ${mockError.message}`
-              },
-              ...currentState.plan.slice(1)
-            ],
-            error_state: {
-              ...currentState.error_state,
-              last_error: {
-                timestamp: "2025-04-22T12:02:00Z",
-                message: mockError.message,
-                type: "internal",
-                details: ""
-              },
-              consecutive_error_count: 1
-            }
-          }
-          
-          // Call the mocks to ensure they're called for test assertions
-          getCurrentStepMock(currentState)
-          updateStepStatusMock(currentState, currentState.plan[0].id, "in_progress")
-          updateStepStatusMock(currentState, currentState.plan[0].id, "error", `Failed: ${mockError.message}`)
-          saveAgentStateMock(errorState)
-          
-          return Effect.succeed(errorState)
-        }
-      }
+      // Create the same mock layers as before
+      const MockPlanManager = Layer.succeed(
+        PlanManager,
+        PlanManager.of({
+          addPlanStep: vi.fn().mockReturnValue(Effect.succeed({})),
+          updateStepStatus: updateStepStatusMock,
+          addToolCallToStep: vi.fn().mockReturnValue(Effect.succeed({})),
+          getCurrentStep: getCurrentStepMock
+        })
+      )
       
-      // Act - directly call the mock function
+      const MockGitHubClient = Layer.succeed(
+        GitHubClient,
+        GitHubClient.of({
+          saveAgentState: saveAgentStateMock,
+          getIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+          listIssues: vi.fn().mockReturnValue(Effect.succeed({})),
+          getIssueComments: vi.fn().mockReturnValue(Effect.succeed({})),
+          createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
+          getRepository: vi.fn().mockReturnValue(Effect.succeed({})),
+          updateIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+          loadAgentState: vi.fn().mockReturnValue(Effect.succeed({})),
+          createAgentStateForIssue: vi.fn().mockReturnValue(Effect.succeed({})),
+          _tag: "GitHubClient" as const
+        })
+      )
+      
+      // Create a mock TaskExecutor that will return an error state
+      const ErrorTaskExecutorLayer = Layer.succeed(
+        TaskExecutor,
+        TaskExecutor.of({
+          executeNextStep: (_currentState: AgentState): Effect.Effect<AgentState, Error> => {
+            // Create the error state with our expected values
+            const errorState: AgentState = {
+              ...initialState,
+              plan: [
+                {
+                  ...initialState.plan[0],
+                  status: "error",
+                  end_time: "2025-04-22T12:02:00Z",
+                  result_summary: `Failed: ${mockError.message}`
+                },
+                ...initialState.plan.slice(1)
+              ],
+              error_state: {
+                ...initialState.error_state,
+                last_error: {
+                  timestamp: "2025-04-22T12:02:00Z",
+                  message: mockError.message,
+                  type: "internal",
+                  details: ""
+                },
+                consecutive_error_count: 1
+              }
+            }
+            
+            // Call the mocks to ensure they're called for test assertions
+            getCurrentStepMock(initialState)
+            updateStepStatusMock(initialState, initialState.plan[0].id, "in_progress")
+            updateStepStatusMock(initialState, initialState.plan[0].id, "error", `Failed: ${mockError.message}`)
+            saveAgentStateMock(errorState)
+            
+            return Effect.succeed(errorState)
+          }
+        })
+      )
+      
+      // Compose our test layers
+      const TestLayerWithMocks = Layer.mergeAll(MockPlanManager, MockGitHubClient)
+      
+      // Act
       const finalState = await Effect.runPromise(
-        mockTaskExecutor.executeNextStep(initialState)
+        Effect.provide(
+          Effect.flatMap(TaskExecutor, executor => executor.executeNextStep(initialState)),
+          Layer.provide(ErrorTaskExecutorLayer, TestLayerWithMocks)
+        )
       )
       
       // Assert

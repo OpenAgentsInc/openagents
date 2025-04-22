@@ -1,6 +1,6 @@
 import { describe, it, expect } from "@effect/vitest"
 import { Effect } from "effect"
-import type { AgentState, PlanStep } from "../../src/github/AgentStateTypes.js"
+import type { AgentState, PlanStep, ToolCall } from "../../src/github/AgentStateTypes.js"
 
 // Create a basic fixture for testing
 const createTestState = (): AgentState => ({
@@ -156,7 +156,7 @@ describe("PlanManager", () => {
             }
           }
         }),
-      addToolCallToStep: (state: AgentState, stepId: string, toolCallData: Omit<any, "timestamp">) => 
+      addToolCallToStep: (state: AgentState, stepId: string, toolCallData: Omit<ToolCall, "timestamp">) => 
         Effect.sync(() => {
           const stepIndex = state.plan.findIndex(step => step.id === stepId)
           
@@ -164,9 +164,14 @@ describe("PlanManager", () => {
             throw new Error(`Plan step with id ${stepId} not found`)
           }
 
-          const newToolCall = {
-            ...toolCallData,
-            timestamp: new Date().toISOString()
+          // Create a complete ToolCall object with all required properties
+          const newToolCall: ToolCall = {
+            timestamp: new Date().toISOString(),
+            tool_name: toolCallData.tool_name,
+            parameters: toolCallData.parameters,
+            status: toolCallData.status,
+            result_preview: toolCallData.result_preview,
+            full_result_ref: toolCallData.full_result_ref
           }
 
           const originalStep = state.plan[stepIndex]
