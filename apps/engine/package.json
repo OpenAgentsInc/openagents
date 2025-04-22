@@ -27,6 +27,7 @@
     "coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@effect/ai": "^0.13.12",
     "@effect/ai-anthropic": "^0.3.13",
     "@effect/platform": "^0.80.12",
