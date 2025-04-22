@@ -165,7 +165,7 @@ const handleWebSocketStream: Effect.Effect<
   // Use Effect.absolve to turn Either<E, A> from upgradeChannel into Effect<A, E>
   const streamEffect = outgoingStream.pipe(
     // Use HttpServerRequest.upgradeChannel (assuming this is the correct API location)
-    Stream.pipeThroughChannel(HttpServerRequest.upgradeChannel), // Requires Scope & Request
+    Stream.pipeThroughChannel(HttpServerRequest.upgradeChannel()), // Requires Scope & Request
     Stream.runForEach((chunk) => // Process incoming chunks (likely Uint8Array)
       Effect.sync(() => log(`WebSocket Received Chunk (raw): ${chunk}`))
       // Add Stream.decodeText() before runForEach if string is desired
