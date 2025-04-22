@@ -14,6 +14,7 @@
     "directory": "dist"
   },
   "scripts": {
+    "start": "tsc -b tsconfig.build.json && node build/esm/Program.js",
     "codegen": "build-utils prepare-v2",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",
     "build-esm": "tsc -b tsconfig.build.json",
