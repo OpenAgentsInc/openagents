@@ -112,7 +112,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           timestamp: new Date().toISOString(),
           tool_calls: toolCalls ? [...toolCalls] : null
         }
-  
+
         return {
           ...state,
           memory: {
@@ -121,7 +121,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           }
         }
       }),
-  
+
     addKeyDecision: (
       state: AgentState,
       decision: string,
@@ -135,7 +135,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           reasoning,
           confidence
         }
-  
+
         return {
           ...state,
           memory: {
@@ -144,7 +144,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           }
         }
       }),
-  
+
     addImportantFinding: (
       state: AgentState,
       finding: string,
@@ -158,7 +158,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           source,
           confidence
         }
-  
+
         return {
           ...state,
           memory: {
@@ -167,7 +167,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           }
         }
       }),
-  
+
     updateScratchpad: (
       state: AgentState,
       newContent: string
@@ -179,7 +179,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           scratchpad: newContent
         }
       })),
-  
+
     addToolInvocationLogEntry: (
       state: AgentState,
       toolCallData: Omit<ToolCall, "timestamp">
@@ -193,7 +193,7 @@ const runWithMemoryManager = <A>(effectToRun: (manager: any) => Effect.Effect<A,
           result_preview: toolCallData.result_preview,
           full_result_ref: toolCallData.full_result_ref
         }
-  
+
         return {
           ...state,
           tool_invocation_log: [...state.tool_invocation_log, newLogEntry]
@@ -221,7 +221,7 @@ describe("MemoryManager", () => {
       // Assert
       const history = newState.memory.conversation_history
       expect(history.length).toBe(1)
-      
+
       const addedMessage = history[0]
       expect(addedMessage.role).toBe(role)
       expect(addedMessage.content).toBe(content)
@@ -262,7 +262,7 @@ describe("MemoryManager", () => {
       // Assert
       const history = newState.memory.conversation_history
       expect(history.length).toBe(1)
-      
+
       const addedMessage = history[0]
       expect(addedMessage.role).toBe(role)
       expect(addedMessage.content).toBe(content)
@@ -325,7 +325,7 @@ describe("MemoryManager", () => {
       // Assert
       const decisions = newState.memory.key_decisions
       expect(decisions.length).toBe(1)
-      
+
       const addedDecision = decisions[0]
       expect(addedDecision.decision).toBe(decision)
       expect(addedDecision.reasoning).toBe(reasoning)
@@ -390,7 +390,7 @@ describe("MemoryManager", () => {
       // Assert
       const findings = newState.memory.important_findings
       expect(findings.length).toBe(1)
-      
+
       const addedFinding = findings[0]
       expect(addedFinding.finding).toBe(finding)
       expect(addedFinding.source).toBe(source)
@@ -446,9 +446,7 @@ describe("MemoryManager", () => {
       const newContent = "Need to check validateInput() function and add null checks."
 
       // Act
-      const newState = runWithMemoryManager<AgentState>((manager) =>
-        manager.updateScratchpad(initialState, newContent)
-      )
+      const newState = runWithMemoryManager<AgentState>((manager) => manager.updateScratchpad(initialState, newContent))
 
       // Assert
       expect(newState.memory.scratchpad).toBe(newContent)
@@ -466,7 +464,7 @@ describe("MemoryManager", () => {
     it("should replace existing scratchpad content", () => {
       // Arrange
       const initialState = createTestState()
-      
+
       // First update with some content
       const firstUpdateState = runWithMemoryManager<AgentState>((manager) =>
         manager.updateScratchpad(initialState, "Initial notes")
@@ -509,7 +507,7 @@ describe("MemoryManager", () => {
       // Assert
       const log = newState.tool_invocation_log
       expect(log.length).toBe(1)
-      
+
       const addedEntry = log[0]
       expect(addedEntry.tool_name).toBe(toolCallData.tool_name)
       expect(addedEntry.parameters).toEqual(toolCallData.parameters)
