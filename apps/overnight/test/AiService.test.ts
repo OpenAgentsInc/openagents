@@ -1,6 +1,6 @@
 import { it, describe, expect } from 'vitest';
 import { Effect, Layer } from 'effect';
-import { GitHubToolkitLive } from '../src/AiService.js';
+import { GitHubTools, GitHubToolsLive, FileContentParams, IssueParams } from '../src/AiService.js';
 import { mockGitHubFileClientLayer, GitHubFileClient } from '../src/github/FileClient.js';
 import { mockGitHubIssueClientLayer, GitHubIssueClient } from '../src/github/IssueClient.js';
 import { Buffer } from 'node:buffer';

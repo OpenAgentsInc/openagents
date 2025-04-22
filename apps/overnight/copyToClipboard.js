@@ -24,21 +24,31 @@ const filesToCopy = [
   'docs/20250421-1716-githubrefactorimpl.md',
   'docs/mvp.md',
 
-  // Source files
-  'src/Program.ts',
+  // AI Integration files
+  'src/AiService.ts',
+  'src/Server.ts',
+  'src/Tools.ts',
+  
+  // GitHub API files
   'src/github/Client.ts',
   'src/github/Errors.ts',
   'src/github/FileClient.ts',
   'src/github/IssueClient.ts',
   'src/github/Types.ts',
+  
+  // Program entry point
+  'src/Program.ts',
 
   // Tests
+  'test/AiService.test.ts',
   'test/github/FileClient.test.ts',
   'test/github/IssueClient.test.ts',
   'test/Dummy.test.ts',
 
   // Configuration files
   'package.json',
+  'tsconfig.json',
+  'tsconfig.build.json',
   'README.md'
 ];
 
