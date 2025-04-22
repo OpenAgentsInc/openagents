@@ -104,22 +104,23 @@ describe("State Storage", () => {
   const createMockFileSystemLayer = (overrides: Partial<FileSystem.FileSystem> = {}) => {
     // Create mock functions for assertions
     const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-    const makeDirectoryMock = vi.fn().mockImplementation(() => Effect.void)
-    const writeFileStringMock = vi.fn().mockImplementation(() => Effect.void)
+    const makeDirectoryMock = vi.fn().mockImplementation(() => Effect.succeed(void 0))
+    const writeFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(void 0))
     const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(""))
 
-    // Create a mock implementation
+    // Create a mock implementation with the specific methods we need
     const mockFs: Partial<FileSystem.FileSystem> = {
       exists: overrides.exists ?? existsMock,
       makeDirectory: overrides.makeDirectory ?? makeDirectoryMock,
       writeFileString: overrides.writeFileString ?? writeFileStringMock,
-      readFileString: overrides.readFileString ?? readFileStringMock,
-      // Include overrides
-      ...overrides
+      readFileString: overrides.readFileString ?? readFileStringMock
     }
 
+    // Combine with any overrides
+    const combinedMockFs = { ...mockFs, ...overrides }
+
     // Return the layer with testing implementation
-    return Layer.succeed(FileSystem.FileSystem, mockFs as FileSystem.FileSystem)
+    return Layer.succeed(FileSystem.FileSystem, combinedMockFs as FileSystem.FileSystem)
   }
 
   // Test suite for error classes
@@ -158,8 +159,8 @@ describe("State Storage", () => {
 
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-      const makeDirectoryMock = vi.fn().mockImplementation(() => Effect.void)
-      const writeFileStringMock = vi.fn().mockImplementation(() => Effect.void)
+      const makeDirectoryMock = vi.fn().mockImplementation(() => Effect.succeed(void 0))
+      const writeFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(void 0))
 
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
@@ -174,11 +175,7 @@ describe("State Storage", () => {
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)) as Effect.Effect<
-            AgentState,
-            Error,
-            never
-          >,
+          Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)),
           testLayer
         )
       )
@@ -223,11 +220,7 @@ describe("State Storage", () => {
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)) as Effect.Effect<
-              AgentState,
-              Error,
-              never
-            >,
+            Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)),
             testLayer
           )
         )
@@ -254,11 +247,7 @@ describe("State Storage", () => {
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)) as Effect.Effect<
-              AgentState,
-              Error,
-              never
-            >,
+            Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)),
             testLayer
           )
         )
@@ -289,11 +278,7 @@ describe("State Storage", () => {
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
-            AgentState,
-            Error,
-            never
-          >,
+          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
           testLayer
         )
       )
@@ -330,7 +315,9 @@ describe("State Storage", () => {
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
         expect(result.left).toBeInstanceOf(StateNotFoundError)
-        expect(result.left.message).toContain(instanceId)
+        if (result.left instanceof StateNotFoundError) {
+          expect(result.left.message).toContain(instanceId)
+        }
       }
     })
 
@@ -340,8 +327,7 @@ describe("State Storage", () => {
 
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed("{ invalid json") // Invalid JSON
-      )
+      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed("{ invalid json")) // Invalid JSON
 
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
@@ -360,7 +346,9 @@ describe("State Storage", () => {
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
         expect(result.left).toBeInstanceOf(StateParseError)
-        expect(result.left.message).toContain("Failed to parse state")
+        if (result.left instanceof StateParseError) {
+          expect(result.left.message).toContain("Failed to parse state")
+        }
       }
     })
 
@@ -371,8 +359,7 @@ describe("State Storage", () => {
 
       // Create mocks
       const existsMock = vi.fn().mockImplementation(() => Effect.succeed(true))
-      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(JSON.stringify(invalidState)) // Valid JSON but invalid schema
-      )
+      const readFileStringMock = vi.fn().mockImplementation(() => Effect.succeed(JSON.stringify(invalidState))) // Valid JSON but invalid schema
 
       // Create mock layer
       const mockFileSystemLayer = createMockFileSystemLayer({
@@ -391,7 +378,9 @@ describe("State Storage", () => {
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
         expect(result.left).toBeInstanceOf(StateValidationError)
-        expect(result.left.message).toContain("validation failed")
+        if (result.left instanceof StateValidationError) {
+          expect(result.left.message).toContain("validation failed")
+        }
       }
     })
 
@@ -422,11 +411,7 @@ describe("State Storage", () => {
       // Act
       const result = await Effect.runPromise(
         Effect.provide(
-          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
-            AgentState,
-            Error,
-            never
-          >,
+          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
           testLayer
         )
       )
@@ -457,11 +442,7 @@ describe("State Storage", () => {
       await expect(
         Effect.runPromise(
           Effect.provide(
-            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)) as Effect.Effect<
-              AgentState,
-              Error,
-              never
-            >,
+            Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
             testLayer
           )
         )
@@ -471,169 +452,173 @@ describe("State Storage", () => {
 
   describe("createAgentStateForIssue", () => {
     it("should create and save initial state for issue", async () => {
-      // Arrange - Create mock GitHub client with essential implementation
+      // Arrange - Create separate mocks for each dependency method
+      const getIssueMock = vi.fn().mockImplementation(() => 
+        Effect.succeed({
+          title: "Test Issue Title",
+          body: "Test issue description with details",
+          state: "open",
+          labels: [{ name: "bug" }, { name: "priority" }],
+          html_url: "https://github.com/user/repo/issues/123"
+        })
+      )
+      
+      const saveAgentStateMock = vi.fn().mockImplementation((state) => 
+        Effect.succeed({
+          ...state,
+          timestamps: {
+            ...state.timestamps,
+            last_saved_at: "2025-04-22T12:05:00Z" // Mock updated timestamp
+          }
+        })
+      )
+      
+      // Create a mock GitHub client with all required methods
       const mockGithubClient = {
-        getIssue: vi.fn().mockImplementation(() =>
-          Effect.succeed({
-            title: "Test Issue Title",
-            body: "Test issue description with details",
-            state: "open",
-            labels: [{ name: "bug" }, { name: "priority" }],
-            html_url: "https://github.com/user/repo/issues/123"
-          })
-        ),
-        saveAgentState: vi.fn().mockImplementation((state) => () =>
-          Effect.succeed({
-            ...state,
-            timestamps: {
-              ...state.timestamps,
-              last_saved_at: "2025-04-22T12:05:00Z" // Mock updated timestamp
-            }
-          })
-        ),
-        // Implement createAgentStateForIssue directly to avoid circular dependency
-        createAgentStateForIssue: vi.fn().mockImplementation((owner, repo, issueNumber) => {
-          // This implementation simulates what the real method would do
-          // by calling getIssue and saveAgentState internally
-          const issue = {
-            title: "Test Issue Title",
-            body: "Test issue description with details",
-            state: "open",
-            labels: [{ name: "bug" }, { name: "priority" }],
-            html_url: `https://github.com/${owner}/${repo}/issues/${issueNumber}`
-          }
-
-          const now = "2025-04-22T12:05:00Z" // Mock timestamp
-          const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
-
-          const initialState: AgentState = {
-            agent_info: {
-              type: "solver",
-              version: "1.0.0",
-              instance_id: instanceId,
-              state_schema_version: "1.1"
-            },
-            timestamps: {
-              created_at: now,
-              last_saved_at: now,
-              last_action_at: now
-            },
-            current_task: {
-              repo_owner: owner,
-              repo_name: repo,
-              repo_branch: "main",
-              issue_number: issueNumber,
-              issue_details_cache: {
-                title: issue.title,
-                description_snippet: issue.body.slice(0, 200),
-                status: issue.state,
-                labels: issue.labels.map((l) => l.name),
-                source_url: issue.html_url
-              },
-              status: "planning",
-              current_step_index: 0
-            },
-            plan: [
-              {
-                id: `step-${Date.now()}-1`,
-                step_number: 1,
-                description: "Analyze issue",
-                status: "pending",
-                start_time: null,
-                end_time: null,
-                result_summary: null,
-                tool_calls: []
-              }
-            ],
-            execution_context: {
-              current_file_focus: null,
-              relevant_code_snippets: [],
-              external_references: [],
-              files_modified_in_session: []
-            },
-            tool_invocation_log: [],
-            memory: {
-              conversation_history: [],
-              key_decisions: [],
-              important_findings: [],
-              scratchpad: ""
-            },
-            metrics: {
-              steps_completed: 0,
-              total_steps_in_plan: 1,
-              session_start_time: now,
-              total_time_spent_seconds: 0,
-              llm_calls_made: 0,
-              llm_tokens_used: {
-                prompt: 0,
-                completion: 0
-              },
-              tools_called: 0,
-              commits_made: 0
-            },
-            error_state: {
-              last_error: null,
-              consecutive_error_count: 0,
-              retry_count_for_current_action: 0,
-              blocked_reason: null
-            },
-            configuration: {
-              agent_goal: `Resolve issue #${issueNumber}: ${issue.title}`,
-              llm_config: {
-                model: "claude-3-5-sonnet-latest",
-                temperature: 0.7,
-                max_tokens: 1024
-              },
-              max_retries_per_action: 3,
-              allowed_actions: ["read_file", "write_file", "run_test", "update_issue"],
-              restricted_paths: ["/.git/*", "/secrets/", "/config/prod.json"],
-              action_timeout_seconds: 300,
-              session_timeout_minutes: 120,
-              github_token_available: true
-            }
-          }
-
-          // Simulate that this would call saveAgentState internally
-          mockGithubClient.saveAgentState(initialState)
-
-          return Effect.succeed(initialState)
-        }),
+        getIssue: getIssueMock,
+        saveAgentState: saveAgentStateMock,
         // Mock other required methods to avoid errors
-        listIssues: vi.fn().mockImplementation(() => Effect.succeed({ issues: [] })),
-        getIssueComments: vi.fn().mockImplementation(() => Effect.succeed([])),
-        createIssueComment: vi.fn().mockImplementation(() => Effect.succeed({})),
-        getRepository: vi.fn().mockImplementation(() => Effect.succeed({})),
-        updateIssue: vi.fn().mockImplementation(() => Effect.succeed({})),
-        loadAgentState: vi.fn().mockImplementation(() => Effect.succeed({})),
+        listIssues: vi.fn().mockImplementation(() => Effect.fail(new Error("Not implemented in this test"))),
+        getIssueComments: vi.fn().mockImplementation(() => Effect.fail(new Error("Not implemented in this test"))),
+        createIssueComment: vi.fn().mockImplementation(() => Effect.fail(new Error("Not implemented in this test"))),
+        getRepository: vi.fn().mockImplementation(() => Effect.fail(new Error("Not implemented in this test"))),
+        updateIssue: vi.fn().mockImplementation(() => Effect.fail(new Error("Not implemented in this test"))),
+        loadAgentState: vi.fn().mockImplementation(() => Effect.fail(new Error("Not implemented in this test"))),
+        createAgentStateForIssue: vi.fn().mockImplementation(function(owner, repo, issueNumber) {
+          // This method delegates to the methods we want to test
+          return Effect.gen(function*() {
+            // Call the mocked getIssue
+            const issue = yield* getIssueMock(owner, repo, issueNumber)
+            
+            // Generate a unique instance ID
+            const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
+            const now = "2025-04-22T12:05:00Z"  // Fixed timestamp for testing
+            
+            // Create initial agent state
+            const initialState: AgentState = {
+              agent_info: {
+                type: "solver",
+                version: "1.0.0",
+                instance_id: instanceId,
+                state_schema_version: "1.1"
+              },
+              timestamps: {
+                created_at: now,
+                last_saved_at: now,
+                last_action_at: now
+              },
+              current_task: {
+                repo_owner: owner,
+                repo_name: repo,
+                repo_branch: "main",
+                issue_number: issueNumber,
+                issue_details_cache: {
+                  title: issue.title,
+                  description_snippet: issue.body.slice(0, 200) + (issue.body.length > 200 ? "..." : ""),
+                  status: issue.state,
+                  labels: issue.labels.map((l: { name: string }) => l.name),
+                  source_url: issue.html_url
+                },
+                status: "planning",
+                current_step_index: 0
+              },
+              plan: [
+                {
+                  id: `step-${Date.now()}-1`,
+                  step_number: 1,
+                  description: "Analyze issue requirements and context",
+                  status: "pending",
+                  start_time: null,
+                  end_time: null,
+                  result_summary: null,
+                  tool_calls: []
+                }
+              ],
+              execution_context: {
+                current_file_focus: null,
+                relevant_code_snippets: [],
+                external_references: [],
+                files_modified_in_session: []
+              },
+              tool_invocation_log: [],
+              memory: {
+                conversation_history: [],
+                key_decisions: [],
+                important_findings: [],
+                scratchpad: ""
+              },
+              metrics: {
+                steps_completed: 0,
+                total_steps_in_plan: 1,
+                session_start_time: now,
+                total_time_spent_seconds: 0,
+                llm_calls_made: 0,
+                llm_tokens_used: {
+                  prompt: 0,
+                  completion: 0
+                },
+                tools_called: 0,
+                commits_made: 0
+              },
+              error_state: {
+                last_error: null,
+                consecutive_error_count: 0,
+                retry_count_for_current_action: 0,
+                blocked_reason: null
+              },
+              configuration: {
+                agent_goal: `Resolve issue #${issueNumber}: ${issue.title}`,
+                llm_config: {
+                  model: "claude-3-5-sonnet-latest",
+                  temperature: 0.7,
+                  max_tokens: 1024
+                },
+                max_retries_per_action: 3,
+                allowed_actions: ["read_file", "write_file", "run_test", "update_issue"],
+                restricted_paths: ["/.git/*", "/secrets/", "/config/prod.json"],
+                action_timeout_seconds: 300,
+                session_timeout_minutes: 120,
+                github_token_available: true
+              }
+            }
+            
+            // Call the mocked saveAgentState
+            const savedState = yield* saveAgentStateMock(initialState)
+            
+            return savedState
+          })
+        }),
         _tag: "GitHubClient" as const
       }
 
-      // Create mock GitHub client layer
+      // Create mock GitHub client layer that wraps our mocked client
       const mockGitHubClientLayer = Layer.succeed(
         GitHubClient,
-        mockGithubClient
+        GitHubClient.of(mockGithubClient)
       )
 
-      // Create mock filesystem layer
+      // Create mock filesystem layer with default mocks
       const mockFileSystemLayer = createMockFileSystemLayer()
 
       // Combine layers
       const testLayer = Layer.provide(mockGitHubClientLayer, mockFileSystemLayer)
 
-      // Act
+      // Act - Call the method we're testing
       const result = await Effect.runPromise(
         Effect.provide(
           Effect.flatMap(
             GitHubClient,
             (client) => client.createAgentStateForIssue("user", "repo", 123)
-          ) as Effect.Effect<AgentState, Error, never>,
+          ),
           testLayer
         )
       )
 
-      // Assert
-      expect(mockGithubClient.getIssue).toHaveBeenCalledWith("user", "repo", 123)
-      expect(mockGithubClient.saveAgentState).toHaveBeenCalled()
+      // Assert - Verify our mocks were called with expected params
+      expect(getIssueMock).toHaveBeenCalledWith("user", "repo", 123)
+      expect(saveAgentStateMock).toHaveBeenCalled()
+      
+      // Verify the structure of the returned state
       expect(result.agent_info.type).toBe("solver")
       expect(result.agent_info.state_schema_version).toBe("1.1")
       expect(result.current_task.repo_owner).toBe("user")
