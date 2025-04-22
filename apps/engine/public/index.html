@@ -81,7 +81,8 @@
       color: black;
     }
 
-    input[type="text"], input[type="number"] {
+    input[type="text"],
+    input[type="number"] {
       background-color: rgba(255, 255, 255, 0.1);
       color: white;
       border: 1px solid rgba(255, 255, 255, 0.3);
@@ -194,7 +195,8 @@
       color: rgba(255, 255, 255, 0.9);
     }
 
-    .analysis, .issue-body p {
+    .analysis,
+    .issue-body p {
       line-height: 1.8;
       font-family: 'Berkeley Mono', monospace;
       letter-spacing: -0.01rem;
@@ -224,9 +226,12 @@
     }
 
     @keyframes cursor-blink {
-      0%, 100% {
+
+      0%,
+      100% {
         opacity: 1;
       }
+
       50% {
         opacity: 0;
       }
@@ -249,18 +254,18 @@
     </div>
   </div>
 
-  <form hx-post="/fetch-issue" hx-trigger="submit" hx-swap="none">
+  <form hx-post="/fetch-issue" hx-trigger="submit" hx-swap="none" enctype="application/x-www-form-urlencoded">
     <div class="input-group">
       <label for="owner">Owner:</label>
-      <input type="text" id="owner" name="owner" value="openagents" placeholder="Repo Owner">
-      
+      <input type="text" id="owner" name="owner" value="openagentsinc" placeholder="Repo Owner">
+
       <label for="repo">Repo:</label>
       <input type="text" id="repo" name="repo" value="openagents" placeholder="Repo Name">
-      
+
       <label for="issue">Issue #:</label>
       <input type="number" id="issue" name="issue" value="1" min="1" placeholder="Issue Number">
     </div>
-    
+
     <button type="submit">
       Analyze GitHub Issue
     </button>
@@ -268,35 +273,36 @@
 
   <div id="output-container">
     <!-- These divs will be updated via SSE events -->
-    <div id="issue" sse-swap="issue">No issue selected. Please enter an issue number and click "Analyze GitHub Issue".</div>
+    <div id="issue" sse-swap="issue">No issue selected. Please enter an issue number and click "Analyze GitHub Issue".
+    </div>
     <div id="analysis" sse-swap="analysis"></div>
     <div id="error" sse-swap="error"></div>
   </div>
 
   <script>
     // Update connection status based on SSE events
-    document.body.addEventListener('htmx:sseOpen', function() {
+    document.body.addEventListener('htmx:sseOpen', function () {
       document.getElementById('connection-status').textContent = 'Connected';
       document.getElementById('connection-status').className = 'status-value connected';
     });
 
-    document.body.addEventListener('htmx:sseError', function() {
+    document.body.addEventListener('htmx:sseError', function () {
       document.getElementById('connection-status').textContent = 'Disconnected';
       document.getElementById('connection-status').className = 'status-value disconnected';
     });
 
     // Handle status updates from the server
-    document.addEventListener('htmx:sseMessage', function(event) {
+    document.addEventListener('htmx:sseMessage', function (event) {
       if (event.detail.name === 'status') {
         try {
           const statusData = JSON.parse(event.detail.data);
-          
+
           // Update connection status
           if (statusData.connection) {
             document.getElementById('connection-status').textContent = statusData.connection;
             document.getElementById('connection-status').className = 'status-value ' + statusData.connection;
           }
-          
+
           // Update agent status
           if (statusData.agent) {
             document.getElementById('agent-status').textContent = statusData.agent;

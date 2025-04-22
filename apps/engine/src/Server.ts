@@ -355,17 +355,25 @@ const createHttpServer = (): Http.Server => {
 
     // Handle fetch GitHub issue endpoint
     if (url.startsWith("/fetch-issue") && req.method === "POST") {
-      // Check for issue number in query params
-      const urlObj = new URL(url, `http://${req.headers.host}`)
-      const issueNumber = parseInt(urlObj.searchParams.get("issue") || "1", 10)
-      const owner = urlObj.searchParams.get("owner") || process.env.GITHUB_REPO_OWNER || "openagents"
-      const repo = urlObj.searchParams.get("repo") || process.env.GITHUB_REPO_NAME || "openagents"
-
-      log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}`)
-      fetchGitHubIssue(owner, repo, issueNumber)
-
-      res.writeHead(200, { "Content-Type": "text/plain" })
-      res.end("Issue fetch initiated")
+      // Parse form data from the request body
+      let body = ""
+      req.on("data", chunk => {
+        body += chunk.toString()
+      })
+      
+      req.on("end", () => {
+        // Parse the form data
+        const formData = new URLSearchParams(body)
+        const issueNumber = parseInt(formData.get("issue") || "1", 10)
+        const owner = formData.get("owner") || process.env.GITHUB_REPO_OWNER || "OpenAgentsInc"
+        const repo = formData.get("repo") || process.env.GITHUB_REPO_NAME || "openagents"
+        
+        log(`Fetching GitHub issue #${issueNumber} from ${owner}/${repo}`)
+        fetchGitHubIssue(owner, repo, issueNumber)
+        
+        res.writeHead(200, { "Content-Type": "text/plain" })
+        res.end("Issue fetch initiated")
+      })
       return
     }
 
@@ -381,7 +389,25 @@ const createHttpServer = (): Http.Server => {
     if (url === "/") {
       const indexPath = path.join(publicDir, "index.html")
       if (fs.existsSync(indexPath)) {
-        const content = fs.readFileSync(indexPath, "utf8")
+        let content = fs.readFileSync(indexPath, "utf8")
+        
+        // Get the config values to inject into the HTML
+        Effect.runSync(loadConfig).match({
+          onSuccess: (config) => {
+            // Replace placeholders with actual values
+            content = content
+              .replace('value="GITHUB_REPO_OWNER"', `value="${config.githubRepoOwner}"`)
+              .replace('value="GITHUB_REPO_NAME"', `value="${config.githubRepo}"`)
+          },
+          onFailure: (err) => {
+            log(`Warning: Failed to load config for HTML template: ${err}`)
+            // Use fallback values if config loading fails
+            content = content
+              .replace('value="GITHUB_REPO_OWNER"', 'value="OpenAgentsInc"')
+              .replace('value="GITHUB_REPO_NAME"', 'value="openagents"')
+          }
+        })
+        
         res.writeHead(200, { "Content-Type": "text/html" })
         res.end(content)
       } else {
