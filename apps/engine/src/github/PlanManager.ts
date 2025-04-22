@@ -52,15 +52,15 @@ export interface PlanManager {
 /**
  * Effect Tag for the PlanManager service
  */
-export const PlanManager = Effect.Tag<PlanManager>("PlanManager")
+export const PlanManager = Effect.Tag<PlanManager>()
 
 /**
  * Layer that provides the PlanManager implementation
  */
 export const PlanManagerLayer = Layer.succeed(
   PlanManager,
-  {
-    addPlanStep: (state, description) => Effect.sync(() => {
+  PlanManager.of({
+    addPlanStep: (state: AgentState, description: string) => Effect.sync(() => {
       // Generate a unique step ID
       const stepId = `step-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
       
@@ -87,8 +87,8 @@ export const PlanManagerLayer = Layer.succeed(
       }
     }),
 
-    updateStepStatus: (state, stepId, newStatus, resultSummary = null) => Effect.sync(() => {
-      const stepIndex = state.plan.findIndex(step => step.id === stepId)
+    updateStepStatus: (state: AgentState, stepId: string, newStatus: PlanStep["status"], resultSummary: string | null = null) => Effect.sync(() => {
+      const stepIndex = state.plan.findIndex((step: PlanStep) => step.id === stepId)
       
       // If step not found, throw an error that will be converted to Effect.fail
       if (stepIndex === -1) {
@@ -131,8 +131,8 @@ export const PlanManagerLayer = Layer.succeed(
       Effect.catchAll(error => Effect.fail(error))
     ),
 
-    addToolCallToStep: (state, stepId, toolCallData) => Effect.sync(() => {
-      const stepIndex = state.plan.findIndex(step => step.id === stepId)
+    addToolCallToStep: (state: AgentState, stepId: string, toolCallData: Omit<ToolCall, "timestamp">) => Effect.sync(() => {
+      const stepIndex = state.plan.findIndex((step: PlanStep) => step.id === stepId)
       
       // If step not found, throw an error
       if (stepIndex === -1) {
@@ -165,7 +165,7 @@ export const PlanManagerLayer = Layer.succeed(
       Effect.catchAll(error => Effect.fail(error))
     ),
 
-    getCurrentStep: (state) => {
+    getCurrentStep: (state: AgentState) => {
       const index = state.current_task.current_step_index
       
       // Check if the index is valid
@@ -175,5 +175,5 @@ export const PlanManagerLayer = Layer.succeed(
         return Effect.fail(new Error(`Invalid current_step_index: ${index}`))
       }
     }
-  }
+  })
 )
