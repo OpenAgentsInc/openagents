@@ -7,7 +7,7 @@
   "description": "A basic Effect package",
   "repository": {
     "type": "git",
-    "url": "<PLACEHOLDER>"
+    "url": "https://github.com/openagentsinc/openagents"
   },
   "publishConfig": {
     "access": "public",
