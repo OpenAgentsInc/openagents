@@ -392,21 +392,20 @@ const createHttpServer = (): Http.Server => {
         let content = fs.readFileSync(indexPath, "utf8")
         
         // Get the config values to inject into the HTML
-        Effect.runSync(loadConfig).match({
-          onSuccess: (config) => {
-            // Replace placeholders with actual values
-            content = content
-              .replace('value="GITHUB_REPO_OWNER"', `value="${config.githubRepoOwner}"`)
-              .replace('value="GITHUB_REPO_NAME"', `value="${config.githubRepo}"`)
-          },
-          onFailure: (err) => {
-            log(`Warning: Failed to load config for HTML template: ${err}`)
-            // Use fallback values if config loading fails
-            content = content
-              .replace('value="GITHUB_REPO_OWNER"', 'value="OpenAgentsInc"')
-              .replace('value="GITHUB_REPO_NAME"', 'value="openagents"')
-          }
-        })
+        try {
+          const config = Effect.runSync(loadConfig)
+          // Replace placeholders with actual values
+          content = content
+            .replace('value="GITHUB_REPO_OWNER"', `value="${config.githubRepoOwner}"`)
+            .replace('value="GITHUB_REPO_NAME"', `value="${config.githubRepo}"`)
+        } catch (error) {
+          const err = error instanceof Error ? error.message : String(error)
+          log(`Warning: Failed to load config for HTML template: ${err}`)
+          // Use fallback values if config loading fails
+          content = content
+            .replace('value="GITHUB_REPO_OWNER"', 'value="OpenAgentsInc"')
+            .replace('value="GITHUB_REPO_NAME"', 'value="openagents"')
+        }
         
         res.writeHead(200, { "Content-Type": "text/html" })
         res.end(content)
