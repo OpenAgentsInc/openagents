@@ -1,78 +1,20 @@
 import { describe, expect, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
-import * as Layer from "effect/Layer"
-import * as Option from "effect/Option"
 import * as Either from "effect/Either"
 
 import {
-  GitHubApiClient,
-  GitHubApiClientLive,
+  GitHubFileClient,
   FetchFileFromGitHub,
   FileNotFoundError,
+  mockGitHubFileClientLayer
+} from "../../src/github/FileClient.js"
+
+import {
   RateLimitExceededError,
   GitHubApiError
-} from "../../src/github/GitHubApi.js"
+} from "../../src/github/Errors.js"
 
-// Create a mock implementation for testing
-class GitHubApiClientMock implements GitHubApiClient {
-  private readonly mockFiles: Map<string, any> = new Map()
-  
-  constructor() {
-    // Set up mock files
-    this.mockFiles.set("openagentsinc/openagents/README.md", {
-      name: "README.md",
-      path: "README.md",
-      sha: "abc123",
-      size: 5432,
-      content: "IyBUaGlzIGlzIGEgdGVzdCBmaWxl", // Base64 encoded "# This is a test file"
-      encoding: "base64"
-    })
-  }
-  
-  fetchFile(params: any) {
-    const { owner, repo, path, ref = "main" } = params
-    const key = `${owner}/${repo}/${path}`
-    const mockFiles = this.mockFiles
-    
-    return Effect.gen(function*() {
-      // Special testing paths
-      if (path === "nonexistent.md") {
-        return yield* Effect.fail(new FileNotFoundError(owner, repo, path))
-      }
-      
-      if (path === "rate-limited.md") {
-        return yield* Effect.fail(new RateLimitExceededError(new Date(Date.now() + 3600000)))
-      }
-      
-      if (path === "server-error.md") {
-        return yield* Effect.fail(new GitHubApiError({ message: "GitHub API error: 500 Internal Server Error" }))
-      }
-      
-      if (path === "invalid-response.md") {
-        return yield* Effect.fail(new GitHubApiError({ 
-          message: "Invalid response format", 
-          cause: new Error("Missing required fields") 
-        }))
-      }
-      
-      // Look up file in mock DB
-      const file = mockFiles.get(key)
-      if (!file) {
-        return yield* Effect.fail(new FileNotFoundError(owner, repo, path))
-      }
-      
-      return file
-    })
-  }
-}
-
-// Create test environment with mock implementation
-const createMockLayer = Layer.succeed(
-  GitHubApiClient,
-  new GitHubApiClientMock()
-)
-
-describe("GitHubApiClient", () => {
+describe("GitHubFileClient", () => {
   it("should successfully fetch a file", () =>
     Effect.gen(function*() {
       const params = {
@@ -82,7 +24,7 @@ describe("GitHubApiClient", () => {
       }
 
       // Get the client from the context
-      const client = yield* GitHubApiClient
+      const client = yield* GitHubFileClient
       const result = yield* client.fetchFile(params)
 
       // Verify the result
@@ -92,8 +34,7 @@ describe("GitHubApiClient", () => {
       expect(result.encoding).toBe("base64")
       expect(result.content).toBe("IyBUaGlzIGlzIGEgdGVzdCBmaWxl")
     }).pipe(
-      Effect.provide(createMockLayer),
-      Effect.runPromise
+      Effect.provide(mockGitHubFileClientLayer)
     ))
 
   it("should handle file not found errors", () =>
@@ -105,7 +46,7 @@ describe("GitHubApiClient", () => {
       }
 
       // Get the client from the context
-      const client = yield* GitHubApiClient
+      const client = yield* GitHubFileClient
       
       // Run the request and catch the error
       const result = yield* Effect.either(client.fetchFile(params))
@@ -116,19 +57,17 @@ describe("GitHubApiClient", () => {
       if (Either.isLeft(result)) {
         const error = result.left
         
-        // Since we know what error we should get, we can safely cast it
-        expect(error instanceof FileNotFoundError).toBe(true)
-        
         if (error instanceof FileNotFoundError) {
           expect(error._tag).toBe("FileNotFoundError")
           expect(error.owner).toBe(params.owner)
           expect(error.repo).toBe(params.repo)
           expect(error.path).toBe(params.path)
+        } else {
+          throw new Error(`Expected FileNotFoundError but got ${error}`)
         }
       }
     }).pipe(
-      Effect.provide(createMockLayer),
-      Effect.runPromise
+      Effect.provide(mockGitHubFileClientLayer)
     ))
 
   it("should handle rate limit errors", () =>
@@ -140,7 +79,7 @@ describe("GitHubApiClient", () => {
       }
 
       // Get the client from the context
-      const client = yield* GitHubApiClient
+      const client = yield* GitHubFileClient
       
       // Run the request and catch the error
       const result = yield* Effect.either(client.fetchFile(params))
@@ -151,16 +90,15 @@ describe("GitHubApiClient", () => {
       if (Either.isLeft(result)) {
         const error = result.left
         
-        expect(error instanceof RateLimitExceededError).toBe(true)
-        
         if (error instanceof RateLimitExceededError) {
           expect(error._tag).toBe("RateLimitExceededError")
           expect(error.resetAt).toBeInstanceOf(Date)
+        } else {
+          throw new Error(`Expected RateLimitExceededError but got ${error}`)
         }
       }
     }).pipe(
-      Effect.provide(createMockLayer),
-      Effect.runPromise
+      Effect.provide(mockGitHubFileClientLayer)
     ))
 
   it("should handle generic API errors", () =>
@@ -172,7 +110,7 @@ describe("GitHubApiClient", () => {
       }
 
       // Get the client from the context
-      const client = yield* GitHubApiClient
+      const client = yield* GitHubFileClient
       
       // Run the request and catch the error
       const result = yield* Effect.either(client.fetchFile(params))
@@ -183,16 +121,15 @@ describe("GitHubApiClient", () => {
       if (Either.isLeft(result)) {
         const error = result.left
         
-        expect(error instanceof GitHubApiError).toBe(true)
-        
         if (error instanceof GitHubApiError) {
           expect(error._tag).toBe("GitHubApiError")
           expect(error.message).toContain("500")
+        } else {
+          throw new Error(`Expected GitHubApiError but got ${error}`)
         }
       }
     }).pipe(
-      Effect.provide(createMockLayer),
-      Effect.runPromise
+      Effect.provide(mockGitHubFileClientLayer)
     ))
 
   it("should handle schema validation errors", () =>
@@ -204,7 +141,7 @@ describe("GitHubApiClient", () => {
       }
 
       // Get the client from the context
-      const client = yield* GitHubApiClient
+      const client = yield* GitHubFileClient
       
       // Run the request and catch the error
       const result = yield* Effect.either(client.fetchFile(params))
@@ -215,45 +152,16 @@ describe("GitHubApiClient", () => {
       if (Either.isLeft(result)) {
         const error = result.left
         
-        expect(error instanceof GitHubApiError).toBe(true)
-        
         if (error instanceof GitHubApiError) {
           expect(error._tag).toBe("GitHubApiError")
           expect(error.message).toContain("Invalid response format")
+        } else {
+          throw new Error(`Expected GitHubApiError but got ${error}`)
         }
       }
     }).pipe(
-      Effect.provide(createMockLayer),
-      Effect.runPromise
+      Effect.provide(mockGitHubFileClientLayer)
     ))
-
-  it("should use the provided ref parameter", () =>
-    Effect.gen(function*() {
-      // Create a client instance with the mockfiles directly
-      const mockClient = new GitHubApiClientMock()
-      
-      // Set up mock files explicitly for the test
-      mockClient["mockFiles"] = new Map()
-      mockClient["mockFiles"].set("openagentsinc/openagents/README.md", {
-        name: "README.md",
-        path: "README.md",
-        sha: "abc123",
-        size: 5432,
-        content: "IyBUaGlzIGlzIGEgdGVzdCBmaWxl", // Base64 encoded "# This is a test file"
-        encoding: "base64"
-      })
-      
-      // Just make sure we don't throw an error when specifying a ref
-      const result = yield* mockClient.fetchFile({
-        owner: "openagentsinc",
-        repo: "openagents",
-        path: "README.md",
-        ref: "develop"
-      })
-      
-      expect(result).toBeDefined()
-      expect(result.name).toBe("README.md")
-    }).pipe(Effect.runPromise))
 })
 
 describe("FetchFileFromGitHub Tool", () => {

@@ -20,18 +20,21 @@ const __dirname = path.dirname(__filename);
 const filesToCopy = [
   // Documentation files
   'docs/20250421-1620-init.md',
-  'docs/20250421-1643-githubstart.md',
-  'docs/20250421-1705-githubissue.md',
+  'docs/20250421-1715-githubrefactor.md',
+  'docs/20250421-1716-githubrefactorimpl.md',
   'docs/mvp.md',
 
   // Source files
   'src/Program.ts',
-  'src/github/GitHubApi.ts',
-  'src/github/GitHubIssueApi.ts',
+  'src/github/Client.ts',
+  'src/github/Errors.ts',
+  'src/github/FileClient.ts',
+  'src/github/IssueClient.ts',
+  'src/github/Types.ts',
 
   // Tests
-  'test/github/GitHubApi.test.ts',
-  'test/github/GitHubIssueApi.test.ts',
+  'test/github/FileClient.test.ts',
+  'test/github/IssueClient.test.ts',
   'test/Dummy.test.ts',
 
   // Configuration files

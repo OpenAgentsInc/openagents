@@ -1,18 +1,33 @@
 import * as Effect from "effect/Effect"
 import * as Either from "effect/Either"
 import * as Layer from "effect/Layer"
+
 import { 
-  GitHubApiClient, 
-  FileNotFoundError as FileNotFoundError, 
-  GitHubApiError as FileApiError,
-  createGitHubApiClient
-} from "./github/GitHubApi.js"
+  GitHubFileClient, 
+  FileNotFoundError
+} from "./github/FileClient.js"
+
 import {
   GitHubIssueClient,
-  IssueNotFoundError,
-  GitHubApiError as IssueApiError,
-  createGitHubIssueClient
-} from "./github/GitHubIssueApi.js"
+  IssueNotFoundError
+} from "./github/IssueClient.js"
+
+import {
+  GitHubApiError
+} from "./github/Errors.js"
+
+import {
+  defaultGitHubLayer,
+  createGitHubConfig
+} from "./github/Client.js"
+
+import {
+  githubFileClientLayer
+} from "./github/FileClient.js"
+
+import {
+  githubIssueClientLayer
+} from "./github/IssueClient.js"
 
 // Example of using the GitHub API clients
 const program = Effect.gen(function*() {
@@ -20,7 +35,7 @@ const program = Effect.gen(function*() {
   
   // PART 1: Testing GitHub File API
   console.log("\n--- Testing GitHub File API ---")
-  const githubClient = yield* GitHubApiClient
+  const githubClient = yield* GitHubFileClient
   
   // Try to fetch a file that doesn't exist
   const nonExistentFile = yield* Effect.either(
@@ -37,7 +52,7 @@ const program = Effect.gen(function*() {
     
     if (error instanceof FileNotFoundError) {
       yield* Effect.log(`File not found error: ${error.message}`)
-    } else if (error instanceof FileApiError) {
+    } else if (error instanceof GitHubApiError) {
       yield* Effect.log(`GitHub API error: ${error.message}`)
     } else {
       yield* Effect.log(`Unknown error: ${String(error)}`)
@@ -88,7 +103,7 @@ const program = Effect.gen(function*() {
     
     if (error instanceof IssueNotFoundError) {
       yield* Effect.log(`Issue not found error: ${error.message}`)
-    } else if (error instanceof IssueApiError) {
+    } else if (error instanceof GitHubApiError) {
       yield* Effect.log(`GitHub API error: ${error.message}`)
     } else {
       yield* Effect.log(`Unknown error: ${String(error)}`)
@@ -128,18 +143,39 @@ const program = Effect.gen(function*() {
   }
 })
 
-// Create layers with real API clients
 // Add your GitHub token here if you have one to avoid rate limits
 const token = undefined // "your_github_token_here"
-const fileApiLayer = createGitHubApiClient("https://api.github.com", token)
-const issueApiLayer = createGitHubIssueClient("https://api.github.com", token)
+
+// Create the base GitHub layer with config
+const baseGitHubLayer = Layer.provide(
+  defaultGitHubLayer,
+  createGitHubConfig("https://api.github.com", token)
+)
+
+// Create the specific client layers
+const clientLayers = Layer.merge(
+  githubFileClientLayer,
+  githubIssueClientLayer
+)
 
 // Combine the layers
-const MainLayer = Layer.merge(fileApiLayer, issueApiLayer)
+const MainLayer = Layer.provide(
+  clientLayers,
+  baseGitHubLayer
+)
 
 // Run the program with the combined layer
-Effect.runPromise(
-  program.pipe(
-    Effect.provide(MainLayer)
-  )
-)
+const runProgramWithSafeExit = (): void => {
+  Effect.runPromise(
+    program.pipe(
+      Effect.provide(MainLayer),
+      Effect.tapErrorCause((cause) => Effect.sync(() => {
+        console.error("Error occurred:", cause)
+      }))
+    )
+  ).catch(err => {
+    console.error("Unhandled error in runtime:", err)
+  })
+}
+
+runProgramWithSafeExit()

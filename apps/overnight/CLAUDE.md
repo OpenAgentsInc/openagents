@@ -22,7 +22,7 @@
 - **Imports**: Use Effect imports with proper namespacing
 - **Formatting**: 2-space indentation, 120 line width, no semicolons
 - **Naming**: Underscore prefix for unused variables (e.g., `_unused`)
-- **Types**: Use explicit typing rather than `any`
+- **Types**: NEVER use `any` type under any circumstances. Always use proper typings, even if it requires extra work
 - **Error Handling**: Use Effect's error handling patterns with proper boundaries
 - **Arrays**: Use generic array types (e.g., `Array<string>`)
 - **Quotes**: Always use double quotes for strings
@@ -32,3 +32,7 @@
 - Create GitHub API mocks for testing
 - Test all error handling scenarios
 - Ensure all tests and typechecks pass before committing: `pnpm verify`
+
+## Special Rules
+- **NEVER use `any` type**: The codebase must have perfect types throughout. Look at the TypeScript definitions to find the correct type instead of using `any` as a shortcut
+- Always use Effect's functional patterns for handling asynchronous code and errors
