@@ -11,9 +11,9 @@ const loadConfig = Effect.try({
     dotenv.config()
     const config = {
       anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-      githubApiKey: process.env.GITHUB_API_KEY,
+      githubApiKey: process.env.GITHUB_TOKEN,
       githubRepo: process.env.GITHUB_REPO_NAME || "openagents",
-      githubRepoOwner: process.env.GITHUB_REPO_OWNER || "openagents"
+      githubRepoOwner: process.env.GITHUB_REPO_OWNER || "OpenAgentsInc"
     }
 
     if (!config.anthropicApiKey) {
@@ -156,7 +156,7 @@ const analyzeIssueWithClaude = (issue: {
       }
 
       // Prepare the request payload
-      const prompt = `You are an AI assistant tasked with analyzing GitHub issues. 
+      const prompt = `You are an AI assistant tasked with analyzing GitHub issues.
 I'll provide you with a GitHub issue, and I'd like you to:
 
 1. Summarize the main points of the issue
