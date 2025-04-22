@@ -19,28 +19,28 @@ const __dirname = path.dirname(__filename);
 // Array of files to copy, in order
 const filesToCopy = [
   // Documentation files
-  'apps/engine/docs/20250422-1300-agent-state-implementation-plan.md',
-  'apps/engine/docs/20250422-1256-nextsteps.md',
-  'apps/engine/docs/20250422-1255-specsofar.md',
-  'apps/engine/docs/20250422-1205-movein.md',
-  'apps/engine/docs/agent-state.md',
-  'apps/engine/docs/20250422-1000-status.md',
-  'apps/engine/docs/20250422-920-setup.md',
+  'docs/20250422-1300-agent-state-implementation-plan.md',
+  'docs/20250422-1256-nextsteps.md',
+  'docs/20250422-1255-specsofar.md',
+  'docs/20250422-1205-movein.md',
+  'docs/agent-state.md',
+  'docs/20250422-1000-status.md',
+  'docs/20250422-920-setup.md',
 
   // Source files
-  'apps/engine/src/Server.ts',
-  'apps/engine/src/Program.ts',
-  'apps/engine/src/index.ts',
+  'src/Server.ts',
+  'src/Program.ts',
+  'src/index.ts',
 
   // GitHub related source files
-  'apps/engine/src/github/GitHubTools.ts',
-  'apps/engine/src/github/GitHub.ts',
-  'apps/engine/src/github/GitHubTypes.ts',
+  'src/github/GitHubTools.ts',
+  'src/github/GitHub.ts',
+  'src/github/GitHubTypes.ts',
 
   // Test files
-  'apps/engine/test/Dummy.test.ts',
-  'apps/engine/test/github/GitHub.test.ts',
-  'apps/engine/test/github/GitHubTools.test.ts'
+  'test/Dummy.test.ts',
+  'test/github/GitHub.test.ts',
+  'test/github/GitHubTools.test.ts'
 ];
 
 // Function to get file extension
