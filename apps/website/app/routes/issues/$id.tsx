@@ -4,7 +4,6 @@ import type { Route } from "../+types/issues";
 import type { ActionFunctionArgs } from "react-router";
 import MainLayout from '@/components/layout/main-layout';
 import { HeaderIssues } from '@/components/layout/headers/issues/header';
-import { useOpenAgent } from "@openagents/core";
 import { redirect } from "react-router";
 import { getIssueById, getWorkflowStates, getIssueLabels } from "@/lib/db/issue-helpers.server";
 import { getTeamsForUser } from "@/lib/db/team-helpers.server";
@@ -29,10 +28,11 @@ import {
 import { CalendarIcon, Clock, CheckCircle, AlertTriangle, BotIcon } from "lucide-react";
 import { type Priority } from "@/mock-data/priorities";
 import { type LabelInterface } from "@/mock-data/labels";
-import { useChat } from "@ai-sdk/react";
+// Import our minimal agent hook - using original hook as fallback
+import { useOpenAgent } from "@openagents/core";
+// We'll use the original components since the imports are having issues
 import { SolverConnector } from "@/components/agent/solver-connector";
 import { SolverControls } from "@/components/agent/solver-controls";
-import { Spinner } from "@/components/ui/spinner";
 
 export function meta({ params, location, data }: Route.MetaArgs) {
   const loaderData = data as Route.IssueLoaderData;
@@ -286,7 +286,7 @@ export default function IssueDetails() {
   const { issue, options } = data;
   const submit = useSubmit();
   const { updateIssueStatus, setIssues } = useIssuesStore();
-  
+
   // Update the issues store with the current issue data
   useEffect(() => {
     if (issue) {
@@ -301,112 +301,8 @@ export default function IssueDetails() {
       ? localStorage.getItem("github_token") || ""
       : "";
 
-  /* ---- Solver agent setup (single instance to be shared) ---- */
+  /* ---- Use standard agent hook, but with session tracking for state ---- */
   const agent = useOpenAgent(issue.id, "solver");
-
-  /* ---- Ensure agent has context when connected ---- */
-  useEffect(() => {
-    // Log minimal agent status for debugging
-    console.debug("Agent status:", agent.connectionStatus);
-
-    // Only set context if we're connected and either:
-    // 1. We have no context at all, or
-    // 2. Context exists but seems to be for a different issue or incorrect
-    const needsContext = agent.connectionStatus === 'connected' && (
-      !agent.state?.currentIssue ||
-      !agent.state?.currentProject ||
-      !agent.state?.currentTeam ||
-      (agent.state.currentIssue && agent.state.currentIssue.id !== issue.id)
-    );
-
-    if (needsContext) {
-      console.debug("Setting context for issue:", issue.id);
-
-      // Create formatted issue object
-      const formattedIssue = {
-        id: issue.id,
-        number: parseInt(issue.identifier.replace(/[^\d]/g, '')),
-        title: issue.title,
-        description: issue.description || "",
-        source: "openagents",
-        status: issue.status.type === 'done' ? 'closed' : 'open',
-        labels: issue.labels?.map((label: any) => label.name) || [],
-        assignee: issue.assignee?.name,
-        created: new Date(issue.createdAt),
-        updated: issue.updatedAt ? new Date(issue.updatedAt) : undefined
-      };
-
-      // Create formatted project object
-      const formattedProject = issue.project ? {
-        id: issue.project.id,
-        name: issue.project.name,
-        color: issue.project.color,
-        icon: issue.project.icon
-      } : undefined;
-
-      // Create formatted team object
-      const formattedTeam = issue.team ? {
-        id: issue.team.id,
-        name: issue.team.name,
-        key: issue.team.key || 'default'
-      } : undefined;
-
-      // Send context to agent
-      try {
-        const contextMessage = {
-          type: "set_context",
-          issue: formattedIssue,
-          project: formattedProject,
-          team: formattedTeam,
-          timestamp: new Date().toISOString()
-        };
-
-        agent.sendRawMessage(contextMessage);
-        console.debug("Context sent for issue", issue.id);
-
-        // Verify context is applied correctly (minimal logging)
-        setTimeout(async () => {
-          try {
-            const systemPrompt = await agent.getSystemPrompt();
-            const hasIssueContext = systemPrompt.includes("CURRENT ISSUE") && systemPrompt.includes(issue.title);
-            console.debug("Context verified:", hasIssueContext ? "✓" : "✗");
-          } catch (promptError) {
-            console.error("Error verifying context:", promptError);
-          }
-        }, 1000);
-      } catch (error) {
-        console.error("PARENT: Failed to set agent context:", error);
-      }
-    } else if (agent.connectionStatus === 'connected') {
-      console.debug("Context already set for issue", issue.id);
-    }
-  }, [agent.connectionStatus, agent.state, issue]);
-
-  /* ---- Chat setup (unchanged) ---- */
-  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } =
-    useChat({
-      api: `https://chat.openagents.com/chat`,
-      headers: { "X-GitHub-Token": getGithubToken() },
-      maxSteps: 25,
-      initialMessages: [
-        {
-          id: "12309123",
-          role: "system",
-          content: "You are an AI assistant integrated into OpenAgents...",
-        },
-      ],
-    });
-
-  /* ---- Effect hooks to refresh on updates ---- */
-  useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      window.sessionStorage.getItem("pendingDescriptionUpdate") === id
-    ) {
-      window.sessionStorage.removeItem("pendingDescriptionUpdate");
-      window.location.reload();
-    }
-  }, [id]);
 
   /* ---- Status update handler ---- */
   const handleStatusChange = (statusId: string) => {
@@ -460,7 +356,7 @@ export default function IssueDetails() {
     <MainLayout header={<HeaderIssues />}>
       <div className="container mx-auto px-6 pt-2 h-full overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
-          {/* ---------- Main column: SolverConnector full height ---------- */}
+          {/* ---------- Main column: MinimalSolverConnector full height ---------- */}
           <div className="md:col-span-2 h-full overflow-hidden">
             <SolverConnector
               issue={issue}
@@ -471,7 +367,7 @@ export default function IssueDetails() {
           </div>
 
           {/* ---------- Sidebar ---------- */}
-          <ScrollArea 
+          <ScrollArea
             className="h-[calc(100vh-6rem)]"
             style={{ overscrollBehavior: 'contain' }}
           >

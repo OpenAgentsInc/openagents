@@ -5,6 +5,12 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
+  build: {
+    // We'll bundle all dependencies for the Cloudflare Worker
+    rollupOptions: {
+      // No externals - this way everything gets bundled
+    }
+  },
   plugins: [cloudflare(), react(), tailwindcss()],
   resolve: {
     alias: {

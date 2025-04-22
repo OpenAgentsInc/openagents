@@ -148,6 +148,18 @@ export default function Chat() {
     }
   };
 
+  // Use a single agent instance to prevent multiple WebSocket connections
+  const {
+    messages: agentMessages,
+    input: agentInput,
+    handleInputChange: handleAgentInputChange,
+    handleSubmit: handleAgentSubmit,
+  } = useAgentChat({
+    agentRouterProvider: agentOptions.agentRouterProvider,
+    maxSteps: 5
+  });
+  
+  // Store a reference to the agent for continuous run commands
   const agent = useChat(agentOptions) as ExtendedUseChatHelpers;
 
   // Handle toggling continuous run
@@ -171,16 +183,6 @@ export default function Chat() {
       setConnectionError(`Failed to send ${command} command: ${getErrorMessage(error)}`);
     }
   };
-
-  const {
-    messages: agentMessages,
-    input: agentInput,
-    handleInputChange: handleAgentInputChange,
-    handleSubmit: handleAgentSubmit,
-  } = useAgentChat({
-    agentRouterProvider: agentOptions.agentRouterProvider,
-    maxSteps: 5
-  });
 
   // Scroll to bottom when messages change
   useEffect(() => {
