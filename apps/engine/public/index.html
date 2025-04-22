@@ -3,95 +3,26 @@
 
 <head>
   <title>OpenAgents Engine</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="/htmx.min.js"></script>
   <script src="/ws.js"></script>
-  <style>
-    html,
-    body {
-      background-color: black;
-      color: white;
-      font-family: monospace;
-      margin: 0;
-      padding: 20px;
-      height: 100vh;
-      box-sizing: border-box;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .status-container {
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 30px;
-      margin: 0 auto;
-      width: 500px;
-      background-color: #111;
-    }
-
-    .status-title {
-      font-size: 24px;
-      text-align: center;
-      margin-bottom: 30px;
-    }
-
-    .status-item {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid #333;
-      gap: 80px;
-      /* Add space between label and value */
-    }
-
-    .status-item:last-child {
-      border-bottom: none;
-      margin-bottom: 0;
-      padding-bottom: 0;
-    }
-
-    .status-label {
-      font-weight: bold;
-      color: #999;
-      font-size: 18px;
-    }
-
-    .status-value {
-      color: #fff;
-      font-size: 18px;
-      font-weight: 500;
-    }
-
-    .status-value.connected {
-      color: #4caf50;
-    }
-
-    .status-value.disconnected {
-      color: #ff5252;
-    }
-
-    .status-value.ready {
-      color: #4caf50;
-    }
-
-    .status-value.busy {
-      color: #ff9800;
-    }
-  </style>
+  <script src="/tailwind.js"></script>
 </head>
 
-<body hx-ext="ws">
+<body class="bg-black text-white font-mono m-0 p-5 h-screen box-border flex justify-center items-center" hx-ext="ws">
   <div ws-connect="ws://localhost:3000/ws">
-    <div class="status-container">
-      <div class="status-item">
-        <div class="status-label">Connection:</div>
-        <div class="status-value disconnected" id="connection-status">Disconnected</div>
+    <div class="border border-neutral-600 rounded p-8 mx-auto w-[500px] bg-neutral-900">
+      <div
+        class="flex justify-between mb-3 pb-3 border-b border-neutral-700 last:border-b-0 last:mb-0 last:pb-0 gap-20">
+        <div class="font-bold text-neutral-400 text-lg">Connection:</div>
+        <div class="text-lg font-medium text-red-500" id="connection-status">Disconnected</div>
       </div>
 
-      <div class="status-item">
-        <div class="status-label">Agent Status:</div>
-        <div class="status-value" id="agent-status">Waiting for status...</div>
+      <div
+        class="flex justify-between mb-3 pb-3 border-b border-neutral-700 last:border-b-0 last:mb-0 last:pb-0 gap-20">
+        <div class="font-bold text-neutral-400 text-lg">Agent Status:</div>
+        <div class="text-lg font-medium" id="agent-status">Waiting for status...</div>
       </div>
     </div>
   </div>

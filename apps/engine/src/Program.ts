@@ -17,7 +17,7 @@ const publicDir = path.join(process.cwd(), "public")
 log(`Public directory path: ${publicDir}`)
 
 // Use Effect-style functions with Node.js primitives
-const startServer = Effect.gen(function*(_) {
+const startServer = Effect.gen(function* (_) {
   yield* _(Effect.log("Starting server on http://localhost:3000"))
 
   // Create a Node.js HTTP server
@@ -91,9 +91,9 @@ const startServer = Effect.gen(function*(_) {
       // Send the handshake response
       socket.write(
         "HTTP/1.1 101 Switching Protocols\r\n" +
-          "Upgrade: websocket\r\n" +
-          "Connection: Upgrade\r\n" +
-          `Sec-WebSocket-Accept: ${acceptKey}\r\n\r\n`
+        "Upgrade: websocket\r\n" +
+        "Connection: Upgrade\r\n" +
+        `Sec-WebSocket-Accept: ${acceptKey}\r\n\r\n`
       )
 
       // Function to create a simple text WebSocket frame
@@ -112,11 +112,11 @@ const startServer = Effect.gen(function*(_) {
       // Update connection status to Connected
       // Make sure we're replacing the whole element with class included
       const connectionStatusHtml =
-        `<div id="connection-status" hx-swap-oob="true" class="status-value connected">Connected</div>`
+        `<div id="connection-status" hx-swap-oob="true" class="text-lg font-medium text-green-500">Connected</div>`
       socket.write(createTextFrame(connectionStatusHtml))
 
       // Set agent status to Ready (hardcoded for now)
-      const agentStatusHtml = `<div id="agent-status" hx-swap-oob="true" class="status-value ready">Ready</div>`
+      const agentStatusHtml = `<div id="agent-status" hx-swap-oob="true" class="text-lg font-medium text-green-500">Ready</div>`
       socket.write(createTextFrame(agentStatusHtml))
 
       // Handle data from client
