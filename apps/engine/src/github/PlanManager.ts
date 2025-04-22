@@ -52,7 +52,24 @@ export interface PlanManager {
 /**
  * Effect Tag for the PlanManager service
  */
-export const PlanManager = Effect.Tag<PlanManager>("PlanManager")
+export class PlanManager extends Effect.Tag("PlanManager")<
+  PlanManager,
+  {
+    addPlanStep: (state: AgentState, description: string) => Effect.Effect<AgentState>
+    updateStepStatus: (
+      state: AgentState,
+      stepId: string, 
+      newStatus: PlanStep["status"],
+      resultSummary?: string | null
+    ) => Effect.Effect<AgentState>
+    addToolCallToStep: (
+      state: AgentState,
+      stepId: string,
+      toolCallData: Omit<ToolCall, "timestamp">
+    ) => Effect.Effect<AgentState>
+    getCurrentStep: (state: AgentState) => Effect.Effect<PlanStep, Error>
+  }
+>() {}
 
 /**
  * Layer that provides the PlanManager implementation

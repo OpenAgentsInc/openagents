@@ -1,9 +1,4 @@
-import { describe, it, expect, vi } from "@effect/vitest"
-import { Effect, Layer } from "effect"
-import { TaskExecutor, TaskExecutorLayer } from "../../src/github/TaskExecutor.js"
-import { PlanManager } from "../../src/github/PlanManager.js"
-import { GitHubClient } from "../../src/github/GitHub.js"
-import type { AgentState } from "../../src/github/AgentStateTypes.js"
+import { describe, it, expect } from "@effect/vitest"
 
 describe("TaskExecutor", () => {
   describe("executeNextStep", () => {

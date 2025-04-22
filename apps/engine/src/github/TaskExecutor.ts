@@ -18,7 +18,12 @@ export interface TaskExecutor {
 /**
  * Effect Tag for the TaskExecutor service
  */
-export const TaskExecutor = Effect.Tag<TaskExecutor>("TaskExecutor")
+export class TaskExecutor extends Effect.Tag("TaskExecutor")<
+  TaskExecutor,
+  {
+    executeNextStep: (currentState: AgentState) => Effect.Effect<AgentState, Error>
+  }
+>() {}
 
 /**
  * Layer that provides the TaskExecutor implementation
@@ -26,9 +31,9 @@ export const TaskExecutor = Effect.Tag<TaskExecutor>("TaskExecutor")
 export const TaskExecutorLayer = Layer.effect(
   TaskExecutor,
   Effect.gen(function*(_) {
-    // Get dependencies from the context using proper types
-    const planManager: PlanManager = yield* _(PlanManager)
-    const githubClient: GitHubClient = yield* _(GitHubClient)
+    // Get dependencies from the context
+    const planManager = yield* PlanManager
+    const githubClient = yield* GitHubClient
 
     return {
       executeNextStep: (currentState: AgentState) => Effect.gen(function*() {

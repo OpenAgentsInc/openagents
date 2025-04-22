@@ -14,7 +14,6 @@ vi.mock("node:fs", () => fsMock)
 
 // Import dependencies after mocks are set up
 import * as path from "node:path"
-import * as fs from "node:fs"
 import { 
   GitHubClient, 
   StateNotFoundError, 
