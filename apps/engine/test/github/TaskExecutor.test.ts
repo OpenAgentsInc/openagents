@@ -1,18 +1,20 @@
 import { describe, expect, it, vi } from "@effect/vitest"
-import { Effect, Layer, Context } from "effect"
+import type { Context } from "effect"
+import { Effect, Layer } from "effect"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
+import { GitHubTools } from "../../src/github/GitHubTools.js"
+import { MemoryManager } from "../../src/github/MemoryManager.js"
 import { PlanManager } from "../../src/github/PlanManager.js"
 import { TaskExecutor, TaskExecutorLayer } from "../../src/github/TaskExecutor.js"
-import { MemoryManager } from "../../src/github/MemoryManager.js"
-import { GitHubTools } from "../../src/github/GitHubTools.js"
 
 // Define the test environment context type
-type TestEnv = Context.Tag.Identifier<typeof TaskExecutor> | 
-  Context.Tag.Identifier<typeof GitHubClient> | 
-  Context.Tag.Identifier<typeof PlanManager> | 
-  Context.Tag.Identifier<typeof MemoryManager> | 
-  Context.Tag.Identifier<typeof GitHubTools>
+type TestEnv =
+  | Context.Tag.Identifier<typeof TaskExecutor>
+  | Context.Tag.Identifier<typeof GitHubClient>
+  | Context.Tag.Identifier<typeof PlanManager>
+  | Context.Tag.Identifier<typeof MemoryManager>
+  | Context.Tag.Identifier<typeof GitHubTools>
 
 // Create a basic fixture for testing
 const createTestState = (): AgentState => ({
@@ -250,14 +252,14 @@ describe("TaskExecutor", () => {
 
       // Create a complete TaskExecutor layer with dependencies provided by the TestLayer
       const TaskExecutorWithDeps = Layer.provide(TaskExecutorLayer, TestLayer)
-      
+
       // Act
       // Use explicit type for the environment
       const effectToTest = Effect.gen(function*() {
         const executor = yield* TaskExecutor
         return yield* executor.executeNextStep(initialState)
       }) as Effect.Effect<AgentState, Error, TestEnv>
-      
+
       // Use explicit type annotation and type assertion to resolve type issues
       const providedEffect = Effect.provide(effectToTest, TaskExecutorWithDeps)
       // Cast to remove the environment type since all dependencies are provided
@@ -436,10 +438,10 @@ describe("TaskExecutor", () => {
         const executor = yield* TaskExecutor
         return yield* executor.executeNextStep(initialState)
       }) as Effect.Effect<AgentState, Error, TestEnv>
-      
+
       // Provide the combined layer to the effect
       const errorTaskExecutorWithDeps = Layer.provide(ErrorTaskExecutorLayer, AllMockLayers)
-      
+
       // Use explicit type annotation and type assertion to resolve type issues
       const providedEffect = Effect.provide(effectToTest, errorTaskExecutorWithDeps)
       // Cast to remove the environment type since all dependencies are provided
