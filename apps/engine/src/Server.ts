@@ -402,6 +402,10 @@ const createHttpServer = (): Http.Server => {
           console.log(`DEBUG: TAG_CHECK - PlanManager Tag IMPORTED in Server.ts:`, PlanManager);
           // ----> END TAG IDENTITY LOGGING (SERVER) <----
 
+          // Print out more information about AllLayers
+          console.log("DEBUG: CRITICAL - AllLayers type:", typeof AllLayers);
+          console.log("DEBUG: CRITICAL - AllLayers is:", AllLayers);
+
           // Add direct tracking of the fork's execution
           // Use 'as any' to handle complex Effect.js type inference issues
           const fork = Effect.runFork(
