@@ -19,35 +19,36 @@ const __dirname = path.dirname(__filename);
 // Array of files to copy, in order
 const filesToCopy = [
   // Documentation files
-  'docs/20250422-1430-phase2a-testfix-impl.md',
-  'docs/20250422-1300-agent-state-implementation-plan.md',
-  'docs/20250422-1256-nextsteps.md',
-  'docs/20250422-1255-specsofar.md',
-  'docs/20250422-1205-movein.md',
-  'docs/agent-state.md',
-  'docs/20250422-1000-status.md',
-  'docs/20250422-920-setup.md',
+  'docs/20250422-1325-revised-implementation-plan.md',
+  'docs/20250422-1745-progress-overview.md',
+  'docs/20250422-1948-step11-instructions.md',
+  'docs/20250422-1950-step11-log.md',
 
   // Source files
   'src/Server.ts',
   'src/Program.ts',
   'src/index.ts',
 
-  // GitHub related source files - Fixed files
+  // GitHub related source files
+  'src/github/AgentStateTypes.ts',
+  'src/github/ContextManager.ts',
+  'src/github/GitHub.ts',
+  'src/github/GitHubTools.ts',
+  'src/github/GitHubTypes.ts',
+  'src/github/MemoryManager.ts',
   'src/github/PlanManager.ts',
   'src/github/TaskExecutor.ts',
-  'src/github/GitHubTools.ts',
-  'src/github/GitHub.ts',
-  'src/github/GitHubTypes.ts',
-  'src/github/AgentStateTypes.ts',
 
-  // Test files - Fixed files
-  'test/github/PlanManager.test.ts',
-  'test/github/TaskExecutor.test.ts',
-  'test/github/StateStorage.test.ts',
+  // Test files
+  'test/test-utils.ts',
+  'test/github/AgentStateTypes.test.ts',
+  'test/github/ContextManager.test.ts',
   'test/github/GitHub.test.ts',
   'test/github/GitHubTools.test.ts',
-  'test/github/AgentStateTypes.test.ts'
+  'test/github/MemoryManager.test.ts',
+  'test/github/PlanManager.test.ts',
+  'test/github/StateStorage.test.ts',
+  'test/github/TaskExecutor.test.ts',
 ];
 
 // Function to get file extension

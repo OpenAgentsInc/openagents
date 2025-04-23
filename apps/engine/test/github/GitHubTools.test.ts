@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "@effect/vitest"
 import { Config, Effect, Layer, Ref } from "effect"
+import { FileSystem } from "@effect/platform"
+import { NodeFileSystem } from "@effect/platform-node/FileSystem"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
 import { GitHubTools, StatefulToolContext, GitHubToolsLayer } from "../../src/github/GitHubTools.js"
@@ -97,7 +99,7 @@ const getTestState = (): AgentState => ({
 describe("GitHubTools", () => {
   // Create a GitHub API key layer for all tests
   const GitHubApiKeyLayer = Layer.succeed(
-    Config.Secret("GITHUB_API_KEY"),
+    Config.secret("GITHUB_API_KEY"),
     "test-api-key"
   )
   
