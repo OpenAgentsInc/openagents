@@ -21,6 +21,7 @@ export const TOOL_NAMES = {
 /**
  * Context for stateful tool execution
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface StatefulToolContext {
   readonly stateRef: Ref.Ref<AgentState>
   readonly planManager: PlanManager
@@ -30,6 +31,7 @@ export interface StatefulToolContext {
 /**
  * Tag for the StatefulToolContext
  */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class StatefulToolContext extends Effect.Tag("StatefulToolContext")<
   StatefulToolContext,
   {
