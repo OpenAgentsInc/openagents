@@ -6,7 +6,7 @@ import * as path from "node:path"
 import type { AgentState } from "./github/AgentStateTypes.js"
 import { GitHubClient } from "./github/GitHub.js"
 import { MemoryManager } from "./github/MemoryManager.js"
-import { PlanManager } from "./github/PlanManager.js"
+import { PlanManager as PlanManagerService } from "./github/PlanManager.js"
 import { TaskExecutor } from "./github/TaskExecutor.js"
 
 // Load environment variables from .env file
@@ -131,7 +131,7 @@ const createAppLayer = () => {
   return Layer.mergeAll(
     // Service layers
     GitHubClientLayer,
-    PlanManagerLayer,
+    PlanManagerLayer,  // Use consistent naming with all layers
     MemoryManagerLayer,
     ContextManagerLayer,
     // Tools layer
@@ -445,11 +445,11 @@ const createHttpServer = (): Http.Server => {
               }
 
               try {
-                console.log("DEBUG: CRITICAL - Testing PlanManager")
-                yield* PlanManager
-                console.log("DEBUG: CRITICAL - PlanManager found")
+                console.log("DEBUG: CRITICAL - Testing PlanManagerService")
+                yield* PlanManagerService
+                console.log("DEBUG: CRITICAL - PlanManagerService found")
               } catch (err) {
-                console.error("DEBUG: CRITICAL ERROR - PlanManager not found:", err instanceof Error ? err.message : String(err))
+                console.error("DEBUG: CRITICAL ERROR - PlanManagerService not found:", err instanceof Error ? err.message : String(err))
               }
 
               try {
