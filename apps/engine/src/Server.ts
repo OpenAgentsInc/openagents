@@ -386,7 +386,46 @@ const createHttpServer = (): Http.Server => {
 
         // Provide the AppLayer and run the fork
         // Use as any to work around type issues with complex Effect.js pipelines
-        Effect.runFork(Effect.provide(pipelineWithErrorHandling, AppLayer) as any)
+        try {
+          log(`DEBUG: CRITICAL - About to call Effect.runFork on pipeline`)
+          
+          // Add a direct console.log inside the pipeline to see if it's being executed at all
+          // This bypasses Effect logging to see if there's an issue with Effect itself
+          const pipelineWithDebugging = Effect.gen(function*() {
+            console.log("DEBUG: CRITICAL - Inside pipeline generator function - BASELINE")
+            
+            try {
+              // Get services from context
+              console.log("DEBUG: CRITICAL - About to get services from context")
+              // Just try to get a single service to test if context is available
+              yield* GitHubClient
+              console.log("DEBUG: CRITICAL - Successfully got GitHubClient service")
+              
+              // Now try to run the actual pipeline
+              return yield* pipelineWithErrorHandling
+            } catch (err) {
+              // Log any errors directly to console
+              console.error("DEBUG: CRITICAL ERROR - Failed in pipeline debugging:", err instanceof Error ? err.stack : String(err))
+              throw err
+            }
+          })
+          
+          // Add direct tracking of the fork's execution
+          const fork = Effect.runFork(Effect.provide(pipelineWithDebugging, AppLayer) as any)
+          log(`DEBUG: CRITICAL - Effect.runFork returned fork object`)
+          
+          // Add listener to the fork to detect completion or failure
+          fork.addObserver((exit) => {
+            if (exit._tag === "Failure") {
+              console.error("DEBUG: CRITICAL - Fork failed with cause:", exit.cause)
+            } else if (exit._tag === "Success") {
+              console.log("DEBUG: CRITICAL - Fork completed successfully with value:", exit.value)
+            }
+          })
+        } catch (err) {
+          // This catches errors in the setup of the fork itself, not in the pipeline
+          error(`DEBUG: CRITICAL ERROR - Exception thrown from Effect.runFork setup: ${err instanceof Error ? err.stack : String(err)}`)
+        }
 
         // Immediately respond to the HTTP request
         res.writeHead(200, { "Content-Type": "text/plain" })
