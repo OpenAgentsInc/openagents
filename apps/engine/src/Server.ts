@@ -383,7 +383,22 @@ const createHttpServer = (): Http.Server => {
           const pipelineWithDebugging = Effect.gen(function* () {
             console.log("DEBUG: CRITICAL - Inside pipeline generator function - BASELINE")
 
+            // ----> START CONTEXT CHECK <----
             try {
+              // Try to access PlanManager directly as a test
+              const planManager = yield* PlanManager;
+              log(`DEBUG: CONTEXT_CHECK - Successfully accessed PlanManager directly: ${planManager ? "YES" : "NO"}`);
+            } catch (error) {
+              log(`DEBUG: CONTEXT_CHECK - Failed to access PlanManager: ${error}`);
+              return yield* Effect.die(new Error("PlanManager service not found in provided context!")); // Fail fast if missing
+            }
+            // ----> END CONTEXT CHECK <----
+
+            try {
+              // Check if we can access GitHubClient
+              yield* GitHubClient;
+              log(`DEBUG: CRITICAL - Service check: GitHubClient found inside pipeline`);
+              
               // Simplified approach: run the pipeline directly without individual service tests
               // This avoids potential reference equality issues with the service Tags
               console.log("DEBUG: CRITICAL - Running pipeline with AllLayers from Program.js")
