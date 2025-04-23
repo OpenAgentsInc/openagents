@@ -65,7 +65,7 @@ const broadcastSSE = (event: string, data: string): void => {
 
   // Log all SSE events during debugging to see what's happening with communication
   log(`DEBUG: Broadcasting SSE event: ${event} to ${clients.size} clients`)
-  
+
   if (clients.size === 0) {
     log(`DEBUG: WARNING - No SSE clients connected to receive ${event} event!`)
   }
@@ -115,7 +115,7 @@ const AppLayer = Layer.mergeAll(
 // Setup a route to handle the SSE connection
 const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void => {
   log(`DEBUG: SSE connection requested, setting up headers`)
-  
+
   // Set headers for SSE
   try {
     res.writeHead(200, {
@@ -144,7 +144,7 @@ const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void =
   } catch (err) {
     error(`DEBUG ERROR: Failed to send direct connection message: ${err instanceof Error ? err.message : String(err)}`)
   }
-  
+
   // Send via broadcast (for consistency in logs)
   broadcastSSE("connected", "SSE connection established")
 
@@ -169,7 +169,7 @@ const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void =
     clients.delete(clientId)
     log(`DEBUG: Removed client ${clientId} due to error, remaining clients: ${clients.size}`)
   })
-  
+
   // Send a test message every 10 seconds to keep connection alive and verify it's working
   const keepAliveTimer = setInterval(() => {
     try {
@@ -178,12 +178,16 @@ const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void =
         clearInterval(keepAliveTimer)
         return
       }
-      
+
       const keepAliveMessage = `event: keepalive\ndata: ${new Date().toISOString()}\n\n`
       res.write(keepAliveMessage)
       log(`DEBUG: Sent keepalive to client ${clientId}`)
     } catch (err) {
-      error(`DEBUG ERROR: Failed to send keepalive to client ${clientId}: ${err instanceof Error ? err.message : String(err)}`)
+      error(
+        `DEBUG ERROR: Failed to send keepalive to client ${clientId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      )
       clients.delete(clientId)
       clearInterval(keepAliveTimer)
     }
