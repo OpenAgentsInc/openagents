@@ -40,3 +40,47 @@
 .read-the-docs {
   color: #888;
 }
+
+.wallet-info {
+  margin: 2rem 0;
+  padding: 2rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.balance-item {
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  transition: transform 0.2s ease;
+}
+
+.balance-item:hover {
+  transform: translateY(-2px);
+}
+
+.balance-item h3 {
+  color: #888;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+
+.balance-item p {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 0.5rem 0;
+  color: #61dafb;
+}
+
+.balance-item small {
+  color: #666;
+  font-size: 0.875rem;
+}
