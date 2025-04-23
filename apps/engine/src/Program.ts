@@ -1,13 +1,32 @@
 import { AnthropicClient } from "@effect/ai-anthropic"
 import { NodeContext, NodeHttpClient } from "@effect/platform-node"
 import { Config, Console, Effect, Layer } from "effect"
+
+// Import TAG CLASSES
+import { PlanManager as PlanManagerTag } from "./github/PlanManager.js"
+import { MemoryManager as MemoryManagerTag } from "./github/MemoryManager.js"
+import { ContextManager as ContextManagerTag } from "./github/ContextManager.js"
+import { GitHubClient as GitHubClientTag } from "./github/GitHub.js"
+import { GitHubTools as GitHubToolsTag } from "./github/GitHubTools.js"
+import { TaskExecutor as TaskExecutorTag } from "./github/TaskExecutor.js"
+
+// Import LAYERS
+import { PlanManagerLayer } from "./github/PlanManager.js"
+import { MemoryManagerLayer } from "./github/MemoryManager.js"
 import { ContextManagerLayer } from "./github/ContextManager.js"
 import { GitHubClientLayer } from "./github/GitHub.js"
 import { GitHubToolsDefault } from "./github/GitHubTools.js"
-import { MemoryManagerLayer } from "./github/MemoryManager.js"
-import { PlanManagerLayer } from "./github/PlanManager.js"
 import { TaskExecutorDefault } from "./github/TaskExecutor.js"
-// Note: Removed import of startServer from Server.js to avoid circular dependency
+
+// ----> RE-EXPORT TAGS <----
+// Centralized single source of truth for all service Tags
+export const PlanManager = PlanManagerTag
+export const MemoryManager = MemoryManagerTag  
+export const ContextManager = ContextManagerTag
+export const GitHubClient = GitHubClientTag
+export const GitHubTools = GitHubToolsTag
+export const TaskExecutor = TaskExecutorTag
+// ----> END TAG EXPORTS <----
 
 // Define Anthropic Layer
 console.log("DEBUG: CRITICAL - Creating AnthropicClient layer with config")

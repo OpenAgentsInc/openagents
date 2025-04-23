@@ -1,9 +1,8 @@
 import type { AiToolkit } from "@effect/ai"
 import { Console, Effect, Layer, Ref } from "effect"
 import type { AgentState } from "./AgentStateTypes.js"
+// Import the GitHubClient class directly from its original file to avoid circular dependencies
 import { GitHubClient } from "./GitHub.js"
-import type { MemoryManager } from "./MemoryManager.js"
-import type { PlanManager } from "./PlanManager.js"
 
 // GitHub tool names for reference
 export const TOOL_NAMES = {
@@ -21,11 +20,15 @@ export const TOOL_NAMES = {
 /**
  * Context for stateful tool execution
  */
+// Use type imports since we just need the type here
+import type { PlanManager as PlanManagerType } from "./PlanManager.js"
+import type { MemoryManager as MemoryManagerType } from "./MemoryManager.js"
+
 // eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export interface StatefulToolContext {
   readonly stateRef: Ref.Ref<AgentState>
-  readonly planManager: PlanManager
-  readonly memoryManager: MemoryManager
+  readonly planManager: PlanManagerType
+  readonly memoryManager: MemoryManagerType
 }
 
 /**
@@ -36,8 +39,8 @@ export class StatefulToolContext extends Effect.Tag("StatefulToolContext")<
   StatefulToolContext,
   {
     readonly stateRef: Ref.Ref<AgentState>
-    readonly planManager: PlanManager
-    readonly memoryManager: MemoryManager
+    readonly planManager: PlanManagerType
+    readonly memoryManager: MemoryManagerType
   }
 >() {}
 
@@ -71,6 +74,7 @@ export const GitHubToolsLayer = Layer.effect(
   GitHubTools,
   Effect.gen(function*() {
     // Get dependencies from the context
+    // Use the Tag directly to get the service
     const github = yield* GitHubClient
 
     const handlers = {
@@ -992,7 +996,7 @@ export const GitHubToolsLayer = Layer.effect(
       handlers
     }
   })
-).pipe(Layer.provide(GitHubClient.Default))
+)
 
-// Default implementation
+// Default implementation - don't provide GitHubClient.Default here to avoid circular dependencies
 export const GitHubToolsDefault = GitHubToolsLayer

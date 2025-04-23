@@ -3,10 +3,10 @@ import { Completions } from "@effect/ai"
 import { AnthropicClient } from "@effect/ai-anthropic"
 import { Config, Console, Effect, Layer, Ref, Stream } from "effect"
 import type { AgentState } from "./AgentStateTypes.js"
-import { GitHubClient } from "./GitHub.js"
-import { GitHubTools, StatefulToolContext, ToolExecutionError } from "./GitHubTools.js"
-import { MemoryManager } from "./MemoryManager.js"
-import { PlanManager } from "./PlanManager.js"
+// Import TAGS from Program (single source of truth)
+import { GitHubClient, GitHubTools, MemoryManager, PlanManager } from "../Program.js"
+// Import other non-Tag items
+import { StatefulToolContext, ToolExecutionError } from "./GitHubTools.js"
 
 /**
  * Service for executing tasks and managing agent state during execution
@@ -186,8 +186,8 @@ export const TaskExecutorLayer = Layer.effect(
           yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Creating StatefulToolContext`)
           const toolContextService = StatefulToolContext.of({
             stateRef,
-            planManager: planManager as unknown as PlanManager,
-            memoryManager: memoryManager as unknown as MemoryManager
+            planManager: planManager as any, // Type assertion to work around interface mismatch
+            memoryManager: memoryManager as any // Type assertion to work around interface mismatch
           })
           const toolContextLayer = Layer.succeed(StatefulToolContext, toolContextService)
           yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully created StatefulToolContext layer`)

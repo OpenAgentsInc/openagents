@@ -4,8 +4,9 @@ import * as fs from "node:fs"
 import * as Http from "node:http"
 import * as path from "node:path"
 import type { AgentState } from "./github/AgentStateTypes.js"
-import { GitHubClient } from "./github/GitHub.js"
-import { TaskExecutor } from "./github/TaskExecutor.js"
+// Import TAGS from Program (single source of truth)
+import { GitHubClient, TaskExecutor } from "./Program.js"
+// Import AllLayers
 import { AllLayers } from "./Program.js"
 
 // Load environment variables from .env file
