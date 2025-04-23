@@ -169,7 +169,7 @@ describe("GitHubTools", () => {
 
     // Mock memory manager
     const mockMemoryManager = {
-      addConversationMessage: vi.fn().mockImplementation((state, role, content) => Effect.succeed(state)),
+      addConversationMessage: vi.fn().mockImplementation((state, _role, _content) => Effect.succeed(state)),
       addKeyDecision: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addImportantFinding: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       updateScratchpad: vi.fn().mockImplementation((state) => Effect.succeed(state)),
@@ -313,7 +313,7 @@ describe("GitHubTools", () => {
 
     // Mock memory manager
     const mockMemoryManager = {
-      addConversationMessage: vi.fn().mockImplementation((state, role, content) => Effect.succeed(state)),
+      addConversationMessage: vi.fn().mockImplementation((state, _role, _content) => Effect.succeed(state)),
       addKeyDecision: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addImportantFinding: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       updateScratchpad: vi.fn().mockImplementation((state) => Effect.succeed(state)),
