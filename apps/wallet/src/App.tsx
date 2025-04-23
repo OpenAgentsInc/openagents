@@ -30,8 +30,7 @@ function App() {
 
     try {
       // Generate x random words. Uses Cryptographically-Secure Random Number Generator.
-      // const mn = bip39.generateMnemonic(wordlist);
-      const mn = "miracle job refuse cushion auction extend auction salon grace material boat join"
+      const mn = bip39.generateMnemonic(wordlist);
       console.log(mn);
 
       // Call init when using the SDK in a web environment before calling any other SDK
