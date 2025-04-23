@@ -101,7 +101,7 @@ const createAgentStateUpdate = (state: AgentState) => ({
 
 // Import necessary services to recreate the layer stack
 import { AnthropicClient } from "@effect/ai-anthropic"
-import { NodeHttpClient } from "@effect/platform-node"
+import { NodeContext, NodeHttpClient } from "@effect/platform-node"
 import { Layer, Redacted } from "effect"
 import { GitHubToolsDefault } from "./github/GitHubTools.js"
 import { ContextManagerLayer } from "./github/ContextManager.js"
@@ -140,7 +140,7 @@ const createAppLayer = () => {
     TaskExecutorLayer,
     // AI layer with HTTP client
     Layer.provide(AnthropicLayer, httpClientLayer)
-  )
+  ).pipe(Layer.provide(NodeContext.layer)) // Add NodeContext.layer to provide essential Node.js services
 }
 
 // Setup a route to handle the SSE connection
