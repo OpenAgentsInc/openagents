@@ -124,133 +124,256 @@ export const TaskExecutorLayer = Layer.effect(
     return {
       executeNextStep: (currentState: AgentState): Effect.Effect<AgentState, Error, any> =>
         Effect.gen(function*() {
+          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Starting execution`)
+          
           // 1. Get current step
-          const currentStep = yield* planManager.getCurrentStep(currentState)
-          yield* Console.log(`Executing step ${currentStep.step_number}: ${currentStep.description}`)
+          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Getting current step`)
+          let currentStep
+          try {
+            currentStep = yield* planManager.getCurrentStep(currentState)
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully got current step: ${currentStep.step_number}: ${currentStep.description}`)
+          } catch (err) {
+            yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Failed to get current step: ${err instanceof Error ? err.stack : String(err)}`)
+            throw err
+          }
 
           // 2. Update status to in_progress
-          let workingState = yield* planManager.updateStepStatus(currentState, currentStep.id, "in_progress")
+          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Updating step status to in_progress`)
+          let workingState
+          try {
+            workingState = yield* planManager.updateStepStatus(currentState, currentStep.id, "in_progress")
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully updated step status to in_progress`)
+          } catch (err) {
+            yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Failed to update step status: ${err instanceof Error ? err.stack : String(err)}`)
+            throw err
+          }
 
           // 3. Save state with updated status
-          workingState = yield* githubClient.saveAgentState(workingState)
+          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Saving initial state with in_progress status`)
+          try {
+            workingState = yield* githubClient.saveAgentState(workingState)
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully saved initial state`)
+          } catch (err) {
+            yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Failed to save initial state: ${err instanceof Error ? err.stack : String(err)}`)
+            throw err
+          }
 
           // 4. Create a Ref to hold the state during AI/tool executions
-          const stateRef = yield* Ref.make(workingState)
+          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Creating stateRef for tool context`)
+          let stateRef
+          try {
+            stateRef = yield* Ref.make(workingState)
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully created stateRef`)
+          } catch (err) {
+            yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Failed to create stateRef: ${err instanceof Error ? err.stack : String(err)}`)
+            throw err
+          }
 
           // 5. Create StatefulToolContext for the tool handlers
+          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Creating StatefulToolContext`)
           const toolContextService = StatefulToolContext.of({
             stateRef,
             planManager: planManager as unknown as PlanManager,
             memoryManager: memoryManager as unknown as MemoryManager
           })
           const toolContextLayer = Layer.succeed(StatefulToolContext, toolContextService)
+          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully created StatefulToolContext layer`)
 
           try {
             // 6. Construct prompt from state
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Constructing AI prompt`)
             const prompt = constructPromptFromState(workingState, currentStep)
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully constructed prompt with length: ${prompt.length}`)
             yield* Console.log("🧠 Prompting AI to execute step...")
 
             // 7. Get tools/handlers from githubTools
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Getting tools and handlers from githubTools`)
             const { handlers, tools } = githubTools
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully got tools and handlers`)
 
             // 8. Prepare the AI toolkitStream
-            // Use `as any` to work around library typings issues
-            const aiResponseStream = (completions.toolkitStream as any)({
-              model: workingState.configuration.llm_config.model,
-              messages: [{ role: "user", content: prompt }],
-              tools: { toolkit: tools, handlers } as any,
-              temperature: workingState.configuration.llm_config.temperature,
-              maxTokens: workingState.configuration.llm_config.max_tokens
-            })
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - About to call completions.toolkitStream`)
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Using model: ${workingState.configuration.llm_config.model}`)
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Using temperature: ${workingState.configuration.llm_config.temperature}`)
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Using maxTokens: ${workingState.configuration.llm_config.max_tokens}`)
+            
+            let aiResponseStream
+            
+            // DEBUGGING: Set this to true to use a simple completion instead of toolkitStream
+            // This is useful for diagnosing if the issue is specifically with toolkitStream
+            const useSimpleCompletionForDebugging = false
+            
+            try {
+              if (useSimpleCompletionForDebugging) {
+                // Simple completion approach for debugging
+                yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Using simple completion for debugging`)
+                
+                // Create a mock stream with a simple text response
+                const simpleResponse = yield* completions.completion({
+                  model: workingState.configuration.llm_config.model,
+                  prompt: "Respond with 'Hello from the AI service'",
+                  temperature: 0,
+                  maxTokens: 20
+                })
+                
+                // Log the simple response
+                yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Simple completion response: ${simpleResponse}`)
+                
+                // Set the response buffer directly
+                responseBuffer = simpleResponse
+                
+                // Create a simple stream with just one item
+                const textPart = {
+                  _tag: "Text" as const,
+                  content: simpleResponse
+                }
+                
+                const streamItem = {
+                  response: {
+                    parts: [textPart]
+                  },
+                  value: { _tag: "None" as const }
+                }
+                
+                aiResponseStream = Stream.make(streamItem)
+                yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Created mock aiResponseStream for debugging`)
+              } else {
+                // Normal approach with toolkitStream
+                // Use `as any` to work around library typings issues
+                aiResponseStream = (completions.toolkitStream as any)({
+                  model: workingState.configuration.llm_config.model,
+                  messages: [{ role: "user", content: prompt }],
+                  tools: { toolkit: tools, handlers } as any,
+                  temperature: workingState.configuration.llm_config.temperature,
+                  maxTokens: workingState.configuration.llm_config.max_tokens
+                })
+                yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully created aiResponseStream`)
+              }
+            } catch (err) {
+              yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Failed to create aiResponseStream: ${err instanceof Error ? err.stack : String(err)}`)
+              throw err
+            }
 
             // 9. Set up buffers for response processing
             let responseBuffer = ""
             const toolOutputs: Array<any> = []
             let finalResponse = ""
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Initialized response buffers`)
 
             // 10. Process the AI stream
-            yield* aiResponseStream.pipe(
-              Stream.tap((chunk) =>
-                Effect.gen(function*() {
-                  const currentState = yield* Ref.get(stateRef)
-                  let nextState = currentState
+            yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - About to process AI stream with Stream.tap`)
+            try {
+              yield* aiResponseStream.pipe(
+                Stream.tap((chunk) => 
+                  Effect.gen(function*() {
+                    yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Processing stream chunk: ${JSON.stringify(chunk).substring(0, 100)}...`)
+                    const currentState = yield* Ref.get(stateRef)
+                    let nextState = currentState
 
-                  // Handle Text Deltas
-                  if ((chunk as any).response && (chunk as any).response.parts) {
-                    for (const part of (chunk as any).response.parts) {
-                      if (part._tag === "Text" && part.content) {
-                        responseBuffer += part.content
-                        // Could broadcast text deltas via SSE here
-                      } else if (part._tag === "ToolCall") {
-                        // Log tool usage before execution
-                        yield* Console.log(`AI requesting tool: ${part.name}`)
-                        // AI framework handles calling the handler now
+                    // Handle Text Deltas
+                    if ((chunk as any).response && (chunk as any).response.parts) {
+                      for (const part of (chunk as any).response.parts) {
+                        if (part._tag === "Text" && part.content) {
+                          responseBuffer += part.content
+                          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Received text part: "${part.content.substring(0, 50)}..."`)
+                          // Could broadcast text deltas via SSE here
+                        } else if (part._tag === "ToolCall") {
+                          // Log tool usage before execution
+                          yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - AI requesting tool: ${part.name}`)
+                          // AI framework handles calling the handler now
+                        }
                       }
                     }
-                  }
 
-                  // Handle Tool Results (after handler runs and updates state via Ref)
-                  if ((chunk as any).value?._tag === "Some") {
-                    const toolResult = (chunk as any).value.value
-                    yield* Console.log(`🔧 Tool ${toolResult.name} executed.`)
+                    // Handle Tool Results (after handler runs and updates state via Ref)
+                    if ((chunk as any).value?._tag === "Some") {
+                      const toolResult = (chunk as any).value.value
+                      yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Tool ${toolResult.name} executed.`)
 
-                    // State should have been updated inside the handler via Ref
-                    // Add the result to conversation history
-                    const toolResultMessage = {
-                      role: "tool" as const,
-                      content: JSON.stringify(toolResult.result),
-                      tool_call_id: toolResult.id
+                      // State should have been updated inside the handler via Ref
+                      // Add the result to conversation history
+                      const toolResultMessage = {
+                        role: "tool" as const,
+                        content: JSON.stringify(toolResult.result),
+                        tool_call_id: toolResult.id
+                      }
+
+                      // Store tool outputs for potential follow-up prompts
+                      toolOutputs.push(toolResult)
+
+                      // Add the tool result message to conversation history
+                      yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Adding tool result to conversation history`)
+                      try {
+                        nextState = yield* memoryManager.addConversationMessage(
+                          nextState,
+                          toolResultMessage.role,
+                          toolResultMessage.content,
+                          [{ id: toolResultMessage.tool_call_id, name: toolResult.name, input: toolResult.input }]
+                        )
+                        yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully added tool result to conversation history`)
+                      } catch (err) {
+                        yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Failed to add tool result to conversation: ${err instanceof Error ? err.stack : String(err)}`)
+                      }
                     }
 
-                    // Store tool outputs for potential follow-up prompts
-                    toolOutputs.push(toolResult)
+                    // Update Ref if state changed within the chunk processing
+                    if (nextState !== currentState) {
+                      yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Updating stateRef from stream processor`)
+                      yield* Ref.set(stateRef, nextState)
+                      yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully updated stateRef from stream processor`)
+                    }
+                  })
+                ),
+                // Provide the StatefulToolContext Layer to the stream processing
+                (stream: any) => {
+                  yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Providing StatefulToolContext Layer to stream`)
+                  return Effect.provide(stream as unknown as Effect.Effect<any, any, any>, toolContextLayer)
+                },
+                Stream.runDrain
+              ).pipe(
+                Effect.tap(() => Effect.sync(() => {
+                  console.log(`DEBUG: TaskExecutor.executeNextStep - Stream.runDrain completed successfully`)
+                })),
+                Effect.catchAll((aiError) => {
+                  // Handle errors specifically from the AI/Tool stream
+                  return Effect.gen(function*() {
+                    const errorMsg = aiError instanceof Error ? aiError.message : String(aiError)
+                    const stackTrace = aiError instanceof Error ? aiError.stack : 'No stack trace available'
+                    yield* Console.error(`DEBUG ERROR: AI/Tool Stream Error: ${errorMsg}`)
+                    yield* Console.error(`DEBUG ERROR: AI/Tool Stream Error Stack: ${stackTrace}`)
 
-                    // Add the tool result message to conversation history
-                    nextState = yield* memoryManager.addConversationMessage(
-                      nextState,
-                      toolResultMessage.role,
-                      toolResultMessage.content,
-                      [{ id: toolResultMessage.tool_call_id, name: toolResult.name, input: toolResult.input }]
-                    )
-                  }
-
-                  // Update Ref if state changed within the chunk processing
-                  if (nextState !== currentState) {
-                    yield* Ref.set(stateRef, nextState)
-                  }
-                })
-              ),
-              // Provide the StatefulToolContext Layer to the stream processing
-              (stream: any) => Effect.provide(stream as unknown as Effect.Effect<any, any, any>, toolContextLayer),
-              Stream.runDrain
-            ).pipe(
-              Effect.catchAll((aiError) => {
-                // Handle errors specifically from the AI/Tool stream
-                return Effect.gen(function*() {
-                  yield* Console.error(`AI/Tool Stream Error: ${aiError}`)
-
-                  // Update stateRef with AI error details
-                  const now = new Date().toISOString()
-                  yield* Ref.update(stateRef, (s) => ({
-                    ...s,
-                    error_state: {
-                      ...s.error_state,
-                      last_error: {
-                        timestamp: now,
-                        message: `AI Error: ${aiError}`,
-                        type: "internal" as const,
-                        details: String(aiError)
+                    // Update stateRef with AI error details
+                    const now = new Date().toISOString()
+                    yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Updating stateRef with AI error details`)
+                    yield* Ref.update(stateRef, (s) => ({
+                      ...s,
+                      error_state: {
+                        ...s.error_state,
+                        last_error: {
+                          timestamp: now,
+                          message: `AI Error: ${errorMsg}`,
+                          type: "internal" as const,
+                          details: stackTrace
+                        },
+                        consecutive_error_count: s.error_state.consecutive_error_count + 1
                       },
-                      consecutive_error_count: s.error_state.consecutive_error_count + 1
-                    },
-                    current_task: { ...s.current_task, status: "error" }
-                  }))
+                      current_task: { ...s.current_task, status: "error" }
+                    }))
+                    yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully updated stateRef with AI error details`)
 
-                  // Re-throw the error
-                  return Effect.fail(aiError instanceof Error ? aiError : new Error(String(aiError)))
+                    // Re-throw the error
+                    return Effect.fail(aiError instanceof Error ? aiError : new Error(String(aiError)))
+                  })
                 })
-              })
-            )
+              )
+              yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - AI stream processing completed`)
+            } catch (err) {
+              const errorMsg = err instanceof Error ? err.message : String(err)
+              const stackTrace = err instanceof Error ? err.stack : 'No stack trace available'
+              yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Error processing AI stream: ${errorMsg}`)
+              yield* Console.error(`DEBUG ERROR: TaskExecutor.executeNextStep - Stack trace: ${stackTrace}`)
+              throw err
+            }
 
             // 11. After stream processing, get final state and add final assistant message
             workingState = yield* Ref.get(stateRef)

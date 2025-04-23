@@ -189,7 +189,7 @@ describe("TaskExecutor", () => {
       })
 
       // Mock for adding conversation messages
-      const addConversationMessageMock = vi.fn().mockImplementation((state, role, content) => {
+      const addConversationMessageMock = vi.fn().mockImplementation((state, _role, _content) => {
         return Effect.succeed({
           ...state,
           memory: {
@@ -197,8 +197,8 @@ describe("TaskExecutor", () => {
             conversation_history: [
               ...state.memory.conversation_history,
               {
-                role,
-                content,
+                role: _role,
+                content: _content,
                 timestamp: expect.any(String),
                 tool_calls: null
               }
@@ -408,7 +408,7 @@ describe("TaskExecutor", () => {
       })
 
       // Mock for adding conversation messages
-      const addConversationMessageMock = vi.fn().mockImplementation((state, role, content) => {
+      const addConversationMessageMock = vi.fn().mockImplementation((state, _role, _content) => {
         return Effect.succeed({
           ...state,
           memory: {
@@ -416,8 +416,8 @@ describe("TaskExecutor", () => {
             conversation_history: [
               ...state.memory.conversation_history,
               {
-                role,
-                content,
+                role: _role,
+                content: _content,
                 timestamp: expect.any(String),
                 tool_calls: null
               }

@@ -24,10 +24,14 @@ const loadConfig = Effect.try({
 
     if (!config.anthropicApiKey) {
       throw new Error("ANTHROPIC_API_KEY is required but not found in environment")
+    } else {
+      console.log(`DEBUG: ANTHROPIC_API_KEY is set (length: ${config.anthropicApiKey.length}, starts with: ${config.anthropicApiKey.substring(0, 3)}...)`)
     }
 
     if (!config.githubApiKey) {
       throw new Error("GITHUB_API_KEY is required but not found in environment")
+    } else {
+      console.log(`DEBUG: GITHUB_TOKEN is set (length: ${config.githubApiKey.length}, starts with: ${config.githubApiKey.substring(0, 3)}...)`)
     }
 
     return config
@@ -152,26 +156,40 @@ const createHttpServer = (): Http.Server => {
         // Define the execution pipeline
         const executionPipeline = Effect.gen(function*() {
           // Get services from context
+          log(`DEBUG: Getting services from context`)
           const githubClient = yield* GitHubClient
           const taskExecutor = yield* TaskExecutor
+          log(`DEBUG: Successfully got services (GitHubClient and TaskExecutor) from context`)
 
           // Generate unique instance ID
           const instanceId = `solver-${owner}-${repo}-${issueNumber}-${Date.now()}`
+          log(`DEBUG: Generated instanceId: ${instanceId}`)
 
           // Try to load or create state
-          log(`Loading or creating state for ${instanceId}`)
-          const initialState = yield* githubClient.loadAgentState(instanceId).pipe(
-            Effect.catchAll((_err) => {
-              log(`State not found, creating new state for ${owner}/${repo}#${issueNumber}`)
-              return githubClient.createAgentStateForIssue(owner, repo, issueNumber)
-            })
-          )
+          log(`DEBUG: About to load or create state for ${instanceId}`)
+          let initialState
+          try {
+            initialState = yield* githubClient.loadAgentState(instanceId).pipe(
+              Effect.catchAll((err) => {
+                log(`DEBUG: State not found (${err.message}), creating new state for ${owner}/${repo}#${issueNumber}`)
+                return githubClient.createAgentStateForIssue(owner, repo, issueNumber)
+              })
+            )
+            log(`DEBUG: Successfully loaded or created state: ${initialState.agent_info.instance_id}`)
+          } catch (err) {
+            error(`DEBUG ERROR: Failed to load or create state: ${err instanceof Error ? err.stack : String(err)}`)
+            throw err
+          }
 
           // Create a Ref to hold the current state
+          log(`DEBUG: Creating stateRef`)
           const stateRef = yield* Ref.make(initialState)
+          log(`DEBUG: Successfully created stateRef`)
 
           // Send initial state update to UI
+          log(`DEBUG: Broadcasting initial state to UI`)
           broadcastSSE("agent_state", JSON.stringify(createAgentStateUpdate(initialState)))
+          log(`DEBUG: Successfully broadcast initial state`)
 
           // Function to check if we should continue execution
           const shouldContinue = (state: AgentState): boolean => {
@@ -187,36 +205,53 @@ const createHttpServer = (): Http.Server => {
           const executeLoop: Effect.Effect<AgentState> = Effect.suspend(() =>
             Effect.gen(function*(): Generator<any, AgentState> {
               // Get current state
+              log(`DEBUG: executeLoop - Getting current state from stateRef`)
               const currentState = yield* Ref.get(stateRef)
+              log(`DEBUG: executeLoop - Got current state, step index: ${currentState.current_task.current_step_index}, status: ${currentState.current_task.status}`)
 
               // Check if we should continue
               if (!shouldContinue(currentState)) {
-                log(`Task ended with status: ${currentState.current_task.status}`)
+                log(`DEBUG: executeLoop - Task ended with terminal status: ${currentState.current_task.status}`)
                 return currentState
               }
 
               try {
                 // Execute next step
-                log(`Executing step ${currentState.current_task.current_step_index + 1}`)
+                const stepNumber = currentState.current_task.current_step_index + 1
+                log(`DEBUG: executeLoop - About to execute step ${stepNumber}`)
+                
+                // This is where we call TaskExecutor.executeNextStep - this might be where it hangs
+                log(`DEBUG: executeLoop - Calling taskExecutor.executeNextStep(currentState)`)
                 const updatedState = yield* taskExecutor.executeNextStep(currentState)
+                log(`DEBUG: executeLoop - Successfully returned from taskExecutor.executeNextStep`)
 
                 // Update the state reference
+                log(`DEBUG: executeLoop - Updating stateRef with new state`)
                 yield* Ref.set(stateRef, updatedState)
+                log(`DEBUG: executeLoop - Successfully updated stateRef`)
 
                 // Broadcast updated state to UI
+                log(`DEBUG: executeLoop - Broadcasting updated state to UI`)
                 broadcastSSE("agent_state", JSON.stringify(createAgentStateUpdate(updatedState)))
+                log(`DEBUG: executeLoop - Successfully broadcast updated state`)
 
                 // Continue execution recursively
+                log(`DEBUG: executeLoop - Continuing execution recursively`)
                 return yield* executeLoop
               } catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err)
-                error(`Error executing step: ${errorMsg}`)
+                const stackTrace = err instanceof Error ? err.stack : 'No stack trace'
+                error(`DEBUG ERROR: executeLoop - Error executing step: ${errorMsg}`)
+                error(`DEBUG ERROR: executeLoop - Stack trace: ${stackTrace}`)
 
                 // Get current state again to update with error
+                log(`DEBUG: executeLoop (error handler) - Getting failed state from stateRef`)
                 const failedState = yield* Ref.get(stateRef)
+                log(`DEBUG: executeLoop (error handler) - Got failed state`)
 
                 // Update task status to error if not already set
                 if (failedState.current_task.status !== "error") {
+                  log(`DEBUG: executeLoop (error handler) - Updating state with error status`)
                   const errorState = {
                     ...failedState,
                     current_task: {
@@ -227,19 +262,30 @@ const createHttpServer = (): Http.Server => {
 
                   // Update state reference with error state
                   yield* Ref.set(stateRef, errorState)
+                  log(`DEBUG: executeLoop (error handler) - Updated stateRef with error state`)
 
                   // Broadcast error state to UI
+                  log(`DEBUG: executeLoop (error handler) - Broadcasting error state to UI`)
                   broadcastSSE("agent_state", JSON.stringify(createAgentStateUpdate(errorState)))
+                  log(`DEBUG: executeLoop (error handler) - Successfully broadcast error state`)
                 }
 
                 // End execution
+                log(`DEBUG: executeLoop (error handler) - Ending execution due to error`)
                 return yield* Ref.get(stateRef)
               }
             })
           )
 
           // Start the execution loop
-          yield* executeLoop
+          log(`DEBUG: About to start the execution loop`)
+          try {
+            yield* executeLoop
+            log(`DEBUG: Execution loop completed successfully`)
+          } catch (err) {
+            error(`DEBUG ERROR: Uncaught error in executeLoop: ${err instanceof Error ? err.stack : String(err)}`)
+            throw err
+          }
 
           // Return final state
           return yield* Ref.get(stateRef)
@@ -247,11 +293,33 @@ const createHttpServer = (): Http.Server => {
 
         // Run the execution pipeline with all required services
         // @ts-expect-error TypeScript struggles with complex Effect typing
-        Effect.runFork(Effect.provide(executionPipeline, AppLayer))
+        log(`DEBUG: About to run pipeline with Effect.runFork`)
+        Effect.runFork(
+          Effect.provide(
+            executionPipeline.pipe(
+              // Add error logging for the entire pipeline
+              Effect.catchAll((err) => {
+                // Log the error thoroughly
+                const errorMsg = err instanceof Error ? err.message : String(err)
+                const stackTrace = err instanceof Error ? err.stack : 'No stack trace'
+                error(`DEBUG FATAL PIPELINE ERROR: ${errorMsg}`)
+                error(`DEBUG FATAL PIPELINE ERROR STACK: ${stackTrace}`)
+                
+                // Broadcast an SSE error
+                broadcastSSE("error", `FATAL PIPELINE ERROR: ${errorMsg}`)
+                
+                // Re-throw the error to propagate it
+                return Effect.fail(err)
+              })
+            ),
+            AppLayer
+          )
+        )
 
         // Immediately respond to the HTTP request
         res.writeHead(200, { "Content-Type": "text/plain" })
         res.end("Issue processing initiated")
+        log(`DEBUG: HTTP response sent, async processing continues in background`)
       })
       return
     }
