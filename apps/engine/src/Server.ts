@@ -1,15 +1,13 @@
-import { NodeContext } from "@effect/platform-node"
 import * as dotenv from "dotenv"
-import { Effect, Layer, Ref } from "effect"
+import { Effect, Ref } from "effect"
 import * as fs from "node:fs"
 import * as Http from "node:http"
 import * as path from "node:path"
 import type { AgentState } from "./github/AgentStateTypes.js"
-import { ContextManagerLayer } from "./github/ContextManager.js"
-import { GitHubClient, GitHubClientLayer } from "./github/GitHub.js"
-import { MemoryManagerLayer } from "./github/MemoryManager.js"
-import { PlanManagerLayer } from "./github/PlanManager.js"
-import { TaskExecutor, TaskExecutorLayer } from "./github/TaskExecutor.js"
+import { GitHubClient } from "./github/GitHub.js"
+import { MemoryManager } from "./github/MemoryManager.js"
+import { PlanManager } from "./github/PlanManager.js"
+import { TaskExecutor } from "./github/TaskExecutor.js"
 
 // Load environment variables from .env file
 const loadConfig = Effect.try({
@@ -103,14 +101,12 @@ const createAgentStateUpdate = (state: AgentState) => ({
     : null
 })
 
-// Define the layer with all the needed services
-const AppLayer = Layer.mergeAll(
-  TaskExecutorLayer,
-  GitHubClientLayer,
-  PlanManagerLayer,
-  ContextManagerLayer,
-  MemoryManagerLayer
-).pipe(Layer.provide(NodeContext.layer))
+// Create a function to get the layers from Program.js dynamically
+// This avoids circular dependency issues
+const getAppLayer = () => {
+  // Dynamically import the Program module to avoid circular dependencies
+  return import("./Program.js").then(module => module.AllLayers)
+}
 
 // Setup a route to handle the SSE connection
 const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void => {
@@ -395,13 +391,43 @@ const createHttpServer = (): Http.Server => {
             console.log("DEBUG: CRITICAL - Inside pipeline generator function - BASELINE")
             
             try {
-              // Get services from context
-              console.log("DEBUG: CRITICAL - About to get services from context")
-              // Just try to get a single service to test if context is available
-              yield* GitHubClient
-              console.log("DEBUG: CRITICAL - Successfully got GitHubClient service")
+              // Test each service individually to see which ones are available
+              console.log("DEBUG: CRITICAL - About to test individual services")
+              
+              try {
+                console.log("DEBUG: CRITICAL - Testing GitHubClient")
+                yield* GitHubClient
+                console.log("DEBUG: CRITICAL - GitHubClient found")
+              } catch (err) {
+                console.error("DEBUG: CRITICAL ERROR - GitHubClient not found:", err instanceof Error ? err.message : String(err))
+              }
+              
+              try {
+                console.log("DEBUG: CRITICAL - Testing TaskExecutor")
+                yield* TaskExecutor
+                console.log("DEBUG: CRITICAL - TaskExecutor found")
+              } catch (err) {
+                console.error("DEBUG: CRITICAL ERROR - TaskExecutor not found:", err instanceof Error ? err.message : String(err))
+              }
+              
+              try {
+                console.log("DEBUG: CRITICAL - Testing PlanManager")
+                yield* PlanManager
+                console.log("DEBUG: CRITICAL - PlanManager found")
+              } catch (err) {
+                console.error("DEBUG: CRITICAL ERROR - PlanManager not found:", err instanceof Error ? err.message : String(err))
+              }
+              
+              try {
+                console.log("DEBUG: CRITICAL - Testing MemoryManager")
+                yield* MemoryManager
+                console.log("DEBUG: CRITICAL - MemoryManager found")
+              } catch (err) {
+                console.error("DEBUG: CRITICAL ERROR - MemoryManager not found:", err instanceof Error ? err.message : String(err))
+              }
               
               // Now try to run the actual pipeline
+              console.log("DEBUG: CRITICAL - All service tests complete, attempting to run the pipeline")
               return yield* pipelineWithErrorHandling
             } catch (err) {
               // Log any errors directly to console
@@ -410,17 +436,22 @@ const createHttpServer = (): Http.Server => {
             }
           })
           
-          // Add direct tracking of the fork's execution
-          const fork = Effect.runFork(Effect.provide(pipelineWithDebugging, AppLayer) as any)
-          log(`DEBUG: CRITICAL - Effect.runFork returned fork object`)
-          
-          // Add listener to the fork to detect completion or failure
-          fork.addObserver((exit) => {
-            if (exit._tag === "Failure") {
-              console.error("DEBUG: CRITICAL - Fork failed with cause:", exit.cause)
-            } else if (exit._tag === "Success") {
-              console.log("DEBUG: CRITICAL - Fork completed successfully with value:", exit.value)
-            }
+          // Get the AppLayer dynamically and then run the pipeline
+          getAppLayer().then(appLayer => {
+            // Add direct tracking of the fork's execution
+            const fork = Effect.runFork(Effect.provide(pipelineWithDebugging, appLayer) as any)
+            log(`DEBUG: CRITICAL - Effect.runFork returned fork object`)
+            
+            // Add observer
+            fork.addObserver((exit) => {
+              if (exit._tag === "Failure") {
+                console.error("DEBUG: CRITICAL - Fork failed with cause:", exit.cause)
+              } else if (exit._tag === "Success") {
+                console.log("DEBUG: CRITICAL - Fork completed successfully with value:", exit.value)
+              }
+            })
+          }).catch(err => {
+            error(`DEBUG: CRITICAL ERROR - Failed to get AppLayer: ${err instanceof Error ? err.stack : String(err)}`)
           })
         } catch (err) {
           // This catches errors in the setup of the fork itself, not in the pipeline
