@@ -84,3 +84,94 @@
   color: #666;
   font-size: 0.875rem;
 }
+
+.receive-section {
+  margin: 2rem 0;
+  padding: 2rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.receive-content {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.amount-input {
+  margin: 1.5rem 0;
+  text-align: left;
+}
+
+.amount-input label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #888;
+}
+
+.amount-input input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #fff;
+  font-size: 1.1rem;
+}
+
+.amount-input small {
+  display: block;
+  margin-top: 0.5rem;
+  color: #666;
+}
+
+.generate-button {
+  width: 100%;
+  padding: 1rem;
+  background: #646cff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.generate-button:hover {
+  background: #747bff;
+}
+
+.generate-button:disabled {
+  background: #4a4a4a;
+  cursor: not-allowed;
+}
+
+.fees-info {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: rgba(97, 218, 251, 0.1);
+  border-radius: 8px;
+}
+
+.invoice-display {
+  margin: 1.5rem 0;
+  text-align: left;
+}
+
+.invoice-display textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 1rem;
+  margin: 0.5rem 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #fff;
+  font-family: monospace;
+  resize: vertical;
+  cursor: pointer;
+}
+
+.invoice-display small {
+  color: #666;
+}

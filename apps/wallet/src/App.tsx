@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
-import init, { defaultConfig, connect } from '@breeztech/breez-sdk-liquid'
+import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk, ReceivePaymentResponse, LightningPaymentDetails } from '@breeztech/breez-sdk-liquid'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 
@@ -14,6 +14,14 @@ function App() {
     pendingSendSat: 0,
     pendingReceiveSat: 0
   })
+  const [lightningLimits, setLightningLimits] = useState({
+    min: 0,
+    max: 0
+  })
+  const [receiveAmount, setReceiveAmount] = useState(100)
+  const [invoice, setInvoice] = useState('')
+  const [fees, setFees] = useState(0)
+  const sdkRef = useRef<BindingLiquidSdk | null>(null)
   const initializationRef = useRef(false)
 
   const connectToBreez = async () => {
@@ -33,6 +41,7 @@ function App() {
       const config = defaultConfig('mainnet', import.meta.env.VITE_BREEZ_API_KEY)
 
       const sdk = await connect({ mnemonic: mn, config })
+      sdkRef.current = sdk
       console.log(sdk)
 
       // Fetch wallet info
@@ -43,11 +52,51 @@ function App() {
         pendingReceiveSat: info.walletInfo.pendingReceiveSat
       })
 
+      // Fetch lightning limits
+      const limits = await sdk.fetchLightningLimits()
+      setLightningLimits({
+        min: limits.receive.minSat,
+        max: limits.receive.maxSat
+      })
+
       setIsInitialized(true)
     } catch (error) {
       console.error('Failed to initialize Breez SDK:', error)
       setIsInitialized(false)
       initializationRef.current = false; // Reset ref on error to allow retry
+    }
+  }
+
+  const generateInvoice = async () => {
+    if (!sdkRef.current) return;
+
+    try {
+      // First prepare the payment to check fees
+      const optionalAmount = {
+        type: 'bitcoin',
+        payerAmountSat: receiveAmount
+      } as ReceiveAmount
+
+      // Step 1: Prepare the payment
+      const prepareResponse = await sdkRef.current.prepareReceivePayment({
+        paymentMethod: 'lightning',
+        amount: optionalAmount
+      })
+
+      // Store the fees
+      setFees(prepareResponse.feesSat)
+
+      // Step 2: Generate the actual invoice using the prepare response
+      const receiveResponse = await sdkRef.current.receivePayment({
+        prepareResponse
+      })
+
+      // Store the invoice - it's directly in the destination field
+      if (typeof receiveResponse === 'object' && receiveResponse !== null && receiveResponse.destination) {
+        setInvoice(receiveResponse.destination)
+      }
+    } catch (error) {
+      console.error('Failed to generate invoice:', error)
     }
   }
 
@@ -93,10 +142,52 @@ function App() {
         </div>
       </div>
 
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
+      <div className="receive-section">
+        <h2>Receive Payment</h2>
+        <div className="receive-content">
+          <div className="amount-input">
+            <label>Amount (sats)</label>
+            <input
+              type="number"
+              value={receiveAmount}
+              onChange={(e) => setReceiveAmount(Number(e.target.value))}
+              min={lightningLimits.min}
+              max={lightningLimits.max}
+            />
+            <small>Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats</small>
+          </div>
+
+          <button
+            className="generate-button"
+            onClick={generateInvoice}
+            disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
+          >
+            Generate Invoice
+          </button>
+
+          {fees > 0 && (
+            <div className="fees-info">
+              <p>Network Fees: {fees} sats</p>
+            </div>
+          )}
+
+          {invoice && (
+            <div className="invoice-display">
+              <h3>Lightning Invoice</h3>
+              <textarea
+                readOnly
+                value={invoice}
+                onClick={(e) => {
+                  const textarea = e.target as HTMLTextAreaElement;
+                  textarea.select();
+                  document.execCommand('copy');
+                }}
+                placeholder="Generated invoice will appear here..."
+              />
+              <small>Click to copy</small>
+            </div>
+          )}
+        </div>
       </div>
     </>
   )
