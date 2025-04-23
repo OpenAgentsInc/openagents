@@ -27,7 +27,10 @@
     "test:run": "vitest run",
     "coverage": "vitest --coverage",
     "verify": "pnpm check && pnpm lint && pnpm test -- --run",
-    "copy": "node copyToClipboard.js"
+    "copy": "node copyToClipboard.js",
+    "run-agent": "pnpm build-esm && node build/esm/RunAgentScript.js",
+    "run-agent:debug": "pnpm build-esm && RUN_SCRIPT_VERBOSE=true node build/esm/RunAgentScript.js",
+    "run-agent:dev": "tsx src/RunAgentScript.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
