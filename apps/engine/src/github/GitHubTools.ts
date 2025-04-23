@@ -112,10 +112,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) => 
+          Effect.catchAll((error) => 
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -123,7 +123,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.GET_ISSUE, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -147,7 +147,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -159,7 +159,7 @@ export const GitHubToolsLayer = Layer.effect(
               })
               
               // Fail the tool effect
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.GET_ISSUE, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.GET_ISSUE, params))
             })
           )
         ),
@@ -197,10 +197,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -208,7 +208,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.LIST_ISSUES, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -229,7 +229,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -240,7 +240,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.LIST_ISSUES, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.LIST_ISSUES, params))
             })
           )
         ),
@@ -278,10 +278,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -289,7 +289,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.CREATE_COMMENT, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -310,7 +310,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -321,7 +321,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.CREATE_COMMENT, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.CREATE_COMMENT, params))
             })
           )
         ),
@@ -371,10 +371,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -382,7 +382,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.UPDATE_ISSUE, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -403,7 +403,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -414,7 +414,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.UPDATE_ISSUE, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.UPDATE_ISSUE, params))
             })
           )
         ),
@@ -452,10 +452,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -463,7 +463,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.GET_REPOSITORY, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -484,7 +484,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -495,7 +495,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.GET_REPOSITORY, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.GET_REPOSITORY, params))
             })
           )
         ),
@@ -533,10 +533,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -544,7 +544,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.GET_ISSUE_COMMENTS, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -565,7 +565,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -576,7 +576,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.GET_ISSUE_COMMENTS, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.GET_ISSUE_COMMENTS, params))
             })
           )
         ),
@@ -614,10 +614,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -625,7 +625,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.CREATE_AGENT_STATE, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -646,7 +646,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -657,7 +657,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.CREATE_AGENT_STATE, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.CREATE_AGENT_STATE, params))
             })
           )
         ),
@@ -695,10 +695,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -706,7 +706,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.LOAD_AGENT_STATE, 
                   parameters: params, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -727,7 +727,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: JSON.stringify(params)
                         },
@@ -738,7 +738,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.LOAD_AGENT_STATE, params))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.LOAD_AGENT_STATE, params))
             })
           )
         ),
@@ -777,10 +777,10 @@ export const GitHubToolsLayer = Layer.effect(
           
           return result
         }).pipe(
-          Effect.catchAll((error: Error) =>
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
               const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
-              yield* Console.error(`❌ Tool error: ${error.message}`)
+              yield* Console.error(`❌ Tool error: ${String(error)}`)
               
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
@@ -788,7 +788,7 @@ export const GitHubToolsLayer = Layer.effect(
                   tool_name: TOOL_NAMES.SAVE_AGENT_STATE, 
                   parameters: { instance_id: params.state.agent_info.instance_id }, 
                   status: "error", 
-                  result_preview: error.message, 
+                  result_preview: String(error), 
                   full_result_ref: null 
                 }
                 
@@ -809,7 +809,7 @@ export const GitHubToolsLayer = Layer.effect(
                         ...state1.error_state,
                         last_error: {
                           timestamp: now,
-                          message: `Tool error: ${error.message}`,
+                          message: `Tool error: ${String(error)}`,
                           type: "tool_error" as const,
                           details: "Failed to save agent state"
                         },
@@ -820,7 +820,7 @@ export const GitHubToolsLayer = Layer.effect(
                 )
               })
               
-              return yield* Effect.fail(new ToolExecutionError(error.message, TOOL_NAMES.SAVE_AGENT_STATE, { instance_id: params.state.agent_info.instance_id }))
+              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.SAVE_AGENT_STATE, { instance_id: params.state.agent_info.instance_id }))
             })
           )
         )

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "@effect/vitest"
 import { Completions } from "@effect/ai"
 import type { Context } from "effect"
-import { Effect, Layer, Stream } from "effect"
+import { Config, Effect, Layer, Stream } from "effect"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
-import { GitHubTools, StatefulToolContext } from "../../src/github/GitHubTools.js"
+import { GitHubTools } from "../../src/github/GitHubTools.js"
 import { MemoryManager } from "../../src/github/MemoryManager.js"
 import { PlanManager } from "../../src/github/PlanManager.js"
 import { TaskExecutor, TaskExecutorLayer } from "../../src/github/TaskExecutor.js"
@@ -117,6 +117,16 @@ const createTestState = (): AgentState => ({
 })
 
 describe("TaskExecutor", () => {
+  // Create config layers once for all tests
+  const GitHubApiKeyLayer = Layer.succeed(
+    Config.Secret("GITHUB_API_KEY"),
+    "test-api-key"
+  )
+  const AnthropicApiKeyLayer = Layer.succeed(
+    Config.Secret("ANTHROPIC_API_KEY"),
+    "test-api-key"
+  )
+  
   describe("executeNextStep", () => {
     it("should execute a step successfully", async () => {
       // Arrange
@@ -265,7 +275,7 @@ describe("TaskExecutor", () => {
 
       const MockCompletions = Layer.succeed(
         Completions.Completions,
-        Completions.Completions.of(mockCompletions)
+        Completions.Completions.of(mockCompletions as unknown as any)
       )
 
       const MockGitHubTools = Layer.succeed(
@@ -467,7 +477,7 @@ describe("TaskExecutor", () => {
 
       const MockCompletions = Layer.succeed(
         Completions.Completions,
-        Completions.Completions.of(mockCompletions)
+        Completions.Completions.of(mockCompletions as unknown as any)
       )
 
       const MockGitHubTools = Layer.succeed(
@@ -513,13 +523,22 @@ describe("TaskExecutor", () => {
         GitHubClient.of(mockGitHubClient)
       )
 
+      // Create GITHUB_API_KEY and ANTHROPIC_API_KEY config value layers
+
+
+      
       // Merge all the mock layers
+
+
+      
       const AllMockLayers = Layer.mergeAll(
         MockPlanManager,
         MockGitHubClient,
         MockMemoryManager,
         MockGitHubTools,
-        MockCompletions
+        MockCompletions,
+        GitHubApiKeyLayer,
+        AnthropicApiKeyLayer
       )
 
       // Create the TaskExecutor layer with dependencies

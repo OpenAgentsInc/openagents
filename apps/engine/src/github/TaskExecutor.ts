@@ -1,7 +1,7 @@
 import { Completions } from "@effect/ai"
-// Import type-only to avoid unused import warning
-import type { AnthropicCompletions } from "@effect/ai-anthropic"
-import { Console, Effect, Layer, Ref, Stream } from "effect"
+// Import for the AnthropicClient.layerConfig definition
+import { AnthropicClient } from "@effect/ai-anthropic"
+import { Config, Console, Effect, Layer, Ref, Stream } from "effect"
 import type { AgentState } from "./AgentStateTypes.js"
 import { GitHubClient } from "./GitHub.js"
 import { GitHubTools, StatefulToolContext, ToolExecutionError } from "./GitHubTools.js"
@@ -101,6 +101,14 @@ Proceed with the current step now.
 }
 
 /**
+ * Define Anthropic Layer configuration
+ * Using AnthropicClient imported at the top
+ */
+export const AnthropicLayer = AnthropicClient.layerConfig({
+  apiKey: Config.secret("ANTHROPIC_API_KEY")
+})
+
+/**
  * Layer that provides the TaskExecutor implementation
  */
 export const TaskExecutorLayer = Layer.effect(
@@ -132,8 +140,8 @@ export const TaskExecutorLayer = Layer.effect(
           // 5. Create StatefulToolContext for the tool handlers
           const toolContextService = StatefulToolContext.of({
             stateRef: stateRef,
-            planManager: planManager,
-            memoryManager: memoryManager
+            planManager: planManager as unknown as PlanManager,
+            memoryManager: memoryManager as unknown as MemoryManager
           })
           const toolContextLayer = Layer.succeed(StatefulToolContext, toolContextService)
 
@@ -146,10 +154,11 @@ export const TaskExecutorLayer = Layer.effect(
             const { tools, handlers } = githubTools
 
             // 8. Prepare the AI toolkitStream
-            const aiResponseStream = completions.toolkitStream({
+            // Use `as any` to work around library typings issues
+            const aiResponseStream = (completions.toolkitStream as any)({
               model: workingState.configuration.llm_config.model,
               messages: [{ role: "user", content: prompt }],
-              tools: { toolkit: tools, handlers: handlers as unknown as Record<string, (params: any) => Effect.Effect<any, never, never>> },
+              tools: { toolkit: tools, handlers: handlers } as any,
               temperature: workingState.configuration.llm_config.temperature,
               maxTokens: workingState.configuration.llm_config.max_tokens
             })
@@ -167,8 +176,8 @@ export const TaskExecutorLayer = Layer.effect(
                   let nextState = currentState
                   
                   // Handle Text Deltas
-                  if (chunk.response && chunk.response.parts) {
-                    for (const part of chunk.response.parts) {
+                  if ((chunk as any).response && (chunk as any).response.parts) {
+                    for (const part of (chunk as any).response.parts) {
                       if (part._tag === "Text" && part.content) {
                         responseBuffer += part.content
                         // Could broadcast text deltas via SSE here
@@ -181,8 +190,8 @@ export const TaskExecutorLayer = Layer.effect(
                   }
                   
                   // Handle Tool Results (after handler runs and updates state via Ref)
-                  if (chunk.value?._tag === "Some") {
-                    const toolResult = chunk.value.value
+                  if ((chunk as any).value?._tag === "Some") {
+                    const toolResult = (chunk as any).value.value
                     yield* Console.log(`🔧 Tool ${toolResult.name} executed.`)
                     
                     // State should have been updated inside the handler via Ref
@@ -212,7 +221,7 @@ export const TaskExecutorLayer = Layer.effect(
                 })
               ),
               // Provide the StatefulToolContext Layer to the stream processing
-              (stream) => Effect.provide(stream as unknown as Effect.Effect<any, any, any>, toolContextLayer),
+              (stream: any) => Effect.provide(stream as unknown as Effect.Effect<any, any, any>, toolContextLayer),
               Stream.runDrain
             ).pipe(
               Effect.catchAll((aiError) => {
@@ -282,7 +291,7 @@ export const TaskExecutorLayer = Layer.effect(
                     last_error: {
                       timestamp: now,
                       message: failureMessage,
-                      type: "internal",
+                      type: "internal" as const,
                       details: responseBuffer
                     },
                     consecutive_error_count: workingState.error_state.consecutive_error_count + 1

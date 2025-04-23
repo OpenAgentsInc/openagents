@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "@effect/vitest"
-import { Effect, Layer, Ref } from "effect"
+import { Config, Effect, Layer, Ref } from "effect"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
 import { GitHubTools, StatefulToolContext, GitHubToolsLayer } from "../../src/github/GitHubTools.js"
@@ -95,6 +95,12 @@ const getTestState = (): AgentState => ({
 })
 
 describe("GitHubTools", () => {
+  // Create a GitHub API key layer for all tests
+  const GitHubApiKeyLayer = Layer.succeed(
+    Config.Secret("GITHUB_API_KEY"),
+    "test-api-key"
+  )
+  
   it("should define GitHubTools", () => {
     expect(GitHubTools).toBeDefined()
   })
@@ -133,7 +139,7 @@ describe("GitHubTools", () => {
     const addToolCallToStepMock = vi.fn().mockImplementation((state, stepId, toolCallData) => {
       return Effect.succeed({
         ...state,
-        plan: state.plan.map((step) => 
+        plan: state.plan.map((step: any) => 
           step.id === stepId 
             ? { ...step, tool_calls: [...step.tool_calls, { ...toolCallData, timestamp: expect.any(String) }] } 
             : step
@@ -157,7 +163,7 @@ describe("GitHubTools", () => {
     
     const MockGitHubClient = Layer.succeed(
       GitHubClient,
-      GitHubClient.of(mockGitHubClient)
+      GitHubClient.of(mockGitHubClient as unknown as GitHubClient)
     )
     
     // Mock memory manager
@@ -196,7 +202,7 @@ describe("GitHubTools", () => {
     
     const StatefulToolContextLayer = Layer.succeed(
       StatefulToolContext,
-      StatefulToolContext.of(toolContext)
+      StatefulToolContext.of(toolContext as unknown as { readonly stateRef: Ref.Ref<AgentState>; readonly planManager: PlanManager; readonly memoryManager: MemoryManager })
     )
     
     // Create a combined layer with all dependencies
@@ -204,7 +210,8 @@ describe("GitHubTools", () => {
       MockGitHubClient,
       MockMemoryManager,
       MockPlanManager,
-      StatefulToolContextLayer
+      StatefulToolContextLayer,
+      GitHubApiKeyLayer
     )
     
     // Get GitHubTools with test layer
@@ -239,7 +246,7 @@ describe("GitHubTools", () => {
       return result
     })
     
-    const providedEffect = Effect.provide(testEffect, GitHubToolsWithDeps)
+    const providedEffect = Effect.provide(testEffect, GitHubToolsWithDeps) as Effect.Effect<any, unknown, never>
     await Effect.runPromise(providedEffect)
   })
 
@@ -270,7 +277,7 @@ describe("GitHubTools", () => {
     const addToolCallToStepMock = vi.fn().mockImplementation((state, stepId, toolCallData) => {
       return Effect.succeed({
         ...state,
-        plan: state.plan.map((step) => 
+        plan: state.plan.map((step: any) => 
           step.id === stepId 
             ? { ...step, tool_calls: [...step.tool_calls, { ...toolCallData, timestamp: expect.any(String) }] } 
             : step
@@ -294,7 +301,7 @@ describe("GitHubTools", () => {
     
     const MockGitHubClient = Layer.succeed(
       GitHubClient,
-      GitHubClient.of(mockGitHubClient)
+      GitHubClient.of(mockGitHubClient as unknown as GitHubClient)
     )
     
     // Mock memory manager
@@ -333,7 +340,7 @@ describe("GitHubTools", () => {
     
     const StatefulToolContextLayer = Layer.succeed(
       StatefulToolContext,
-      StatefulToolContext.of(toolContext)
+      StatefulToolContext.of(toolContext as unknown as { readonly stateRef: Ref.Ref<AgentState>; readonly planManager: PlanManager; readonly memoryManager: MemoryManager })
     )
     
     // Create a combined layer with all dependencies
@@ -341,7 +348,8 @@ describe("GitHubTools", () => {
       MockGitHubClient,
       MockMemoryManager,
       MockPlanManager,
-      StatefulToolContextLayer
+      StatefulToolContextLayer,
+      GitHubApiKeyLayer
     )
     
     // Get GitHubTools with test layer
@@ -372,7 +380,7 @@ describe("GitHubTools", () => {
       return result
     })
     
-    const providedEffect = Effect.provide(testEffect, GitHubToolsWithDeps)
+    const providedEffect = Effect.provide(testEffect, GitHubToolsWithDeps) as Effect.Effect<any, unknown, never>
     await Effect.runPromise(providedEffect)
   })
 })
