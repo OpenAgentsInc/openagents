@@ -205,7 +205,4 @@ export const PlanManagerLayer = Layer.succeed(
   }
 )
 
-/**
- * Default implementation of the PlanManager service
- */
-export const Default = PlanManagerLayer
+// Default export removed for consistency - use PlanManagerLayer explicitly

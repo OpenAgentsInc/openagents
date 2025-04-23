@@ -22,57 +22,73 @@ DEBUG: CRITICAL - Fork failed with cause: {
 
 ## Root Cause Analysis
 
-After examining the code, I've identified two issues that together caused the "Service not found: PlanManager" error:
+After deep investigation, I've identified a combination of factors causing the persistent "Service not found: PlanManager" error:
 
-1. **Missing NodeContext Layer**: The `createAppLayer` function in `Server.ts` was missing `.pipe(Layer.provide(NodeContext.layer))` at the end of the layer composition. This is critical because `NodeContext.layer` provides essential services like `FileSystem` that other services like `GitHubClient` depend on.
+1. **Tag Reference Equality Issue**: In Effect.js, service Tags must maintain strict object reference equality. The `PlanManager` tag being requested during execution must be exactly the same JavaScript object instance as the one used when constructing `PlanManagerLayer`.
 
-2. **Import/Export Inconsistency**: There was an inconsistency in how the `PlanManager` service was imported and used in `Server.ts`:
-   - The PlanManager Tag was imported directly (`import { PlanManager } from "./github/PlanManager.js"`)
-   - But the server code was trying to use it both as a service tag and as a module namespace
+2. **Inconsistent Export Patterns**: The `PlanManager.ts` file had a mix of standard exports and a secondary `Default` export (`export const Default = PlanManagerLayer`), which could lead to inconsistent module resolution.
 
-3. **Tag Reference Consistency**: In Effect.js, service Tags must maintain reference equality, meaning the exact same Tag instance must be used when providing the service and when requesting it.
+3. **Build/Module Caching Issues**: Even after fixing imports, previously compiled files or module caching might retain old reference patterns.
+
+4. **Missing NodeContext Layer**: The `createAppLayer` function in `Server.ts` was missing `.pipe(Layer.provide(NodeContext.layer))` at the end of the layer composition.
 
 ## Implementation Details
 
-The following changes were implemented to fix the issue:
+I implemented a comprehensive solution to address all these issues:
 
-1. **Added NodeContext Layer**: Modified `createAppLayer` in `Server.ts` to include:
+1. **Standardized Tag/Layer Exports**:
+   - Removed the `export const Default = PlanManagerLayer` line from `PlanManager.ts` to standardize on direct named exports
+   - This ensures consistent imports throughout the codebase
+
+2. **Standardized Imports**:
+   - Updated all imports to maintain reference equality by using direct imports from source files:
+   ```typescript
+   // Consistent, direct imports without aliasing
+   import { PlanManager } from "./github/PlanManager.js";
+   import { PlanManagerLayer } from "./github/PlanManager.js";
+   ```
+
+3. **Added NodeContext Layer**: 
    ```typescript
    return Layer.mergeAll(
      // ... existing layers ...
-   ).pipe(Layer.provide(NodeContext.layer)) // Essential Node.js services 
+   ).pipe(Layer.provide(NodeContext.layer))
    ```
 
-2. **Resolved Import Conflicts**: Fixed import naming collisions in `Server.ts`:
-   ```typescript
-   // Changed first import
-   import { PlanManager as PlanManagerService } from "./github/PlanManager.js"
-   
-   // Changed second import
-   import { PlanManagerLayer } from "./github/PlanManager.js"
-   ```
-
-3. **Consistent Service References**: Updated the debug testing code to use the renamed service tag:
+4. **Standardized Service Access**:
+   - Updated debug code to consistently use `yield* PlanManager` to match usage in TaskExecutor.ts
    ```typescript
    try {
-     console.log("DEBUG: CRITICAL - Testing PlanManagerService")
-     yield* PlanManagerService
-     console.log("DEBUG: CRITICAL - PlanManagerService found")
+     console.log("DEBUG: CRITICAL - Testing PlanManager")
+     yield* PlanManager
+     console.log("DEBUG: CRITICAL - PlanManager found")
    } catch (err) {
      // Error handling...
    }
    ```
 
-4. **Consistent Layer Structure**: Made sure the layer structure in `Server.ts` matched the pattern in `Program.ts`, using `PlanManagerLayer` instead of `PlanManager.Default`.
+5. **Clean Rebuild**:
+   - Completely removed the `build` directory before rebuilding
+   - This ensures no stale compiled files affect the behavior
+
+## Technical Details of Effect.js Tag Resolution
+
+Effect.js dependency injection relies on JavaScript's reference equality for Tags. When a service is requested via `yield* SomeTag`, Effect looks for a Layer that provided exactly that Tag object.
+
+If multiple instances of the same Tag class exist in memory (due to module duplication, import patterns, etc.), Effect.js will fail with "Service not found" even though a service with that name exists.
+
+In our case, we ensured:
+1. `PlanManager` Tag from `./github/PlanManager.js` is the same instance used by both requesters and providers
+2. `PlanManagerLayer` is consistently used in `Layer.mergeAll()` without `Default` aliases
+3. No import aliasing that could create multiple Tag instances
+4. All modules get a clean rebuild to ensure consistent reference patterns
 
 ## Lessons Learned
 
-1. **Service Tag Reference Equality**: In Effect.js, service Tags must maintain reference equality across module boundaries.
+1. **Tag Reference Equality**: Effect.js relies on strict JavaScript reference equality for Tags.
 
-2. **NodeContext is Required**: The `NodeContext.layer` is essential for Effect.js applications running in Node.js, as it provides platform-specific services.
+2. **Consistent Export/Import Patterns**: Using exactly one export/import pattern for Tags and Layers avoids reference mismatches.
 
-3. **Consistent Naming Patterns**: Using consistent naming patterns across the application (like `XxxLayer` for layers providing `Xxx` services) helps avoid confusion.
+3. **Clean Rebuilds**: When experiencing persistent dependency injection issues, a complete clean of compiled files can help resolve hidden issues.
 
-4. **Import Aliasing**: When dealing with potential naming conflicts in TypeScript, use import aliasing to disambiguate.
-
-These changes ensure that when a service is requested from the context, it exactly matches the service that was provided to that context.
+4. **NodeContext is Essential**: Always provide the `NodeContext.layer` for Node.js applications using Effect.js.
