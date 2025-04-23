@@ -233,6 +233,7 @@ describe("TaskExecutor", () => {
         mockGitHubClient
       )
 
+      // Merge all mock layers into a single test layer
       const TestLayer = Layer.mergeAll(
         MockPlanManager,
         MockGitHubClient,
@@ -240,19 +241,13 @@ describe("TaskExecutor", () => {
         MockGitHubTools
       )
 
+      // Create a complete TaskExecutor layer with dependencies provided by the TestLayer
+      const TaskExecutorWithDeps = Layer.provide(TaskExecutorLayer, TestLayer)
+      
       // Act
-      // Use a more direct approach with Effect.gen
-      const program = Effect.gen(function*() {
-        const executor = yield* TaskExecutor
-        return yield* executor.executeNextStep(initialState)
-      })
-
-      const finalState = await Effect.runPromise(
-        Effect.provide(
-          program,
-          Layer.provide(TaskExecutorLayer, TestLayer)
-        ).pipe(Effect.orDie)
-      )
+      const effectToTest = Effect.flatMap(TaskExecutor, (executor) => executor.executeNextStep(initialState))
+      // Use the as unknown as any casting pattern to get around type conflicts
+      const result = await Effect.runPromise(Effect.provide(effectToTest as unknown as any, TaskExecutorWithDeps))
 
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
@@ -260,9 +255,10 @@ describe("TaskExecutor", () => {
       expect(saveAgentStateMock).toHaveBeenCalledTimes(1)
 
       // Verify step advancement
-      expect(finalState.current_task.current_step_index).toBe(1)
-      expect(finalState.plan[0].status).toBe("completed")
-      expect(finalState.plan[0].result_summary).toBeDefined()
+      const typedResult = result as AgentState
+      expect(typedResult.current_task.current_step_index).toBe(1)
+      expect(typedResult.plan[0].status).toBe("completed")
+      expect(typedResult.plan[0].result_summary).toBeDefined()
     })
 
     it("should handle step execution failure correctly", async () => {
@@ -306,7 +302,7 @@ describe("TaskExecutor", () => {
         return Effect.succeed(state)
       })
 
-      // Create the same mock layers
+      // Create the mock layers
       const MockPlanManager = Layer.succeed(
         PlanManager,
         PlanManager.of({
@@ -375,7 +371,7 @@ describe("TaskExecutor", () => {
       const ErrorTaskExecutorLayer = Layer.succeed(
         TaskExecutor,
         TaskExecutor.of({
-          executeNextStep: (_currentState: AgentState): Effect.Effect<AgentState, Error, any> => {
+          executeNextStep: (_currentState: AgentState): Effect.Effect<AgentState, Error, never> => {
             // Create the error state with our expected values
             const errorState: AgentState = {
               ...initialState,
@@ -411,27 +407,18 @@ describe("TaskExecutor", () => {
         })
       )
 
-      // Compose our test layers
-      const TestLayerWithMocks = Layer.mergeAll(
+      // Merge all the mock layers
+      const AllMockLayers = Layer.mergeAll(
         MockPlanManager,
         MockGitHubClient,
         MockMemoryManager,
         MockGitHubTools
       )
 
-      // Use a more direct approach with Effect.gen
-      const program = Effect.gen(function*() {
-        const executor = yield* TaskExecutor
-        return yield* executor.executeNextStep(initialState)
-      })
-      
-      // Provide the necessary layers and handle casting to ensure compatibility with expected types
-      const finalState = await Effect.runPromise(
-        Effect.provide(
-          program,
-          Layer.provide(ErrorTaskExecutorLayer, TestLayerWithMocks)
-        ).pipe(Effect.orDie)
-      )
+      // Act
+      const effectToTest = Effect.flatMap(TaskExecutor, (executor) => executor.executeNextStep(initialState))
+      // Use the as unknown as any casting pattern to get around type conflicts
+      const result = await Effect.runPromise(Effect.provide(effectToTest as unknown as any, Layer.provide(ErrorTaskExecutorLayer, AllMockLayers)))
 
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
@@ -439,13 +426,14 @@ describe("TaskExecutor", () => {
       expect(saveAgentStateMock).toHaveBeenCalledTimes(1)
 
       // Verify error handling
-      expect(finalState.current_task.current_step_index).toBe(0) // Not advanced
-      expect(finalState.plan[0].status).toBe("error")
-      expect(finalState.plan[0].result_summary).toContain("Failed")
-      expect(finalState.error_state.last_error).not.toBeNull()
-      expect(finalState.error_state.last_error?.message).toBe(mockError.message)
-      expect(finalState.error_state.last_error?.type).toBe("internal")
-      expect(finalState.error_state.consecutive_error_count).toBe(1)
+      const typedResult = result as AgentState
+      expect(typedResult.current_task.current_step_index).toBe(0) // Not advanced
+      expect(typedResult.plan[0].status).toBe("error")
+      expect(typedResult.plan[0].result_summary).toContain("Failed")
+      expect(typedResult.error_state.last_error).not.toBeNull()
+      expect(typedResult.error_state.last_error?.message).toBe(mockError.message)
+      expect(typedResult.error_state.last_error?.type).toBe("internal")
+      expect(typedResult.error_state.consecutive_error_count).toBe(1)
     })
   })
 })

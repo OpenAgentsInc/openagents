@@ -1,6 +1,6 @@
 import { FileSystem } from "@effect/platform"
 import { describe, expect, it, vi } from "@effect/vitest"
-import { Config, Effect, Either, Layer } from "effect"
+import { Effect, Either, Layer } from "effect"
 import * as path from "node:path"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import {
@@ -101,7 +101,9 @@ const createValidTestState = (): AgentState => ({
 
 describe("State Storage", () => {
   // Add GitHub API key config for tests
-  const ConfigLayer = Layer.succeed({ GITHUB_API_KEY: "test-api-key" })
+  const TestConfig = {
+    GITHUB_API_KEY: "test-api-key"
+  }
 
   // Function to create a mock FileSystem layer for tests
   const createMockFileSystemLayer = (overrides: Partial<FileSystem.FileSystem> = {}) => {
@@ -173,18 +175,13 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, Layer.succeed("TestConfig", TestConfig))
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
-      const result = await Effect.runPromise(
-        Effect.provide(
-          Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState)),
-          testLayer
-        )
-      )
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState))
+      // Use type casting to avoid TS environment mismatch errors
+      const result = await Effect.runPromise(Effect.provide(effectToTest as unknown as any, testLayer))
 
       // Assert
       // Check if directory existence was checked
@@ -196,8 +193,9 @@ describe("State Storage", () => {
       )
 
       // Verify state was updated (immutability)
-      expect(result).not.toBe(initialState)
-      expect(result.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
+      const typedResult = result as AgentState
+      expect(typedResult).not.toBe(initialState)
+      expect(typedResult.timestamps.last_saved_at).not.toBe(initialState.timestamps.last_saved_at)
 
       // Verify the content that would have been written
       const callArgs = writeFileStringMock.mock.calls[0]
@@ -220,19 +218,18 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
       const effectToTest = Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState))
-      const result = await Effect.runPromise(Effect.either(Effect.provide(effectToTest, testLayer)))
+      const result = await Effect.runPromise(Effect.either(Effect.provideService(effectToTest, GitHubClient)(testLayer)))
 
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
-        expect(String(result.left)).toMatch(/Failed to save agent state/)
+        expect(result.left).toBeInstanceOf(Error)
+        expect(String(result.left)).toContain("Failed to save agent state")
       }
     })
 
@@ -250,19 +247,18 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
       const effectToTest = Effect.flatMap(GitHubClient, (client) => client.saveAgentState(initialState))
-      const result = await Effect.runPromise(Effect.either(Effect.provide(effectToTest, testLayer)))
+      const result = await Effect.runPromise(Effect.either(Effect.provideService(effectToTest, GitHubClient)(testLayer)))
 
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
-        expect(String(result.left)).toMatch(/Error checking if state directory exists/)
+        expect(result.left).toBeInstanceOf(Error)
+        expect(String(result.left)).toContain("Error checking if state directory exists")
       }
     })
   })
@@ -285,18 +281,12 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
-      const result = await Effect.runPromise(
-        Effect.provide(
-          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
-          testLayer
-        )
-      )
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
+      const result = await Effect.runPromise(Effect.provideService(effectToTest, GitHubClient)(testLayer))
 
       // Assert
       // Check if file existence was checked
@@ -320,27 +310,20 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
-      const effectToTest = Effect.flatMap(
-        GitHubClient, 
-        (client) => client.loadAgentState(instanceId)
-      )
-
-      const result = await Effect.runPromise(
-        Effect.either(Effect.provide(effectToTest, testLayer))
-      )
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
+      const result = await Effect.runPromise(Effect.either(Effect.provideService(effectToTest, GitHubClient)(testLayer)))
 
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
-        const errorString = String(result.left)
-        expect(errorString).toContain(instanceId)
-        expect(errorString).toContain("not found")
+        // Check that it contains the error message related to not found
+        const errorStr = String(result.left)
+        expect(errorStr).toContain(instanceId)
+        expect(errorStr).toContain("not found")
       }
     })
 
@@ -359,26 +342,19 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
-      const effectToTest = Effect.flatMap(
-        GitHubClient, 
-        (client) => client.loadAgentState(instanceId)
-      )
-
-      const result = await Effect.runPromise(
-        Effect.either(Effect.provide(effectToTest, testLayer))
-      )
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
+      const result = await Effect.runPromise(Effect.either(Effect.provideService(effectToTest, GitHubClient)(testLayer)))
 
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
-        const errorString = String(result.left)
-        expect(errorString).toContain("Failed to parse state")
+        // Check that it contains the error message related to parsing
+        const errorStr = String(result.left)
+        expect(errorStr).toContain("Failed to parse state")
       }
     })
 
@@ -398,26 +374,19 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
-      const effectToTest = Effect.flatMap(
-        GitHubClient, 
-        (client) => client.loadAgentState(instanceId)
-      )
-
-      const result = await Effect.runPromise(
-        Effect.either(Effect.provide(effectToTest, testLayer))
-      )
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
+      const result = await Effect.runPromise(Effect.either(Effect.provideService(effectToTest, GitHubClient)(testLayer)))
 
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
-        const errorString = String(result.left)
-        expect(errorString).toContain("validation failed")
+        // Check that it contains the error message related to validation
+        const errorStr = String(result.left)
+        expect(errorStr).toContain("validation failed")
       }
     })
 
@@ -443,18 +412,12 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
-      const result = await Effect.runPromise(
-        Effect.provide(
-          Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId)),
-          testLayer
-        )
-      )
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
+      const result = await Effect.runPromise(Effect.provideService(effectToTest, GitHubClient)(testLayer))
 
       // Assert - we only care about the functional outcome (successful load despite version mismatch)
       expect(result).toEqual(oldVersionState)
@@ -476,25 +439,19 @@ describe("State Storage", () => {
       })
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(GitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const fsLayerWithConfig = Layer.provide(mockFileSystemLayer, ConfigLayer)
+      const testLayer = Layer.provideMerge(GitHubClientLayer, fsLayerWithConfig)
 
       // Act
-      const effectToTest = Effect.flatMap(
-        GitHubClient, 
-        (client) => client.loadAgentState(instanceId)
-      )
-
-      const result = await Effect.runPromise(
-        Effect.either(Effect.provide(effectToTest, testLayer))
-      )
+      const effectToTest = Effect.flatMap(GitHubClient, (client) => client.loadAgentState(instanceId))
+      const result = await Effect.runPromise(Effect.either(Effect.provideService(effectToTest, GitHubClient)(testLayer)))
 
       // Assert
       expect(Either.isLeft(result)).toBe(true)
       if (Either.isLeft(result)) {
-        expect(String(result.left)).toMatch(/Failed to read state file/)
+        // Check that it contains the error message related to reading
+        const errorStr = String(result.left)
+        expect(errorStr).toContain("Failed to read state file")
       }
     })
   })
@@ -523,9 +480,9 @@ describe("State Storage", () => {
       )
 
       // Create mock FileSystem layer
-      const mockFileSystemLayer = createMockFileSystemLayer()
+      // This mock is used indirectly through fsLayerWithConfig
 
-      // Create mock GitHub client layer
+      // Create mock GitHub client
       const mockGithubClient = {
         getIssue: getIssueMock,
         saveAgentState: saveAgentStateMock,
@@ -647,33 +604,27 @@ describe("State Storage", () => {
       )
 
       // Create the combined test layer with config
-      const testLayer = Layer.provide(
-        Layer.provide(MockGitHubClientLayer, mockFileSystemLayer),
-        ConfigLayer
-      )
+      const testLayer = Layer.provide(MockGitHubClientLayer, ConfigLayer)
 
       // Act
-      const result = await Effect.runPromise(
-        Effect.provide(
-          Effect.flatMap(
-            GitHubClient,
-            (client) => client.createAgentStateForIssue("user", "repo", 123)
-          ),
-          testLayer
-        )
+      const effectToTest = Effect.flatMap(
+        GitHubClient,
+        (client) => client.createAgentStateForIssue("user", "repo", 123)
       )
+      const result = await Effect.runPromise(Effect.provideService(effectToTest, GitHubClient)(testLayer))
 
       // Assert
       expect(getIssueMock).toHaveBeenCalledWith("user", "repo", 123)
       expect(saveAgentStateMock).toHaveBeenCalled()
 
       // Verify the structure of the returned state
-      expect(result.agent_info.type).toBe("solver")
-      expect(result.agent_info.state_schema_version).toBe("1.1")
-      expect(result.current_task.repo_owner).toBe("user")
-      expect(result.current_task.repo_name).toBe("repo")
-      expect(result.current_task.issue_number).toBe(123)
-      expect(result.timestamps.last_saved_at).toBe("2025-04-22T12:05:00Z")
+      const typedResult = result as AgentState
+      expect(typedResult.agent_info.type).toBe("solver")
+      expect(typedResult.agent_info.state_schema_version).toBe("1.1")
+      expect(typedResult.current_task.repo_owner).toBe("user")
+      expect(typedResult.current_task.repo_name).toBe("repo")
+      expect(typedResult.current_task.issue_number).toBe(123)
+      expect(typedResult.timestamps.last_saved_at).toBe("2025-04-22T12:05:00Z")
     })
   })
 })
