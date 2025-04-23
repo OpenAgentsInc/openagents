@@ -9,5 +9,11 @@
     "noEmitOnError": false
   },
   "include": ["src/**/*"],
-  "exclude": ["test/**/*"]
+  "exclude": ["test/**/*"],
+  "files": [
+    "src/index.ts",
+    "src/Program.ts",
+    "src/Server.ts",
+    "src/github/PlanManager.ts"
+  ]
 }

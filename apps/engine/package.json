@@ -16,7 +16,8 @@
   "scripts": {
     "start": "tsc -b tsconfig.build.json && node build/esm/index.js",
     "start-ignore-errors": "tsc --project tsconfig.build.json --noEmitOnError false && node build/esm/index.js",
-    "debug-tags": "npx tsc --project tsconfig.debug.json && node build/debug/index.js",
+    "debug-tags": "npx tsc --project tsconfig.debug.json --noEmitOnError false && node build/debug/Server.js",
+    "test-minimal": "node --experimental-specifier-resolution=node --loader ts-node/esm test-minimal-layer.js",
     "build-ignore-errors": "tsc --project tsconfig.build.json --noEmitOnError false",
     "codegen": "build-utils prepare-v2",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",
@@ -63,6 +64,7 @@
     "eslint-plugin-import": "^2.30.0",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "eslint-plugin-sort-destructure-keys": "^2.0.0",
+    "ts-node": "^10.9.2",
     "tsx": "^4.17.0",
     "typescript": "^5.6.2",
     "vitest": "^2.0.5"
