@@ -1,16 +1,13 @@
 import * as dotenv from "dotenv"
-import { Effect, Layer, Ref } from "effect"
+import { Effect, Ref } from "effect"
 import * as fs from "node:fs"
 import * as Http from "node:http"
 import * as path from "node:path"
-import { NodeContext } from "@effect/platform-node"
 import type { AgentState } from "./github/AgentStateTypes.js"
 // Import TAGS from Program (single source of truth)
 import { GitHubClient, TaskExecutor, PlanManager } from "./Program.js"
-// Import AllLayers - commented out for minimal layer test
-// import { AllLayers } from "./Program.js"
-// Import the specific layer for testing
-import { PlanManagerLayer } from "./github/PlanManager.js"
+// Import AllLayers
+import { AllLayers } from "./Program.js"
 
 // Load environment variables from .env file
 const loadConfig = Effect.try({
@@ -405,23 +402,15 @@ const createHttpServer = (): Http.Server => {
           console.log(`DEBUG: TAG_CHECK - PlanManager Tag IMPORTED in Server.ts:`, PlanManager);
           // ----> END TAG IDENTITY LOGGING (SERVER) <----
 
-          // ----> START MINIMAL LAYER TEST <----
-          const MinimalLayerForTest = Layer.mergeAll(
-              PlanManagerLayer, // Provide only PlanManagerLayer
-              NodeContext.layer // And the essential NodeContext
-          );
-          log(`DEBUG: CRITICAL - Providing MINIMAL TEST Layer`);
-          // ----> END MINIMAL LAYER TEST <----
-
           // Add direct tracking of the fork's execution
           // Use 'as any' to handle complex Effect.js type inference issues
           const fork = Effect.runFork(
-            Effect.provide(pipelineWithDebugging, MinimalLayerForTest).pipe(
+            Effect.provide(pipelineWithDebugging, AllLayers).pipe(
               Effect.catchAll((err) => {
                 // Log the error thoroughly
                 const errorMsg = err instanceof Error ? err.stack : String(err)
-                console.error(`FATAL PIPELINE ERROR (Minimal Layer Test): ${errorMsg}`)
-                broadcastSSE("error", `FATAL PIPELINE ERROR (Minimal Test): ${err instanceof Error ? err.message : String(err)}`)
+                console.error(`FATAL PIPELINE ERROR: ${errorMsg}`)
+                broadcastSSE("error", `FATAL PIPELINE ERROR: ${err instanceof Error ? err.message : String(err)}`)
                 return Effect.void // End the effect gracefully after logging
               })
             ) as any
@@ -443,7 +432,7 @@ const createHttpServer = (): Http.Server => {
 
         // Immediately respond to the HTTP request
         res.writeHead(200, { "Content-Type": "text/plain" })
-        res.end("Issue processing initiated (minimal layer test)")
+        res.end("Issue processing initiated")
         log(`DEBUG: HTTP response sent, async processing continues in background`)
       })
       return
@@ -537,6 +526,6 @@ export const startServer = (): void => {
 }
 
 // Start the server if this file is run directly
-// For minimal layer test, we always start the server when executing this file directly
-startServer()
-console.log("MINIMAL LAYER TEST: Direct Server.js execution for testing minimal layer configuration")
+if (import.meta.url === `file://${process.argv[1]}`) {
+  startServer()
+}

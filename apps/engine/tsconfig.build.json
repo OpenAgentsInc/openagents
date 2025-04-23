@@ -7,10 +7,5 @@
     "declarationDir": "build/dts",
     "stripInternal": true
   },
-  "include": ["src/**/*"],
-  "files": [
-    "src/index.ts",
-    "src/Program.ts",
-    "src/Server.ts"
-  ]
+  "include": ["src/**/*"]
 }

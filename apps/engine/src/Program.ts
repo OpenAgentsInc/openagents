@@ -54,9 +54,11 @@ console.log("DEBUG: CRITICAL - Successfully created anthropicWithHttpLayer")
 
 // Final merged layer
 export const AllLayers = Layer.mergeAll(
+  // Required platform layers
+  NodeContext.layer,
   // Service layers
   GitHubClientLayer,
-  PlanManagerLayer,
+  // PlanManagerLayer REMOVED from here
   ContextManagerLayer,
   MemoryManagerLayer,
   // Tools layer
@@ -66,7 +68,7 @@ export const AllLayers = Layer.mergeAll(
   // AI layer
   anthropicWithHttpLayer
 ).pipe(
-  Layer.provide(NodeContext.layer),
+  Layer.provide(PlanManagerLayer), // <-- EXPLICITLY PROVIDE HERE
   Layer.tap(() => Effect.sync(() => {
     console.log("DEBUG: CRITICAL - AllLayers composition created and initialized successfully")
   }))
