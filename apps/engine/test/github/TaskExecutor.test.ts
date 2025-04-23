@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "@effect/vitest"
 import { Completions } from "@effect/ai"
 import type { Context } from "effect"
 import { Config, Effect, Layer, Stream } from "effect"
-import { FileSystem } from "@effect/platform"
 import { NodeFileSystem } from "@effect/platform-node"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
@@ -122,8 +121,8 @@ describe("TaskExecutor", () => {
   // Create test environment layers for all tests
   const TestEnvLayer = Layer.mergeAll(
     Layer.setConfigProvider(
-      Config.setSecret("GITHUB_API_KEY")("test-api-key"),
-      Config.setSecret("ANTHROPIC_API_KEY")("test-api-key")
+      Config.secret("GITHUB_API_KEY").pipe(Config.withDefault("test-api-key")),
+      Config.secret("ANTHROPIC_API_KEY").pipe(Config.withDefault("test-api-key"))
     ),
     NodeFileSystem.layer
   )
