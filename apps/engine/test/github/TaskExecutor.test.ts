@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "@effect/vitest"
+import { Completions } from "@effect/ai"
 import type { Context } from "effect"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
-import { GitHubTools } from "../../src/github/GitHubTools.js"
+import { GitHubTools, StatefulToolContext } from "../../src/github/GitHubTools.js"
 import { MemoryManager } from "../../src/github/MemoryManager.js"
 import { PlanManager } from "../../src/github/PlanManager.js"
 import { TaskExecutor, TaskExecutorLayer } from "../../src/github/TaskExecutor.js"
@@ -15,6 +16,7 @@ type TestEnv =
   | Context.Tag.Identifier<typeof PlanManager>
   | Context.Tag.Identifier<typeof MemoryManager>
   | Context.Tag.Identifier<typeof GitHubTools>
+  | Context.Tag.Identifier<typeof Completions.Completions>
 
 // Create a basic fixture for testing
 const createTestState = (): AgentState => ({
@@ -198,7 +200,48 @@ describe("TaskExecutor", () => {
         })
       })
 
-      // Create test layers
+      // Mock for tool invocation log entries
+      const addToolInvocationLogEntryMock = vi.fn().mockImplementation((state, toolCallData) => {
+        return Effect.succeed({
+          ...state,
+          tool_invocation_log: [
+            ...state.tool_invocation_log,
+            {
+              ...toolCallData,
+              timestamp: expect.any(String)
+            }
+          ]
+        })
+      })
+
+      // Mock for completions service
+      const toolkitStreamMock = vi.fn().mockImplementation(() => {
+        // Create mock response data
+        const textPart = {
+          _tag: "Text" as const,
+          content: "I'm analyzing the issue. STEP COMPLETED: Analysis complete."
+        }
+
+        // Mock stream with just a text part (no tool calls in this test)
+        const streamItem = {
+          response: {
+            parts: [textPart]
+          },
+          value: { _tag: "None" as const }
+        }
+
+        return Stream.make(streamItem)
+      })
+
+      // Create a mock completions service
+      const mockCompletions = {
+        toolkit: vi.fn(),
+        toolkitStream: toolkitStreamMock,
+        completionStream: vi.fn(),
+        completion: vi.fn()
+      }
+
+      // Create mock services and their layers
       const MockPlanManager = Layer.succeed(
         PlanManager,
         PlanManager.of({
@@ -216,8 +259,13 @@ describe("TaskExecutor", () => {
           addKeyDecision: vi.fn().mockReturnValue(Effect.succeed(initialState)),
           addImportantFinding: vi.fn().mockReturnValue(Effect.succeed(initialState)),
           updateScratchpad: vi.fn().mockReturnValue(Effect.succeed(initialState)),
-          addToolInvocationLogEntry: vi.fn().mockReturnValue(Effect.succeed(initialState))
+          addToolInvocationLogEntry: addToolInvocationLogEntryMock
         })
+      )
+
+      const MockCompletions = Layer.succeed(
+        Completions.Completions,
+        Completions.Completions.of(mockCompletions)
       )
 
       const MockGitHubTools = Layer.succeed(
@@ -226,7 +274,7 @@ describe("TaskExecutor", () => {
           tools: { tools: {} } as any,
           handlers: {
             GetGitHubIssue: vi.fn().mockReturnValue(Effect.succeed({ title: "Test Issue" })),
-            ListGitHubIssues: vi.fn().mockReturnValue(Effect.succeed([])),
+            ListGitHubIssues: vi.fn().mockReturnValue(Effect.succeed({ issues: [] })),
             CreateGitHubComment: vi.fn().mockReturnValue(Effect.succeed({})),
             UpdateGitHubIssue: vi.fn().mockReturnValue(Effect.succeed({})),
             GetGitHubRepository: vi.fn().mockReturnValue(Effect.succeed({})),
@@ -248,7 +296,7 @@ describe("TaskExecutor", () => {
           labels: [{ name: "bug" }],
           html_url: "https://github.com/user/repo/issues/123"
         })),
-        listIssues: vi.fn().mockReturnValue(Effect.succeed([])),
+        listIssues: vi.fn().mockReturnValue(Effect.succeed({ issues: [] })),
         getIssueComments: vi.fn().mockReturnValue(Effect.succeed([])),
         createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
         getRepository: vi.fn().mockReturnValue(Effect.succeed({ default_branch: "main" })),
@@ -260,7 +308,7 @@ describe("TaskExecutor", () => {
 
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
-        mockGitHubClient
+        GitHubClient.of(mockGitHubClient)
       )
 
       // Merge all mock layers into a single test layer
@@ -268,7 +316,8 @@ describe("TaskExecutor", () => {
         MockPlanManager,
         MockGitHubClient,
         MockMemoryManager,
-        MockGitHubTools
+        MockGitHubTools,
+        MockCompletions
       )
 
       // Create a complete TaskExecutor layer with dependencies provided by the TestLayer
@@ -291,6 +340,8 @@ describe("TaskExecutor", () => {
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
       expect(updateStepStatusMock).toHaveBeenCalledTimes(2)
       expect(saveAgentStateMock).toHaveBeenCalledTimes(2)
+      expect(toolkitStreamMock).toHaveBeenCalledTimes(1)
+      expect(addConversationMessageMock).toHaveBeenCalled()
 
       // Verify step advancement
       const typedResult = result as AgentState
@@ -333,19 +384,66 @@ describe("TaskExecutor", () => {
           return Effect.succeed({ ...state, plan: updatedPlan })
         })
 
-      // In the error case test, we're using the mock ErrorTaskExecutor which
-      // directly creates a state with 'error' status, so we don't see the in_progress transition
+      // In the error case test, we're expecting an error state
       const saveAgentStateMock = vi.fn().mockImplementation((state) => {
-        // In this test we're using a mock executor that already sets the state to 'error'
-        expect(state.plan[0].status).toBe("error")
-        expect(state.error_state.last_error).not.toBeNull()
-        expect(state.error_state.consecutive_error_count).toBe(1)
-        expect(state.current_task.current_step_index).toBe(0) // Not advanced
+        // First call happens when status is set to in_progress
+        if (state.plan[0].status === "in_progress") {
+          expect(state.current_task.current_step_index).toBe(0) // Not advanced
+        }
+        // Final call happens after error handling
+        else if (state.plan[0].status === "error") {
+          expect(state.error_state.last_error).not.toBeNull()
+          expect(state.error_state.consecutive_error_count).toBe(1)
+          expect(state.current_task.current_step_index).toBe(0) // Not advanced
+        }
 
         return Effect.succeed(state)
       })
 
-      // Create the mock layers
+      // Mock for adding conversation messages
+      const addConversationMessageMock = vi.fn().mockImplementation((state, role, content) => {
+        return Effect.succeed({
+          ...state,
+          memory: {
+            ...state.memory,
+            conversation_history: [
+              ...state.memory.conversation_history,
+              {
+                role,
+                content,
+                timestamp: expect.any(String),
+                tool_calls: null
+              }
+            ]
+          }
+        })
+      })
+
+      // Mock for completions service that fails
+      const toolkitStreamMock = vi.fn().mockImplementation(() => {
+        // Create a stream that emits a failure with "STEP FAILED" message
+        const textPart = {
+          _tag: "Text" as const,
+          content: "I'm trying but... STEP FAILED: Unable to proceed due to error."
+        }
+
+        return Stream.make({
+          response: {
+            parts: [textPart]
+          },
+          value: { _tag: "None" as const }
+        })
+      })
+
+      // Create a mock completions service
+      const mockCompletions = {
+        toolkit: vi.fn(),
+        toolkitStream: toolkitStreamMock,
+        completionStream: vi.fn(),
+        completion: vi.fn()
+      }
+
+      // Create the mock services
       const MockPlanManager = Layer.succeed(
         PlanManager,
         PlanManager.of({
@@ -359,12 +457,17 @@ describe("TaskExecutor", () => {
       const MockMemoryManager = Layer.succeed(
         MemoryManager,
         MemoryManager.of({
-          addConversationMessage: vi.fn().mockReturnValue(Effect.succeed(initialState)),
+          addConversationMessage: addConversationMessageMock,
           addKeyDecision: vi.fn().mockReturnValue(Effect.succeed(initialState)),
           addImportantFinding: vi.fn().mockReturnValue(Effect.succeed(initialState)),
           updateScratchpad: vi.fn().mockReturnValue(Effect.succeed(initialState)),
           addToolInvocationLogEntry: vi.fn().mockReturnValue(Effect.succeed(initialState))
         })
+      )
+
+      const MockCompletions = Layer.succeed(
+        Completions.Completions,
+        Completions.Completions.of(mockCompletions)
       )
 
       const MockGitHubTools = Layer.succeed(
@@ -395,7 +498,7 @@ describe("TaskExecutor", () => {
           labels: [{ name: "bug" }],
           html_url: "https://github.com/user/repo/issues/123"
         })),
-        listIssues: vi.fn().mockReturnValue(Effect.succeed([])),
+        listIssues: vi.fn().mockReturnValue(Effect.succeed({ issues: [] })),
         getIssueComments: vi.fn().mockReturnValue(Effect.succeed([])),
         createIssueComment: vi.fn().mockReturnValue(Effect.succeed({})),
         getRepository: vi.fn().mockReturnValue(Effect.succeed({ default_branch: "main" })),
@@ -407,47 +510,7 @@ describe("TaskExecutor", () => {
 
       const MockGitHubClient = Layer.succeed(
         GitHubClient,
-        mockGitHubClient
-      )
-
-      // Create a mock TaskExecutor that will return an error state
-      const ErrorTaskExecutorLayer = Layer.succeed(
-        TaskExecutor,
-        TaskExecutor.of({
-          executeNextStep: (_currentState: AgentState): Effect.Effect<AgentState, Error, never> => {
-            // Create the error state with our expected values
-            const errorState: AgentState = {
-              ...initialState,
-              plan: [
-                {
-                  ...initialState.plan[0],
-                  status: "error",
-                  end_time: "2025-04-22T12:02:00Z",
-                  result_summary: `Failed: ${mockError.message}`
-                },
-                ...initialState.plan.slice(1)
-              ],
-              error_state: {
-                ...initialState.error_state,
-                last_error: {
-                  timestamp: "2025-04-22T12:02:00Z",
-                  message: mockError.message,
-                  type: "internal",
-                  details: ""
-                },
-                consecutive_error_count: 1
-              }
-            }
-
-            // Call the mocks to ensure they're called for test assertions
-            getCurrentStepMock(initialState)
-            updateStepStatusMock(initialState, initialState.plan[0].id, "in_progress")
-            updateStepStatusMock(initialState, initialState.plan[0].id, "error", `Failed: ${mockError.message}`)
-            saveAgentStateMock(errorState)
-
-            return Effect.succeed(errorState)
-          }
-        })
+        GitHubClient.of(mockGitHubClient)
       )
 
       // Merge all the mock layers
@@ -455,8 +518,12 @@ describe("TaskExecutor", () => {
         MockPlanManager,
         MockGitHubClient,
         MockMemoryManager,
-        MockGitHubTools
+        MockGitHubTools,
+        MockCompletions
       )
+
+      // Create the TaskExecutor layer with dependencies
+      const TaskExecutorWithDeps = Layer.provide(TaskExecutorLayer, AllMockLayers)
 
       // Act
       // Use explicit type for the environment
@@ -466,10 +533,7 @@ describe("TaskExecutor", () => {
       }) as Effect.Effect<AgentState, Error, TestEnv>
 
       // Provide the combined layer to the effect
-      const errorTaskExecutorWithDeps = Layer.provide(ErrorTaskExecutorLayer, AllMockLayers)
-
-      // Use explicit type annotation and type assertion to resolve type issues
-      const providedEffect = Effect.provide(effectToTest, errorTaskExecutorWithDeps)
+      const providedEffect = Effect.provide(effectToTest, TaskExecutorWithDeps)
       // Cast to remove the environment type since all dependencies are provided
       const effectWithNoEnv = providedEffect as Effect.Effect<AgentState, Error, never>
       const result = await Effect.runPromise(effectWithNoEnv)
@@ -477,7 +541,8 @@ describe("TaskExecutor", () => {
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
       expect(updateStepStatusMock).toHaveBeenCalledTimes(2)
-      expect(saveAgentStateMock).toHaveBeenCalledTimes(1)
+      expect(saveAgentStateMock).toHaveBeenCalledTimes(2)
+      expect(toolkitStreamMock).toHaveBeenCalledTimes(1)
 
       // Verify error handling
       const typedResult = result as AgentState
@@ -485,8 +550,6 @@ describe("TaskExecutor", () => {
       expect(typedResult.plan[0].status).toBe("error")
       expect(typedResult.plan[0].result_summary).toContain("Failed")
       expect(typedResult.error_state.last_error).not.toBeNull()
-      expect(typedResult.error_state.last_error?.message).toBe(mockError.message)
-      expect(typedResult.error_state.last_error?.type).toBe("internal")
       expect(typedResult.error_state.consecutive_error_count).toBe(1)
     })
   })

@@ -1,7 +1,10 @@
+import { Completions } from "@effect/ai"
+// Import type-only to avoid unused import warning
+import type { AnthropicCompletions } from "@effect/ai-anthropic"
 import { Console, Effect, Layer, Ref, Stream } from "effect"
 import type { AgentState } from "./AgentStateTypes.js"
 import { GitHubClient } from "./GitHub.js"
-import { GitHubTools, ToolExecutionError } from "./GitHubTools.js"
+import { GitHubTools, StatefulToolContext, ToolExecutionError } from "./GitHubTools.js"
 import { MemoryManager } from "./MemoryManager.js"
 import { PlanManager } from "./PlanManager.js"
 
@@ -107,36 +110,8 @@ export const TaskExecutorLayer = Layer.effect(
     const planManager = yield* PlanManager
     const memoryManager = yield* MemoryManager
     const githubClient = yield* GitHubClient
-    // Only for initialization, not used in the actual functions yet
-    yield* GitHubTools
-
-    // Mock simplified AI completion since we don't have actual integration yet
-    // This will be replaced with the real AI integration in a future phase
-    const simulateAIWithTools = (input: string) =>
-      Effect.gen(function*() {
-        // Log that we're simulating AI
-        yield* Console.log("🤖 Simulating AI with tools...")
-        yield* Console.log("📝 Prompt (summarized):", input.substring(0, 100) + "...")
-
-        // Create a simulated response
-        const response = `I've analyzed the current step and completed it successfully. 
-
-STEP COMPLETED: The step has been executed and all required tasks were performed.`
-
-        // Create simulated text part for the response
-        const textPart = {
-          _tag: "Text" as const,
-          content: response
-        }
-
-        // Simulate a Stream of responses
-        return Stream.fromIterable([{
-          response: {
-            parts: [textPart]
-          },
-          value: { _tag: "None" as const }
-        }])
-      })
+    const githubTools = yield* GitHubTools
+    const completions = yield* Completions.Completions
 
     return {
       executeNextStep: (currentState: AgentState): Effect.Effect<AgentState, Error, any> =>
@@ -154,106 +129,151 @@ STEP COMPLETED: The step has been executed and all required tasks were performed
           // 4. Create a Ref to hold the state during AI/tool executions
           const stateRef = yield* Ref.make(workingState)
 
+          // 5. Create StatefulToolContext for the tool handlers
+          const toolContextService = StatefulToolContext.of({
+            stateRef: stateRef,
+            planManager: planManager,
+            memoryManager: memoryManager
+          })
+          const toolContextLayer = Layer.succeed(StatefulToolContext, toolContextService)
+
           try {
-            // 5. Construct prompt from state
+            // 6. Construct prompt from state
             const prompt = constructPromptFromState(workingState, currentStep)
             yield* Console.log("🧠 Prompting AI to execute step...")
 
-            // 6. Call simulated AI with tools
-            const aiResponseStream = yield* simulateAIWithTools(prompt)
+            // 7. Get tools/handlers from githubTools
+            const { tools, handlers } = githubTools
 
-            // 7. Buffer for collecting text response
+            // 8. Prepare the AI toolkitStream
+            const aiResponseStream = completions.toolkitStream({
+              model: workingState.configuration.llm_config.model,
+              messages: [{ role: "user", content: prompt }],
+              tools: { toolkit: tools, handlers: handlers as unknown as Record<string, (params: any) => Effect.Effect<any, never, never>> },
+              temperature: workingState.configuration.llm_config.temperature,
+              maxTokens: workingState.configuration.llm_config.max_tokens
+            })
+
+            // 9. Set up buffers for response processing
             let responseBuffer = ""
-            let isStepComplete = false
-            let stepSuccessful = true
+            let toolOutputs: Array<any> = []
+            let finalResponse = ""
 
-            // 8. Process the stream
+            // 10. Process the AI stream
             yield* aiResponseStream.pipe(
               Stream.tap((chunk) =>
                 Effect.gen(function*() {
-                  // For each chunk, check if it contains text, tool call, or tool result
+                  const currentState = yield* Ref.get(stateRef)
+                  let nextState = currentState
+                  
+                  // Handle Text Deltas
                   if (chunk.response && chunk.response.parts) {
-                    // Handle text parts
                     for (const part of chunk.response.parts) {
                       if (part._tag === "Text" && part.content) {
                         responseBuffer += part.content
-
-                        // Check for step completion markers in the text
-                        if (part.content.includes("STEP COMPLETED")) {
-                          isStepComplete = true
-                          stepSuccessful = true
-                        } else if (part.content.includes("STEP FAILED")) {
-                          isStepComplete = true
-                          stepSuccessful = false
-                        }
+                        // Could broadcast text deltas via SSE here
+                      } else if (part._tag === "ToolCall") {
+                        // Log tool usage before execution
+                        yield* Console.log(`AI requesting tool: ${part.name}`)
+                        // AI framework handles calling the handler now
                       }
-                      // Real tool calls would be handled here in the full implementation
                     }
                   }
-
-                  // Tool results would be handled here in the full implementation
-                  if (chunk.value && chunk.value._tag === "None") {
-                    // In a real implementation, "Some" would indicate a tool result
-                    yield* Console.log("🔧 No tool result in this chunk.")
+                  
+                  // Handle Tool Results (after handler runs and updates state via Ref)
+                  if (chunk.value?._tag === "Some") {
+                    const toolResult = chunk.value.value
+                    yield* Console.log(`🔧 Tool ${toolResult.name} executed.`)
+                    
+                    // State should have been updated inside the handler via Ref
+                    // Add the result to conversation history
+                    const toolResultMessage = {
+                      role: "tool" as const,
+                      content: JSON.stringify(toolResult.result),
+                      tool_call_id: toolResult.id
+                    }
+                    
+                    // Store tool outputs for potential follow-up prompts
+                    toolOutputs.push(toolResult)
+                    
+                    // Add the tool result message to conversation history
+                    nextState = yield* memoryManager.addConversationMessage(
+                      nextState,
+                      toolResultMessage.role,
+                      toolResultMessage.content,
+                      [{ id: toolResultMessage.tool_call_id, name: toolResult.name, input: toolResult.input }]
+                    )
+                  }
+                  
+                  // Update Ref if state changed within the chunk processing
+                  if (nextState !== currentState) {
+                    yield* Ref.set(stateRef, nextState)
                   }
                 })
               ),
+              // Provide the StatefulToolContext Layer to the stream processing
+              (stream) => Effect.provide(stream as unknown as Effect.Effect<any, any, any>, toolContextLayer),
               Stream.runDrain
+            ).pipe(
+              Effect.catchAll((aiError) => {
+                // Handle errors specifically from the AI/Tool stream
+                return Effect.gen(function*() {
+                  yield* Console.error(`AI/Tool Stream Error: ${aiError}`)
+                
+                // Update stateRef with AI error details
+                const now = new Date().toISOString()
+                yield* Ref.update(stateRef, (s) => ({
+                  ...s,
+                  error_state: {
+                    ...s.error_state,
+                    last_error: { 
+                      timestamp: now, 
+                      message: `AI Error: ${aiError}`, 
+                      type: "internal" as const, 
+                      details: String(aiError) 
+                    },
+                    consecutive_error_count: s.error_state.consecutive_error_count + 1
+                  },
+                  current_task: { ...s.current_task, status: "error" }
+                }))
+                
+                // Re-throw the error
+                  return Effect.fail(aiError instanceof Error ? aiError : new Error(String(aiError)))
+                })
+              })
             )
 
-            // 9. Add the remaining response to conversation history
-            if (responseBuffer.trim().length > 0) {
-              workingState = yield* Ref.get(stateRef)
-              workingState = yield* memoryManager.addConversationMessage(
-                workingState,
-                "assistant",
-                responseBuffer.trim()
-              )
-              yield* Ref.set(stateRef, workingState)
+            // 11. After stream processing, get final state and add final assistant message
+            workingState = yield* Ref.get(stateRef)
+            finalResponse = responseBuffer.trim()
+            
+            if (finalResponse) {
+              workingState = yield* memoryManager.addConversationMessage(workingState, "assistant", finalResponse)
             }
 
-            // 10. Get final state
-            workingState = yield* Ref.get(stateRef)
-
-            // 11. Update step status based on completion
-            if (isStepComplete) {
-              if (stepSuccessful) {
-                yield* Console.log(`Step ${currentStep.step_number} completed successfully.`)
-                // Update status to completed with a result summary
-                const resultSummary = responseBuffer.includes("STEP COMPLETED")
-                  ? responseBuffer.substring(responseBuffer.indexOf("STEP COMPLETED"))
-                  : "Step completed successfully."
-
-                workingState = yield* planManager.updateStepStatus(
-                  workingState,
-                  currentStep.id,
-                  "completed",
-                  resultSummary.slice(0, 200) // Limit summary length
-                )
-
-                // Advance step index
-                workingState = {
-                  ...workingState,
-                  current_task: {
-                    ...workingState.current_task,
-                    current_step_index: workingState.current_task.current_step_index + 1
-                  }
-                }
-              } else {
-                yield* Console.log(`Step ${currentStep.step_number} failed.`)
-                // Extract failure message if possible
-                const failureMessage = responseBuffer.includes("STEP FAILED")
-                  ? responseBuffer.substring(responseBuffer.indexOf("STEP FAILED"))
-                  : "Step failed during execution."
-
-                workingState = yield* planManager.updateStepStatus(
-                  workingState,
-                  currentStep.id,
-                  "error",
-                  failureMessage.slice(0, 200) // Limit summary length
-                )
-
-                // Update error state
+            // 12. Update Step Status based on final response
+            const isStepComplete = responseBuffer.includes("STEP COMPLETED")
+            const stepFailed = responseBuffer.includes("STEP FAILED") || 
+                              (workingState.error_state.last_error && 
+                              workingState.error_state.last_error.timestamp > currentState.timestamps.last_action_at)
+            
+            if (stepFailed) {
+              yield* Console.log(`Step ${currentStep.step_number} failed.`)
+              
+              // Extract failure message if possible
+              const failureMessage = responseBuffer.includes("STEP FAILED")
+                ? responseBuffer.substring(responseBuffer.indexOf("STEP FAILED"))
+                : "Step failed during execution."
+              
+              workingState = yield* planManager.updateStepStatus(
+                workingState,
+                currentStep.id,
+                "error",
+                failureMessage.slice(0, 200) // Limit summary length
+              )
+              
+              // Update error state if not already set by a tool handler
+              if (!workingState.error_state.last_error) {
                 const now = new Date().toISOString()
                 workingState = {
                   ...workingState,
@@ -269,16 +289,19 @@ STEP COMPLETED: The step has been executed and all required tasks were performed
                   }
                 }
               }
-            } else {
-              // If no completion marker found, assume completion
-              yield* Console.log(`Step ${currentStep.step_number} assumed completed (no explicit marker).`)
+            } else if (isStepComplete) {
+              yield* Console.log(`Step ${currentStep.step_number} completed successfully.`)
+              
+              // Update status to completed with a result summary
+              const resultSummary = responseBuffer.substring(responseBuffer.indexOf("STEP COMPLETED"))
+              
               workingState = yield* planManager.updateStepStatus(
                 workingState,
                 currentStep.id,
                 "completed",
-                "Step assumed completed (no explicit marker)."
+                resultSummary.slice(0, 200) // Limit summary length
               )
-
+              
               // Advance step index
               workingState = {
                 ...workingState,
@@ -287,17 +310,49 @@ STEP COMPLETED: The step has been executed and all required tasks were performed
                   current_step_index: workingState.current_task.current_step_index + 1
                 }
               }
+            } else {
+              // If no explicit markers, check for errors before assuming completion
+              if (workingState.error_state.last_error) {
+                yield* Console.log(`Step ${currentStep.step_number} failed (error detected).`)
+                
+                workingState = yield* planManager.updateStepStatus(
+                  workingState,
+                  currentStep.id,
+                  "error",
+                  `Failed: ${workingState.error_state.last_error.message.slice(0, 200)}`
+                )
+              } else {
+                // Assume completion if no errors or explicit markers
+                yield* Console.log(`Step ${currentStep.step_number} assumed completed (no explicit marker).`)
+                
+                workingState = yield* planManager.updateStepStatus(
+                  workingState,
+                  currentStep.id,
+                  "completed",
+                  "Step assumed completed (no explicit marker)."
+                )
+                
+                // Advance step index
+                workingState = {
+                  ...workingState,
+                  current_task: {
+                    ...workingState.current_task,
+                    current_step_index: workingState.current_task.current_step_index + 1
+                  }
+                }
+              }
             }
 
-            // 12. Update LLM metrics
+            // 13. Update metrics
             workingState = {
               ...workingState,
               metrics: {
                 ...workingState.metrics,
                 llm_calls_made: workingState.metrics.llm_calls_made + 1,
-                // For TypeScript, treat llm_tokens_used as number but ensure compatibility with the type
-                llm_tokens_used: workingState.metrics.llm_tokens_used as unknown as number +
-                  500 as unknown as typeof workingState.metrics.llm_tokens_used
+                llm_tokens_used: {
+                  prompt: Math.floor(workingState.metrics.llm_tokens_used.prompt + prompt.length / 4), // Rough estimate
+                  completion: Math.floor(workingState.metrics.llm_tokens_used.completion + responseBuffer.length / 4)
+                }
               }
             }
           } catch (error) {
@@ -319,7 +374,7 @@ STEP COMPLETED: The step has been executed and all required tasks were performed
               `Failed: ${err.message}`
             )
 
-            // Update error state
+            // Update error state if not already set by a tool handler
             const now = new Date().toISOString()
             workingState = {
               ...workingState,
@@ -336,11 +391,21 @@ STEP COMPLETED: The step has been executed and all required tasks were performed
             }
           }
 
-          // 13. Save the final state
+          // 14. Update timestamps
+          workingState = {
+            ...workingState,
+            timestamps: {
+              ...workingState.timestamps,
+              last_action_at: new Date().toISOString(),
+              last_saved_at: new Date().toISOString()
+            }
+          }
+          
+          // 15. Save the final state
           yield* githubClient.saveAgentState(workingState)
           yield* Console.log(`Agent state saved for instance ${workingState.agent_info.instance_id}`)
 
-          // 14. Return the final state
+          // 16. Return the final state
           return workingState
         }).pipe(
           // Ensure the error type is always Error
