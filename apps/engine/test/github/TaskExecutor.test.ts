@@ -245,9 +245,15 @@ describe("TaskExecutor", () => {
       const TaskExecutorWithDeps = Layer.provide(TaskExecutorLayer, TestLayer)
       
       // Act
+      // Create the effect with correct type annotations and use pipe for better type inference
       const effectToTest = Effect.flatMap(TaskExecutor, (executor) => executor.executeNextStep(initialState))
-      // Use the as unknown as any casting pattern to get around type conflicts
-      const result = await Effect.runPromise(Effect.provide(effectToTest as unknown as any, TaskExecutorWithDeps))
+      const result = await Effect.runPromise(
+        // Apply the layer to the effect and ensure environment is fully satisfied
+        Effect.provide(
+          Effect.suspend(() => effectToTest), 
+          TaskExecutorWithDeps
+        )
+      )
 
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
@@ -416,9 +422,16 @@ describe("TaskExecutor", () => {
       )
 
       // Act
+      // Create the effect with correct type annotations and use pipe for better type inference
       const effectToTest = Effect.flatMap(TaskExecutor, (executor) => executor.executeNextStep(initialState))
-      // Use the as unknown as any casting pattern to get around type conflicts
-      const result = await Effect.runPromise(Effect.provide(effectToTest as unknown as any, Layer.provide(ErrorTaskExecutorLayer, AllMockLayers)))
+      const errorTaskExecutorWithDeps = Layer.provide(ErrorTaskExecutorLayer, AllMockLayers)
+      const result = await Effect.runPromise(
+        // Apply the layer to the effect and ensure environment is fully satisfied
+        Effect.provide(
+          Effect.suspend(() => effectToTest), 
+          errorTaskExecutorWithDeps
+        )
+      )
 
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
