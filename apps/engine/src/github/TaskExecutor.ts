@@ -30,7 +30,7 @@ export class TaskExecutor extends Effect.Tag("TaskExecutor")<
   {
     executeNextStep: (currentState: AgentState) => Effect.Effect<AgentState, Error, any>
   }
->() {}
+>() { }
 
 // Helper to construct a prompt from state context
 const constructPromptFromState = (
@@ -55,9 +55,8 @@ const constructPromptFromState = (
   // Format the current file focus
   let fileFocus = "None"
   if (state.execution_context.current_file_focus) {
-    fileFocus = `File: ${state.execution_context.current_file_focus.path}, Lines: ${
-      state.execution_context.current_file_focus.relevant_lines.join(", ")
-    }`
+    fileFocus = `File: ${state.execution_context.current_file_focus.path}, Lines: ${state.execution_context.current_file_focus.relevant_lines.join(", ")
+      }`
   }
 
   // Gather relevant code snippets
@@ -113,7 +112,7 @@ export const AnthropicLayer = AnthropicClient.layerConfig({
  */
 export const TaskExecutorLayer = Layer.effect(
   TaskExecutor,
-  Effect.gen(function*(_) {
+  Effect.gen(function* (_) {
     // Get dependencies from the context
     const planManager = yield* PlanManager
     const memoryManager = yield* MemoryManager
@@ -123,7 +122,7 @@ export const TaskExecutorLayer = Layer.effect(
 
     return {
       executeNextStep: (currentState: AgentState): Effect.Effect<AgentState, Error, any> =>
-        Effect.gen(function*() {
+        Effect.gen(function* () {
           yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Starting execution`)
 
           // 1. Get current step
@@ -136,8 +135,7 @@ export const TaskExecutorLayer = Layer.effect(
             )
           } catch (err) {
             yield* Console.error(
-              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to get current step: ${
-                err instanceof Error ? err.stack : String(err)
+              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to get current step: ${err instanceof Error ? err.stack : String(err)
               }`
             )
             throw err
@@ -151,8 +149,7 @@ export const TaskExecutorLayer = Layer.effect(
             yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully updated step status to in_progress`)
           } catch (err) {
             yield* Console.error(
-              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to update step status: ${
-                err instanceof Error ? err.stack : String(err)
+              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to update step status: ${err instanceof Error ? err.stack : String(err)
               }`
             )
             throw err
@@ -165,8 +162,7 @@ export const TaskExecutorLayer = Layer.effect(
             yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully saved initial state`)
           } catch (err) {
             yield* Console.error(
-              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to save initial state: ${
-                err instanceof Error ? err.stack : String(err)
+              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to save initial state: ${err instanceof Error ? err.stack : String(err)
               }`
             )
             throw err
@@ -180,8 +176,7 @@ export const TaskExecutorLayer = Layer.effect(
             yield* Console.log(`DEBUG: TaskExecutor.executeNextStep - Successfully created stateRef`)
           } catch (err) {
             yield* Console.error(
-              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to create stateRef: ${
-                err instanceof Error ? err.stack : String(err)
+              `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to create stateRef: ${err instanceof Error ? err.stack : String(err)
               }`
             )
             throw err
@@ -275,8 +270,7 @@ export const TaskExecutorLayer = Layer.effect(
               }
             } catch (err) {
               yield* Console.error(
-                `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to create aiResponseStream: ${
-                  err instanceof Error ? err.stack : String(err)
+                `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to create aiResponseStream: ${err instanceof Error ? err.stack : String(err)
                 }`
               )
               throw err
@@ -288,10 +282,9 @@ export const TaskExecutorLayer = Layer.effect(
             try {
               yield* aiResponseStream.pipe(
                 Stream.tap((chunk) =>
-                  Effect.gen(function*() {
+                  Effect.gen(function* () {
                     yield* Console.log(
-                      `DEBUG: TaskExecutor.executeNextStep - Processing stream chunk: ${
-                        JSON.stringify(chunk).substring(0, 100)
+                      `DEBUG: TaskExecutor.executeNextStep - Processing stream chunk: ${JSON.stringify(chunk).substring(0, 100)
                       }...`
                     )
                     const currentState = yield* Ref.get(stateRef)
@@ -303,8 +296,7 @@ export const TaskExecutorLayer = Layer.effect(
                         if (part._tag === "Text" && part.content) {
                           responseBuffer += part.content
                           yield* Console.log(
-                            `DEBUG: TaskExecutor.executeNextStep - Received text part: "${
-                              part.content.substring(0, 50)
+                            `DEBUG: TaskExecutor.executeNextStep - Received text part: "${part.content.substring(0, 50)
                             }..."`
                           )
                           // Could broadcast text deltas via SSE here
@@ -348,8 +340,7 @@ export const TaskExecutorLayer = Layer.effect(
                         )
                       } catch (err) {
                         yield* Console.error(
-                          `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to add tool result to conversation: ${
-                            err instanceof Error ? err.stack : String(err)
+                          `DEBUG ERROR: TaskExecutor.executeNextStep - Failed to add tool result to conversation: ${err instanceof Error ? err.stack : String(err)
                           }`
                         )
                       }
@@ -381,7 +372,7 @@ export const TaskExecutorLayer = Layer.effect(
                 ),
                 Effect.catchAll((aiError) => {
                   // Handle errors specifically from the AI/Tool stream
-                  return Effect.gen(function*() {
+                  return Effect.gen(function* () {
                     const errorMsg = aiError instanceof Error ? aiError.message : String(aiError)
                     const stackTrace = aiError instanceof Error ? aiError.stack : "No stack trace available"
                     yield* Console.error(`DEBUG ERROR: AI/Tool Stream Error: ${errorMsg}`)

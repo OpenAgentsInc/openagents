@@ -115,15 +115,13 @@ import { TaskExecutorLayer } from "./github/TaskExecutor.js"
 const createAppLayer = () => {
   log("DEBUG: CRITICAL - Recreating AppLayer locally with API keys")
 
-  // Create API key for Anthropic
-  const apiKeyStr = process.env.ANTHROPIC_API_KEY
-  if (!apiKeyStr) {
-    throw new Error("ANTHROPIC_API_KEY is missing from environment variables")
-  }
+  // Load config first to ensure environment variables are available
+  const config = Effect.runSync(loadConfig)
+  log("DEBUG: Successfully loaded configuration with API keys")
 
   // Create Anthropic layer with direct API key
   const AnthropicLayer = AnthropicClient.layer({
-    apiKey: Redacted.make(apiKeyStr)
+    apiKey: Redacted.make(config.anthropicApiKey!)
   })
 
   // Create the HTTP client layer
