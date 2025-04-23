@@ -407,7 +407,7 @@ describe("State Storage", () => {
 
           // Read the file and use it (even though we return the fixture directly)
           yield* readFileStringMock(filePath, "utf-8")
-          
+
           // In a real implementation, we would parse and validate the JSON
           return validState
         })
