@@ -1052,15 +1052,15 @@
   resolved "https://registry.yarnpkg.com/@biomejs/cli-win32-x64/-/cli-win32-x64-1.9.4.tgz#4c7afa90e3970213599b4095e62f87e5972b2340"
   integrity sha512-8Y5wMhVIPaWe6jw2H+KlEm4wP/f7EW3810ZLmDlrEEy5KvBsb9ECEfu/kMWD484ijfQ8+nIi0giMgu9g1UAuuA==
 
+"@breeztech/breez-sdk-liquid@^0.8.0":
+  version "0.8.0"
+  resolved "https://registry.yarnpkg.com/@breeztech/breez-sdk-liquid/-/breez-sdk-liquid-0.8.0.tgz#691e18540142f4bedac80c6127d9a91031240800"
+  integrity sha512-QbQ2u2g12u8Ve1Bbc7h8FAbBxugPpbsZC7eZ6A0LdiiQV4+z2phGGzh50vrgCExdFighHnRizNQeTnExBQbT2g==
+
 "@breeztech/react-native-breez-sdk-liquid@^0.7.7":
   version "0.7.8"
   resolved "https://registry.yarnpkg.com/@breeztech/react-native-breez-sdk-liquid/-/react-native-breez-sdk-liquid-0.7.8.tgz#58eccaea3a0eddc9ca052198d2eab0dfaaa2399b"
   integrity sha512-J7fTUvvVuJNgLY+Vs0cNfPaMsYQr3p4LIdTX0aelmfdH6VPKnijXWbjiV+/xInoGlkbW8f3EdbUU9fXJ/l76qA==
-
-"@breeztech/react-native-breez-sdk-liquid@^0.8.0":
-  version "0.8.0"
-  resolved "https://registry.yarnpkg.com/@breeztech/react-native-breez-sdk-liquid/-/react-native-breez-sdk-liquid-0.8.0.tgz#73c871ee8794d72a67764c722401168ec0e027fe"
-  integrity sha512-d2njFVwsMPYOkmFFlZb/99v6/dgNa22ZrSMeM5T7G3SnJ0V4sHG5egENhsZwaXFSee4x/eOSMJd9zEgdYjKb8w==
 
 "@clack/core@0.3.5":
   version "0.3.5"

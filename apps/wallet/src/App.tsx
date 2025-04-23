@@ -1,10 +1,35 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
+import init, { defaultConfig, connect } from '@breeztech/breez-sdk-liquid'
 
 function App() {
   const [count, setCount] = useState(0)
+
+  const connectToBreez = async () => {
+    const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon'
+
+    // Call init when using the SDK in a web environment before calling any other SDK
+    // methods. This is not needed when using the SDK in a Node.js/Deno environment.
+    //
+    // import init, { defaultConfig, connect } from '@breeztech/breez-sdk-liquid'
+    await init()
+
+    // Create the default config, providing your Breez API key
+    const config = defaultConfig('mainnet', '<your-Breez-API-key>')
+
+    // The `workingDir` does not need to be set in a web environment
+    config.workingDir = 'path to writable directory'
+
+    const sdk = await connect({ mnemonic, config })
+
+    console.log(sdk)
+  }
+
+  useEffect(() => {
+    connectToBreez()
+  }, [])
 
   return (
     <>

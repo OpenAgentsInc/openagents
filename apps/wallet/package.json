@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@breeztech/react-native-breez-sdk-liquid": "^0.8.0",
+    "@breeztech/breez-sdk-liquid": "^0.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
