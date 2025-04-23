@@ -25,13 +25,21 @@ const loadConfig = Effect.try({
     if (!config.anthropicApiKey) {
       throw new Error("ANTHROPIC_API_KEY is required but not found in environment")
     } else {
-      console.log(`DEBUG: ANTHROPIC_API_KEY is set (length: ${config.anthropicApiKey.length}, starts with: ${config.anthropicApiKey.substring(0, 3)}...)`)
+      console.log(
+        `DEBUG: ANTHROPIC_API_KEY is set (length: ${config.anthropicApiKey.length}, starts with: ${
+          config.anthropicApiKey.substring(0, 3)
+        }...)`
+      )
     }
 
     if (!config.githubApiKey) {
       throw new Error("GITHUB_API_KEY is required but not found in environment")
     } else {
-      console.log(`DEBUG: GITHUB_TOKEN is set (length: ${config.githubApiKey.length}, starts with: ${config.githubApiKey.substring(0, 3)}...)`)
+      console.log(
+        `DEBUG: GITHUB_TOKEN is set (length: ${config.githubApiKey.length}, starts with: ${
+          config.githubApiKey.substring(0, 3)
+        }...)`
+      )
     }
 
     return config
@@ -207,7 +215,9 @@ const createHttpServer = (): Http.Server => {
               // Get current state
               log(`DEBUG: executeLoop - Getting current state from stateRef`)
               const currentState = yield* Ref.get(stateRef)
-              log(`DEBUG: executeLoop - Got current state, step index: ${currentState.current_task.current_step_index}, status: ${currentState.current_task.status}`)
+              log(
+                `DEBUG: executeLoop - Got current state, step index: ${currentState.current_task.current_step_index}, status: ${currentState.current_task.status}`
+              )
 
               // Check if we should continue
               if (!shouldContinue(currentState)) {
@@ -219,7 +229,7 @@ const createHttpServer = (): Http.Server => {
                 // Execute next step
                 const stepNumber = currentState.current_task.current_step_index + 1
                 log(`DEBUG: executeLoop - About to execute step ${stepNumber}`)
-                
+
                 // This is where we call TaskExecutor.executeNextStep - this might be where it hangs
                 log(`DEBUG: executeLoop - Calling taskExecutor.executeNextStep(currentState)`)
                 const updatedState = yield* taskExecutor.executeNextStep(currentState)
@@ -240,7 +250,7 @@ const createHttpServer = (): Http.Server => {
                 return yield* executeLoop
               } catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err)
-                const stackTrace = err instanceof Error ? err.stack : 'No stack trace'
+                const stackTrace = err instanceof Error ? err.stack : "No stack trace"
                 error(`DEBUG ERROR: executeLoop - Error executing step: ${errorMsg}`)
                 error(`DEBUG ERROR: executeLoop - Stack trace: ${stackTrace}`)
 
@@ -292,29 +302,29 @@ const createHttpServer = (): Http.Server => {
         })
 
         // Run the execution pipeline with all required services
-        // @ts-expect-error TypeScript struggles with complex Effect typing
         log(`DEBUG: About to run pipeline with Effect.runFork`)
-        Effect.runFork(
-          Effect.provide(
-            executionPipeline.pipe(
-              // Add error logging for the entire pipeline
-              Effect.catchAll((err) => {
-                // Log the error thoroughly
-                const errorMsg = err instanceof Error ? err.message : String(err)
-                const stackTrace = err instanceof Error ? err.stack : 'No stack trace'
-                error(`DEBUG FATAL PIPELINE ERROR: ${errorMsg}`)
-                error(`DEBUG FATAL PIPELINE ERROR STACK: ${stackTrace}`)
-                
-                // Broadcast an SSE error
-                broadcastSSE("error", `FATAL PIPELINE ERROR: ${errorMsg}`)
-                
-                // Re-throw the error to propagate it
-                return Effect.fail(err)
-              })
-            ),
-            AppLayer
-          )
+
+        // Create the pipeline with error handling
+        const pipelineWithErrorHandling = executionPipeline.pipe(
+          // Add error logging for the entire pipeline
+          Effect.catchAll((err) => {
+            // Log the error thoroughly
+            const errorMsg = err instanceof Error ? err.message : String(err)
+            const stackTrace = err instanceof Error ? err.stack : "No stack trace"
+            error(`DEBUG FATAL PIPELINE ERROR: ${errorMsg}`)
+            error(`DEBUG FATAL PIPELINE ERROR STACK: ${stackTrace}`)
+
+            // Broadcast an SSE error
+            broadcastSSE("error", `FATAL PIPELINE ERROR: ${errorMsg}`)
+
+            // Re-throw the error to propagate it
+            return Effect.fail(err)
+          })
         )
+
+        // Provide the AppLayer and run the fork
+        // Use as any to work around type issues with complex Effect.js pipelines
+        Effect.runFork(Effect.provide(pipelineWithErrorHandling, AppLayer) as any)
 
         // Immediately respond to the HTTP request
         res.writeHead(200, { "Content-Type": "text/plain" })
