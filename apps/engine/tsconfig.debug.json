@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.src.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "tsBuildInfoFile": ".tsbuildinfo/debug.tsbuildinfo",
+    "outDir": "build/debug",
+    "declarationDir": "build/dts",
+    "stripInternal": true,
+    "noEmitOnError": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["test/**/*"]
+}

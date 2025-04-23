@@ -113,6 +113,10 @@ export const AnthropicLayer = AnthropicClient.layerConfig({
 export const TaskExecutorLayer = Layer.effect(
   TaskExecutor,
   Effect.gen(function* (_) {
+    // ----> START TAG IDENTITY LOGGING (EXECUTOR) <----
+    console.log(`DEBUG: TAG_CHECK - PlanManager Tag IMPORTED in TaskExecutor:`, PlanManager);
+    // ----> END TAG IDENTITY LOGGING (EXECUTOR) <----
+
     // Get dependencies from the context
     const planManager = yield* PlanManager
     const memoryManager = yield* MemoryManager

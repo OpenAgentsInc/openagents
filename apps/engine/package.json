@@ -16,6 +16,7 @@
   "scripts": {
     "start": "tsc -b tsconfig.build.json && node build/esm/index.js",
     "start-ignore-errors": "tsc --project tsconfig.build.json --noEmitOnError false && node build/esm/index.js",
+    "debug-tags": "npx tsc --project tsconfig.debug.json && node build/debug/index.js",
     "build-ignore-errors": "tsc --project tsconfig.build.json --noEmitOnError false",
     "codegen": "build-utils prepare-v2",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",

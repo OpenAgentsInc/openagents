@@ -28,6 +28,10 @@ export const GitHubTools = GitHubToolsTag
 export const TaskExecutor = TaskExecutorTag
 // ----> END TAG EXPORTS <----
 
+// ----> START TAG IDENTITY LOGGING (PROGRAM) <----
+console.log(`DEBUG: TAG_CHECK - PlanManager Tag DEFINED in Program.ts:`, PlanManager);
+// ----> END TAG IDENTITY LOGGING (PROGRAM) <----
+
 // Define Anthropic Layer
 console.log("DEBUG: CRITICAL - Creating AnthropicClient layer with config")
 const AnthropicLayer = AnthropicClient.layerConfig({

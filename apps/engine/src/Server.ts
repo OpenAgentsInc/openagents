@@ -5,7 +5,7 @@ import * as Http from "node:http"
 import * as path from "node:path"
 import type { AgentState } from "./github/AgentStateTypes.js"
 // Import TAGS from Program (single source of truth)
-import { GitHubClient, TaskExecutor } from "./Program.js"
+import { GitHubClient, TaskExecutor, PlanManager } from "./Program.js"
 // Import AllLayers
 import { AllLayers } from "./Program.js"
 
@@ -397,6 +397,10 @@ const createHttpServer = (): Http.Server => {
 
           // Use the AllLayers imported from Program.js
           log(`DEBUG: CRITICAL - Using AllLayers from Program.js`)
+
+          // ----> START TAG IDENTITY LOGGING (SERVER) <----
+          console.log(`DEBUG: TAG_CHECK - PlanManager Tag IMPORTED in Server.ts:`, PlanManager);
+          // ----> END TAG IDENTITY LOGGING (SERVER) <----
 
           // Add direct tracking of the fork's execution
           // Use 'as any' to handle complex Effect.js type inference issues
