@@ -152,44 +152,31 @@ describe("TaskExecutor", () => {
           updatedPlan[stepIndex] = updatedStep
           // Calculate completed steps count
           const stepsCompleted = updatedPlan.filter((step) => step.status === "completed").length
-          // Important: This matches the behavior in TaskExecutor.ts where
-          // AFTER updating the plan step status, it ALSO advances the current_step_index
-          // This happens outside of updateStepStatus but we need to simulate it here
+          // Return only the updated plan and metrics, NOT the current_step_index
+          // The step index advancement happens in the TaskExecutor, outside this mock
           return Effect.succeed({
             ...state,
             plan: updatedPlan,
-            current_task: {
-              ...state.current_task,
-              current_step_index: state.current_task.current_step_index + 1
-            },
             metrics: { ...state.metrics, steps_completed: stepsCompleted }
           })
         })
 
-      // We'll only force specific values on the final saveAgentState call
-      let callCount = 0
-      const saveAgentStateMock = vi.fn().mockImplementation((state) => {
-        callCount++
+      // Create a mock that tracks call count to handle both early and late calls
+      let saveCallCount = 0
+      const saveAgentStateMock = vi.fn().mockImplementation((state: AgentState) => {
+        saveCallCount++
 
-        // Only modify the state on the final call (second call)
-        if (callCount === 2) {
-          const updatedState = {
-            ...state,
-            plan: state.plan.map((step: any, index: number) => index === 0 ? { ...step, status: "completed" } : step),
-            current_task: {
-              ...state.current_task,
-              current_step_index: 1 // Force this to exactly 1 for the test
-            }
-          }
-
-          // Verify the final state has what we need
-          expect(updatedState.plan[0].status).toBe("completed")
-          expect(updatedState.current_task.current_step_index).toBe(1)
-          return Effect.succeed(updatedState)
+        if (saveCallCount === 1) {
+          // First call happens when status is still in_progress
+          expect(state.plan[0].status).toBe("in_progress")
+          expect(state.current_task.current_step_index).toBe(0) // Not advanced yet
+        } else if (saveCallCount === 2) {
+          // Final call after step completion
+          expect(state.plan[0].status).toBe("completed")
+          expect(state.current_task.current_step_index).toBe(1) // Advanced by TaskExecutor
         }
 
-        // For the first call, just return the state unmodified
-        return Effect.succeed(state)
+        return Effect.succeed(state) // Return the state received without modifications
       })
 
       // Mock for adding conversation messages
@@ -303,15 +290,15 @@ describe("TaskExecutor", () => {
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
       expect(updateStepStatusMock).toHaveBeenCalledTimes(2)
-      expect(saveAgentStateMock).toHaveBeenCalledTimes(2) // Called twice in the real implementation
+      expect(saveAgentStateMock).toHaveBeenCalledTimes(2)
 
       // Verify step advancement
       const typedResult = result as AgentState
       expect(typedResult.current_task.current_step_index).toBe(1)
       expect(typedResult.plan[0].status).toBe("completed")
       expect(typedResult.plan[0].result_summary).toBeDefined()
-      // Verify saveAgentState was called twice (once after in_progress, once at the end)
-      expect(saveAgentStateMock).toHaveBeenCalledTimes(2) // Called twice in the real implementation
+      // Verify saveAgentState was called twice (once after in_progress, once after completion)
+      expect(saveAgentStateMock).toHaveBeenCalledTimes(2)
     })
 
     it("should handle step execution failure correctly", async () => {
@@ -346,12 +333,15 @@ describe("TaskExecutor", () => {
           return Effect.succeed({ ...state, plan: updatedPlan })
         })
 
+      // In the error case test, we're using the mock ErrorTaskExecutor which
+      // directly creates a state with 'error' status, so we don't see the in_progress transition
       const saveAgentStateMock = vi.fn().mockImplementation((state) => {
-        // Verify error state was populated
+        // In this test we're using a mock executor that already sets the state to 'error'
         expect(state.plan[0].status).toBe("error")
         expect(state.error_state.last_error).not.toBeNull()
         expect(state.error_state.consecutive_error_count).toBe(1)
         expect(state.current_task.current_step_index).toBe(0) // Not advanced
+
         return Effect.succeed(state)
       })
 
@@ -487,7 +477,7 @@ describe("TaskExecutor", () => {
       // Assert
       expect(getCurrentStepMock).toHaveBeenCalledTimes(1)
       expect(updateStepStatusMock).toHaveBeenCalledTimes(2)
-      expect(saveAgentStateMock).toHaveBeenCalledTimes(2) // Called twice in the real implementation
+      expect(saveAgentStateMock).toHaveBeenCalledTimes(1)
 
       // Verify error handling
       const typedResult = result as AgentState
