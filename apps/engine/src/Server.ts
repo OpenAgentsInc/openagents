@@ -24,8 +24,7 @@ const loadConfig = Effect.try({
       throw new Error("ANTHROPIC_API_KEY is required but not found in environment")
     } else {
       console.log(
-        `DEBUG: ANTHROPIC_API_KEY is set (length: ${config.anthropicApiKey.length}, starts with: ${
-          config.anthropicApiKey.substring(0, 3)
+        `DEBUG: ANTHROPIC_API_KEY is set (length: ${config.anthropicApiKey.length}, starts with: ${config.anthropicApiKey.substring(0, 3)
         }...)`
       )
     }
@@ -34,8 +33,7 @@ const loadConfig = Effect.try({
       throw new Error("GITHUB_API_KEY is required but not found in environment")
     } else {
       console.log(
-        `DEBUG: GITHUB_TOKEN is set (length: ${config.githubApiKey.length}, starts with: ${
-          config.githubApiKey.substring(0, 3)
+        `DEBUG: GITHUB_TOKEN is set (length: ${config.githubApiKey.length}, starts with: ${config.githubApiKey.substring(0, 3)
         }...)`
       )
     }
@@ -101,11 +99,50 @@ const createAgentStateUpdate = (state: AgentState) => ({
     : null
 })
 
-// Create a function to get the layers from Program.js dynamically
-// This avoids circular dependency issues
-const getAppLayer = () => {
-  // Dynamically import the Program module to avoid circular dependencies
-  return import("./Program.js").then(module => module.AllLayers)
+// Import necessary services to recreate the layer stack
+import { AnthropicClient } from "@effect/ai-anthropic"
+import { NodeHttpClient } from "@effect/platform-node"
+import { Layer, Redacted } from "effect"
+import { GitHubToolsDefault } from "./github/GitHubTools.js"
+import { ContextManagerLayer } from "./github/ContextManager.js"
+import { GitHubClientLayer } from "./github/GitHub.js"
+import { MemoryManagerLayer } from "./github/MemoryManager.js"
+import { PlanManagerLayer } from "./github/PlanManager.js"
+import { TaskExecutorLayer } from "./github/TaskExecutor.js"
+
+// Create our own AppLayer stack here to avoid circular dependencies
+// and ensure API keys are properly loaded
+const createAppLayer = () => {
+  log("DEBUG: CRITICAL - Recreating AppLayer locally with API keys")
+
+  // Create API key for Anthropic
+  const apiKeyStr = process.env.ANTHROPIC_API_KEY
+  if (!apiKeyStr) {
+    throw new Error("ANTHROPIC_API_KEY is missing from environment variables")
+  }
+
+  // Create Anthropic layer with direct API key
+  const AnthropicLayer = AnthropicClient.layer({
+    apiKey: Redacted.make(apiKeyStr)
+  })
+
+  // Create the HTTP client layer
+  const httpClientLayer = NodeHttpClient.layerUndici
+
+  // Combine the layers
+  return Layer.mergeAll(
+    // Service layers
+    GitHubClientLayer,
+    PlanManagerLayer,
+    MemoryManagerLayer,
+    ContextManagerLayer,
+    // Tools layer
+    GitHubToolsDefault,
+    // Task execution layer
+    TaskExecutorLayer,
+    // AI layer with HTTP client
+    Layer.provide(AnthropicLayer, httpClientLayer)
+  )
 }
 
 // Setup a route to handle the SSE connection
@@ -180,8 +217,7 @@ const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void =
       log(`DEBUG: Sent keepalive to client ${clientId}`)
     } catch (err) {
       error(
-        `DEBUG ERROR: Failed to send keepalive to client ${clientId}: ${
-          err instanceof Error ? err.message : String(err)
+        `DEBUG ERROR: Failed to send keepalive to client ${clientId}: ${err instanceof Error ? err.message : String(err)
         }`
       )
       clients.delete(clientId)
@@ -220,7 +256,7 @@ const createHttpServer = (): Http.Server => {
         log(`Analyzing GitHub issue #${issueNumber} from ${owner}/${repo}`)
 
         // Define the execution pipeline
-        const executionPipeline = Effect.gen(function*() {
+        const executionPipeline = Effect.gen(function* () {
           // Get services from context
           log(`DEBUG: Getting services from context`)
           const githubClient = yield* GitHubClient
@@ -269,7 +305,7 @@ const createHttpServer = (): Http.Server => {
           // Define the execution loop with recursion
           // @ts-expect-error TypeScript struggles with recursive Effect typing
           const executeLoop: Effect.Effect<AgentState> = Effect.suspend(() =>
-            Effect.gen(function*(): Generator<any, AgentState> {
+            Effect.gen(function* (): Generator<any, AgentState> {
               // Get current state
               log(`DEBUG: executeLoop - Getting current state from stateRef`)
               const currentState = yield* Ref.get(stateRef)
@@ -384,16 +420,16 @@ const createHttpServer = (): Http.Server => {
         // Use as any to work around type issues with complex Effect.js pipelines
         try {
           log(`DEBUG: CRITICAL - About to call Effect.runFork on pipeline`)
-          
+
           // Add a direct console.log inside the pipeline to see if it's being executed at all
           // This bypasses Effect logging to see if there's an issue with Effect itself
-          const pipelineWithDebugging = Effect.gen(function*() {
+          const pipelineWithDebugging = Effect.gen(function* () {
             console.log("DEBUG: CRITICAL - Inside pipeline generator function - BASELINE")
-            
+
             try {
               // Test each service individually to see which ones are available
               console.log("DEBUG: CRITICAL - About to test individual services")
-              
+
               try {
                 console.log("DEBUG: CRITICAL - Testing GitHubClient")
                 yield* GitHubClient
@@ -401,7 +437,7 @@ const createHttpServer = (): Http.Server => {
               } catch (err) {
                 console.error("DEBUG: CRITICAL ERROR - GitHubClient not found:", err instanceof Error ? err.message : String(err))
               }
-              
+
               try {
                 console.log("DEBUG: CRITICAL - Testing TaskExecutor")
                 yield* TaskExecutor
@@ -409,7 +445,7 @@ const createHttpServer = (): Http.Server => {
               } catch (err) {
                 console.error("DEBUG: CRITICAL ERROR - TaskExecutor not found:", err instanceof Error ? err.message : String(err))
               }
-              
+
               try {
                 console.log("DEBUG: CRITICAL - Testing PlanManager")
                 yield* PlanManager
@@ -417,7 +453,7 @@ const createHttpServer = (): Http.Server => {
               } catch (err) {
                 console.error("DEBUG: CRITICAL ERROR - PlanManager not found:", err instanceof Error ? err.message : String(err))
               }
-              
+
               try {
                 console.log("DEBUG: CRITICAL - Testing MemoryManager")
                 yield* MemoryManager
@@ -425,7 +461,7 @@ const createHttpServer = (): Http.Server => {
               } catch (err) {
                 console.error("DEBUG: CRITICAL ERROR - MemoryManager not found:", err instanceof Error ? err.message : String(err))
               }
-              
+
               // Now try to run the actual pipeline
               console.log("DEBUG: CRITICAL - All service tests complete, attempting to run the pipeline")
               return yield* pipelineWithErrorHandling
@@ -435,13 +471,16 @@ const createHttpServer = (): Http.Server => {
               throw err
             }
           })
-          
-          // Get the AppLayer dynamically and then run the pipeline
-          getAppLayer().then(appLayer => {
+
+          // Create the AppLayer directly with fixed API keys
+          try {
+            const appLayer = createAppLayer()
+            log(`DEBUG: CRITICAL - Successfully created local AppLayer with API keys`)
+
             // Add direct tracking of the fork's execution
             const fork = Effect.runFork(Effect.provide(pipelineWithDebugging, appLayer) as any)
             log(`DEBUG: CRITICAL - Effect.runFork returned fork object`)
-            
+
             // Add observer
             fork.addObserver((exit) => {
               if (exit._tag === "Failure") {
@@ -450,9 +489,9 @@ const createHttpServer = (): Http.Server => {
                 console.log("DEBUG: CRITICAL - Fork completed successfully with value:", exit.value)
               }
             })
-          }).catch(err => {
-            error(`DEBUG: CRITICAL ERROR - Failed to get AppLayer: ${err instanceof Error ? err.stack : String(err)}`)
-          })
+          } catch (err) {
+            error(`DEBUG: CRITICAL ERROR - Failed to create AppLayer: ${err instanceof Error ? err.stack : String(err)}`)
+          }
         } catch (err) {
           // This catches errors in the setup of the fork itself, not in the pipeline
           error(`DEBUG: CRITICAL ERROR - Exception thrown from Effect.runFork setup: ${err instanceof Error ? err.stack : String(err)}`)
