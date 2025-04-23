@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "@effect/vitest"
 import { Config, Effect, Layer, Ref } from "effect"
 import { FileSystem } from "@effect/platform"
-import { NodeFileSystem } from "@effect/platform-node/FileSystem"
+import { NodeFileSystem } from "@effect/platform-node"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
 import { GitHubTools, StatefulToolContext, GitHubToolsLayer } from "../../src/github/GitHubTools.js"
@@ -97,10 +97,10 @@ const getTestState = (): AgentState => ({
 })
 
 describe("GitHubTools", () => {
-  // Create a GitHub API key layer for all tests
-  const GitHubApiKeyLayer = Layer.succeed(
-    Config.secret("GITHUB_API_KEY"),
-    "test-api-key"
+  // Create test environment layers for all tests
+  const TestEnvLayer = Layer.mergeAll(
+    Layer.setConfigProvider(Config.setSecret("GITHUB_API_KEY")("test-api-key")),
+    NodeFileSystem.layer
   )
   
   it("should define GitHubTools", () => {
@@ -160,7 +160,7 @@ describe("GitHubTools", () => {
       loadAgentState: vi.fn().mockReturnValue(Effect.succeed(initialState)),
       createAgentStateForIssue: vi.fn().mockReturnValue(Effect.succeed(initialState)),
       saveAgentState: vi.fn().mockReturnValue(Effect.succeed(initialState)),
-      _tag: "GitHubClient" // Required for Effect.js identification
+      _tag: "GitHubClient" as const
     }
     
     const MockGitHubClient = Layer.succeed(
@@ -169,26 +169,32 @@ describe("GitHubTools", () => {
     )
     
     // Mock memory manager
-    const mockMemoryManager = MemoryManager.of({
+    const mockMemoryManager = {
       addConversationMessage: vi.fn().mockImplementation((state, role, content) => Effect.succeed(state)),
       addKeyDecision: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addImportantFinding: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       updateScratchpad: vi.fn().mockImplementation((state) => Effect.succeed(state)),
-      addToolInvocationLogEntry: addToolInvocationLogEntryMock
-    })
+      addToolInvocationLogEntry: addToolInvocationLogEntryMock,
+      [MemoryManager.TagTypeId]: MemoryManager.Tag,
+      Type: MemoryManager.Tag.Type,
+      Id: MemoryManager.Tag.Id
+    }
     
     const MockMemoryManager = Layer.succeed(
       MemoryManager,
-      mockMemoryManager
+      MemoryManager.of(mockMemoryManager)
     )
     
     // Mock plan manager
-    const mockPlanManager = PlanManager.of({
+    const mockPlanManager = {
       addPlanStep: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       updateStepStatus: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addToolCallToStep: addToolCallToStepMock,
-      getCurrentStep: vi.fn().mockImplementation((state) => Effect.succeed(state.plan[0]))
-    })
+      getCurrentStep: vi.fn().mockImplementation((state) => Effect.succeed(state.plan[0])),
+      [PlanManager.TagTypeId]: PlanManager.Tag,
+      Type: PlanManager.Tag.Type,
+      Id: PlanManager.Tag.Id
+    }
     
     const MockPlanManager = Layer.succeed(
       PlanManager,
@@ -213,7 +219,7 @@ describe("GitHubTools", () => {
       MockMemoryManager,
       MockPlanManager,
       StatefulToolContextLayer,
-      GitHubApiKeyLayer
+      TestEnvLayer
     )
     
     // Get GitHubTools with test layer
@@ -298,7 +304,7 @@ describe("GitHubTools", () => {
       loadAgentState: vi.fn().mockReturnValue(Effect.fail(mockError)),
       createAgentStateForIssue: vi.fn().mockReturnValue(Effect.fail(mockError)),
       saveAgentState: vi.fn().mockReturnValue(Effect.fail(mockError)),
-      _tag: "GitHubClient" // Required for Effect.js identification
+      _tag: "GitHubClient" as const
     }
     
     const MockGitHubClient = Layer.succeed(
@@ -307,26 +313,32 @@ describe("GitHubTools", () => {
     )
     
     // Mock memory manager
-    const mockMemoryManager = MemoryManager.of({
+    const mockMemoryManager = {
       addConversationMessage: vi.fn().mockImplementation((state, role, content) => Effect.succeed(state)),
       addKeyDecision: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addImportantFinding: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       updateScratchpad: vi.fn().mockImplementation((state) => Effect.succeed(state)),
-      addToolInvocationLogEntry: addToolInvocationLogEntryMock
-    })
+      addToolInvocationLogEntry: addToolInvocationLogEntryMock,
+      [MemoryManager.TagTypeId]: MemoryManager.Tag,
+      Type: MemoryManager.Tag.Type,
+      Id: MemoryManager.Tag.Id
+    }
     
     const MockMemoryManager = Layer.succeed(
       MemoryManager,
-      mockMemoryManager
+      MemoryManager.of(mockMemoryManager)
     )
     
     // Mock plan manager
-    const mockPlanManager = PlanManager.of({
+    const mockPlanManager = {
       addPlanStep: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       updateStepStatus: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addToolCallToStep: addToolCallToStepMock,
-      getCurrentStep: vi.fn().mockImplementation((state) => Effect.succeed(state.plan[0]))
-    })
+      getCurrentStep: vi.fn().mockImplementation((state) => Effect.succeed(state.plan[0])),
+      [PlanManager.TagTypeId]: PlanManager.Tag,
+      Type: PlanManager.Tag.Type,
+      Id: PlanManager.Tag.Id
+    }
     
     const MockPlanManager = Layer.succeed(
       PlanManager,
@@ -351,7 +363,7 @@ describe("GitHubTools", () => {
       MockMemoryManager,
       MockPlanManager,
       StatefulToolContextLayer,
-      GitHubApiKeyLayer
+      TestEnvLayer
     )
     
     // Get GitHubTools with test layer
