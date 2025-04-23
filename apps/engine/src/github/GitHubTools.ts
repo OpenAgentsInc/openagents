@@ -2,8 +2,8 @@ import type { AiToolkit } from "@effect/ai"
 import { Console, Effect, Layer, Ref } from "effect"
 import type { AgentState } from "./AgentStateTypes.js"
 import { GitHubClient } from "./GitHub.js"
-import { MemoryManager } from "./MemoryManager.js"
-import { PlanManager } from "./PlanManager.js"
+import type { MemoryManager } from "./MemoryManager.js"
+import type { PlanManager } from "./PlanManager.js"
 
 // GitHub tool names for reference
 export const TOOL_NAMES = {
@@ -28,7 +28,7 @@ export interface StatefulToolContext {
 }
 
 /**
- * Tag for the StatefulToolContext 
+ * Tag for the StatefulToolContext
  */
 export class StatefulToolContext extends Effect.Tag("StatefulToolContext")<
   StatefulToolContext,
@@ -70,25 +70,25 @@ export const GitHubToolsLayer = Layer.effect(
   Effect.gen(function*() {
     // Get dependencies from the context
     const github = yield* GitHubClient
-    
+
     const handlers = {
       GetGitHubIssue: (params: { owner: string; repo: string; issueNumber: number }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext // Get context
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext // Get context
           yield* Console.log(`🛠️ Tool called: GetGitHubIssue with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const result = yield* github.getIssue(params.owner, params.repo, params.issueNumber)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref using Managers AFTER success
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.GET_ISSUE, 
-              parameters: params, 
-              status: "success", 
-              result_preview: JSON.stringify(result).substring(0, 100), 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.GET_ISSUE,
+              parameters: params,
+              status: "success",
+              result_preview: JSON.stringify(result).substring(0, 100),
+              full_result_ref: null
             }
             // Chain sync updates using pipe
             return Effect.runSync(
@@ -98,35 +98,35 @@ export const GitHubToolsLayer = Layer.effect(
                 if (currentStepId) {
                   state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                 }
-                // Update metrics 
-                return { 
-                  ...state1, 
-                  metrics: { 
-                    ...state1.metrics, 
-                    tools_called: state1.metrics.tools_called + 1 
-                  } 
+                // Update metrics
+                return {
+                  ...state1,
+                  metrics: {
+                    ...state1.metrics,
+                    tools_called: state1.metrics.tools_called + 1
+                  }
                 }
               })
             )
           })
-          
+
           return result
         }).pipe(
-          Effect.catchAll((error) => 
+          Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.GET_ISSUE, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.GET_ISSUE,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -134,14 +134,14 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
-                      metrics: { 
-                        ...state1.metrics, 
-                        tools_called: state1.metrics.tools_called + 1 
+                    return {
+                      ...state1,
+                      metrics: {
+                        ...state1.metrics,
+                        tools_called: state1.metrics.tools_called + 1
                       },
                       error_state: {
                         ...state1.error_state,
@@ -157,7 +157,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               // Fail the tool effect
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.GET_ISSUE, params))
             })
@@ -166,23 +166,24 @@ export const GitHubToolsLayer = Layer.effect(
 
       ListGitHubIssues: (params: { owner: string; repo: string; state?: "open" | "closed" | "all" }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: ListGitHubIssues with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const result = yield* github.listIssues(params.owner, params.repo, params.state || "open")
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.LIST_ISSUES, 
-              parameters: params, 
-              status: "success", 
-              result_preview: JSON.stringify(result.issues.slice(0, 3)).substring(0, 100) + (result.issues.length > 3 ? "..." : ""), 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.LIST_ISSUES,
+              parameters: params,
+              status: "success",
+              result_preview: JSON.stringify(result.issues.slice(0, 3)).substring(0, 100) +
+                (result.issues.length > 3 ? "..." : ""),
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -194,24 +195,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.LIST_ISSUES, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.LIST_ISSUES,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -219,11 +220,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -239,7 +240,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.LIST_ISSUES, params))
             })
           )
@@ -247,23 +248,23 @@ export const GitHubToolsLayer = Layer.effect(
 
       CreateGitHubComment: (params: { owner: string; repo: string; issueNumber: number; body: string }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: CreateGitHubComment with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const result = yield* github.createIssueComment(params.owner, params.repo, params.issueNumber, params.body)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.CREATE_COMMENT, 
-              parameters: params, 
-              status: "success", 
-              result_preview: JSON.stringify(result).substring(0, 100), 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.CREATE_COMMENT,
+              parameters: params,
+              status: "success",
+              result_preview: JSON.stringify(result).substring(0, 100),
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -275,24 +276,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.CREATE_COMMENT, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.CREATE_COMMENT,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -300,11 +301,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -320,7 +321,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.CREATE_COMMENT, params))
             })
           )
@@ -339,24 +340,24 @@ export const GitHubToolsLayer = Layer.effect(
         }
       ) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: UpdateGitHubIssue with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const { issueNumber, owner, repo, ...updates } = params
           const result = yield* github.updateIssue(owner, repo, issueNumber, updates)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.UPDATE_ISSUE, 
-              parameters: params, 
-              status: "success", 
-              result_preview: JSON.stringify(result).substring(0, 100), 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.UPDATE_ISSUE,
+              parameters: params,
+              status: "success",
+              result_preview: JSON.stringify(result).substring(0, 100),
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -368,24 +369,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.UPDATE_ISSUE, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.UPDATE_ISSUE,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -393,11 +394,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -413,7 +414,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.UPDATE_ISSUE, params))
             })
           )
@@ -421,23 +422,23 @@ export const GitHubToolsLayer = Layer.effect(
 
       GetGitHubRepository: (params: { owner: string; repo: string }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: GetGitHubRepository with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const result = yield* github.getRepository(params.owner, params.repo)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.GET_REPOSITORY, 
-              parameters: params, 
-              status: "success", 
-              result_preview: JSON.stringify(result).substring(0, 100), 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.GET_REPOSITORY,
+              parameters: params,
+              status: "success",
+              result_preview: JSON.stringify(result).substring(0, 100),
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -449,24 +450,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.GET_REPOSITORY, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.GET_REPOSITORY,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -474,11 +475,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -494,7 +495,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.GET_REPOSITORY, params))
             })
           )
@@ -502,23 +503,23 @@ export const GitHubToolsLayer = Layer.effect(
 
       GetGitHubIssueComments: (params: { owner: string; repo: string; issueNumber: number }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: GetGitHubIssueComments with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const result = yield* github.getIssueComments(params.owner, params.repo, params.issueNumber)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.GET_ISSUE_COMMENTS, 
-              parameters: params, 
-              status: "success", 
-              result_preview: JSON.stringify(result.slice(0, 2)).substring(0, 100) + (result.length > 2 ? "..." : ""), 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.GET_ISSUE_COMMENTS,
+              parameters: params,
+              status: "success",
+              result_preview: JSON.stringify(result.slice(0, 2)).substring(0, 100) + (result.length > 2 ? "..." : ""),
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -530,24 +531,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.GET_ISSUE_COMMENTS, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.GET_ISSUE_COMMENTS,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -555,11 +556,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -575,7 +576,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.GET_ISSUE_COMMENTS, params))
             })
           )
@@ -583,23 +584,23 @@ export const GitHubToolsLayer = Layer.effect(
 
       CreateAgentStateForIssue: (params: { owner: string; repo: string; issueNumber: number }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: CreateAgentStateForIssue with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const result = yield* github.createAgentStateForIssue(params.owner, params.repo, params.issueNumber)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.CREATE_AGENT_STATE, 
-              parameters: params, 
-              status: "success", 
-              result_preview: `Created state with ID: ${result.agent_info.instance_id}`, 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.CREATE_AGENT_STATE,
+              parameters: params,
+              status: "success",
+              result_preview: `Created state with ID: ${result.agent_info.instance_id}`,
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -611,24 +612,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.CREATE_AGENT_STATE, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.CREATE_AGENT_STATE,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -636,11 +637,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -656,7 +657,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.CREATE_AGENT_STATE, params))
             })
           )
@@ -664,23 +665,23 @@ export const GitHubToolsLayer = Layer.effect(
 
       LoadAgentState: (params: { instanceId: string }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: LoadAgentState with params: ${JSON.stringify(params)}`)
-          
+
           // Perform core action
           const result = yield* github.loadAgentState(params.instanceId)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.LOAD_AGENT_STATE, 
-              parameters: params, 
-              status: "success", 
-              result_preview: `Loaded state with ID: ${result.agent_info.instance_id}`, 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.LOAD_AGENT_STATE,
+              parameters: params,
+              status: "success",
+              result_preview: `Loaded state with ID: ${result.agent_info.instance_id}`,
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -692,24 +693,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.LOAD_AGENT_STATE, 
-                  parameters: params, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.LOAD_AGENT_STATE,
+                  parameters: params,
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -717,11 +718,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -737,7 +738,7 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
+
               return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.LOAD_AGENT_STATE, params))
             })
           )
@@ -745,24 +746,24 @@ export const GitHubToolsLayer = Layer.effect(
 
       SaveAgentState: (params: { state: AgentState }) =>
         Effect.gen(function*() {
-          const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+          const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
           yield* Console.log(`🛠️ Tool called: SaveAgentState`)
           yield* Console.log(`📝 Parameters: [state object]`)
-          
+
           // Perform core action
           const result = yield* github.saveAgentState(params.state)
           yield* Console.log(`✅ Tool result obtained.`)
-          
+
           // Update state via Ref
           yield* Ref.update(stateRef, (currentState) => {
-            const toolCallData = { 
-              tool_name: TOOL_NAMES.SAVE_AGENT_STATE, 
-              parameters: { instance_id: params.state.agent_info.instance_id }, 
-              status: "success", 
-              result_preview: `Saved state with ID: ${result.agent_info.instance_id}`, 
-              full_result_ref: null 
+            const toolCallData = {
+              tool_name: TOOL_NAMES.SAVE_AGENT_STATE,
+              parameters: { instance_id: params.state.agent_info.instance_id },
+              status: "success",
+              result_preview: `Saved state with ID: ${result.agent_info.instance_id}`,
+              full_result_ref: null
             }
-            
+
             return Effect.runSync(
               Effect.gen(function*() {
                 let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -774,24 +775,24 @@ export const GitHubToolsLayer = Layer.effect(
               })
             )
           })
-          
+
           return result
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function*() {
-              const { stateRef, memoryManager, planManager } = yield* StatefulToolContext
+              const { memoryManager, planManager, stateRef } = yield* StatefulToolContext
               yield* Console.error(`❌ Tool error: ${String(error)}`)
-              
+
               // Update state via Ref on FAILURE
               yield* Ref.update(stateRef, (currentState) => {
-                const toolCallData = { 
-                  tool_name: TOOL_NAMES.SAVE_AGENT_STATE, 
-                  parameters: { instance_id: params.state.agent_info.instance_id }, 
-                  status: "error", 
-                  result_preview: String(error), 
-                  full_result_ref: null 
+                const toolCallData = {
+                  tool_name: TOOL_NAMES.SAVE_AGENT_STATE,
+                  parameters: { instance_id: params.state.agent_info.instance_id },
+                  status: "error",
+                  result_preview: String(error),
+                  full_result_ref: null
                 }
-                
+
                 return Effect.runSync(
                   Effect.gen(function*() {
                     let state1 = yield* memoryManager.addToolInvocationLogEntry(currentState, toolCallData)
@@ -799,11 +800,11 @@ export const GitHubToolsLayer = Layer.effect(
                     if (currentStepId) {
                       state1 = yield* planManager.addToolCallToStep(state1, currentStepId, toolCallData)
                     }
-                    
+
                     // Update error state
                     const now = new Date().toISOString()
-                    return { 
-                      ...state1, 
+                    return {
+                      ...state1,
                       metrics: { ...state1.metrics, tools_called: state1.metrics.tools_called + 1 },
                       error_state: {
                         ...state1.error_state,
@@ -819,8 +820,12 @@ export const GitHubToolsLayer = Layer.effect(
                   })
                 )
               })
-              
-              return yield* Effect.fail(new ToolExecutionError(String(error), TOOL_NAMES.SAVE_AGENT_STATE, { instance_id: params.state.agent_info.instance_id }))
+
+              return yield* Effect.fail(
+                new ToolExecutionError(String(error), TOOL_NAMES.SAVE_AGENT_STATE, {
+                  instance_id: params.state.agent_info.instance_id
+                })
+              )
             })
           )
         )

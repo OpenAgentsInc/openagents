@@ -1,6 +1,6 @@
 import { AnthropicClient } from "@effect/ai-anthropic"
-import { Config, Console, Effect, Layer } from "effect"
 import { NodeContext, NodeHttpClient } from "@effect/platform-node"
+import { Config, Console, Effect, Layer } from "effect"
 import { ContextManagerLayer } from "./github/ContextManager.js"
 import { GitHubClientLayer } from "./github/GitHub.js"
 import { GitHubToolsDefault } from "./github/GitHubTools.js"

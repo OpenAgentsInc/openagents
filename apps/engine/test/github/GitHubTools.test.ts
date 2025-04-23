@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "@effect/vitest"
-import { Config, Effect, Layer, Ref } from "effect"
 import { NodeFileSystem } from "@effect/platform-node"
+import { describe, expect, it, vi } from "@effect/vitest"
+import { Effect, Layer, Ref } from "effect"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
-import { GitHubTools, StatefulToolContext, GitHubToolsLayer } from "../../src/github/GitHubTools.js"
+import { GitHubTools, GitHubToolsLayer, StatefulToolContext } from "../../src/github/GitHubTools.js"
 import { MemoryManager } from "../../src/github/MemoryManager.js"
 import { PlanManager } from "../../src/github/PlanManager.js"
 
@@ -98,10 +98,10 @@ const getTestState = (): AgentState => ({
 describe("GitHubTools", () => {
   // Create test environment layers for all tests
   const TestEnvLayer = Layer.mergeAll(
-    Layer.setConfigProvider(Config.secret("GITHUB_API_KEY").pipe(Config.withDefault("test-api-key"))),
+    // Just provide the NodeFileSystem for now, skip config in tests
     NodeFileSystem.layer
   )
-  
+
   it("should define GitHubTools", () => {
     expect(GitHubTools).toBeDefined()
   })
@@ -114,7 +114,7 @@ describe("GitHubTools", () => {
     // Create initial state and stateRef
     const initialState = getTestState()
     const stateRef = await Effect.runPromise(Ref.make(initialState))
-    
+
     // Set up mocks for dependencies
     const getIssueMock = vi.fn().mockReturnValue(Effect.succeed({
       title: "Test Issue",
@@ -123,7 +123,7 @@ describe("GitHubTools", () => {
       labels: [{ name: "bug" }],
       html_url: "https://github.com/user/repo/issues/123"
     }))
-    
+
     const addToolInvocationLogEntryMock = vi.fn().mockImplementation((state, toolCallData) => {
       return Effect.succeed({
         ...state,
@@ -136,18 +136,18 @@ describe("GitHubTools", () => {
         ]
       })
     })
-    
+
     const addToolCallToStepMock = vi.fn().mockImplementation((state, stepId, toolCallData) => {
       return Effect.succeed({
         ...state,
-        plan: state.plan.map((step: any) => 
-          step.id === stepId 
-            ? { ...step, tool_calls: [...step.tool_calls, { ...toolCallData, timestamp: expect.any(String) }] } 
+        plan: state.plan.map((step: any) =>
+          step.id === stepId
+            ? { ...step, tool_calls: [...step.tool_calls, { ...toolCallData, timestamp: expect.any(String) }] }
             : step
         )
       })
     })
-    
+
     // Mock GitHub client
     const mockGitHubClient = {
       getIssue: getIssueMock,
@@ -161,12 +161,12 @@ describe("GitHubTools", () => {
       saveAgentState: vi.fn().mockReturnValue(Effect.succeed(initialState)),
       _tag: "GitHubClient" as const
     }
-    
+
     const MockGitHubClient = Layer.succeed(
       GitHubClient,
       GitHubClient.of(mockGitHubClient as unknown as GitHubClient)
     )
-    
+
     // Mock memory manager
     const mockMemoryManager = {
       addConversationMessage: vi.fn().mockImplementation((state, role, content) => Effect.succeed(state)),
@@ -175,12 +175,12 @@ describe("GitHubTools", () => {
       updateScratchpad: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addToolInvocationLogEntry: addToolInvocationLogEntryMock
     }
-    
+
     const MockMemoryManager = Layer.succeed(
       MemoryManager,
       MemoryManager.of(mockMemoryManager)
     )
-    
+
     // Mock plan manager
     const mockPlanManager = {
       addPlanStep: vi.fn().mockImplementation((state) => Effect.succeed(state)),
@@ -188,24 +188,30 @@ describe("GitHubTools", () => {
       addToolCallToStep: addToolCallToStepMock,
       getCurrentStep: vi.fn().mockImplementation((state) => Effect.succeed(state.plan[0]))
     }
-    
+
     const MockPlanManager = Layer.succeed(
       PlanManager,
       PlanManager.of(mockPlanManager)
     )
-    
+
     // Create StatefulToolContext
     const toolContext = {
       stateRef,
       planManager: mockPlanManager,
       memoryManager: mockMemoryManager
     }
-    
+
     const StatefulToolContextLayer = Layer.succeed(
       StatefulToolContext,
-      StatefulToolContext.of(toolContext as unknown as { readonly stateRef: Ref.Ref<AgentState>; readonly planManager: PlanManager; readonly memoryManager: MemoryManager })
+      StatefulToolContext.of(
+        toolContext as unknown as {
+          readonly stateRef: Ref.Ref<AgentState>
+          readonly planManager: PlanManager
+          readonly memoryManager: MemoryManager
+        }
+      )
     )
-    
+
     // Create a combined layer with all dependencies
     const TestLayer = Layer.mergeAll(
       MockGitHubClient,
@@ -214,18 +220,18 @@ describe("GitHubTools", () => {
       StatefulToolContextLayer,
       TestEnvLayer
     )
-    
+
     // Get GitHubTools with test layer
     const GitHubToolsWithDeps = Layer.provide(GitHubToolsLayer, TestLayer)
-    
+
     // Run the test effect
     const testEffect = Effect.gen(function*() {
       const githubTools = yield* GitHubTools
-      
+
       // Call the GetGitHubIssue handler
       const params = { owner: "user", repo: "repo", issueNumber: 123 }
       const result = yield* githubTools.handlers.GetGitHubIssue(params)
-      
+
       // Check result
       expect(result).toEqual({
         title: "Test Issue",
@@ -234,19 +240,19 @@ describe("GitHubTools", () => {
         labels: [{ name: "bug" }],
         html_url: "https://github.com/user/repo/issues/123"
       })
-      
+
       // Check state was updated
       const finalState = yield* Ref.get(stateRef)
-      
+
       // Verify the state changes
       expect(finalState.tool_invocation_log.length).toBeGreaterThan(0)
       expect(finalState.metrics.tools_called).toBe(1)
       expect(addToolInvocationLogEntryMock).toHaveBeenCalled()
       expect(addToolCallToStepMock).toHaveBeenCalled()
-      
+
       return result
     })
-    
+
     const providedEffect = Effect.provide(testEffect, GitHubToolsWithDeps) as Effect.Effect<any, unknown, never>
     await Effect.runPromise(providedEffect)
   })
@@ -255,13 +261,13 @@ describe("GitHubTools", () => {
     // Create initial state and stateRef
     const initialState = getTestState()
     const stateRef = await Effect.runPromise(Ref.make(initialState))
-    
+
     // Simulated error
     const mockError = new Error("API error")
-    
+
     // Set up mocks for dependencies
     const getIssueMock = vi.fn().mockReturnValue(Effect.fail(mockError))
-    
+
     const addToolInvocationLogEntryMock = vi.fn().mockImplementation((state, toolCallData) => {
       return Effect.succeed({
         ...state,
@@ -274,18 +280,18 @@ describe("GitHubTools", () => {
         ]
       })
     })
-    
+
     const addToolCallToStepMock = vi.fn().mockImplementation((state, stepId, toolCallData) => {
       return Effect.succeed({
         ...state,
-        plan: state.plan.map((step: any) => 
-          step.id === stepId 
-            ? { ...step, tool_calls: [...step.tool_calls, { ...toolCallData, timestamp: expect.any(String) }] } 
+        plan: state.plan.map((step: any) =>
+          step.id === stepId
+            ? { ...step, tool_calls: [...step.tool_calls, { ...toolCallData, timestamp: expect.any(String) }] }
             : step
         )
       })
     })
-    
+
     // Mock GitHub client
     const mockGitHubClient = {
       getIssue: getIssueMock,
@@ -299,12 +305,12 @@ describe("GitHubTools", () => {
       saveAgentState: vi.fn().mockReturnValue(Effect.fail(mockError)),
       _tag: "GitHubClient" as const
     }
-    
+
     const MockGitHubClient = Layer.succeed(
       GitHubClient,
       GitHubClient.of(mockGitHubClient as unknown as GitHubClient)
     )
-    
+
     // Mock memory manager
     const mockMemoryManager = {
       addConversationMessage: vi.fn().mockImplementation((state, role, content) => Effect.succeed(state)),
@@ -313,12 +319,12 @@ describe("GitHubTools", () => {
       updateScratchpad: vi.fn().mockImplementation((state) => Effect.succeed(state)),
       addToolInvocationLogEntry: addToolInvocationLogEntryMock
     }
-    
+
     const MockMemoryManager = Layer.succeed(
       MemoryManager,
       MemoryManager.of(mockMemoryManager)
     )
-    
+
     // Mock plan manager
     const mockPlanManager = {
       addPlanStep: vi.fn().mockImplementation((state) => Effect.succeed(state)),
@@ -326,24 +332,30 @@ describe("GitHubTools", () => {
       addToolCallToStep: addToolCallToStepMock,
       getCurrentStep: vi.fn().mockImplementation((state) => Effect.succeed(state.plan[0]))
     }
-    
+
     const MockPlanManager = Layer.succeed(
       PlanManager,
       PlanManager.of(mockPlanManager)
     )
-    
+
     // Create StatefulToolContext
     const toolContext = {
       stateRef,
       planManager: mockPlanManager,
       memoryManager: mockMemoryManager
     }
-    
+
     const StatefulToolContextLayer = Layer.succeed(
       StatefulToolContext,
-      StatefulToolContext.of(toolContext as unknown as { readonly stateRef: Ref.Ref<AgentState>; readonly planManager: PlanManager; readonly memoryManager: MemoryManager })
+      StatefulToolContext.of(
+        toolContext as unknown as {
+          readonly stateRef: Ref.Ref<AgentState>
+          readonly planManager: PlanManager
+          readonly memoryManager: MemoryManager
+        }
+      )
     )
-    
+
     // Create a combined layer with all dependencies
     const TestLayer = Layer.mergeAll(
       MockGitHubClient,
@@ -352,24 +364,24 @@ describe("GitHubTools", () => {
       StatefulToolContextLayer,
       TestEnvLayer
     )
-    
+
     // Get GitHubTools with test layer
     const GitHubToolsWithDeps = Layer.provide(GitHubToolsLayer, TestLayer)
-    
+
     // Run the test effect
     const testEffect = Effect.gen(function*() {
       const githubTools = yield* GitHubTools
-      
+
       // Call the GetGitHubIssue handler - should fail
       const params = { owner: "user", repo: "repo", issueNumber: 123 }
-      
+
       // Use either to catch the error
       const result = yield* Effect.either(githubTools.handlers.GetGitHubIssue(params))
       expect(result._tag).toBe("Left")
-      
+
       // Check state was updated
       const finalState = yield* Ref.get(stateRef)
-      
+
       // Verify the state changes on error
       expect(finalState.tool_invocation_log.length).toBeGreaterThan(0)
       expect(finalState.metrics.tools_called).toBe(1)
@@ -377,10 +389,10 @@ describe("GitHubTools", () => {
       expect(finalState.error_state.consecutive_error_count).toBe(1)
       expect(addToolInvocationLogEntryMock).toHaveBeenCalled()
       expect(addToolCallToStepMock).toHaveBeenCalled()
-      
+
       return result
     })
-    
+
     const providedEffect = Effect.provide(testEffect, GitHubToolsWithDeps) as Effect.Effect<any, unknown, never>
     await Effect.runPromise(providedEffect)
   })

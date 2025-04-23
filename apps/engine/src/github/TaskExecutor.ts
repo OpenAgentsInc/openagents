@@ -139,7 +139,7 @@ export const TaskExecutorLayer = Layer.effect(
 
           // 5. Create StatefulToolContext for the tool handlers
           const toolContextService = StatefulToolContext.of({
-            stateRef: stateRef,
+            stateRef,
             planManager: planManager as unknown as PlanManager,
             memoryManager: memoryManager as unknown as MemoryManager
           })
@@ -151,21 +151,21 @@ export const TaskExecutorLayer = Layer.effect(
             yield* Console.log("🧠 Prompting AI to execute step...")
 
             // 7. Get tools/handlers from githubTools
-            const { tools, handlers } = githubTools
+            const { handlers, tools } = githubTools
 
             // 8. Prepare the AI toolkitStream
             // Use `as any` to work around library typings issues
             const aiResponseStream = (completions.toolkitStream as any)({
               model: workingState.configuration.llm_config.model,
               messages: [{ role: "user", content: prompt }],
-              tools: { toolkit: tools, handlers: handlers } as any,
+              tools: { toolkit: tools, handlers } as any,
               temperature: workingState.configuration.llm_config.temperature,
               maxTokens: workingState.configuration.llm_config.max_tokens
             })
 
             // 9. Set up buffers for response processing
             let responseBuffer = ""
-            let toolOutputs: Array<any> = []
+            const toolOutputs: Array<any> = []
             let finalResponse = ""
 
             // 10. Process the AI stream
@@ -174,7 +174,7 @@ export const TaskExecutorLayer = Layer.effect(
                 Effect.gen(function*() {
                   const currentState = yield* Ref.get(stateRef)
                   let nextState = currentState
-                  
+
                   // Handle Text Deltas
                   if ((chunk as any).response && (chunk as any).response.parts) {
                     for (const part of (chunk as any).response.parts) {
@@ -188,12 +188,12 @@ export const TaskExecutorLayer = Layer.effect(
                       }
                     }
                   }
-                  
+
                   // Handle Tool Results (after handler runs and updates state via Ref)
                   if ((chunk as any).value?._tag === "Some") {
                     const toolResult = (chunk as any).value.value
                     yield* Console.log(`🔧 Tool ${toolResult.name} executed.`)
-                    
+
                     // State should have been updated inside the handler via Ref
                     // Add the result to conversation history
                     const toolResultMessage = {
@@ -201,10 +201,10 @@ export const TaskExecutorLayer = Layer.effect(
                       content: JSON.stringify(toolResult.result),
                       tool_call_id: toolResult.id
                     }
-                    
+
                     // Store tool outputs for potential follow-up prompts
                     toolOutputs.push(toolResult)
-                    
+
                     // Add the tool result message to conversation history
                     nextState = yield* memoryManager.addConversationMessage(
                       nextState,
@@ -213,7 +213,7 @@ export const TaskExecutorLayer = Layer.effect(
                       [{ id: toolResultMessage.tool_call_id, name: toolResult.name, input: toolResult.input }]
                     )
                   }
-                  
+
                   // Update Ref if state changed within the chunk processing
                   if (nextState !== currentState) {
                     yield* Ref.set(stateRef, nextState)
@@ -228,25 +228,25 @@ export const TaskExecutorLayer = Layer.effect(
                 // Handle errors specifically from the AI/Tool stream
                 return Effect.gen(function*() {
                   yield* Console.error(`AI/Tool Stream Error: ${aiError}`)
-                
-                // Update stateRef with AI error details
-                const now = new Date().toISOString()
-                yield* Ref.update(stateRef, (s) => ({
-                  ...s,
-                  error_state: {
-                    ...s.error_state,
-                    last_error: { 
-                      timestamp: now, 
-                      message: `AI Error: ${aiError}`, 
-                      type: "internal" as const, 
-                      details: String(aiError) 
+
+                  // Update stateRef with AI error details
+                  const now = new Date().toISOString()
+                  yield* Ref.update(stateRef, (s) => ({
+                    ...s,
+                    error_state: {
+                      ...s.error_state,
+                      last_error: {
+                        timestamp: now,
+                        message: `AI Error: ${aiError}`,
+                        type: "internal" as const,
+                        details: String(aiError)
+                      },
+                      consecutive_error_count: s.error_state.consecutive_error_count + 1
                     },
-                    consecutive_error_count: s.error_state.consecutive_error_count + 1
-                  },
-                  current_task: { ...s.current_task, status: "error" }
-                }))
-                
-                // Re-throw the error
+                    current_task: { ...s.current_task, status: "error" }
+                  }))
+
+                  // Re-throw the error
                   return Effect.fail(aiError instanceof Error ? aiError : new Error(String(aiError)))
                 })
               })
@@ -255,32 +255,32 @@ export const TaskExecutorLayer = Layer.effect(
             // 11. After stream processing, get final state and add final assistant message
             workingState = yield* Ref.get(stateRef)
             finalResponse = responseBuffer.trim()
-            
+
             if (finalResponse) {
               workingState = yield* memoryManager.addConversationMessage(workingState, "assistant", finalResponse)
             }
 
             // 12. Update Step Status based on final response
             const isStepComplete = responseBuffer.includes("STEP COMPLETED")
-            const stepFailed = responseBuffer.includes("STEP FAILED") || 
-                              (workingState.error_state.last_error && 
-                              workingState.error_state.last_error.timestamp > currentState.timestamps.last_action_at)
-            
+            const stepFailed = responseBuffer.includes("STEP FAILED") ||
+              (workingState.error_state.last_error &&
+                workingState.error_state.last_error.timestamp > currentState.timestamps.last_action_at)
+
             if (stepFailed) {
               yield* Console.log(`Step ${currentStep.step_number} failed.`)
-              
+
               // Extract failure message if possible
               const failureMessage = responseBuffer.includes("STEP FAILED")
                 ? responseBuffer.substring(responseBuffer.indexOf("STEP FAILED"))
                 : "Step failed during execution."
-              
+
               workingState = yield* planManager.updateStepStatus(
                 workingState,
                 currentStep.id,
                 "error",
                 failureMessage.slice(0, 200) // Limit summary length
               )
-              
+
               // Update error state if not already set by a tool handler
               if (!workingState.error_state.last_error) {
                 const now = new Date().toISOString()
@@ -300,17 +300,17 @@ export const TaskExecutorLayer = Layer.effect(
               }
             } else if (isStepComplete) {
               yield* Console.log(`Step ${currentStep.step_number} completed successfully.`)
-              
+
               // Update status to completed with a result summary
               const resultSummary = responseBuffer.substring(responseBuffer.indexOf("STEP COMPLETED"))
-              
+
               workingState = yield* planManager.updateStepStatus(
                 workingState,
                 currentStep.id,
                 "completed",
                 resultSummary.slice(0, 200) // Limit summary length
               )
-              
+
               // Advance step index
               workingState = {
                 ...workingState,
@@ -323,7 +323,7 @@ export const TaskExecutorLayer = Layer.effect(
               // If no explicit markers, check for errors before assuming completion
               if (workingState.error_state.last_error) {
                 yield* Console.log(`Step ${currentStep.step_number} failed (error detected).`)
-                
+
                 workingState = yield* planManager.updateStepStatus(
                   workingState,
                   currentStep.id,
@@ -333,14 +333,14 @@ export const TaskExecutorLayer = Layer.effect(
               } else {
                 // Assume completion if no errors or explicit markers
                 yield* Console.log(`Step ${currentStep.step_number} assumed completed (no explicit marker).`)
-                
+
                 workingState = yield* planManager.updateStepStatus(
                   workingState,
                   currentStep.id,
                   "completed",
                   "Step assumed completed (no explicit marker)."
                 )
-                
+
                 // Advance step index
                 workingState = {
                   ...workingState,
@@ -409,7 +409,7 @@ export const TaskExecutorLayer = Layer.effect(
               last_saved_at: new Date().toISOString()
             }
           }
-          
+
           // 15. Save the final state
           yield* githubClient.saveAgentState(workingState)
           yield* Console.log(`Agent state saved for instance ${workingState.agent_info.instance_id}`)

@@ -3,7 +3,7 @@
  */
 // Schema import not used directly
 // import { Schema } from "effect"
-import { AgentState } from "../src/github/AgentStateTypes.js"
+import type { AgentState } from "../src/github/AgentStateTypes.js"
 
 /**
  * Creates a minimal test state for testing

@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "@effect/vitest"
 import { Completions } from "@effect/ai"
-import type { Context } from "effect"
-import { Config, Effect, Layer, Stream } from "effect"
 import { NodeFileSystem } from "@effect/platform-node"
+import { describe, expect, it, vi } from "@effect/vitest"
+import type { Context } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import type { AgentState } from "../../src/github/AgentStateTypes.js"
 import { GitHubClient } from "../../src/github/GitHub.js"
 import { GitHubTools } from "../../src/github/GitHubTools.js"
@@ -120,13 +120,10 @@ const createTestState = (): AgentState => ({
 describe("TaskExecutor", () => {
   // Create test environment layers for all tests
   const TestEnvLayer = Layer.mergeAll(
-    Layer.setConfigProvider(
-      Config.secret("GITHUB_API_KEY").pipe(Config.withDefault("test-api-key")),
-      Config.secret("ANTHROPIC_API_KEY").pipe(Config.withDefault("test-api-key"))
-    ),
+    // Just provide the NodeFileSystem for now, skip config in tests
     NodeFileSystem.layer
   )
-  
+
   describe("executeNextStep", () => {
     it.skip("should execute a step successfully", async () => {
       // Arrange
@@ -400,8 +397,7 @@ describe("TaskExecutor", () => {
         // First call happens when status is set to in_progress
         if (state.plan[0].status === "in_progress") {
           expect(state.current_task.current_step_index).toBe(0) // Not advanced
-        }
-        // Final call happens after error handling
+        } // Final call happens after error handling
         else if (state.plan[0].status === "error") {
           expect(state.error_state.last_error).not.toBeNull()
           expect(state.error_state.consecutive_error_count).toBe(1)
