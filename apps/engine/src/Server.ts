@@ -63,15 +63,30 @@ const broadcastSSE = (event: string, data: string): void => {
   // Format a standard SSE message
   const message = `event: ${event}\ndata: ${data}\n\n`
 
-  // Only log initial events and errors
+  // Log all SSE events during debugging to see what's happening with communication
+  log(`DEBUG: Broadcasting SSE event: ${event} to ${clients.size} clients`)
+  
+  if (clients.size === 0) {
+    log(`DEBUG: WARNING - No SSE clients connected to receive ${event} event!`)
+  }
+
+  // Only log detailed data for certain events
   if (event === "connected" || event === "status") {
     log(`Broadcasting ${event} event to ${clients.size} clients`)
   } else if (event === "analysis" && data.includes("error")) {
     log(`Error: ${data.substring(data.indexOf("<span class=\"error\">") + 19, data.indexOf("</span>"))}`)
+  } else if (event === "agent_state" || event === "error") {
+    // Log a truncated version of the data for important events
+    log(`DEBUG: SSE data for ${event}: ${data.substring(0, 100)}...`)
   }
 
   for (const client of clients.values()) {
-    client.write(message)
+    try {
+      client.write(message)
+      log(`DEBUG: Successfully wrote SSE message to client`)
+    } catch (err) {
+      error(`DEBUG ERROR: Failed to write SSE message to client: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 }
 
@@ -99,37 +114,80 @@ const AppLayer = Layer.mergeAll(
 
 // Setup a route to handle the SSE connection
 const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void => {
+  log(`DEBUG: SSE connection requested, setting up headers`)
+  
   // Set headers for SSE
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive"
-  })
+  try {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive"
+    })
+    log(`DEBUG: SSE headers successfully set`)
+  } catch (err) {
+    error(`DEBUG ERROR: Failed to set SSE headers: ${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
+
+  // Add client to the list first to ensure all messages are received
+  const clientId = (++lastClientId).toString()
+  clients.set(clientId, res)
+  log(`DEBUG: Added new SSE client with ID ${clientId}, total clients: ${clients.size}`)
 
   // Send initial connection message
+  log(`DEBUG: Sending initial connection message to client ${clientId}`)
+  try {
+    // Write directly to this client first
+    const connMessage = `event: connected\ndata: SSE connection established\n\n`
+    res.write(connMessage)
+    log(`DEBUG: Successfully sent direct connection message to client ${clientId}`)
+  } catch (err) {
+    error(`DEBUG ERROR: Failed to send direct connection message: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  
+  // Send via broadcast (for consistency in logs)
   broadcastSSE("connected", "SSE connection established")
 
   // Send initial status information
+  log(`DEBUG: Sending initial status information to client ${clientId}`)
   const statusData = JSON.stringify({
     connection: "connected",
     agent: "ready"
   })
   broadcastSSE("status", statusData)
 
-  // Add client to the list
-  const clientId = (++lastClientId).toString()
-  clients.set(clientId, res)
-
   // Handle client disconnect
   req.on("close", () => {
+    log(`DEBUG: SSE client ${clientId} disconnected`)
     clients.delete(clientId)
+    log(`DEBUG: Removed client ${clientId}, remaining clients: ${clients.size}`)
   })
 
   // Handle errors
   res.on("error", (err) => {
-    error(`SSE client ${clientId} error: ${err.message}`)
+    error(`DEBUG ERROR: SSE client ${clientId} error: ${err.message}`)
     clients.delete(clientId)
+    log(`DEBUG: Removed client ${clientId} due to error, remaining clients: ${clients.size}`)
   })
+  
+  // Send a test message every 10 seconds to keep connection alive and verify it's working
+  const keepAliveTimer = setInterval(() => {
+    try {
+      if (!clients.has(clientId)) {
+        log(`DEBUG: Client ${clientId} no longer exists, clearing keepalive timer`)
+        clearInterval(keepAliveTimer)
+        return
+      }
+      
+      const keepAliveMessage = `event: keepalive\ndata: ${new Date().toISOString()}\n\n`
+      res.write(keepAliveMessage)
+      log(`DEBUG: Sent keepalive to client ${clientId}`)
+    } catch (err) {
+      error(`DEBUG ERROR: Failed to send keepalive to client ${clientId}: ${err instanceof Error ? err.message : String(err)}`)
+      clients.delete(clientId)
+      clearInterval(keepAliveTimer)
+    }
+  }, 10000)
 }
 
 // Create a simple HTTP server
