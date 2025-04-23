@@ -5,9 +5,8 @@ import * as Http from "node:http"
 import * as path from "node:path"
 import type { AgentState } from "./github/AgentStateTypes.js"
 import { GitHubClient } from "./github/GitHub.js"
-import { MemoryManager } from "./github/MemoryManager.js"
-import { PlanManager } from "./github/PlanManager.js"
 import { TaskExecutor } from "./github/TaskExecutor.js"
+import { AllLayers } from "./Program.js"
 
 // Load environment variables from .env file
 const loadConfig = Effect.try({
@@ -99,49 +98,8 @@ const createAgentStateUpdate = (state: AgentState) => ({
     : null
 })
 
-// Import necessary services to recreate the layer stack
-import { AnthropicClient } from "@effect/ai-anthropic"
-import { NodeContext, NodeHttpClient } from "@effect/platform-node"
-import { Layer, Redacted } from "effect"
-import { GitHubToolsDefault } from "./github/GitHubTools.js"
-import { ContextManagerLayer } from "./github/ContextManager.js"
-import { GitHubClientLayer } from "./github/GitHub.js"
-import { MemoryManagerLayer } from "./github/MemoryManager.js"
-import { PlanManagerLayer } from "./github/PlanManager.js"
-import { TaskExecutorLayer } from "./github/TaskExecutor.js"
-
-// Create our own AppLayer stack here to avoid circular dependencies
-// and ensure API keys are properly loaded
-const createAppLayer = () => {
-  log("DEBUG: CRITICAL - Recreating AppLayer locally with API keys")
-
-  // Load config first to ensure environment variables are available
-  const config = Effect.runSync(loadConfig)
-  log("DEBUG: Successfully loaded configuration with API keys")
-
-  // Create Anthropic layer with direct API key
-  const AnthropicLayer = AnthropicClient.layer({
-    apiKey: Redacted.make(config.anthropicApiKey!)
-  })
-
-  // Create the HTTP client layer
-  const httpClientLayer = NodeHttpClient.layerUndici
-
-  // Combine the layers
-  return Layer.mergeAll(
-    // Service layers
-    GitHubClientLayer,
-    PlanManagerLayer,  // Use consistent naming with all layers
-    MemoryManagerLayer,
-    ContextManagerLayer,
-    // Tools layer
-    GitHubToolsDefault,
-    // Task execution layer
-    TaskExecutorLayer,
-    // AI layer with HTTP client
-    Layer.provide(AnthropicLayer, httpClientLayer)
-  ).pipe(Layer.provide(NodeContext.layer)) // Add NodeContext.layer to provide essential Node.js services
-}
+// Comments about environment variables and API keys
+// Note: We now import AllLayers directly from Program.js to ensure consistent layer composition
 
 // Setup a route to handle the SSE connection
 const sseHandler = (req: Http.IncomingMessage, res: Http.ServerResponse): void => {
@@ -425,43 +383,9 @@ const createHttpServer = (): Http.Server => {
             console.log("DEBUG: CRITICAL - Inside pipeline generator function - BASELINE")
 
             try {
-              // Test each service individually to see which ones are available
-              console.log("DEBUG: CRITICAL - About to test individual services")
-
-              try {
-                console.log("DEBUG: CRITICAL - Testing GitHubClient")
-                yield* GitHubClient
-                console.log("DEBUG: CRITICAL - GitHubClient found")
-              } catch (err) {
-                console.error("DEBUG: CRITICAL ERROR - GitHubClient not found:", err instanceof Error ? err.message : String(err))
-              }
-
-              try {
-                console.log("DEBUG: CRITICAL - Testing TaskExecutor")
-                yield* TaskExecutor
-                console.log("DEBUG: CRITICAL - TaskExecutor found")
-              } catch (err) {
-                console.error("DEBUG: CRITICAL ERROR - TaskExecutor not found:", err instanceof Error ? err.message : String(err))
-              }
-
-              try {
-                console.log("DEBUG: CRITICAL - Testing PlanManager")
-                yield* PlanManager
-                console.log("DEBUG: CRITICAL - PlanManager found")
-              } catch (err) {
-                console.error("DEBUG: CRITICAL ERROR - PlanManager not found:", err instanceof Error ? err.message : String(err))
-              }
-
-              try {
-                console.log("DEBUG: CRITICAL - Testing MemoryManager")
-                yield* MemoryManager
-                console.log("DEBUG: CRITICAL - MemoryManager found")
-              } catch (err) {
-                console.error("DEBUG: CRITICAL ERROR - MemoryManager not found:", err instanceof Error ? err.message : String(err))
-              }
-
-              // Now try to run the actual pipeline
-              console.log("DEBUG: CRITICAL - All service tests complete, attempting to run the pipeline")
+              // Simplified approach: run the pipeline directly without individual service tests
+              // This avoids potential reference equality issues with the service Tags
+              console.log("DEBUG: CRITICAL - Running pipeline with AllLayers from Program.js")
               return yield* pipelineWithErrorHandling
             } catch (err) {
               // Log any errors directly to console
@@ -470,26 +394,32 @@ const createHttpServer = (): Http.Server => {
             }
           })
 
-          // Create the AppLayer directly with fixed API keys
-          try {
-            const appLayer = createAppLayer()
-            log(`DEBUG: CRITICAL - Successfully created local AppLayer with API keys`)
+          // Use the AllLayers imported from Program.js
+          log(`DEBUG: CRITICAL - Using AllLayers from Program.js`)
 
-            // Add direct tracking of the fork's execution
-            const fork = Effect.runFork(Effect.provide(pipelineWithDebugging, appLayer) as any)
-            log(`DEBUG: CRITICAL - Effect.runFork returned fork object`)
+          // Add direct tracking of the fork's execution
+          // Use 'as any' to handle complex Effect.js type inference issues
+          const fork = Effect.runFork(
+            Effect.provide(pipelineWithDebugging, AllLayers).pipe(
+              Effect.catchAll((err) => {
+                // Log the error thoroughly
+                const errorMsg = err instanceof Error ? err.stack : String(err)
+                console.error(`FATAL PIPELINE ERROR: ${errorMsg}`)
+                broadcastSSE("error", `FATAL PIPELINE ERROR: ${err instanceof Error ? err.message : String(err)}`)
+                return Effect.void // End the effect gracefully after logging
+              })
+            ) as any
+          )
+          log(`DEBUG: CRITICAL - Effect.runFork returned fork object`)
 
-            // Add observer
-            fork.addObserver((exit) => {
-              if (exit._tag === "Failure") {
-                console.error("DEBUG: CRITICAL - Fork failed with cause:", exit.cause)
-              } else if (exit._tag === "Success") {
-                console.log("DEBUG: CRITICAL - Fork completed successfully with value:", exit.value)
-              }
-            })
-          } catch (err) {
-            error(`DEBUG: CRITICAL ERROR - Failed to create AppLayer: ${err instanceof Error ? err.stack : String(err)}`)
-          }
+          // Add observer
+          fork.addObserver((exit) => {
+            if (exit._tag === "Failure") {
+              console.error("DEBUG: CRITICAL - Fork failed with cause:", exit.cause)
+            } else if (exit._tag === "Success") {
+              console.log("DEBUG: CRITICAL - Fork completed successfully with value:", exit.value)
+            }
+          })
         } catch (err) {
           // This catches errors in the setup of the fork itself, not in the pipeline
           error(`DEBUG: CRITICAL ERROR - Exception thrown from Effect.runFork setup: ${err instanceof Error ? err.stack : String(err)}`)

@@ -7,7 +7,7 @@ import { GitHubToolsDefault } from "./github/GitHubTools.js"
 import { MemoryManagerLayer } from "./github/MemoryManager.js"
 import { PlanManagerLayer } from "./github/PlanManager.js"
 import { TaskExecutorDefault } from "./github/TaskExecutor.js"
-import { startServer } from "./Server.js"
+// Note: Removed import of startServer from Server.js to avoid circular dependency
 
 // Define Anthropic Layer
 console.log("DEBUG: CRITICAL - Creating AnthropicClient layer with config")
@@ -49,10 +49,8 @@ export const AllLayers = Layer.mergeAll(
   }))
 )
 
-// Start the server when running the program directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  startServer()
-} else {
-  // If imported as a module, log a message
-  Effect.runPromise(Console.log("Module imported, not starting server."))
-}
+// We don't start the server directly from Program.ts anymore
+// This file is now just responsible for providing AllLayers
+// Let the caller know the module was processed
+console.log("DEBUG: Program.js module processed - AllLayers ready for use")
+Effect.runPromise(Console.log("Program.js: AllLayers initialized successfully"))
