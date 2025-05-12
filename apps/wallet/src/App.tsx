@@ -41,10 +41,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input as UiInput } from '@/components/ui/input'
 import { Button as UiButton } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
 import { ModeToggle } from '@/components/mode-toggle'
-import { Loader2, Key } from 'lucide-react';
+import { Loader2, Key, AlertCircle, X } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import {
   AlertDialog,
@@ -102,6 +103,7 @@ function App() {
   const [transactions, setTransactions] = useState<SparkTransferData[]>([]);
   const [sendInvoice, setSendInvoice] = useState('');
   const [isSendingPayment, setIsSendingPayment] = useState(false);
+  const [showBetaAlert, setShowBetaAlert] = useState(true);
   const sdkRef = useRef<any>(null);
   const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
@@ -439,17 +441,61 @@ function App() {
                   </AlertDialogContent>
                 </AlertDialog>
                 <ModeToggle />
-                <UiButton variant="outline" size="sm" onClick={handleLogout}>Logout</UiButton>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <UiButton variant="outline" size="sm">Logout</UiButton>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you sure you want to logout?</AlertDialogTitle>
+                      <AlertDialogDescription className="text-left">
+                        <p className="mb-2">If you haven't backed up your seed phrase, you won't be able to access your funds.</p>
+                        <div className="bg-amber-100 dark:bg-amber-950 p-3 rounded-md border border-amber-300 dark:border-amber-800 mt-2">
+                          <p className="text-amber-800 dark:text-amber-200 font-medium">Make sure you've saved your seed phrase before logging out!</p>
+                        </div>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction 
+                        onClick={handleLogout}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Logout Anyway
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
+            
+            {showBetaAlert && (
+              <div className="mb-4 relative">
+                <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800 text-amber-800 dark:text-amber-200 pr-10">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>OpenAgents Wallet is in beta</AlertTitle>
+                  <AlertDescription>
+                    Don't use it with anything more than small amounts you'd be willing to lose. Withdraw regularly to a different wallet.
+                  </AlertDescription>
+                  <button 
+                    onClick={() => setShowBetaAlert(false)} 
+                    className="absolute top-3 right-3 p-1 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    aria-label="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </Alert>
+              </div>
+            )}
+            
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle>Bitcoin Balance</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-col items-center">
-                  <div className="relative">
-                    <p className="text-3xl font-bold text-center">₿ {walletInfo.balanceSat.toString()}</p>
+                  <div className="relative mb-6">
+                    <p className="text-3xl font-bold text-center">₿<span className="mx-[1px]">{walletInfo.balanceSat.toString()}</span></p>
                     <span className="absolute bottom-0 right-0 text-xs text-muted-foreground translate-y-full -translate-x-3">sats</span>
                   </div>
                 </div>

@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Github } from "lucide-react";
 
 interface LoginScreenProps {
   onCreateWallet: () => void;
