@@ -12,8 +12,19 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
 import { ModeToggle } from '@/components/mode-toggle'
-import { Loader2 } from 'lucide-react';
+import { Loader2, Key } from 'lucide-react';
 import QRCode from 'react-qr-code';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Screen Components
 import LoginScreen from './components/LoginScreen';
@@ -56,15 +67,10 @@ function App() {
     if (!sdk) return;
 
     try {
-      console.log("Fetching wallet balance data...");
-      console.log("SDK object:", sdk);
-      
       // Try accessing the wallet property if initialize returns an object with wallet
       const wallet = sdk.wallet || sdk;
-      console.log("Using wallet object:", wallet);
       
       const balanceData = await wallet.getBalance();
-      console.log("Balance data received:", balanceData);
 
       setWalletInfo({
         balanceSat: balanceData.balance || BigInt(0),
@@ -79,7 +85,6 @@ function App() {
   const connectToSparkSDK = useCallback(async (seedPhrase: string) => {
     // Prevent double connection attempts
     if (sdkRef.current) {
-      console.log("SDK already connected or connecting.");
       return;
     }
 
@@ -87,8 +92,6 @@ function App() {
     setErrorMessage(null);
 
     try {
-      console.log("Initializing Spark SDK");
-
       // Initialize Spark wallet with mnemonic
       const { wallet: sparkInstance } = await SparkWallet.initialize({
         mnemonicOrSeed: seedPhrase,
@@ -97,15 +100,14 @@ function App() {
         }
       });
 
-      console.log("Spark SDK connected successfully");
       sdkRef.current = sparkInstance;
 
       await fetchWalletData(sparkInstance);
       setAppState('wallet_ready');
       setMnemonic(seedPhrase); // Store in zustand
-      toast.success("Spark Wallet Connected!");
+      toast.success("Wallet Connected!");
     } catch (error) {
-      console.error('Failed to initialize Spark SDK:', error);
+      console.error('Failed to initialize wallet:', error);
       setErrorMessage(`Failed to initialize wallet: ${error instanceof Error ? error.message : String(error)}`);
       setAppState('error');
       sdkRef.current = null;
@@ -122,7 +124,6 @@ function App() {
     // If we have a mnemonic in the store, try to connect
     if (mnemonic && appState === 'login') {
       initializedRef.current = true;
-      console.log("Initial SDK connection - first render only");
       connectToSparkSDK(mnemonic);
     }
   }, [mnemonic, appState, connectToSparkSDK]);
@@ -198,8 +199,6 @@ function App() {
       // Show loading toast
       toast.loading("Generating invoice...", { id: "invoice-generation" });
 
-      console.log("Generating invoice for amount:", receiveAmount.toString(), "sats");
-
       // Spark requires a number for amountSats
       const amountNumber = Number(receiveAmount);
 
@@ -210,19 +209,13 @@ function App() {
         return;
       }
 
-      console.log("Calling createLightningInvoice with:", { amountSats: amountNumber, memo: "OpenAgents Invoice" });
-
       // Generate invoice directly with Spark SDK
-      console.log("SDK instance for invoice:", sdkRef.current);
       const wallet = sdkRef.current.wallet || sdkRef.current;
-      console.log("Using wallet object for invoice:", wallet);
       
       const invoiceResponse = await wallet.createLightningInvoice({
         amountSats: amountNumber,
         memo: "OpenAgents Invoice" // Example memo
       });
-
-      console.log("Invoice response:", invoiceResponse);
       
       // Extract the encoded invoice string from the response object
       const encodedInvoice = invoiceResponse?.invoice?.encodedInvoice;
@@ -231,10 +224,9 @@ function App() {
         throw new Error("Failed to get encoded invoice from response");
       }
       
-      console.log("Encoded invoice string:", encodedInvoice);
       setInvoice(encodedInvoice);
       toast.dismiss("invoice-generation");
-      toast.success("Spark Lightning Invoice Generated!");
+      toast.success("Lightning Invoice Generated!");
     } catch (error) {
       console.error('Failed to generate invoice:', error);
       toast.dismiss("invoice-generation");
@@ -283,7 +275,7 @@ function App() {
         return (
           <div className="flex flex-col items-center justify-center min-h-screen">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-            <p className="text-lg">Initializing Spark Wallet...</p>
+            <p className="text-lg">Initializing Wallet...</p>
             <p className="text-sm text-muted-foreground mt-2">This might take a moment</p>
           </div>
         );
@@ -291,15 +283,44 @@ function App() {
         return (
           <div className="container mx-auto p-4 max-w-3xl py-6">
             <div className="flex justify-between items-center mb-6">
-              <h1 className="text-xl font-medium">OpenAgents Spark Wallet</h1>
+              <h1 className="text-xl font-medium">OpenAgents Wallet</h1>
               <div className="flex items-center gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <UiButton variant="outline" size="icon">
+                      <Key className="h-4 w-4" />
+                    </UiButton>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Your Seed Phrase</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Keep this phrase safe. Anyone with access to it can control your wallet.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="mt-2 text-center">
+                      <div className="p-4 bg-muted rounded-md font-mono text-sm whitespace-normal break-words">
+                        {mnemonic}
+                      </div>
+                    </div>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Close</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => {
+                        navigator.clipboard.writeText(mnemonic || "");
+                        toast.success("Seed phrase copied to clipboard");
+                      }}>
+                        Copy
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <ModeToggle />
                 <UiButton variant="outline" size="sm" onClick={handleLogout}>Logout</UiButton>
               </div>
             </div>
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle>Spark Wallet Balance</CardTitle>
+                <CardTitle>Bitcoin Balance</CardTitle>
                 <CardDescription>
                   Overview of your current wallet balance.
                   <span className="inline-block ml-1 text-xs text-muted-foreground">
@@ -310,7 +331,10 @@ function App() {
               <CardContent>
                 <div>
                   <h3 className="text-sm font-medium mb-1">Available Balance</h3>
-                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
+                  <div className="flex items-center">
+                    <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
+                    <span className="ml-1 text-xs text-muted-foreground">sats</span>
+                  </div>
                 </div>
 
                 {/* Token balances could be displayed here if needed */}
@@ -329,8 +353,8 @@ function App() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Receive Payment (Lightning)</CardTitle>
-                <CardDescription>Generate a Lightning invoice to receive funds via Spark</CardDescription>
+                <CardTitle>Receive Bitcoin (Lightning)</CardTitle>
+                <CardDescription>Generate a Lightning invoice to receive Bitcoin</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div className="space-y-2">
@@ -354,14 +378,14 @@ function App() {
                       Generating...
                     </>
                   ) : (
-                    "Generate Spark Invoice"
+                    "Generate Lightning Invoice"
                   )}
                 </UiButton>
 
                 {invoice && (
                   <div className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-medium">Spark Lightning Invoice</h3>
+                      <h3 className="text-sm font-medium">Lightning Invoice</h3>
                       <UiButton
                         variant="outline"
                         size="sm"
