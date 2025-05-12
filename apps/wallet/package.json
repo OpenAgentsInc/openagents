@@ -12,7 +12,7 @@
     "copy": "node copyAllToClipboard.js"
   },
   "dependencies": {
-    "@breeztech/breez-sdk-liquid": "^0.8.0",
+    "_comment_breez_sdk": "This dependency is temporarily disabled in favor of Spark SDK",
     "@buildonspark/spark-sdk": "^0.1.14",
     "@radix-ui/react-alert-dialog": "^1.1.13",
     "@radix-ui/react-label": "^2.1.6",
