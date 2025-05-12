@@ -1,10 +1,9 @@
 import { useEffect, useState, useRef } from 'react'
-import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk, ReceivePaymentResponse, LightningPaymentDetails } from '@breeztech/breez-sdk-liquid'
+import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk } from '@breeztech/breez-sdk-liquid'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 
 function App() {
-  const [count, setCount] = useState(0)
   const [isInitialized, setIsInitialized] = useState(false)
   const [walletInfo, setWalletInfo] = useState({
     balanceSat: 0,
