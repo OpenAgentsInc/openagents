@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@breeztech/breez-sdk-liquid": "^0.8.0",
+    "@radix-ui/react-slot": "^1.2.2",
     "@scure/bip39": "^1.5.4",
     "@tailwindcss/vite": "^4.1.6",
     "class-variance-authority": "^0.7.1",
