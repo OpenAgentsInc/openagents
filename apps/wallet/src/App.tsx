@@ -115,102 +115,115 @@ function App() {
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-3xl">
+    <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
+      {/* Toast container */}
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
         <Toaster />
       </div>
-      <div className="flex justify-between items-center mb-6">
+      
+      {/* Header - fixed at top */}
+      <header className="flex-none flex justify-between items-center p-4 border-b">
         <h1 className="text-3xl font-bold">Bitcoin Liquid Wallet</h1>
         <ModeToggle />
-      </div>
-
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Wallet Balance</CardTitle>
-          <CardDescription>Overview of your current wallet balances</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex flex-col">
-            <h3 className="text-sm font-medium mb-1">Available Balance</h3>
-            <p className="text-xl font-bold">{formatSatToBTC(walletInfo.balanceSat)} BTC</p>
-            <Badge variant="secondary" className="mt-1">{walletInfo.balanceSat} sats</Badge>
-          </div>
-          <div className="flex flex-col">
-            <h3 className="text-sm font-medium mb-1">Pending Send</h3>
-            <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingSendSat)} BTC</p>
-            <Badge variant="secondary" className="mt-1">{walletInfo.pendingSendSat} sats</Badge>
-          </div>
-          <div className="flex flex-col">
-            <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
-            <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingReceiveSat)} BTC</p>
-            <Badge variant="secondary" className="mt-1">{walletInfo.pendingReceiveSat} sats</Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Receive Payment</CardTitle>
-          <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Amount (sats)</label>
-            <Input
-              type="number"
-              value={receiveAmount}
-              onChange={(e) => setReceiveAmount(Number(e.target.value))}
-              min={lightningLimits.min}
-              max={lightningLimits.max}
-            />
-            <p className="text-sm text-muted-foreground">
-              Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats
-            </p>
-          </div>
-
-          <Button
-            onClick={generateInvoice}
-            disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
-            className="w-full"
-            variant="outline"
-          >
-            Generate Invoice
-          </Button>
-
-          {fees > 0 && (
-            <Alert variant="default" className="mt-2">
-              <AlertDescription>Network Fees: {fees} sats</AlertDescription>
-            </Alert>
-          )}
-
-          {invoice && (
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-medium">Lightning Invoice</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(invoice);
-                    toast.success("Invoice Copied", {
-                      description: "The lightning invoice has been copied to your clipboard.",
-                      duration: 3000,
-                      className: "font-mono"
-                    });
-                  }}
-                >
-                  Copy Invoice
-                </Button>
+      </header>
+      
+      {/* Main content with scrolling */}
+      <main className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <div className="container mx-auto p-4 max-w-3xl py-6">
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Wallet Balance</CardTitle>
+              <CardDescription>Overview of your current wallet balances</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex flex-col">
+                <h3 className="text-sm font-medium mb-1">Available Balance</h3>
+                <p className="text-xl font-bold">{formatSatToBTC(walletInfo.balanceSat)} BTC</p>
+                <Badge variant="secondary" className="mt-1">{walletInfo.balanceSat} sats</Badge>
               </div>
-              <ScrollArea className="h-24 w-full rounded-md border p-2">
-                <div className="p-2 font-mono text-sm">
-                  {invoice}
+              <div className="flex flex-col">
+                <h3 className="text-sm font-medium mb-1">Pending Send</h3>
+                <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingSendSat)} BTC</p>
+                <Badge variant="secondary" className="mt-1">{walletInfo.pendingSendSat} sats</Badge>
+              </div>
+              <div className="flex flex-col">
+                <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
+                <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingReceiveSat)} BTC</p>
+                <Badge variant="secondary" className="mt-1">{walletInfo.pendingReceiveSat} sats</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Receive Payment</CardTitle>
+              <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Amount (sats)</label>
+                <Input
+                  type="number"
+                  value={receiveAmount}
+                  onChange={(e) => setReceiveAmount(Number(e.target.value))}
+                  min={lightningLimits.min}
+                  max={lightningLimits.max}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats
+                </p>
+              </div>
+
+              <Button
+                onClick={generateInvoice}
+                disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
+                className="w-full"
+                variant="outline"
+              >
+                Generate Invoice
+              </Button>
+
+              {fees > 0 && (
+                <Alert variant="default" className="mt-2">
+                  <AlertDescription>Network Fees: {fees} sats</AlertDescription>
+                </Alert>
+              )}
+
+              {invoice && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-medium">Lightning Invoice</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(invoice);
+                        toast.success("Invoice Copied", {
+                          description: "The lightning invoice has been copied to your clipboard.",
+                          duration: 3000,
+                          className: "font-mono"
+                        });
+                      }}
+                    >
+                      Copy Invoice
+                    </Button>
+                  </div>
+                  <ScrollArea className="h-24 w-full rounded-md border p-2">
+                    <div className="p-2 font-mono text-sm">
+                      {invoice}
+                    </div>
+                  </ScrollArea>
                 </div>
-              </ScrollArea>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Add some bottom padding for better scrolling */}
+          <div className="h-8"></div>
+        </div>
+        </ScrollArea>
+      </main>
     </div>
   )
 }
