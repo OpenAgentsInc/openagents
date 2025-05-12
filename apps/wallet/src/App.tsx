@@ -2,6 +2,21 @@ import { useEffect, useState, useRef } from 'react'
 import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk } from '@breeztech/breez-sdk-liquid'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction
+} from '@/components/ui/alert-dialog'
 
 function App() {
   const [isInitialized, setIsInitialized] = useState(false)
@@ -17,6 +32,7 @@ function App() {
   const [receiveAmount, setReceiveAmount] = useState(100)
   const [invoice, setInvoice] = useState('')
   const [fees, setFees] = useState(0)
+  const [showCopyDialog, setShowCopyDialog] = useState(false)
   const sdkRef = useRef<BindingLiquidSdk | null>(null)
   const initializationRef = useRef(false)
 
@@ -106,78 +122,108 @@ function App() {
   }
 
   return (
-    <>
-      <h1>Bitcoin Liquid Wallet</h1>
+    <div className="container mx-auto p-4 max-w-3xl">
+      <h1 className="text-3xl font-bold text-center mb-6">Bitcoin Liquid Wallet</h1>
 
-      <div className="wallet-info">
-        <h2>Wallet Balance</h2>
-        <div className="balance-grid">
-          <div className="balance-item">
-            <h3>Available Balance</h3>
-            <p>{formatSatToBTC(walletInfo.balanceSat)} BTC</p>
-            <small>{walletInfo.balanceSat} sats</small>
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Wallet Balance</CardTitle>
+          <CardDescription>Overview of your current wallet balances</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="flex flex-col">
+            <h3 className="text-sm font-medium mb-1">Available Balance</h3>
+            <p className="text-xl font-bold">{formatSatToBTC(walletInfo.balanceSat)} BTC</p>
+            <Badge variant="secondary" className="mt-1">{walletInfo.balanceSat} sats</Badge>
           </div>
-          <div className="balance-item">
-            <h3>Pending Send</h3>
-            <p>{formatSatToBTC(walletInfo.pendingSendSat)} BTC</p>
-            <small>{walletInfo.pendingSendSat} sats</small>
+          <div className="flex flex-col">
+            <h3 className="text-sm font-medium mb-1">Pending Send</h3>
+            <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingSendSat)} BTC</p>
+            <Badge variant="secondary" className="mt-1">{walletInfo.pendingSendSat} sats</Badge>
           </div>
-          <div className="balance-item">
-            <h3>Pending Receive</h3>
-            <p>{formatSatToBTC(walletInfo.pendingReceiveSat)} BTC</p>
-            <small>{walletInfo.pendingReceiveSat} sats</small>
+          <div className="flex flex-col">
+            <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
+            <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingReceiveSat)} BTC</p>
+            <Badge variant="secondary" className="mt-1">{walletInfo.pendingReceiveSat} sats</Badge>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="receive-section">
-        <h2>Receive Payment</h2>
-        <div className="receive-content">
-          <div className="amount-input">
-            <label>Amount (sats)</label>
-            <input
+      <Card>
+        <CardHeader>
+          <CardTitle>Receive Payment</CardTitle>
+          <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Amount (sats)</label>
+            <Input
               type="number"
               value={receiveAmount}
               onChange={(e) => setReceiveAmount(Number(e.target.value))}
               min={lightningLimits.min}
               max={lightningLimits.max}
             />
-            <small>Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats</small>
+            <p className="text-sm text-muted-foreground">
+              Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats
+            </p>
           </div>
 
-          <button
-            className="generate-button"
+          <Button
             onClick={generateInvoice}
             disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
+            className="w-full"
           >
             Generate Invoice
-          </button>
+          </Button>
 
           {fees > 0 && (
-            <div className="fees-info">
-              <p>Network Fees: {fees} sats</p>
-            </div>
+            <Alert variant="default" className="mt-2">
+              <AlertDescription>Network Fees: {fees} sats</AlertDescription>
+            </Alert>
           )}
 
           {invoice && (
-            <div className="invoice-display">
-              <h3>Lightning Invoice</h3>
-              <textarea
-                readOnly
-                value={invoice}
-                onClick={(e) => {
-                  const textarea = e.target as HTMLTextAreaElement;
-                  textarea.select();
-                  document.execCommand('copy');
-                }}
-                placeholder="Generated invoice will appear here..."
-              />
-              <small>Click to copy</small>
+            <div className="mt-4 space-y-2">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-medium">Lightning Invoice</h3>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    navigator.clipboard.writeText(invoice);
+                    setShowCopyDialog(true);
+                  }}
+                >
+                  Copy Invoice
+                </Button>
+              </div>
+              <ScrollArea className="h-24 w-full rounded-md border p-2">
+                <div className="p-2">
+                  {invoice}
+                </div>
+              </ScrollArea>
+              
+              <AlertDialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Invoice Copied</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      The lightning invoice has been copied to your clipboard.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogAction onClick={() => setShowCopyDialog(false)}>
+                      OK
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           )}
-        </div>
-      </div>
-    </>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
