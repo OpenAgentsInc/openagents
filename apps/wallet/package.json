@@ -1,5 +1,5 @@
 {
-  "name": "wallet",
+  "name": "@openagents/wallet",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "t": "tsc --noEmit"
   },
   "dependencies": {
     "@breeztech/breez-sdk-liquid": "^0.8.0",
