@@ -19,7 +19,7 @@
     "d:mcp": "pnpm --filter @openagents/mcp-github-server deploy",
     "d:website": "pnpm --filter @openagents/website deploy",
     "d:all": "pnpm d:website && pnpm d:agents && pnpm d:chat && pnpm d:mcp",
-    "t": "pnpm -r run t",
+    "t": "pnpm -r run t --no-bail",
     "t:coder": "pnpm --filter @openagents/coder tsc --noEmit",
     "t:onyx": "pnpm --filter @openagents/onyx tsc --noEmit",
     "t:ui": "pnpm --filter @openagents/ui t",
