@@ -135,23 +135,28 @@ function App() {
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Wallet Balance</CardTitle>
-              <CardDescription>Overview of your current wallet balances</CardDescription>
+              <CardDescription>
+                Overview of your current wallet balances. 
+                <span className="inline-block ml-1 text-xs text-muted-foreground">
+                  (Values shown in satoshis: ₿ 100,000 = 0.00100000 BTC)
+                </span>
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="flex flex-col">
                 <h3 className="text-sm font-medium mb-1">Available Balance</h3>
-                <p className="text-xl font-bold">{formatSatToBTC(walletInfo.balanceSat)} BTC</p>
-                <Badge variant="secondary" className="mt-1">{walletInfo.balanceSat} sats</Badge>
+                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
+                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
               </div>
               <div className="flex flex-col">
                 <h3 className="text-sm font-medium mb-1">Pending Send</h3>
-                <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingSendSat)} BTC</p>
-                <Badge variant="secondary" className="mt-1">{walletInfo.pendingSendSat} sats</Badge>
+                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingSendSat)}</p>
+                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
               </div>
               <div className="flex flex-col">
                 <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
-                <p className="text-xl font-bold">{formatSatToBTC(walletInfo.pendingReceiveSat)} BTC</p>
-                <Badge variant="secondary" className="mt-1">{walletInfo.pendingReceiveSat} sats</Badge>
+                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingReceiveSat)}</p>
+                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
               </div>
             </CardContent>
           </Card>
