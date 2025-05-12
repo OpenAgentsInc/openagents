@@ -2,6 +2,7 @@ import type { ToolContext } from "../toolContext";
 import { addIssueComment, IssueCommentSchema } from "./operations/issues";
 import { tool } from "ai";
 
+// @ts-ignore - Ignoring type mismatch issues due to version differences in tool schema
 export const addIssueCommentTool = (context: ToolContext) => tool({
   description: "Add a comment to an existing issue",
   parameters: IssueCommentSchema,

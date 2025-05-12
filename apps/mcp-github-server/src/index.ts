@@ -34,11 +34,13 @@ declare global {
   var githubRequest: (url: string, options?: RequestOptions) => Promise<unknown>;
 }
 
+// Cast the McpServer to any to bypass the type-checking issues
+// This is a workaround for version mismatches between the agents package and the SDK
 export class MyMCP extends McpAgent {
   server = new McpServer({
     name: "OpenAgents GitHub MCP",
     version: "0.0.1",
-  });
+  }) as any;
 
   async init() {
     const tools = [

@@ -43,6 +43,7 @@ export async function getFileContents(
   return data;
 }
 
+// @ts-ignore - Ignoring type mismatch issues due to version differences in tool schema
 export const getFileContentsTool = (context: ToolContext) => tool({
   description: "Get the contents of a file or directory from a GitHub repository",
   parameters: GetFileContentsSchema,

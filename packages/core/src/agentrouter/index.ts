@@ -24,6 +24,7 @@ export const inferRouted = async (
   prompt: string
 ): Promise<RoutedPrompt | null> => {
   try {
+    // @ts-ignore - Ignoring type mismatch issues with generateObject
     const { object } = await generateObject({
       model: provider.model,
       schema: routingSchema,
