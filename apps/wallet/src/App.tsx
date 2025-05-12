@@ -170,6 +170,7 @@ function App() {
             onClick={generateInvoice}
             disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
             className="w-full"
+            variant="outline"
           >
             Generate Invoice
           </Button>
@@ -184,9 +185,9 @@ function App() {
             <div className="mt-4 space-y-2">
               <div className="flex justify-between items-center">
                 <h3 className="text-sm font-medium">Lightning Invoice</h3>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => {
                     navigator.clipboard.writeText(invoice);
                     toast.success("Invoice Copied", {
