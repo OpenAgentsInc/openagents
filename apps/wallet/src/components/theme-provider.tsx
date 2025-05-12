@@ -63,8 +63,12 @@ export function ThemeProvider({
     // Update the color-scheme property
     doc.style.colorScheme = resolvedTheme
     
-    // Set the data-theme attribute for Tailwind v4
-    doc.setAttribute("data-theme", resolvedTheme)
+    // Set the class for Tailwind v4 dark mode
+    if (resolvedTheme === "dark") {
+      doc.classList.add("dark")
+    } else {
+      doc.classList.remove("dark")
+    }
     
     setResolvedTheme(resolvedTheme)
   }

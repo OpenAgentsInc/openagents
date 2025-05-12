@@ -117,4 +117,25 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Toast styling */
+  :root [data-sonner-toast] {
+    @apply bg-card border border-border text-foreground;
+  }
+  
+  :root [data-sonner-toast][data-type="success"] {
+    @apply bg-card border-green-500/30;
+  }
+  
+  :root [data-sonner-toast][data-type="error"] {
+    @apply bg-card border-red-500/30;
+  }
+  
+  :root [data-sonner-toast][data-type="info"] {
+    @apply bg-card border-blue-500/30;
+  }
+  
+  :root [data-sonner-toast][data-type="warning"] {
+    @apply bg-card border-amber-500/30;
+  }
 }

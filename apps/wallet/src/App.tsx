@@ -116,7 +116,9 @@ function App() {
 
   return (
     <div className="container mx-auto p-4 max-w-3xl">
-      <Toaster />
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
+        <Toaster />
+      </div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Bitcoin Liquid Wallet</h1>
         <ModeToggle />
@@ -192,7 +194,7 @@ function App() {
                     navigator.clipboard.writeText(invoice);
                     toast.success("Invoice Copied", {
                       description: "The lightning invoice has been copied to your clipboard.",
-                      duration: 3000,
+                      duration: 3000
                     });
                   }}
                 >
