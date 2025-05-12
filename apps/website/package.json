@@ -6,10 +6,10 @@
   "scripts": {
     "build": "react-router build",
     "types": "wrangler types",
-    "deploy": "yarn build && wrangler deploy",
+    "deploy": "pnpm build && wrangler deploy",
     "dev": "react-router dev",
-    "preview": "yarn build && vite preview",
-    "typecheck": "yarn types && react-router typegen && tsc -b",
+    "preview": "pnpm build && vite preview",
+    "typecheck": "pnpm types && react-router typegen && tsc -b",
     "t": "tsc --noEmit",
     "db:wipe-local": "wrangler d1 execute v5-website --local --command=\"DROP TABLE IF EXISTS team_project; DROP TABLE IF EXISTS team_member; DROP TABLE IF EXISTS project_member; DROP TABLE IF EXISTS team; DROP TABLE IF EXISTS project; DROP TABLE IF EXISTS verification; DROP TABLE IF EXISTS account; DROP TABLE IF EXISTS session; DROP TABLE IF EXISTS user;\"",
     "db:wipe-remote": "wrangler d1 execute v5-website --remote --command=\"DROP TABLE IF EXISTS team_project; DROP TABLE IF EXISTS team_member; DROP TABLE IF EXISTS project_member; DROP TABLE IF EXISTS team; DROP TABLE IF EXISTS project; DROP TABLE IF EXISTS verification; DROP TABLE IF EXISTS account; DROP TABLE IF EXISTS session; DROP TABLE IF EXISTS user;\"",
