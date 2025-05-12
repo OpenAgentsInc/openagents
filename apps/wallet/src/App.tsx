@@ -1,237 +1,354 @@
-import { useEffect, useState, useRef } from 'react'
-import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk } from '@breeztech/breez-sdk-liquid'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import init, { defaultConfig, connect, BindingLiquidSdk, type WalletInfo as SdkWalletInfo, type LightningPaymentLimitsResponse } from '@breeztech/breez-sdk-liquid'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+
+// Shadcn UI - Main App components (already present, but for clarity)
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Input as UiInput } from '@/components/ui/input' // Renamed to avoid conflict
+import { Button as UiButton } from '@/components/ui/button' // Renamed to avoid conflict
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
 import { ModeToggle } from '@/components/mode-toggle'
 
-function App() {
-  const [isInitialized, setIsInitialized] = useState(false)
-  const [walletInfo, setWalletInfo] = useState({
-    balanceSat: 0,
-    pendingSendSat: 0,
-    pendingReceiveSat: 0
-  })
-  const [lightningLimits, setLightningLimits] = useState({
-    min: 0,
-    max: 0
-  })
-  const [receiveAmount, setReceiveAmount] = useState(100)
-  const [invoice, setInvoice] = useState('')
-  const [fees, setFees] = useState(0)
-  const sdkRef = useRef<BindingLiquidSdk | null>(null)
-  const initializationRef = useRef(false)
+// New Screen Components (to be created)
+import LoginScreen from './components/LoginScreen'; // Adjust path if needed
+import CreateWalletDisclaimerScreen from './components/CreateWalletDisclaimerScreen'; // Adjust path
+import ShowMnemonicScreen from './components/ShowMnemonicScreen'; // Adjust path
+import EnterSeedScreen from './components/EnterSeedScreen'; // Adjust path
 
-  const connectToBreez = async () => {
-    if (isInitialized || initializationRef.current) return;
-    initializationRef.current = true;
+type WalletState = 'login' | 'creating_disclaimer' | 'showing_mnemonic' | 'entering_seed' | 'initializing_wallet' | 'wallet_ready' | 'error';
+
+interface WalletInfo {
+  balanceSat: bigint;
+  pendingSendSat: bigint;
+  pendingReceiveSat: bigint;
+}
+
+interface LightningLimits {
+  min: bigint;
+  max: bigint;
+}
+
+function App() {
+  const [appState, setAppState] = useState<WalletState>('login');
+  const [currentMnemonic, setCurrentMnemonic] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Wallet specific state (moved from original App for clarity)
+  const [walletInfo, setWalletInfo] = useState<WalletInfo>({
+    balanceSat: BigInt(0),
+    pendingSendSat: BigInt(0),
+    pendingReceiveSat: BigInt(0)
+  });
+  const [lightningLimits, setLightningLimits] = useState<LightningLimits>({
+    min: BigInt(0),
+    max: BigInt(0)
+  });
+  const [receiveAmount, setReceiveAmount] = useState(BigInt(10000)); // Default 10k sats
+  const [invoice, setInvoice] = useState('');
+  const [fees, setFees] = useState(BigInt(0));
+  const sdkRef = useRef<BindingLiquidSdk | null>(null);
+  const listenerIdRef = useRef<string | null>(null);
+
+  const connectToBreez = useCallback(async (mnemonic: string) => {
+    if (sdkRef.current) {
+      console.log("SDK already connected or connecting.");
+      return;
+    }
+    setAppState('initializing_wallet');
+    setErrorMessage(null);
 
     try {
-      // Generate x random words. Uses Cryptographically-Secure Random Number Generator.
-      const mn = bip39.generateMnemonic(wordlist);
-      console.log(mn);
+      await init(); // Ensure WASM is initialized
 
-      // Call init when using the SDK in a web environment before calling any other SDK
-      // methods. This is not needed when using the SDK in a Node.js/Deno environment.
-      await init()
+      const config = defaultConfig('mainnet', import.meta.env.VITE_BREEZ_API_KEY);
+      // You might want to persist the workingDir if needed, or let it be in-memory for web
+      // config.workingDir = `breez_sdk_liquid_${mnemonic.slice(0,10)}`; // Example
 
-      // Create the default config, providing your Breez API key
-      const config = defaultConfig('mainnet', import.meta.env.VITE_BREEZ_API_KEY)
+      const sdk = await connect({ mnemonic, config });
+      sdkRef.current = sdk;
 
-      const sdk = await connect({ mnemonic: mn, config })
-      sdkRef.current = sdk
-      console.log(sdk)
+      // Setup event listener
+       const eventListener = {
+        onEvent: (event: any) => { // `any` for simplicity, use SdkEvent if type is available
+          console.log('Breez SDK Event:', event.type, event);
+          if (event.type === 'synced' || event.type === 'paymentSucceeded' || event.type === 'paymentFailed' || event.type === 'paymentPending' || event.type === 'paymentWaitingConfirmation' || event.type === 'paymentRefunded' || event.type === 'paymentRefundPending' || event.type === 'paymentWaitingFeeAcceptance') {
+            fetchWalletData(sdk); // Refresh data on relevant events
+          }
+        }
+      };
+      const listenerId = await sdk.addEventListener(eventListener);
+      listenerIdRef.current = listenerId;
 
-      // Fetch wallet info
-      const info = await sdk.getInfo()
+
+      await fetchWalletData(sdk);
+      setAppState('wallet_ready');
+      localStorage.setItem('userMnemonic', mnemonic); // Persist mnemonic
+    } catch (error) {
+      console.error('Failed to initialize Breez SDK:', error);
+      setErrorMessage(`Failed to initialize wallet: ${error instanceof Error ? error.message : String(error)}`);
+      setAppState('error');
+      sdkRef.current = null; // Reset SDK ref on error
+    }
+  }, []);
+
+  const fetchWalletData = async (sdk: BindingLiquidSdk) => {
+    try {
+      const info = await sdk.getInfo();
       setWalletInfo({
         balanceSat: info.walletInfo.balanceSat,
         pendingSendSat: info.walletInfo.pendingSendSat,
         pendingReceiveSat: info.walletInfo.pendingReceiveSat
-      })
+      });
 
-      // Fetch lightning limits
-      const limits = await sdk.fetchLightningLimits()
+      const limits: LightningPaymentLimitsResponse = await sdk.fetchLightningLimits();
       setLightningLimits({
         min: limits.receive.minSat,
         max: limits.receive.maxSat
-      })
-
-      setIsInitialized(true)
+      });
     } catch (error) {
-      console.error('Failed to initialize Breez SDK:', error)
-      setIsInitialized(false)
-      initializationRef.current = false; // Reset ref on error to allow retry
+      console.error('Failed to fetch wallet data:', error);
+      toast.error("Failed to fetch wallet data.");
     }
-  }
+  };
+
+  useEffect(() => {
+    // Attempt to auto-login if mnemonic exists
+    const storedMnemonic = localStorage.getItem('userMnemonic');
+    if (storedMnemonic) {
+      setCurrentMnemonic(storedMnemonic);
+      connectToBreez(storedMnemonic);
+    }
+  }, [connectToBreez]);
+
+
+  const handleCreateWallet = () => {
+    setAppState('creating_disclaimer');
+  };
+
+  const handleDisclaimerNext = () => {
+    const newMnemonic = bip39.generateMnemonic(wordlist);
+    setCurrentMnemonic(newMnemonic);
+    setAppState('showing_mnemonic');
+  };
+
+  const handleMnemonicConfirmed = (mnemonic: string) => {
+    connectToBreez(mnemonic);
+  };
+
+  const handleEnterSeed = () => {
+    setAppState('entering_seed');
+  };
+
+  const handleSeedEntered = (mnemonic: string) => {
+    // Basic validation
+    if (!bip39.validateMnemonic(mnemonic, wordlist)) {
+      toast.error("Invalid seed phrase. Please check and try again.");
+      setErrorMessage("Invalid seed phrase.");
+      return;
+    }
+    setCurrentMnemonic(mnemonic);
+    connectToBreez(mnemonic);
+  };
+
+  const handleLogout = async () => {
+    if (sdkRef.current && listenerIdRef.current) {
+      try {
+        await sdkRef.current.removeEventListener(listenerIdRef.current);
+      } catch (e) {
+        console.error("Error removing listener on logout:", e);
+      }
+    }
+    if (sdkRef.current) {
+      try {
+        await sdkRef.current.disconnect();
+      } catch(e) {
+        console.error("Error disconnecting SDK on logout:", e);
+      }
+    }
+    sdkRef.current = null;
+    listenerIdRef.current = null;
+    localStorage.removeItem('userMnemonic');
+    setCurrentMnemonic(null);
+    setWalletInfo({ balanceSat: BigInt(0), pendingSendSat: BigInt(0), pendingReceiveSat: BigInt(0) });
+    setInvoice('');
+    setFees(BigInt(0));
+    setAppState('login');
+    toast.info("Logged out successfully.");
+  };
+
 
   const generateInvoice = async () => {
     if (!sdkRef.current) return;
 
     try {
-      // First prepare the payment to check fees
       const optionalAmount = {
         type: 'bitcoin',
         payerAmountSat: receiveAmount
-      } as ReceiveAmount
+      } // No need to cast with ReceiveAmount as type
 
-      // Step 1: Prepare the payment
       const prepareResponse = await sdkRef.current.prepareReceivePayment({
         paymentMethod: 'lightning',
         amount: optionalAmount
-      })
+      });
 
-      // Store the fees
-      setFees(prepareResponse.feesSat)
+      setFees(prepareResponse.feesSat);
 
-      // Step 2: Generate the actual invoice using the prepare response
       const receiveResponse = await sdkRef.current.receivePayment({
         prepareResponse
-      })
+      });
 
-      // Store the invoice - it's directly in the destination field
       if (typeof receiveResponse === 'object' && receiveResponse !== null && receiveResponse.destination) {
-        setInvoice(receiveResponse.destination)
+        setInvoice(receiveResponse.destination);
+        toast.success("Invoice Generated!");
       }
     } catch (error) {
-      console.error('Failed to generate invoice:', error)
+      console.error('Failed to generate invoice:', error);
+      toast.error(`Invoice generation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
-
-  useEffect(() => {
-    connectToBreez()
-  }, []) // Empty dependency array ensures this runs only once
+  };
 
   // Helper function to format satoshis using the ₿ symbol standard
-  const formatSatsWithBitcoinSymbol = (sats: number) => {
-    // Format with spaces between thousands
-    return `₿ ${sats.toLocaleString('en-US')}`
-  }
+  const formatSatsWithBitcoinSymbol = (sats: bigint) => {
+    return `₿ ${sats.toLocaleString('en-US')}`;
+  };
+
+  // Render different screens based on appState
+  const renderContent = () => {
+    switch (appState) {
+      case 'login':
+        return <LoginScreen onCreateWallet={handleCreateWallet} onEnterSeed={handleEnterSeed} />;
+      case 'creating_disclaimer':
+        return <CreateWalletDisclaimerScreen onNext={handleDisclaimerNext} />;
+      case 'showing_mnemonic':
+        if (!currentMnemonic) return <p>Error: Mnemonic not generated.</p>;
+        return <ShowMnemonicScreen mnemonic={currentMnemonic} onNext={() => handleMnemonicConfirmed(currentMnemonic)} />;
+      case 'entering_seed':
+        return <EnterSeedScreen onSeedEntered={handleSeedEntered} />;
+      case 'initializing_wallet':
+        return (
+          <div className="flex flex-col items-center justify-center h-screen">
+            <p className="text-lg">Initializing Wallet...</p>
+            {/* You can add a spinner here */}
+          </div>
+        );
+      case 'wallet_ready':
+        return (
+          // Existing Wallet UI from original App.tsx, adapted
+          <div className="container mx-auto p-4 max-w-3xl py-6">
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-xl font-medium">OpenAgents Wallet</h1>
+              <div className="flex items-center gap-2">
+                <ModeToggle />
+                <UiButton variant="outline" size="sm" onClick={handleLogout}>Logout</UiButton>
+              </div>
+            </div>
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Wallet Balance</CardTitle>
+                <CardDescription>
+                  Overview of your current wallet balances.
+                  <span className="inline-block ml-1 text-xs text-muted-foreground">
+                    (Values shown in satoshis: ₿ 100,000,000 = 1 BTC)
+                  </span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <h3 className="text-sm font-medium mb-1">Available Balance</h3>
+                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium mb-1">Pending Send</h3>
+                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingSendSat)}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
+                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingReceiveSat)}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Receive Payment</CardTitle>
+                <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Amount (sats)</label>
+                  <UiInput
+                    type="number"
+                    value={receiveAmount.toString()}
+                    onChange={(e) => setReceiveAmount(BigInt(e.target.value || "0"))}
+                    min={lightningLimits.min.toString()}
+                    max={lightningLimits.max.toString()}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Min: {lightningLimits.min.toString()} sats, Max: {lightningLimits.max.toString()} sats
+                  </p>
+                </div>
+                <UiButton
+                  onClick={generateInvoice}
+                  disabled={!sdkRef.current || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
+                  className="w-full"
+                >
+                  Generate Invoice
+                </UiButton>
+                {fees > 0 && (
+                  <p className="text-sm text-muted-foreground">Network Fees: {fees.toString()} sats</p>
+                )}
+                {invoice && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-medium">Lightning Invoice</h3>
+                      <UiButton
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(invoice);
+                          toast.success("Invoice Copied");
+                        }}
+                      >
+                        Copy Invoice
+                      </UiButton>
+                    </div>
+                    <ScrollArea className="h-24 w-full rounded-md border p-2">
+                      <div className="p-2 font-mono text-sm break-all">
+                        {invoice}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="flex flex-col items-center justify-center h-screen">
+            <p className="text-red-500 text-lg mb-4">Error: {errorMessage}</p>
+            <UiButton onClick={() => setAppState('login')}>Go to Login</UiButton>
+          </div>
+        );
+      default:
+        return <LoginScreen onCreateWallet={handleCreateWallet} onEnterSeed={handleEnterSeed} />;
+    }
+  };
 
   return (
     <div className="fixed inset-0 overflow-hidden bg-background flex flex-col">
-      {/* Toast container */}
-      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
-        <Toaster />
-      </div>
-      
-      {/* Main content with scrolling */}
+      <Toaster />
       <main className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
-          <div className="container mx-auto p-4 max-w-3xl py-6">
-          
-            {/* Header as regular card */}
-            <div className="flex justify-between items-center mb-6">
-              <h1 className="text-xl font-medium">OpenAgents Wallet</h1>
-              <ModeToggle />
-            </div>
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Wallet Balance</CardTitle>
-              <CardDescription>
-                Overview of your current wallet balances. 
-                <span className="inline-block ml-1 text-xs text-muted-foreground">
-                  (Values shown in satoshis: ₿ 100,000 = 0.00100000 BTC)
-                </span>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex flex-col">
-                <h3 className="text-sm font-medium mb-1">Available Balance</h3>
-                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
-                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
-              </div>
-              <div className="flex flex-col">
-                <h3 className="text-sm font-medium mb-1">Pending Send</h3>
-                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingSendSat)}</p>
-                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
-              </div>
-              <div className="flex flex-col">
-                <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
-                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingReceiveSat)}</p>
-                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Receive Payment</CardTitle>
-              <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Amount (sats)</label>
-                <Input
-                  type="number"
-                  value={receiveAmount}
-                  onChange={(e) => setReceiveAmount(Number(e.target.value))}
-                  min={lightningLimits.min}
-                  max={lightningLimits.max}
-                />
-                <p className="text-sm text-muted-foreground">
-                  Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats
-                </p>
-              </div>
-
-              <Button
-                onClick={generateInvoice}
-                disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
-                className="w-full"
-                variant="outline"
-              >
-                Generate Invoice
-              </Button>
-
-              {fees > 0 && (
-                <Alert variant="default" className="mt-2">
-                  <AlertDescription>Network Fees: {fees} sats</AlertDescription>
-                </Alert>
-              )}
-
-              {invoice && (
-                <div className="mt-4 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-medium">Lightning Invoice</h3>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        navigator.clipboard.writeText(invoice);
-                        toast.success("Invoice Copied", {
-                          description: "The lightning invoice has been copied to your clipboard.",
-                          duration: 3000,
-                          className: "font-mono"
-                        });
-                      }}
-                    >
-                      Copy Invoice
-                    </Button>
-                  </div>
-                  <ScrollArea className="h-24 w-full rounded-md border p-2">
-                    <div className="p-2 font-mono text-sm">
-                      {invoice}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          
-          {/* Add some bottom padding for better scrolling */}
-          <div className="h-8"></div>
-        </div>
+          {renderContent()}
         </ScrollArea>
       </main>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

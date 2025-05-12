@@ -1,54 +1,59 @@
-# React + TypeScript + Vite
+# OpenAgents Wallet
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A self-custodial Bitcoin wallet with Lightning Network support built with React, TypeScript, and Vite.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Self-Custodial**: Maintain complete control of your funds with locally stored seed phrases
+- **Lightning Network Support**: Send and receive Bitcoin over the Lightning Network
+- **Secure Wallet Creation**: Generate new wallets with BIP39 seed phrases
+- **Wallet Restoration**: Restore existing wallets using seed phrases
+- **Multi-Screen Flow**: Intuitive user interface for wallet management
+- **Dark Mode Support**: Choose between light and dark themes
 
-## Expanding the ESLint configuration
+## Technology Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **Frontend**: React 19 with TypeScript
+- **UI Components**: shadcn/ui for consistent, accessible UI
+- **Styling**: Tailwind CSS
+- **Bitcoin Integration**: Breez SDK Liquid for Lightning Network support
+- **Build Tools**: Vite for fast development and optimized production builds
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+## Getting Started
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   cd apps/wallet
+   yarn install
+   ```
+3. Set up environment variables:
+   Create a `.env` file with:
+   ```
+   VITE_BREEZ_API_KEY=your_breez_api_key_here
+   ```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+4. Run the development server:
+   ```bash
+   yarn dev
+   ```
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+## Scripts
+
+- `yarn dev`: Start the development server
+- `yarn build`: Build for production
+- `yarn t`: Run TypeScript checks
+- `yarn lint`: Run ESLint
+- `yarn preview`: Preview the production build
+
+## Contributing
+
+This project is part of the OpenAgents ecosystem. Contributions are welcome!
+
+## Security
+
+This wallet is 100% self-custodial. Users are responsible for securing their seed phrases. Lost seed phrases cannot be recovered.
+
+## License
+
+Open source under the MIT license.
