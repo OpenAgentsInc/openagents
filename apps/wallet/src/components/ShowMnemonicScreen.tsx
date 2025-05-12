@@ -34,7 +34,7 @@ const ShowMnemonicScreen: React.FC<ShowMnemonicScreenProps> = ({ mnemonic, onNex
           onClick={onBack}
           className="text-sm flex items-center text-muted-foreground hover:text-primary transition-colors"
         >
-          <ArrowLeft className="mr-1 h-4 w-4" /> Back to Home
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back
         </button>
       </div>
       <Card className="w-full max-w-lg">

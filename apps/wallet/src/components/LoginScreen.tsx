@@ -10,7 +10,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onCreateWallet, onEnterSeed }
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-4">
       <div className="flex flex-col items-center text-center">
-        <h1 className="text-5xl font-bold mb-8">OpenAgents</h1>
+        <img src="/oalogo.png" alt="OpenAgents Logo" className="w-20 h-20 mb-8" />
         <div className="flex flex-col space-y-4 w-full max-w-xs">
           <Button onClick={onCreateWallet} className="w-full" size="lg">
             Create New Wallet
