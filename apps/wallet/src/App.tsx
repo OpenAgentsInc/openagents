@@ -1,5 +1,28 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { SparkWallet, Network as SparkNetwork, type TokenInfo } from '@buildonspark/spark-sdk'
+import { SparkWallet, Network as SparkNetwork, type TokenInfo, type Transfer as SdkSparkTransfer } from '@buildonspark/spark-sdk'
+
+// Define transaction data interface
+export interface SparkTransferData {
+  id: string;
+  createdTime?: string; // The field found in Spark logs
+  updatedTime?: string;
+  created_at_time?: string; // Original field names kept for compatibility
+  updated_at_time?: string;
+  network: string;
+  type: string;
+  status: string;
+  transfer_direction: "INCOMING" | "OUTGOING";
+  transferDirection?: "INCOMING" | "OUTGOING"; // Alternative field name
+  total_sent?: bigint; // Original expected field
+  totalValue?: number | bigint; // The field found in Spark logs
+  description?: string;
+  fee?: bigint;
+  senderIdentityPublicKey?: string; // Field name from logs
+  receiverIdentityPublicKey?: string;
+  sender_identity_public_key?: string; // Original field names kept for compatibility
+  receiver_identity_public_key?: string;
+  leaves?: any[]; // Additional field observed in logs
+}
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { useState } from 'react';
@@ -31,6 +54,7 @@ import LoginScreen from './components/LoginScreen';
 import CreateWalletDisclaimerScreen from './components/CreateWalletDisclaimerScreen';
 import ShowMnemonicScreen from './components/ShowMnemonicScreen';
 import EnterSeedScreen from './components/EnterSeedScreen';
+import TransactionHistoryCard from './components/TransactionHistoryCard';
 
 // State management
 import { useWalletStore, WalletState } from './lib/store';
@@ -57,9 +81,10 @@ function App() {
     balanceSat: BigInt(0)
   });
 
-  const [receiveAmount, setReceiveAmount] = useState(BigInt(100)); // Default 100 sats
+  const [receiveAmount, setReceiveAmount] = useState(BigInt(10)); // Default 10 sats
   const [invoice, setInvoice] = useState('');
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [transactions, setTransactions] = useState<SparkTransferData[]>([]);
   const sdkRef = useRef<any>(null);
   const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
@@ -70,12 +95,36 @@ function App() {
       // Try accessing the wallet property if initialize returns an object with wallet
       const wallet = sdk.wallet || sdk;
       
+      // Fetch balance
       const balanceData = await wallet.getBalance();
 
       setWalletInfo({
         balanceSat: balanceData.balance || BigInt(0),
         tokenBalances: balanceData.tokenBalances
       });
+
+      // Fetch transactions
+      try {
+        const transfersResponse = await wallet.getTransfers(20, 0); // Fetch 20 transactions, offset 0
+        
+        if (transfersResponse && transfersResponse.transfers) {
+          // Sort by createdTime descending (newest first)
+          const sortedTransactions = transfersResponse.transfers.sort(
+            (a: SparkTransferData, b: SparkTransferData) => {
+              const dateA = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+              const dateB = b.createdTime ? new Date(b.createdTime).getTime() : 0;
+              return dateB - dateA;
+            }
+          );
+          
+          setTransactions(sortedTransactions);
+        } else {
+          setTransactions([]);
+        }
+      } catch (txError) {
+        console.error('Failed to fetch transactions:', txError);
+        setTransactions([]);
+      }
     } catch (error) {
       console.error('Failed to fetch wallet data:', error);
       toast.error("Failed to fetch wallet data. Some features may be limited.");
@@ -227,6 +276,11 @@ function App() {
       setInvoice(encodedInvoice);
       toast.dismiss("invoice-generation");
       toast.success("Lightning Invoice Generated!");
+      
+      // Refresh wallet data to potentially update any pending transactions
+      if (sdkRef.current) {
+        fetchWalletData(sdkRef.current);
+      }
     } catch (error) {
       console.error('Failed to generate invoice:', error);
       toast.dismiss("invoice-generation");
@@ -249,10 +303,7 @@ function App() {
     }
   };
 
-  // Helper function to format satoshis with the bitcoin symbol
-  const formatSatsWithBitcoinSymbol = (sats: bigint) => {
-    return `₿ ${sats.toLocaleString('en-US')}`;
-  };
+  // Format functions are now implemented directly in the JSX
 
   // Handle navigation back to login screen
   const handleBackToLogin = () => {
@@ -321,19 +372,12 @@ function App() {
             <Card className="mb-6">
               <CardHeader>
                 <CardTitle>Bitcoin Balance</CardTitle>
-                <CardDescription>
-                  Overview of your current wallet balance.
-                  <span className="inline-block ml-1 text-xs text-muted-foreground">
-                    (Main balance in satoshis)
-                  </span>
-                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div>
-                  <h3 className="text-sm font-medium mb-1">Available Balance</h3>
-                  <div className="flex items-center">
-                    <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
-                    <span className="ml-1 text-xs text-muted-foreground">sats</span>
+                <div className="flex flex-col items-center">
+                  <div className="relative">
+                    <p className="text-3xl font-bold text-center">₿ {walletInfo.balanceSat.toString()}</p>
+                    <span className="absolute bottom-0 right-0 text-xs text-muted-foreground translate-y-full -translate-x-3">sats</span>
                   </div>
                 </div>
 
@@ -367,20 +411,21 @@ function App() {
                     autoFocus
                   />
                 </div>
-                <UiButton
-                  onClick={generateInvoice}
-                  disabled={!sdkRef.current || isGeneratingInvoice || receiveAmount <= 0}
-                  className="w-full"
-                >
-                  {isGeneratingInvoice ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    "Generate Lightning Invoice"
-                  )}
-                </UiButton>
+                <div className="flex justify-center">
+                  <UiButton
+                    onClick={generateInvoice}
+                    disabled={!sdkRef.current || isGeneratingInvoice || receiveAmount <= 0}
+                  >
+                    {isGeneratingInvoice ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      "Generate Lightning Invoice"
+                    )}
+                  </UiButton>
+                </div>
 
                 {invoice && (
                   <div className="mt-4 space-y-4">
@@ -425,6 +470,11 @@ function App() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Transaction History Card */}
+            <TransactionHistoryCard transactions={transactions} />
+
+            <div className="h-16"/> {/* Spacer for scroll */}
           </div>
         );
       case 'error':
