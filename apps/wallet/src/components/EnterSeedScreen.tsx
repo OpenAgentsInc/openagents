@@ -54,6 +54,7 @@ const EnterSeedScreen: React.FC<EnterSeedScreenProps> = ({ onSeedEntered, onBack
               onChange={(e) => setSeedPhrase(e.target.value)}
               rows={4}
               className="resize-none"
+              autoFocus
             />
           </div>
         </CardContent>
