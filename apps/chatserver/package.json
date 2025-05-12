@@ -13,7 +13,7 @@
   "dependencies": {
     "@hono/node-server": "^1.14.0",
     "@modelcontextprotocol/sdk": "1.8.0",
-    "@openagents/core": "*",
+    "@openagents/core": "workspace:*",
     "@openrouter/ai-sdk-provider": "0.4.5",
     "ai": "^4.2.2",
     "eventsource": "^2.0.2",

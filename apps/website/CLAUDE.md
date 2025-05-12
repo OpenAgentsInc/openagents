@@ -3,11 +3,11 @@
 This is a React Router v7 (formerly known as Remix) app using a Cloudflare Workers template.
 
 ## Build & Run Commands
-- Start dev server: `yarn dev`
-- Build for production: `yarn build`
-- Preview production build: `yarn preview`
-- Run typechecks: `yarn t` or `yarn typecheck`
-- Deploy to Cloudflare: `yarn deploy`
+- Start dev server: `pnpm dev`
+- Build for production: `pnpm build`
+- Preview production build: `pnpm preview`
+- Run typechecks: `pnpm t` or `pnpm typecheck`
+- Deploy to Cloudflare: `pnpm deploy`
 
 ## Code Style Guidelines
 - **TypeScript**: Use strict mode with verbatimModuleSyntax

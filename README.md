@@ -15,8 +15,8 @@ Main branch not stable. Basic functionality usable at [15edaaca8ac](https://gith
 ```bash
 git clone git@github.com:OpenAgentsInc/openagents.git
 cd openagents
-yarn install
-yarn coder
+pnpm install
+pnpm coder
 ```
 
 Then click settings icon bottom right > API Keys > Add Anthropic and/or OpenRouter key
