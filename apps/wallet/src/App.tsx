@@ -115,7 +115,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
+    <div className="fixed inset-0 overflow-hidden bg-background flex flex-col">
       {/* Toast container */}
       <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
         <Toaster />
