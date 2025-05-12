@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "t": "tsc --noEmit"
+    "t": "tsc --noEmit",
+    "copy": "node copyAllToClipboard.js"
   },
   "dependencies": {
     "@breeztech/breez-sdk-liquid": "^0.8.0",
