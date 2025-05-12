@@ -7,24 +7,24 @@
     "packages/*"
   ],
   "scripts": {
-    "website": "yarn workspace @openagents/website dev",
-    "chat:deploy": "yarn workspace @openagents/chatserver deploy",
-    "coder": "yarn workspace @openagents/coder start",
-    "onyx": "yarn workspace @openagents/onyx ios",
-    "mcp": "yarn workspace @openagents/mcp-github-server dev",
-    "onyx:start": "yarn workspace @openagents/onyx start",
-    "d": "yarn workspace @openagents/chatserver deploy && yarn workspace @openagents/agents deploy",
-    "d:chat": "yarn workspace @openagents/chatserver deploy",
-    "d:agents": "yarn workspace @openagents/agents deploy",
-    "d:mcp": "yarn workspace @openagents/mcp-github-server deploy",
-    "d:website": "yarn workspace @openagents/website deploy",
-    "d:all": "yarn d:website && yarn d:agents && yarn d:chat && yarn d:mcp",
-    "t": "yarn workspaces run t",
-    "t:coder": "yarn workspace @openagents/coder tsc --noEmit",
-    "t:onyx": "yarn workspace @openagents/onyx tsc --noEmit",
-    "t:ui": "yarn workspace @openagents/ui t",
+    "website": "pnpm --filter @openagents/website dev",
+    "chat:deploy": "pnpm --filter @openagents/chatserver deploy",
+    "coder": "pnpm --filter @openagents/coder start",
+    "onyx": "pnpm --filter @openagents/onyx ios",
+    "mcp": "pnpm --filter @openagents/mcp-github-server dev",
+    "onyx:start": "pnpm --filter @openagents/onyx start",
+    "d": "pnpm --filter @openagents/chatserver deploy && pnpm --filter @openagents/agents deploy",
+    "d:chat": "pnpm --filter @openagents/chatserver deploy",
+    "d:agents": "pnpm --filter @openagents/agents deploy",
+    "d:mcp": "pnpm --filter @openagents/mcp-github-server deploy",
+    "d:website": "pnpm --filter @openagents/website deploy",
+    "d:all": "pnpm d:website && pnpm d:agents && pnpm d:chat && pnpm d:mcp",
+    "t": "pnpm -r run t",
+    "t:coder": "pnpm --filter @openagents/coder tsc --noEmit",
+    "t:onyx": "pnpm --filter @openagents/onyx tsc --noEmit",
+    "t:ui": "pnpm --filter @openagents/ui t",
     "clean": "sh clean-install.sh",
-    "clean:onyx": "yarn clean && yarn workspace @openagents/onyx prebuild:clean"
+    "clean:onyx": "pnpm clean && pnpm --filter @openagents/onyx prebuild:clean"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.0.2",
@@ -47,5 +47,21 @@
     "react-dom": "19.1.0",
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0"
+  },
+  "packageManager": "pnpm@10.4.1+sha512.c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@biomejs/biome",
+      "@firebase/util",
+      "@swc/core",
+      "@tailwindcss/oxide",
+      "electron",
+      "electron-winstaller",
+      "esbuild",
+      "msgpackr-extract",
+      "protobufjs",
+      "rxdb",
+      "workerd"
+    ]
   }
 }

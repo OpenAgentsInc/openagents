@@ -49,7 +49,7 @@
     "@effect/platform": "^0.80.11",
     "@effect/schema": "^0.75.5",
     "@effect/experimental": "^0.44.11",
-    "@openagents/core": "*",
+    "@openagents/core": "workspace:*",
     "@openrouter/ai-sdk-provider": "^0.4.5",
     "@phosphor-icons/react": "^2.1.7",
     "@radix-ui/react-avatar": "^1.1.3",

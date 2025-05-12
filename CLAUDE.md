@@ -1,11 +1,11 @@
 # OpenAgents Development Guide
 
 ## Build & Run Commands
-- Start dev server: `yarn start` or `expo start`
-- Run on Android: `yarn android` 
-- Run on iOS: `yarn ios`
-- Run on web: `yarn web`
-- Run typechecks: `yarn t` or `yarn workspace <workspace-name> t`
+- Start dev server: `pnpm start` or `expo start`
+- Run on Android: `pnpm android` 
+- Run on iOS: `pnpm ios`
+- Run on web: `pnpm web`
+- Run typechecks: `pnpm t` or `pnpm --filter <package-name> t`
 
 ## Code Style Guidelines
 - **TypeScript**: Use strict mode for all new code
@@ -21,7 +21,7 @@
 - Use relative imports for related files, absolute for distant imports
 
 ## Validation Requirements
-- **ALWAYS run typechecks** before committing: `yarn t` to check all workspaces, or `yarn workspace <workspace-name> t` for specific package
+- **ALWAYS run typechecks** before committing: `pnpm t` to check all workspaces, or `pnpm --filter <package-name> t` for specific package
 - Fix all type errors before submitting changes
 - React Native has specific styling types - ensure styles follow platform constraints
 - Web-specific styles (like `calc()`, `sticky`, etc.) must be handled with platform-specific code
