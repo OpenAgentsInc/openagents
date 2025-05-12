@@ -1,7 +1,4 @@
 import { useEffect, useState, useRef } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
 import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk, ReceivePaymentResponse, LightningPaymentDetails } from '@breeztech/breez-sdk-liquid'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
@@ -111,14 +108,6 @@ function App() {
 
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
       <h1>Bitcoin Liquid Wallet</h1>
 
       <div className="wallet-info">
