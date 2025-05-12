@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { SparkWallet, type Network as SparkNetwork, type TokenInfo } from '@buildonspark/spark-sdk'
+import { SparkWallet, Network as SparkNetwork, type TokenInfo } from '@buildonspark/spark-sdk'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { useState } from 'react';
@@ -31,12 +31,12 @@ interface WalletInfo {
 
 function App() {
   // Zustand store for app state
-  const { 
-    appState, 
-    setAppState, 
-    mnemonic, 
-    setMnemonic, 
-    errorMessage, 
+  const {
+    appState,
+    setAppState,
+    mnemonic,
+    setMnemonic,
+    errorMessage,
     setErrorMessage,
     resetWallet
   } = useWalletStore();
@@ -45,20 +45,23 @@ function App() {
   const [walletInfo, setWalletInfo] = useState<WalletInfo>({
     balanceSat: BigInt(0)
   });
-  
+
   const [receiveAmount, setReceiveAmount] = useState(BigInt(100)); // Default 100 sats
   const [invoice, setInvoice] = useState('');
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
-  const sdkRef = useRef<SparkWallet | null>(null);
+  const sdkRef = useRef<any>(null);
   const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
-  const fetchWalletData = useCallback(async (sdk: SparkWallet) => {
+  const fetchWalletData = useCallback(async (sdk: any) => {
     if (!sdk) return;
-    
+
     try {
+      console.log("Fetching wallet balance data...");
       const balanceData = await sdk.getBalance();
+      console.log("Balance data received:", balanceData);
+
       setWalletInfo({
-        balanceSat: balanceData.balance,
+        balanceSat: balanceData.balance || BigInt(0),
         tokenBalances: balanceData.tokenBalances
       });
     } catch (error) {
@@ -73,21 +76,21 @@ function App() {
       console.log("SDK already connected or connecting.");
       return;
     }
-    
+
     setAppState('initializing_wallet');
     setErrorMessage(null);
 
     try {
       console.log("Initializing Spark SDK");
-      
-      // Create Spark wallet with mnemonic
-      const { wallet: sparkInstance } = await SparkWallet.create({
+
+      // Initialize Spark wallet with mnemonic
+      const sparkInstance = await SparkWallet.initialize({
         mnemonicOrSeed: seedPhrase,
         options: {
-          network: "MAINNET" as SparkNetwork,
+          network: "MAINNET",
         }
       });
-      
+
       console.log("Spark SDK connected successfully");
       sdkRef.current = sparkInstance;
 
@@ -109,7 +112,7 @@ function App() {
     if (initializedRef.current) {
       return;
     }
-    
+
     // If we have a mnemonic in the store, try to connect
     if (mnemonic && appState === 'login') {
       initializedRef.current = true;
@@ -144,10 +147,10 @@ function App() {
       setErrorMessage("Invalid seed phrase format.");
       return;
     }
-    
+
     // Mark as initialized for this session
     initializedRef.current = true;
-    
+
     // Connect to Spark with the validated seed phrase
     setMnemonic(seedPhrase);
     connectToSparkSDK(seedPhrase);
@@ -156,19 +159,19 @@ function App() {
   const handleLogout = async () => {
     // Clean up SDK resources (Spark doesn't have a disconnect method)
     sdkRef.current = null;
-    
+
     // Reset UI state
     setInvoice('');
     setWalletInfo({
       balanceSat: BigInt(0)
     });
-    
+
     // Reset store state (clears mnemonic from persistence)
     resetWallet();
-    
+
     // Reset initialization flag to allow reinitializing after logout
     initializedRef.current = false;
-    
+
     toast.info("Logged out successfully.");
   };
 
@@ -177,41 +180,46 @@ function App() {
       toast.error("Wallet not connected");
       return;
     }
-    
+
     // Prevent multiple clicks
     if (isGeneratingInvoice) {
       return;
     }
-    
+
     setIsGeneratingInvoice(true);
-    
+
     try {
       // Show loading toast
       toast.loading("Generating invoice...", { id: "invoice-generation" });
-      
+
       console.log("Generating invoice for amount:", receiveAmount.toString(), "sats");
-      
+
       // Spark requires a number for amountSats
       const amountNumber = Number(receiveAmount);
-      
+
       if (isNaN(amountNumber) || amountNumber <= 0) {
         toast.error("Invalid amount for invoice.");
+        setIsGeneratingInvoice(false);
+        toast.dismiss("invoice-generation");
         return;
       }
-      
+
+      console.log("Calling createLightningInvoice with:", { amountSats: amountNumber, memo: "OpenAgents Invoice" });
+
       // Generate invoice directly with Spark SDK
       const invoiceString = await sdkRef.current.createLightningInvoice({
         amountSats: amountNumber,
         memo: "OpenAgents Invoice" // Example memo
       });
-      
+
+      console.log("Invoice generated:", invoiceString);
       setInvoice(invoiceString);
       toast.dismiss("invoice-generation");
       toast.success("Spark Lightning Invoice Generated!");
     } catch (error) {
       console.error('Failed to generate invoice:', error);
       toast.dismiss("invoice-generation");
-      
+
       // Handle different error types with more specific messages
       if (error instanceof Error) {
         if (error.message.includes('amount')) {
@@ -239,7 +247,7 @@ function App() {
   const handleBackToLogin = () => {
     setAppState('login');
   };
-  
+
   // Render different screens based on appState
   const renderContent = () => {
     switch (appState) {
@@ -285,14 +293,14 @@ function App() {
                   <h3 className="text-sm font-medium mb-1">Available Balance</h3>
                   <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
                 </div>
-                
+
                 {/* Token balances could be displayed here if needed */}
                 {walletInfo.tokenBalances && walletInfo.tokenBalances.size > 0 && (
                   <div className="mt-4">
                     <h4 className="text-md font-medium mb-2">Token Balances:</h4>
                     {Array.from(walletInfo.tokenBalances.entries()).map(([tokenId, tokenData]) => (
                       <div key={tokenId} className="text-sm">
-                        {tokenData.tokenInfo?.name || tokenId.substring(0,8)}: {tokenData.balance.toString()}
+                        {tokenData.tokenInfo?.name || tokenId.substring(0, 8)}: {tokenData.balance.toString()}
                       </div>
                     ))}
                   </div>
@@ -330,7 +338,7 @@ function App() {
                     "Generate Spark Invoice"
                   )}
                 </UiButton>
-                
+
                 {invoice && (
                   <div className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
@@ -346,7 +354,7 @@ function App() {
                         Copy Invoice
                       </UiButton>
                     </div>
-                    
+
                     {/* QR Code */}
                     <div className="flex flex-col items-center bg-white p-4 rounded-md">
                       <QRCode
@@ -361,7 +369,7 @@ function App() {
                         Scan with a Lightning wallet
                       </p>
                     </div>
-                    
+
                     <div className="mt-2">
                       <p className="text-sm font-medium mb-1">Invoice Text</p>
                       <ScrollArea className="h-24 w-full rounded-md border p-2">
