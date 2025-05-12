@@ -1,13 +1,18 @@
 import { useEffect, useState, useRef } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
-import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk, ReceivePaymentResponse, LightningPaymentDetails } from '@breeztech/breez-sdk-liquid'
+import init, { defaultConfig, connect, ReceiveAmount, BindingLiquidSdk } from '@breeztech/breez-sdk-liquid'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Toaster } from '@/components/ui/sonner'
+import { toast } from 'sonner'
+import { ModeToggle } from '@/components/mode-toggle'
 
 function App() {
-  const [count, setCount] = useState(0)
   const [isInitialized, setIsInitialized] = useState(false)
   const [walletInfo, setWalletInfo] = useState({
     balanceSat: 0,
@@ -104,92 +109,128 @@ function App() {
     connectToBreez()
   }, []) // Empty dependency array ensures this runs only once
 
-  // Helper function to format satoshis to BTC
-  const formatSatToBTC = (sats: number) => {
-    return (sats / 100000000).toFixed(8)
+  // Helper function to format satoshis using the ₿ symbol standard
+  const formatSatsWithBitcoinSymbol = (sats: number) => {
+    // Format with spaces between thousands
+    return `₿ ${sats.toLocaleString('en-US')}`
   }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="fixed inset-0 overflow-hidden bg-background flex flex-col">
+      {/* Toast container */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
+        <Toaster />
       </div>
-      <h1>Bitcoin Liquid Wallet</h1>
-
-      <div className="wallet-info">
-        <h2>Wallet Balance</h2>
-        <div className="balance-grid">
-          <div className="balance-item">
-            <h3>Available Balance</h3>
-            <p>{formatSatToBTC(walletInfo.balanceSat)} BTC</p>
-            <small>{walletInfo.balanceSat} sats</small>
-          </div>
-          <div className="balance-item">
-            <h3>Pending Send</h3>
-            <p>{formatSatToBTC(walletInfo.pendingSendSat)} BTC</p>
-            <small>{walletInfo.pendingSendSat} sats</small>
-          </div>
-          <div className="balance-item">
-            <h3>Pending Receive</h3>
-            <p>{formatSatToBTC(walletInfo.pendingReceiveSat)} BTC</p>
-            <small>{walletInfo.pendingReceiveSat} sats</small>
-          </div>
-        </div>
-      </div>
-
-      <div className="receive-section">
-        <h2>Receive Payment</h2>
-        <div className="receive-content">
-          <div className="amount-input">
-            <label>Amount (sats)</label>
-            <input
-              type="number"
-              value={receiveAmount}
-              onChange={(e) => setReceiveAmount(Number(e.target.value))}
-              min={lightningLimits.min}
-              max={lightningLimits.max}
-            />
-            <small>Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats</small>
-          </div>
-
-          <button
-            className="generate-button"
-            onClick={generateInvoice}
-            disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
-          >
-            Generate Invoice
-          </button>
-
-          {fees > 0 && (
-            <div className="fees-info">
-              <p>Network Fees: {fees} sats</p>
+      
+      {/* Main content with scrolling */}
+      <main className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <div className="container mx-auto p-4 max-w-3xl py-6">
+          
+            {/* Header as regular card */}
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-xl font-medium">OpenAgents Wallet</h1>
+              <ModeToggle />
             </div>
-          )}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Wallet Balance</CardTitle>
+              <CardDescription>
+                Overview of your current wallet balances. 
+                <span className="inline-block ml-1 text-xs text-muted-foreground">
+                  (Values shown in satoshis: ₿ 100,000 = 0.00100000 BTC)
+                </span>
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex flex-col">
+                <h3 className="text-sm font-medium mb-1">Available Balance</h3>
+                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
+                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
+              </div>
+              <div className="flex flex-col">
+                <h3 className="text-sm font-medium mb-1">Pending Send</h3>
+                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingSendSat)}</p>
+                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
+              </div>
+              <div className="flex flex-col">
+                <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
+                <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingReceiveSat)}</p>
+                <Badge variant="secondary" className="mt-1">Bitcoin</Badge>
+              </div>
+            </CardContent>
+          </Card>
 
-          {invoice && (
-            <div className="invoice-display">
-              <h3>Lightning Invoice</h3>
-              <textarea
-                readOnly
-                value={invoice}
-                onClick={(e) => {
-                  const textarea = e.target as HTMLTextAreaElement;
-                  textarea.select();
-                  document.execCommand('copy');
-                }}
-                placeholder="Generated invoice will appear here..."
-              />
-              <small>Click to copy</small>
-            </div>
-          )}
+          <Card>
+            <CardHeader>
+              <CardTitle>Receive Payment</CardTitle>
+              <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Amount (sats)</label>
+                <Input
+                  type="number"
+                  value={receiveAmount}
+                  onChange={(e) => setReceiveAmount(Number(e.target.value))}
+                  min={lightningLimits.min}
+                  max={lightningLimits.max}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Min: {lightningLimits.min} sats, Max: {lightningLimits.max} sats
+                </p>
+              </div>
+
+              <Button
+                onClick={generateInvoice}
+                disabled={!isInitialized || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
+                className="w-full"
+                variant="outline"
+              >
+                Generate Invoice
+              </Button>
+
+              {fees > 0 && (
+                <Alert variant="default" className="mt-2">
+                  <AlertDescription>Network Fees: {fees} sats</AlertDescription>
+                </Alert>
+              )}
+
+              {invoice && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-medium">Lightning Invoice</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(invoice);
+                        toast.success("Invoice Copied", {
+                          description: "The lightning invoice has been copied to your clipboard.",
+                          duration: 3000,
+                          className: "font-mono"
+                        });
+                      }}
+                    >
+                      Copy Invoice
+                    </Button>
+                  </div>
+                  <ScrollArea className="h-24 w-full rounded-md border p-2">
+                    <div className="p-2 font-mono text-sm">
+                      {invoice}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          
+          {/* Add some bottom padding for better scrolling */}
+          <div className="h-8"></div>
         </div>
-      </div>
-    </>
+        </ScrollArea>
+      </main>
+    </div>
   )
 }
 
