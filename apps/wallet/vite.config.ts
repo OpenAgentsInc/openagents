@@ -6,9 +6,6 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()] as PluginOption[],
-  optimizeDeps: {
-    exclude: ['@breeztech/breez-sdk-liquid']
-  },
   build: {
     target: 'esnext',
   },

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import init, { defaultConfig, connect, BindingLiquidSdk, type WalletInfo as SdkWalletInfo, type LightningPaymentLimitsResponse } from '@breeztech/breez-sdk-liquid'
+import { SparkWallet, type Network as SparkNetwork, type TokenInfo } from '@buildonspark/spark-sdk'
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { useState } from 'react';
@@ -26,13 +26,7 @@ import { useWalletStore, WalletState } from './lib/store';
 
 interface WalletInfo {
   balanceSat: bigint;
-  pendingSendSat: bigint;
-  pendingReceiveSat: bigint;
-}
-
-interface LightningLimits {
-  min: bigint;
-  max: bigint;
+  tokenBalances?: Map<string, { balance: bigint, tokenInfo: TokenInfo }>;
 }
 
 function App() {
@@ -49,55 +43,31 @@ function App() {
 
   // Wallet UI state (not persisted)
   const [walletInfo, setWalletInfo] = useState<WalletInfo>({
-    balanceSat: BigInt(0),
-    pendingSendSat: BigInt(0),
-    pendingReceiveSat: BigInt(0)
+    balanceSat: BigInt(0)
   });
-  const [lightningLimits, setLightningLimits] = useState<LightningLimits>({
-    min: BigInt(0),
-    max: BigInt(0)
-  });
+  
   const [receiveAmount, setReceiveAmount] = useState(BigInt(100)); // Default 100 sats
   const [invoice, setInvoice] = useState('');
-  const [fees, setFees] = useState(BigInt(0));
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
-  const sdkRef = useRef<BindingLiquidSdk | null>(null);
-  const listenerIdRef = useRef<string | null>(null);
+  const sdkRef = useRef<SparkWallet | null>(null);
   const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
-  const fetchWalletData = useCallback(async (sdk: BindingLiquidSdk) => {
+  const fetchWalletData = useCallback(async (sdk: SparkWallet) => {
     if (!sdk) return;
     
     try {
-      const info = await sdk.getInfo();
+      const balanceData = await sdk.getBalance();
       setWalletInfo({
-        balanceSat: info.walletInfo.balanceSat,
-        pendingSendSat: info.walletInfo.pendingSendSat,
-        pendingReceiveSat: info.walletInfo.pendingReceiveSat
+        balanceSat: balanceData.balance,
+        tokenBalances: balanceData.tokenBalances
       });
-
-      try {
-        // Separate try-catch for lightning limits which might fail
-        const limits: LightningPaymentLimitsResponse = await sdk.fetchLightningLimits();
-        setLightningLimits({
-          min: limits.receive.minSat,
-          max: limits.receive.maxSat
-        });
-      } catch (limitsError) {
-        console.warn('Failed to fetch lightning limits:', limitsError);
-        // Set default limits if the API call fails
-        setLightningLimits({
-          min: BigInt(1000),
-          max: BigInt(100000)
-        });
-      }
     } catch (error) {
       console.error('Failed to fetch wallet data:', error);
       toast.error("Failed to fetch wallet data. Some features may be limited.");
     }
   }, []);
 
-  const connectToBreez = useCallback(async (seedPhrase: string) => {
+  const connectToSparkSDK = useCallback(async (seedPhrase: string) => {
     // Prevent double connection attempts
     if (sdkRef.current) {
       console.log("SDK already connected or connecting.");
@@ -108,48 +78,25 @@ function App() {
     setErrorMessage(null);
 
     try {
-      console.log("Initializing Breez SDK");
-      await init(); // Initialize WASM
-
-      // Create configuration with API key
-      const apiKey = import.meta.env.VITE_BREEZ_API_KEY;
-      console.log("Using API key:", apiKey ? "API key present" : "API key missing");
+      console.log("Initializing Spark SDK");
       
-      const config = defaultConfig('mainnet', apiKey);
-      
-      // For web, don't set workingDir as it's managed in memory
-      // This matches the original implementation
-      
-      console.log("Connecting to Breez with config:", config);
-      
-      // Connect to Breez SDK with the provided mnemonic
-      const sdk = await connect({ mnemonic: seedPhrase, config });
-      console.log("SDK connected successfully");
-      sdkRef.current = sdk;
-
-      // Set up event listener for SDK events
-      const eventListener = {
-        onEvent: (event: any) => { // Use proper type if available
-          console.log('Breez SDK Event:', event.type, event);
-          if (['synced', 'paymentSucceeded', 'paymentFailed', 'paymentPending'].includes(event.type)) {
-            fetchWalletData(sdk);
-          }
+      // Create Spark wallet with mnemonic
+      const { wallet: sparkInstance } = await SparkWallet.create({
+        mnemonicOrSeed: seedPhrase,
+        options: {
+          network: "MAINNET" as SparkNetwork,
         }
-      };
+      });
       
-      try {
-        const listenerId = await sdk.addEventListener(eventListener);
-        listenerIdRef.current = listenerId;
-      } catch (listenerError) {
-        console.warn('Failed to add event listener:', listenerError);
-        // Continue without the listener
-      }
+      console.log("Spark SDK connected successfully");
+      sdkRef.current = sparkInstance;
 
-      await fetchWalletData(sdk);
+      await fetchWalletData(sparkInstance);
       setAppState('wallet_ready');
       setMnemonic(seedPhrase); // Store in zustand
+      toast.success("Spark Wallet Connected!");
     } catch (error) {
-      console.error('Failed to initialize Breez SDK:', error);
+      console.error('Failed to initialize Spark SDK:', error);
       setErrorMessage(`Failed to initialize wallet: ${error instanceof Error ? error.message : String(error)}`);
       setAppState('error');
       sdkRef.current = null;
@@ -167,9 +114,9 @@ function App() {
     if (mnemonic && appState === 'login') {
       initializedRef.current = true;
       console.log("Initial SDK connection - first render only");
-      connectToBreez(mnemonic);
+      connectToSparkSDK(mnemonic);
     }
-  }, [mnemonic, appState, connectToBreez]);
+  }, [mnemonic, appState, connectToSparkSDK]);
 
   const handleCreateWallet = () => {
     setAppState('creating_disclaimer');
@@ -183,7 +130,7 @@ function App() {
 
   const handleMnemonicConfirmed = (seedPhrase: string) => {
     initializedRef.current = true; // Mark as initialized for this session
-    connectToBreez(seedPhrase);
+    connectToSparkSDK(seedPhrase);
   };
 
   const handleEnterSeed = () => {
@@ -201,36 +148,19 @@ function App() {
     // Mark as initialized for this session
     initializedRef.current = true;
     
-    // Connect to Breez with the validated seed phrase
+    // Connect to Spark with the validated seed phrase
     setMnemonic(seedPhrase);
-    connectToBreez(seedPhrase);
+    connectToSparkSDK(seedPhrase);
   };
 
   const handleLogout = async () => {
-    // Clean up SDK resources
-    if (sdkRef.current) {
-      try {
-        // Remove event listener if it exists
-        if (listenerIdRef.current) {
-          await sdkRef.current.removeEventListener(listenerIdRef.current);
-          listenerIdRef.current = null;
-        }
-        
-        // Disconnect the SDK
-        await sdkRef.current.disconnect();
-        sdkRef.current = null;
-      } catch (e) {
-        console.error("Error during SDK cleanup:", e);
-      }
-    }
+    // Clean up SDK resources (Spark doesn't have a disconnect method)
+    sdkRef.current = null;
     
     // Reset UI state
     setInvoice('');
-    setFees(BigInt(0));
     setWalletInfo({
-      balanceSat: BigInt(0),
-      pendingSendSat: BigInt(0),
-      pendingReceiveSat: BigInt(0)
+      balanceSat: BigInt(0)
     });
     
     // Reset store state (clears mnemonic from persistence)
@@ -259,106 +189,35 @@ function App() {
       // Show loading toast
       toast.loading("Generating invoice...", { id: "invoice-generation" });
       
-      // For demo purposes, add a small delay to simulate network latency
-      // This helps prevent rapid consecutive calls that might trigger the WASM error
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
       console.log("Generating invoice for amount:", receiveAmount.toString(), "sats");
       
-      // Define the payment amount
-      // This is the expected format according to Breez SDK documentation
-      const amount = {
-        type: 'bitcoin',
-        payerAmountSat: Number(receiveAmount)
-      };
+      // Spark requires a number for amountSats
+      const amountNumber = Number(receiveAmount);
       
-      console.log("Payment amount object:", amount);
-      
-      // First prepare the payment
-      let prepareResponse;
-      try {
-        prepareResponse = await sdkRef.current.prepareReceivePayment({
-          paymentMethod: 'lightning',
-          amount: amount
-        });
-      } catch (prepareError) {
-        console.error('Failed to prepare payment:', prepareError);
-        toast.dismiss("invoice-generation");
-        
-        console.error("Detailed prepareError:", prepareError);
-        
-        // Handle WASM specific errors
-        if (prepareError instanceof Error && 
-            (prepareError.message.includes("unwrap") || 
-             prepareError.message.includes("Err value"))) {
-          toast.error("SDK error: Unable to generate invoice");
-          console.error("WASM error in prepare step");
-          return;
-        }
-        
-        // Regular error handling
-        toast.error("Failed to prepare payment. Please try a different amount.");
-        
-        // If this is likely a connection or network issue, suggest reconnecting
-        if (prepareError instanceof Error && 
-            (prepareError.message.includes("network") || 
-             prepareError.message.includes("connect") ||
-             prepareError.message.includes("timeout"))) {
-          toast.error("Network connection issue. Try logging out and back in.");
-        }
+      if (isNaN(amountNumber) || amountNumber <= 0) {
+        toast.error("Invalid amount for invoice.");
         return;
       }
-
-      // Update the fees display
-      setFees(prepareResponse.feesSat);
-
-      // Then generate the invoice
-      try {
-        console.log("Preparing to receive payment with prepared response");
-        const receiveResponse = await sdkRef.current.receivePayment({
-          prepareResponse
-        });
-
-        console.log("Received payment response:", receiveResponse);
-
-        if (receiveResponse?.destination) {
-          setInvoice(receiveResponse.destination);
-          toast.dismiss("invoice-generation");
-          toast.success("Invoice generated successfully!");
-        } else {
-          throw new Error("No destination in response");
-        }
-      } catch (receiveError) {
-        console.error('Failed in receivePayment step:', receiveError);
-        toast.dismiss("invoice-generation");
-        
-        // Handle WASM specific errors
-        if (receiveError instanceof Error && 
-            (receiveError.message.includes("unwrap") || 
-             receiveError.message.includes("Err value"))) {
-          toast.error("SDK error: Unable to complete invoice generation");
-          console.error("WASM error in receive payment step");
-        } else {
-          toast.error("Invoice generation failed at final step");
-        }
-        return;
-      }
+      
+      // Generate invoice directly with Spark SDK
+      const invoiceString = await sdkRef.current.createLightningInvoice({
+        amountSats: amountNumber,
+        memo: "OpenAgents Invoice" // Example memo
+      });
+      
+      setInvoice(invoiceString);
+      toast.dismiss("invoice-generation");
+      toast.success("Spark Lightning Invoice Generated!");
     } catch (error) {
-      console.error('Failed to generate invoice (outer catch):', error);
+      console.error('Failed to generate invoice:', error);
       toast.dismiss("invoice-generation");
       
       // Handle different error types with more specific messages
       if (error instanceof Error) {
-        if (error.message.includes('amount') || error.message.includes('limits')) {
-          toast.error("Amount issue: Try a different amount within the allowed limits");
+        if (error.message.includes('amount')) {
+          toast.error("Amount issue: Try a different amount");
         } else if (error.message.includes('node') || error.message.includes('connect')) {
           toast.error("Lightning node connection issue. Network may be congested.");
-        } else if (error.message.includes('unwrap') || error.message.includes('Err value')) {
-          // This is likely the WASM error from Breez SDK
-          toast.error("SDK internal error. Try logging out and back in.");
-          
-          // Log the error but don't try any recovery that could corrupt state
-          console.error("Breez SDK WASM error in invoice generation:", error);
         } else {
           toast.error(`Error: ${error.message}`);
         }
@@ -397,7 +256,7 @@ function App() {
         return (
           <div className="flex flex-col items-center justify-center min-h-screen">
             <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-            <p className="text-lg">Initializing Wallet...</p>
+            <p className="text-lg">Initializing Spark Wallet...</p>
             <p className="text-sm text-muted-foreground mt-2">This might take a moment</p>
           </div>
         );
@@ -405,7 +264,7 @@ function App() {
         return (
           <div className="container mx-auto p-4 max-w-3xl py-6">
             <div className="flex justify-between items-center mb-6">
-              <h1 className="text-xl font-medium">OpenAgents Wallet</h1>
+              <h1 className="text-xl font-medium">OpenAgents Spark Wallet</h1>
               <div className="flex items-center gap-2">
                 <ModeToggle />
                 <UiButton variant="outline" size="sm" onClick={handleLogout}>Logout</UiButton>
@@ -413,34 +272,38 @@ function App() {
             </div>
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle>Wallet Balance</CardTitle>
+                <CardTitle>Spark Wallet Balance</CardTitle>
                 <CardDescription>
-                  Overview of your current wallet balances.
+                  Overview of your current wallet balance.
                   <span className="inline-block ml-1 text-xs text-muted-foreground">
-                    (Values shown in satoshis: ₿ 100,000,000 = 1 BTC)
+                    (Main balance in satoshis)
                   </span>
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <CardContent>
                 <div>
                   <h3 className="text-sm font-medium mb-1">Available Balance</h3>
                   <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
                 </div>
-                <div>
-                  <h3 className="text-sm font-medium mb-1">Pending Send</h3>
-                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingSendSat)}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
-                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingReceiveSat)}</p>
-                </div>
+                
+                {/* Token balances could be displayed here if needed */}
+                {walletInfo.tokenBalances && walletInfo.tokenBalances.size > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-md font-medium mb-2">Token Balances:</h4>
+                    {Array.from(walletInfo.tokenBalances.entries()).map(([tokenId, tokenData]) => (
+                      <div key={tokenId} className="text-sm">
+                        {tokenData.tokenInfo?.name || tokenId.substring(0,8)}: {tokenData.balance.toString()}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Receive Payment</CardTitle>
-                <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
+                <CardTitle>Receive Payment (Lightning)</CardTitle>
+                <CardDescription>Generate a Lightning invoice to receive funds via Spark</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div className="space-y-2">
@@ -449,17 +312,13 @@ function App() {
                     type="number"
                     value={receiveAmount.toString()}
                     onChange={(e) => setReceiveAmount(BigInt(e.target.value || "0"))}
-                    min={lightningLimits.min.toString()}
-                    max={lightningLimits.max.toString()}
+                    min="1"
                     autoFocus
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Min: {lightningLimits.min.toString()} sats, Max: {lightningLimits.max.toString()} sats
-                  </p>
                 </div>
                 <UiButton
                   onClick={generateInvoice}
-                  disabled={!sdkRef.current || isGeneratingInvoice || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
+                  disabled={!sdkRef.current || isGeneratingInvoice || receiveAmount <= 0}
                   className="w-full"
                 >
                   {isGeneratingInvoice ? (
@@ -468,16 +327,14 @@ function App() {
                       Generating...
                     </>
                   ) : (
-                    "Generate Invoice"
+                    "Generate Spark Invoice"
                   )}
                 </UiButton>
-                {fees > 0 && (
-                  <p className="text-sm text-muted-foreground">Network Fees: {fees.toString()} sats</p>
-                )}
+                
                 {invoice && (
                   <div className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-medium">Lightning Invoice</h3>
+                      <h3 className="text-sm font-medium">Spark Lightning Invoice</h3>
                       <UiButton
                         variant="outline"
                         size="sm"
