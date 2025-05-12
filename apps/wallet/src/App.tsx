@@ -13,6 +13,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
 import { ModeToggle } from '@/components/mode-toggle'
 import { Loader2 } from 'lucide-react';
+import QRCode from 'react-qr-code';
 
 // Screen Components
 import LoginScreen from './components/LoginScreen';
@@ -458,7 +459,7 @@ function App() {
                   <p className="text-sm text-muted-foreground">Network Fees: {fees.toString()} sats</p>
                 )}
                 {invoice && (
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
                       <h3 className="text-sm font-medium">Lightning Invoice</h3>
                       <UiButton
@@ -472,11 +473,30 @@ function App() {
                         Copy Invoice
                       </UiButton>
                     </div>
-                    <ScrollArea className="h-24 w-full rounded-md border p-2">
-                      <div className="p-2 font-mono text-sm break-all">
-                        {invoice}
-                      </div>
-                    </ScrollArea>
+                    
+                    {/* QR Code */}
+                    <div className="flex flex-col items-center bg-white p-4 rounded-md">
+                      <QRCode
+                        value={invoice}
+                        size={200}
+                        bgColor={"#FFFFFF"}
+                        fgColor={"#000000"}
+                        level={"M"}
+                        className="mx-auto"
+                      />
+                      <p className="text-xs text-center mt-2 text-muted-foreground">
+                        Scan with a Lightning wallet
+                      </p>
+                    </div>
+                    
+                    <div className="mt-2">
+                      <p className="text-sm font-medium mb-1">Invoice Text</p>
+                      <ScrollArea className="h-24 w-full rounded-md border p-2">
+                        <div className="p-2 font-mono text-sm break-all">
+                          {invoice}
+                        </div>
+                      </ScrollArea>
+                    </div>
                   </div>
                 )}
               </CardContent>
