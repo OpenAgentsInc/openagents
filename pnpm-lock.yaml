@@ -885,12 +885,24 @@ importers:
       '@tailwindcss/vite':
         specifier: ^4.1.6
         version: 4.1.6(vite@6.3.2(@types/node@22.15.17)(jiti@2.4.2)(lightningcss@1.29.2)(terser@5.39.0)(tsx@4.19.4))
+      class-variance-authority:
+        specifier: ^0.7.1
+        version: 0.7.1
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      lucide-react:
+        specifier: ^0.509.0
+        version: 0.509.0(react@19.1.0)
       react:
         specifier: 19.1.0
         version: 19.1.0
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
+      tailwind-merge:
+        specifier: ^3.3.0
+        version: 3.3.0
       tailwindcss:
         specifier: ^4.1.6
         version: 4.1.6
@@ -922,6 +934,9 @@ importers:
       globals:
         specifier: ^16.0.0
         version: 16.1.0
+      tw-animate-css:
+        specifier: ^1.2.5
+        version: 1.2.9
       typescript:
         specifier: ~5.7.2
         version: 5.7.3
@@ -8843,6 +8858,11 @@ packages:
 
   lucide-react@0.488.0:
     resolution: {integrity: sha512-ronlL0MyKut4CEzBY/ai2ZpKPxyWO4jUqdAkm2GNK5Zn3Rj+swDz+3lvyAUXN0PNqPKIX6XM9Xadwz/skLs/pQ==}
+    peerDependencies:
+      react: 19.1.0
+
+  lucide-react@0.509.0:
+    resolution: {integrity: sha512-xCJHn6Uh5qF6PGml25vveCTrHJZcqS1G1MVzWZK54ZQsOiCVJk4fwY3oyo5EXS2S+aqvTpWYIfJN+PesJ0quxg==}
     peerDependencies:
       react: 19.1.0
 
@@ -21427,6 +21447,10 @@ snapshots:
       react: 19.1.0
 
   lucide-react@0.488.0(react@19.1.0):
+    dependencies:
+      react: 19.1.0
+
+  lucide-react@0.509.0(react@19.1.0):
     dependencies:
       react: 19.1.0
 

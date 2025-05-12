@@ -14,8 +14,12 @@
     "@breeztech/breez-sdk-liquid": "^0.8.0",
     "@scure/bip39": "^1.5.4",
     "@tailwindcss/vite": "^4.1.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.509.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.3.0",
     "tailwindcss": "^4.1.6"
   },
   "devDependencies": {
@@ -28,6 +32,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
+    "tw-animate-css": "^1.2.5",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.26.1",
     "vite": "^6.3.1",
