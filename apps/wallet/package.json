@@ -16,6 +16,7 @@
     "@radix-ui/react-alert-dialog": "^1.1.13",
     "@radix-ui/react-scroll-area": "^1.2.8",
     "@radix-ui/react-slot": "^1.2.2",
+    "@radix-ui/react-tooltip": "^1.2.6",
     "@scure/bip39": "^1.5.4",
     "@tailwindcss/vite": "^4.1.6",
     "class-variance-authority": "^0.7.1",
