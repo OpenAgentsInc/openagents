@@ -64,6 +64,10 @@ Found two critical errors during testing:
 - Enhanced `generateInvoice` function:
   - Added fallback for wallet object: `const wallet = sdkRef.current.wallet || sdkRef.current`
   - Modified invoice generation to use the correct wallet object
+  - **CRITICAL FIX**: Properly extract the encoded invoice string from the Spark response
+    - Spark's `createLightningInvoice` returns an object, not a string
+    - Changed to access `invoiceResponse?.invoice?.encodedInvoice` from the returned response
+    - Added validation to ensure we got a valid invoice string
   - Added additional error handling and early return
   - Added more detailed logging of the invoice generation process
   - Fixed toast handling for better user feedback

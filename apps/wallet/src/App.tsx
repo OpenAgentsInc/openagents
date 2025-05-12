@@ -217,13 +217,22 @@ function App() {
       const wallet = sdkRef.current.wallet || sdkRef.current;
       console.log("Using wallet object for invoice:", wallet);
       
-      const invoiceString = await wallet.createLightningInvoice({
+      const invoiceResponse = await wallet.createLightningInvoice({
         amountSats: amountNumber,
         memo: "OpenAgents Invoice" // Example memo
       });
 
-      console.log("Invoice generated:", invoiceString);
-      setInvoice(invoiceString);
+      console.log("Invoice response:", invoiceResponse);
+      
+      // Extract the encoded invoice string from the response object
+      const encodedInvoice = invoiceResponse?.invoice?.encodedInvoice;
+      
+      if (!encodedInvoice) {
+        throw new Error("Failed to get encoded invoice from response");
+      }
+      
+      console.log("Encoded invoice string:", encodedInvoice);
+      setInvoice(encodedInvoice);
       toast.dismiss("invoice-generation");
       toast.success("Spark Lightning Invoice Generated!");
     } catch (error) {
