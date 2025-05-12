@@ -63,6 +63,7 @@ function App() {
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const sdkRef = useRef<BindingLiquidSdk | null>(null);
   const listenerIdRef = useRef<string | null>(null);
+  const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
   const fetchWalletData = useCallback(async (sdk: BindingLiquidSdk) => {
     if (!sdk) return;
@@ -97,6 +98,7 @@ function App() {
   }, []);
 
   const connectToBreez = useCallback(async (seedPhrase: string) => {
+    // Prevent double connection attempts
     if (sdkRef.current) {
       console.log("SDK already connected or connecting.");
       return;
@@ -156,8 +158,15 @@ function App() {
 
   // Auto-login with stored mnemonic
   useEffect(() => {
+    // Only initialize once - prevents double initialization in React StrictMode
+    if (initializedRef.current) {
+      return;
+    }
+    
     // If we have a mnemonic in the store, try to connect
     if (mnemonic && appState === 'login') {
+      initializedRef.current = true;
+      console.log("Initial SDK connection - first render only");
       connectToBreez(mnemonic);
     }
   }, [mnemonic, appState, connectToBreez]);
@@ -173,6 +182,7 @@ function App() {
   };
 
   const handleMnemonicConfirmed = (seedPhrase: string) => {
+    initializedRef.current = true; // Mark as initialized for this session
     connectToBreez(seedPhrase);
   };
 
@@ -187,6 +197,9 @@ function App() {
       setErrorMessage("Invalid seed phrase format.");
       return;
     }
+    
+    // Mark as initialized for this session
+    initializedRef.current = true;
     
     // Connect to Breez with the validated seed phrase
     setMnemonic(seedPhrase);
@@ -222,6 +235,9 @@ function App() {
     
     // Reset store state (clears mnemonic from persistence)
     resetWallet();
+    
+    // Reset initialization flag to allow reinitializing after logout
+    initializedRef.current = false;
     
     toast.info("Logged out successfully.");
   };
