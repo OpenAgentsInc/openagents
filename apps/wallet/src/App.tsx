@@ -57,7 +57,13 @@ function App() {
 
     try {
       console.log("Fetching wallet balance data...");
-      const balanceData = await sdk.getBalance();
+      console.log("SDK object:", sdk);
+      
+      // Try accessing the wallet property if initialize returns an object with wallet
+      const wallet = sdk.wallet || sdk;
+      console.log("Using wallet object:", wallet);
+      
+      const balanceData = await wallet.getBalance();
       console.log("Balance data received:", balanceData);
 
       setWalletInfo({
@@ -84,7 +90,7 @@ function App() {
       console.log("Initializing Spark SDK");
 
       // Initialize Spark wallet with mnemonic
-      const sparkInstance = await SparkWallet.initialize({
+      const { wallet: sparkInstance } = await SparkWallet.initialize({
         mnemonicOrSeed: seedPhrase,
         options: {
           network: "MAINNET",
@@ -207,7 +213,11 @@ function App() {
       console.log("Calling createLightningInvoice with:", { amountSats: amountNumber, memo: "OpenAgents Invoice" });
 
       // Generate invoice directly with Spark SDK
-      const invoiceString = await sdkRef.current.createLightningInvoice({
+      console.log("SDK instance for invoice:", sdkRef.current);
+      const wallet = sdkRef.current.wallet || sdkRef.current;
+      console.log("Using wallet object for invoice:", wallet);
+      
+      const invoiceString = await wallet.createLightningInvoice({
         amountSats: amountNumber,
         memo: "OpenAgents Invoice" // Example memo
       });

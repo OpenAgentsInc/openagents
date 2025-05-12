@@ -43,19 +43,27 @@ After examining the current codebase:
 - Added a commented-out optimizeDeps section for Breez SDK exclusions
 
 ### 4. Fixed the SparkWallet integration
-Found an error during testing: `TypeError: SparkWallet.create is not a function`. Made the following changes:
+Found two critical errors during testing: 
 
-- Changed the import for Network: `import { SparkWallet, Network as SparkNetwork, type TokenInfo } from '@buildonspark/spark-sdk'`
-- **CRITICAL FIX**: Changed `SparkWallet.create` to `SparkWallet.initialize` as per Spark documentation
-  - The SDK uses `initialize`, not `create`
-  - Kept the same parameter structure
-  - Updated network value to use enum: `SparkNetwork.MAINNET`
+1. `TypeError: SparkWallet.create is not a function`
+   - Changed the import for Network: `import { SparkWallet, Network as SparkNetwork, type TokenInfo } from '@buildonspark/spark-sdk'`
+   - **CRITICAL FIX**: Changed `SparkWallet.create` to `SparkWallet.initialize` as per Spark documentation
+   - The SDK uses `initialize`, not `create`
+   - Used the string "MAINNET" for the network value (not the enum)
+
+2. `TypeError: sdk.getBalance is not a function`
+   - **CRITICAL FIX**: The initialize method returns `{ wallet: SparkWallet }` not just the wallet object
+   - Updated to destructure and use the wallet property: `const { wallet: sparkInstance } = await SparkWallet.initialize(...)`
+   - Modified `fetchWalletData` to handle both cases with fallback: `const wallet = sdk.wallet || sdk`
+   - Added extensive logging to trace the object structure
 - Modified type handling:
   - Changed `sdkRef` type from `SparkWallet | null` to `any` to accommodate possible differences in the SDK interface
   - Updated `fetchWalletData` function parameter type from `SparkWallet` to `any`
   - Added additional logging to track API calls and responses
   - Added fallback to BigInt(0) if balance is undefined
 - Enhanced `generateInvoice` function:
+  - Added fallback for wallet object: `const wallet = sdkRef.current.wallet || sdkRef.current`
+  - Modified invoice generation to use the correct wallet object
   - Added additional error handling and early return
   - Added more detailed logging of the invoice generation process
   - Fixed toast handling for better user feedback
