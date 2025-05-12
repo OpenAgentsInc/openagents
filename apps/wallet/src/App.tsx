@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
+import { ModeToggle } from '@/components/mode-toggle'
 
 function App() {
   const [isInitialized, setIsInitialized] = useState(false)
@@ -116,7 +117,10 @@ function App() {
   return (
     <div className="container mx-auto p-4 max-w-3xl">
       <Toaster />
-      <h1 className="text-3xl font-bold text-center mb-6">Bitcoin Liquid Wallet</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Bitcoin Liquid Wallet</h1>
+        <ModeToggle />
+      </div>
 
       <Card className="mb-6">
         <CardHeader>
