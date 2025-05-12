@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Copy, ShieldAlert } from "lucide-react";
+import { Copy, ShieldAlert, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import {
   Tooltip,
@@ -14,9 +14,10 @@ import {
 interface ShowMnemonicScreenProps {
   mnemonic: string;
   onNext: () => void;
+  onBack: () => void;
 }
 
-const ShowMnemonicScreen: React.FC<ShowMnemonicScreenProps> = ({ mnemonic, onNext }) => {
+const ShowMnemonicScreen: React.FC<ShowMnemonicScreenProps> = ({ mnemonic, onNext, onBack }) => {
   const words = mnemonic.split(' ');
 
   const handleCopyMnemonic = () => {
@@ -27,7 +28,15 @@ const ShowMnemonicScreen: React.FC<ShowMnemonicScreenProps> = ({ mnemonic, onNex
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+      <div className="w-full max-w-lg mb-4">
+        <button 
+          onClick={onBack}
+          className="text-sm flex items-center text-muted-foreground hover:text-primary transition-colors"
+        >
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back to Home
+        </button>
+      </div>
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Your Secret Recovery Phrase</CardTitle>

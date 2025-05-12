@@ -4,12 +4,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { ArrowLeft } from "lucide-react";
 
 interface EnterSeedScreenProps {
   onSeedEntered: (seed: string) => void;
+  onBack: () => void;
 }
 
-const EnterSeedScreen: React.FC<EnterSeedScreenProps> = ({ onSeedEntered }) => {
+const EnterSeedScreen: React.FC<EnterSeedScreenProps> = ({ onSeedEntered, onBack }) => {
   const [seedPhrase, setSeedPhrase] = useState('');
 
   const handleSubmit = () => {
@@ -26,7 +28,15 @@ const EnterSeedScreen: React.FC<EnterSeedScreenProps> = ({ onSeedEntered }) => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background p-4">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+      <div className="w-full max-w-md mb-4">
+        <button 
+          onClick={onBack}
+          className="text-sm flex items-center text-muted-foreground hover:text-primary transition-colors"
+        >
+          <ArrowLeft className="mr-1 h-4 w-4" /> Back to Home
+        </button>
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Enter Your Seed Phrase</CardTitle>

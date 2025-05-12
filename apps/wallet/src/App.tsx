@@ -216,18 +216,23 @@ function App() {
     return `₿ ${sats.toLocaleString('en-US')}`;
   };
 
+  // Handle navigation back to login screen
+  const handleBackToLogin = () => {
+    setAppState('login');
+  };
+  
   // Render different screens based on appState
   const renderContent = () => {
     switch (appState) {
       case 'login':
         return <LoginScreen onCreateWallet={handleCreateWallet} onEnterSeed={handleEnterSeed} />;
       case 'creating_disclaimer':
-        return <CreateWalletDisclaimerScreen onNext={handleDisclaimerNext} />;
+        return <CreateWalletDisclaimerScreen onNext={handleDisclaimerNext} onBack={handleBackToLogin} />;
       case 'showing_mnemonic':
         if (!currentMnemonic) return <p>Error: Mnemonic not generated.</p>;
-        return <ShowMnemonicScreen mnemonic={currentMnemonic} onNext={() => handleMnemonicConfirmed(currentMnemonic)} />;
+        return <ShowMnemonicScreen mnemonic={currentMnemonic} onNext={() => handleMnemonicConfirmed(currentMnemonic)} onBack={handleBackToLogin} />;
       case 'entering_seed':
-        return <EnterSeedScreen onSeedEntered={handleSeedEntered} />;
+        return <EnterSeedScreen onSeedEntered={handleSeedEntered} onBack={handleBackToLogin} />;
       case 'initializing_wallet':
         return (
           <div className="flex flex-col items-center justify-center h-screen">
