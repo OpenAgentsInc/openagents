@@ -64,6 +64,7 @@ import CreateWalletDisclaimerScreen from './components/CreateWalletDisclaimerScr
 import ShowMnemonicScreen from './components/ShowMnemonicScreen';
 import EnterSeedScreen from './components/EnterSeedScreen';
 import TransactionHistoryCard from './components/TransactionHistoryCard';
+import SendPaymentCard from './components/SendPaymentCard';
 
 // State management
 import { useWalletStore } from './lib/store';
@@ -99,6 +100,8 @@ function App() {
   const [invoice, setInvoice] = useState('');
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [transactions, setTransactions] = useState<SparkTransferData[]>([]);
+  const [sendInvoice, setSendInvoice] = useState('');
+  const [isSendingPayment, setIsSendingPayment] = useState(false);
   const sdkRef = useRef<any>(null);
   const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
@@ -316,6 +319,62 @@ function App() {
       setIsGeneratingInvoice(false);
     }
   };
+  
+  const handlePayInvoice = async () => {
+    if (!sdkRef.current || !sdkRef.current.wallet) {
+      toast.error("Wallet not connected or initialized properly.");
+      return;
+    }
+    if (!sendInvoice.trim()) {
+      toast.error("Please enter a Lightning invoice to pay.");
+      return;
+    }
+    if (isSendingPayment) return;
+
+    setIsSendingPayment(true);
+    toast.loading("Processing payment...", { id: "pay-invoice" });
+
+    try {
+      const wallet = sdkRef.current.wallet || sdkRef.current; // Use the wallet instance
+
+      // The Spark SDK's payLightningInvoice takes the BOLT11 string directly.
+      // No separate decode step is strictly necessary for just paying,
+      // but you might want to decode it for UI display (amount, memo) before sending.
+      // For this step, we'll just pay directly.
+
+      console.log("Attempting to pay invoice:", sendInvoice);
+      const paymentResult = await wallet.payLightningInvoice({ invoice: sendInvoice });
+      // The payLightningInvoice in Spark SDK returns a Promise<void> on success or throws an error.
+      // It doesn't return detailed payment result object directly like some other SDKs might.
+      // Success is implied if no error is thrown.
+      console.log("Payment successful (implied, no error thrown):", paymentResult); // paymentResult will be undefined
+
+      toast.dismiss("pay-invoice");
+      toast.success("Payment Sent Successfully!");
+      setSendInvoice(''); // Clear the input field
+
+      // Re-fetch wallet data to update balance and transaction history
+      await fetchWalletData(sdkRef.current);
+
+    } catch (error) {
+      console.error('Failed to pay invoice:', error);
+      toast.dismiss("pay-invoice");
+      const message = error instanceof Error ? error.message : "Unknown error during payment.";
+
+      // More specific error messages
+      if (message.toLowerCase().includes("insufficient balance")) {
+        toast.error("Payment Failed: Insufficient balance.", { description: "Please check your balance and try again."});
+      } else if (message.toLowerCase().includes("invalid invoice") || message.toLowerCase().includes("decode error")) {
+        toast.error("Payment Failed: Invalid invoice.", { description: "Please check the invoice string and try again."});
+      } else if (message.toLowerCase().includes("route") || message.toLowerCase().includes("path not found")) {
+        toast.error("Payment Failed: No route found.", { description: "Could not find a path to the destination. The recipient might be offline or there might be network issues."});
+      } else {
+        toast.error("Payment Failed", { description: message });
+      }
+    } finally {
+      setIsSendingPayment(false);
+    }
+  };
 
   // Format functions are now implemented directly in the JSX
 
@@ -484,6 +543,15 @@ function App() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Send Payment Card */}
+            <SendPaymentCard
+              sendInvoice={sendInvoice}
+              setSendInvoice={setSendInvoice}
+              handlePayInvoice={handlePayInvoice}
+              isSendingPayment={isSendingPayment}
+              disabled={!sdkRef.current}
+            />
 
             {/* Transaction History Card */}
             <TransactionHistoryCard transactions={transactions} />
