@@ -73,7 +73,8 @@ const dirsToScan = [
 
 // Directories to exclude
 const dirsToExclude = [
-  'node_modules'
+  'node_modules',
+  'public'
 ];
 
 // Function to check if a path should be excluded
