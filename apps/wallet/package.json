@@ -13,8 +13,10 @@
   "dependencies": {
     "@breeztech/breez-sdk-liquid": "^0.8.0",
     "@scure/bip39": "^1.5.4",
+    "@tailwindcss/vite": "^4.1.6",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.1.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
