@@ -105,13 +105,23 @@ function App() {
     setErrorMessage(null);
 
     try {
+      console.log("Initializing Breez SDK");
       await init(); // Initialize WASM
 
       // Create configuration with API key
-      const config = defaultConfig('mainnet', import.meta.env.VITE_BREEZ_API_KEY);
+      const apiKey = import.meta.env.VITE_BREEZ_API_KEY;
+      console.log("Using API key:", apiKey ? "API key present" : "API key missing");
+      
+      const config = defaultConfig('mainnet', apiKey);
+      
+      // For web, don't set workingDir as it's managed in memory
+      // This matches the original implementation
+      
+      console.log("Connecting to Breez with config:", config);
       
       // Connect to Breez SDK with the provided mnemonic
       const sdk = await connect({ mnemonic: seedPhrase, config });
+      console.log("SDK connected successfully");
       sdkRef.current = sdk;
 
       // Set up event listener for SDK events
@@ -236,22 +246,40 @@ function App() {
       // This helps prevent rapid consecutive calls that might trigger the WASM error
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      console.log("Generating invoice for amount:", receiveAmount.toString(), "sats");
+      
       // Define the payment amount
-      const optionalAmount = {
+      // This is the expected format according to Breez SDK documentation
+      const amount = {
         type: 'bitcoin',
-        payerAmountSat: receiveAmount
+        payerAmountSat: Number(receiveAmount)
       };
-
+      
+      console.log("Payment amount object:", amount);
+      
       // First prepare the payment
       let prepareResponse;
       try {
         prepareResponse = await sdkRef.current.prepareReceivePayment({
           paymentMethod: 'lightning',
-          amount: optionalAmount
+          amount: amount
         });
       } catch (prepareError) {
         console.error('Failed to prepare payment:', prepareError);
         toast.dismiss("invoice-generation");
+        
+        console.error("Detailed prepareError:", prepareError);
+        
+        // Handle WASM specific errors
+        if (prepareError instanceof Error && 
+            (prepareError.message.includes("unwrap") || 
+             prepareError.message.includes("Err value"))) {
+          toast.error("SDK error: Unable to generate invoice");
+          console.error("WASM error in prepare step");
+          return;
+        }
+        
+        // Regular error handling
         toast.error("Failed to prepare payment. Please try a different amount.");
         
         // If this is likely a connection or network issue, suggest reconnecting
@@ -269,9 +297,12 @@ function App() {
 
       // Then generate the invoice
       try {
+        console.log("Preparing to receive payment with prepared response");
         const receiveResponse = await sdkRef.current.receivePayment({
           prepareResponse
         });
+
+        console.log("Received payment response:", receiveResponse);
 
         if (receiveResponse?.destination) {
           setInvoice(receiveResponse.destination);
@@ -283,7 +314,16 @@ function App() {
       } catch (receiveError) {
         console.error('Failed in receivePayment step:', receiveError);
         toast.dismiss("invoice-generation");
-        toast.error("Invoice generation failed at final step");
+        
+        // Handle WASM specific errors
+        if (receiveError instanceof Error && 
+            (receiveError.message.includes("unwrap") || 
+             receiveError.message.includes("Err value"))) {
+          toast.error("SDK error: Unable to complete invoice generation");
+          console.error("WASM error in receive payment step");
+        } else {
+          toast.error("Invoice generation failed at final step");
+        }
         return;
       }
     } catch (error) {
@@ -297,22 +337,11 @@ function App() {
         } else if (error.message.includes('node') || error.message.includes('connect')) {
           toast.error("Lightning node connection issue. Network may be congested.");
         } else if (error.message.includes('unwrap') || error.message.includes('Err value')) {
-          // This is likely the WASM error you're seeing
+          // This is likely the WASM error from Breez SDK
           toast.error("SDK internal error. Try logging out and back in.");
           
-          // Attempt recovery by cleaning up SDK resources
-          try {
-            if (sdkRef.current && listenerIdRef.current) {
-              sdkRef.current.removeEventListener(listenerIdRef.current);
-            }
-            if (sdkRef.current) {
-              // Don't actually disconnect as that might lose wallet data
-              // but clear any pending operations
-              await fetchWalletData(sdkRef.current);
-            }
-          } catch (cleanupError) {
-            console.error("Failed cleanup after error:", cleanupError);
-          }
+          // Log the error but don't try any recovery that could corrupt state
+          console.error("Breez SDK WASM error in invoice generation:", error);
         } else {
           toast.error(`Error: ${error.message}`);
         }
