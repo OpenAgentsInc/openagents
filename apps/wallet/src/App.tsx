@@ -194,7 +194,8 @@ function App() {
                     navigator.clipboard.writeText(invoice);
                     toast.success("Invoice Copied", {
                       description: "The lightning invoice has been copied to your clipboard.",
-                      duration: 3000
+                      duration: 3000,
+                      className: "font-mono"
                     });
                   }}
                 >
@@ -202,7 +203,7 @@ function App() {
                 </Button>
               </div>
               <ScrollArea className="h-24 w-full rounded-md border p-2">
-                <div className="p-2">
+                <div className="p-2 font-mono text-sm">
                   {invoice}
                 </div>
               </ScrollArea>
