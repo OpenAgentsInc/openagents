@@ -898,6 +898,9 @@ importers:
       '@eslint/js':
         specifier: ^9.22.0
         version: 9.26.0
+      '@types/node':
+        specifier: ^22.15.17
+        version: 22.15.17
       '@types/react':
         specifier: 19.0.0
         version: 19.0.0
