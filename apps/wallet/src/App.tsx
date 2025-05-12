@@ -8,15 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction
-} from '@/components/ui/alert-dialog'
+import { Toaster } from '@/components/ui/sonner'
+import { toast } from 'sonner'
 
 function App() {
   const [isInitialized, setIsInitialized] = useState(false)
@@ -32,7 +25,6 @@ function App() {
   const [receiveAmount, setReceiveAmount] = useState(100)
   const [invoice, setInvoice] = useState('')
   const [fees, setFees] = useState(0)
-  const [showCopyDialog, setShowCopyDialog] = useState(false)
   const sdkRef = useRef<BindingLiquidSdk | null>(null)
   const initializationRef = useRef(false)
 
@@ -123,6 +115,7 @@ function App() {
 
   return (
     <div className="container mx-auto p-4 max-w-3xl">
+      <Toaster />
       <h1 className="text-3xl font-bold text-center mb-6">Bitcoin Liquid Wallet</h1>
 
       <Card className="mb-6">
@@ -192,7 +185,10 @@ function App() {
                   size="sm" 
                   onClick={() => {
                     navigator.clipboard.writeText(invoice);
-                    setShowCopyDialog(true);
+                    toast.success("Invoice Copied", {
+                      description: "The lightning invoice has been copied to your clipboard.",
+                      duration: 3000,
+                    });
                   }}
                 >
                   Copy Invoice
@@ -203,22 +199,6 @@ function App() {
                   {invoice}
                 </div>
               </ScrollArea>
-              
-              <AlertDialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Invoice Copied</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      The lightning invoice has been copied to your clipboard.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogAction onClick={() => setShowCopyDialog(false)}>
-                      OK
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
             </div>
           )}
         </CardContent>
