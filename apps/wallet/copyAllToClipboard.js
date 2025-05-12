@@ -67,7 +67,6 @@ const rootFilesToInclude = [
 // Directories to recursively scan within the wallet app
 const dirsToScan = [
   'src',
-  'public',
   'docs'
 ];
 
