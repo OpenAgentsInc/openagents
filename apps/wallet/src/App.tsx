@@ -109,9 +109,10 @@ function App() {
     connectToBreez()
   }, []) // Empty dependency array ensures this runs only once
 
-  // Helper function to format satoshis to BTC
-  const formatSatToBTC = (sats: number) => {
-    return (sats / 100000000).toFixed(8)
+  // Helper function to format satoshis using the ₿ symbol standard
+  const formatSatsWithBitcoinSymbol = (sats: number) => {
+    // Format with spaces between thousands
+    return `₿ ${sats.toLocaleString('en-US')}`
   }
 
   return (
@@ -121,16 +122,16 @@ function App() {
         <Toaster />
       </div>
       
-      {/* Header - fixed at top */}
-      <header className="flex-none flex justify-between items-center p-4 border-b">
-        <h1 className="text-3xl font-bold">Bitcoin Liquid Wallet</h1>
-        <ModeToggle />
-      </header>
-      
       {/* Main content with scrolling */}
       <main className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="container mx-auto p-4 max-w-3xl py-6">
+          
+            {/* Header as regular card */}
+            <div className="flex justify-between items-center mb-6">
+              <h1 className="text-xl font-medium">OpenAgents Wallet</h1>
+              <ModeToggle />
+            </div>
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Wallet Balance</CardTitle>

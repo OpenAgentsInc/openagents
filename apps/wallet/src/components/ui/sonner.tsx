@@ -8,7 +8,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={resolvedTheme}
       className="toaster group pointer-events-auto font-mono"
-      position="top-right"
+      position="bottom-right"
       closeButton={false}
       richColors
       toastOptions={{
