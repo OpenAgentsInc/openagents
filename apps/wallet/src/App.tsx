@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { SparkWallet, Network as SparkNetwork, type TokenInfo, type Transfer as SdkSparkTransfer } from '@buildonspark/spark-sdk'
+import { SparkWallet, type TokenInfo } from '@buildonspark/spark-sdk'
 
 // Define transaction data interface
 export interface SparkTransferData {
@@ -8,6 +8,8 @@ export interface SparkTransferData {
   updatedTime?: string;
   created_at_time?: string; // Original field names kept for compatibility
   updated_at_time?: string;
+  created_at?: string; // Alternative date field
+  timestamp?: string | number; // Alternative date field
   network: string;
   type: string;
   status: string;
@@ -22,6 +24,13 @@ export interface SparkTransferData {
   sender_identity_public_key?: string; // Original field names kept for compatibility
   receiver_identity_public_key?: string;
   leaves?: any[]; // Additional field observed in logs
+  amount?: number | bigint; // Additional field for transaction amount
+  amountSat?: number | bigint; // Additional field for transaction amount
+  invoice?: {
+    amount?: {
+      amountSat?: number | bigint;
+    }
+  }; // Support for invoice object with nested amount
 }
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
@@ -57,11 +66,16 @@ import EnterSeedScreen from './components/EnterSeedScreen';
 import TransactionHistoryCard from './components/TransactionHistoryCard';
 
 // State management
-import { useWalletStore, WalletState } from './lib/store';
+import { useWalletStore } from './lib/store';
+
+// Extended TokenInfo to ensure it has a name property
+interface ExtendedTokenInfo extends Partial<TokenInfo> {
+  name?: string;
+}
 
 interface WalletInfo {
   balanceSat: bigint;
-  tokenBalances?: Map<string, { balance: bigint, tokenInfo: TokenInfo }>;
+  tokenBalances?: Map<string, { balance: bigint, tokenInfo: ExtendedTokenInfo }>;
 }
 
 function App() {
@@ -387,7 +401,7 @@ function App() {
                     <h4 className="text-md font-medium mb-2">Token Balances:</h4>
                     {Array.from(walletInfo.tokenBalances.entries()).map(([tokenId, tokenData]) => (
                       <div key={tokenId} className="text-sm">
-                        {tokenData.tokenInfo?.name || tokenId.substring(0, 8)}: {tokenData.balance.toString()}
+                        {tokenData.tokenInfo?.name ?? tokenId.substring(0, 8)}: {tokenData.balance.toString()}
                       </div>
                     ))}
                   </div>
