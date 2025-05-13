@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Github } from "lucide-react";
 
 interface LoginScreenProps {
   onCreateWallet: () => void;
@@ -21,15 +20,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onCreateWallet, onEnterSeed }
         </div>
       </div>
       <footer className="absolute bottom-6 text-center text-xs text-muted-foreground">
-        Self-custody bitcoin wallet. 100%{" "}
+        An{" "}
         <a
           href="https://github.com/OpenAgentsInc/openagents/tree/main/apps/wallet"
           target="_blank"
           rel="noopener noreferrer"
           className="underline hover:text-primary inline-flex items-center"
         >
-          open source <Github size={14} className="ml-1" />
+          open source
         </a>
+        {" "}self-custodial bitcoin wallet powered by <a href="https://www.spark.money/" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">Spark</a>
       </footer>
     </div>
   );

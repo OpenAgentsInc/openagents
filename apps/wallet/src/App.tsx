@@ -1,5 +1,37 @@
 import { useEffect, useRef, useCallback } from 'react'
-import init, { defaultConfig, connect, BindingLiquidSdk, type WalletInfo as SdkWalletInfo, type LightningPaymentLimitsResponse } from '@breeztech/breez-sdk-liquid'
+import { SparkWallet, type TokenInfo } from '@buildonspark/spark-sdk'
+
+// Define transaction data interface
+export interface SparkTransferData {
+  id: string;
+  createdTime?: string; // The field found in Spark logs
+  updatedTime?: string;
+  created_at_time?: string; // Original field names kept for compatibility
+  updated_at_time?: string;
+  created_at?: string; // Alternative date field
+  timestamp?: string | number; // Alternative date field
+  network: string;
+  type: string;
+  status: string;
+  transfer_direction: "INCOMING" | "OUTGOING";
+  transferDirection?: "INCOMING" | "OUTGOING"; // Alternative field name
+  total_sent?: bigint; // Original expected field
+  totalValue?: number | bigint; // The field found in Spark logs
+  description?: string;
+  fee?: bigint;
+  senderIdentityPublicKey?: string; // Field name from logs
+  receiverIdentityPublicKey?: string;
+  sender_identity_public_key?: string; // Original field names kept for compatibility
+  receiver_identity_public_key?: string;
+  leaves?: any[]; // Additional field observed in logs
+  amount?: number | bigint; // Additional field for transaction amount
+  amountSat?: number | bigint; // Additional field for transaction amount
+  invoice?: {
+    amount?: {
+      amountSat?: number | bigint;
+    }
+  }; // Support for invoice object with nested amount
+}
 import * as bip39 from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { useState } from 'react';
@@ -9,87 +41,122 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input as UiInput } from '@/components/ui/input'
 import { Button as UiButton } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
 import { ModeToggle } from '@/components/mode-toggle'
-import { Loader2 } from 'lucide-react';
+import { Loader2, Key, AlertCircle, X } from 'lucide-react';
 import QRCode from 'react-qr-code';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Screen Components
 import LoginScreen from './components/LoginScreen';
 import CreateWalletDisclaimerScreen from './components/CreateWalletDisclaimerScreen';
 import ShowMnemonicScreen from './components/ShowMnemonicScreen';
 import EnterSeedScreen from './components/EnterSeedScreen';
+import TransactionHistoryCard from './components/TransactionHistoryCard';
+import SendPaymentCard from './components/SendPaymentCard';
+import SendSparkPaymentCard from './components/SendSparkPaymentCard';
 
 // State management
-import { useWalletStore, WalletState } from './lib/store';
+import { useWalletStore } from './lib/store';
+
+// Extended TokenInfo to ensure it has a name property
+interface ExtendedTokenInfo extends Partial<TokenInfo> {
+  name?: string;
+}
 
 interface WalletInfo {
   balanceSat: bigint;
-  pendingSendSat: bigint;
-  pendingReceiveSat: bigint;
-}
-
-interface LightningLimits {
-  min: bigint;
-  max: bigint;
+  tokenBalances?: Map<string, { balance: bigint, tokenInfo: ExtendedTokenInfo }>;
 }
 
 function App() {
   // Zustand store for app state
-  const { 
-    appState, 
-    setAppState, 
-    mnemonic, 
-    setMnemonic, 
-    errorMessage, 
+  const {
+    appState,
+    setAppState,
+    mnemonic,
+    setMnemonic,
+    errorMessage,
     setErrorMessage,
     resetWallet
   } = useWalletStore();
 
   // Wallet UI state (not persisted)
   const [walletInfo, setWalletInfo] = useState<WalletInfo>({
-    balanceSat: BigInt(0),
-    pendingSendSat: BigInt(0),
-    pendingReceiveSat: BigInt(0)
+    balanceSat: BigInt(0)
   });
-  const [lightningLimits, setLightningLimits] = useState<LightningLimits>({
-    min: BigInt(0),
-    max: BigInt(0)
-  });
-  const [receiveAmount, setReceiveAmount] = useState(BigInt(100)); // Default 100 sats
+
+  const [receiveAmount, setReceiveAmount] = useState(BigInt(10)); // Default 10 sats
   const [invoice, setInvoice] = useState('');
-  const [fees, setFees] = useState(BigInt(0));
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
-  const sdkRef = useRef<BindingLiquidSdk | null>(null);
-  const listenerIdRef = useRef<string | null>(null);
+  const [transactions, setTransactions] = useState<SparkTransferData[]>([]);
+  const [sendInvoice, setSendInvoice] = useState('');
+  const [isSendingPayment, setIsSendingPayment] = useState(false);
+  const [showBetaAlert, setShowBetaAlert] = useState(true);
+  const [userSparkAddress, setUserSparkAddress] = useState<string>('');
+  const [recipientSparkAddress, setRecipientSparkAddress] = useState('');
+  const [sendSparkAmount, setSendSparkAmount] = useState(BigInt(0));
+  const [isSendingSparkPayment, setIsSendingSparkPayment] = useState(false);
+  const sdkRef = useRef<any>(null);
   const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
-  const fetchWalletData = useCallback(async (sdk: BindingLiquidSdk) => {
+  const fetchWalletData = useCallback(async (sdk: any) => {
     if (!sdk) return;
-    
+
     try {
-      const info = await sdk.getInfo();
+      // Try accessing the wallet property if initialize returns an object with wallet
+      const wallet = sdk.wallet || sdk;
+
+      // Fetch balance
+      const balanceData = await wallet.getBalance();
+
       setWalletInfo({
-        balanceSat: info.walletInfo.balanceSat,
-        pendingSendSat: info.walletInfo.pendingSendSat,
-        pendingReceiveSat: info.walletInfo.pendingReceiveSat
+        balanceSat: balanceData.balance || BigInt(0),
+        tokenBalances: balanceData.tokenBalances
       });
 
+      // Fetch transactions
       try {
-        // Separate try-catch for lightning limits which might fail
-        const limits: LightningPaymentLimitsResponse = await sdk.fetchLightningLimits();
-        setLightningLimits({
-          min: limits.receive.minSat,
-          max: limits.receive.maxSat
-        });
-      } catch (limitsError) {
-        console.warn('Failed to fetch lightning limits:', limitsError);
-        // Set default limits if the API call fails
-        setLightningLimits({
-          min: BigInt(1000),
-          max: BigInt(100000)
-        });
+        const transfersResponse = await wallet.getTransfers(20, 0); // Fetch 20 transactions, offset 0
+
+        if (transfersResponse && transfersResponse.transfers) {
+          // Sort by createdTime descending (newest first)
+          const sortedTransactions = transfersResponse.transfers.sort(
+            (a: SparkTransferData, b: SparkTransferData) => {
+              const dateA = a.createdTime ? new Date(a.createdTime).getTime() : 0;
+              const dateB = b.createdTime ? new Date(b.createdTime).getTime() : 0;
+              return dateB - dateA;
+            }
+          );
+
+          setTransactions(sortedTransactions);
+        } else {
+          setTransactions([]);
+        }
+      } catch (txError) {
+        console.error('Failed to fetch transactions:', txError);
+        setTransactions([]);
+      }
+
+      // Fetch user's Spark Address
+      try {
+        const sparkAddr = await wallet.getSparkAddress();
+        setUserSparkAddress(sparkAddr);
+      } catch (addrError) {
+        console.error('Failed to fetch Spark address:', addrError);
+        toast.error("Could not fetch your Spark address.");
       }
     } catch (error) {
       console.error('Failed to fetch wallet data:', error);
@@ -97,59 +164,32 @@ function App() {
     }
   }, []);
 
-  const connectToBreez = useCallback(async (seedPhrase: string) => {
+  const connectToSparkSDK = useCallback(async (seedPhrase: string) => {
     // Prevent double connection attempts
     if (sdkRef.current) {
-      console.log("SDK already connected or connecting.");
       return;
     }
-    
+
     setAppState('initializing_wallet');
     setErrorMessage(null);
 
     try {
-      console.log("Initializing Breez SDK");
-      await init(); // Initialize WASM
-
-      // Create configuration with API key
-      const apiKey = import.meta.env.VITE_BREEZ_API_KEY;
-      console.log("Using API key:", apiKey ? "API key present" : "API key missing");
-      
-      const config = defaultConfig('mainnet', apiKey);
-      
-      // For web, don't set workingDir as it's managed in memory
-      // This matches the original implementation
-      
-      console.log("Connecting to Breez with config:", config);
-      
-      // Connect to Breez SDK with the provided mnemonic
-      const sdk = await connect({ mnemonic: seedPhrase, config });
-      console.log("SDK connected successfully");
-      sdkRef.current = sdk;
-
-      // Set up event listener for SDK events
-      const eventListener = {
-        onEvent: (event: any) => { // Use proper type if available
-          console.log('Breez SDK Event:', event.type, event);
-          if (['synced', 'paymentSucceeded', 'paymentFailed', 'paymentPending'].includes(event.type)) {
-            fetchWalletData(sdk);
-          }
+      // Initialize Spark wallet with mnemonic
+      const { wallet: sparkInstance } = await SparkWallet.initialize({
+        mnemonicOrSeed: seedPhrase,
+        options: {
+          network: "MAINNET",
         }
-      };
-      
-      try {
-        const listenerId = await sdk.addEventListener(eventListener);
-        listenerIdRef.current = listenerId;
-      } catch (listenerError) {
-        console.warn('Failed to add event listener:', listenerError);
-        // Continue without the listener
-      }
+      });
 
-      await fetchWalletData(sdk);
+      sdkRef.current = sparkInstance;
+
+      await fetchWalletData(sparkInstance);
       setAppState('wallet_ready');
       setMnemonic(seedPhrase); // Store in zustand
+      toast.success("Wallet Connected!");
     } catch (error) {
-      console.error('Failed to initialize Breez SDK:', error);
+      console.error('Failed to initialize wallet:', error);
       setErrorMessage(`Failed to initialize wallet: ${error instanceof Error ? error.message : String(error)}`);
       setAppState('error');
       sdkRef.current = null;
@@ -162,14 +202,13 @@ function App() {
     if (initializedRef.current) {
       return;
     }
-    
+
     // If we have a mnemonic in the store, try to connect
     if (mnemonic && appState === 'login') {
       initializedRef.current = true;
-      console.log("Initial SDK connection - first render only");
-      connectToBreez(mnemonic);
+      connectToSparkSDK(mnemonic);
     }
-  }, [mnemonic, appState, connectToBreez]);
+  }, [mnemonic, appState, connectToSparkSDK]);
 
   const handleCreateWallet = () => {
     setAppState('creating_disclaimer');
@@ -183,7 +222,7 @@ function App() {
 
   const handleMnemonicConfirmed = (seedPhrase: string) => {
     initializedRef.current = true; // Mark as initialized for this session
-    connectToBreez(seedPhrase);
+    connectToSparkSDK(seedPhrase);
   };
 
   const handleEnterSeed = () => {
@@ -197,48 +236,31 @@ function App() {
       setErrorMessage("Invalid seed phrase format.");
       return;
     }
-    
+
     // Mark as initialized for this session
     initializedRef.current = true;
-    
-    // Connect to Breez with the validated seed phrase
+
+    // Connect to Spark with the validated seed phrase
     setMnemonic(seedPhrase);
-    connectToBreez(seedPhrase);
+    connectToSparkSDK(seedPhrase);
   };
 
   const handleLogout = async () => {
-    // Clean up SDK resources
-    if (sdkRef.current) {
-      try {
-        // Remove event listener if it exists
-        if (listenerIdRef.current) {
-          await sdkRef.current.removeEventListener(listenerIdRef.current);
-          listenerIdRef.current = null;
-        }
-        
-        // Disconnect the SDK
-        await sdkRef.current.disconnect();
-        sdkRef.current = null;
-      } catch (e) {
-        console.error("Error during SDK cleanup:", e);
-      }
-    }
-    
+    // Clean up SDK resources (Spark doesn't have a disconnect method)
+    sdkRef.current = null;
+
     // Reset UI state
     setInvoice('');
-    setFees(BigInt(0));
     setWalletInfo({
-      balanceSat: BigInt(0),
-      pendingSendSat: BigInt(0),
-      pendingReceiveSat: BigInt(0)
+      balanceSat: BigInt(0)
     });
-    
+
     // Reset store state (clears mnemonic from persistence)
     resetWallet();
-    
+
     // Reset initialization flag to allow reinitializing after logout
     initializedRef.current = false;
-    
+
     toast.info("Logged out successfully.");
   };
 
@@ -247,118 +269,61 @@ function App() {
       toast.error("Wallet not connected");
       return;
     }
-    
+
     // Prevent multiple clicks
     if (isGeneratingInvoice) {
       return;
     }
-    
+
     setIsGeneratingInvoice(true);
-    
+
     try {
       // Show loading toast
       toast.loading("Generating invoice...", { id: "invoice-generation" });
-      
-      // For demo purposes, add a small delay to simulate network latency
-      // This helps prevent rapid consecutive calls that might trigger the WASM error
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      console.log("Generating invoice for amount:", receiveAmount.toString(), "sats");
-      
-      // Define the payment amount
-      // This is the expected format according to Breez SDK documentation
-      const amount = {
-        type: 'bitcoin',
-        payerAmountSat: Number(receiveAmount)
-      };
-      
-      console.log("Payment amount object:", amount);
-      
-      // First prepare the payment
-      let prepareResponse;
-      try {
-        prepareResponse = await sdkRef.current.prepareReceivePayment({
-          paymentMethod: 'lightning',
-          amount: amount
-        });
-      } catch (prepareError) {
-        console.error('Failed to prepare payment:', prepareError);
+
+      // Spark requires a number for amountSats
+      const amountNumber = Number(receiveAmount);
+
+      if (isNaN(amountNumber) || amountNumber <= 0) {
+        toast.error("Invalid amount for invoice.");
+        setIsGeneratingInvoice(false);
         toast.dismiss("invoice-generation");
-        
-        console.error("Detailed prepareError:", prepareError);
-        
-        // Handle WASM specific errors
-        if (prepareError instanceof Error && 
-            (prepareError.message.includes("unwrap") || 
-             prepareError.message.includes("Err value"))) {
-          toast.error("SDK error: Unable to generate invoice");
-          console.error("WASM error in prepare step");
-          return;
-        }
-        
-        // Regular error handling
-        toast.error("Failed to prepare payment. Please try a different amount.");
-        
-        // If this is likely a connection or network issue, suggest reconnecting
-        if (prepareError instanceof Error && 
-            (prepareError.message.includes("network") || 
-             prepareError.message.includes("connect") ||
-             prepareError.message.includes("timeout"))) {
-          toast.error("Network connection issue. Try logging out and back in.");
-        }
         return;
       }
 
-      // Update the fees display
-      setFees(prepareResponse.feesSat);
+      // Generate invoice directly with Spark SDK
+      const wallet = sdkRef.current;
 
-      // Then generate the invoice
-      try {
-        console.log("Preparing to receive payment with prepared response");
-        const receiveResponse = await sdkRef.current.receivePayment({
-          prepareResponse
-        });
+      const invoiceResponse = await wallet.createLightningInvoice({
+        amountSats: amountNumber,
+        memo: "OpenAgents Invoice" // Example memo
+      });
 
-        console.log("Received payment response:", receiveResponse);
+      // Extract the encoded invoice string from the response object
+      const encodedInvoice = invoiceResponse?.invoice?.encodedInvoice;
 
-        if (receiveResponse?.destination) {
-          setInvoice(receiveResponse.destination);
-          toast.dismiss("invoice-generation");
-          toast.success("Invoice generated successfully!");
-        } else {
-          throw new Error("No destination in response");
-        }
-      } catch (receiveError) {
-        console.error('Failed in receivePayment step:', receiveError);
-        toast.dismiss("invoice-generation");
-        
-        // Handle WASM specific errors
-        if (receiveError instanceof Error && 
-            (receiveError.message.includes("unwrap") || 
-             receiveError.message.includes("Err value"))) {
-          toast.error("SDK error: Unable to complete invoice generation");
-          console.error("WASM error in receive payment step");
-        } else {
-          toast.error("Invoice generation failed at final step");
-        }
-        return;
+      if (!encodedInvoice) {
+        throw new Error("Failed to get encoded invoice from response");
+      }
+
+      setInvoice(encodedInvoice);
+      toast.dismiss("invoice-generation");
+      toast.success("Lightning Invoice Generated!");
+
+      // Refresh wallet data to potentially update any pending transactions
+      if (sdkRef.current) {
+        fetchWalletData(sdkRef.current);
       }
     } catch (error) {
-      console.error('Failed to generate invoice (outer catch):', error);
+      console.error('Failed to generate invoice:', error);
       toast.dismiss("invoice-generation");
-      
+
       // Handle different error types with more specific messages
       if (error instanceof Error) {
-        if (error.message.includes('amount') || error.message.includes('limits')) {
-          toast.error("Amount issue: Try a different amount within the allowed limits");
+        if (error.message.includes('amount')) {
+          toast.error("Amount issue: Try a different amount");
         } else if (error.message.includes('node') || error.message.includes('connect')) {
           toast.error("Lightning node connection issue. Network may be congested.");
-        } else if (error.message.includes('unwrap') || error.message.includes('Err value')) {
-          // This is likely the WASM error from Breez SDK
-          toast.error("SDK internal error. Try logging out and back in.");
-          
-          // Log the error but don't try any recovery that could corrupt state
-          console.error("Breez SDK WASM error in invoice generation:", error);
         } else {
           toast.error(`Error: ${error.message}`);
         }
@@ -371,16 +336,206 @@ function App() {
     }
   };
 
-  // Helper function to format satoshis with the bitcoin symbol
-  const formatSatsWithBitcoinSymbol = (sats: bigint) => {
-    return `₿ ${sats.toLocaleString('en-US')}`;
+  const handlePayInvoice = async () => {
+    if (!sdkRef.current) {
+      toast.error("Wallet not connected.");
+      return;
+    }
+    if (!sendInvoice.trim()) {
+      toast.error("Please enter a Lightning invoice to pay.");
+      return;
+    }
+    if (isSendingPayment) return;
+
+    setIsSendingPayment(true);
+    toast.loading("Processing payment...", { id: "pay-invoice" });
+
+    try {
+      // sdkRef.current is the wallet instance from SparkWallet.initialize
+      const wallet = sdkRef.current;
+
+      // The Spark SDK's payLightningInvoice takes the BOLT11 string directly.
+      // No separate decode step is strictly necessary for just paying,
+      // but you might want to decode it for UI display (amount, memo) before sending.
+      // For this step, we'll just pay directly.
+
+      const trimmedInvoice = sendInvoice.trim();
+      console.log("Attempting to pay invoice:", trimmedInvoice);
+
+      // Log available methods for debugging
+      console.log("Available wallet methods:",
+        Object.getOwnPropertyNames(Object.getPrototypeOf(wallet))
+          .filter(method => typeof wallet[method] === 'function')
+      );
+
+      // Based on the actual SDK error logs, we need a different approach
+      // The error "Lightning Payment Request must be string" suggests that
+      // the SDK expects only the string and not an object
+
+      // For safety, let's check if our invoice has features that might be
+      // causing issues (whitespace, non-ASCII characters, etc.)
+      let cleanedInvoice = trimmedInvoice
+        .replace(/\s+/g, '')  // Remove any whitespace
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // Remove control characters
+
+      // Make sure the string starts with ln (case insensitive)
+      if (!cleanedInvoice.toLowerCase().startsWith('ln')) {
+        throw new Error("Invalid Lightning invoice format. Must start with 'ln'.");
+      }
+
+      console.log("Using cleaned invoice:", cleanedInvoice);
+
+      // Based on the available methods in the logs, we'll try the direct approach
+      try {
+        // The logs show the SDK is expecting a direct string parameter
+        await wallet.payLightningInvoice(cleanedInvoice);
+      } catch (err) {
+        console.error("Direct payment failed:", err);
+
+        // If that fails, try with an object (some SDK versions expect this)
+        try {
+          await wallet.payLightningInvoice({
+            invoice: cleanedInvoice
+          });
+        } catch (objErr) {
+          console.error("Object payment failed:", objErr);
+
+          // Last resort: try to use getLightningSendRequest if available
+          if (typeof wallet.getLightningSendRequest === 'function') {
+            const sendRequest = await wallet.getLightningSendRequest({
+              invoice: cleanedInvoice
+            });
+            console.log("Generated send request:", sendRequest);
+
+            // Execute the generated request
+            if (sendRequest && typeof sendRequest === 'string') {
+              await wallet.payLightningInvoice(sendRequest);
+            } else {
+              // If we got a request object, try to use that
+              throw new Error("Could not process Lightning invoice. Please try a different invoice.");
+            }
+          } else {
+            // If everything failed, rethrow the original error
+            throw err;
+          }
+        }
+      }
+
+      console.log("Payment successful");
+
+      toast.dismiss("pay-invoice");
+      toast.success("Payment Sent Successfully!");
+      setSendInvoice(''); // Clear the input field
+
+      // Re-fetch wallet data to update balance and transaction history
+      await fetchWalletData(sdkRef.current);
+
+    } catch (error) {
+      console.error('Failed to pay invoice:', error);
+      toast.dismiss("pay-invoice");
+      const message = error instanceof Error ? error.message : String(error);
+
+      console.log("Payment error details:", {
+        error,
+        message,
+        sdkReady: !!sdkRef.current,
+        invoiceLength: sendInvoice.length
+      });
+
+      // More specific error messages
+      if (message.toLowerCase().includes("insufficient balance") || message.toLowerCase().includes("not enough funds")) {
+        toast.error("Payment Failed: Insufficient balance.", { description: "Please check your balance and try again." });
+      } else if (message.toLowerCase().includes("invalid invoice") || message.toLowerCase().includes("decode error") || message.toLowerCase().includes("malformed")) {
+        toast.error("Payment Failed: Invalid invoice.", { description: "Please check the invoice string and try again." });
+      } else if (message.toLowerCase().includes("route") || message.toLowerCase().includes("path not found") || message.toLowerCase().includes("no route")) {
+        toast.error("Payment Failed: No route found.", { description: "Could not find a path to the destination. The recipient might be offline or there might be network issues." });
+      } else if (message.toLowerCase().includes("timeout") || message.toLowerCase().includes("timed out")) {
+        toast.error("Payment Failed: Timeout", { description: "The payment request timed out. Please try again." });
+      } else if (message.toLowerCase().includes("invoice must be") || message.toLowerCase().includes("lightning payment request")) {
+        toast.error("Payment Failed: Format issue", { description: "The invoice format was not recognized. Please check the invoice and try again." });
+      } else if (message.toLowerCase().includes("invalid amount") || message.toLowerCase().includes("amount")) {
+        toast.error("Payment Failed: Amount issue", { description: "The payment amount in the invoice is invalid or not specified. Try a different invoice." });
+      } else if (message.toLowerCase().includes("not a function") || message.toLowerCase().includes("undefined")) {
+        toast.error("Payment Failed: SDK error", { description: "There was an issue with the wallet SDK. Please restart the wallet or try again later." });
+      } else if (message.toLowerCase().includes("network") || message.toLowerCase().includes("failed to execute") || message.toLowerCase().includes("graphql")) {
+        toast.error("Payment Failed: Network Error", {
+          description: "Unable to connect to the Lightning Network. Please check your internet connection and try again later."
+        });
+      } else {
+        toast.error("Payment Failed", { description: message });
+      }
+    } finally {
+      setIsSendingPayment(false);
+    }
   };
+
+  const handleSendSparkPayment = async () => {
+    if (!sdkRef.current || !sdkRef.current.wallet) {
+      toast.error("Wallet not connected or initialized properly.");
+      return;
+    }
+    if (!recipientSparkAddress.trim()) {
+      toast.error("Please enter a recipient's Spark address.");
+      return;
+    }
+    if (sendSparkAmount <= BigInt(0)) {
+      toast.error("Please enter a valid amount greater than 0.");
+      return;
+    }
+    if (isSendingSparkPayment) return;
+
+    setIsSendingSparkPayment(true);
+    toast.loading("Sending Spark payment...", { id: "send-spark-payment" });
+
+    try {
+      const wallet = sdkRef.current.wallet || sdkRef.current;
+      const amountSatsNumber = Number(sendSparkAmount); // SDK expects number
+
+      console.log("Attempting to send Spark payment to:", recipientSparkAddress, "Amount:", amountSatsNumber);
+
+      // The transfer method in Spark SDK is direct.
+      // It might return a Transfer object upon successful initiation.
+      const transferResult = await wallet.transfer({
+        receiverSparkAddress: recipientSparkAddress.trim(),
+        amountSats: amountSatsNumber,
+      });
+
+      console.log("Spark transfer initiated:", transferResult); // transferResult might be void or basic info
+
+      toast.dismiss("send-spark-payment");
+      toast.success("Spark Payment Sent Successfully!");
+      setRecipientSparkAddress(''); // Clear recipient address
+      setSendSparkAmount(BigInt(0)); // Clear amount
+
+      // Re-fetch wallet data to update balance and transaction history
+      await fetchWalletData(sdkRef.current);
+
+    } catch (error) {
+      console.error('Failed to send Spark payment:', error);
+      toast.dismiss("send-spark-payment");
+      const message = error instanceof Error ? error.message : "Unknown error during Spark payment.";
+
+      if (message.toLowerCase().includes("insufficient balance")) {
+        toast.error("Payment Failed: Insufficient balance.");
+      } else if (message.toLowerCase().includes("invalid address") || message.toLowerCase().includes("receiver address")) {
+        toast.error("Payment Failed: Invalid recipient Spark address.");
+      } else if (message.toLowerCase().includes("amount")) {
+        toast.error("Payment Failed: Invalid amount.");
+      } else {
+        toast.error("Spark Payment Failed", { description: message });
+      }
+    } finally {
+      setIsSendingSparkPayment(false);
+    }
+  };
+
+  // Format functions are now implemented directly in the JSX
 
   // Handle navigation back to login screen
   const handleBackToLogin = () => {
     setAppState('login');
   };
-  
+
   // Render different screens based on appState
   const renderContent = () => {
     switch (appState) {
@@ -407,91 +562,193 @@ function App() {
             <div className="flex justify-between items-center mb-6">
               <h1 className="text-xl font-medium">OpenAgents Wallet</h1>
               <div className="flex items-center gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <UiButton variant="outline" size="icon">
+                      <Key className="h-4 w-4" />
+                    </UiButton>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Your Seed Phrase</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Keep this phrase safe. Anyone with access to it can control your wallet.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="mt-2 text-center">
+                      <div className="p-4 bg-muted rounded-md font-mono text-sm whitespace-normal break-words">
+                        {mnemonic}
+                      </div>
+                    </div>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Close</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => {
+                        navigator.clipboard.writeText(mnemonic || "");
+                        toast.success("Seed phrase copied to clipboard");
+                      }}>
+                        Copy
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
                 <ModeToggle />
-                <UiButton variant="outline" size="sm" onClick={handleLogout}>Logout</UiButton>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <UiButton variant="outline" size="sm">Logout</UiButton>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you sure you want to logout?</AlertDialogTitle>
+                      <AlertDialogDescription className="text-left">
+                        <p className="mb-2">If you haven't backed up your seed phrase, you won't be able to access your funds.</p>
+                        <div className="bg-amber-100 dark:bg-amber-950 p-3 rounded-md border border-amber-300 dark:border-amber-800 mt-2">
+                          <p className="text-amber-800 dark:text-amber-200 font-medium">Make sure you've saved your seed phrase before logging out!</p>
+                        </div>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleLogout}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Logout Anyway
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
+
+            {showBetaAlert && (
+              <div className="mb-4 relative">
+                <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800 text-amber-800 dark:text-amber-200 pr-10">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>OpenAgents Wallet is in beta</AlertTitle>
+                  <AlertDescription>
+                    Don't use it with anything more than small amounts you'd be willing to lose. Withdraw regularly to a different wallet.
+                  </AlertDescription>
+                  <button
+                    onClick={() => setShowBetaAlert(false)}
+                    className="absolute top-3 right-3 p-1 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    aria-label="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </Alert>
+              </div>
+            )}
+
             <Card className="mb-6">
               <CardHeader>
-                <CardTitle>Wallet Balance</CardTitle>
-                <CardDescription>
-                  Overview of your current wallet balances.
-                  <span className="inline-block ml-1 text-xs text-muted-foreground">
-                    (Values shown in satoshis: ₿ 100,000,000 = 1 BTC)
-                  </span>
-                </CardDescription>
+                <CardTitle>Bitcoin Balance</CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <h3 className="text-sm font-medium mb-1">Available Balance</h3>
-                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.balanceSat)}</p>
+              <CardContent>
+                <div className="flex flex-col items-center">
+                  <div className="relative mb-6">
+                    <p className="text-3xl font-bold text-center">₿<span className="mx-[1px]">{walletInfo.balanceSat.toString()}</span></p>
+                    <span className="absolute bottom-0 right-0 text-xs text-muted-foreground translate-y-full -translate-x-3">sats</span>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-medium mb-1">Pending Send</h3>
-                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingSendSat)}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium mb-1">Pending Receive</h3>
-                  <p className="text-xl font-bold">{formatSatsWithBitcoinSymbol(walletInfo.pendingReceiveSat)}</p>
-                </div>
+
+                {/* Token balances could be displayed here if needed */}
+                {walletInfo.tokenBalances && walletInfo.tokenBalances.size > 0 && (
+                  <div className="mt-4">
+                    <h4 className="text-md font-medium mb-2">Token Balances:</h4>
+                    {Array.from(walletInfo.tokenBalances.entries()).map(([tokenId, tokenData]) => (
+                      <div key={tokenId} className="text-sm">
+                        {tokenData.tokenInfo?.name ?? tokenId.substring(0, 8)}: {tokenData.balance.toString()}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            <Card>
+            {/* Spark Address Card - Now positioned right under balance */}
+            <Card className="mt-6 mb-6">
               <CardHeader>
-                <CardTitle>Receive Payment</CardTitle>
-                <CardDescription>Generate a lightning invoice to receive funds</CardDescription>
+                <CardTitle>Your Spark Address</CardTitle>
+                <CardDescription>Share this address to receive Spark payments.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {userSparkAddress ? (
+                  <div className="space-y-2">
+                    <ScrollArea className="h-16 w-full rounded-md border p-2">
+                      <div className="p-1 font-mono text-sm break-all">
+                        {userSparkAddress}
+                      </div>
+                    </ScrollArea>
+                    <UiButton
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        navigator.clipboard.writeText(userSparkAddress);
+                        toast.success("Spark Address Copied!");
+                      }}
+                    >
+                      Copy Address
+                    </UiButton>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Fetching your Spark address...</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Send Spark Payment Card - Moved to be under Your Spark Address */}
+            <SendSparkPaymentCard
+              recipientSparkAddress={recipientSparkAddress}
+              setRecipientSparkAddress={setRecipientSparkAddress}
+              sendSparkAmount={sendSparkAmount}
+              setSendSparkAmount={setSendSparkAmount}
+              handleSendSparkPayment={handleSendSparkPayment}
+              isSendingSparkPayment={isSendingSparkPayment}
+              disabled={!sdkRef.current}
+            />
+
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>Receive Bitcoin (Lightning)</CardTitle>
+                <CardDescription>Generate a Lightning invoice to receive Bitcoin</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Amount (sats)</label>
-                  <UiInput
-                    type="number"
-                    value={receiveAmount.toString()}
-                    onChange={(e) => setReceiveAmount(BigInt(e.target.value || "0"))}
-                    min={lightningLimits.min.toString()}
-                    max={lightningLimits.max.toString()}
-                    autoFocus
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Min: {lightningLimits.min.toString()} sats, Max: {lightningLimits.max.toString()} sats
-                  </p>
+                <div className="flex items-center gap-3">
+                  <div className="w-1/3">
+                    <label className="text-sm font-medium block mb-1">Amount (sats)</label>
+                    <UiInput
+                      type="number"
+                      value={receiveAmount.toString()}
+                      onChange={(e) => setReceiveAmount(BigInt(e.target.value || "0"))}
+                      min="1"
+                      className="w-full"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <UiButton
+                      onClick={generateInvoice}
+                      disabled={!sdkRef.current || isGeneratingInvoice || receiveAmount <= 0}
+                      className="h-10 mt-6"
+                    >
+                      {isGeneratingInvoice ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        "Generate Lightning Invoice"
+                      )}
+                    </UiButton>
+                  </div>
                 </div>
-                <UiButton
-                  onClick={generateInvoice}
-                  disabled={!sdkRef.current || isGeneratingInvoice || receiveAmount < lightningLimits.min || receiveAmount > lightningLimits.max}
-                  className="w-full"
-                >
-                  {isGeneratingInvoice ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    "Generate Invoice"
-                  )}
-                </UiButton>
-                {fees > 0 && (
-                  <p className="text-sm text-muted-foreground">Network Fees: {fees.toString()} sats</p>
-                )}
+
                 {invoice && (
                   <div className="mt-4 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-medium">Lightning Invoice</h3>
-                      <UiButton
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          navigator.clipboard.writeText(invoice);
-                          toast.success("Invoice Copied");
-                        }}
-                      >
-                        Copy Invoice
-                      </UiButton>
-                    </div>
-                    
+                    <h3 className="text-sm font-medium text-center">Lightning Invoice</h3>
+
                     {/* QR Code */}
-                    <div className="flex flex-col items-center bg-white p-4 rounded-md">
+                    <div className="flex flex-col items-center bg-card p-4 rounded-md">
                       <QRCode
                         value={invoice}
                         size={200}
@@ -504,9 +761,21 @@ function App() {
                         Scan with a Lightning wallet
                       </p>
                     </div>
-                    
+
                     <div className="mt-2">
-                      <p className="text-sm font-medium mb-1">Invoice Text</p>
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="text-sm font-medium">BOLT11 Invoice</p>
+                        <UiButton
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(invoice);
+                            toast.success("Invoice Copied");
+                          }}
+                        >
+                          Copy Invoice
+                        </UiButton>
+                      </div>
                       <ScrollArea className="h-24 w-full rounded-md border p-2">
                         <div className="p-2 font-mono text-sm break-all">
                           {invoice}
@@ -517,6 +786,20 @@ function App() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Send Payment Card */}
+            <SendPaymentCard
+              sendInvoice={sendInvoice}
+              setSendInvoice={setSendInvoice}
+              handlePayInvoice={handlePayInvoice}
+              isSendingPayment={isSendingPayment}
+              disabled={!sdkRef.current}
+            />
+
+            {/* Transaction History Card */}
+            <TransactionHistoryCard transactions={transactions} />
+
+            <div className="h-16" /> {/* Spacer for scroll */}
           </div>
         );
       case 'error':
