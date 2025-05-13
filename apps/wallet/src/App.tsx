@@ -470,12 +470,19 @@ function App() {
   };
 
   const handleSendSparkPayment = async () => {
-    if (!sdkRef.current || !sdkRef.current.wallet) {
-      toast.error("Wallet not connected or initialized properly.");
+    if (!sdkRef.current) {
+      toast.error("Wallet not connected.");
       return;
     }
-    if (!recipientSparkAddress.trim()) {
+    const trimmedAddress = recipientSparkAddress.trim();
+    if (!trimmedAddress) {
       toast.error("Please enter a recipient's Spark address.");
+      return;
+    }
+    
+    // Check that the address has the right format
+    if (!(trimmedAddress.startsWith("sp1p") || trimmedAddress.startsWith("sprt1p"))) {
+      toast.error("Invalid Spark address format. Should start with 'sp1p'.");
       return;
     }
     if (sendSparkAmount <= BigInt(0)) {
@@ -488,15 +495,18 @@ function App() {
     toast.loading("Sending Spark payment...", { id: "send-spark-payment" });
 
     try {
-      const wallet = sdkRef.current.wallet || sdkRef.current;
+      const wallet = sdkRef.current;
       const amountSatsNumber = Number(sendSparkAmount); // SDK expects number
 
-      console.log("Attempting to send Spark payment to:", recipientSparkAddress, "Amount:", amountSatsNumber);
+      console.log("Attempting to send Spark payment to:", trimmedAddress, "Amount:", amountSatsNumber);
+      console.log("SDK reference type:", typeof sdkRef.current, "Available methods:", 
+        Object.getOwnPropertyNames(Object.getPrototypeOf(sdkRef.current))
+          .filter(method => typeof sdkRef.current[method] === 'function'));
 
       // The transfer method in Spark SDK is direct.
       // It might return a Transfer object upon successful initiation.
       const transferResult = await wallet.transfer({
-        receiverSparkAddress: recipientSparkAddress.trim(),
+        receiverSparkAddress: trimmedAddress,
         amountSats: amountSatsNumber,
       });
 

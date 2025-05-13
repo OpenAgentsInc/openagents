@@ -9,7 +9,28 @@ interface TransactionItemProps {
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
-  const isSent = transaction?.transfer_direction === "OUTGOING";
+  // Debug log to understand the transaction structure
+  console.log("Transaction data:", {
+    id: transaction?.id,
+    type: transaction?.type,
+    direction: transaction?.transfer_direction || transaction?.transferDirection,
+    totalValue: transaction?.totalValue,
+    total_sent: transaction?.total_sent,
+    amount: transaction?.amount,
+    status: transaction?.status
+  });
+  
+  // Check both possible field names for the transfer direction
+  // Also consider the transaction type for special cases like transfers
+  let isSent = transaction?.transfer_direction === "OUTGOING" || transaction?.transferDirection === "OUTGOING";
+  
+  // If it's a transfer type and the direction isn't explicitly set, check for other indicators
+  if (transaction?.type && transaction.type.toLowerCase().includes("transfer")) {
+    // For transfers, ensure we're correctly marking sends vs receives
+    if (transaction.type === "SPARK_TRANSFER" && transaction.totalValue && transaction.totalValue < 0) {
+      isSent = true;
+    }
+  }
   
   // Handle different possible amount fields 
   let amount = BigInt(0);
@@ -17,9 +38,18 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
   // Try to find the amount from various possible fields
   if (transaction?.totalValue) {
     // The logs showed totalValue is the field we need
-    amount = typeof transaction.totalValue === 'bigint' 
+    let rawAmount = typeof transaction.totalValue === 'bigint' 
       ? transaction.totalValue 
       : BigInt(transaction.totalValue);
+    
+    // For totalValue, we need to handle the sign correctly
+    // If it's negative and outgoing, make it positive for display
+    if (rawAmount < BigInt(0)) {
+      isSent = true; // Force it to be sent if amount is negative
+      amount = -rawAmount; // Make it positive for display
+    } else {
+      amount = rawAmount;
+    }
   } else if (transaction?.total_sent) {
     amount = transaction.total_sent;
   } else if (transaction?.amount) {
@@ -30,6 +60,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
     amount = BigInt(transaction.invoice.amount.amountSat);
   }
   
+  // Make sure amount is displayed as positive with the appropriate sign prefix
   const amountDisplay = `₿ ${isSent ? '-' : '+'}${amount.toString()}`;
 
   let dateDisplay = "Just now"; // Default to "Just now" instead of "Date unknown"
@@ -77,14 +108,44 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
   }
 
   const formatType = (type: string | undefined): string => {
-    if (!type) return "Transaction";
+    if (!type) return "Unknown Transaction";
     
-    // Provide user-friendly names for common transaction types
+    // First handle specific known types
     if (type.toUpperCase() === "PREIMAGE_SWAP") {
       return "Lightning Payment Received";
     }
     
-    return type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+    if (type === "SPARK_TRANSFER") {
+      return isSent ? "Spark Transfer Sent" : "Spark Transfer Received";
+    }
+    
+    // For any other type, create consistent naming pattern
+    const cleanType = type.replace(/_/g, ' ').toLowerCase();
+    
+    // Extract the network/protocol type (Lightning, On-chain, etc.)
+    let network = "Spark"; // Changed default to Spark since most non-lightning transfers are Spark transfers
+    if (cleanType.includes("lightning")) {
+      network = "Lightning";
+    } else if (cleanType.includes("on-chain") || cleanType.includes("onchain")) {
+      network = "On-chain";
+    } else if (cleanType.includes("bitcoin") && !cleanType.includes("spark")) {
+      network = "Bitcoin";
+    }
+    
+    // Determine if it's a payment, transfer, or other action
+    let action = "Transaction";
+    if (cleanType.includes("payment")) {
+      action = "Payment";
+    } else if (cleanType.includes("transfer")) {
+      action = "Transfer";
+    } else if (cleanType.includes("withdraw")) {
+      action = "Withdrawal";
+    } else if (cleanType.includes("deposit")) {
+      action = "Deposit";
+    }
+    
+    // Create a consistent format: "[Network] [Action] [Direction]"
+    return `${network} ${action} ${isSent ? "Sent" : "Received"}`;
   };
 
   const descriptionOrType = transaction?.description || formatType(transaction?.type);
