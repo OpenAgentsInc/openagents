@@ -30,7 +30,9 @@ const SendSparkPaymentCard: React.FC<SendSparkPaymentCardProps> = ({
     setSendSparkAmount(value === '' ? BigInt(0) : BigInt(value.replace(/[^0-9]/g, '')));
   };
 
-  const isFormValid = recipientSparkAddress.trim().startsWith("sprt1p") && sendSparkAmount > BigInt(0);
+  // Allow both "sp1p" and "sprt1p" formats
+  const trimmedAddress = recipientSparkAddress.trim();
+  const isFormValid = (trimmedAddress.startsWith("sp1p") || trimmedAddress.startsWith("sprt1p")) && sendSparkAmount > BigInt(0);
 
   return (
     <Card className="mt-6">
@@ -44,7 +46,7 @@ const SendSparkPaymentCard: React.FC<SendSparkPaymentCardProps> = ({
           <UiInput
             id="recipient-spark-address"
             type="text"
-            placeholder="sprt1p..."
+            placeholder="sp1p..."
             value={recipientSparkAddress}
             onChange={(e) => setRecipientSparkAddress(e.target.value)}
             disabled={isSendingSparkPayment || disabled}
