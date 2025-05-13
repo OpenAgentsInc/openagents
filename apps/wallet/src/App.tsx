@@ -745,19 +745,7 @@ function App() {
 
                 {invoice && (
                   <div className="mt-4 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-medium">Lightning Invoice</h3>
-                      <UiButton
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          navigator.clipboard.writeText(invoice);
-                          toast.success("Invoice Copied");
-                        }}
-                      >
-                        Copy Invoice
-                      </UiButton>
-                    </div>
+                    <h3 className="text-sm font-medium text-center">Lightning Invoice</h3>
 
                     {/* QR Code */}
                     <div className="flex flex-col items-center bg-card p-4 rounded-md">
@@ -775,7 +763,19 @@ function App() {
                     </div>
 
                     <div className="mt-2">
-                      <p className="text-sm font-medium mb-1">BOLT11 Invoice</p>
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="text-sm font-medium">BOLT11 Invoice</p>
+                        <UiButton
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(invoice);
+                            toast.success("Invoice Copied");
+                          }}
+                        >
+                          Copy Invoice
+                        </UiButton>
+                      </div>
                       <ScrollArea className="h-24 w-full rounded-md border p-2">
                         <div className="p-2 font-mono text-sm break-all">
                           {invoice}
