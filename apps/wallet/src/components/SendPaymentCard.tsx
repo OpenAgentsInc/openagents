@@ -57,12 +57,12 @@ const SendPaymentCard: React.FC<SendPaymentCardProps> = ({
   return (
     <Card className="mt-6">
       <CardHeader>
-        <CardTitle>Send Payment (Lightning)</CardTitle>
+        <CardTitle>Send Bitcoin (Lightning)</CardTitle>
         <CardDescription>Pay a Lightning invoice.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="space-y-2">
-          <Label htmlFor="send-invoice">Lightning Invoice (BOLT11)</Label>
+          <Label htmlFor="send-invoice">Lightning Invoice</Label>
           <UiInput
             id="send-invoice"
             type="text"
@@ -78,12 +78,6 @@ const SendPaymentCard: React.FC<SendPaymentCardProps> = ({
               {errorMessage}
             </div>
           )}
-          <p className="text-xs text-muted-foreground">
-            Enter a valid Lightning invoice starting with 'ln'. Make sure to paste the entire invoice without any spaces or extra characters. The wallet will pay the exact amount specified in the invoice.
-          </p>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-            <strong>Note:</strong> Payment may fail if your device isn't connected to the internet or if the Lightning Network is experiencing issues. This is a beta feature.
-          </p>
         </div>
         <div className="flex justify-center">
           <UiButton
