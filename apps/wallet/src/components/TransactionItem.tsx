@@ -9,7 +9,46 @@ interface TransactionItemProps {
 }
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
-  // Debug log to understand the transaction structure
+  // Initialize determination of whether this is a sent transaction
+  let isSent = false;
+  
+  // First check explicit direction fields
+  if (transaction?.transfer_direction === "OUTGOING" || transaction?.transferDirection === "OUTGOING") {
+    isSent = true;
+  }
+  
+  // Check transaction type for specialized determination
+  if (transaction?.type) {
+    const txType = transaction.type.toUpperCase();
+    
+    // For PREIMAGE_SWAP (Lightning), typically it's a receive 
+    if (txType === "PREIMAGE_SWAP") {
+      isSent = false; // Override - PREIMAGE_SWAP is always a received payment
+    }
+    
+    // For explicit Lightning payments, check direction
+    if (txType.includes("LIGHTNING") && txType.includes("PAYMENT")) {
+      // Keep the direction from transfer_direction, but if amount is negative, it's sent
+      if (transaction.totalValue && typeof transaction.totalValue === 'bigint' && transaction.totalValue < BigInt(0)) {
+        isSent = true;
+      }
+    }
+    
+    // For Spark transfers, negative value means sent
+    if (txType === "SPARK_TRANSFER" && transaction.totalValue) {
+      const value = typeof transaction.totalValue === 'bigint' 
+        ? transaction.totalValue 
+        : BigInt(transaction.totalValue);
+      
+      if (value < BigInt(0)) {
+        isSent = true;
+      } else {
+        isSent = false;
+      }
+    }
+  }
+  
+  // Log transaction data for debugging
   console.log("Transaction data:", {
     id: transaction?.id,
     type: transaction?.type,
@@ -17,20 +56,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
     totalValue: transaction?.totalValue,
     total_sent: transaction?.total_sent,
     amount: transaction?.amount,
-    status: transaction?.status
+    status: transaction?.status,
+    determinedDirection: isSent ? "OUTGOING" : "INCOMING"
   });
-  
-  // Check both possible field names for the transfer direction
-  // Also consider the transaction type for special cases like transfers
-  let isSent = transaction?.transfer_direction === "OUTGOING" || transaction?.transferDirection === "OUTGOING";
-  
-  // If it's a transfer type and the direction isn't explicitly set, check for other indicators
-  if (transaction?.type && transaction.type.toLowerCase().includes("transfer")) {
-    // For transfers, ensure we're correctly marking sends vs receives
-    if (transaction.type === "SPARK_TRANSFER" && transaction.totalValue && transaction.totalValue < 0) {
-      isSent = true;
-    }
-  }
   
   // Handle different possible amount fields 
   let amount = BigInt(0);
@@ -110,20 +138,28 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
   const formatType = (type: string | undefined): string => {
     if (!type) return "Unknown Transaction";
     
-    // First handle specific known types
-    if (type.toUpperCase() === "PREIMAGE_SWAP") {
-      return "Lightning Payment Received";
+    // Convert to uppercase for consistent comparison
+    const uppercaseType = type.toUpperCase();
+    
+    // Handle specific known types with fixed labels
+    if (uppercaseType === "PREIMAGE_SWAP") {
+      return "Lightning Payment Received"; // Always a receive
     }
     
-    if (type === "SPARK_TRANSFER") {
+    if (uppercaseType === "SPARK_TRANSFER") {
       return isSent ? "Spark Transfer Sent" : "Spark Transfer Received";
+    }
+    
+    // For Lightning payments, be explicit
+    if (uppercaseType.includes("LIGHTNING") && uppercaseType.includes("PAYMENT")) {
+      return isSent ? "Lightning Payment Sent" : "Lightning Payment Received";
     }
     
     // For any other type, create consistent naming pattern
     const cleanType = type.replace(/_/g, ' ').toLowerCase();
     
     // Extract the network/protocol type (Lightning, On-chain, etc.)
-    let network = "Spark"; // Changed default to Spark since most non-lightning transfers are Spark transfers
+    let network = "Spark"; // Default to Spark
     if (cleanType.includes("lightning")) {
       network = "Lightning";
     } else if (cleanType.includes("on-chain") || cleanType.includes("onchain")) {
