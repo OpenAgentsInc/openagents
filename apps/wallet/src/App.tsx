@@ -66,6 +66,7 @@ import ShowMnemonicScreen from './components/ShowMnemonicScreen';
 import EnterSeedScreen from './components/EnterSeedScreen';
 import TransactionHistoryCard from './components/TransactionHistoryCard';
 import SendPaymentCard from './components/SendPaymentCard';
+import SendSparkPaymentCard from './components/SendSparkPaymentCard';
 
 // State management
 import { useWalletStore } from './lib/store';
@@ -104,6 +105,10 @@ function App() {
   const [sendInvoice, setSendInvoice] = useState('');
   const [isSendingPayment, setIsSendingPayment] = useState(false);
   const [showBetaAlert, setShowBetaAlert] = useState(true);
+  const [userSparkAddress, setUserSparkAddress] = useState<string>('');
+  const [recipientSparkAddress, setRecipientSparkAddress] = useState('');
+  const [sendSparkAmount, setSendSparkAmount] = useState(BigInt(0));
+  const [isSendingSparkPayment, setIsSendingSparkPayment] = useState(false);
   const sdkRef = useRef<any>(null);
   const initializedRef = useRef<boolean>(false); // To prevent double initialization in StrictMode
 
@@ -143,6 +148,15 @@ function App() {
       } catch (txError) {
         console.error('Failed to fetch transactions:', txError);
         setTransactions([]);
+      }
+      
+      // Fetch user's Spark Address
+      try {
+        const sparkAddr = await wallet.getSparkAddress();
+        setUserSparkAddress(sparkAddr);
+      } catch (addrError) {
+        console.error('Failed to fetch Spark address:', addrError);
+        toast.error("Could not fetch your Spark address.");
       }
     } catch (error) {
       console.error('Failed to fetch wallet data:', error);
@@ -455,6 +469,66 @@ function App() {
     }
   };
 
+  const handleSendSparkPayment = async () => {
+    if (!sdkRef.current || !sdkRef.current.wallet) {
+      toast.error("Wallet not connected or initialized properly.");
+      return;
+    }
+    if (!recipientSparkAddress.trim()) {
+      toast.error("Please enter a recipient's Spark address.");
+      return;
+    }
+    if (sendSparkAmount <= BigInt(0)) {
+      toast.error("Please enter a valid amount greater than 0.");
+      return;
+    }
+    if (isSendingSparkPayment) return;
+
+    setIsSendingSparkPayment(true);
+    toast.loading("Sending Spark payment...", { id: "send-spark-payment" });
+
+    try {
+      const wallet = sdkRef.current.wallet || sdkRef.current;
+      const amountSatsNumber = Number(sendSparkAmount); // SDK expects number
+
+      console.log("Attempting to send Spark payment to:", recipientSparkAddress, "Amount:", amountSatsNumber);
+
+      // The transfer method in Spark SDK is direct.
+      // It might return a Transfer object upon successful initiation.
+      const transferResult = await wallet.transfer({
+        receiverSparkAddress: recipientSparkAddress.trim(),
+        amountSats: amountSatsNumber,
+      });
+
+      console.log("Spark transfer initiated:", transferResult); // transferResult might be void or basic info
+
+      toast.dismiss("send-spark-payment");
+      toast.success("Spark Payment Sent Successfully!");
+      setRecipientSparkAddress(''); // Clear recipient address
+      setSendSparkAmount(BigInt(0)); // Clear amount
+
+      // Re-fetch wallet data to update balance and transaction history
+      await fetchWalletData(sdkRef.current);
+
+    } catch (error) {
+      console.error('Failed to send Spark payment:', error);
+      toast.dismiss("send-spark-payment");
+      const message = error instanceof Error ? error.message : "Unknown error during Spark payment.";
+
+      if (message.toLowerCase().includes("insufficient balance")) {
+          toast.error("Payment Failed: Insufficient balance.");
+      } else if (message.toLowerCase().includes("invalid address") || message.toLowerCase().includes("receiver address")) {
+          toast.error("Payment Failed: Invalid recipient Spark address.");
+      } else if (message.toLowerCase().includes("amount")) {
+           toast.error("Payment Failed: Invalid amount.");
+      } else {
+          toast.error("Spark Payment Failed", { description: message });
+      }
+    } finally {
+      setIsSendingSparkPayment(false);
+    }
+  };
+
   // Format functions are now implemented directly in the JSX
 
   // Handle navigation back to login screen
@@ -666,6 +740,38 @@ function App() {
                 )}
               </CardContent>
             </Card>
+            
+            {/* Spark Address Card */}
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle>Your Spark Address</CardTitle>
+                <CardDescription>Share this address to receive Spark payments.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {userSparkAddress ? (
+                  <div className="space-y-2">
+                    <ScrollArea className="h-16 w-full rounded-md border p-2">
+                      <div className="p-1 font-mono text-sm break-all">
+                        {userSparkAddress}
+                      </div>
+                    </ScrollArea>
+                    <UiButton
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        navigator.clipboard.writeText(userSparkAddress);
+                        toast.success("Spark Address Copied!");
+                      }}
+                    >
+                      Copy Address
+                    </UiButton>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Fetching your Spark address...</p>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Send Payment Card */}
             <SendPaymentCard
@@ -673,6 +779,17 @@ function App() {
               setSendInvoice={setSendInvoice}
               handlePayInvoice={handlePayInvoice}
               isSendingPayment={isSendingPayment}
+              disabled={!sdkRef.current}
+            />
+            
+            {/* Send Spark Payment Card */}
+            <SendSparkPaymentCard
+              recipientSparkAddress={recipientSparkAddress}
+              setRecipientSparkAddress={setRecipientSparkAddress}
+              sendSparkAmount={sendSparkAmount}
+              setSendSparkAmount={setSendSparkAmount}
+              handleSendSparkPayment={handleSendSparkPayment}
+              isSendingSparkPayment={isSendingSparkPayment}
               disabled={!sdkRef.current}
             />
 
