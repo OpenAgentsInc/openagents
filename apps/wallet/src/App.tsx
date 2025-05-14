@@ -1,7 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { SparkWallet, type TokenInfo } from '@buildonspark/spark-sdk'
-// Importing bolt11 for backward compatibility
-import bolt11Pkg from 'bolt11';
 // Import Lightning invoice utility
 import { decodeLightningInvoice, type DecodedLnInvoiceInfo } from './lib/invoice-utils';
 

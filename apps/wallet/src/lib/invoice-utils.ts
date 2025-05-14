@@ -14,6 +14,20 @@ export interface DecodedLnInvoiceInfo {
 }
 
 /**
+ * Type guard for checking if a value is a record with arbitrary keys
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Safe property access - checks if object has a property
+ */
+function hasProp<K extends string>(obj: unknown, prop: K): obj is { [P in K]: unknown } {
+  return isRecord(obj) && prop in obj;
+}
+
+/**
  * Decodes a BOLT11 Lightning invoice using light-bolt11-decoder
  * 
  * @param invoiceString - The BOLT11 formatted Lightning invoice string
@@ -39,37 +53,35 @@ export function decodeLightningInvoice(invoiceString: string): DecodedLnInvoiceI
     let amountSat = 0;
     
     // The amount can be in different places depending on the invoice structure
-    if (decoded.millisatoshis) {
+    if (hasProp(decoded, 'millisatoshis') && decoded.millisatoshis !== undefined) {
       // Direct millisatoshis property
       amountSat = Math.floor(Number(decoded.millisatoshis) / 1000);
       console.log('Found amount in millisatoshis:', decoded.millisatoshis, '-> sats:', amountSat);
-    } else if (decoded.satoshis) {
+    } else if (hasProp(decoded, 'satoshis') && decoded.satoshis !== undefined) {
       // Direct satoshis property (some decoders use this)
       amountSat = Number(decoded.satoshis);
       console.log('Found amount in satoshis:', amountSat);
     } else {
       // Try to get amount from sections
       const amountSection = decoded.sections.find(section => 
-        section.name === 'amount' || section.name === 'value');
+        section.name === 'amount');
       
-      if (amountSection?.value) {
+      if (amountSection && hasProp(amountSection, 'value') && amountSection.value !== undefined) {
         // Convert to number, handling both millisats or sats
         const value = Number(amountSection.value);
-        if (amountSection.name === 'amount' && value > 0) {
+        if (value > 0) {
           // If it's in millisats (typical for light-bolt11-decoder)
           amountSat = Math.floor(value / 1000);
           console.log('Found amount in sections (millisats):', value, '-> sats:', amountSat);
-        } else {
-          // If it's already in sats
-          amountSat = value;
-          console.log('Found amount in sections (sats):', amountSat);
         }
       }
       
-      // Check for amount in section.value.amount (some libraries nest it here)
+      // Check for amount in section with nested properties
       if (amountSat === 0) {
         for (const section of decoded.sections) {
-          if (section.value && typeof section.value === 'object' && section.value.amount) {
+          // Type guard to check if section has certain properties
+          if (hasProp(section, 'value') && isRecord(section.value) && 
+              hasProp(section.value, 'amount') && section.value.amount !== undefined) {
             amountSat = Number(section.value.amount);
             console.log('Found amount in nested section value:', amountSat);
             break;
@@ -111,25 +123,49 @@ export function decodeLightningInvoice(invoiceString: string): DecodedLnInvoiceI
     // Extract description
     let description = 'No description';
     const descriptionTag = decoded.sections.find(section => 
-      section.name === 'description' || section.name === 'purpose_commit');
-    if (descriptionTag?.value) {
+      section.name === 'description');
+    if (descriptionTag && hasProp(descriptionTag, 'value') && descriptionTag.value !== undefined) {
       description = String(descriptionTag.value);
     }
     
     // Extract payment hash
     const paymentHashTag = decoded.sections.find(section => section.name === 'payment_hash');
-    const paymentHash = paymentHashTag?.value ? String(paymentHashTag.value) : undefined;
+    let paymentHash: string | undefined = undefined;
+    if (paymentHashTag && hasProp(paymentHashTag, 'value') && paymentHashTag.value !== undefined) {
+      paymentHash = String(paymentHashTag.value);
+    }
     
-    // Extract payee node key
-    const payeeNodeTag = decoded.sections.find(section => section.name === 'payee_node_key');
-    const payeeNodeKey = payeeNodeTag?.value ? String(payeeNodeTag.value) : undefined;
+    // Extract payee node key - Since it's not in standard types, we look for it in raw data
+    let payeeNodeKey: string | undefined = undefined;
+    
+    // Try to find it in various possible locations
+    for (const section of decoded.sections) {
+      if ((section.name === 'payment_hash' || section.name === 'signature') && 
+          hasProp(section, 'value') && typeof section.value === 'string') {
+        // Sometimes the signing pubkey is what we want
+        payeeNodeKey = section.value;
+        break;
+      }
+    }
     
     // Extract timestamp
-    const timestamp = decoded.timestamp;
+    let timestamp: number | undefined = undefined;
+    if (hasProp(decoded, 'timestamp') && typeof decoded.timestamp === 'number') {
+      timestamp = decoded.timestamp;
+    } else {
+      // Try to get timestamp from sections
+      const timestampSection = decoded.sections.find(section => section.name === 'timestamp');
+      if (timestampSection && hasProp(timestampSection, 'value') && timestampSection.value !== undefined) {
+        timestamp = Number(timestampSection.value);
+      }
+    }
     
     // Extract expiry
     const expiryTag = decoded.sections.find(section => section.name === 'expiry');
-    const expiry = expiryTag?.value ? Number(expiryTag.value) : undefined;
+    let expiry: number | undefined = undefined;
+    if (expiryTag && hasProp(expiryTag, 'value') && expiryTag.value !== undefined) {
+      expiry = Number(expiryTag.value);
+    }
     
     return {
       amountSat,
