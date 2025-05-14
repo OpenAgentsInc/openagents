@@ -1,40 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { SparkWallet, type TokenInfo } from '@buildonspark/spark-sdk'
-// Import bolt11 - using dynamic import for ESM compatibility
+// Importing bolt11 for backward compatibility
 import bolt11Pkg from 'bolt11';
-
-// Create a helper function to safely decode bolt11 invoices
-function decodeBolt11(invoice: string): any {
-  try {
-    // Try direct access to decode method
-    if (typeof bolt11Pkg.decode === 'function') {
-      return bolt11Pkg.decode(invoice);
-    }
-    
-    // Try using the default export if it's a function
-    if (typeof bolt11Pkg === 'function') {
-      return bolt11Pkg(invoice);
-    }
-    
-    // If bolt11Pkg is an object with a default property (common in ESM/CJS interop)
-    if (bolt11Pkg.default && typeof bolt11Pkg.default.decode === 'function') {
-      return bolt11Pkg.default.decode(invoice);
-    }
-    
-    // Last resort: try to find any property that might be the decode function
-    const allKeys = Object.keys(bolt11Pkg);
-    for (const key of allKeys) {
-      if (typeof bolt11Pkg[key] === 'function' && key.toLowerCase().includes('decode')) {
-        return bolt11Pkg[key](invoice);
-      }
-    }
-    
-    throw new Error(`Could not find a decode function in bolt11 package. Available methods: ${allKeys.join(', ')}`);
-  } catch (error) {
-    console.error('Error in decodeBolt11:', error);
-    throw error;
-  }
-}
+// Import Lightning invoice utility
+import { decodeLightningInvoice, type DecodedLnInvoiceInfo } from './lib/invoice-utils';
 
 // Define transaction data interface
 export interface SparkTransferData {
@@ -139,19 +108,7 @@ function App() {
   const [transactions, setTransactions] = useState<SparkTransferData[]>([]);
   const [sendInvoice, setSendInvoice] = useState('');
   const [isSendingPayment, setIsSendingPayment] = useState(false);
-  // Define a simple type for the decoded invoice result
-  type PaymentRequestObject = {
-    satoshis?: number;
-    millisatoshis?: string;
-    tagsObject?: {
-      description?: string;
-      purpose_commit_string?: string;
-      [key: string]: any;
-    };
-    [key: string]: any;
-  };
-  
-  const [decodedInvoiceDetails, setDecodedInvoiceDetails] = useState<PaymentRequestObject | null>(null);
+  const [decodedInvoiceDetails, setDecodedInvoiceDetails] = useState<DecodedLnInvoiceInfo | null>(null);
   const [showPaymentConfirmDialog, setShowPaymentConfirmDialog] = useState(false);
   const [invoiceToPay, setInvoiceToPay] = useState<string>(''); // Store the invoice being confirmed
   const [showBetaAlert, setShowBetaAlert] = useState(true);
@@ -408,18 +365,23 @@ function App() {
       setIsSendingPayment(true); // Indicate processing has started
       toast.loading("Decoding invoice...", { id: "decode-invoice" });
 
-      console.log("Available bolt11 methods:", Object.keys(bolt11Pkg));
-      
-      // Use our safe decode helper
-      console.log("Using custom bolt11 decode helper");
-      const decoded = decodeBolt11(trimmedInvoice);
-      console.log("Decoded Bolt11 Invoice:", decoded);
+      // Use our new modular decoder from invoice-utils
+      const decoded = decodeLightningInvoice(trimmedInvoice);
+      console.log("Decoded Lightning Invoice:", decoded);
+
+      // Check if decoding failed
+      if (!decoded) {
+        toast.dismiss("decode-invoice");
+        toast.error("Invalid Lightning Invoice", {
+          description: "Could not decode the provided invoice.",
+        });
+        setIsSendingPayment(false);
+        return;
+      }
 
       // Check for amount (Spark doesn't support zero-amount invoices yet)
-      const amountSat = decoded.satoshis || (decoded.millisatoshis ? Math.floor(Number(decoded.millisatoshis) / 1000) : 0);
-
-      if (amountSat === 0 && (!decoded.satoshis && !decoded.millisatoshis)) {
-        // This means the invoice truly has no amount specified.
+      if (decoded.amountSat === 0) {
+        // This means the invoice truly has no amount specified
         toast.dismiss("decode-invoice");
         toast.error("Zero-Amount Invoice Not Supported", {
           description: "This wallet currently does not support paying invoices without a specified amount. Please use an invoice with an amount.",
@@ -428,18 +390,18 @@ function App() {
         return;
       }
 
-      if (amountSat <= 0) {
-          // This covers cases where millisatoshis might be present but very small, or explicitly zero.
-          toast.dismiss("decode-invoice");
-          toast.error("Invalid Invoice Amount", {
-            description: "The invoice amount must be greater than 0 satoshis.",
-          });
-          setIsSendingPayment(false);
-          return;
+      if (decoded.amountSat < 0) {
+        // Invalid amount (should not happen with proper decoder but just in case)
+        toast.dismiss("decode-invoice");
+        toast.error("Invalid Invoice Amount", {
+          description: "The invoice amount must be greater than 0 satoshis.",
+        });
+        setIsSendingPayment(false);
+        return;
       }
 
       setDecodedInvoiceDetails(decoded);
-      setInvoiceToPay(trimmedInvoice); // Store the validated invoice string
+      setInvoiceToPay(decoded.paymentRequest); // Store the validated invoice string
       setShowPaymentConfirmDialog(true);
       toast.dismiss("decode-invoice");
 
@@ -475,8 +437,7 @@ function App() {
       console.log("Attempting to pay confirmed invoice:", invoiceToPay);
 
       // Recommended maxFeeSats: greater of 5 sats or 0.17% (17 bps) of tx amount
-      const amountMsat = decodedInvoiceDetails?.millisatoshis ? Number(decodedInvoiceDetails.millisatoshis) : (decodedInvoiceDetails?.satoshis ? Number(decodedInvoiceDetails.satoshis) * 1000 : 0);
-      const amountSatsForFeeCalc = Math.floor(amountMsat / 1000);
+      const amountSatsForFeeCalc = decodedInvoiceDetails?.amountSat || 0;
 
       let calculatedMaxFee = BigInt(5); // Default 5 sats
       if (amountSatsForFeeCalc > 0) {
@@ -895,17 +856,10 @@ function App() {
                 {decodedInvoiceDetails && (
                   <div className="my-4 space-y-2">
                     <p>
-                      <strong>Amount:</strong> ₿ {
-                        decodedInvoiceDetails.satoshis ||
-                        (decodedInvoiceDetails.millisatoshis ? Math.floor(Number(decodedInvoiceDetails.millisatoshis) / 1000) : 'N/A')
-                      } sats
+                      <strong>Amount:</strong> ₿ {decodedInvoiceDetails.amountSat} sats
                     </p>
                     <p className="truncate">
-                      <strong>Description:</strong> {
-                        (decodedInvoiceDetails.tagsObject?.description as string) || // Access description via tagsObject
-                        (decodedInvoiceDetails.tagsObject?.purpose_commit_string as string) || // Alternative for description
-                        'No description'
-                      }
+                      <strong>Description:</strong> {decodedInvoiceDetails.description}
                     </p>
                     <p className="text-xs text-muted-foreground break-all">
                       <strong>Invoice:</strong> {invoiceToPay.substring(0, 50)}...
