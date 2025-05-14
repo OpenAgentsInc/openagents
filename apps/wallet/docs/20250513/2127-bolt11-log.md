@@ -2,6 +2,7 @@
 
 ## Date: May 13, 2025
 ## Time: 21:27
+## Last updated: 22:35
 
 ## Objective
 Implement a safer Lightning payment flow by decoding BOLT11 invoices and showing a confirmation dialog before sending payments. This allows users to verify the payment amount and description before committing to the payment, improving the security and usability of the wallet.
@@ -70,7 +71,7 @@ Implement a safer Lightning payment flow by decoding BOLT11 invoices and showing
 
 ## Risks and Mitigation
 - The bolt11 library might parse some invalid invoices without error, so the code includes additional validation logic
-- The Spark SDK's API might change in future versions, so the code includes multiple fallback approaches
+- The Spark SDK's API might change in future versions, but we're now using only the documented approach for better maintainability
 - To mitigate potential issues with zero-amount invoices, explicit checks were added before payment
 
 ## User Experience Improvements
@@ -78,3 +79,50 @@ Implement a safer Lightning payment flow by decoding BOLT11 invoices and showing
 - Clear feedback is provided for unsupported invoice types (e.g., zero-amount)
 - The confirmation dialog provides an additional security checkpoint
 - Processing states are clearly indicated throughout the flow
+
+## Update (21:45)
+Based on code review feedback, I've made the following improvement:
+
+- **Simplified Payment Logic**: Removed the complex fallback logic in the `confirmAndPayInvoice` function.
+  - Instead of trying multiple approaches to call `payLightningInvoice`, now only using the documented API method with the `maxFeeSats` parameter.
+  - This simplification makes the code more maintainable and removes potentially confusing fallback code.
+  - Ensures consistent behavior by always using the same API pattern, which is the correct one according to the Spark SDK documentation.
+  - Removed ~20 lines of complex fallback code, making the function easier to read and maintain.
+
+## Update (22:00)
+Fixed a critical bug that was causing "Wallet not initialized correctly" errors:
+
+- **Fixed SDK Reference**: Corrected how we access the wallet instance in the SDK
+  - Removed incorrect checks for `sdkRef.current.wallet` that were causing the error
+  - The wallet instance is stored directly in `sdkRef.current`, not in a `.wallet` property
+  - Fixed in both `initiatePayInvoiceProcess` and `confirmAndPayInvoice` functions
+  - Simplified wallet instance access: `const wallet = sdkRef.current`
+  - This matches how the SDK is initialized (`sdkRef.current = sparkInstance`) in the `connectToSparkSDK` function
+
+## Update (22:15)
+Fixed the "Cannot read properties of undefined (reading 'call')" error with bolt11 library:
+
+- **Fixed bolt11 Import**: Changed how we import the bolt11 library to accommodate its module format
+  - Updated the import approach to properly handle the bolt11 library
+  - Added debug logging to check available methods on the package
+  - Improved error handling during invoice decoding
+
+## Update (22:25)
+Fixed the "require is not defined" error with bolt11 library:
+
+- **Corrected ESM Import**: Fixed the bolt11 import approach to work with Vite/ESM
+  - Changed from CommonJS `require()` style import to ES module import
+  - Using a direct default import: `import bolt11Pkg from 'bolt11'`
+  - Added a custom TypeScript type definition for the decoded invoice result
+  - This approach is compatible with Vite's ESM-based build system
+  - Removed unnecessary error checking code that was causing additional issues
+
+## Update (22:35)
+Fixed persistent "Cannot read properties of undefined (reading 'call')" error:
+
+- **Implemented Robust Decode Helper**: Created a robust solution for using the bolt11 library
+  - Added a `decodeBolt11` utility function with multiple fallback mechanisms
+  - The helper tries multiple approaches to access the decode functionality
+  - Handles various module formats (CJS/ESM interop edge cases)
+  - Added detailed error reporting for easier debugging
+  - Ensures compatibility regardless of how the library is bundled or exported

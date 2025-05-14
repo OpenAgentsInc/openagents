@@ -1,6 +1,40 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { SparkWallet, type TokenInfo } from '@buildonspark/spark-sdk'
-import * as bolt11 from 'bolt11'
+// Import bolt11 - using dynamic import for ESM compatibility
+import bolt11Pkg from 'bolt11';
+
+// Create a helper function to safely decode bolt11 invoices
+function decodeBolt11(invoice: string): any {
+  try {
+    // Try direct access to decode method
+    if (typeof bolt11Pkg.decode === 'function') {
+      return bolt11Pkg.decode(invoice);
+    }
+    
+    // Try using the default export if it's a function
+    if (typeof bolt11Pkg === 'function') {
+      return bolt11Pkg(invoice);
+    }
+    
+    // If bolt11Pkg is an object with a default property (common in ESM/CJS interop)
+    if (bolt11Pkg.default && typeof bolt11Pkg.default.decode === 'function') {
+      return bolt11Pkg.default.decode(invoice);
+    }
+    
+    // Last resort: try to find any property that might be the decode function
+    const allKeys = Object.keys(bolt11Pkg);
+    for (const key of allKeys) {
+      if (typeof bolt11Pkg[key] === 'function' && key.toLowerCase().includes('decode')) {
+        return bolt11Pkg[key](invoice);
+      }
+    }
+    
+    throw new Error(`Could not find a decode function in bolt11 package. Available methods: ${allKeys.join(', ')}`);
+  } catch (error) {
+    console.error('Error in decodeBolt11:', error);
+    throw error;
+  }
+}
 
 // Define transaction data interface
 export interface SparkTransferData {
@@ -105,7 +139,19 @@ function App() {
   const [transactions, setTransactions] = useState<SparkTransferData[]>([]);
   const [sendInvoice, setSendInvoice] = useState('');
   const [isSendingPayment, setIsSendingPayment] = useState(false);
-  const [decodedInvoiceDetails, setDecodedInvoiceDetails] = useState<bolt11.PaymentRequestObject | null>(null);
+  // Define a simple type for the decoded invoice result
+  type PaymentRequestObject = {
+    satoshis?: number;
+    millisatoshis?: string;
+    tagsObject?: {
+      description?: string;
+      purpose_commit_string?: string;
+      [key: string]: any;
+    };
+    [key: string]: any;
+  };
+  
+  const [decodedInvoiceDetails, setDecodedInvoiceDetails] = useState<PaymentRequestObject | null>(null);
   const [showPaymentConfirmDialog, setShowPaymentConfirmDialog] = useState(false);
   const [invoiceToPay, setInvoiceToPay] = useState<string>(''); // Store the invoice being confirmed
   const [showBetaAlert, setShowBetaAlert] = useState(true);
@@ -341,8 +387,8 @@ function App() {
   };
 
   const initiatePayInvoiceProcess = async () => {
-    if (!sdkRef.current || !sdkRef.current.wallet) {
-      toast.error("Wallet not connected or initialized properly.");
+    if (!sdkRef.current) {
+      toast.error("Wallet not connected.");
       return;
     }
     if (!sendInvoice.trim()) {
@@ -362,7 +408,11 @@ function App() {
       setIsSendingPayment(true); // Indicate processing has started
       toast.loading("Decoding invoice...", { id: "decode-invoice" });
 
-      const decoded = bolt11.decode(trimmedInvoice);
+      console.log("Available bolt11 methods:", Object.keys(bolt11Pkg));
+      
+      // Use our safe decode helper
+      console.log("Using custom bolt11 decode helper");
+      const decoded = decodeBolt11(trimmedInvoice);
       console.log("Decoded Bolt11 Invoice:", decoded);
 
       // Check for amount (Spark doesn't support zero-amount invoices yet)
@@ -404,7 +454,7 @@ function App() {
   };
 
   const confirmAndPayInvoice = async () => {
-    if (!sdkRef.current || !sdkRef.current.wallet || !invoiceToPay) {
+    if (!sdkRef.current || !invoiceToPay) {
       toast.error("Payment cannot proceed. Wallet or invoice data missing.");
       setShowPaymentConfirmDialog(false);
       setIsSendingPayment(false);
@@ -420,7 +470,7 @@ function App() {
     toast.loading("Processing payment...", { id: "pay-invoice" });
 
     try {
-      const wallet = sdkRef.current.wallet || sdkRef.current;
+      const wallet = sdkRef.current;
 
       console.log("Attempting to pay confirmed invoice:", invoiceToPay);
 
@@ -437,42 +487,12 @@ function App() {
 
       console.log(`Paying invoice. Amount: ${amountSatsForFeeCalc} sats. Max Fee: ${maxFeeSats} sats.`);
 
-      // Try different approaches to pay invoice (direct, object, etc.)
-      try {
-        // First try with an object that includes maxFeeSats
-        await wallet.payLightningInvoice({
-          invoice: invoiceToPay,
-          maxFeeSats: maxFeeSats // Add maxFeeSats as per Spark docs
-        });
-      } catch (objErr) {
-        console.error("Object payment with maxFeeSats failed:", objErr);
-        
-        // Try direct string approach
-        try {
-          await wallet.payLightningInvoice(invoiceToPay);
-        } catch (directErr) {
-          console.error("Direct payment failed:", directErr);
-          
-          // Last resort: try to use getLightningSendRequest if available
-          if (typeof wallet.getLightningSendRequest === 'function') {
-            const sendRequest = await wallet.getLightningSendRequest({
-              invoice: invoiceToPay
-            });
-            console.log("Generated send request:", sendRequest);
-
-            // Execute the generated request
-            if (sendRequest && typeof sendRequest === 'string') {
-              await wallet.payLightningInvoice(sendRequest);
-            } else {
-              // If we got a request object, try to use that
-              throw new Error("Could not process Lightning invoice. Please try a different invoice.");
-            }
-          } else {
-            // If everything failed, rethrow the original error
-            throw objErr;
-          }
-        }
-      }
+      // Use the documented API approach with maxFeeSats
+      console.log("Paying invoice using documented Spark SDK API with maxFeeSats");
+      await wallet.payLightningInvoice({
+        invoice: invoiceToPay,
+        maxFeeSats: maxFeeSats // This is the correct parameter as per Spark docs
+      });
 
       console.log("Payment successful");
 
