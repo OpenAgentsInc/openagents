@@ -152,7 +152,9 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
     if (upperStatus === 'COMPLETED' || 
         upperStatus === 'SUCCESS' || 
         upperStatus === 'CONFIRMED' ||
-        upperStatus === 'TRANSFER_STATUS_COMPLETE') {
+        upperStatus === 'TRANSFER_STATUS_COMPLETE' ||
+        upperStatus === 'TRANSFER_STATUS_SENDER_KEY_TWEAKED' || // Show as completed
+        upperStatus.includes('SENDER_KEY_TWEAK')) {
       return "default"; // Default is usually primary color
     }
     
@@ -160,7 +162,6 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
     if (upperStatus === 'PENDING' || 
         upperStatus.includes('INITIATED') ||
         upperStatus.includes('PROCESSING') ||
-        upperStatus === 'TRANSFER_STATUS_SENDER_KEY_TWEAKED' ||
         upperStatus === 'LIGHTNING_PAYMENT_INITIATED' ||
         upperStatus.includes('IN_PROGRESS')) {
       return "secondary";
@@ -182,6 +183,12 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
   // Format status text to be more human-readable
   const formatStatus = (status: string | undefined): string => {
     if (!status) return 'Unknown';
+    
+    // Special case: Show "Completed" for "Sender key tweak pending"
+    if (status.toUpperCase().includes('SENDER_KEY_TWEAK') || 
+        status.toLowerCase().includes('sender key tweak')) {
+      return 'Completed';
+    }
     
     // Remove common prefixes
     let formattedStatus = status
