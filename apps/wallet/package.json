@@ -20,6 +20,7 @@
     "@radix-ui/react-tooltip": "^1.2.6",
     "@scure/bip39": "^1.5.4",
     "@tailwindcss/vite": "^4.1.6",
+    "bolt11": "^1.4.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.509.0",
