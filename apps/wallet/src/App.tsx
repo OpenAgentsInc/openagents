@@ -400,9 +400,13 @@ function App() {
         return;
       }
 
+      // Set states for the confirmation dialog
       setDecodedInvoiceDetails(decoded);
       setInvoiceToPay(decoded.paymentRequest); // Store the validated invoice string
       setShowPaymentConfirmDialog(true);
+      // Reset isSendingPayment since we're just showing the confirmation dialog now
+      // It will be set again when the user confirms the payment
+      setIsSendingPayment(false);
       toast.dismiss("decode-invoice");
 
     } catch (error) {
@@ -873,8 +877,8 @@ function App() {
                      setInvoiceToPay('');
                      setIsSendingPayment(false); // Explicitly reset on cancel
                   }}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={confirmAndPayInvoice} disabled={isSendingPayment && showPaymentConfirmDialog}>
-                    {isSendingPayment && showPaymentConfirmDialog ? (
+                  <AlertDialogAction onClick={confirmAndPayInvoice} disabled={isSendingPayment}>
+                    {isSendingPayment ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Processing...
