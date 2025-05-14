@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { SparkWallet, type TokenInfo } from '@buildonspark/spark-sdk'
+// Import Lightning invoice utility
+import { decodeLightningInvoice, type DecodedLnInvoiceInfo } from './lib/invoice-utils';
 
 // Define transaction data interface
 export interface SparkTransferData {
@@ -104,6 +106,9 @@ function App() {
   const [transactions, setTransactions] = useState<SparkTransferData[]>([]);
   const [sendInvoice, setSendInvoice] = useState('');
   const [isSendingPayment, setIsSendingPayment] = useState(false);
+  const [decodedInvoiceDetails, setDecodedInvoiceDetails] = useState<DecodedLnInvoiceInfo | null>(null);
+  const [showPaymentConfirmDialog, setShowPaymentConfirmDialog] = useState(false);
+  const [invoiceToPay, setInvoiceToPay] = useState<string>(''); // Store the invoice being confirmed
   const [showBetaAlert, setShowBetaAlert] = useState(true);
   const [userSparkAddress, setUserSparkAddress] = useState<string>('');
   const [recipientSparkAddress, setRecipientSparkAddress] = useState('');
@@ -336,7 +341,7 @@ function App() {
     }
   };
 
-  const handlePayInvoice = async () => {
+  const initiatePayInvoiceProcess = async () => {
     if (!sdkRef.current) {
       toast.error("Wallet not connected.");
       return;
@@ -345,127 +350,152 @@ function App() {
       toast.error("Please enter a Lightning invoice to pay.");
       return;
     }
-    if (isSendingPayment) return;
+    if (isSendingPayment) return; // Prevent multiple initiations
 
-    setIsSendingPayment(true);
+    const trimmedInvoice = sendInvoice.trim().replace(/\s+/g, '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+
+    if (!trimmedInvoice.toLowerCase().startsWith('ln')) {
+      toast.error("Invalid Lightning invoice format.", { description: "Must start with 'ln'." });
+      return;
+    }
+
+    try {
+      setIsSendingPayment(true); // Indicate processing has started
+      toast.loading("Decoding invoice...", { id: "decode-invoice" });
+
+      // Use our new modular decoder from invoice-utils
+      const decoded = decodeLightningInvoice(trimmedInvoice);
+      console.log("Decoded Lightning Invoice:", decoded);
+
+      // Check if decoding failed
+      if (!decoded) {
+        toast.dismiss("decode-invoice");
+        toast.error("Invalid Lightning Invoice", {
+          description: "Could not decode the provided invoice.",
+        });
+        setIsSendingPayment(false);
+        return;
+      }
+
+      // Check for amount (Spark doesn't support zero-amount invoices yet)
+      if (decoded.amountSat === 0) {
+        // This means the invoice truly has no amount specified
+        toast.dismiss("decode-invoice");
+        toast.error("Zero-Amount Invoice Not Supported", {
+          description: "This wallet currently does not support paying invoices without a specified amount. Please use an invoice with an amount.",
+        });
+        setIsSendingPayment(false);
+        return;
+      }
+
+      if (decoded.amountSat < 0) {
+        // Invalid amount (should not happen with proper decoder but just in case)
+        toast.dismiss("decode-invoice");
+        toast.error("Invalid Invoice Amount", {
+          description: "The invoice amount must be greater than 0 satoshis.",
+        });
+        setIsSendingPayment(false);
+        return;
+      }
+
+      // Set states for the confirmation dialog
+      setDecodedInvoiceDetails(decoded);
+      setInvoiceToPay(decoded.paymentRequest); // Store the validated invoice string
+      setShowPaymentConfirmDialog(true);
+      // Reset isSendingPayment since we're just showing the confirmation dialog now
+      // It will be set again when the user confirms the payment
+      setIsSendingPayment(false);
+      toast.dismiss("decode-invoice");
+
+    } catch (error) {
+      console.error('Failed to decode invoice:', error);
+      toast.dismiss("decode-invoice");
+      toast.error("Invalid Lightning Invoice", {
+        description: error instanceof Error ? error.message : "Could not decode the provided invoice.",
+      });
+      setIsSendingPayment(false);
+    }
+  };
+
+  const confirmAndPayInvoice = async () => {
+    if (!sdkRef.current || !invoiceToPay) {
+      toast.error("Payment cannot proceed. Wallet or invoice data missing.");
+      setShowPaymentConfirmDialog(false);
+      setIsSendingPayment(false);
+      return;
+    }
+    if (isSendingPayment && !showPaymentConfirmDialog) return; // Already sending from a previous confirm call
+
+    setShowPaymentConfirmDialog(false); // Close dialog
+    // isSendingPayment should already be true if initiatePayInvoiceProcess was successful
+    // If not, set it:
+    if (!isSendingPayment) setIsSendingPayment(true);
+
     toast.loading("Processing payment...", { id: "pay-invoice" });
 
     try {
-      // sdkRef.current is the wallet instance from SparkWallet.initialize
       const wallet = sdkRef.current;
 
-      // The Spark SDK's payLightningInvoice takes the BOLT11 string directly.
-      // No separate decode step is strictly necessary for just paying,
-      // but you might want to decode it for UI display (amount, memo) before sending.
-      // For this step, we'll just pay directly.
+      console.log("Attempting to pay confirmed invoice:", invoiceToPay);
 
-      const trimmedInvoice = sendInvoice.trim();
-      console.log("Attempting to pay invoice:", trimmedInvoice);
+      // Recommended maxFeeSats: greater of 5 sats or 0.17% (17 bps) of tx amount
+      const amountSatsForFeeCalc = decodedInvoiceDetails?.amountSat || 0;
 
-      // Log available methods for debugging
-      console.log("Available wallet methods:",
-        Object.getOwnPropertyNames(Object.getPrototypeOf(wallet))
-          .filter(method => typeof wallet[method] === 'function')
-      );
-
-      // Based on the actual SDK error logs, we need a different approach
-      // The error "Lightning Payment Request must be string" suggests that
-      // the SDK expects only the string and not an object
-
-      // For safety, let's check if our invoice has features that might be
-      // causing issues (whitespace, non-ASCII characters, etc.)
-      let cleanedInvoice = trimmedInvoice
-        .replace(/\s+/g, '')  // Remove any whitespace
-        .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // Remove control characters
-
-      // Make sure the string starts with ln (case insensitive)
-      if (!cleanedInvoice.toLowerCase().startsWith('ln')) {
-        throw new Error("Invalid Lightning invoice format. Must start with 'ln'.");
+      let calculatedMaxFee = BigInt(5); // Default 5 sats
+      if (amountSatsForFeeCalc > 0) {
+          const percentageFee = BigInt(Math.ceil(amountSatsForFeeCalc * 0.0017)); // 0.17%
+          calculatedMaxFee = percentageFee > BigInt(5) ? percentageFee : BigInt(5);
       }
+      const maxFeeSats = Number(calculatedMaxFee);
 
-      console.log("Using cleaned invoice:", cleanedInvoice);
+      console.log(`Paying invoice. Amount: ${amountSatsForFeeCalc} sats. Max Fee: ${maxFeeSats} sats.`);
 
-      // Based on the available methods in the logs, we'll try the direct approach
-      try {
-        // The logs show the SDK is expecting a direct string parameter
-        await wallet.payLightningInvoice(cleanedInvoice);
-      } catch (err) {
-        console.error("Direct payment failed:", err);
-
-        // If that fails, try with an object (some SDK versions expect this)
-        try {
-          await wallet.payLightningInvoice({
-            invoice: cleanedInvoice
-          });
-        } catch (objErr) {
-          console.error("Object payment failed:", objErr);
-
-          // Last resort: try to use getLightningSendRequest if available
-          if (typeof wallet.getLightningSendRequest === 'function') {
-            const sendRequest = await wallet.getLightningSendRequest({
-              invoice: cleanedInvoice
-            });
-            console.log("Generated send request:", sendRequest);
-
-            // Execute the generated request
-            if (sendRequest && typeof sendRequest === 'string') {
-              await wallet.payLightningInvoice(sendRequest);
-            } else {
-              // If we got a request object, try to use that
-              throw new Error("Could not process Lightning invoice. Please try a different invoice.");
-            }
-          } else {
-            // If everything failed, rethrow the original error
-            throw err;
-          }
-        }
-      }
+      // Use the documented API approach with maxFeeSats
+      console.log("Paying invoice using documented Spark SDK API with maxFeeSats");
+      await wallet.payLightningInvoice({
+        invoice: invoiceToPay,
+        maxFeeSats: maxFeeSats // This is the correct parameter as per Spark docs
+      });
 
       console.log("Payment successful");
 
       toast.dismiss("pay-invoice");
       toast.success("Payment Sent Successfully!");
-      setSendInvoice(''); // Clear the input field
+      setSendInvoice(''); // Clear the input field in SendPaymentCard
+      setInvoiceToPay('');
+      setDecodedInvoiceDetails(null);
 
-      // Re-fetch wallet data to update balance and transaction history
       await fetchWalletData(sdkRef.current);
 
     } catch (error) {
       console.error('Failed to pay invoice:', error);
       toast.dismiss("pay-invoice");
       const message = error instanceof Error ? error.message : String(error);
-
-      console.log("Payment error details:", {
-        error,
-        message,
-        sdkReady: !!sdkRef.current,
-        invoiceLength: sendInvoice.length
-      });
-
-      // More specific error messages
+      
+      // Specific error toasts
       if (message.toLowerCase().includes("insufficient balance") || message.toLowerCase().includes("not enough funds")) {
-        toast.error("Payment Failed: Insufficient balance.", { description: "Please check your balance and try again." });
+          toast.error("Payment Failed: Insufficient balance.", { description: "Please check your balance and try again."});
       } else if (message.toLowerCase().includes("invalid invoice") || message.toLowerCase().includes("decode error") || message.toLowerCase().includes("malformed")) {
-        toast.error("Payment Failed: Invalid invoice.", { description: "Please check the invoice string and try again." });
+          toast.error("Payment Failed: Invalid invoice.", { description: "Please check the invoice string and try again."});
       } else if (message.toLowerCase().includes("route") || message.toLowerCase().includes("path not found") || message.toLowerCase().includes("no route")) {
-        toast.error("Payment Failed: No route found.", { description: "Could not find a path to the destination. The recipient might be offline or there might be network issues." });
+          toast.error("Payment Failed: No route found.", { description: "Could not find a path to the destination."});
       } else if (message.toLowerCase().includes("timeout") || message.toLowerCase().includes("timed out")) {
-        toast.error("Payment Failed: Timeout", { description: "The payment request timed out. Please try again." });
+          toast.error("Payment Failed: Timeout", { description: "The payment request timed out. Please try again." });
       } else if (message.toLowerCase().includes("invoice must be") || message.toLowerCase().includes("lightning payment request")) {
-        toast.error("Payment Failed: Format issue", { description: "The invoice format was not recognized. Please check the invoice and try again." });
+          toast.error("Payment Failed: Format issue", { description: "The invoice format was not recognized." });
       } else if (message.toLowerCase().includes("invalid amount") || message.toLowerCase().includes("amount")) {
-        toast.error("Payment Failed: Amount issue", { description: "The payment amount in the invoice is invalid or not specified. Try a different invoice." });
-      } else if (message.toLowerCase().includes("not a function") || message.toLowerCase().includes("undefined")) {
-        toast.error("Payment Failed: SDK error", { description: "There was an issue with the wallet SDK. Please restart the wallet or try again later." });
-      } else if (message.toLowerCase().includes("network") || message.toLowerCase().includes("failed to execute") || message.toLowerCase().includes("graphql")) {
-        toast.error("Payment Failed: Network Error", {
-          description: "Unable to connect to the Lightning Network. Please check your internet connection and try again later."
-        });
-      } else {
-        toast.error("Payment Failed", { description: message });
+          // This should be caught earlier by the zero-amount check now
+          toast.error("Payment Failed: Amount issue", { description: "The payment amount in the invoice is invalid." });
+      } else if (message.toLowerCase().includes("fee") && message.toLowerCase().includes("exceeds")) {
+          toast.error("Payment Failed: Fee too high", { description: "The network fee exceeds the maximum allowed. Try again later." });
+      }
+      else {
+          toast.error("Payment Failed", { description: message });
       }
     } finally {
       setIsSendingPayment(false);
+      setDecodedInvoiceDetails(null); // Clear details after attempt
+      setInvoiceToPay(''); // Clear invoice after attempt
     }
   };
 
@@ -801,13 +831,63 @@ function App() {
             <SendPaymentCard
               sendInvoice={sendInvoice}
               setSendInvoice={setSendInvoice}
-              handlePayInvoice={handlePayInvoice}
+              handlePayInvoice={initiatePayInvoiceProcess}
               isSendingPayment={isSendingPayment}
               disabled={!sdkRef.current}
             />
 
             {/* Transaction History Card */}
             <TransactionHistoryCard transactions={transactions} />
+
+            {/* Payment Confirmation Dialog */}
+            <AlertDialog open={showPaymentConfirmDialog} onOpenChange={(open) => {
+              if (!open) { // If dialog is closed (e.g. by Escape or clicking away)
+                setShowPaymentConfirmDialog(false);
+                setDecodedInvoiceDetails(null);
+                setInvoiceToPay('');
+                setIsSendingPayment(false); // Reset sending state if dialog is cancelled
+              }
+            }}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Confirm Payment</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Please review the details before sending your payment.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {decodedInvoiceDetails && (
+                  <div className="my-4 space-y-2">
+                    <p>
+                      <strong>Amount:</strong> ₿ {decodedInvoiceDetails.amountSat} sats
+                    </p>
+                    <p className="truncate">
+                      <strong>Description:</strong> {decodedInvoiceDetails.description}
+                    </p>
+                    <p className="text-xs text-muted-foreground break-all">
+                      <strong>Invoice:</strong> {invoiceToPay.substring(0, 50)}...
+                    </p>
+                  </div>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => {
+                     setShowPaymentConfirmDialog(false);
+                     setDecodedInvoiceDetails(null);
+                     setInvoiceToPay('');
+                     setIsSendingPayment(false); // Explicitly reset on cancel
+                  }}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmAndPayInvoice} disabled={isSendingPayment}>
+                    {isSendingPayment ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Processing...
+                        </>
+                    ) : (
+                        "Pay Now"
+                    )}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             <div className="h-16" /> {/* Spacer for scroll */}
           </div>
