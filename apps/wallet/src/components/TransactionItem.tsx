@@ -10,46 +10,65 @@ interface TransactionItemProps {
 
 const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
   // Initialize determination of whether this is a sent transaction
-  let isSent = false;
-  
+  let isSent = false; // Default to received
+  let explicitlyOutgoing = false;
+  let explicitlyIncoming = false;
+
   // First check explicit direction fields (highest priority)
   if (transaction?.transfer_direction === "OUTGOING" || transaction?.transferDirection === "OUTGOING") {
     isSent = true;
+    explicitlyOutgoing = true;
   } else if (transaction?.transfer_direction === "INCOMING" || transaction?.transferDirection === "INCOMING") {
     isSent = false;
+    explicitlyIncoming = true;
   }
-  
-  // Amount-based direction check (second priority)
-  // Negative amounts always indicate sent transactions
-  if (transaction?.totalValue) {
-    const value = typeof transaction.totalValue === 'bigint' 
-      ? transaction.totalValue 
-      : BigInt(transaction.totalValue);
-    
-    if (value < BigInt(0)) {
-      isSent = true;
-    } else if (value > BigInt(0) && !transaction?.transfer_direction && !transaction?.transferDirection) {
-      isSent = false;
+
+  // If not explicitly set by direction field, try amount-based direction check (second priority)
+  // This will only apply if transfer_direction was not present or was ambiguous.
+  if (!explicitlyOutgoing && !explicitlyIncoming) {
+    if (transaction?.totalValue) {
+      const value = typeof transaction.totalValue === 'bigint'
+        ? transaction.totalValue
+        : BigInt(transaction.totalValue);
+
+      if (value < BigInt(0)) {
+        isSent = true; // Implied outgoing due to negative amount
+      } else if (value > BigInt(0)) {
+        isSent = false; // Implied incoming due to positive amount
+      }
+      // If value is 0 or null/undefined, isSent remains based on its initialization or previous rules (if any).
+      // For safety, if amount is 0 and no direction, it defaults to 'received' (isSent = false).
     }
   }
-  
+
   // Type-based specialized determination (third priority)
+  // This logic primarily refines or sets 'isSent' if stronger signals (explicit direction, unambiguous amount) were absent or inconclusive.
   if (transaction?.type) {
     const txType = transaction.type.toUpperCase();
-    
-    // For PREIMAGE_SWAP (Lightning), typically it's a receive 
+
     if (txType === "PREIMAGE_SWAP") {
-      isSent = false; // Override - PREIMAGE_SWAP is always a received payment
-    }
-    
-    // For explicit Lightning payments, check specific handling
-    if (txType.includes("LIGHTNING") && txType.includes("PAYMENT")) {
-      // Further analyze Lightning payments based on context
-      // If we have a description containing "paid invoice", it's sent
-      if (transaction.description && transaction.description.toLowerCase().includes("paid invoice")) {
-        isSent = true;
+      // A PREIMAGE_SWAP is often a received Lightning payment.
+      // However, if the direction was EXPLICITLY "OUTGOING" from the SDK, we must respect that.
+      // So, only set to 'received' if it wasn't explicitly marked as 'outgoing'.
+      if (!explicitlyOutgoing) {
+        isSent = false;
+      }
+      // If 'explicitlyOutgoing' was true, 'isSent' is already true and will remain so.
+    } else if (txType.includes("LIGHTNING") && txType.includes("PAYMENT")) {
+      // This handles other "LIGHTNING_PAYMENT" types.
+      // Apply description-based heuristic only if direction was not explicitly set by the SDK.
+      if (!explicitlyOutgoing && !explicitlyIncoming) {
+          // If 'isSent' is currently false (meaning neither explicit direction nor negative amount indicated 'sent')
+          if (!isSent) {
+              if (transaction.description && transaction.description.toLowerCase().includes("paid invoice")) {
+                  isSent = true; // Description heuristic implies sent
+              }
+              // If no "paid invoice" in description, and other signals didn't mark it as sent,
+              // it remains 'false' (received) by default from initialization or positive amount.
+          }
       }
     }
+    // Add more type-specific rules here if other transaction types are being misclassified.
   }
   
   // Log transaction data for debugging
@@ -190,7 +209,8 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction }) => {
     
     // Handle specific known types with fixed labels
     if (uppercaseType === "PREIMAGE_SWAP") {
-      return "Lightning Payment Received"; // Always a receive
+      // PREIMAGE_SWAP can now be either sent or received based on explicit direction
+      return isSent ? "Lightning Payment Sent" : "Lightning Payment Received";
     }
     
     if (uppercaseType === "SPARK_TRANSFER") {
