@@ -909,6 +909,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      light-bolt11-decoder:
+        specifier: ^3.2.0
+        version: 3.2.0
       lucide-react:
         specifier: ^0.509.0
         version: 0.509.0(react@19.1.0)
