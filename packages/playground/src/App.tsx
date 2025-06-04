@@ -6,13 +6,32 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@open
 import { PaneManager } from '@openagentsinc/ui/web/components/pane/pane-manager'
 import { Hotbar } from '@openagentsinc/ui/web/components/hotbar/hotbar'
 import { usePaneStore } from '@openagentsinc/ui/web/stores/paneStore'
-import { Code, FileText, Settings, User, Bot } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@openagentsinc/ui/web/components/alert'
+import { Badge } from '@openagentsinc/ui/web/components/badge'
+import { Checkbox } from '@openagentsinc/ui/web/components/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@openagentsinc/ui/web/components/dialog'
+import { Progress } from '@openagentsinc/ui/web/components/progress'
+import { RadioGroup, RadioGroupItem } from '@openagentsinc/ui/web/components/radio-group'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@openagentsinc/ui/web/components/select'
+import { Switch } from '@openagentsinc/ui/web/components/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@openagentsinc/ui/web/components/tabs'
+import { Textarea } from '@openagentsinc/ui/web/components/textarea'
+import { Toggle } from '@openagentsinc/ui/web/components/toggle'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@openagentsinc/ui/web/components/tooltip'
+import { Code, FileText, Settings, User, Bot, AlertCircle, Bold } from 'lucide-react'
 import type { Pane } from '@openagentsinc/ui/core/types/pane'
 import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
   const [inputValue, setInputValue] = useState('')
+  const [checked, setChecked] = useState(false)
+  const [progress, setProgress] = useState(66)
+  const [selectedOption, setSelectedOption] = useState('option1')
+  const [selectedValue, setSelectedValue] = useState('')
+  const [switchOn, setSwitchOn] = useState(false)
+  const [textareaValue, setTextareaValue] = useState('')
+  const [toggleBold, setToggleBold] = useState(false)
   
   // Pane store
   const { panes, addPane, removePane, movePane, resizePane, activatePane, activePane } = usePaneStore()
@@ -107,93 +126,266 @@ function App() {
   ]
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-8">
-      {/* Main Content Area */}
-      <div>
-        <Card className="max-w-4xl mx-auto mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>UI Component Playground</span>
-              <span className="text-sm font-normal text-muted-foreground">Active panes: {panes.length}</span>
-            </CardTitle>
-            <CardDescription>Testing @openagentsinc/ui components</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Button Variants */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-mono">Button Variants</h3>
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={() => setCount(count + 1)}>
-                  Count is {count}
-                </Button>
-                <Button variant="secondary">Secondary</Button>
-                <Button variant="outline">Outline</Button>
-                <Button variant="ghost">Ghost</Button>
-                <Button variant="destructive">Destructive</Button>
-                <Button variant="link">Link</Button>
-              </div>
-            </div>
+    <TooltipProvider>
+      <div className="min-h-screen bg-background text-foreground p-8">
+        {/* Main Content Area */}
+        <div>
+          <Card className="max-w-4xl mx-auto mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>UI Component Playground</span>
+                <span className="text-sm font-normal text-muted-foreground">Active panes: {panes.length}</span>
+              </CardTitle>
+              <CardDescription>Testing @openagentsinc/ui components extracted from Commander</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="buttons" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="buttons">Buttons</TabsTrigger>
+                  <TabsTrigger value="forms">Forms</TabsTrigger>
+                  <TabsTrigger value="feedback">Feedback</TabsTrigger>
+                  <TabsTrigger value="panes">Panes</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="buttons" className="space-y-6">
+                  {/* Button Variants */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Button Variants</h3>
+                    <div className="flex flex-wrap gap-3">
+                      <Button onClick={() => setCount(count + 1)}>
+                        Count is {count}
+                      </Button>
+                      <Button variant="secondary">Secondary</Button>
+                      <Button variant="outline">Outline</Button>
+                      <Button variant="ghost">Ghost</Button>
+                      <Button variant="destructive">Destructive</Button>
+                      <Button variant="link">Link</Button>
+                    </div>
+                  </div>
 
-            {/* Button Sizes */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-mono">Button Sizes</h3>
-              <div className="flex items-center gap-3">
-                <Button size="sm">Small</Button>
-                <Button size="default">Default</Button>
-                <Button size="lg">Large</Button>
-                <Button size="icon">🎨</Button>
-              </div>
-            </div>
+                  {/* Button Sizes */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Button Sizes</h3>
+                    <div className="flex items-center gap-3">
+                      <Button size="sm">Small</Button>
+                      <Button size="default">Default</Button>
+                      <Button size="lg">Large</Button>
+                      <Button size="icon">🎨</Button>
+                    </div>
+                  </div>
 
-            {/* Input Example */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-mono">Form Components</h3>
-              <div className="space-y-2">
-                <Label htmlFor="demo-input">Demo Input</Label>
-                <Input 
-                  id="demo-input"
-                  placeholder="Enter some text..."
-                  className="max-w-sm"
-                />
-              </div>
-            </div>
+                  {/* Toggle & Badges */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Toggle & Badges</h3>
+                    <div className="flex items-center gap-3">
+                      <Toggle 
+                        pressed={toggleBold} 
+                        onPressedChange={setToggleBold}
+                        aria-label="Toggle bold"
+                      >
+                        <Bold className="h-4 w-4" />
+                      </Toggle>
+                      <Badge>Default</Badge>
+                      <Badge variant="secondary">Secondary</Badge>
+                      <Badge variant="outline">Outline</Badge>
+                      <Badge variant="destructive">Destructive</Badge>
+                    </div>
+                  </div>
 
-            {/* Pane Demo Instructions */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-mono">Pane System Demo</h3>
-              <p className="text-sm text-muted-foreground">
-                Use the hotbar at the bottom of the screen or click the buttons below to create panes.
-                Panes can be dragged around the screen. Try keyboard shortcuts: {navigator.userAgent.includes('Mac') ? '⌘' : 'Ctrl'}+1, 2, or 3. Press Escape to close the active pane.
-              </p>
-              <div className="flex gap-3">
-                <Button onClick={() => handleAddPane('counter', 'Counter')}>
-                  Add Counter Pane
-                </Button>
-                <Button onClick={() => handleAddPane('form', 'Form')}>
-                  Add Form Pane
-                </Button>
-                <Button onClick={() => handleAddPane('info', 'Information')}>
-                  Add Info Pane
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                  {/* Dialog Demo */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Dialog</h3>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline">Open Dialog</Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Are you sure?</DialogTitle>
+                          <DialogDescription>
+                            This is a dialog component extracted from Commander.
+                          </DialogDescription>
+                        </DialogHeader>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="forms" className="space-y-6">
+                  {/* Input & Label */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Input & Label</h3>
+                    <div className="space-y-2 max-w-sm">
+                      <Label htmlFor="demo-input">Demo Input</Label>
+                      <Input 
+                        id="demo-input"
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        placeholder="Enter some text..."
+                      />
+                      <p className="text-sm text-muted-foreground">Value: {inputValue}</p>
+                    </div>
+                  </div>
+
+                  {/* Textarea */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Textarea</h3>
+                    <div className="space-y-2 max-w-sm">
+                      <Label htmlFor="message">Your message</Label>
+                      <Textarea 
+                        id="message"
+                        placeholder="Type your message here."
+                        value={textareaValue}
+                        onChange={(e) => setTextareaValue(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Checkbox & Switch */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Checkbox & Switch</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox 
+                          id="terms" 
+                          checked={checked}
+                          onCheckedChange={(value) => setChecked(value as boolean)}
+                        />
+                        <Label htmlFor="terms">Accept terms and conditions</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch 
+                          id="airplane-mode"
+                          checked={switchOn}
+                          onCheckedChange={setSwitchOn}
+                        />
+                        <Label htmlFor="airplane-mode">Airplane Mode</Label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Select */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Select</h3>
+                    <div className="max-w-sm">
+                      <Select value={selectedValue} onValueChange={setSelectedValue}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a fruit" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="apple">Apple</SelectItem>
+                          <SelectItem value="banana">Banana</SelectItem>
+                          <SelectItem value="orange">Orange</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Radio Group */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Radio Group</h3>
+                    <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="option1" id="option1" />
+                        <Label htmlFor="option1">Option 1</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="option2" id="option2" />
+                        <Label htmlFor="option2">Option 2</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="option3" id="option3" />
+                        <Label htmlFor="option3">Option 3</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="feedback" className="space-y-6">
+                  {/* Alert */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Alert</h3>
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Heads up!</AlertTitle>
+                      <AlertDescription>
+                        You can add components and dependencies to your app using the cli.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+
+                  {/* Progress */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Progress</h3>
+                    <div className="space-y-2">
+                      <Progress value={progress} className="max-w-md" />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => setProgress(Math.max(0, progress - 10))}>-10%</Button>
+                        <Button size="sm" onClick={() => setProgress(Math.min(100, progress + 10))}>+10%</Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tooltip */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Tooltip</h3>
+                    <div className="flex gap-3">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="outline">Hover me</Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>This is a tooltip!</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="panes" className="space-y-6">
+                  {/* Pane Demo Instructions */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">Pane System Demo</h3>
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Interactive Pane System</AlertTitle>
+                      <AlertDescription>
+                        Use the hotbar at the bottom of the screen or click the buttons below to create panes.
+                        Panes can be dragged around the screen. Try keyboard shortcuts: {navigator.userAgent.includes('Mac') ? '⌘' : 'Ctrl'}+1, 2, or 3. Press Escape to close the active pane.
+                      </AlertDescription>
+                    </Alert>
+                    <div className="flex gap-3">
+                      <Button onClick={() => handleAddPane('counter', 'Counter')}>
+                        Add Counter Pane
+                      </Button>
+                      <Button onClick={() => handleAddPane('form', 'Form')}>
+                        Add Form Pane
+                      </Button>
+                      <Button onClick={() => handleAddPane('info', 'Information')}>
+                        Add Info Pane
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Pane Manager */}
+        <PaneManager
+          panes={panes}
+          onPaneMove={movePane}
+          onPaneResize={resizePane}
+          onPaneClose={removePane}
+          onPaneActivate={activatePane}
+          renderPaneContent={renderPaneContent}
+        />
+
+        {/* Hotbar */}
+        <Hotbar slots={hotbarSlots} />
       </div>
-
-      {/* Pane Manager */}
-      <PaneManager
-        panes={panes}
-        onPaneMove={movePane}
-        onPaneResize={resizePane}
-        onPaneClose={removePane}
-        onPaneActivate={activatePane}
-        renderPaneContent={renderPaneContent}
-      />
-
-      {/* Hotbar */}
-      <Hotbar slots={hotbarSlots} />
-    </div>
+    </TooltipProvider>
   )
 }
 

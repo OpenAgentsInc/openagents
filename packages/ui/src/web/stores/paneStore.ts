@@ -91,7 +91,7 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
       panes: panes.map((pane) => ({
         ...pane,
         isActive: pane.id === id,
-        zIndex: pane.id === id ? nextZIndex : pane.zIndex
+        zIndex: pane.id === id ? nextZIndex : (pane.zIndex ?? 0)
       })),
       activePane: id,
       nextZIndex: nextZIndex + 1
