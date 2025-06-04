@@ -2,7 +2,7 @@ import { NodeCommandExecutor } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import { AiService } from "../AiService.js"
 import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../config/ClaudeCodeConfig.js"
-import { ClaudeCodeClient, ClaudeCodeClientLive } from "./ClaudeCodeClient.js"
+import { ClaudeCodeClient, ClaudeCodeClientLive } from "./ClaudeCodeSimple.js"
 
 /**
  * Claude Code provider for AI Service
