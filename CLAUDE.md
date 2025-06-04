@@ -136,7 +136,7 @@ The UI package (`@openagentsinc/ui`) does NOT use Effect codegen because:
 If you see CI errors about Effect build-utils failing on UI package:
 1. Remove any `effect` field from packages/ui/package.json
 2. Delete any generated `packages/ui/src/index.ts` file if it exists
-3. The UI package will still have a codegen script but it should be a no-op
+3. The UI package codegen script is overridden to just echo a message
 
 ## Common Development Tasks
 
