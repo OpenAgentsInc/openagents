@@ -16,7 +16,8 @@
     "test": "vitest",
     "coverage": "vitest --coverage",
     "changeset-version": "changeset version && node scripts/version.mjs",
-    "changeset-publish": "pnpm build && TEST_DIST= pnpm vitest && changeset publish"
+    "changeset-publish": "pnpm build && TEST_DIST= pnpm vitest && changeset publish",
+    "setup-hooks": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "@babel/cli": "7.27.2",

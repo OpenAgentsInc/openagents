@@ -17,6 +17,9 @@ This is an OpenAgents Effect.js monorepo demonstrating a Todo application using 
 # Install dependencies
 pnpm i
 
+# Set up git hooks for quality checks
+pnpm setup-hooks
+
 # Type checking across all packages
 pnpm check
 

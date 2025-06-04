@@ -1,0 +1,37 @@
+#!/bin/sh
+
+# Git pre-push hook to run quality checks
+# Ensures code quality before pushing to remote
+
+echo "Running pre-push checks..."
+
+# Run lint check
+echo "🔍 Running ESLint..."
+if ! pnpm lint; then
+    echo "❌ ESLint failed. Fix linting errors before pushing."
+    exit 1
+fi
+
+# Run type check
+echo "🔍 Running TypeScript check..."
+if ! pnpm check; then
+    echo "❌ TypeScript check failed. Fix type errors before pushing."
+    exit 1
+fi
+
+# Run build check
+echo "🔍 Running build..."
+if ! pnpm build; then
+    echo "❌ Build failed. Fix build errors before pushing."
+    exit 1
+fi
+
+# Run tests
+echo "🔍 Running tests..."
+if ! pnpm test --run; then
+    echo "❌ Tests failed. Fix failing tests before pushing."
+    exit 1
+fi
+
+echo "✅ All pre-push checks passed!"
+exit 0
