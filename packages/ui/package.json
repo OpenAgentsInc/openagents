@@ -71,21 +71,7 @@
     "react-dom": "^19.0.0"
   },
   "effect": {
-    "generateExports": {
-      "include": [
-        "**/*.ts"
-      ],
-      "exclude": [
-        "**/*.tsx"
-      ]
-    },
-    "generateIndex": {
-      "include": [
-        "**/*.ts"
-      ],
-      "exclude": [
-        "**/*.tsx"
-      ]
-    }
+    "generateExports": false,
+    "generateIndex": false
   }
 }
