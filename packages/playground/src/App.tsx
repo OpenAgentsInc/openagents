@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@openagentsinc/ui/web/components/button'
 import { Input } from '@openagentsinc/ui/web/components/input'
 import { Label } from '@openagentsinc/ui/web/components/label'
@@ -20,6 +20,8 @@ import { Toggle } from '@openagentsinc/ui/web/components/toggle'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@openagentsinc/ui/web/components/tooltip'
 import { Code, FileText, Settings, User, Bot, AlertCircle, Bold } from 'lucide-react'
 import type { Pane } from '@openagentsinc/ui/core/types/pane'
+import { Effect } from 'effect'
+import * as Ai from '@openagentsinc/ai'
 import './App.css'
 
 function App() {
@@ -32,9 +34,36 @@ function App() {
   const [switchOn, setSwitchOn] = useState(false)
   const [textareaValue, setTextareaValue] = useState('')
   const [toggleBold, setToggleBold] = useState(false)
+  const [aiResponse, setAiResponse] = useState<string>('')
+  const [aiLoading, setAiLoading] = useState(false)
   
   // Pane store
   const { panes, addPane, removePane, movePane, resizePane, activatePane, activePane } = usePaneStore()
+
+  // AI Service test
+  const testAiService = async () => {
+    console.log('Testing AI Service...')
+    setAiLoading(true)
+    try {
+      const program = Ai.AiService.hello('Playground')
+      
+      const result = await Effect.runPromise(
+        program.pipe(Effect.provide(Ai.AiService.AiServiceLive))
+      )
+      console.log('AI Service Response:', result)
+      setAiResponse(result)
+    } catch (error) {
+      console.error('AI Service Error:', error)
+      setAiResponse(`Error: ${error}`)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  // Run AI test on mount
+  useEffect(() => {
+    testAiService()
+  }, [])
 
   const handleAddPane = (type: string, title: string) => {
     addPane({
@@ -140,11 +169,12 @@ function App() {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="buttons" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="buttons">Buttons</TabsTrigger>
                   <TabsTrigger value="forms">Forms</TabsTrigger>
                   <TabsTrigger value="feedback">Feedback</TabsTrigger>
                   <TabsTrigger value="panes">Panes</TabsTrigger>
+                  <TabsTrigger value="ai">AI Service</TabsTrigger>
                 </TabsList>
                 
                 <TabsContent value="buttons" className="space-y-6">
@@ -351,7 +381,8 @@ function App() {
                       <AlertTitle>Interactive Pane System</AlertTitle>
                       <AlertDescription>
                         Use the hotbar at the bottom of the screen or click the buttons below to create panes.
-                        Panes can be dragged around the screen. Try keyboard shortcuts: {navigator.userAgent.includes('Mac') ? '⌘' : 'Ctrl'}+1, 2, or 3. Press Escape to close the active pane.
+                        Panes can be dragged around the screen. Press Escape to close the active pane.
+                        Note: Hotbar keyboard shortcuts (Cmd+1-9) are disabled to avoid conflicts with browser tab switching.
                       </AlertDescription>
                     </Alert>
                     <div className="flex gap-3">
@@ -364,6 +395,44 @@ function App() {
                       <Button onClick={() => handleAddPane('info', 'Information')}>
                         Add Info Pane
                       </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="ai" className="space-y-6">
+                  {/* AI Service Demo */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-mono">AI Service Integration</h3>
+                    <Alert>
+                      <Bot className="h-4 w-4" />
+                      <AlertTitle>@openagentsinc/ai Package</AlertTitle>
+                      <AlertDescription>
+                        Testing the AI service integration from our new Effect-based AI package.
+                      </AlertDescription>
+                    </Alert>
+                    
+                    <div className="space-y-4">
+                      <div className="p-4 bg-muted rounded-lg">
+                        <p className="text-sm font-mono mb-2">AI Service Response:</p>
+                        {aiLoading ? (
+                          <p className="text-muted-foreground">Loading...</p>
+                        ) : (
+                          <p className="font-semibold">{aiResponse || 'No response yet'}</p>
+                        )}
+                      </div>
+                      
+                      <Button 
+                        onClick={testAiService} 
+                        disabled={aiLoading}
+                        variant="outline"
+                      >
+                        {aiLoading ? 'Testing...' : 'Test AI Service Again'}
+                      </Button>
+                      
+                      <div className="text-sm text-muted-foreground">
+                        <p>This demonstrates the hello world export from @openagentsinc/ai</p>
+                        <p>The service is using Effect patterns for dependency injection.</p>
+                      </div>
                     </div>
                   </div>
                 </TabsContent>
@@ -383,7 +452,7 @@ function App() {
         />
 
         {/* Hotbar */}
-        <Hotbar slots={hotbarSlots} />
+        <Hotbar slots={hotbarSlots} disableHotkeys={true} />
       </div>
     </TooltipProvider>
   )

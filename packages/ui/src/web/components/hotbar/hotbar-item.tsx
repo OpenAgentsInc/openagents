@@ -10,6 +10,7 @@ export interface HotbarItemProps {
   isActive?: boolean
   isGhost?: boolean
   className?: string
+  showShortcut?: boolean
 }
 
 export const HotbarItem: React.FC<HotbarItemProps> = ({
@@ -20,6 +21,7 @@ export const HotbarItem: React.FC<HotbarItemProps> = ({
   isActive,
   isGhost,
   className,
+  showShortcut = true,
 }) => {
   const modifierPrefix = getModifierKey()
   const shortcutText = `${modifierPrefix}${slotNumber}`
@@ -28,7 +30,7 @@ export const HotbarItem: React.FC<HotbarItemProps> = ({
     <button
       onClick={onClick}
       aria-label={title || `Hotbar slot ${slotNumber}`}
-      title={!isGhost ? `${title || `Slot ${slotNumber}`} (${shortcutText})` : undefined}
+      title={!isGhost ? `${title || `Slot ${slotNumber}`}${showShortcut ? ` (${shortcutText})` : ''}` : undefined}
       className={cn(
         "border-border/50 bg-background/70 hover:bg-accent hover:border-primary focus:ring-primary relative flex h-10 w-10 items-center justify-center border shadow-md backdrop-blur-sm transition-all duration-150 focus:ring-1 focus:outline-none sm:h-12 sm:w-12",
         isActive && "bg-primary/20 border-primary ring-primary ring-1",
@@ -38,7 +40,7 @@ export const HotbarItem: React.FC<HotbarItemProps> = ({
       disabled={isGhost}
     >
       {children}
-      {!isGhost && (
+      {!isGhost && showShortcut && (
         <div className="text-muted-foreground bg-background/50 absolute right-0.5 bottom-0.5 flex items-center px-0.5 text-[0.6rem] leading-none font-mono">
           <span>{modifierPrefix}</span>
           <span>{slotNumber}</span>

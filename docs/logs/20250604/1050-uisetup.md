@@ -16,7 +16,7 @@ Set up the @openagentsinc/ui package following the monorepo conventions and crea
 ### 1. Examining Existing Package Patterns
 
 Analyzed the existing packages and found:
-- Standard package.json with Effect.js build configuration
+- Standard package.json with Effect build configuration
 - Multi-stage TypeScript compilation (src, test, build)
 - Effect build-utils for codegen and packaging
 - Vitest for testing with shared configuration
