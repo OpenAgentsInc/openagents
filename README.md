@@ -1,32 +1,7 @@
-# Effect Monorepo Template
+# OpenAgents
 
-This template provides a solid foundation for building scalable and maintainable TypeScript applications with Effect. 
+OpenAgents is a platform for AI agents using open protocols.
 
-## Running Code
+Our previous flagship product (v4) is an agentic chat app live at [openagents.com](https://openagents.com).
 
-This template leverages [tsx](https://tsx.is) to allow execution of TypeScript files via NodeJS as if they were written in plain JavaScript.
-
-To execute a file with `tsx`:
-
-```sh
-pnpm tsx ./path/to/the/file.ts
-```
-
-## Operations
-
-**Building**
-
-To build all packages in the monorepo:
-
-```sh
-pnpm build
-```
-
-**Testing**
-
-To test all packages in the monorepo:
-
-```sh
-pnpm test
-```
-
+This repo holds our new cross-platform version (v5), a work in progress.
