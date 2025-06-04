@@ -1,6 +1,5 @@
 import { Context, Effect, Layer, Stream, Chunk, Fiber } from "effect"
-import { CommandExecutor } from "@effect/platform-node/CommandExecutor"
-import { Command } from "@effect/platform/Command"
+import { CommandExecutor, Command } from "@effect/platform"
 import { Schema } from "@effect/schema"
 import { ClaudeCodeConfig } from "../config/ClaudeCodeConfig.js"
 import {
@@ -67,7 +66,7 @@ export interface ClaudeCodeClient {
   readonly prompt: (
     text: string,
     options?: PromptOptions
-  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError>
+  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError, never>
 
   /**
    * Continue a conversation with a session ID
@@ -76,7 +75,7 @@ export interface ClaudeCodeClient {
     sessionId: string,
     prompt: string,
     options?: PromptOptions
-  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError | ClaudeCodeSessionError>
+  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError | ClaudeCodeSessionError, never>
 
   /**
    * Resume the most recent conversation
@@ -84,7 +83,7 @@ export interface ClaudeCodeClient {
   readonly continueRecent: (
     prompt: string,
     options?: PromptOptions
-  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError>
+  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError, never>
 
   /**
    * Stream a prompt response
@@ -92,12 +91,12 @@ export interface ClaudeCodeClient {
   readonly streamPrompt: (
     text: string,
     options?: PromptOptions
-  ) => Stream.Stream<string, ClaudeCodeExecutionError>
+  ) => Stream.Stream<string, ClaudeCodeExecutionError, never>
 
   /**
    * Check if Claude CLI is available
    */
-  readonly checkAvailability: () => Effect.Effect<boolean, ClaudeCodeNotFoundError>
+  readonly checkAvailability: () => Effect.Effect<boolean, ClaudeCodeNotFoundError, never>
 }
 
 /**
@@ -209,7 +208,7 @@ export const ClaudeCodeClientLive = Layer.effect(
     const executeCommand = (
       args: Array<string>,
       timeout?: number
-    ): Effect.Effect<string, ClaudeCodeExecutionError> =>
+    ) =>
       Effect.gen(function* () {
         const command = Command.make(config.cliPath ?? "claude", ...args)
         const process = yield* executor.start(command)
@@ -247,9 +246,19 @@ export const ClaudeCodeClientLive = Layer.effect(
         }
 
         return output
-      })
+      }).pipe(
+        Effect.mapError(error =>
+          error._tag === "ClaudeCodeExecutionError"
+            ? error
+            : new ClaudeCodeExecutionError({
+                command: `${config.cliPath} ${args.join(" ")}`,
+                exitCode: -1,
+                stderr: String(error)
+              })
+        )
+      )
 
-    const checkAvailability = (): Effect.Effect<boolean, ClaudeCodeNotFoundError> =>
+    const checkAvailability = () =>
       Effect.gen(function* () {
         const command = Command.make(config.cliPath ?? "claude", "--version")
         const process = yield* executor.start(command).pipe(
@@ -298,12 +307,18 @@ export const ClaudeCodeClientLive = Layer.effect(
         return yield* parseOutput(output, format)
       })
 
-    const streamPrompt = (text: string, options?: PromptOptions) =>
-      Stream.unwrap(
+    const streamPrompt = (text: string, options?: PromptOptions): Stream.Stream<string, ClaudeCodeExecutionError, never> =>
+      Stream.unwrapScoped(
         Effect.gen(function* () {
           const args = buildArgs(config, text, { ...options, outputFormat: "json_stream" })
           const command = Command.make(config.cliPath ?? "claude", ...args)
-          const process = yield* executor.start(command)
+          const process = yield* executor.start(command).pipe(
+            Effect.mapError(error => new ClaudeCodeExecutionError({
+              command: `${config.cliPath} ${args.join(" ")}`,
+              exitCode: -1,
+              stderr: `Failed to start process: ${error}`
+            }))
+          )
 
           return process.stdout.pipe(
             Stream.decodeText(),

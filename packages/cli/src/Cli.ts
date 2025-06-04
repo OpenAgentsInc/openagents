@@ -1,6 +1,7 @@
 import { Args, Command, Options } from "@effect/cli"
 import { TodoId } from "@openagentsinc/domain/TodosApi"
 import { Effect, Console } from "effect"
+import { NodeCommandExecutor } from "@effect/platform-node"
 import { TodosClient } from "./TodosClient.js"
 import * as Ai from "@openagentsinc/ai"
 
@@ -116,8 +117,9 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
         yield* Console.log(`📈 Tokens: ${response.usage.total_tokens} (input: ${response.usage.input_tokens}, output: ${response.usage.output_tokens})`)
       }
     }).pipe(
-      Effect.provide(Ai.ClaudeCodeClient.ClaudeCodeClientLive),
+      Effect.provide(Ai.ClaudeCodeClientLive),
       Effect.provide(Ai.ClaudeCodeConfigDefault),
+      Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
         Effect.gen(function* () {
           yield* Console.error(`❌ Error: ${JSON.stringify(error, null, 2)}`)
@@ -146,8 +148,9 @@ const aiCheck = Command.make("check").pipe(
         yield* Console.log("🔗 Visit https://claude.ai/code for installation instructions")
       }
     }).pipe(
-      Effect.provide(Ai.ClaudeCodeClient.ClaudeCodeClientLive),
+      Effect.provide(Ai.ClaudeCodeClientLive),
       Effect.provide(Ai.ClaudeCodeConfigDefault),
+      Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
         Effect.gen(function* () {
           yield* Console.error(`❌ Error checking Claude Code: ${error}`)

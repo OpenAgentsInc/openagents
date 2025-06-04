@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect"
+import { NodeCommandExecutor } from "@effect/platform-node"
 import { AiService } from "../AiService.js"
 import { ClaudeCodeClient, ClaudeCodeClientLive } from "./ClaudeCodeClient.js"
 import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../config/ClaudeCodeConfig.js"
@@ -80,7 +81,8 @@ export const ClaudeCodeProviderLive = Layer.effect(
   })
 ).pipe(
   Layer.provide(ClaudeCodeClientLive),
-  Layer.provide(ClaudeCodeConfigDefault)
+  Layer.provide(ClaudeCodeConfigDefault),
+  Layer.provide(NodeCommandExecutor.layer)
 )
 
 /**
