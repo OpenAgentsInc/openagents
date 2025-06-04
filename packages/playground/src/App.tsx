@@ -17,16 +17,16 @@ function App() {
   }
 
   return (
-    <>
-      <div style={{ padding: '2rem' }}>
-        <h1>UI Component Playground</h1>
+    <div className="min-h-screen bg-background text-foreground p-8">
+      <div className="max-w-4xl mx-auto space-y-8">
+        <h1 className="text-3xl font-bold font-mono">UI Component Playground</h1>
         
-        <section style={{ marginTop: '2rem' }}>
-          <h2>Testing @openagentsinc/ui Components</h2>
+        <section className="space-y-6">
+          <h2 className="text-2xl font-semibold font-mono">Testing @openagentsinc/ui Components</h2>
           
-          <div style={{ marginTop: '1rem' }}>
-            <h3>Button Component</h3>
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <div className="space-y-4">
+            <h3 className="text-xl font-mono">Button Component</h3>
+            <div className="flex flex-wrap gap-4">
               <Button onClick={() => setCount(count + 1)}>
                 Count is {count}
               </Button>
@@ -38,9 +38,9 @@ function App() {
             </div>
           </div>
           
-          <div style={{ marginTop: '1rem' }}>
-            <h3>Button Sizes</h3>
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div className="space-y-4">
+            <h3 className="text-xl font-mono">Button Sizes</h3>
+            <div className="flex items-center gap-4">
               <Button size="sm">Small</Button>
               <Button size="default">Default</Button>
               <Button size="lg">Large</Button>
@@ -48,15 +48,15 @@ function App() {
             </div>
           </div>
           
-          <div style={{ marginTop: '2rem' }}>
-            <h3>Type Import Test</h3>
-            <pre style={{ background: '#f4f4f4', padding: '1rem', borderRadius: '4px' }}>
+          <div className="space-y-4">
+            <h3 className="text-xl font-mono">Type Import Test</h3>
+            <pre className="bg-secondary text-secondary-foreground p-4 overflow-x-auto font-mono text-sm">
               {JSON.stringify(testPaneState, null, 2)}
             </pre>
           </div>
         </section>
       </div>
-    </>
+    </div>
   )
 }
 

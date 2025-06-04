@@ -1,8 +1,9 @@
 @import "tailwindcss";
+@import "./fonts.css";
 
 @theme {
-  --font-family-sans: "Berkeley Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, "Ubuntu Mono", system-ui, sans-serif;
-  --font-family-mono: "Berkeley Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, "Ubuntu Mono", monospace;
+  --font-family-sans: var(--font-berkeley);
+  --font-family-mono: var(--font-berkeley);
 
   /* Zero border radius design */
   --radius: 0rem;

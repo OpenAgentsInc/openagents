@@ -1,0 +1,15 @@
+/* Berkeley Mono Font */
+@font-face {
+  font-family: "Berkeley Mono";
+  src: url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+  font-weight: 400;
+  font-style: normal;
+}
+
+/* Fallback to JetBrains Mono as it's similar to Berkeley Mono */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* Override font-family to use JetBrains Mono as Berkeley Mono substitute */
+:root {
+  --font-berkeley: "JetBrains Mono", "Berkeley Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, "Ubuntu Mono", monospace;
+}
