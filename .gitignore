@@ -5,7 +5,6 @@ node_modules/
 tmp/
 dist/
 build/
-docs/
 scratchpad/*
 !scratchpad/tsconfig.json
 .direnv/
