@@ -107,20 +107,15 @@ function App() {
   ]
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Fixed Header */}
-      <div className="fixed top-0 left-0 right-0 bg-background/80 backdrop-blur-sm border-b z-50 p-4">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold font-mono">UI Component Playground</h1>
-          <p className="text-sm text-muted-foreground">Active panes: {panes.length}</p>
-        </div>
-      </div>
-
+    <div className="min-h-screen bg-background text-foreground p-8">
       {/* Main Content Area */}
-      <div className="pt-20 p-8">
+      <div>
         <Card className="max-w-4xl mx-auto mb-8">
           <CardHeader>
-            <CardTitle>Component Tests</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>UI Component Playground</span>
+              <span className="text-sm font-normal text-muted-foreground">Active panes: {panes.length}</span>
+            </CardTitle>
             <CardDescription>Testing @openagentsinc/ui components</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
