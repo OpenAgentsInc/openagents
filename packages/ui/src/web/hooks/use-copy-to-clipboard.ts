@@ -7,8 +7,8 @@ type UseCopyToClipboardProps = {
 }
 
 export function useCopyToClipboard({
-  text,
   copyMessage = "Copied to clipboard!",
+  text
 }: UseCopyToClipboardProps) {
   const [isCopied, setIsCopied] = useState(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
