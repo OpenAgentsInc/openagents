@@ -50,7 +50,10 @@
   },
   "pnpm": {
     "overrides": {
-      "vitest": "^2.0.5"
+      "vitest": "^2.0.5",
+      "@changesets/assemble-release-plan": "6.0.5",
+      "@changesets/get-github-info": "0.6.0",
+      "babel-plugin-annotate-pure-calls": "0.4.0"
     },
     "patchedDependencies": {
       "@changesets/get-github-info@0.6.0": "patches/@changesets__get-github-info@0.6.0.patch",
