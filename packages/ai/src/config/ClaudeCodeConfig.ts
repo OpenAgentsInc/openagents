@@ -1,5 +1,5 @@
-import { Context, Layer, Effect } from "effect"
-import * as Schema from "@effect/schema/Schema"
+import { Context, Layer } from "effect"
+import { Schema } from "@effect/schema"
 
 /**
  * Output format for Claude Code responses
@@ -38,7 +38,7 @@ export const ClaudeCodeConfigSchema = Schema.Struct({
  * Claude Code configuration type
  * @since 1.0.0
  */
-export interface ClaudeCodeConfig extends Schema.Schema.Type<typeof ClaudeCodeConfigSchema> {}
+export type ClaudeCodeConfig = Schema.Schema.Type<typeof ClaudeCodeConfigSchema>
 
 /**
  * Claude Code configuration service

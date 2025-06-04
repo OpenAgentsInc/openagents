@@ -1,7 +1,7 @@
-import { Context, Effect, Layer, Stream, Chunk, Option } from "effect"
-import { CommandExecutor } from "@effect/platform/CommandExecutor"
+import { Context, Effect, Layer, Stream, Chunk, Fiber } from "effect"
+import { CommandExecutor } from "@effect/platform-node/CommandExecutor"
 import { Command } from "@effect/platform/Command"
-import * as Schema from "@effect/schema/Schema"
+import { Schema } from "@effect/schema"
 import { ClaudeCodeConfig } from "../config/ClaudeCodeConfig.js"
 import {
   ClaudeCodeExecutionError,
@@ -202,9 +202,9 @@ const parseOutput = (
  */
 export const ClaudeCodeClientLive = Layer.effect(
   ClaudeCodeClient,
-  Effect.gen(function* () {
-    const config = yield* ClaudeCodeConfig
-    const executor = yield* CommandExecutor
+  Effect.gen(function* (_) {
+    const config = yield* _(ClaudeCodeConfig)
+    const executor = yield* _(CommandExecutor)
 
     const executeCommand = (
       args: Array<string>,
@@ -227,16 +227,16 @@ export const ClaudeCodeClientLive = Layer.effect(
         const output = yield* process.stdout.pipe(
           Stream.decodeText(),
           Stream.runCollect,
-          Effect.map(chunks => Chunk.join(chunks, ""))
+          Effect.map((chunks: Chunk.Chunk<string>) => Chunk.toReadonlyArray(chunks).join(""))
         )
 
-        const exitCode = yield* Effect.Fiber.join(exitCodeFiber)
+        const exitCode = yield* Fiber.join(exitCodeFiber)
 
         if (exitCode !== 0) {
           const stderr = yield* process.stderr.pipe(
             Stream.decodeText(),
             Stream.runCollect,
-            Effect.map(chunks => Chunk.join(chunks, ""))
+            Effect.map((chunks: Chunk.Chunk<string>) => Chunk.toReadonlyArray(chunks).join(""))
           )
 
           return yield* Effect.fail(new ClaudeCodeExecutionError({
@@ -251,17 +251,17 @@ export const ClaudeCodeClientLive = Layer.effect(
 
     const checkAvailability = (): Effect.Effect<boolean, ClaudeCodeNotFoundError> =>
       Effect.gen(function* () {
-        try {
-          const command = Command.make(config.cliPath ?? "claude", "--version")
-          const process = yield* executor.start(command)
-          const exitCode = yield* process.exitCode
-          return exitCode === 0
-        } catch (error) {
-          return yield* Effect.fail(new ClaudeCodeNotFoundError({
-            message: `Claude CLI not found at: ${config.cliPath}`,
-            cause: error
-          }))
-        }
+        const command = Command.make(config.cliPath ?? "claude", "--version")
+        const process = yield* executor.start(command).pipe(
+          Effect.catchAll((error) => 
+            Effect.fail(new ClaudeCodeNotFoundError({
+              message: `Claude CLI not found at: ${config.cliPath}`,
+              cause: error
+            }))
+          )
+        )
+        const exitCode = yield* process.exitCode
+        return exitCode === 0
       })
 
     const prompt = (text: string, options?: PromptOptions) =>
@@ -276,13 +276,14 @@ export const ClaudeCodeClientLive = Layer.effect(
       Effect.gen(function* () {
         const args = buildArgs(config, text, options, sessionId)
         const output = yield* executeCommand(args, options?.timeout).pipe(
-          Effect.catchTag("ClaudeCodeExecutionError", (error) =>
-            error.stderr.includes("session") || error.stderr.includes("resume")
-              ? Effect.fail(new ClaudeCodeSessionError({
-                  sessionId,
-                  message: "Invalid or expired session"
-                }))
-              : Effect.fail(error)
+          Effect.catchIf(
+            (error): error is ClaudeCodeExecutionError => 
+              error._tag === "ClaudeCodeExecutionError" && 
+              (error.stderr.includes("session") || error.stderr.includes("resume")),
+            () => Effect.fail(new ClaudeCodeSessionError({
+              sessionId,
+              message: "Invalid or expired session"
+            }))
           )
         )
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
@@ -308,18 +309,17 @@ export const ClaudeCodeClientLive = Layer.effect(
             Stream.decodeText(),
             Stream.splitLines,
             Stream.filter(line => line.trim().length > 0),
-            Stream.mapEffect(line =>
-              Effect.try({
-                try: () => {
-                  const parsed = JSON.parse(line)
-                  return parsed.content || ""
-                },
-                catch: () => new ClaudeCodeExecutionError({
+            Stream.mapEffect((line: string) =>
+              Effect.try(() => {
+                const parsed = JSON.parse(line)
+                return parsed.content || ""
+              }).pipe(
+                Effect.mapError(() => new ClaudeCodeExecutionError({
                   command: `${config.cliPath} ${args.join(" ")}`,
                   exitCode: -1,
                   stderr: `Failed to parse streaming output: ${line}`
-                })
-              })
+                }))
+              )
             )
           )
         })
@@ -331,8 +331,6 @@ export const ClaudeCodeClientLive = Layer.effect(
       continueRecent,
       streamPrompt,
       checkAvailability
-    }
+    } satisfies ClaudeCodeClient
   })
-).pipe(
-  Layer.provide(CommandExecutor.layer)
 )
