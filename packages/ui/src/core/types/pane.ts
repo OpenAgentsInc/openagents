@@ -21,7 +21,7 @@ export interface PaneState {
 }
 
 export interface PaneAction {
-  type: 'move' | 'resize' | 'activate' | 'close' | 'minimize' | 'maximize'
+  type: "move" | "resize" | "activate" | "close" | "minimize" | "maximize"
   paneId: string
   payload?: Partial<PaneState>
 }

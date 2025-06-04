@@ -1,2 +1,2 @@
 // Core type definitions that are platform-agnostic
-export * from './pane.js'
+export * from "./pane.js"
