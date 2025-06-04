@@ -18,14 +18,11 @@ function App() {
   const { panes, addPane, removePane, movePane, resizePane, activatePane, activePane } = usePaneStore()
 
   const handleAddPane = (type: string, title: string) => {
-    console.log('Adding pane:', type, title)
-    const id = addPane({
+    addPane({
       type,
       title,
       dismissable: true,
     })
-    console.log('Added pane with id:', id)
-    console.log('Current panes:', panes)
   }
 
   const renderPaneContent = (pane: Pane) => {
@@ -109,9 +106,6 @@ function App() {
     },
   ]
 
-  // Debug: log panes whenever they change
-  console.log('Current panes in render:', panes)
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Fixed Header */}
@@ -174,7 +168,7 @@ function App() {
               <h3 className="text-lg font-mono">Pane System Demo</h3>
               <p className="text-sm text-muted-foreground">
                 Use the hotbar at the bottom of the screen or click the buttons below to create panes.
-                Panes can be dragged around the screen. Try keyboard shortcuts: {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+1, 2, or 3.
+                Panes can be dragged around the screen. Try keyboard shortcuts: {navigator.userAgent.includes('Mac') ? '⌘' : 'Ctrl'}+1, 2, or 3. Press Escape to close the active pane.
               </p>
               <div className="flex gap-3">
                 <Button onClick={() => handleAddPane('counter', 'Counter')}>

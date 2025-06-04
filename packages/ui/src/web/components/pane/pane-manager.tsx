@@ -25,7 +25,27 @@ export function PaneManager({
     return [...panes].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
   }, [panes])
 
-  console.log('PaneManager rendering with panes:', sortedPanes)
+
+  // Handle Escape key to close active pane
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && sortedPanes.length > 0) {
+        // Find the active pane (highest z-index that's active)
+        const activePanes = sortedPanes.filter(p => p.isActive)
+        const topPane = activePanes.length > 0 
+          ? activePanes[activePanes.length - 1]
+          : sortedPanes[sortedPanes.length - 1]
+        
+        if (topPane && topPane.dismissable !== false && onPaneClose) {
+          e.preventDefault()
+          onPaneClose(topPane.id)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [sortedPanes, onPaneClose])
 
   return (
     <PanePortal>

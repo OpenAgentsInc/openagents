@@ -85,7 +85,6 @@ export const Pane = React.forwardRef<HTMLDivElement, PaneProps>(
       return null // Or render a minimized version
     }
 
-    console.log('Rendering pane:', { id, position, size, zIndex })
 
     return (
       <div
