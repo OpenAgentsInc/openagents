@@ -28,7 +28,7 @@ fi
 
 # Run tests
 echo "🔍 Running tests..."
-if ! pnpm test --run; then
+if ! pnpm vitest run; then
     echo "❌ Tests failed. Fix failing tests before pushing."
     exit 1
 fi
