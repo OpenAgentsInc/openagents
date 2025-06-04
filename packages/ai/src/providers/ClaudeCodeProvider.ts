@@ -1,8 +1,8 @@
-import { Effect, Layer } from "effect"
 import { NodeCommandExecutor } from "@effect/platform-node"
+import { Effect, Layer } from "effect"
 import { AiService } from "../AiService.js"
-import { ClaudeCodeClient, ClaudeCodeClientLive } from "./ClaudeCodeClient.js"
 import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../config/ClaudeCodeConfig.js"
+import { ClaudeCodeClient, ClaudeCodeClientLive } from "./ClaudeCodeClient.js"
 
 /**
  * Claude Code provider for AI Service
@@ -10,15 +10,14 @@ import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../config/ClaudeCodeC
  */
 export const ClaudeCodeProviderLive = Layer.effect(
   AiService,
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     const claude = yield* ClaudeCodeClient
 
     return {
-      hello: (name: string) =>
-        Effect.succeed(`Hello ${name} from Claude Code!`),
+      hello: (name: string) => Effect.succeed(`Hello ${name} from Claude Code!`),
 
       complete: (prompt: string) =>
-        Effect.gen(function* () {
+        Effect.gen(function*() {
           // Check availability first
           const isAvailable = yield* claude.checkAvailability().pipe(
             Effect.catchTag("ClaudeCodeNotFoundError", () => Effect.succeed(false))

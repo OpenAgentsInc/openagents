@@ -1,6 +1,6 @@
-import { Context, Effect, Layer, Stream, Chunk, Fiber } from "effect"
-import { CommandExecutor, Command } from "@effect/platform"
+import { Command, CommandExecutor } from "@effect/platform"
 import { Schema } from "@effect/schema"
+import { Chunk, Context, Effect, Fiber, Layer, Stream } from "effect"
 import { ClaudeCodeConfig } from "../config/ClaudeCodeConfig.js"
 import {
   ClaudeCodeExecutionError,
@@ -66,7 +66,11 @@ export interface ClaudeCodeClient {
   readonly prompt: (
     text: string,
     options?: PromptOptions
-  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError, never>
+  ) => Effect.Effect<
+    ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
+    ClaudeCodeExecutionError | ClaudeCodeParseError,
+    never
+  >
 
   /**
    * Continue a conversation with a session ID
@@ -75,7 +79,11 @@ export interface ClaudeCodeClient {
     sessionId: string,
     prompt: string,
     options?: PromptOptions
-  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError | ClaudeCodeSessionError, never>
+  ) => Effect.Effect<
+    ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
+    ClaudeCodeExecutionError | ClaudeCodeParseError | ClaudeCodeSessionError,
+    never
+  >
 
   /**
    * Resume the most recent conversation
@@ -83,7 +91,11 @@ export interface ClaudeCodeClient {
   readonly continueRecent: (
     prompt: string,
     options?: PromptOptions
-  ) => Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError, never>
+  ) => Effect.Effect<
+    ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
+    ClaudeCodeExecutionError | ClaudeCodeParseError,
+    never
+  >
 
   /**
    * Stream a prompt response
@@ -175,7 +187,7 @@ const parseOutput = (
   // Parse JSON output
   return Effect.try({
     try: () => {
-      const lines = output.trim().split('\n')
+      const lines = output.trim().split("\n")
       // Handle streaming JSON by taking the last complete JSON object
       for (let i = lines.length - 1; i >= 0; i--) {
         try {
@@ -187,11 +199,12 @@ const parseOutput = (
       }
       throw new Error("No valid JSON found in output")
     },
-    catch: (error) => new ClaudeCodeParseError({
-      output,
-      format,
-      cause: error
-    })
+    catch: (error) =>
+      new ClaudeCodeParseError({
+        output,
+        format,
+        cause: error
+      })
   })
 }
 
@@ -201,7 +214,7 @@ const parseOutput = (
  */
 export const ClaudeCodeClientLive = Layer.effect(
   ClaudeCodeClient,
-  Effect.gen(function* (_) {
+  Effect.gen(function*(_) {
     const config = yield* _(ClaudeCodeConfig)
     const executor = yield* _(CommandExecutor)
 
@@ -209,7 +222,7 @@ export const ClaudeCodeClientLive = Layer.effect(
       args: Array<string>,
       timeout?: number
     ) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const command = Command.make(config.cliPath ?? "claude", ...args)
         const process = yield* executor.start(command)
 
@@ -238,35 +251,39 @@ export const ClaudeCodeClientLive = Layer.effect(
             Effect.map((chunks: Chunk.Chunk<string>) => Chunk.toReadonlyArray(chunks).join(""))
           )
 
-          return yield* Effect.fail(new ClaudeCodeExecutionError({
-            command: `${config.cliPath} ${args.join(" ")}`,
-            exitCode,
-            stderr
-          }))
+          return yield* Effect.fail(
+            new ClaudeCodeExecutionError({
+              command: `${config.cliPath} ${args.join(" ")}`,
+              exitCode,
+              stderr
+            })
+          )
         }
 
         return output
       }).pipe(
-        Effect.mapError(error =>
+        Effect.mapError((error) =>
           error._tag === "ClaudeCodeExecutionError"
             ? error
             : new ClaudeCodeExecutionError({
-                command: `${config.cliPath} ${args.join(" ")}`,
-                exitCode: -1,
-                stderr: String(error)
-              })
+              command: `${config.cliPath} ${args.join(" ")}`,
+              exitCode: -1,
+              stderr: String(error)
+            })
         )
       )
 
     const checkAvailability = () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const command = Command.make(config.cliPath ?? "claude", "--version")
         const process = yield* executor.start(command).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new ClaudeCodeNotFoundError({
-              message: `Claude CLI not found at: ${config.cliPath}`,
-              cause: error
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new ClaudeCodeNotFoundError({
+                message: `Claude CLI not found at: ${config.cliPath}`,
+                cause: error
+              })
+            )
           )
         )
         const exitCode = yield* process.exitCode
@@ -274,7 +291,7 @@ export const ClaudeCodeClientLive = Layer.effect(
       })
 
     const prompt = (text: string, options?: PromptOptions) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const args = buildArgs(config, text, options)
         const output = yield* executeCommand(args, options?.timeout)
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
@@ -282,17 +299,20 @@ export const ClaudeCodeClientLive = Layer.effect(
       })
 
     const continueSession = (sessionId: string, text: string, options?: PromptOptions) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const args = buildArgs(config, text, options, sessionId)
         const output = yield* executeCommand(args, options?.timeout).pipe(
           Effect.catchIf(
-            (error): error is ClaudeCodeExecutionError => 
-              error._tag === "ClaudeCodeExecutionError" && 
+            (error): error is ClaudeCodeExecutionError =>
+              error._tag === "ClaudeCodeExecutionError" &&
               (error.stderr.includes("session") || error.stderr.includes("resume")),
-            () => Effect.fail(new ClaudeCodeSessionError({
-              sessionId,
-              message: "Invalid or expired session"
-            }))
+            () =>
+              Effect.fail(
+                new ClaudeCodeSessionError({
+                  sessionId,
+                  message: "Invalid or expired session"
+                })
+              )
           )
         )
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
@@ -300,40 +320,47 @@ export const ClaudeCodeClientLive = Layer.effect(
       })
 
     const continueRecent = (text: string, options?: PromptOptions) =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const args = ["--continue", ...buildArgs(config, text, options).slice(2)] // Skip --print and prompt
         const output = yield* executeCommand(args, options?.timeout)
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
         return yield* parseOutput(output, format)
       })
 
-    const streamPrompt = (text: string, options?: PromptOptions): Stream.Stream<string, ClaudeCodeExecutionError, never> =>
+    const streamPrompt = (
+      text: string,
+      options?: PromptOptions
+    ): Stream.Stream<string, ClaudeCodeExecutionError, never> =>
       Stream.unwrapScoped(
-        Effect.gen(function* () {
+        Effect.gen(function*() {
           const args = buildArgs(config, text, { ...options, outputFormat: "json_stream" })
           const command = Command.make(config.cliPath ?? "claude", ...args)
           const process = yield* executor.start(command).pipe(
-            Effect.mapError(error => new ClaudeCodeExecutionError({
-              command: `${config.cliPath} ${args.join(" ")}`,
-              exitCode: -1,
-              stderr: `Failed to start process: ${error}`
-            }))
+            Effect.mapError((error) =>
+              new ClaudeCodeExecutionError({
+                command: `${config.cliPath} ${args.join(" ")}`,
+                exitCode: -1,
+                stderr: `Failed to start process: ${error}`
+              })
+            )
           )
 
           return process.stdout.pipe(
             Stream.decodeText(),
             Stream.splitLines,
-            Stream.filter(line => line.trim().length > 0),
+            Stream.filter((line) => line.trim().length > 0),
             Stream.mapEffect((line: string) =>
               Effect.try(() => {
                 const parsed = JSON.parse(line)
                 return parsed.content || ""
               }).pipe(
-                Effect.mapError(() => new ClaudeCodeExecutionError({
-                  command: `${config.cliPath} ${args.join(" ")}`,
-                  exitCode: -1,
-                  stderr: `Failed to parse streaming output: ${line}`
-                }))
+                Effect.mapError(() =>
+                  new ClaudeCodeExecutionError({
+                    command: `${config.cliPath} ${args.join(" ")}`,
+                    exitCode: -1,
+                    stderr: `Failed to parse streaming output: ${line}`
+                  })
+                )
               )
             )
           )

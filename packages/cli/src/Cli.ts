@@ -1,9 +1,9 @@
 import { Args, Command, Options } from "@effect/cli"
-import { TodoId } from "@openagentsinc/domain/TodosApi"
-import { Effect, Console } from "effect"
 import { NodeCommandExecutor } from "@effect/platform-node"
-import { TodosClient } from "./TodosClient.js"
 import * as Ai from "@openagentsinc/ai"
+import { TodoId } from "@openagentsinc/domain/TodosApi"
+import { Console, Effect } from "effect"
+import { TodosClient } from "./TodosClient.js"
 
 const todoArg = Args.text({ name: "todo" }).pipe(
   Args.withDescription("The message associated with a todo")
@@ -45,27 +45,29 @@ const promptArg = Args.text({ name: "prompt" }).pipe(
 const aiPrompt = Command.make("prompt", { prompt: promptArg }).pipe(
   Command.withDescription("Send a prompt to Claude Code"),
   Command.withHandler(({ prompt }) =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       yield* Console.log("🤖 Sending prompt to Claude Code...")
-      
+
       const ai = yield* Ai.AiService
       const response = yield* ai.complete(prompt)
-      
+
       yield* Console.log("\n📝 Response:")
       yield* Console.log(response.content)
       yield* Console.log(`\n📊 Model: ${response.model}`)
-      
+
       if (response.usage.totalTokens > 0) {
-        yield* Console.log(`📈 Tokens: ${response.usage.totalTokens} (input: ${response.usage.promptTokens}, output: ${response.usage.completionTokens})`)
+        yield* Console.log(
+          `📈 Tokens: ${response.usage.totalTokens} (input: ${response.usage.promptTokens}, output: ${response.usage.completionTokens})`
+        )
       }
-      
+
       if ("sessionId" in response && response.sessionId) {
         yield* Console.log(`🔗 Session ID: ${response.sessionId}`)
       }
     }).pipe(
       Effect.provide(Ai.ClaudeCodeProviderLive),
       Effect.catchAll((error) =>
-        Effect.gen(function* () {
+        Effect.gen(function*() {
           yield* Console.error(`❌ Error: ${error}`)
           yield* Effect.fail(error)
         })
@@ -87,41 +89,43 @@ const systemPromptOption = Options.text("system").pipe(
 const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOption, system: systemPromptOption }).pipe(
   Command.withDescription("Have a conversation with Claude Code"),
   Command.withHandler(({ prompt, session, system }) =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       yield* Console.log("💬 Starting conversation with Claude Code...")
-      
+
       const claudeClient = yield* Ai.ClaudeCodeClient
-      
+
       // Use session if provided, otherwise start new conversation
       const response = yield* (
         session
           ? claudeClient.continueSession(session, prompt, { systemPrompt: system })
           : claudeClient.prompt(prompt, { systemPrompt: system })
       )
-      
+
       if ("content" in response) {
         yield* Console.log("\n📝 Response:")
         yield* Console.log(response.content)
-        
+
         if ("session_id" in response && response.session_id) {
           yield* Console.log(`\n🔗 Session ID: ${response.session_id}`)
           yield* Console.log("💡 Use --session flag with this ID to continue the conversation")
         }
       }
-      
+
       if ("model" in response) {
         yield* Console.log(`\n📊 Model: ${response.model}`)
       }
-      
+
       if ("usage" in response && response.usage) {
-        yield* Console.log(`📈 Tokens: ${response.usage.total_tokens} (input: ${response.usage.input_tokens}, output: ${response.usage.output_tokens})`)
+        yield* Console.log(
+          `📈 Tokens: ${response.usage.total_tokens} (input: ${response.usage.input_tokens}, output: ${response.usage.output_tokens})`
+        )
       }
     }).pipe(
       Effect.provide(Ai.ClaudeCodeClientLive),
       Effect.provide(Ai.ClaudeCodeConfigDefault),
       Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
-        Effect.gen(function* () {
+        Effect.gen(function*() {
           yield* Console.error(`❌ Error: ${JSON.stringify(error, null, 2)}`)
           yield* Effect.fail(error)
         })
@@ -133,12 +137,12 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
 const aiCheck = Command.make("check").pipe(
   Command.withDescription("Check if Claude Code CLI is available"),
   Command.withHandler(() =>
-    Effect.gen(function* () {
+    Effect.gen(function*() {
       yield* Console.log("🔍 Checking Claude Code availability...")
-      
+
       const claudeClient = yield* Ai.ClaudeCodeClient
       const isAvailable = yield* claudeClient.checkAvailability()
-      
+
       if (isAvailable) {
         yield* Console.log("✅ Claude Code CLI is available!")
         yield* Console.log("💡 You can now use 'ai prompt' and 'ai chat' commands")
@@ -152,7 +156,7 @@ const aiCheck = Command.make("check").pipe(
       Effect.provide(Ai.ClaudeCodeConfigDefault),
       Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
-        Effect.gen(function* () {
+        Effect.gen(function*() {
           yield* Console.error(`❌ Error checking Claude Code: ${error}`)
           yield* Effect.fail(error)
         })

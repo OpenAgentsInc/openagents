@@ -1,15 +1,7 @@
-import { Effect, Layer, Exit } from "effect"
+import { CommandExecutor } from "@effect/platform"
+import { Effect, Exit, Layer } from "effect"
 import { describe, expect, it, vi } from "vitest"
-import { CommandExecutor, Command } from "@effect/platform"
-import { 
-  ClaudeCodeClient, 
-  ClaudeCodeClientLive,
-  ClaudeCodeConfig,
-  ClaudeCodeConfigDefault,
-  ClaudeCodeExecutionError,
-  ClaudeCodeNotFoundError,
-  ClaudeCodeParseError
-} from "../src/index.js"
+import { ClaudeCodeClient, ClaudeCodeClientLive, ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../src/index.js"
 
 // Mock CommandExecutor for testing
 const mockExecutor = {
@@ -21,7 +13,7 @@ const MockCommandExecutorLayer = Layer.succeed(CommandExecutor, mockExecutor as 
 describe("ClaudeCodeClient", () => {
   describe("checkAvailability", () => {
     it("should return true when claude CLI is available", () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Mock successful version check
         mockExecutor.start.mockResolvedValueOnce({
           exitCode: Effect.succeed(0),
@@ -47,7 +39,7 @@ describe("ClaudeCodeClient", () => {
       ))
 
     it("should return false when claude CLI is not found", () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Mock command not found
         mockExecutor.start.mockRejectedValueOnce(new Error("command not found"))
 
@@ -69,7 +61,7 @@ describe("ClaudeCodeClient", () => {
 
   describe("prompt", () => {
     it("should execute a prompt and parse JSON response", () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const mockResponse = {
           content: "Hello from Claude!",
           model: "claude-3-opus-20240229",
@@ -106,7 +98,7 @@ describe("ClaudeCodeClient", () => {
       ))
 
     it("should handle text format response", () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const mockResponse = "Hello from Claude!"
 
         // Mock successful command execution
@@ -120,28 +112,31 @@ describe("ClaudeCodeClient", () => {
           stderr: { pipe: () => Effect.succeed([]) }
         })
 
-        const config = Layer.succeed(ClaudeCodeConfig, {
+        const textConfig = Layer.succeed(ClaudeCodeConfig, {
           outputFormat: "text",
           cliPath: "claude"
         })
 
-        const client = yield* ClaudeCodeClient
-        const result = yield* client.prompt("Say hello")
+        const program = Effect.gen(function*() {
+          const client = yield* ClaudeCodeClient
+          const result = yield* client.prompt("Say hello")
 
-        expect(result).toMatchObject({
-          content: "Hello from Claude!"
+          expect(result).toMatchObject({
+            content: "Hello from Claude!"
+          })
         })
-      }).pipe(
-        Effect.provide(ClaudeCodeClientLive),
-        Effect.provide(config),
-        Effect.provide(MockCommandExecutorLayer),
-        Effect.runPromise
-      ))
+
+        yield* program.pipe(
+          Effect.provide(ClaudeCodeClientLive),
+          Effect.provide(textConfig),
+          Effect.provide(MockCommandExecutorLayer)
+        )
+      }).pipe(Effect.runPromise))
   })
 
   describe("error handling", () => {
     it("should handle command execution errors", () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Mock command failure
         mockExecutor.start.mockResolvedValueOnce({
           exitCode: Effect.succeed(1),
@@ -170,7 +165,7 @@ describe("ClaudeCodeClient", () => {
       ))
 
     it("should handle JSON parse errors", () =>
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         // Mock successful command but invalid JSON
         mockExecutor.start.mockResolvedValueOnce({
           exitCode: Effect.succeed(0),

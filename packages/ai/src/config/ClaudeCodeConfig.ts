@@ -1,5 +1,5 @@
-import { Context, Layer } from "effect"
 import { Schema } from "@effect/schema"
+import { Context, Layer } from "effect"
 
 /**
  * Output format for Claude Code responses
@@ -14,22 +14,22 @@ export type OutputFormat = "text" | "json" | "json_stream"
 export const ClaudeCodeConfigSchema = Schema.Struct({
   /** Model to use (defaults to claude-3-opus-20240229) */
   model: Schema.optional(Schema.String),
-  
+
   /** Custom system prompt to prepend */
   systemPrompt: Schema.optional(Schema.String),
-  
+
   /** Additional system prompt to append */
   appendSystemPrompt: Schema.optional(Schema.String),
-  
+
   /** Output format preference */
   outputFormat: Schema.optional(Schema.Literal("text", "json", "json_stream")),
-  
+
   /** Path to claude CLI executable (defaults to 'claude' in PATH) */
   cliPath: Schema.optional(Schema.String),
-  
+
   /** Allowed MCP tools (empty array means all allowed) */
   allowedTools: Schema.optional(Schema.Array(Schema.String)),
-  
+
   /** Default timeout for commands in milliseconds */
   defaultTimeout: Schema.optional(Schema.Number)
 })
