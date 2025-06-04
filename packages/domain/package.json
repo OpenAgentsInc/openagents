@@ -1,12 +1,12 @@
 {
-  "name": "@template/domain",
+  "name": "@openagentsinc/domain",
   "version": "0.0.0",
   "type": "module",
-  "license": "MIT",
+  "license": "CC0-1.0",
   "description": "The domain template",
   "repository": {
     "type": "git",
-    "url": "<PLACEHOLDER>",
+    "url": "https://github.com/OpenAgentsInc/openagents",
     "directory": "packages/domain"
   },
   "publishConfig": {
@@ -24,9 +24,9 @@
     "coverage": "vitest --coverage"
   },
   "dependencies": {
-    "@effect/platform": "latest",
-    "@effect/sql": "latest",
-    "effect": "latest"
+    "@effect/platform": "0.84.6",
+    "@effect/sql": "0.37.6",
+    "effect": "3.16.3"
   },
   "effect": {
     "generateExports": {

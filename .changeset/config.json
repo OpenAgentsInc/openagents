@@ -3,7 +3,7 @@
   "changelog": [
     "@changesets/changelog-github",
     {
-      "repo": "<PLACEHOLDER>"
+      "repo": "OpenAgentsInc/openagents"
     }
   ],
   "commit": false,

@@ -1,4 +1,4 @@
-import { Todo, TodoId, TodoNotFound } from "@template/domain/TodosApi"
+import { Todo, TodoId, TodoNotFound } from "@openagentsinc/domain/TodosApi"
 import { Effect, HashMap, Ref } from "effect"
 
 export class TodosRepository extends Effect.Service<TodosRepository>()("api/TodosRepository", {
@@ -9,7 +9,7 @@ export class TodosRepository extends Effect.Service<TodosRepository>()("api/Todo
       Effect.map((todos) => Array.from(HashMap.values(todos)))
     )
 
-    function getById(id: number): Effect.Effect<Todo, TodoNotFound> {
+    function getById(id: TodoId): Effect.Effect<Todo, TodoNotFound> {
       return Ref.get(todos).pipe(
         Effect.flatMap(HashMap.get(id)),
         Effect.catchTag("NoSuchElementException", () => new TodoNotFound({ id }))
@@ -18,20 +18,20 @@ export class TodosRepository extends Effect.Service<TodosRepository>()("api/Todo
 
     function create(text: string): Effect.Effect<Todo> {
       return Ref.modify(todos, (map) => {
-        const id = TodoId.make(HashMap.reduce(map, 0, (max, todo) => todo.id > max ? todo.id : max))
+        const id = TodoId.make(HashMap.reduce(map, 0, (max, todo) => todo.id > max ? todo.id : max) + 1)
         const todo = new Todo({ id, text, done: false })
         return [todo, HashMap.set(map, id, todo)]
       })
     }
 
-    function complete(id: number): Effect.Effect<Todo, TodoNotFound> {
+    function complete(id: TodoId): Effect.Effect<Todo, TodoNotFound> {
       return getById(id).pipe(
         Effect.map((todo) => new Todo({ ...todo, done: true })),
         Effect.tap((todo) => Ref.update(todos, HashMap.set(todo.id, todo)))
       )
     }
 
-    function remove(id: number): Effect.Effect<void, TodoNotFound> {
+    function remove(id: TodoId): Effect.Effect<void, TodoNotFound> {
       return getById(id).pipe(
         Effect.flatMap((todo) => Ref.update(todos, HashMap.remove(todo.id)))
       )
