@@ -1,5 +1,5 @@
-
 export * as pane from "./core/types/pane.js"
-
+export * as paneMenu from "./core/types/pane-menu.js"
 
 export * as cn from "./core/utils/cn.js"
+export * as os from "./core/utils/os.js"

@@ -114,6 +114,11 @@ Each package builds in this order:
 - Define services with proper interfaces for testability
 - Use `Schema` for runtime validation and type generation
 
+## Important Notes
+
+- **Commander Repository**: The Commander repository is located at `/Users/christopherdavid/code/commander` - do not clone it
+- **Development Servers**: Never start development servers with `pnpm dev` or similar commands - the user will handle this
+
 ## Common Development Tasks
 
 ### Adding New API Endpoints
