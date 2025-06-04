@@ -1,1 +1,3 @@
-/* This file intentionally left mostly empty - styles come from @openagentsinc/ui */
+/* Tell Tailwind CSS v4 to scan the UI package files */
+@import "tailwindcss";
+@source "../../../packages/ui/src/**/*.{js,ts,jsx,tsx}";
