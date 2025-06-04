@@ -35,7 +35,10 @@ export const makeClaudeCodeClient = (
   executor: CommandExecutor.CommandExecutor
 ): ClaudeCodeClientType => {
   const executeCommand = (args: Array<string>, _timeout?: number) => {
-    const command = Command.make(config.cliPath ?? "claude", ...args)
+    // Build the full command as a shell command
+    const fullCommand = `${config.cliPath ?? "claude"} ${args.join(" ")}`
+    const command = Command.make("sh", "-c", fullCommand)
+    console.log("Executing shell command:", fullCommand)
 
     return Effect.gen(function*() {
       const process = yield* executor.start(command)
@@ -47,6 +50,9 @@ export const makeClaudeCodeClient = (
           Stream.runCollect,
           Effect.map((chunks: Chunk.Chunk<string>) => Chunk.toReadonlyArray(chunks).join(""))
         )
+
+        console.error("Command failed with exit code:", exitCode)
+        console.error("STDERR:", stderr)
 
         return yield* Effect.fail(
           new ClaudeCodeExecutionError({
@@ -63,6 +69,7 @@ export const makeClaudeCodeClient = (
         Effect.map((chunks: Chunk.Chunk<string>) => Chunk.toReadonlyArray(chunks).join(""))
       )
 
+      console.log("Command succeeded, output length:", output.length)
       return output
     }).pipe(
       Effect.mapError((error) => {
@@ -113,12 +120,16 @@ export const makeClaudeCodeClient = (
   return {
     prompt: (text, options) =>
       Effect.gen(function*() {
-        const args = ["--print", text]
+        const args = ["--print", `"${text}"`]
         if (options?.outputFormat) args.push("--output-format", options.outputFormat)
 
         const output = yield* executeCommand(args, options?.timeout)
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
-        return yield* parseOutput(output, format)
+        console.log("Got output, parsing as format:", format)
+        console.log("Raw output:", output)
+        const parsed = yield* parseOutput(output, format)
+        console.log("Parsed result:", parsed)
+        return parsed
       }) as Effect.Effect<
         ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
         ClaudeCodeExecutionError | ClaudeCodeParseError,
@@ -127,7 +138,7 @@ export const makeClaudeCodeClient = (
 
     continueSession: (sessionId, prompt, options) =>
       Effect.gen(function*() {
-        const args = ["--resume", sessionId, "--print", prompt]
+        const args = ["--resume", sessionId, "--print", `"${prompt}"`]
         if (options?.outputFormat) args.push("--output-format", options.outputFormat)
 
         const output = yield* executeCommand(args, options?.timeout)
@@ -141,7 +152,7 @@ export const makeClaudeCodeClient = (
 
     continueRecent: (prompt, options) =>
       Effect.gen(function*() {
-        const args = ["--continue", "--print", prompt]
+        const args = ["--continue", "--print", `"${prompt}"`]
         if (options?.outputFormat) args.push("--output-format", options.outputFormat)
 
         const output = yield* executeCommand(args, options?.timeout)
@@ -156,7 +167,7 @@ export const makeClaudeCodeClient = (
     streamPrompt: (text, _options) =>
       Stream.unwrapScoped(
         Effect.gen(function*() {
-          const args = ["--print", text, "--output-format", "json_stream"]
+          const args = ["--print", `"${text}"`, "--output-format", "json_stream"]
           const command = Command.make(config.cliPath ?? "claude", ...args)
           const process = yield* executor.start(command)
 
