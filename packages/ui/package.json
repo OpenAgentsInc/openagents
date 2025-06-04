@@ -86,6 +86,7 @@
     },
     "./web/styles/global.css": "./src/web/styles/global.css",
     "./web/styles/fonts.css": "./src/web/styles/fonts.css",
+    "./assets/fonts/*": "./src/assets/fonts/*",
     "./core/types/pane": {
       "types": "./src/core/types/pane.ts",
       "import": "./src/core/types/pane.ts"

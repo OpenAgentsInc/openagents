@@ -2,44 +2,83 @@
 @import "./fonts.css";
 
 @theme {
-  --font-family-sans: var(--font-berkeley);
-  --font-family-mono: var(--font-berkeley);
+  /* Font configuration */
+  --font-sans: "Berkeley Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, "Ubuntu Mono", system-ui, sans-serif;
+  --font-mono: "Berkeley Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, "Ubuntu Mono", monospace;
 
-  /* Zero border radius design */
-  --radius: 0rem;
+  /* Colors reference CSS variables */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-  /* Colors using OKLCH color space */
-  --color-background: oklch(0.1 0 0);
-  --color-foreground: oklch(0.95 0 0);
-  
-  --color-card: oklch(0.1 0 0);
-  --color-card-foreground: oklch(0.95 0 0);
-  
-  --color-popover: oklch(0.1 0 0);
-  --color-popover-foreground: oklch(0.95 0 0);
-  
-  --color-primary: oklch(0.95 0 0);
-  --color-primary-foreground: oklch(0.12 0 0);
-  
-  --color-secondary: oklch(0.2 0 0);
-  --color-secondary-foreground: oklch(0.95 0 0);
-  
-  --color-muted: oklch(0.2 0 0);
-  --color-muted-foreground: oklch(0.7 0 0);
-  
-  --color-accent: oklch(0.2 0 0);
-  --color-accent-foreground: oklch(0.95 0 0);
-  
-  --color-destructive: oklch(0.5 0.5 0);
-  --color-destructive-foreground: oklch(0.95 0 0);
-  
-  --color-border: oklch(0.2 0 0);
-  --color-input: oklch(0.2 0 0);
-  --color-ring: oklch(0.95 0 0);
+  /* Border radius */
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+}
 
-  /* Light mode (unused but defined for compatibility) */
-  --color-background-light: oklch(1 0 0);
-  --color-foreground-light: oklch(0.12 0 0);
+@layer base {
+  :root {
+    --background: oklch(0.9 0 0);
+    --foreground: oklch(0.1 0 0);
+    --card: oklch(0.9 0 0);
+    --card-foreground: oklch(0.1 0 0);
+    --popover: oklch(0.9 0 0);
+    --popover-foreground: oklch(0.1 0 0);
+    --primary: oklch(0.1 0 0);
+    --primary-foreground: oklch(0.9 0 0);
+    --secondary: oklch(0.9 0 0);
+    --secondary-foreground: oklch(0.1 0 0);
+    --muted: oklch(0.9 0 0);
+    --muted-foreground: oklch(0.1 0 0);
+    --accent: oklch(0.9 0 0);
+    --accent-foreground: oklch(0.1 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --destructive-foreground: oklch(0.577 0.245 27.325);
+    --border: oklch(0.1 0 0);
+    --input: oklch(0.1 0 0);
+    --ring: oklch(0.1 0 0);
+    --radius: 0rem;
+  }
+
+  .dark {
+    --background: oklch(0.1 0 0);
+    --foreground: oklch(0.9 0 0);
+    --card: oklch(0.1 0 0);
+    --card-foreground: oklch(0.9 0 0);
+    --popover: oklch(0.1 0 0);
+    --popover-foreground: oklch(0.9 0 0);
+    --primary: oklch(0.9 0 0);
+    --primary-foreground: oklch(0.1 0 0);
+    --secondary: oklch(0.1 0 0);
+    --secondary-foreground: oklch(0.9 0 0);
+    --muted: oklch(0.1 0 0);
+    --muted-foreground: oklch(0.75 0 0);
+    --accent: oklch(0.1 0 0);
+    --accent-foreground: oklch(0.9 0 0);
+    --destructive: oklch(0.396 0.141 25.723);
+    --destructive-foreground: oklch(0.637 0.237 25.331);
+    --border: oklch(0.9 0 0);
+    --input: oklch(0.9 0 0);
+    --ring: oklch(0.9 0 0);
+  }
 }
 
 @layer base {
@@ -48,7 +87,7 @@
   }
   
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }

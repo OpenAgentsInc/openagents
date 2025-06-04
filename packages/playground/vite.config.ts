@@ -10,5 +10,11 @@ export default defineConfig({
     alias: {
       '@openagentsinc/ui': path.resolve(__dirname, '../ui/src')
     }
+  },
+  server: {
+    fs: {
+      // Allow serving files from parent directory
+      allow: ['..']
+    }
   }
 })
