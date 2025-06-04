@@ -1,43 +1,43 @@
 // Types for Pane dropdown menu system
 
 export interface PaneDropdownItemAction {
-  label: string;
-  action: (event?: React.MouseEvent) => void;
-  disabled?: boolean;
-  icon?: React.ReactNode;
+  label: string
+  action: (event?: React.MouseEvent) => void
+  disabled?: boolean
+  icon?: React.ReactNode
 }
 
 export interface PaneDropdownItemSeparator {
-  type: 'separator';
+  type: "separator"
 }
 
 export interface PaneDropdownItemLabel {
-  type: 'label';
-  label: string;
+  type: "label"
+  label: string
 }
 
 export interface PaneDropdownItemGroup {
-  type: 'group';
-  label?: string;
-  items: PaneDropdownItem[];
+  type: "group"
+  label?: string
+  items: Array<PaneDropdownItem>
 }
 
 export interface PaneDropdownItemSub {
-  type: 'submenu';
-  label: string;
-  icon?: React.ReactNode;
-  items: PaneDropdownItem[];
+  type: "submenu"
+  label: string
+  icon?: React.ReactNode
+  items: Array<PaneDropdownItem>
 }
 
-export type PaneDropdownItem = 
+export type PaneDropdownItem =
   | PaneDropdownItemAction
   | PaneDropdownItemSeparator
   | PaneDropdownItemLabel
   | PaneDropdownItemGroup
-  | PaneDropdownItemSub;
+  | PaneDropdownItemSub
 
 export interface PaneHeaderMenu {
-  id: string;
-  triggerLabel: string;
-  items: PaneDropdownItem[];
+  id: string
+  triggerLabel: string
+  items: Array<PaneDropdownItem>
 }

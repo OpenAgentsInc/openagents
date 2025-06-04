@@ -21,7 +21,7 @@ export interface Pane extends PanePosition, PaneSize {
   title: string
   isActive?: boolean
   dismissable?: boolean
-  headerMenus?: PaneHeaderMenu[]
+  headerMenus?: Array<PaneHeaderMenu>
   content?: PaneContent
   zIndex?: number
   minimized?: boolean
