@@ -2,10 +2,10 @@ import { create } from "zustand"
 import type { Pane, PaneInput } from "../../core/types/pane.js"
 
 interface PaneStore {
-  panes: Pane[]
+  panes: Array<Pane>
   activePane: string | null
   nextZIndex: number
-  
+
   // Actions
   addPane: (paneInput: PaneInput) => string
   removePane: (id: string) => void
@@ -25,8 +25,8 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
   addPane: (paneInput) => {
     const id = paneInput.id || `pane-${Date.now()}`
-    const { panes, nextZIndex } = get()
-    
+    const { nextZIndex, panes } = get()
+
     // Calculate default position if not provided
     const x = paneInput.x ?? 50 + panes.length * 20
     const y = paneInput.y ?? 50 + panes.length * 20
@@ -43,13 +43,13 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
       isActive: true,
       zIndex: nextZIndex,
       minimized: false,
-      maximized: false,
+      maximized: false
     }
 
     set({
       panes: [...panes, newPane],
       activePane: id,
-      nextZIndex: nextZIndex + 1,
+      nextZIndex: nextZIndex + 1
     })
 
     // Deactivate other panes
@@ -65,15 +65,13 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
   removePane: (id) => {
     set((state) => ({
       panes: state.panes.filter((pane) => pane.id !== id),
-      activePane: state.activePane === id ? null : state.activePane,
+      activePane: state.activePane === id ? null : state.activePane
     }))
   },
 
   updatePane: (id, updates) => {
     set((state) => ({
-      panes: state.panes.map((pane) =>
-        pane.id === id ? { ...pane, ...updates } : pane
-      ),
+      panes: state.panes.map((pane) => pane.id === id ? { ...pane, ...updates } : pane)
     }))
   },
 
@@ -86,17 +84,17 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
   },
 
   activatePane: (id) => {
-    const { panes, nextZIndex } = get()
-    
+    const { nextZIndex, panes } = get()
+
     // Deactivate all panes and activate the target one
     set({
       panes: panes.map((pane) => ({
         ...pane,
         isActive: pane.id === id,
-        zIndex: pane.id === id ? nextZIndex : pane.zIndex,
+        zIndex: pane.id === id ? nextZIndex : pane.zIndex
       })),
       activePane: id,
-      nextZIndex: nextZIndex + 1,
+      nextZIndex: nextZIndex + 1
     })
   },
 
@@ -110,5 +108,5 @@ export const usePaneStore = create<PaneStore>((set, get) => ({
 
   restorePane: (id) => {
     get().updatePane(id, { minimized: false, maximized: false })
-  },
+  }
 }))
