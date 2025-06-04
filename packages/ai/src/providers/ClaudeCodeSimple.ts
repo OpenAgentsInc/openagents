@@ -2,20 +2,17 @@ import { Command, CommandExecutor } from "@effect/platform"
 import { Schema } from "@effect/schema"
 import { Chunk, Effect, Layer, Stream } from "effect"
 import { ClaudeCodeConfig } from "../config/ClaudeCodeConfig.js"
-import { ClaudeCodeExecutionError, ClaudeCodeNotFoundError, ClaudeCodeParseError, ClaudeCodeSessionError } from "../errors/index.js"
+import type { ClaudeCodeSessionError } from "../errors/index.js"
+import { ClaudeCodeExecutionError, ClaudeCodeNotFoundError, ClaudeCodeParseError } from "../errors/index.js"
 import { ClaudeCodeClient, ClaudeCodeJsonResponse as ClaudeCodeJsonResponseSchema } from "./ClaudeCodeClient.js"
-import type { 
+import type {
   ClaudeCodeClient as ClaudeCodeClientType,
-  ClaudeCodeJsonResponse, 
+  ClaudeCodeJsonResponse,
   ClaudeCodeTextResponse
 } from "./ClaudeCodeClient.js"
 
 // Re-export types
-export type { 
-  ClaudeCodeJsonResponse, 
-  ClaudeCodeTextResponse, 
-  PromptOptions 
-} from "./ClaudeCodeClient.js"
+export type { ClaudeCodeJsonResponse, ClaudeCodeTextResponse, PromptOptions } from "./ClaudeCodeClient.js"
 
 // Re-export the service tag
 export { ClaudeCodeClient } from "./ClaudeCodeClient.js"
@@ -122,7 +119,11 @@ export const makeClaudeCodeClient = (
         const output = yield* executeCommand(args, options?.timeout)
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
         return yield* parseOutput(output, format)
-      }) as Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError, never>,
+      }) as Effect.Effect<
+        ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
+        ClaudeCodeExecutionError | ClaudeCodeParseError,
+        never
+      >,
 
     continueSession: (sessionId, prompt, options) =>
       Effect.gen(function*() {
@@ -132,7 +133,11 @@ export const makeClaudeCodeClient = (
         const output = yield* executeCommand(args, options?.timeout)
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
         return yield* parseOutput(output, format)
-      }) as Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError | ClaudeCodeSessionError, never>,
+      }) as Effect.Effect<
+        ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
+        ClaudeCodeExecutionError | ClaudeCodeParseError | ClaudeCodeSessionError,
+        never
+      >,
 
     continueRecent: (prompt, options) =>
       Effect.gen(function*() {
@@ -142,7 +147,11 @@ export const makeClaudeCodeClient = (
         const output = yield* executeCommand(args, options?.timeout)
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
         return yield* parseOutput(output, format)
-      }) as Effect.Effect<ClaudeCodeJsonResponse | ClaudeCodeTextResponse, ClaudeCodeExecutionError | ClaudeCodeParseError, never>,
+      }) as Effect.Effect<
+        ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
+        ClaudeCodeExecutionError | ClaudeCodeParseError,
+        never
+      >,
 
     streamPrompt: (text, _options) =>
       Stream.unwrapScoped(

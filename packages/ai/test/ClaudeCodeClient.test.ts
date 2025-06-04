@@ -1,8 +1,8 @@
 import { CommandExecutor } from "@effect/platform"
 import { Effect, Exit, Layer } from "effect"
 import { describe, expect, it, vi } from "vitest"
-import { ClaudeCodeClient, ClaudeCodeClientLive } from "../src/providers/ClaudeCodeSimple.js"
 import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../src/config/ClaudeCodeConfig.js"
+import { ClaudeCodeClient, ClaudeCodeClientLive } from "../src/providers/ClaudeCodeSimple.js"
 
 // Mock CommandExecutor for testing
 const mockExecutor = {

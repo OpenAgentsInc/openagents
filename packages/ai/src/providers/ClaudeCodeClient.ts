@@ -73,7 +73,9 @@ export interface ClaudeCodeClient {
     options?: PromptOptions
   ) => import("effect").Effect.Effect<
     ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
-    import("../errors/index.js").ClaudeCodeExecutionError | import("../errors/index.js").ClaudeCodeParseError | import("../errors/index.js").ClaudeCodeSessionError,
+    | import("../errors/index.js").ClaudeCodeExecutionError
+    | import("../errors/index.js").ClaudeCodeParseError
+    | import("../errors/index.js").ClaudeCodeSessionError,
     never
   >
 
@@ -100,7 +102,11 @@ export interface ClaudeCodeClient {
   /**
    * Check if Claude CLI is available
    */
-  readonly checkAvailability: () => import("effect").Effect.Effect<boolean, import("../errors/index.js").ClaudeCodeNotFoundError, never>
+  readonly checkAvailability: () => import("effect").Effect.Effect<
+    boolean,
+    import("../errors/index.js").ClaudeCodeNotFoundError,
+    never
+  >
 }
 
 /**
