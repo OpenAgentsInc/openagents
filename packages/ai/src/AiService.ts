@@ -1,19 +1,40 @@
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, Option } from "effect"
+
+/**
+ * AI completion response
+ * @since 1.0.0
+ */
+export interface AiCompletionResponse {
+  readonly content: string
+  readonly model: string
+  readonly usage: {
+    readonly promptTokens: number
+    readonly completionTokens: number
+    readonly totalTokens: number
+  }
+  readonly sessionId?: string
+}
+
+/**
+ * AI conversation options
+ * @since 1.0.0
+ */
+export interface AiConversationOptions {
+  readonly sessionId?: string
+  readonly systemPrompt?: string
+  readonly model?: string
+}
 
 /**
  * @since 1.0.0
  */
 export interface AiService {
   readonly hello: (name: string) => Effect.Effect<string>
-  readonly complete: (prompt: string) => Effect.Effect<{
-    content: string
-    model: string
-    usage: {
-      promptTokens: number
-      completionTokens: number
-      totalTokens: number
-    }
-  }>
+  readonly complete: (prompt: string) => Effect.Effect<AiCompletionResponse>
+  readonly conversation?: (
+    prompt: string,
+    options?: AiConversationOptions
+  ) => Effect.Effect<AiCompletionResponse>
 }
 
 /**
