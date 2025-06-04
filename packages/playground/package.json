@@ -19,6 +19,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@openagentsinc/ai": "workspace:^",
     "@openagentsinc/ui": "workspace:^",
     "effect": "3.16.3",
     "lucide-react": "^0.510.0",

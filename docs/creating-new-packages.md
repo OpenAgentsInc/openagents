@@ -276,7 +276,7 @@ If ESLint is configured to ignore generated `index.ts` files, your package's gen
 4. **Tests**: Write tests from the start, aim for good coverage
 5. **Documentation**: Keep README updated with usage examples
 6. **Types**: Export all public types from your package
-7. **Effect.js**: Follow Effect patterns for services and errors
+7. **Effect**: Follow Effect patterns for services and errors
 
 ## Next Steps
 

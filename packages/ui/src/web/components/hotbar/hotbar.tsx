@@ -14,9 +14,10 @@ export interface HotbarSlot {
 export interface HotbarProps {
   className?: string
   slots: HotbarSlot[]
+  disableHotkeys?: boolean
 }
 
-export const Hotbar: React.FC<HotbarProps> = ({ className, slots }) => {
+export const Hotbar: React.FC<HotbarProps> = ({ className, slots, disableHotkeys = false }) => {
   // Ensure we have 9 slots (fill with ghost items if needed)
   const fullSlots = React.useMemo(() => {
     const result: (HotbarSlot | null)[] = new Array(9).fill(null)
@@ -30,6 +31,9 @@ export const Hotbar: React.FC<HotbarProps> = ({ className, slots }) => {
 
   // Set up keyboard shortcuts
   React.useEffect(() => {
+    // Skip if hotkeys are disabled
+    if (disableHotkeys) return
+
     const handleKeyPress = (e: KeyboardEvent) => {
       // Check for modifier key (Cmd on Mac, Ctrl on others)
       const isModifierPressed = navigator.platform.includes("Mac") ? e.metaKey : e.ctrlKey
@@ -48,7 +52,7 @@ export const Hotbar: React.FC<HotbarProps> = ({ className, slots }) => {
 
     window.addEventListener("keydown", handleKeyPress)
     return () => window.removeEventListener("keydown", handleKeyPress)
-  }, [fullSlots])
+  }, [fullSlots, disableHotkeys])
 
   return (
     <div
@@ -61,7 +65,12 @@ export const Hotbar: React.FC<HotbarProps> = ({ className, slots }) => {
         const slotNumber = index + 1
         if (!slot || slot.isEnabled === false) {
           return (
-            <HotbarItem key={slotNumber} slotNumber={slotNumber} isGhost>
+            <HotbarItem 
+              key={slotNumber} 
+              slotNumber={slotNumber} 
+              isGhost
+              showShortcut={!disableHotkeys}
+            >
               <span className="h-5 w-5" />
             </HotbarItem>
           )
@@ -74,6 +83,7 @@ export const Hotbar: React.FC<HotbarProps> = ({ className, slots }) => {
             onClick={slot.onClick!}
             title={slot.title}
             isActive={slot.isActive ?? false}
+            showShortcut={!disableHotkeys}
           >
             {slot.icon}
           </HotbarItem>

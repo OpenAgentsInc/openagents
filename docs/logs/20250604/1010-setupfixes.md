@@ -2,14 +2,14 @@
 
 ## Overview
 
-This document chronicles the complete resolution of all CI/CD pipeline issues that were plaguing the OpenAgents Effect.js monorepo after initial setup. What started as a simple setup became a deep dive into fixing fundamental conflicts between tools.
+This document chronicles the complete resolution of all CI/CD pipeline issues that were plaguing the OpenAgents Effect monorepo after initial setup. What started as a simple setup became a deep dive into fixing fundamental conflicts between tools.
 
 ## The Nightmare: Persistent CI Failures
 
 ### Initial Problems Encountered
 
 1. **pnpm lockfile configuration mismatch**
-2. **Package version conflicts** 
+2. **Package version conflicts**
 3. **Module resolution failures**
 4. **TypeScript compilation errors**
 5. **ESLint configuration issues**
@@ -20,7 +20,7 @@ This document chronicles the complete resolution of all CI/CD pipeline issues th
 ## Root Cause Analysis
 
 The fundamental issue was a **three-way conflict** between:
-- **Effect.js build-utils** - Generates index.ts files with specific formatting
+- **Effect build-utils** - Generates index.ts files with specific formatting
 - **ESLint dprint rules** - Auto-formats code to different standards
 - **CI source state checks** - Detects when generated files change
 
@@ -30,14 +30,14 @@ This created an endless cycle of failures where tools fought each other.
 
 ### 1. Fixed pnpm Installation Issues
 
-**Problem**: 
+**Problem**:
 ```
 ERR_PNPM_PATCH_NOT_APPLIED  The following patches were not applied: @changesets/assemble-release-plan@6.0.5
 ```
 
 **Root Cause**: Package versions in lockfile didn't match patch requirements.
 
-**Solution**: 
+**Solution**:
 - Added version overrides to lock patched dependencies at exact versions
 - Updated @effect/vitest from non-existent 0.24.0 to actual 0.23.3
 
@@ -45,7 +45,7 @@ ERR_PNPM_PATCH_NOT_APPLIED  The following patches were not applied: @changesets/
 "pnpm": {
   "overrides": {
     "vitest": "3.2.1",
-    "@changesets/assemble-release-plan": "6.0.5", 
+    "@changesets/assemble-release-plan": "6.0.5",
     "@changesets/get-github-info": "0.6.0",
     "babel-plugin-annotate-pure-calls": "0.4.0"
   }
@@ -58,7 +58,7 @@ ERR_PNPM_PATCH_NOT_APPLIED  The following patches were not applied: @changesets/
 
 **Root Cause**: Packages tried to build in parallel before dependencies were available.
 
-**Solution**: 
+**Solution**:
 - Changed build script to sequential: domain → server/cli
 - Modified check command to build domain first
 - Removed problematic TypeScript project reference check
@@ -67,18 +67,18 @@ ERR_PNPM_PATCH_NOT_APPLIED  The following patches were not applied: @changesets/
 "build": "pnpm --filter=@openagentsinc/domain run build && pnpm --filter=@openagentsinc/server --filter=@openagentsinc/cli run build"
 ```
 
-### 3. Fixed Effect.js Service Usage Patterns
+### 3. Fixed Effect Service Usage Patterns
 
 **Problem**: CLI was using TodosClient incorrectly as static methods instead of service.
 
-**Root Cause**: Misunderstanding of Effect.js service patterns.
+**Root Cause**: Misunderstanding of Effect service patterns.
 
 **Solution**: Updated CLI to use proper service pattern:
 ```typescript
 // Before (wrong)
 TodosClient.create(todo)
 
-// After (correct)  
+// After (correct)
 TodosClient.pipe(Effect.flatMap(client => client.create(todo)))
 ```
 
@@ -99,7 +99,7 @@ TodosClient.complete(TodoId.make(id))
 
 **Root Cause**: Effect plugin not properly imported and registered.
 
-**Solution**: 
+**Solution**:
 - Imported Effect plugin properly
 - Registered it in plugins section instead of problematic extends
 - Removed `plugin:@effect/recommended` from extends
@@ -129,7 +129,7 @@ export default [
 
 **The Cycle of Hell**:
 1. Effect generates index.ts with blank lines
-2. ESLint removes blank lines  
+2. ESLint removes blank lines
 3. CI runs codegen → files change
 4. Source state check fails
 5. Repeat infinitely
@@ -148,7 +148,7 @@ export default [
 **Solution**: Created comprehensive pre-push hook that runs:
 - ESLint (formatting/linting)
 - TypeScript check (type validation)
-- Build (compilation verification)  
+- Build (compilation verification)
 - Tests (functionality verification)
 
 **Hook Installation**:
@@ -168,7 +168,7 @@ Updated all imports, dependencies, and build scripts accordingly.
 ## Lessons Learned
 
 ### 1. Tool Conflicts Are Real
-Modern JavaScript tooling can conflict in subtle ways. Effect.js build tools, ESLint, and TypeScript each have their own opinions about code formatting and structure.
+Modern JavaScript tooling can conflict in subtle ways. Effect build tools, ESLint, and TypeScript each have their own opinions about code formatting and structure.
 
 ### 2. Generated Files Need Special Handling
 Auto-generated files should be excluded from formatting tools to prevent conflicts. The source of truth should be the generator, not the formatter.
@@ -176,8 +176,8 @@ Auto-generated files should be excluded from formatting tools to prevent conflic
 ### 3. Build Order Matters in Monorepos
 TypeScript workspace packages must be built in dependency order, not parallel, to resolve cross-package imports properly.
 
-### 4. Effect.js Has Learning Curve
-Effect.js service patterns are different from traditional approaches. Understanding the proper service usage is crucial.
+### 4. Effect Has Learning Curve
+Effect service patterns are different from traditional approaches. Understanding the proper service usage is crucial.
 
 ### 5. CI/CD Requires Defensive Programming
 Adding continue-on-error for optional steps and comprehensive pre-push hooks prevents broken deployments.
@@ -189,14 +189,14 @@ Adding continue-on-error for optional steps and comprehensive pre-push hooks pre
 - Source state validation passes
 - TypeScript compilation succeeds
 - Build process works correctly
-- ESLint passes all checks  
+- ESLint passes all checks
 - Tests run successfully
 - Snapshot workflow handles missing app gracefully
 
 ### ✅ Developer Experience Improved
 - Pre-push hooks prevent broken code from reaching remote
 - Clear documentation in CLAUDE.md
-- Proper Effect.js patterns implemented
+- Proper Effect patterns implemented
 - Consistent code formatting (where it matters)
 
 ### ✅ Package Structure Finalized
@@ -212,7 +212,7 @@ Adding continue-on-error for optional steps and comprehensive pre-push hooks pre
 pnpm i
 pnpm setup-hooks
 
-# Development workflow  
+# Development workflow
 pnpm codegen
 pnpm check
 pnpm build
@@ -232,7 +232,7 @@ pnpm lint && pnpm check && pnpm build && pnpm vitest run
 
 ## Conclusion
 
-This was a masterclass in debugging modern JavaScript tooling conflicts. The persistent CI failures were caused by fundamental conflicts between Effect.js tooling and standard JavaScript ecosystem tools. The solution required understanding each tool's behavior and creating careful compromises.
+This was a masterclass in debugging modern JavaScript tooling conflicts. The persistent CI failures were caused by fundamental conflicts between Effect tooling and standard JavaScript ecosystem tools. The solution required understanding each tool's behavior and creating careful compromises.
 
 The monorepo is now bulletproof and ready for serious development work. No more CI failures, no more broken pushes, no more formatting wars.
 

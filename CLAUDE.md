@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an OpenAgents Effect.js monorepo demonstrating a Todo application using modern Effect.js patterns. The repository follows a clean architecture with these packages:
+This is an OpenAgents Effect monorepo demonstrating a Todo application using modern Effect patterns. The repository follows a clean architecture with these packages:
 
 - **`@openagentsinc/domain`** - Core business logic and API contracts
-- **`@openagentsinc/server`** - HTTP server implementation  
+- **`@openagentsinc/server`** - HTTP server implementation
 - **`@openagentsinc/cli`** - Command-line interface client
 - **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
 - **`@openagentsinc/playground`** - UI component testing playground
@@ -43,7 +43,7 @@ pnpm clean
 # Generate Effect package exports (run after adding new files)
 # IMPORTANT: Do NOT run codegen on @openagentsinc/ui package!
 pnpm --filter=@openagentsinc/domain codegen
-pnpm --filter=@openagentsinc/server codegen  
+pnpm --filter=@openagentsinc/server codegen
 pnpm --filter=@openagentsinc/cli codegen
 
 # Build individual packages
@@ -62,7 +62,7 @@ pnpm --filter=@openagentsinc/domain test
 
 ## Architecture Patterns
 
-### Effect.js Service Architecture
+### Effect Service Architecture
 - **Domain Package**: Defines API contracts using Effect Schema and HTTP API builders
 - **Server Package**: Implements services using Effect Layers for dependency injection
 - **CLI Package**: Uses generated HTTP clients from domain schemas
@@ -76,7 +76,7 @@ pnpm --filter=@openagentsinc/domain test
 ### Package Dependencies
 ```
 cli → domain (API contracts)
-server → domain (API contracts)  
+server → domain (API contracts)
 domain → (standalone)
 ui → (standalone, React components)
 playground → ui (component testing)
@@ -114,7 +114,7 @@ Each package builds in this order:
 - **Server**: Service implementations, repositories, HTTP handlers
 - **CLI**: Command definitions, HTTP clients, user interface
 
-### Effect.js Specific Notes
+### Effect Specific Notes
 - Use `Effect.gen` for readable async code composition
 - Leverage `Layer` for application wiring and dependency management
 - Define services with proper interfaces for testability
