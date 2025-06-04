@@ -10,8 +10,7 @@ const MainLive = TodosClient.Default.pipe(
   Layer.merge(NodeContext.layer)
 )
 
-const program = cli(process.argv).pipe(
-  Effect.provide(MainLive)
+cli(process.argv).pipe(
+  Effect.provide(MainLive),
+  NodeRuntime.runMain
 )
-
-NodeRuntime.runMain(program)

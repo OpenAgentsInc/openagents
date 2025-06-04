@@ -45,26 +45,28 @@ const promptArg = Args.text({ name: "prompt" }).pipe(
 const aiPrompt = Command.make("prompt", { prompt: promptArg }).pipe(
   Command.withDescription("Send a prompt to Claude Code"),
   Command.withHandler(({ prompt }) =>
-    Effect.gen(function*() {
-      yield* Console.log("🤖 Sending prompt to Claude Code...")
+    Effect.scoped(
+      Effect.gen(function*() {
+        yield* Console.log("🤖 Sending prompt to Claude Code...")
 
-      const ai = yield* Ai.AiService.AiService
-      const response = yield* ai.complete(prompt)
+        const ai = yield* Ai.AiService.AiService
+        const response = yield* ai.complete(prompt)
 
-      yield* Console.log("\n📝 Response:")
-      yield* Console.log(response.content)
-      yield* Console.log(`\n📊 Model: ${response.model}`)
+        yield* Console.log("\n📝 Response:")
+        yield* Console.log(response.content)
+        yield* Console.log(`\n📊 Model: ${response.model}`)
 
-      if (response.usage.totalTokens > 0) {
-        yield* Console.log(
-          `📈 Tokens: ${response.usage.totalTokens} (input: ${response.usage.promptTokens}, output: ${response.usage.completionTokens})`
-        )
-      }
+        if (response.usage.totalTokens > 0) {
+          yield* Console.log(
+            `📈 Tokens: ${response.usage.totalTokens} (input: ${response.usage.promptTokens}, output: ${response.usage.completionTokens})`
+          )
+        }
 
-      if ("sessionId" in response && response.sessionId) {
-        yield* Console.log(`🔗 Session ID: ${response.sessionId}`)
-      }
-    }).pipe(
+        if ("sessionId" in response && response.sessionId) {
+          yield* Console.log(`🔗 Session ID: ${response.sessionId}`)
+        }
+      })
+    ).pipe(
       Effect.provide(Ai.internal.ClaudeCodeProviderLive),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
@@ -89,38 +91,40 @@ const systemPromptOption = Options.text("system").pipe(
 const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOption, system: systemPromptOption }).pipe(
   Command.withDescription("Have a conversation with Claude Code"),
   Command.withHandler(({ prompt, session, system }) =>
-    Effect.gen(function*() {
-      yield* Console.log("💬 Starting conversation with Claude Code...")
+    Effect.scoped(
+      Effect.gen(function*() {
+        yield* Console.log("💬 Starting conversation with Claude Code...")
 
-      const claudeClient = yield* Ai.internal.ClaudeCodeClient
+        const claudeClient = yield* Ai.internal.ClaudeCodeClient
 
-      // Use session if provided, otherwise start new conversation
-      const response = yield* (
-        session
-          ? claudeClient.continueSession(session, prompt, { systemPrompt: system })
-          : claudeClient.prompt(prompt, { systemPrompt: system })
-      )
-
-      if ("content" in response) {
-        yield* Console.log("\n📝 Response:")
-        yield* Console.log(response.content)
-
-        if ("session_id" in response && response.session_id) {
-          yield* Console.log(`\n🔗 Session ID: ${response.session_id}`)
-          yield* Console.log("💡 Use --session flag with this ID to continue the conversation")
-        }
-      }
-
-      if ("model" in response) {
-        yield* Console.log(`\n📊 Model: ${response.model}`)
-      }
-
-      if ("usage" in response && response.usage) {
-        yield* Console.log(
-          `📈 Tokens: ${response.usage.total_tokens} (input: ${response.usage.input_tokens}, output: ${response.usage.output_tokens})`
+        // Use session if provided, otherwise start new conversation
+        const response = yield* (
+          session
+            ? claudeClient.continueSession(session, prompt, { systemPrompt: system })
+            : claudeClient.prompt(prompt, { systemPrompt: system })
         )
-      }
-    }).pipe(
+
+        if ("content" in response) {
+          yield* Console.log("\n📝 Response:")
+          yield* Console.log(response.content)
+
+          if ("session_id" in response && response.session_id) {
+            yield* Console.log(`\n🔗 Session ID: ${response.session_id}`)
+            yield* Console.log("💡 Use --session flag with this ID to continue the conversation")
+          }
+        }
+
+        if ("model" in response) {
+          yield* Console.log(`\n📊 Model: ${response.model}`)
+        }
+
+        if ("usage" in response && response.usage) {
+          yield* Console.log(
+            `📈 Tokens: ${response.usage.total_tokens} (input: ${response.usage.input_tokens}, output: ${response.usage.output_tokens})`
+          )
+        }
+      })
+    ).pipe(
       Effect.provide(Ai.internal.ClaudeCodeClientLive),
       Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
       Effect.provide(NodeCommandExecutor.layer),
@@ -137,21 +141,23 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
 const aiCheck = Command.make("check").pipe(
   Command.withDescription("Check if Claude Code CLI is available"),
   Command.withHandler(() =>
-    Effect.gen(function*() {
-      yield* Console.log("🔍 Checking Claude Code availability...")
+    Effect.scoped(
+      Effect.gen(function*() {
+        yield* Console.log("🔍 Checking Claude Code availability...")
 
-      const claudeClient = yield* Ai.internal.ClaudeCodeClient
-      const isAvailable = yield* claudeClient.checkAvailability()
+        const claudeClient = yield* Ai.internal.ClaudeCodeClient
+        const isAvailable = yield* claudeClient.checkAvailability()
 
-      if (isAvailable) {
-        yield* Console.log("✅ Claude Code CLI is available!")
-        yield* Console.log("💡 You can now use 'ai prompt' and 'ai chat' commands")
-      } else {
-        yield* Console.log("❌ Claude Code CLI is not available")
-        yield* Console.log("📝 Please ensure 'claude' is installed and in your PATH")
-        yield* Console.log("🔗 Visit https://claude.ai/code for installation instructions")
-      }
-    }).pipe(
+        if (isAvailable) {
+          yield* Console.log("✅ Claude Code CLI is available!")
+          yield* Console.log("💡 You can now use 'ai prompt' and 'ai chat' commands")
+        } else {
+          yield* Console.log("❌ Claude Code CLI is not available")
+          yield* Console.log("📝 Please ensure 'claude' is installed and in your PATH")
+          yield* Console.log("🔗 Visit https://claude.ai/code for installation instructions")
+        }
+      })
+    ).pipe(
       Effect.provide(Ai.internal.ClaudeCodeClientLive),
       Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
       Effect.provide(NodeCommandExecutor.layer),
