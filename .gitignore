@@ -1,7 +1,0 @@
-node_modules
-.DS_Store
-.env
-.dev.vars
-
-# Build outputs
-packages/ui/dist
