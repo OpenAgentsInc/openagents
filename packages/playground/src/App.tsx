@@ -18,11 +18,14 @@ function App() {
   const { panes, addPane, removePane, movePane, resizePane, activatePane, activePane } = usePaneStore()
 
   const handleAddPane = (type: string, title: string) => {
-    addPane({
+    console.log('Adding pane:', type, title)
+    const id = addPane({
       type,
       title,
       dismissable: true,
     })
+    console.log('Added pane with id:', id)
+    console.log('Current panes:', panes)
   }
 
   const renderPaneContent = (pane: Pane) => {
@@ -106,12 +109,16 @@ function App() {
     },
   ]
 
+  // Debug: log panes whenever they change
+  console.log('Current panes in render:', panes)
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Fixed Header */}
       <div className="fixed top-0 left-0 right-0 bg-background/80 backdrop-blur-sm border-b z-50 p-4">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-2xl font-bold font-mono">UI Component Playground</h1>
+          <p className="text-sm text-muted-foreground">Active panes: {panes.length}</p>
         </div>
       </div>
 
@@ -185,15 +192,18 @@ function App() {
         </Card>
       </div>
 
-      {/* Pane Manager */}
-      <PaneManager
-        panes={panes}
-        onPaneMove={movePane}
-        onPaneResize={resizePane}
-        onPaneClose={removePane}
-        onPaneActivate={activatePane}
-        renderPaneContent={renderPaneContent}
-      />
+      {/* Pane Manager - needs fixed positioning to contain absolute panes */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 100 }}>
+        <PaneManager
+          panes={panes}
+          onPaneMove={movePane}
+          onPaneResize={resizePane}
+          onPaneClose={removePane}
+          onPaneActivate={activatePane}
+          renderPaneContent={renderPaneContent}
+          className="pointer-events-auto"
+        />
+      </div>
 
       {/* Hotbar */}
       <Hotbar slots={hotbarSlots} />

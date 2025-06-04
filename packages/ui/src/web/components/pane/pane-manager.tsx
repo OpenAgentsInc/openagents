@@ -27,8 +27,10 @@ export function PaneManager({
     return [...panes].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
   }, [panes])
 
+  console.log('PaneManager rendering with panes:', sortedPanes)
+
   return (
-    <div className={cn("relative w-full h-full overflow-hidden", className)}>
+    <div className={cn("relative w-full h-full", className)}>
       {sortedPanes.map((pane) => (
         <Pane
           key={pane.id}

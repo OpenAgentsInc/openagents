@@ -85,12 +85,14 @@ export const Pane = React.forwardRef<HTMLDivElement, PaneProps>(
       return null // Or render a minimized version
     }
 
+    console.log('Rendering pane:', { id, position, size, zIndex })
+
     return (
       <div
         ref={ref}
         className={cn(
-          "absolute bg-background border border-border shadow-lg flex flex-col",
-          isActive && "ring-1 ring-ring",
+          "absolute bg-background border-2 border-border shadow-lg flex flex-col",
+          isActive && "ring-2 ring-ring border-primary",
           maximized && "!inset-0 !w-full !h-full",
           className
         )}
@@ -99,7 +101,7 @@ export const Pane = React.forwardRef<HTMLDivElement, PaneProps>(
           top: maximized ? 0 : position.y,
           width: maximized ? "100%" : size.width,
           height: maximized ? "100%" : size.height,
-          zIndex,
+          zIndex: zIndex || 1,
         }}
         onClick={() => onActivate?.(id)}
         {...props}
