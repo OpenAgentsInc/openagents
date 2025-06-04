@@ -150,6 +150,9 @@ importers:
       effect:
         specifier: 3.16.3
         version: 3.16.3
+      lucide-react:
+        specifier: ^0.510.0
+        version: 0.510.0(react@19.1.0)
       react:
         specifier: ^19.1.0
         version: 19.1.0

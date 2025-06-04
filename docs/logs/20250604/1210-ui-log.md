@@ -47,3 +47,20 @@ Beginning with utility functions and type definitions
 
 ### 12:30 - Starting UI Components Extraction
 Extracting Radix-based UI components from Commander
+
+### 12:35 - UI Components Progress
+- ✅ Updated Button component with Slot support
+- ✅ Added Input component
+- ✅ Added Label component  
+- ✅ Added Card component with sub-components
+
+### 12:40 - Pane System Implementation
+- ✅ Created basic Pane component with drag functionality
+- ✅ Created PaneManager for orchestrating multiple panes
+- ✅ Created pane store using zustand
+- ✅ Integrated @use-gesture/react for drag handling
+
+### 12:45 - Hotbar Implementation
+- ✅ Created HotbarItem component
+- ✅ Created Hotbar component with keyboard shortcuts (Cmd/Ctrl + 1-9)
+- ✅ Made hotbar system generic and configurable
