@@ -13,22 +13,22 @@ const todoId = Options.integer("id").pipe(
 
 const add = Command.make("add", { todo: todoArg }).pipe(
   Command.withDescription("Add a new todo"),
-  Command.withHandler(({ todo }) => TodosClient.pipe(Effect.flatMap(client => client.create(todo))))
+  Command.withHandler(({ todo }) => TodosClient.pipe(Effect.flatMap((client) => client.create(todo))))
 )
 
 const done = Command.make("done", { id: todoId }).pipe(
   Command.withDescription("Mark a todo as done"),
-  Command.withHandler(({ id }) => TodosClient.pipe(Effect.flatMap(client => client.complete(TodoId.make(id)))))
+  Command.withHandler(({ id }) => TodosClient.pipe(Effect.flatMap((client) => client.complete(TodoId.make(id)))))
 )
 
 const list = Command.make("list").pipe(
   Command.withDescription("List all todos"),
-  Command.withHandler(() => TodosClient.pipe(Effect.flatMap(client => client.list())))
+  Command.withHandler(() => TodosClient.pipe(Effect.flatMap((client) => client.list())))
 )
 
 const remove = Command.make("remove", { id: todoId }).pipe(
   Command.withDescription("Remove a todo"),
-  Command.withHandler(({ id }) => TodosClient.pipe(Effect.flatMap(client => client.remove(TodoId.make(id)))))
+  Command.withHandler(({ id }) => TodosClient.pipe(Effect.flatMap((client) => client.remove(TodoId.make(id)))))
 )
 
 const command = Command.make("todo").pipe(

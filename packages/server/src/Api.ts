@@ -1,5 +1,5 @@
 import { HttpApiBuilder } from "@effect/platform"
-import { TodosApi, TodoId } from "@openagents/domain/TodosApi"
+import { TodoId, TodosApi } from "@openagents/domain/TodosApi"
 import { Effect, Layer } from "effect"
 import { TodosRepository } from "./TodosRepository.js"
 
