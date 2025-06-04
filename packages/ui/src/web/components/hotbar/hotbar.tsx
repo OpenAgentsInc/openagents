@@ -71,9 +71,9 @@ export const Hotbar: React.FC<HotbarProps> = ({ className, slots }) => {
           <HotbarItem
             key={slotNumber}
             slotNumber={slotNumber}
-            onClick={slot.onClick}
+            onClick={slot.onClick!}
             title={slot.title}
-            isActive={slot.isActive}
+            isActive={slot.isActive ?? false}
           >
             {slot.icon}
           </HotbarItem>

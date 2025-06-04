@@ -35,6 +35,8 @@ export const Pane = React.forwardRef<HTMLDivElement, PaneProps>(
       zIndex = 0,
       minimized = false,
       maximized = false,
+      content,
+      headerMenus,
       ...props
     },
     ref

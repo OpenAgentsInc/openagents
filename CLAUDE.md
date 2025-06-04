@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an OpenAgents Effect.js monorepo demonstrating a Todo application using modern Effect.js patterns. The repository follows a clean architecture with three packages:
+This is an OpenAgents Effect.js monorepo demonstrating a Todo application using modern Effect.js patterns. The repository follows a clean architecture with these packages:
 
 - **`@openagentsinc/domain`** - Core business logic and API contracts
 - **`@openagentsinc/server`** - HTTP server implementation  
 - **`@openagentsinc/cli`** - Command-line interface client
+- **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
+- **`@openagentsinc/playground`** - UI component testing playground
 
 ## Essential Commands
 
@@ -39,12 +41,14 @@ pnpm clean
 ### Package-specific Commands
 ```bash
 # Generate Effect package exports (run after adding new files)
+# IMPORTANT: Do NOT run codegen on @openagentsinc/ui package!
 pnpm --filter=@openagentsinc/domain codegen
 pnpm --filter=@openagentsinc/server codegen  
 pnpm --filter=@openagentsinc/cli codegen
 
 # Build individual packages
 pnpm --filter=@openagentsinc/domain build
+pnpm --filter=@openagentsinc/ui build
 ```
 
 ### Testing
@@ -74,6 +78,8 @@ pnpm --filter=@openagentsinc/domain test
 cli → domain (API contracts)
 server → domain (API contracts)  
 domain → (standalone)
+ui → (standalone, React components)
+playground → ui (component testing)
 ```
 
 ## Build System
@@ -118,6 +124,19 @@ Each package builds in this order:
 
 - **Commander Repository**: The Commander repository is located at `/Users/christopherdavid/code/commander` - do not clone it
 - **Development Servers**: Never start development servers with `pnpm dev` or similar commands - the user will handle this
+
+### Critical: UI Package Codegen
+The UI package (`@openagentsinc/ui`) does NOT use Effect codegen because:
+- It contains both `.ts` and `.tsx` files (React components)
+- React components (`.tsx`) should NOT be processed by Effect codegen
+- Exports are manually managed in `packages/ui/src/web/index.ts`
+- **DO NOT** add any `effect` configuration to the UI package.json
+- The package.json should have NO `effect` field at all
+
+If you see CI errors about Effect build-utils failing on UI package:
+1. Remove any `effect` field from packages/ui/package.json
+2. Delete any generated `packages/ui/src/index.ts` file if it exists
+3. The UI package codegen script is overridden to just echo a message
 
 ## Common Development Tasks
 
