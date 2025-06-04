@@ -1,25 +1,26 @@
 import { CommandExecutor } from "@effect/platform"
 import { Effect, Exit, Layer } from "effect"
 import { describe, expect, it, vi } from "vitest"
-import { ClaudeCodeClient, ClaudeCodeClientLive, ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../src/index.js"
+import { ClaudeCodeClient, ClaudeCodeClientLive } from "../src/providers/ClaudeCodeSimple.js"
+import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../src/config/ClaudeCodeConfig.js"
 
 // Mock CommandExecutor for testing
 const mockExecutor = {
   start: vi.fn()
 }
 
-const MockCommandExecutorLayer = Layer.succeed(CommandExecutor, mockExecutor as any)
+const MockCommandExecutorLayer = Layer.succeed(CommandExecutor.CommandExecutor, mockExecutor as any)
 
 describe("ClaudeCodeClient", () => {
   describe("checkAvailability", () => {
     it("should return true when claude CLI is available", () =>
       Effect.gen(function*() {
         // Mock successful version check
-        mockExecutor.start.mockResolvedValueOnce({
+        mockExecutor.start.mockReturnValueOnce(Effect.succeed({
           exitCode: Effect.succeed(0),
           stdout: { pipe: () => Effect.succeed("") },
           stderr: { pipe: () => Effect.succeed("") }
-        })
+        }))
 
         const client = yield* ClaudeCodeClient
         const result = yield* client.checkAvailability()
@@ -41,7 +42,7 @@ describe("ClaudeCodeClient", () => {
     it("should return false when claude CLI is not found", () =>
       Effect.gen(function*() {
         // Mock command not found
-        mockExecutor.start.mockRejectedValueOnce(new Error("command not found"))
+        mockExecutor.start.mockReturnValueOnce(Effect.fail(new Error("command not found")))
 
         const client = yield* ClaudeCodeClient
         const exit = yield* Effect.exit(client.checkAvailability())

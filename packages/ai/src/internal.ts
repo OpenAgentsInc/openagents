@@ -6,8 +6,10 @@ export * from "./providers/ClaudeCodeProvider.js"
 export {
   ClaudeCodeClient,
   ClaudeCodeClientLive,
+  makeClaudeCodeClient
+} from "./providers/ClaudeCodeSimple.js"
+export type {
   ClaudeCodeJsonResponse,
   ClaudeCodeTextResponse,
-  makeClaudeCodeClient,
   PromptOptions
 } from "./providers/ClaudeCodeSimple.js"

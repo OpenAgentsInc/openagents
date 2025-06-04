@@ -48,7 +48,7 @@ const aiPrompt = Command.make("prompt", { prompt: promptArg }).pipe(
     Effect.gen(function*() {
       yield* Console.log("🤖 Sending prompt to Claude Code...")
 
-      const ai = yield* Ai.AiService
+      const ai = yield* Ai.AiService.AiService
       const response = yield* ai.complete(prompt)
 
       yield* Console.log("\n📝 Response:")
@@ -65,7 +65,7 @@ const aiPrompt = Command.make("prompt", { prompt: promptArg }).pipe(
         yield* Console.log(`🔗 Session ID: ${response.sessionId}`)
       }
     }).pipe(
-      Effect.provide(Ai.ClaudeCodeProviderLive),
+      Effect.provide(Ai.internal.ClaudeCodeProviderLive),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
           yield* Console.error(`❌ Error: ${error}`)
@@ -92,7 +92,7 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
     Effect.gen(function*() {
       yield* Console.log("💬 Starting conversation with Claude Code...")
 
-      const claudeClient = yield* Ai.ClaudeCodeClient
+      const claudeClient = yield* Ai.internal.ClaudeCodeClient
 
       // Use session if provided, otherwise start new conversation
       const response = yield* (
@@ -121,8 +121,8 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
         )
       }
     }).pipe(
-      Effect.provide(Ai.ClaudeCodeClientLive),
-      Effect.provide(Ai.ClaudeCodeConfigDefault),
+      Effect.provide(Ai.internal.ClaudeCodeClientLive),
+      Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
       Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
@@ -140,7 +140,7 @@ const aiCheck = Command.make("check").pipe(
     Effect.gen(function*() {
       yield* Console.log("🔍 Checking Claude Code availability...")
 
-      const claudeClient = yield* Ai.ClaudeCodeClient
+      const claudeClient = yield* Ai.internal.ClaudeCodeClient
       const isAvailable = yield* claudeClient.checkAvailability()
 
       if (isAvailable) {
@@ -152,8 +152,8 @@ const aiCheck = Command.make("check").pipe(
         yield* Console.log("🔗 Visit https://claude.ai/code for installation instructions")
       }
     }).pipe(
-      Effect.provide(Ai.ClaudeCodeClientLive),
-      Effect.provide(Ai.ClaudeCodeConfigDefault),
+      Effect.provide(Ai.internal.ClaudeCodeClientLive),
+      Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
       Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
