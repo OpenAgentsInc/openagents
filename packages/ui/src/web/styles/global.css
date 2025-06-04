@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --font-family-sans: "Berkeley Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, "Ubuntu Mono", system-ui, sans-serif;
+  --font-family-mono: "Berkeley Mono", ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, "Ubuntu Mono", monospace;
+
+  /* Zero border radius design */
+  --radius: 0rem;
+
+  /* Colors using OKLCH color space */
+  --color-background: oklch(0.1 0 0);
+  --color-foreground: oklch(0.95 0 0);
+  
+  --color-card: oklch(0.1 0 0);
+  --color-card-foreground: oklch(0.95 0 0);
+  
+  --color-popover: oklch(0.1 0 0);
+  --color-popover-foreground: oklch(0.95 0 0);
+  
+  --color-primary: oklch(0.95 0 0);
+  --color-primary-foreground: oklch(0.12 0 0);
+  
+  --color-secondary: oklch(0.2 0 0);
+  --color-secondary-foreground: oklch(0.95 0 0);
+  
+  --color-muted: oklch(0.2 0 0);
+  --color-muted-foreground: oklch(0.7 0 0);
+  
+  --color-accent: oklch(0.2 0 0);
+  --color-accent-foreground: oklch(0.95 0 0);
+  
+  --color-destructive: oklch(0.5 0.5 0);
+  --color-destructive-foreground: oklch(0.95 0 0);
+  
+  --color-border: oklch(0.2 0 0);
+  --color-input: oklch(0.2 0 0);
+  --color-ring: oklch(0.95 0 0);
+
+  /* Light mode (unused but defined for compatibility) */
+  --color-background-light: oklch(1 0 0);
+  --color-foreground-light: oklch(0.12 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom scrollbar styles */
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: oklch(0.3 0 0);
+    border-radius: 0;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.4 0 0);
+  }
+}
+
+/* Accordion animations */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+.animate-accordion-down {
+  animation: accordion-down 0.2s ease-out;
+}
+
+.animate-accordion-up {
+  animation: accordion-up 0.2s ease-out;
+}

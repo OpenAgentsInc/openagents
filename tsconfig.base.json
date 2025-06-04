@@ -45,7 +45,10 @@
       "@template/domain/test/*": ["./packages/domain/test/*.js"],
       "@template/server": ["./packages/server/src/index.js"],
       "@template/server/*": ["./packages/server/src/*.js"],
-      "@template/server/test/*": ["./packages/server/test/*.js"]
+      "@template/server/test/*": ["./packages/server/test/*.js"],
+      "@openagentsinc/ui": ["./packages/ui/src/index.js"],
+      "@openagentsinc/ui/*": ["./packages/ui/src/*.js"],
+      "@openagentsinc/ui/test/*": ["./packages/ui/test/*.js"]
     }
   }
 }
