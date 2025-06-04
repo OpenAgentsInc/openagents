@@ -214,7 +214,7 @@ export * from './core/types'
 ### 8. Potential Challenges
 
 1. **Tailwind v4 Documentation**: Limited resources as it's very new
-2. **Effect.js Integration**: May need special consideration for state management
+2. **Effect Integration**: May need special consideration for state management
 3. **Mobile Abstractions**: Complex gesture handling differences
 4. **Breaking Changes**: Commander will need updates to use new package
 5. **CI/CD Setup**: Need to integrate with existing monorepo workflow

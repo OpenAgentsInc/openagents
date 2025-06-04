@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the architectural principles and patterns used in the OpenAgents monorepo, built on Effect.js. The architecture follows Domain-Driven Design principles with clear separation of concerns across packages.
+This document outlines the architectural principles and patterns used in the OpenAgents monorepo, built on Effect. The architecture follows Domain-Driven Design principles with clear separation of concerns across packages.
 
 ## Core Architectural Principles
 
@@ -178,7 +178,7 @@ export class WalletService extends Effect.Service<WalletService>()("wallet/Walle
 }) {}
 ```
 
-## Advanced Effect.js Patterns
+## Advanced Effect Patterns
 
 ### 1. Effect.gen for Readability
 
@@ -218,7 +218,7 @@ export class DatabaseService extends Effect.Service<DatabaseService>()("app/Data
   effect: Effect.gen(function*() {
     const config = yield* ConfigService
     const logger = yield* LoggerService
-    
+
     // Service implementation
     return {
       query: (sql: string) => Effect.tryPromise({
@@ -362,7 +362,7 @@ const fastestProvider = Effect.race(
 Effect.gen(function*() {
   const fiber1 = yield* Effect.fork(longRunningTask1)
   const fiber2 = yield* Effect.fork(longRunningTask2)
-  
+
   const [result1, result2] = yield* Effect.all([
     Fiber.join(fiber1),
     Fiber.join(fiber2)
@@ -382,13 +382,13 @@ const ChatModel = OpenAiLanguageModel.model("gpt-4o")
 export class AiService extends Effect.Service<AiService>()("app/AiService", {
   effect: Effect.gen(function*() {
     const model = yield* ChatModel
-    
+
     return {
       generateText: (prompt: string) =>
         model.use(
           AiLanguageModel.generateText({ prompt })
         ),
-      
+
       generateWithTools: (prompt: string) =>
         model.use(
           AiLanguageModel.generateText({
@@ -540,9 +540,9 @@ export class AiOrchestrator extends Effect.Service<AiOrchestrator>()("ai/AiOrche
   effect: Effect.gen(function*() {
     // Provider-agnostic orchestration
     const providers = yield* AiProviders
-    
+
     return {
-      route: (request: AiRequest) => 
+      route: (request: AiRequest) =>
         // Route to appropriate provider based on model
         providers.getProvider(request.model).pipe(
           Effect.andThen(provider => provider.complete(request))
@@ -560,7 +560,7 @@ export class CommanderService extends Effect.Service<CommanderService>()("comman
   dependencies: [AiService.Default],
   effect: Effect.gen(function*() {
     const ai = yield* AiService
-    
+
     return {
       executeCommand: (command: Command) =>
         Effect.gen(function*() {
@@ -584,14 +584,14 @@ export class WalletState extends Effect.Service<WalletState>()("wallet/WalletSta
       balance: 0,
       transactions: []
     })
-    
+
     return {
       updateBalance: (amount: number) =>
         SubscriptionRef.update(ref, state => ({
           ...state,
           balance: state.balance + amount
         })),
-      
+
       subscribe: ref.changes
     }
   })
@@ -646,15 +646,15 @@ test.prop([userArb])("user validation", (user) => {
 ### 1. Structured Logging
 ```typescript
 const tracedService = Effect.gen(function*() {
-  yield* Effect.log("Starting operation", { 
+  yield* Effect.log("Starting operation", {
     level: "info",
     service: "wallet",
     operation: "transfer"
   })
-  
+
   return yield* operation.pipe(
     Effect.tap(() => Effect.log("Operation completed")),
-    Effect.tapError((error) => 
+    Effect.tapError((error) =>
       Effect.log("Operation failed", { error, level: "error" })
     )
   )
@@ -670,7 +670,7 @@ const metrics = Metric.counter("api_requests", {
 
 const tracked = operation.pipe(
   Effect.tap(() => Metric.increment(metrics)),
-  Effect.withSpan("api.request", { 
+  Effect.withSpan("api.request", {
     attributes: { endpoint: "/users" }
   })
 )
@@ -683,7 +683,7 @@ const program = Effect.gen(function*() {
     "user.id": userId,
     "request.id": requestId
   })
-  
+
   return yield* processRequest(request)
 }).pipe(Effect.withSpan("process.request"))
 ```
@@ -746,4 +746,4 @@ This architecture provides:
 - Provider-agnostic AI integration
 - Comprehensive error handling and observability
 
-The Effect.js ecosystem provides a robust foundation for building complex distributed systems while maintaining code clarity, type safety, and performance. The patterns outlined here scale from simple CRUD operations to complex AI orchestration and real-time systems.
+The Effect ecosystem provides a robust foundation for building complex distributed systems while maintaining code clarity, type safety, and performance. The patterns outlined here scale from simple CRUD operations to complex AI orchestration and real-time systems.

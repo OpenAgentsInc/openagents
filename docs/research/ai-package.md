@@ -8,7 +8,7 @@ I've completed the comprehensive research and created both the specification doc
 
 ### 1. **Specification Document (docs/ai.md)**
 A thorough specification covering:
-- **Architecture Overview**: Following OpenAgents' modular patterns with Effect.js integration
+- **Architecture Overview**: Following OpenAgents' modular patterns with Effect integration
 - **Provider Abstraction**: Unified interface supporting OpenAI, Anthropic, Vercel AI SDK v5, Goose, and Claude Code
 - **Tool/Function Calling**: Unified interface across all providers with Effect-based execution
 - **MCP Integration**: Abstracted by default with power-user configuration options
@@ -44,7 +44,7 @@ A detailed implementation plan with:
 - **Memory Management**: Session-based conversation memory with summarization
 - **Type Safety**: Comprehensive schemas and runtime validation
 
-The specification provides a solid foundation for building a production-ready AI integration package that follows best practices from both the OpenAgents and Effect.js ecosystems.
+The specification provides a solid foundation for building a production-ready AI integration package that follows best practices from both the OpenAgents and Effect ecosystems.
 
 ---
 
@@ -78,7 +78,7 @@ This document outlines the architecture, design, and implementation plan for `@o
 ### Goals
 
 1. **Unified AI Interface**: Single API for interacting with multiple AI providers
-2. **Effect-First Design**: Full integration with Effect.js patterns and best practices
+2. **Effect-First Design**: Full integration with Effect patterns and best practices
 3. **Provider Flexibility**: Support for OpenAI, Anthropic, Vercel AI SDK v5, Goose, and Claude Code
 4. **Tool Unification**: Common interface for function/tool calling across providers
 5. **MCP Support**: Model Context Protocol integration (abstracted by default)
@@ -1525,7 +1525,7 @@ describe("AiService Integration", () => {
       yield* ai.registerTool(WebSearchTool)
 
       const response = yield* ai.complete({
-        prompt: "Search for Effect.js documentation",
+        prompt: "Search for Effect documentation",
         model: "gpt-4" as ModelIdentifier,
         tools: [WebSearchTool]
       })
@@ -1712,7 +1712,7 @@ export const TestLayers = {
 # AI Package Integration - Initial Implementation
 
 ## Overview
-Implement `@openagentsinc/ai` package providing unified AI capabilities across multiple providers with full Effect.js integration.
+Implement `@openagentsinc/ai` package providing unified AI capabilities across multiple providers with full Effect integration.
 
 ## Objectives
 - [ ] Create Effect-based AI service architecture
@@ -1723,7 +1723,7 @@ Implement `@openagentsinc/ai` package providing unified AI capabilities across m
 - [ ] Implement conversation memory management
 
 ## Technical Requirements
-- Full Effect.js integration following OpenAgents patterns
+- Full Effect integration following OpenAgents patterns
 - TypeScript with strict mode
 - Comprehensive error handling with tagged errors
 - Schema-first development
