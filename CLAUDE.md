@@ -126,17 +126,17 @@ Each package builds in this order:
 - **Development Servers**: Never start development servers with `pnpm dev` or similar commands - the user will handle this
 
 ### Critical: UI Package Codegen
-The UI package (`@openagentsinc/ui`) has Effect codegen **DISABLED** because:
+The UI package (`@openagentsinc/ui`) does NOT use Effect codegen because:
 - It contains both `.ts` and `.tsx` files (React components)
 - React components (`.tsx`) should NOT be processed by Effect codegen
 - Exports are manually managed in `packages/ui/src/web/index.ts`
-- **DO NOT** enable `generateExports` or `generateIndex` in the UI package.json
-- **DO NOT** run `pnpm codegen` on the UI package
+- **DO NOT** add any `effect` configuration to the UI package.json
+- The package.json should have NO `effect` field at all
 
-If you see CI errors about `packages/ui/src/index.ts` being modified:
-1. The UI package codegen was accidentally enabled
-2. Delete any generated `packages/ui/src/index.ts` file
-3. Ensure package.json has `"generateExports": false, "generateIndex": false`
+If you see CI errors about Effect build-utils failing on UI package:
+1. Remove any `effect` field from packages/ui/package.json
+2. Delete any generated `packages/ui/src/index.ts` file if it exists
+3. The UI package will still have a codegen script but it should be a no-op
 
 ## Common Development Tasks
 
