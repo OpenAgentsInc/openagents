@@ -156,7 +156,9 @@ describe("ClaudeCodeClient", () => {
         if (Exit.isFailure(exit)) {
           const error = exit.cause._tag === "Fail" ? exit.cause.error : null
           expect(error?._tag).toBe("ClaudeCodeExecutionError")
-          expect(error?.stderr).toContain("API rate limit exceeded")
+          if (error?._tag === "ClaudeCodeExecutionError") {
+            expect(error.stderr).toContain("API rate limit exceeded")
+          }
         }
       }).pipe(
         Effect.provide(ClaudeCodeClientLive),

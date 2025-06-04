@@ -1,9 +1,9 @@
 import { Command, CommandExecutor } from "@effect/platform"
 import { Schema } from "@effect/schema"
-import { Chunk, Effect, Layer, Stream } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import { ClaudeCodeConfig } from "../config/ClaudeCodeConfig.js"
 import type { ClaudeCodeSessionError } from "../errors/index.js"
-import { ClaudeCodeExecutionError, ClaudeCodeNotFoundError, ClaudeCodeParseError } from "../errors/index.js"
+import { ClaudeCodeExecutionError, ClaudeCodeParseError } from "../errors/index.js"
 import { ClaudeCodeClient, ClaudeCodeJsonResponse as ClaudeCodeJsonResponseSchema } from "./ClaudeCodeClient.js"
 import type {
   ClaudeCodeClient as ClaudeCodeClientType,
@@ -34,50 +34,35 @@ export const makeClaudeCodeClient = (
   config: ClaudeCodeConfig,
   executor: CommandExecutor.CommandExecutor
 ): ClaudeCodeClientType => {
-  const executeCommand = (args: Array<string>, _timeout?: number) => {
-    // Build the full command as a shell command
-    const fullCommand = `${config.cliPath ?? "claude"} ${args.join(" ")}`
-    const command = Command.make("sh", "-c", fullCommand)
-    console.log("Executing shell command:", fullCommand)
+  const executeCommand = (args: Array<string>, timeout?: number) => {
+    // Create command directly without shell wrapper
+    const command = Command.make(config.cliPath ?? "claude", ...args).pipe(
+      Command.env({
+        CI: "true",
+        TERM: "dumb",
+        NO_COLOR: "1",
+        NODE_NO_READLINE: "1"
+      })
+    )
 
-    return Effect.gen(function*() {
-      const process = yield* executor.start(command)
-      const exitCode = yield* process.exitCode
-
-      if (exitCode !== 0) {
-        const stderr = yield* process.stderr.pipe(
-          Stream.decodeText(),
-          Stream.runCollect,
-          Effect.map((chunks: Chunk.Chunk<string>) => Chunk.toReadonlyArray(chunks).join(""))
-        )
-
-        console.error("Command failed with exit code:", exitCode)
-        console.error("STDERR:", stderr)
-
-        return yield* Effect.fail(
-          new ClaudeCodeExecutionError({
-            command: `${config.cliPath} ${args.join(" ")}`,
-            exitCode,
-            stderr
-          })
-        )
-      }
-
-      const output = yield* process.stdout.pipe(
-        Stream.decodeText(),
-        Stream.runCollect,
-        Effect.map((chunks: Chunk.Chunk<string>) => Chunk.toReadonlyArray(chunks).join(""))
-      )
-
-      console.log("Command succeeded, output length:", output.length)
-      return output
-    }).pipe(
+    // Use Command.string to run and get output as string
+    return Command.string()(command).pipe(
+      Effect.provideService(CommandExecutor.CommandExecutor, executor),
+      // Add timeout if specified (default to 30 seconds)
+      Effect.timeout(timeout ?? 30000),
+      Effect.tapError((_error) => {
+        return Effect.succeed(void 0)
+      }),
       Effect.mapError((error) => {
-        if (error instanceof ClaudeCodeExecutionError) {
-          return error
+        if (error._tag === "TimeoutException") {
+          return new ClaudeCodeExecutionError({
+            command: `${config.cliPath ?? "claude"} ${args.join(" ")}`,
+            exitCode: -1,
+            stderr: "Command timed out"
+          })
         }
         return new ClaudeCodeExecutionError({
-          command: `${config.cliPath} ${args.join(" ")}`,
+          command: `${config.cliPath ?? "claude"} ${args.join(" ")}`,
           exitCode: -1,
           stderr: String(error)
         })
@@ -120,15 +105,12 @@ export const makeClaudeCodeClient = (
   return {
     prompt: (text, options) =>
       Effect.gen(function*() {
-        const args = ["--print", `"${text}"`]
+        const args = ["--print", text]
         if (options?.outputFormat) args.push("--output-format", options.outputFormat)
 
         const output = yield* executeCommand(args, options?.timeout)
         const format = options?.outputFormat ?? config.outputFormat ?? "text"
-        console.log("Got output, parsing as format:", format)
-        console.log("Raw output:", output)
         const parsed = yield* parseOutput(output, format)
-        console.log("Parsed result:", parsed)
         return parsed
       }) as Effect.Effect<
         ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
@@ -138,7 +120,7 @@ export const makeClaudeCodeClient = (
 
     continueSession: (sessionId, prompt, options) =>
       Effect.gen(function*() {
-        const args = ["--resume", sessionId, "--print", `"${prompt}"`]
+        const args = ["--resume", sessionId, "--print", prompt]
         if (options?.outputFormat) args.push("--output-format", options.outputFormat)
 
         const output = yield* executeCommand(args, options?.timeout)
@@ -152,7 +134,7 @@ export const makeClaudeCodeClient = (
 
     continueRecent: (prompt, options) =>
       Effect.gen(function*() {
-        const args = ["--continue", "--print", `"${prompt}"`]
+        const args = ["--continue", "--print", prompt]
         if (options?.outputFormat) args.push("--output-format", options.outputFormat)
 
         const output = yield* executeCommand(args, options?.timeout)
@@ -167,9 +149,11 @@ export const makeClaudeCodeClient = (
     streamPrompt: (text, _options) =>
       Stream.unwrapScoped(
         Effect.gen(function*() {
-          const args = ["--print", `"${text}"`, "--output-format", "json_stream"]
+          const args = ["--print", text, "--output-format", "json_stream"]
           const command = Command.make(config.cliPath ?? "claude", ...args)
-          const process = yield* executor.start(command)
+          const process = yield* Command.start(command).pipe(
+            Effect.provideService(CommandExecutor.CommandExecutor, executor)
+          )
 
           return process.stdout.pipe(
             Stream.decodeText(),
@@ -194,21 +178,11 @@ export const makeClaudeCodeClient = (
       ) as Stream.Stream<string, ClaudeCodeExecutionError, never>,
 
     checkAvailability: () =>
-      Effect.gen(function*() {
-        const command = Command.make(config.cliPath ?? "claude", "--version")
-        const process = yield* executor.start(command).pipe(
-          Effect.catchAll((error) =>
-            Effect.fail(
-              new ClaudeCodeNotFoundError({
-                message: `Claude CLI not found at: ${config.cliPath}`,
-                cause: error
-              })
-            )
-          )
-        )
-        const exitCode = yield* process.exitCode
-        return exitCode === 0
-      }) as Effect.Effect<boolean, ClaudeCodeNotFoundError, never>
+      Command.exitCode(Command.make(config.cliPath ?? "claude", "--version")).pipe(
+        Effect.provideService(CommandExecutor.CommandExecutor, executor),
+        Effect.map((exitCode) => exitCode === 0),
+        Effect.catchAll(() => Effect.succeed(false))
+      )
   }
 }
 

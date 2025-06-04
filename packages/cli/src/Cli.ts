@@ -1,5 +1,4 @@
 import { Args, Command, Options } from "@effect/cli"
-import { NodeCommandExecutor } from "@effect/platform-node"
 import * as Ai from "@openagentsinc/ai"
 import { TodoId } from "@openagentsinc/domain/TodosApi"
 import { Console, Effect } from "effect"
@@ -98,10 +97,15 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
         const claudeClient = yield* Ai.internal.ClaudeCodeClient
 
         // Use session if provided, otherwise start new conversation
+        const baseOptions = { outputFormat: "json" as const }
+        const options = system._tag === "Some"
+          ? { ...baseOptions, systemPrompt: system.value }
+          : baseOptions
+
         const response = yield* (
-          session
-            ? claudeClient.continueSession(session, prompt, { systemPrompt: system })
-            : claudeClient.prompt(prompt, { systemPrompt: system })
+          session._tag === "Some"
+            ? claudeClient.continueSession(session.value, prompt, options)
+            : claudeClient.prompt(prompt, options)
         )
 
         if ("content" in response) {
@@ -125,9 +129,8 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
         }
       })
     ).pipe(
-      Effect.provide(Ai.internal.ClaudeCodeClientLive),
+      Effect.provide(Ai.internal.ClaudeCodePtyClientLive),
       Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
-      Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
           yield* Console.error(`❌ Error: ${JSON.stringify(error, null, 2)}`)
@@ -158,9 +161,8 @@ const aiCheck = Command.make("check").pipe(
         }
       })
     ).pipe(
-      Effect.provide(Ai.internal.ClaudeCodeClientLive),
+      Effect.provide(Ai.internal.ClaudeCodePtyClientLive),
       Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
-      Effect.provide(NodeCommandExecutor.layer),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
           yield* Console.error(`❌ Error checking Claude Code: ${error}`)

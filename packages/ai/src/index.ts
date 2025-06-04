@@ -26,6 +26,12 @@ export * as ClaudeCodeClient from "./providers/ClaudeCodeClient.js"
 export * as ClaudeCodeProvider from "./providers/ClaudeCodeProvider.js"
 
 /**
+ * Claude Code client using node-pty for proper TTY emulation
+ * @since 1.0.0
+ */
+export * as ClaudeCodePty from "./providers/ClaudeCodePty.js"
+
+/**
  * Simple implementation of Claude Code client
  * @since 1.0.0
  */
