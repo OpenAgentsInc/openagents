@@ -1,4 +1,5 @@
 import { Args, Command, Options } from "@effect/cli"
+import { TodoId } from "@openagents/domain/TodosApi"
 import { TodosClient } from "./TodosClient.js"
 
 const todoArg = Args.text({ name: "todo" }).pipe(
@@ -16,7 +17,7 @@ const add = Command.make("add", { todo: todoArg }).pipe(
 
 const done = Command.make("done", { id: todoId }).pipe(
   Command.withDescription("Mark a todo as done"),
-  Command.withHandler(({ id }) => TodosClient.complete(id))
+  Command.withHandler(({ id }) => TodosClient.complete(TodoId.make(id)))
 )
 
 const list = Command.make("list").pipe(
@@ -26,7 +27,7 @@ const list = Command.make("list").pipe(
 
 const remove = Command.make("remove", { id: todoId }).pipe(
   Command.withDescription("Remove a todo"),
-  Command.withHandler(({ id }) => TodosClient.remove(id))
+  Command.withHandler(({ id }) => TodosClient.remove(TodoId.make(id)))
 )
 
 const command = Command.make("todo").pipe(
