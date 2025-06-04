@@ -53,10 +53,10 @@ export function PaneManager({
         <Pane
           key={pane.id}
           {...pane}
-          onMove={onPaneMove}
-          onResize={onPaneResize}
-          onClose={onPaneClose}
-          onActivate={onPaneActivate}
+          {...(onPaneMove && { onMove: onPaneMove })}
+          {...(onPaneResize && { onResize: onPaneResize })}
+          {...(onPaneClose && { onClose: onPaneClose })}
+          {...(onPaneActivate && { onActivate: onPaneActivate })}
         >
           {renderPaneContent ? renderPaneContent(pane) : null}
         </Pane>
