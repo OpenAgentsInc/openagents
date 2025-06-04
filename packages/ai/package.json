@@ -33,11 +33,17 @@
     "generateExports": {
       "include": [
         "**/*.ts"
+      ],
+      "exclude": [
+        "**/*.d.ts"
       ]
     },
     "generateIndex": {
       "include": [
         "**/*.ts"
+      ],
+      "exclude": [
+        "**/*.d.ts"
       ]
     }
   }
