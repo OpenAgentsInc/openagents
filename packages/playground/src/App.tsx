@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Button } from '@openagentsinc/ui/web/components/button'
-import type { PaneState } from '@openagentsinc/ui/core/types/pane'
+import { Button } from '@openagentsinc/ui/web/components/button.tsx'
+import type { PaneState } from '@openagentsinc/ui/core/types/pane.ts'
 import './App.css'
 
 function App() {
