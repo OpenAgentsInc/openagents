@@ -1,5 +1,5 @@
 {
-  "name": "@openagents/cli",
+  "name": "@openagentsinc/cli",
   "version": "0.0.0",
   "type": "module",
   "license": "CC0-1.0",
@@ -27,14 +27,14 @@
     "@effect/cli": "0.63.6",
     "@effect/platform": "0.84.6",
     "@effect/platform-node": "0.85.2",
-    "@openagents/domain": "workspace:^",
+    "@openagentsinc/domain": "workspace:^",
     "effect": "3.16.3"
   },
   "devDependencies": {
     "@effect/cli": "0.63.6",
     "@effect/platform": "0.84.6",
     "@effect/platform-node": "0.85.2",
-    "@openagents/domain": "workspace:^",
+    "@openagentsinc/domain": "workspace:^",
     "effect": "3.16.3"
   },
   "effect": {

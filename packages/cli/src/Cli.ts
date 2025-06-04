@@ -1,5 +1,5 @@
 import { Args, Command, Options } from "@effect/cli"
-import { TodoId } from "@openagents/domain/TodosApi"
+import { TodoId } from "@openagentsinc/domain/TodosApi"
 import { Effect } from "effect"
 import { TodosClient } from "./TodosClient.js"
 

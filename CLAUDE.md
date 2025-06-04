@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is an OpenAgents Effect.js monorepo demonstrating a Todo application using modern Effect.js patterns. The repository follows a clean architecture with three packages:
 
-- **`@openagents/domain`** - Core business logic and API contracts
-- **`@openagents/server`** - HTTP server implementation  
-- **`@openagents/cli`** - Command-line interface client
+- **`@openagentsinc/domain`** - Core business logic and API contracts
+- **`@openagentsinc/server`** - HTTP server implementation  
+- **`@openagentsinc/cli`** - Command-line interface client
 
 ## Essential Commands
 
@@ -39,12 +39,12 @@ pnpm clean
 ### Package-specific Commands
 ```bash
 # Generate Effect package exports (run after adding new files)
-pnpm --filter=@openagents/domain codegen
-pnpm --filter=@openagents/server codegen  
-pnpm --filter=@openagents/cli codegen
+pnpm --filter=@openagentsinc/domain codegen
+pnpm --filter=@openagentsinc/server codegen  
+pnpm --filter=@openagentsinc/cli codegen
 
 # Build individual packages
-pnpm --filter=@openagents/domain build
+pnpm --filter=@openagentsinc/domain build
 ```
 
 ### Testing
@@ -53,7 +53,7 @@ pnpm --filter=@openagents/domain build
 pnpm coverage
 
 # Run tests for specific package
-pnpm --filter=@openagents/domain test
+pnpm --filter=@openagentsinc/domain test
 ```
 
 ## Architecture Patterns

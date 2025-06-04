@@ -1,4 +1,4 @@
-import { Todo, TodoId, TodoNotFound } from "@openagents/domain/TodosApi"
+import { Todo, TodoId, TodoNotFound } from "@openagentsinc/domain/TodosApi"
 import { Effect, HashMap, Ref } from "effect"
 
 export class TodosRepository extends Effect.Service<TodosRepository>()("api/TodosRepository", {
