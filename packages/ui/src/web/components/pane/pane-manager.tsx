@@ -1,7 +1,7 @@
 import * as React from "react"
 import type { Pane as PaneType } from "../../../core/types/pane.js"
 import { Pane } from "./pane.js"
-import { cn } from "../../../core/utils/cn.js"
+import { PanePortal } from "./pane-portal.js"
 
 export interface PaneManagerProps {
   panes: PaneType[]
@@ -10,7 +10,6 @@ export interface PaneManagerProps {
   onPaneClose?: (id: string) => void
   onPaneActivate?: (id: string) => void
   renderPaneContent?: (pane: PaneType) => React.ReactNode
-  className?: string
 }
 
 export function PaneManager({
@@ -20,7 +19,6 @@ export function PaneManager({
   onPaneClose,
   onPaneActivate,
   renderPaneContent,
-  className,
 }: PaneManagerProps) {
   // Sort panes by z-index to ensure proper rendering order
   const sortedPanes = React.useMemo(() => {
@@ -30,7 +28,7 @@ export function PaneManager({
   console.log('PaneManager rendering with panes:', sortedPanes)
 
   return (
-    <div className={cn("relative w-full h-full", className)}>
+    <PanePortal>
       {sortedPanes.map((pane) => (
         <Pane
           key={pane.id}
@@ -43,6 +41,6 @@ export function PaneManager({
           {renderPaneContent ? renderPaneContent(pane) : null}
         </Pane>
       ))}
-    </div>
+    </PanePortal>
   )
 }

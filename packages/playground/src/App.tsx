@@ -192,18 +192,15 @@ function App() {
         </Card>
       </div>
 
-      {/* Pane Manager - needs fixed positioning to contain absolute panes */}
-      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 100 }}>
-        <PaneManager
-          panes={panes}
-          onPaneMove={movePane}
-          onPaneResize={resizePane}
-          onPaneClose={removePane}
-          onPaneActivate={activatePane}
-          renderPaneContent={renderPaneContent}
-          className="pointer-events-auto"
-        />
-      </div>
+      {/* Pane Manager */}
+      <PaneManager
+        panes={panes}
+        onPaneMove={movePane}
+        onPaneResize={resizePane}
+        onPaneClose={removePane}
+        onPaneActivate={activatePane}
+        renderPaneContent={renderPaneContent}
+      />
 
       {/* Hotbar */}
       <Hotbar slots={hotbarSlots} />
