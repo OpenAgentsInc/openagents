@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "include": ["src"],
   "references": [
-    { "path": "../domain" } 
+    { "path": "../domain" },
+    { "path": "../ai" }
   ],
   "compilerOptions": {
     "types": ["node"],

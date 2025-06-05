@@ -1,5 +1,4 @@
-import { Context, Effect, Layer } from "effect"
-
+import type { Context, Effect, Layer } from "effect"
 /**
  * AI completion response
  * @since 1.0.0
@@ -14,7 +13,6 @@ export interface AiCompletionResponse {
   }
   readonly sessionId?: string
 }
-
 /**
  * AI conversation options
  * @since 1.0.0
@@ -24,46 +22,24 @@ export interface AiConversationOptions {
   readonly systemPrompt?: string
   readonly model?: string
 }
-
 /**
  * @since 1.0.0
  */
 export interface AiService {
   readonly hello: (name: string) => Effect.Effect<string>
   readonly complete: (prompt: string) => Effect.Effect<AiCompletionResponse>
-  readonly conversation?: (
-    prompt: string,
-    options?: AiConversationOptions
-  ) => Effect.Effect<AiCompletionResponse>
+  readonly conversation?: (prompt: string, options?: AiConversationOptions) => Effect.Effect<AiCompletionResponse>
 }
-
 /**
  * @since 1.0.0
  */
-export const AiService = Context.GenericTag<AiService>("ai/AiService")
-
+export declare const AiService: Context.Tag<AiService, AiService>
 /**
  * @since 1.0.0
  */
-export const AiServiceLive = Layer.succeed(
-  AiService,
-  {
-    hello: (name: string) => Effect.succeed(`Hello ${name} from AI Service!`),
-
-    complete: (prompt: string) =>
-      Effect.succeed({
-        content: `Response to: ${prompt}`,
-        model: "placeholder",
-        usage: {
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0
-        }
-      })
-  }
-)
-
+export declare const AiServiceLive: Layer.Layer<AiService, never, never>
 /**
  * @since 1.0.0
  */
-export const hello = (name: string) => Effect.andThen(AiService, (service) => service.hello(name))
+export declare const hello: (name: string) => Effect.Effect<string, never, AiService>
+// # sourceMappingURL=AiService.d.ts.map
