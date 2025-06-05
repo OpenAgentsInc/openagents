@@ -34,25 +34,44 @@ export const makeClaudeCodeClient = (
   config: ClaudeCodeConfig,
   executor: CommandExecutor.CommandExecutor
 ): ClaudeCodeClientType => {
-  const executeCommand = (args: Array<string>, timeout?: number) => {
-    // Create command directly without shell wrapper
-    const command = Command.make(config.cliPath ?? "claude", ...args).pipe(
-      Command.env({
-        CI: "true",
-        TERM: "dumb",
-        NO_COLOR: "1",
-        NODE_NO_READLINE: "1"
-      })
-    )
+  const executeCommand = (args: Array<string>, timeout?: number) =>
+    Effect.gen(function*() {
+      // Create command directly without shell wrapper
+      const command = Command.make(config.cliPath ?? "claude", ...args).pipe(
+        Command.env({
+          CI: "true",
+          TERM: "dumb",
+          NO_COLOR: "1",
+          NODE_NO_READLINE: "1"
+        })
+      )
 
-    // Use Command.string to run and get output as string
-    return Command.string()(command).pipe(
-      Effect.provideService(CommandExecutor.CommandExecutor, executor),
+      const result = yield* executor.start(command)
+      const output = yield* result.stdout.pipe(
+        Stream.decodeText(),
+        Stream.runFold("", (acc, chunk) => acc + chunk)
+      )
+
+      const exitCode = yield* result.exitCode
+
+      if (exitCode !== 0) {
+        const stderr = yield* result.stderr.pipe(
+          Stream.decodeText(),
+          Stream.runFold("", (acc, chunk) => acc + chunk)
+        )
+        return yield* Effect.fail(
+          new ClaudeCodeExecutionError({
+            command: `${config.cliPath ?? "claude"} ${args.join(" ")}`,
+            exitCode,
+            stderr
+          })
+        )
+      }
+
+      return output
+    }).pipe(
       // Add timeout if specified (default to 30 seconds)
       Effect.timeout(timeout ?? 30000),
-      Effect.tapError((_error) => {
-        return Effect.succeed(void 0)
-      }),
       Effect.mapError((error) => {
         if (error._tag === "TimeoutException") {
           return new ClaudeCodeExecutionError({
@@ -61,14 +80,9 @@ export const makeClaudeCodeClient = (
             stderr: "Command timed out"
           })
         }
-        return new ClaudeCodeExecutionError({
-          command: `${config.cliPath ?? "claude"} ${args.join(" ")}`,
-          exitCode: -1,
-          stderr: String(error)
-        })
+        return error
       })
     )
-  }
 
   const parseOutput = (
     output: string,
@@ -178,11 +192,14 @@ export const makeClaudeCodeClient = (
       ) as Stream.Stream<string, ClaudeCodeExecutionError, never>,
 
     checkAvailability: () =>
-      Command.exitCode(Command.make(config.cliPath ?? "claude", "--version")).pipe(
-        Effect.provideService(CommandExecutor.CommandExecutor, executor),
-        Effect.map((exitCode) => exitCode === 0),
+      Effect.gen(function*() {
+        const command = Command.make(config.cliPath ?? "claude", "--version")
+        const result = yield* executor.start(command)
+        const exitCode = yield* result.exitCode
+        return exitCode === 0
+      }).pipe(
         Effect.catchAll(() => Effect.succeed(false))
-      )
+      ) as Effect.Effect<boolean, never, never>
   }
 }
 
