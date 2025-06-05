@@ -81,11 +81,11 @@ export class TodosApiGroup extends HttpApiGroup.make("todos")
 
 These packages implement specific features or integrations:
 
-#### Server Package (`@openagentsinc/server`)
-- Implements API contracts from domain
-- Contains repository implementations
-- Manages HTTP server setup
-- Handles persistence and external services
+#### Pylon Package (`@openagentsinc/pylon`)
+- Nostr relay server implementation
+- WebSocket server for Nostr protocol
+- Event storage and subscription management
+- Handles persistence and relay operations
 
 #### CLI Package (`@openagentsinc/cli`)
 - Consumes API contracts via HTTP clients

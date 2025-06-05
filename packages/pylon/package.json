@@ -1,0 +1,43 @@
+{
+  "name": "@openagentsinc/pylon",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "CC0-1.0",
+  "description": "Nostr relay server implementation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenAgentsInc/openagents",
+    "directory": "packages/pylon"
+  },
+  "scripts": {
+    "codegen": "build-utils prepare-v2",
+    "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",
+    "build-esm": "tsc -b tsconfig.build.json",
+    "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
+    "build-annotate": "babel build/esm --plugins annotate-pure-calls --out-dir build/esm --source-maps",
+    "check": "tsc -b tsconfig.json",
+    "test": "vitest",
+    "coverage": "vitest --coverage"
+  },
+  "dependencies": {
+    "@effect/platform": "0.84.6",
+    "@effect/platform-node": "0.85.2",
+    "@openagentsinc/domain": "workspace:^",
+    "effect": "3.16.3"
+  },
+  "effect": {
+    "generateExports": {
+      "include": [
+        "**/*.ts"
+      ]
+    },
+    "generateIndex": {
+      "include": [
+        "**/*.ts"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/ws": "8.5.14"
+  }
+}
