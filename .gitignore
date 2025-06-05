@@ -25,4 +25,4 @@ packages/*/src/**/*.js.map
 !packages/*/src/**/*.tsx
 
 # Private local research folder
-private/
+docs/private/
