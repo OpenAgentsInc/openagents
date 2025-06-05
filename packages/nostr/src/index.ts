@@ -23,6 +23,18 @@ export * as CryptoService from "./services/CryptoService.js"
 export * as EventService from "./services/EventService.js"
 
 /**
+ * Relay connection pool for managing multiple Nostr relays
+ * @module
+ */
+export * as RelayPoolService from "./services/RelayPoolService.js"
+
+/**
+ * Automatic reconnection service for Nostr relays
+ * @module
+ */
+export * as RelayReconnectService from "./services/RelayReconnectService.js"
+
+/**
  * Nostr relay connection and subscription management
  * @module
  */
