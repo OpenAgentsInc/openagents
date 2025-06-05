@@ -8,7 +8,7 @@ import { Console, Context, Effect, HashMap, Layer, Ref, Schema } from "effect"
 import { createServer } from "http"
 import type { WebSocket } from "ws"
 import { WebSocketServer } from "ws"
-import { ClientMessage, type Filter, type NostrEvent, type RelayMessage, type SubscriptionId } from "../core/Schema.js"
+import { ClientMessage, type EventId, type Filter, type NostrEvent, type RelayMessage, type SubscriptionId } from "../core/Schema.js"
 
 interface ClientConnection {
   readonly id: string
@@ -64,7 +64,7 @@ const matchesFilter = (event: NostrEvent, filter: Filter): boolean => {
 export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
   Effect.gen(function*() {
     // State
-    const events = yield* Ref.make<HashMap.HashMap<string, NostrEvent>>(HashMap.empty())
+    const events = yield* Ref.make<HashMap.HashMap<EventId, NostrEvent>>(HashMap.empty())
     const clients = yield* Ref.make<HashMap.HashMap<string, ClientConnection>>(HashMap.empty())
     let actualPort = port
 
@@ -122,7 +122,10 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
                   }
 
                   case "REQ": {
-                    const [, subId, ...filters] = message
+                    // Parse REQ message properly
+                    if (message.length < 2) break
+                    const subId = message[1] as SubscriptionId
+                    const filters = message.slice(2) as Filter[]
 
                     // Update client subscriptions
                     yield* Ref.update(

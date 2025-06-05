@@ -7,7 +7,8 @@ import type { Scope } from "effect"
 import { Context, Effect, HashMap, Layer, Option, Queue, Ref, Schema, Stream } from "effect"
 import type { ConnectionError, MessageSendError, RelayError } from "../core/Errors.js"
 import { SubscriptionError, TimeoutError } from "../core/Errors.js"
-import type { ClientMessage, Filter, NostrEvent, RelayMessage, SubscriptionId } from "../core/Schema.js"
+import type { ClientMessage, EventId, Filter, NostrEvent, SubscriptionId } from "../core/Schema.js"
+import { RelayMessage } from "../core/Schema.js"
 import { WebSocketService } from "./WebSocketService.js"
 
 export interface Subscription {
@@ -61,7 +62,7 @@ export const RelayServiceLive = Layer.effect(
 
         // State management
         const subscriptions = yield* Ref.make<HashMap.HashMap<SubscriptionId, SubscriptionState>>(HashMap.empty())
-        const pendingOk = yield* Ref.make<HashMap.HashMap<string, (result: boolean) => void>>(HashMap.empty())
+        const pendingOk = yield* Ref.make<HashMap.HashMap<EventId, (result: boolean) => void>>(HashMap.empty())
 
         // Process incoming messages
         const processMessages = Stream.runForEach(ws.messages, (data: string) =>

@@ -3,7 +3,7 @@
  * @module
  */
 
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Layer, ParseResult, Schema } from "effect"
 import { EventValidationError, InvalidEventId, InvalidSignature } from "../core/Errors.js"
 import {
   type EventId,
@@ -27,7 +27,7 @@ export class EventService extends Context.Tag("nostr/EventService")<
      */
     readonly create: (params: EventParams, privateKey: PrivateKey) => Effect.Effect<
       NostrEvent,
-      EventValidationError | InvalidEventId | InvalidSignature | Schema.ParseError
+      EventValidationError | InvalidEventId | InvalidSignature | ParseResult.ParseError
     >
 
     /**
@@ -118,7 +118,7 @@ export const EventServiceLive = Layer.effect(
     const create = (
       params: EventParams,
       privateKey: PrivateKey
-    ): Effect.Effect<NostrEvent, EventValidationError | InvalidEventId | InvalidSignature | Schema.ParseError> =>
+    ): Effect.Effect<NostrEvent, EventValidationError | InvalidEventId | InvalidSignature | ParseResult.ParseError> =>
       Effect.gen(function*() {
         // Get public key from private key
         const publicKey = yield* crypto.getPublicKey(privateKey).pipe(

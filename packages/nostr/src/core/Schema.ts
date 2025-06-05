@@ -140,7 +140,7 @@ export class Filter extends Schema.Class<Filter>("Filter")({
 // Subscription ID
 export const SubscriptionId = pipe(
   Schema.String,
-  Schema.nonEmpty(),
+  Schema.minLength(1),
   Schema.maxLength(64),
   Schema.brand("SubscriptionId"),
   Schema.annotations({
@@ -156,10 +156,13 @@ export const EventMessage = Schema.Tuple(
   NostrEvent
 )
 
-export const ReqMessage = Schema.Tuple(
-  Schema.Literal("REQ"),
-  SubscriptionId,
-  Schema.Rest(Schema.Array(Filter))
+// Custom schema for variable-length REQ message
+export const ReqMessage = Schema.Array(Schema.Unknown).pipe(
+  Schema.filter((arr): arr is ["REQ", SubscriptionId, ...Filter[]] => {
+    if (arr.length < 2) return false
+    if (arr[0] !== "REQ") return false
+    return true
+  })
 )
 
 export const CloseMessage = Schema.Tuple(
