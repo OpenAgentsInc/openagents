@@ -28,7 +28,7 @@ describe("Relay Integration Tests", () => {
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
         
-        const url = relay.url
+        const url = yield* relay.getUrl()
 
         // Log the URL to debug
         yield* Console.log(`Connecting to relay at: ${url}`)
@@ -70,7 +70,7 @@ describe("Relay Integration Tests", () => {
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
         
-        const url = relay.url
+        const url = yield* relay.getUrl()
 
         // Log the URL to debug
         yield* Console.log(`Connecting to relay at: ${url}`)
@@ -121,7 +121,7 @@ describe("Relay Integration Tests", () => {
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
         
-        const url = relay.url
+        const url = yield* relay.getUrl()
 
         // Log the URL to debug
         yield* Console.log(`Connecting to relay at: ${url}`)
@@ -180,7 +180,7 @@ describe("Relay Integration Tests", () => {
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
         
-        const url = relay.url
+        const url = yield* relay.getUrl()
 
         // Log the URL to debug
         yield* Console.log(`Connecting to relay at: ${url}`)

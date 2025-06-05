@@ -24,7 +24,7 @@ interface ClientConnection {
 }
 
 export interface EphemeralRelay {
-  readonly url: string
+  readonly getUrl: () => Effect.Effect<string>
   readonly start: () => Effect.Effect<void, never, Scope.Scope>
   readonly getStoredEvents: () => Effect.Effect<ReadonlyArray<NostrEvent>>
   readonly clearEvents: () => Effect.Effect<void>
@@ -243,11 +243,11 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
 
     const storeEvent = (event: NostrEvent): Effect.Effect<void> => Ref.update(events, HashMap.set(event.id, event))
 
+    const getUrl = (): Effect.Effect<string> => 
+      Ref.get(actualPortRef).pipe(Effect.map(port => `ws://localhost:${port}`))
+
     return {
-      get url() { 
-        const port = Effect.runSync(Ref.get(actualPortRef))
-        return `ws://localhost:${port}` 
-      },
+      getUrl,
       start,
       getStoredEvents,
       clearEvents,
