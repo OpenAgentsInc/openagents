@@ -8,7 +8,14 @@ import { Console, Context, Effect, HashMap, Layer, Ref, Schema } from "effect"
 import { createServer } from "http"
 import type { WebSocket } from "ws"
 import { WebSocketServer } from "ws"
-import { ClientMessage, type EventId, type Filter, type NostrEvent, type RelayMessage, type SubscriptionId } from "../core/Schema.js"
+import {
+  ClientMessage,
+  type EventId,
+  type Filter,
+  type NostrEvent,
+  type RelayMessage,
+  type SubscriptionId
+} from "../core/Schema.js"
 
 interface ClientConnection {
   readonly id: string
@@ -123,9 +130,11 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
 
                   case "REQ": {
                     // Parse REQ message properly
-                    if (message.length < 2) break
+                    if (message.length < 2) {
+                      break
+                    }
                     const subId = message[1] as SubscriptionId
-                    const filters = message.slice(2) as Filter[]
+                    const filters = message.slice(2) as Array<Filter>
 
                     // Update client subscriptions
                     yield* Ref.update(

@@ -158,7 +158,7 @@ export const EventMessage = Schema.Tuple(
 
 // Custom schema for variable-length REQ message
 export const ReqMessage = Schema.Array(Schema.Unknown).pipe(
-  Schema.filter((arr): arr is ["REQ", SubscriptionId, ...Filter[]] => {
+  Schema.filter((arr): arr is ["REQ", SubscriptionId, ...Array<Filter>] => {
     if (arr.length < 2) return false
     if (arr[0] !== "REQ") return false
     return true

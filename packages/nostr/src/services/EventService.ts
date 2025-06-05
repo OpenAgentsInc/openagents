@@ -3,7 +3,8 @@
  * @module
  */
 
-import { Context, Effect, Layer, ParseResult, Schema } from "effect"
+import type { ParseResult } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import { EventValidationError, InvalidEventId, InvalidSignature } from "../core/Errors.js"
 import {
   type EventId,
