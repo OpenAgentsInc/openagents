@@ -127,6 +127,19 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
             `📈 Tokens: ${response.usage.total_tokens} (input: ${response.usage.input_tokens}, output: ${response.usage.output_tokens})`
           )
         }
+
+        if ("metadata" in response && response.metadata) {
+          const meta = response.metadata
+          if (meta.cost_usd) {
+            yield* Console.log(`💰 Cost: $${meta.cost_usd.toFixed(6)} USD`)
+          }
+          if (meta.duration_ms) {
+            yield* Console.log(`⏱️  Duration: ${meta.duration_ms}ms`)
+          }
+          if (meta.num_turns) {
+            yield* Console.log(`🔄 Conversation turns: ${meta.num_turns}`)
+          }
+        }
       })
     ).pipe(
       Effect.provide(Ai.internal.ClaudeCodePtyClientLive),
