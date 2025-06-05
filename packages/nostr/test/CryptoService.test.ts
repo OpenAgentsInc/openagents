@@ -2,7 +2,7 @@
  * Tests for CryptoService
  */
 
-import { Effect, Layer } from "effect"
+import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
 import type { PrivateKey } from "../src/core/Schema.js"
 import { CryptoService, CryptoServiceLive } from "../src/services/CryptoService.js"

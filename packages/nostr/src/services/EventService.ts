@@ -3,7 +3,7 @@
  * @module
  */
 
-import { Context, Effect, Schema, Layer } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
 import { EventValidationError, InvalidEventId, InvalidSignature } from "../core/Errors.js"
 import {
   type EventId,
@@ -81,127 +81,127 @@ export const EventServiceLive = Layer.effect(
   Effect.gen(function*() {
     const crypto = yield* CryptoService
 
-  const serialize = (event: UnsignedEvent): string => serializeEvent(event)
+    const serialize = (event: UnsignedEvent): string => serializeEvent(event)
 
-  const calculateId = (event: UnsignedEvent): Effect.Effect<EventId, InvalidEventId> =>
-    Effect.gen(function*() {
-      const serialized = serialize(event)
-      const id = yield* crypto.hash(serialized)
-      return id
-    }).pipe(
-      Effect.catchAll((error) =>
-        Effect.fail(
-          new InvalidEventId({
-            id: "unknown",
-            reason: `Failed to calculate event ID: ${error}`
-          })
-        )
-      )
-    )
-
-  const sign = (
-    event: UnsignedEvent & { id: EventId },
-    privateKey: PrivateKey
-  ): Effect.Effect<Signature, InvalidSignature> =>
-    crypto.sign(event.id, privateKey).pipe(
-      Effect.catchAll((error) =>
-        Effect.fail(
-          new InvalidSignature({
-            eventId: event.id,
-            publicKey: event.pubkey,
-            reason: String(error)
-          })
-        )
-      )
-    )
-
-  const create = (
-    params: EventParams,
-    privateKey: PrivateKey
-  ): Effect.Effect<NostrEvent, EventValidationError | InvalidEventId | InvalidSignature | Schema.ParseError> =>
-    Effect.gen(function*() {
-      // Get public key from private key
-      const publicKey = yield* crypto.getPublicKey(privateKey).pipe(
-        Effect.catchAll(() =>
+    const calculateId = (event: UnsignedEvent): Effect.Effect<EventId, InvalidEventId> =>
+      Effect.gen(function*() {
+        const serialized = serialize(event)
+        const id = yield* crypto.hash(serialized)
+        return id
+      }).pipe(
+        Effect.catchAll((error) =>
           Effect.fail(
-            new EventValidationError({
-              errors: ["Invalid private key"]
+            new InvalidEventId({
+              id: "unknown",
+              reason: `Failed to calculate event ID: ${error}`
             })
           )
         )
       )
 
-      // Create unsigned event
-      const unsignedEvent: UnsignedEvent = {
-        pubkey: publicKey,
-        created_at: Math.floor(Date.now() / 1000) as UnixTimestamp,
-        kind: params.kind,
-        tags: params.tags,
-        content: params.content
-      }
-
-      // Calculate ID
-      const id = yield* calculateId(unsignedEvent)
-
-      // Sign event
-      const sig = yield* sign({ ...unsignedEvent, id }, privateKey)
-
-      // Create final event
-      const event: NostrEvent = {
-        ...unsignedEvent,
-        id,
-        sig
-      }
-
-      // Validate the final event
-      return yield* Schema.decodeUnknown(NostrEvent)(event)
-    })
-
-  const verify = (event: NostrEvent): Effect.Effect<NostrEvent, InvalidEventId | InvalidSignature> =>
-    Effect.gen(function*() {
-      // Verify event ID
-      const unsignedEvent: UnsignedEvent = {
-        pubkey: event.pubkey,
-        created_at: event.created_at,
-        kind: event.kind,
-        tags: event.tags,
-        content: event.content
-      }
-
-      const calculatedId = yield* calculateId(unsignedEvent)
-      if (calculatedId !== event.id) {
-        return yield* Effect.fail(
-          new InvalidEventId({
-            id: event.id,
-            reason: `Calculated ID ${calculatedId} does not match event ID ${event.id}`
-          })
+    const sign = (
+      event: UnsignedEvent & { id: EventId },
+      privateKey: PrivateKey
+    ): Effect.Effect<Signature, InvalidSignature> =>
+      crypto.sign(event.id, privateKey).pipe(
+        Effect.catchAll((error) =>
+          Effect.fail(
+            new InvalidSignature({
+              eventId: event.id,
+              publicKey: event.pubkey,
+              reason: String(error)
+            })
+          )
         )
-      }
-
-      // Verify signature
-      const isValid = yield* crypto.verify(event.sig, event.id, event.pubkey).pipe(
-        Effect.catchAll(() => Effect.succeed(false))
       )
 
-      if (!isValid) {
-        return yield* Effect.fail(
-          new InvalidSignature({
-            eventId: event.id,
-            publicKey: event.pubkey,
-            reason: "Signature verification failed"
-          })
+    const create = (
+      params: EventParams,
+      privateKey: PrivateKey
+    ): Effect.Effect<NostrEvent, EventValidationError | InvalidEventId | InvalidSignature | Schema.ParseError> =>
+      Effect.gen(function*() {
+        // Get public key from private key
+        const publicKey = yield* crypto.getPublicKey(privateKey).pipe(
+          Effect.catchAll(() =>
+            Effect.fail(
+              new EventValidationError({
+                errors: ["Invalid private key"]
+              })
+            )
+          )
         )
-      }
 
-      return event
-    })
+        // Create unsigned event
+        const unsignedEvent: UnsignedEvent = {
+          pubkey: publicKey,
+          created_at: Math.floor(Date.now() / 1000) as UnixTimestamp,
+          kind: params.kind,
+          tags: params.tags,
+          content: params.content
+        }
 
-  return {
-    create,
-    verify,
-    calculateId,
-    sign,
-    serialize
-  }
-})
+        // Calculate ID
+        const id = yield* calculateId(unsignedEvent)
+
+        // Sign event
+        const sig = yield* sign({ ...unsignedEvent, id }, privateKey)
+
+        // Create final event
+        const event: NostrEvent = {
+          ...unsignedEvent,
+          id,
+          sig
+        }
+
+        // Validate the final event
+        return yield* Schema.decodeUnknown(NostrEvent)(event)
+      })
+
+    const verify = (event: NostrEvent): Effect.Effect<NostrEvent, InvalidEventId | InvalidSignature> =>
+      Effect.gen(function*() {
+        // Verify event ID
+        const unsignedEvent: UnsignedEvent = {
+          pubkey: event.pubkey,
+          created_at: event.created_at,
+          kind: event.kind,
+          tags: event.tags,
+          content: event.content
+        }
+
+        const calculatedId = yield* calculateId(unsignedEvent)
+        if (calculatedId !== event.id) {
+          return yield* Effect.fail(
+            new InvalidEventId({
+              id: event.id,
+              reason: `Calculated ID ${calculatedId} does not match event ID ${event.id}`
+            })
+          )
+        }
+
+        // Verify signature
+        const isValid = yield* crypto.verify(event.sig, event.id, event.pubkey).pipe(
+          Effect.catchAll(() => Effect.succeed(false))
+        )
+
+        if (!isValid) {
+          return yield* Effect.fail(
+            new InvalidSignature({
+              eventId: event.id,
+              publicKey: event.pubkey,
+              reason: "Signature verification failed"
+            })
+          )
+        }
+
+        return event
+      })
+
+    return {
+      create,
+      verify,
+      calculateId,
+      sign,
+      serialize
+    }
+  })
 )

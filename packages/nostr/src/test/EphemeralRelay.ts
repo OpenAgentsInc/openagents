@@ -140,9 +140,7 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
                     const storedEvents = yield* Ref.get(events)
                     const allEvents = Array.from(HashMap.values(storedEvents))
                     const matching = allEvents.filter((event) =>
-                      filters.some((f) =>
-                        matchesFilter(event, f)
-                      )
+                      filters.some((f) => matchesFilter(event, f))
                     )
 
                     // Apply limit if specified
