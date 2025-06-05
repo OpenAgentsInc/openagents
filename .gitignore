@@ -14,3 +14,12 @@ scratchpad/*
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Generated TypeScript files in src directories
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+# But keep the actual source TypeScript files
+!packages/*/src/**/*.ts
+!packages/*/src/**/*.tsx

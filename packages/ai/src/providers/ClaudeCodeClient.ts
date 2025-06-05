@@ -1,5 +1,12 @@
 import { Schema } from "@effect/schema"
+import type { Effect, Stream } from "effect"
 import { Context } from "effect"
+import type {
+  ClaudeCodeExecutionError,
+  ClaudeCodeNotFoundError,
+  ClaudeCodeParseError,
+  ClaudeCodeSessionError
+} from "../errors/index.js"
 
 /**
  * Claude Code prompt options
@@ -63,9 +70,9 @@ export interface ClaudeCodeClient {
   readonly prompt: (
     text: string,
     options?: PromptOptions
-  ) => import("effect").Effect.Effect<
+  ) => Effect.Effect<
     ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
-    import("../errors/index.js").ClaudeCodeExecutionError | import("../errors/index.js").ClaudeCodeParseError,
+    ClaudeCodeExecutionError | ClaudeCodeParseError,
     never
   >
 
@@ -76,11 +83,11 @@ export interface ClaudeCodeClient {
     sessionId: string,
     prompt: string,
     options?: PromptOptions
-  ) => import("effect").Effect.Effect<
+  ) => Effect.Effect<
     ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
-    | import("../errors/index.js").ClaudeCodeExecutionError
-    | import("../errors/index.js").ClaudeCodeParseError
-    | import("../errors/index.js").ClaudeCodeSessionError,
+    | ClaudeCodeExecutionError
+    | ClaudeCodeParseError
+    | ClaudeCodeSessionError,
     never
   >
 
@@ -90,9 +97,9 @@ export interface ClaudeCodeClient {
   readonly continueRecent: (
     prompt: string,
     options?: PromptOptions
-  ) => import("effect").Effect.Effect<
+  ) => Effect.Effect<
     ClaudeCodeJsonResponse | ClaudeCodeTextResponse,
-    import("../errors/index.js").ClaudeCodeExecutionError | import("../errors/index.js").ClaudeCodeParseError,
+    ClaudeCodeExecutionError | ClaudeCodeParseError,
     never
   >
 
@@ -102,14 +109,14 @@ export interface ClaudeCodeClient {
   readonly streamPrompt: (
     text: string,
     options?: PromptOptions
-  ) => import("effect").Stream.Stream<string, import("../errors/index.js").ClaudeCodeExecutionError, never>
+  ) => Stream.Stream<string, ClaudeCodeExecutionError, never>
 
   /**
    * Check if Claude CLI is available
    */
-  readonly checkAvailability: () => import("effect").Effect.Effect<
+  readonly checkAvailability: () => Effect.Effect<
     boolean,
-    import("../errors/index.js").ClaudeCodeNotFoundError,
+    ClaudeCodeNotFoundError,
     never
   >
 }

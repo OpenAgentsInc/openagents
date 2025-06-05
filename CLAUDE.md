@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an OpenAgents Effect monorepo demonstrating a Todo application using modern Effect patterns. The repository follows a clean architecture with these packages:
 
 - **`@openagentsinc/domain`** - Core business logic and API contracts
-- **`@openagentsinc/server`** - HTTP server implementation
+- **`@openagentsinc/pylon`** - Nostr relay server implementation
 - **`@openagentsinc/cli`** - Command-line interface client
 - **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
 - **`@openagentsinc/playground`** - UI component testing playground
