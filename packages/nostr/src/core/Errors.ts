@@ -47,7 +47,7 @@ export class InvalidPublicKey extends Schema.TaggedError<InvalidPublicKey>()("In
 export class ConnectionError extends Schema.TaggedError<ConnectionError>()("ConnectionError", {
   url: Schema.String,
   reason: Schema.String,
-  code: Schema.optional(Schema.Number)
+  code: Schema.optional(Schema.Union(Schema.Number, Schema.String))
 }) {}
 
 export class ConnectionClosed extends Schema.TaggedError<ConnectionClosed>()("ConnectionClosed", {

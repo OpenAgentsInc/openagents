@@ -74,7 +74,7 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
     // State
     const events = yield* Ref.make<HashMap.HashMap<EventId, NostrEvent>>(HashMap.empty())
     const clients = yield* Ref.make<HashMap.HashMap<string, ClientConnection>>(HashMap.empty())
-    let actualPort = port
+    const actualPortRef = yield* Ref.make<number>(port)
 
     const start = (): Effect.Effect<void, never, Scope.Scope> =>
       Effect.gen(function*() {
@@ -211,7 +211,8 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
         // Start server
         yield* Effect.async<void>((resume) => {
           server.listen(port, () => {
-            actualPort = (server.address() as any).port
+            const assignedPort = (server.address() as any).port
+            Effect.runSync(Ref.set(actualPortRef, assignedPort))
             resume(Effect.succeed(undefined))
           })
         })
@@ -227,10 +228,11 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
           })
         )
 
-        yield* Console.log(`Ephemeral relay started on port ${actualPort}`)
+        const assignedPort = yield* Ref.get(actualPortRef)
+        yield* Console.log(`Ephemeral relay started on port ${assignedPort}`)
       })
 
-    const url = `ws://localhost:${actualPort}`
+    // const url = `ws://localhost:${actualPort}`
 
     const getStoredEvents = (): Effect.Effect<ReadonlyArray<NostrEvent>> =>
       Ref.get(events).pipe(Effect.map((map) => Array.from(HashMap.values(map))))
@@ -242,7 +244,10 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
     const storeEvent = (event: NostrEvent): Effect.Effect<void> => Ref.update(events, HashMap.set(event.id, event))
 
     return {
-      url,
+      get url() { 
+        const port = Effect.runSync(Ref.get(actualPortRef))
+        return `ws://localhost:${port}` 
+      },
       start,
       getStoredEvents,
       clearEvents,

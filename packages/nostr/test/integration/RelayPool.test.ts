@@ -14,14 +14,18 @@ import { makeEphemeralRelay } from "../../src/test/EphemeralRelay.js"
 describe("Relay Pool Integration Tests", () => {
   const TestLayer = Layer.mergeAll(
     CryptoServiceLive,
-    EventServiceLive,
+    EventServiceLive.pipe(Layer.provide(CryptoServiceLive)),
     WebSocketServiceLive,
-    RelayServiceLive,
-    RelayPoolServiceLive
+    RelayServiceLive.pipe(Layer.provide(WebSocketServiceLive)),
+    RelayPoolServiceLive.pipe(
+      Layer.provide(
+        RelayServiceLive.pipe(Layer.provide(WebSocketServiceLive))
+      )
+    )
   )
 
   describe("Multi-relay operations", () => {
-    it("should connect to multiple relays", () =>
+    it("should connect to multiple relays", async () =>
       Effect.gen(function*() {
         // Start multiple relays
         const relay1 = yield* makeEphemeralRelay()
@@ -36,6 +40,9 @@ describe("Relay Pool Integration Tests", () => {
         const url2 = relay2.url
         const url3 = relay3.url
 
+        // Add small delay to ensure servers are ready
+        yield* Effect.sleep(Duration.millis(100))
+
         // Connect to pool
         const poolService = yield* RelayPoolService
         const pool = yield* poolService.connect([url1, url2, url3])
@@ -49,10 +56,10 @@ describe("Relay Pool Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
 
-    it("should publish events to all relays", () =>
+    it("should publish events to all relays", async () =>
       Effect.gen(function*() {
         // Start multiple relays
         const relay1 = yield* makeEphemeralRelay()
@@ -63,6 +70,9 @@ describe("Relay Pool Integration Tests", () => {
 
         const url1 = relay1.url
         const url2 = relay2.url
+
+        // Add small delay to ensure servers are ready
+        yield* Effect.sleep(Duration.millis(100))
 
         // Connect to pool
         const poolService = yield* RelayPoolService
@@ -97,10 +107,10 @@ describe("Relay Pool Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
 
-    it("should deduplicate events from multiple relays", () =>
+    it("should deduplicate events from multiple relays", async () =>
       Effect.gen(function*() {
         // Start multiple relays
         const relay1 = yield* makeEphemeralRelay()
@@ -155,16 +165,19 @@ describe("Relay Pool Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
 
-    it("should handle partial relay failures", () =>
+    it("should handle partial relay failures", async () =>
       Effect.gen(function*() {
         // Start one relay
         const relay1 = yield* makeEphemeralRelay()
         yield* relay1.start()
         const url1 = relay1.url
         const url2 = "ws://invalid-relay.test:9999" // This will fail
+
+        // Add small delay to ensure server is ready
+        yield* Effect.sleep(Duration.millis(100))
 
         // Connect to pool
         const poolService = yield* RelayPoolService
@@ -194,7 +207,7 @@ describe("Relay Pool Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
   })
 })

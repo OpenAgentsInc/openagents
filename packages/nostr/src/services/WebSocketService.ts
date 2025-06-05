@@ -53,7 +53,7 @@ export const WebSocketServiceLive = Layer.succeed(
             const connError = new ConnectionError({
               url,
               reason: error.message,
-              code: (error as any).code
+              code: typeof (error as any).code === 'string' ? undefined : (error as any).code
             })
             Ref.set(errorRef, Option.some(connError)).pipe(Effect.runSync)
             Queue.shutdown(messageQueue).pipe(Effect.runSync)
@@ -85,7 +85,7 @@ export const WebSocketServiceLive = Layer.succeed(
                 new ConnectionError({
                   url,
                   reason: error.message,
-                  code: (error as any).code
+                  code: typeof (error as any).code === 'string' ? undefined : (error as any).code
                 })
               )))
           }

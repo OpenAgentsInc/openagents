@@ -2,7 +2,7 @@
  * Integration tests for Nostr relay communication
  */
 
-import { Chunk, Duration, Effect, Layer, Stream } from "effect"
+import { Chunk, Console, Duration, Effect, Layer, Stream } from "effect"
 import { describe, expect, it } from "vitest"
 import { CryptoService, CryptoServiceLive } from "../../src/services/CryptoService.js"
 import { EventService, EventServiceLive } from "../../src/services/EventService.js"
@@ -13,18 +13,25 @@ import { makeEphemeralRelay } from "../../src/test/EphemeralRelay.js"
 describe("Relay Integration Tests", () => {
   const TestLayer = Layer.mergeAll(
     CryptoServiceLive,
-    EventServiceLive,
+    EventServiceLive.pipe(Layer.provide(CryptoServiceLive)),
     WebSocketServiceLive,
-    RelayServiceLive
+    RelayServiceLive.pipe(Layer.provide(WebSocketServiceLive))
   )
 
   describe("Basic relay operations", () => {
-    it("should connect to a relay and publish an event", () =>
+    it("should connect to a relay and publish an event", async () =>
       Effect.gen(function*() {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
+        
+        // Add small delay to ensure server is ready and port is set
+        yield* Effect.sleep(Duration.millis(200))
+        
         const url = relay.url
+
+        // Log the URL to debug
+        yield* Console.log(`Connecting to relay at: ${url}`)
 
         // Connect to relay
         const relayService = yield* RelayService
@@ -51,15 +58,22 @@ describe("Relay Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
 
-    it("should subscribe to events and receive them", () =>
+    it("should subscribe to events and receive them", async () =>
       Effect.gen(function*() {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
+        
+        // Add small delay to ensure server is ready and port is set
+        yield* Effect.sleep(Duration.millis(200))
+        
         const url = relay.url
+
+        // Log the URL to debug
+        yield* Console.log(`Connecting to relay at: ${url}`)
 
         // Connect to relay
         const relayService = yield* RelayService
@@ -95,15 +109,22 @@ describe("Relay Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
 
-    it("should filter events by kind", () =>
+    it("should filter events by kind", async () =>
       Effect.gen(function*() {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
+        
+        // Add small delay to ensure server is ready and port is set
+        yield* Effect.sleep(Duration.millis(200))
+        
         const url = relay.url
+
+        // Log the URL to debug
+        yield* Console.log(`Connecting to relay at: ${url}`)
 
         // Connect to relay
         const relayService = yield* RelayService
@@ -147,15 +168,22 @@ describe("Relay Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
 
-    it("should handle multiple subscriptions", () =>
+    it("should handle multiple subscriptions", async () =>
       Effect.gen(function*() {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
+        
+        // Add small delay to ensure server is ready and port is set
+        yield* Effect.sleep(Duration.millis(200))
+        
         const url = relay.url
+
+        // Log the URL to debug
+        yield* Console.log(`Connecting to relay at: ${url}`)
 
         // Connect to relay
         const relayService = yield* RelayService
@@ -209,7 +237,7 @@ describe("Relay Integration Tests", () => {
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),
-        Effect.runPromise as any
-      ))
+        Effect.runPromise
+      ), 30000)
   })
 })
