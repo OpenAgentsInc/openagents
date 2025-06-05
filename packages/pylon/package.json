@@ -1,13 +1,13 @@
 {
-  "name": "@openagentsinc/server",
+  "name": "@openagentsinc/pylon",
   "version": "0.0.0",
   "type": "module",
   "license": "CC0-1.0",
-  "description": "The server template",
+  "description": "Nostr relay server implementation",
   "repository": {
     "type": "git",
     "url": "https://github.com/OpenAgentsInc/openagents",
-    "directory": "packages/server"
+    "directory": "packages/pylon"
   },
   "scripts": {
     "codegen": "build-utils prepare-v2",
