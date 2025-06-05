@@ -1,8 +1,8 @@
-import { NodeCommandExecutor } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import { AiService } from "../AiService.js"
 import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../config/ClaudeCodeConfig.js"
-import { ClaudeCodeClient, ClaudeCodeClientLive } from "./ClaudeCodeSimple.js"
+import { ClaudeCodeClient } from "./ClaudeCodeClient.js"
+import { ClaudeCodePtyClientLive } from "./ClaudeCodePty.js"
 
 /**
  * Claude Code provider for AI Service
@@ -79,9 +79,8 @@ export const ClaudeCodeProviderLive = Layer.effect(
     }
   })
 ).pipe(
-  Layer.provide(ClaudeCodeClientLive),
-  Layer.provide(ClaudeCodeConfigDefault),
-  Layer.provide(NodeCommandExecutor.layer)
+  Layer.provide(ClaudeCodePtyClientLive),
+  Layer.provide(ClaudeCodeConfigDefault)
 )
 
 /**

@@ -33,6 +33,11 @@ export const ClaudeCodeJsonResponse = Schema.Struct({
     input_tokens: Schema.Number,
     output_tokens: Schema.Number,
     total_tokens: Schema.Number
+  })),
+  metadata: Schema.optional(Schema.Struct({
+    cost_usd: Schema.optional(Schema.Number),
+    duration_ms: Schema.optional(Schema.Number),
+    num_turns: Schema.optional(Schema.Number)
   }))
 })
 
