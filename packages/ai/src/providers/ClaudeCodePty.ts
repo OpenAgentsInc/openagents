@@ -121,12 +121,32 @@ export const makeClaudeCodePtyClient = (
             // Convert system response to expected format
             return {
               content: parsed.result,
-              model: "claude-3-5-sonnet-20241022",
+              model: parsed.model || "claude-code",
               session_id: parsed.session_id,
               usage: {
                 input_tokens: 0,
                 output_tokens: 0,
                 total_tokens: 0
+              }
+            }
+          }
+
+          // Handle Claude CLI result format
+          if (parsed.type === "result" && parsed.result) {
+            return {
+              content: parsed.result,
+              model: parsed.model || "claude-code",
+              session_id: parsed.session_id,
+              usage: {
+                // Claude CLI doesn't provide token counts, estimate from cost
+                input_tokens: Math.round(parsed.cost_usd * 10000), // Rough estimate
+                output_tokens: Math.round(parsed.cost_usd * 2000), // Rough estimate
+                total_tokens: Math.round(parsed.cost_usd * 12000) // Rough estimate
+              },
+              metadata: {
+                cost_usd: parsed.cost_usd,
+                duration_ms: parsed.duration_ms,
+                num_turns: parsed.num_turns
               }
             }
           }
