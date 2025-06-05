@@ -48,10 +48,7 @@
       "@template/server/test/*": ["./packages/server/test/*.js"],
       "@openagentsinc/ui": ["./packages/ui/src/index.js"],
       "@openagentsinc/ui/*": ["./packages/ui/src/*.js"],
-      "@openagentsinc/ui/test/*": ["./packages/ui/test/*.js"],
-      "@openagentsinc/ai": ["./packages/ai/src/index.js"],
-      "@openagentsinc/ai/*": ["./packages/ai/src/*.js"],
-      "@openagentsinc/ai/test/*": ["./packages/ai/test/*.js"]
+      "@openagentsinc/ui/test/*": ["./packages/ui/test/*.js"]
     }
   }
 }

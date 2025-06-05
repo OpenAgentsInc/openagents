@@ -28,6 +28,7 @@
     "@effect/platform": "0.84.6",
     "@effect/platform-node": "0.85.2",
     "@openagentsinc/domain": "workspace:^",
+    "@openagentsinc/ai": "workspace:^",
     "effect": "3.16.3"
   },
   "devDependencies": {
@@ -35,6 +36,7 @@
     "@effect/platform": "0.84.6",
     "@effect/platform-node": "0.85.2",
     "@openagentsinc/domain": "workspace:^",
+    "@openagentsinc/ai": "workspace:^",
     "effect": "3.16.3"
   },
   "effect": {

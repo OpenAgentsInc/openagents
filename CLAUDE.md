@@ -124,6 +124,7 @@ Each package builds in this order:
 
 - **Commander Repository**: The Commander repository is located at `/Users/christopherdavid/code/commander` - do not clone it
 - **Development Servers**: Never start development servers with `pnpm dev` or similar commands - the user will handle this
+- **Git Hooks**: NEVER use `--no-verify` when pushing. Always fix all linting and test errors before pushing
 
 ### Critical: UI Package Codegen
 The UI package (`@openagentsinc/ui`) does NOT use Effect codegen because:
