@@ -149,7 +149,7 @@ describe("Relay Pool Integration Tests", () => {
           Stream.runCollect,
           Effect.catchTag("TimeoutException", () => Effect.succeed(Chunk.empty()))
         )
-        
+
         // Should have received the event only once (deduplication working)
         expect(allEvents.length).toBe(1)
         expect(Chunk.unsafeGet(allEvents, 0).id).toBe(event.id)
@@ -197,7 +197,9 @@ describe("Relay Pool Integration Tests", () => {
         // Failed relay might not be included in results or might have undefined value
         const relay2Result = HashMap.get(results, url2)
         // It's OK for failed relay to not be in results at all, or to have false value
-        expect(relay2Result === undefined || relay2Result.value === false || relay2Result.value === undefined).toBe(true)
+        expect(relay2Result === undefined || relay2Result.value === false || relay2Result.value === undefined).toBe(
+          true
+        )
       }).pipe(
         Effect.scoped,
         Effect.provide(TestLayer),

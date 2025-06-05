@@ -24,10 +24,10 @@ describe("Relay Integration Tests", () => {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
-        
+
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
-        
+
         const url = yield* relay.getUrl()
 
         // Log the URL to debug
@@ -66,10 +66,10 @@ describe("Relay Integration Tests", () => {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
-        
+
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
-        
+
         const url = yield* relay.getUrl()
 
         // Log the URL to debug
@@ -117,10 +117,10 @@ describe("Relay Integration Tests", () => {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
-        
+
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
-        
+
         const url = yield* relay.getUrl()
 
         // Log the URL to debug
@@ -176,10 +176,10 @@ describe("Relay Integration Tests", () => {
         // Start ephemeral relay
         const relay = yield* makeEphemeralRelay()
         yield* relay.start()
-        
+
         // Add small delay to ensure server is ready and port is set
         yield* Effect.sleep(Duration.millis(200))
-        
+
         const url = yield* relay.getUrl()
 
         // Log the URL to debug

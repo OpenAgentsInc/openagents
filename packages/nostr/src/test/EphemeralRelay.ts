@@ -243,8 +243,8 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
 
     const storeEvent = (event: NostrEvent): Effect.Effect<void> => Ref.update(events, HashMap.set(event.id, event))
 
-    const getUrl = (): Effect.Effect<string> => 
-      Ref.get(actualPortRef).pipe(Effect.map(port => `ws://localhost:${port}`))
+    const getUrl = (): Effect.Effect<string> =>
+      Ref.get(actualPortRef).pipe(Effect.map((port) => `ws://localhost:${port}`))
 
     return {
       getUrl,
