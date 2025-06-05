@@ -8,9 +8,7 @@ const MainLive = NodeContext.layer
 
 const main = cli(process.argv).pipe(
   Effect.provide(MainLive),
-  Effect.catchAll((error) =>
-    Effect.die(error)
-  )
+  Effect.catchAll((error) => Effect.die(error))
 )
 
 NodeRuntime.runMain(main)

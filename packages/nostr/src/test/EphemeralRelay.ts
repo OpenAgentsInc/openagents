@@ -29,6 +29,7 @@ export interface EphemeralRelay {
   readonly getStoredEvents: () => Effect.Effect<ReadonlyArray<NostrEvent>>
   readonly clearEvents: () => Effect.Effect<void>
   readonly getConnectionCount: () => Effect.Effect<number>
+  readonly storeEvent: (event: NostrEvent) => Effect.Effect<void>
 }
 
 /**
@@ -238,12 +239,15 @@ export const makeEphemeralRelay = (port = 0): Effect.Effect<EphemeralRelay> =>
 
     const getConnectionCount = (): Effect.Effect<number> => Ref.get(clients).pipe(Effect.map(HashMap.size))
 
+    const storeEvent = (event: NostrEvent): Effect.Effect<void> => Ref.update(events, HashMap.set(event.id, event))
+
     return {
       url,
       start,
       getStoredEvents,
       clearEvents,
-      getConnectionCount
+      getConnectionCount,
+      storeEvent
     }
   })
 

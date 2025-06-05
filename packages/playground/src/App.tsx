@@ -12,12 +12,12 @@ import { Code, FileText, Settings, User, Bot } from 'lucide-react'
 import type { Pane } from '@openagentsinc/ui/core/types/pane'
 
 // Import demo components
-import { ButtonsDemo } from './components/ButtonsDemo'
-import { FormsDemo } from './components/FormsDemo'
-import { FeedbackDemo } from './components/FeedbackDemo'
-import { PanesDemo } from './components/PanesDemo'
-import { AiDemo } from './components/AiDemo'
-import { NostrDemoSimple } from './components/NostrDemoSimple'
+import { ButtonsDemo } from './components/ButtonsDemo.js'
+import { FormsDemo } from './components/FormsDemo.js'
+import { FeedbackDemo } from './components/FeedbackDemo.js'
+import { PanesDemo } from './components/PanesDemo.js'
+import { AiDemo } from './components/AiDemo.js'
+import { NostrDemoSimple } from './components/NostrDemoSimple.js'
 
 import './App.css'
 

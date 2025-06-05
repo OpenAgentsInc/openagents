@@ -24,3 +24,9 @@ export * as EventStorage from "./services/EventStorage.js"
  * @module
  */
 export * as FilterMatcher from "./services/FilterMatcher.js"
+
+/**
+ * Local type definitions to avoid circular dependencies
+ * @module
+ */
+export * as types from "./types.js"

@@ -36,5 +36,8 @@
         "**/*.ts"
       ]
     }
+  },
+  "devDependencies": {
+    "@types/ws": "8.5.14"
   }
 }
