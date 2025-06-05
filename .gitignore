@@ -23,3 +23,6 @@ packages/*/src/**/*.js.map
 # But keep the actual source TypeScript files
 !packages/*/src/**/*.ts
 !packages/*/src/**/*.tsx
+
+# Private local research folder
+private/
