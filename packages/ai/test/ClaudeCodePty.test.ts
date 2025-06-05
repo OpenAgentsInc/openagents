@@ -6,7 +6,7 @@ import { ClaudeCodePtyClientLive, makeClaudeCodePtyClient } from "../src/provide
 
 describe("ClaudeCodePtyClient", () => {
   describe("checkAvailability", () => {
-    it("should return a boolean", () =>
+    it.skipIf(process.env.CI)("should return a boolean", () =>
       Effect.gen(function*() {
         const client = yield* ClaudeCodeClient
         const result = yield* client.checkAvailability()
