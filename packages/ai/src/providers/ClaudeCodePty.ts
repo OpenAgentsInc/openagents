@@ -121,7 +121,7 @@ export const makeClaudeCodePtyClient = (
             // Convert system response to expected format
             return {
               content: parsed.result,
-              model: "claude-3-5-sonnet-20241022",
+              model: parsed.model || "claude-code",
               session_id: parsed.session_id,
               usage: {
                 input_tokens: 0,
@@ -135,7 +135,7 @@ export const makeClaudeCodePtyClient = (
           if (parsed.type === "result" && parsed.result) {
             return {
               content: parsed.result,
-              model: "claude-3-5-sonnet-20241022",
+              model: parsed.model || "claude-code",
               session_id: parsed.session_id,
               usage: {
                 // Claude CLI doesn't provide token counts, estimate from cost
