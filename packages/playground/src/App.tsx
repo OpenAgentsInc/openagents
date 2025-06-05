@@ -51,7 +51,7 @@ function App() {
         program.pipe(Effect.provide(Ai.AiService.AiServiceLive))
       )
       console.log('AI Service Response:', result)
-      setAiResponse(result)
+      setAiResponse(String(result))
     } catch (error) {
       console.error('AI Service Error:', error)
       setAiResponse(`Error: ${error}`)

@@ -37,8 +37,8 @@
     "removeComments": false,
     "plugins": [{ "name": "@effect/language-service" }],
     "paths": {
-      "@openagentsinc/ai": ["./packages/ai/src/index.js"],
-      "@openagentsinc/ai/*": ["./packages/ai/src/*.js"],
+      "@openagentsinc/ai": ["./packages/ai/src/index.ts"],
+      "@openagentsinc/ai/*": ["./packages/ai/src/*.ts"],
       "@openagentsinc/ai/test/*": ["./packages/ai/test/*.js"],
       "@openagentsinc/cli": ["./packages/cli/src/index.js"],
       "@openagentsinc/cli/*": ["./packages/cli/src/*.js"],
