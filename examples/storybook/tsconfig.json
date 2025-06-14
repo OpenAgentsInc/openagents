@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "stories/**/*",
+    ".storybook/**/*"
+  ],
+  "references": [
+    { "path": "../../packages/storybook" },
+    { "path": "../../packages/ui" }
+  ]
+}
