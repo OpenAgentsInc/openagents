@@ -3,13 +3,13 @@
  */
 
 import type { RenderContext } from "@storybook/types"
-import type { TypedRenderer } from "./types.js"
 import * as Effect from "effect/Effect"
 import * as Runtime from "effect/Runtime"
+import type { TypedRenderer } from "./types.js"
 
 /**
  * Main render function that integrates Typed components with Storybook
- * 
+ *
  * @since 1.0.0
  * @category Rendering
  */
@@ -17,7 +17,7 @@ export const renderToCanvas = async (
   renderContext: RenderContext<TypedRenderer>,
   canvasElement: HTMLElement
 ) => {
-  const { storyFn, showError, showMain } = renderContext
+  const { showError, showMain, storyFn } = renderContext
 
   try {
     // Clear the canvas
@@ -31,7 +31,7 @@ export const renderToCanvas = async (
     const runtime = Runtime.defaultRuntime
 
     // For now, create a simple HTML render
-    const renderEffect = Effect.gen(function* () {
+    const renderEffect = Effect.gen(function*() {
       // Basic rendering - we'll improve this as we iterate
       const element = document.createElement("div")
       element.style.padding = "20px"
@@ -39,15 +39,16 @@ export const renderToCanvas = async (
       element.style.backgroundColor = "#000000"
       element.style.color = "#ffffff"
       element.innerHTML = "Story component placeholder - this will be replaced with actual Typed rendering"
-      
+
       canvasElement.appendChild(element)
-      
+
+      yield* Effect.void
       return "rendered"
     })
 
     // Run the effect
     await Runtime.runPromise(runtime)(renderEffect)
-    
+
     showMain()
   } catch (error) {
     console.error("Storybook render error:", error)
@@ -61,7 +62,7 @@ export const renderToCanvas = async (
 
 /**
  * Cleanup function called when Storybook unmounts
- * 
+ *
  * @since 1.0.0
  * @category Lifecycle
  */

@@ -7,12 +7,12 @@ import type {
   TypescriptOptions as BaseTypescriptOptions,
   WebRenderer
 } from "@storybook/types"
-import type { RenderEvent } from "@typed/template"
 import type * as Fx from "@typed/fx/Fx"
+import type { RenderEvent } from "@typed/template"
 
 /**
  * Custom renderer interface for Typed components in Storybook
- * 
+ *
  * @since 1.0.0
  * @category Renderer
  */
@@ -23,21 +23,21 @@ export interface TypedRenderer extends WebRenderer {
 
 /**
  * Function signature for Typed components
- * 
+ *
  * @since 1.0.0
  * @category Component
  */
-export interface TypedComponent<Args = {}> {
+export interface TypedComponent<Args = Record<string, unknown>> {
   (args: Args, ...children: ReadonlyArray<Fx.Fx<RenderEvent, any, any>>): Fx.Fx<RenderEvent, any, any>
 }
 
 /**
  * Story metadata with Typed component integration
- * 
+ *
  * @since 1.0.0
  * @category Story
  */
-export interface Meta<Args = {}> {
+export interface Meta<Args = Record<string, unknown>> {
   component?: TypedComponent<Args>
   title?: string
   parameters?: Record<string, any>
@@ -49,11 +49,11 @@ export interface Meta<Args = {}> {
 
 /**
  * Individual story configuration
- * 
+ *
  * @since 1.0.0
  * @category Story
  */
-export interface StoryObj<Args = {}, T = Meta<Args>> {
+export interface StoryObj<Args = Record<string, unknown>> {
   args?: Partial<Args>
   argTypes?: Record<keyof Args, any>
   parameters?: Record<string, any>
@@ -63,7 +63,7 @@ export interface StoryObj<Args = {}, T = Meta<Args>> {
 
 /**
  * Storybook configuration with Vite integration
- * 
+ *
  * @since 1.0.0
  * @category Configuration
  */
@@ -75,7 +75,7 @@ export interface StorybookConfig extends BaseStorybookConfig {
 
 /**
  * Framework-specific options
- * 
+ *
  * @since 1.0.0
  * @category Configuration
  */

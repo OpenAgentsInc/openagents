@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@openagentsinc/storybook"
-import * as Fx from "@typed/fx/Fx"
-import { div, h1, h2, p, button } from "@typed/ui/hyperscript"
+import type * as Fx from "@typed/fx/Fx"
+import { button, div } from "@typed/ui/hyperscript"
 
 type CardArgs = {
   title: string
@@ -11,19 +11,21 @@ type CardArgs = {
 
 // Simple Typed Card component
 const TypedCard = (args: CardArgs): Fx.Fx<any, never, any> => {
-  const cardStyle = "font-family: 'Berkeley Mono', monospace; background-color: #000000; color: #ffffff; border: 1px solid #ffffff; padding: 24px; display: flex; flex-direction: column; gap: 24px; box-shadow: 0 1px 3px 0 rgba(255, 255, 255, 0.1)"
+  const cardStyle =
+    "font-family: 'Berkeley Mono', monospace; background-color: #000000; color: #ffffff; border: 1px solid #ffffff; padding: 24px; display: flex; flex-direction: column; gap: 24px; box-shadow: 0 1px 3px 0 rgba(255, 255, 255, 0.1)"
 
   const headerStyle = "display: grid; grid-template-rows: auto auto; align-items: start; gap: 6px"
-  
+
   const titleStyle = "font-family: 'Berkeley Mono', monospace; font-weight: 600; line-height: 1; font-size: 16px"
-  
+
   const descriptionStyle = "font-family: 'Berkeley Mono', monospace; color: #a1a1aa; font-size: 14px"
-  
+
   const contentStyle = "font-family: 'Berkeley Mono', monospace"
-  
+
   const footerStyle = "font-family: 'Berkeley Mono', monospace; display: flex; align-items: center; margin-top: 24px"
 
-  const buttonStyle = "font-family: 'Berkeley Mono', monospace; background-color: #ffffff; color: #000000; border: 1px solid #ffffff; padding: 8px 16px; cursor: pointer; font-size: 14px"
+  const buttonStyle =
+    "font-family: 'Berkeley Mono', monospace; background-color: #ffffff; color: #000000; border: 1px solid #ffffff; padding: 8px 16px; cursor: pointer; font-size: 14px"
 
   return div(
     { style: cardStyle },
@@ -33,12 +35,14 @@ const TypedCard = (args: CardArgs): Fx.Fx<any, never, any> => {
       div({ style: descriptionStyle }, args.description)
     ),
     div({ style: contentStyle }, args.content),
-    ...(args.hasFooter ? [
-      div(
-        { style: footerStyle },
-        button({ style: buttonStyle }, "Action")
-      )
-    ] : [])
+    ...(args.hasFooter ?
+      [
+        div(
+          { style: footerStyle },
+          button({ style: buttonStyle }, "Action")
+        )
+      ] :
+      [])
   )
 }
 
@@ -68,7 +72,8 @@ export const Default: Story = {
   args: {
     title: "OpenAgents Card",
     description: "A beautiful card component with Berkeley Mono font",
-    content: "This is the main content of the card. It demonstrates the OpenAgents aesthetic with black background, white text, and clean borders.",
+    content:
+      "This is the main content of the card. It demonstrates the OpenAgents aesthetic with black background, white text, and clean borders.",
     hasFooter: false
   }
 }
@@ -88,7 +93,8 @@ export const LongContent: Story = {
   args: {
     title: "Long Content Example",
     description: "Demonstrating how cards handle longer text content",
-    content: "This card contains much longer content to demonstrate how the component handles text wrapping and larger amounts of information. The Berkeley Mono font maintains readability even with longer passages of text, and the consistent spacing creates a pleasant reading experience.",
+    content:
+      "This card contains much longer content to demonstrate how the component handles text wrapping and larger amounts of information. The Berkeley Mono font maintains readability even with longer passages of text, and the consistent spacing creates a pleasant reading experience.",
     hasFooter: true
   }
 }

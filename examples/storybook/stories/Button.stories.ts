@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@openagentsinc/storybook"
-import * as Fx from "@typed/fx/Fx"
-import { button, span } from "@typed/ui/hyperscript"
-import type { Renderable } from "@typed/template/Renderable"
+import type * as Fx from "@typed/fx/Fx"
+import { button } from "@typed/ui/hyperscript"
 
 type ButtonArgs = {
   label: string
@@ -13,20 +12,21 @@ type ButtonArgs = {
 
 // Simple Typed Button component
 const TypedButton = (args: ButtonArgs): Fx.Fx<any, never, any> => {
-  const baseClasses = "cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 rounded-none"
-  
+  const baseClasses =
+    "cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 rounded-none"
+
   const variantClasses = {
     primary: "bg-white text-black hover:bg-gray-200 border border-white",
     secondary: "bg-transparent text-white border border-white hover:bg-white hover:text-black",
     danger: "bg-red-600 text-white hover:bg-red-700 border border-red-600"
   }
-  
+
   const sizeClasses = {
     sm: "h-8 px-3 text-xs",
-    default: "h-9 px-4 py-2", 
+    default: "h-9 px-4 py-2",
     lg: "h-10 px-8"
   }
-  
+
   const className = [
     baseClasses,
     variantClasses[args.variant],
@@ -38,10 +38,10 @@ const TypedButton = (args: ButtonArgs): Fx.Fx<any, never, any> => {
       className,
       disabled: args.disabled,
       onclick: args.onClick,
-      style: "font-family: 'Berkeley Mono', monospace; background-color: " + 
-             (args.variant === "primary" ? "#ffffff" : args.variant === "danger" ? "#dc2626" : "transparent") + 
-             "; color: " + (args.variant === "primary" ? "#000000" : "#ffffff") + 
-             "; border: 1px solid " + (args.variant === "danger" ? "#dc2626" : "#ffffff")
+      style: "font-family: 'Berkeley Mono', monospace; background-color: " +
+        (args.variant === "primary" ? "#ffffff" : args.variant === "danger" ? "#dc2626" : "transparent") +
+        "; color: " + (args.variant === "primary" ? "#000000" : "#ffffff") +
+        "; border: 1px solid " + (args.variant === "danger" ? "#dc2626" : "#ffffff")
     },
     args.label
   )
@@ -87,7 +87,7 @@ export const Primary: Story = {
 export const Secondary: Story = {
   render: TypedButton,
   args: {
-    label: "Secondary Button", 
+    label: "Secondary Button",
     variant: "secondary",
     size: "default",
     disabled: false
@@ -118,7 +118,7 @@ export const Large: Story = {
   render: TypedButton,
   args: {
     label: "Large Button",
-    variant: "primary", 
+    variant: "primary",
     size: "lg",
     disabled: false
   }

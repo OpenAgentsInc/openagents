@@ -3,12 +3,12 @@
  */
 
 import type { PresetProperty } from "@storybook/types"
-import type { StorybookConfig } from "./types.js"
 import { renderToCanvas } from "./renderToCanvas.js"
+import type { StorybookConfig } from "./types.js"
 
 /**
  * Default addons (none for now)
- * 
+ *
  * @since 1.0.0
  * @category Configuration
  */
@@ -16,7 +16,7 @@ export const addons: PresetProperty<"addons"> = []
 
 /**
  * Core configuration for the Typed framework
- * 
+ *
  * @since 1.0.0
  * @category Configuration
  */
@@ -27,25 +27,25 @@ export const core: PresetProperty<"core", StorybookConfig> = {
 
 /**
  * Preview annotations (pass-through for now)
- * 
+ *
  * @since 1.0.0
  * @category Configuration
  */
 export const previewAnnotations: PresetProperty<"previewAnnotations"> = (
-  entry: any[] = []
+  entry: Array<any> = []
 ) => {
   return [...entry]
 }
 
 /**
  * Vite configuration hook
- * 
+ *
  * @since 1.0.0
  * @category Configuration
  */
 export const viteFinal: NonNullable<StorybookConfig["viteFinal"]> = async (
   config,
-  { configType }
+  { configType: _configType }
 ) => {
   // Add any custom Vite configuration here
   return {
@@ -54,7 +54,7 @@ export const viteFinal: NonNullable<StorybookConfig["viteFinal"]> = async (
     resolve: {
       ...config.resolve,
       alias: {
-        ...config.resolve?.alias,
+        ...config.resolve?.alias
         // Add aliases for workspace packages if needed
       }
     }
