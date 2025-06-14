@@ -1,0 +1,29 @@
+{
+  "name": "@openagentsinc/example-storybook",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Storybook example for OpenAgents Typed components",
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
+  },
+  "dependencies": {
+    "@openagentsinc/storybook": "workspace:*",
+    "@openagentsinc/ui": "workspace:*",
+    "@typed/core": "^3.7.0",
+    "@typed/fx": "^1.32.0",
+    "@typed/template": "^0.14.0",
+    "effect": "^3.8.4"
+  },
+  "devDependencies": {
+    "@storybook/addon-essentials": "^8.3.5",
+    "@storybook/addon-interactions": "^8.3.5",
+    "@storybook/addon-links": "^8.3.5",
+    "@storybook/blocks": "^8.3.5",
+    "@storybook/test": "^8.3.5",
+    "@vitejs/plugin-react": "^4.3.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "storybook": "^8.3.5"
+  }
+}
