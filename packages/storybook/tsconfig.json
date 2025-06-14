@@ -4,6 +4,7 @@
     "outDir": "build/esm",
     "declarationDir": "build/dts"
   },
+  "include": ["src/**/*"],
   "references": [
     { "path": "../domain" }
   ]

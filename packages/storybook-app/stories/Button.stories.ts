@@ -1,6 +1,4 @@
-import type { Meta, StoryObj } from "@openagentsinc/storybook"
-import type * as Fx from "@typed/fx/Fx"
-import { button } from "@typed/ui/hyperscript"
+import type { Meta, StoryObj } from "@storybook/html"
 
 type ButtonArgs = {
   label: string
@@ -10,46 +8,47 @@ type ButtonArgs = {
   onClick: () => void
 }
 
-// Simple Typed Button component
-const TypedButton = (args: ButtonArgs): Fx.Fx<any, never, any> => {
-  const baseClasses =
-    "cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 rounded-none"
-
+const createButton = (args: ButtonArgs) => {
+  const button = document.createElement("button")
+  
+  const baseClasses = "cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 rounded-none"
+  
   const variantClasses = {
     primary: "bg-white text-black hover:bg-gray-200 border border-white",
     secondary: "bg-transparent text-white border border-white hover:bg-white hover:text-black",
     danger: "bg-red-600 text-white hover:bg-red-700 border border-red-600"
   }
-
+  
   const sizeClasses = {
     sm: "h-8 px-3 text-xs",
-    default: "h-9 px-4 py-2",
+    default: "h-9 px-4 py-2", 
     lg: "h-10 px-8"
   }
-
-  const className = [
+  
+  button.className = [
     baseClasses,
     variantClasses[args.variant],
     sizeClasses[args.size]
   ].join(" ")
 
-  return button(
-    {
-      className,
-      disabled: args.disabled,
-      onclick: args.onClick,
-      style: "font-family: 'Berkeley Mono', monospace; background-color: " +
-        (args.variant === "primary" ? "#ffffff" : args.variant === "danger" ? "#dc2626" : "transparent") +
-        "; color: " + (args.variant === "primary" ? "#000000" : "#ffffff") +
-        "; border: 1px solid " + (args.variant === "danger" ? "#dc2626" : "#ffffff")
-    },
-    args.label
-  )
+  button.textContent = args.label
+  button.disabled = args.disabled
+  button.onclick = args.onClick
+  
+  // Apply inline styles for OpenAgents aesthetic
+  button.style.fontFamily = "'Berkeley Mono', monospace"
+  button.style.backgroundColor = args.variant === "primary" ? "#ffffff" : args.variant === "danger" ? "#dc2626" : "transparent"
+  button.style.color = args.variant === "primary" ? "#000000" : "#ffffff"
+  button.style.border = `1px solid ${args.variant === "danger" ? "#dc2626" : "#ffffff"}`
+  button.style.padding = sizeClasses[args.size].includes("px-3") ? "0.5rem 0.75rem" : sizeClasses[args.size].includes("px-8") ? "0.625rem 2rem" : "0.5rem 1rem"
+  button.style.height = sizeClasses[args.size].includes("h-8") ? "2rem" : sizeClasses[args.size].includes("h-10") ? "2.5rem" : "2.25rem"
+  
+  return button
 }
 
-const meta = {
+const meta: Meta<ButtonArgs> = {
   title: "Components/Button",
-  component: TypedButton,
+  render: createButton,
   parameters: {
     layout: "centered",
     backgrounds: {
@@ -68,14 +67,13 @@ const meta = {
     },
     onClick: { action: "clicked" }
   }
-} satisfies Meta<ButtonArgs>
+}
 
 export default meta
 
-type Story = StoryObj<ButtonArgs, typeof meta>
+type Story = StoryObj<ButtonArgs>
 
 export const Primary: Story = {
-  render: TypedButton,
   args: {
     label: "Primary Button",
     variant: "primary",
@@ -85,7 +83,6 @@ export const Primary: Story = {
 }
 
 export const Secondary: Story = {
-  render: TypedButton,
   args: {
     label: "Secondary Button",
     variant: "secondary",
@@ -95,7 +92,6 @@ export const Secondary: Story = {
 }
 
 export const Danger: Story = {
-  render: TypedButton,
   args: {
     label: "Danger Button",
     variant: "danger",
@@ -105,7 +101,6 @@ export const Danger: Story = {
 }
 
 export const Small: Story = {
-  render: TypedButton,
   args: {
     label: "Small Button",
     variant: "primary",
@@ -115,7 +110,6 @@ export const Small: Story = {
 }
 
 export const Large: Story = {
-  render: TypedButton,
   args: {
     label: "Large Button",
     variant: "primary",
@@ -125,7 +119,6 @@ export const Large: Story = {
 }
 
 export const Disabled: Story = {
-  render: TypedButton,
   args: {
     label: "Disabled Button",
     variant: "primary",

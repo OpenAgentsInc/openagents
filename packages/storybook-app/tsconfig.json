@@ -9,7 +9,7 @@
     ".storybook/**/*"
   ],
   "references": [
-    { "path": "../../packages/storybook" },
-    { "path": "../../packages/ui" }
+    { "path": "../storybook" },
+    { "path": "../ui" }
   ]
 }

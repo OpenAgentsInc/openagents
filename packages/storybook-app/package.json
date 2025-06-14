@@ -1,8 +1,8 @@
 {
-  "name": "@openagentsinc/example-storybook",
+  "name": "@openagentsinc/storybook-app",
   "private": true,
   "version": "0.1.0",
-  "description": "Storybook example for OpenAgents Typed components",
+  "description": "Storybook application for OpenAgents UI components",
   "scripts": {
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
@@ -20,10 +20,13 @@
     "@storybook/addon-interactions": "^8.3.5",
     "@storybook/addon-links": "^8.3.5",
     "@storybook/blocks": "^8.3.5",
+    "@storybook/html": "^8.3.5",
+    "@storybook/html-vite": "^8.3.5",
     "@storybook/test": "^8.3.5",
     "@vitejs/plugin-react": "^4.3.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "storybook": "^8.3.5"
+    "storybook": "^8.3.5",
+    "vite": "^5.4.19"
   }
 }
