@@ -16,7 +16,7 @@ This repo holds our new cross-platform version (v5), a work in progress.
 ### Interfaces
 - **`@openagentsinc/cli`** - Command-line interface with AI features
 - **`@openagentsinc/playground`** - Component development environment
-- **`@openagentsinc/ui`** - React component library (panes, hotbar, Tailwind CSS)
+- **`@openagentsinc/ui`** - WebTUI terminal-inspired CSS components
 
 ### AI
 - **`@openagentsinc/ai`** - Claude Code integration and AI provider abstraction
