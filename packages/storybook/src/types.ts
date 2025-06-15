@@ -32,19 +32,37 @@ export interface TypedComponent<Args = Record<string, unknown>> {
 }
 
 /**
+ * Function signature for HTML components
+ *
+ * @since 1.0.0
+ * @category Component
+ */
+export interface HtmlComponent<Args = Record<string, unknown>> {
+  (args: Args): HTMLElement
+}
+
+/**
+ * Union type for components that can be either HTML or Typed
+ *
+ * @since 1.0.0
+ * @category Component
+ */
+export type Component<Args = Record<string, unknown>> = TypedComponent<Args> | HtmlComponent<Args>
+
+/**
  * Story metadata with Typed component integration
  *
  * @since 1.0.0
  * @category Story
  */
 export interface Meta<Args = Record<string, unknown>> {
-  component?: TypedComponent<Args>
+  component?: Component<Args>
   title?: string
   parameters?: Record<string, any>
   argTypes?: Record<keyof Args, any>
   args?: Partial<Args>
   decorators?: ReadonlyArray<(story: () => any, context: any) => any>
-  render?: (args: Args) => Fx.Fx<RenderEvent, any, any>
+  render?: (args: Args) => Fx.Fx<RenderEvent, any, any> | HTMLElement
 }
 
 /**
@@ -57,7 +75,7 @@ export interface StoryObj<Args = Record<string, unknown>> {
   args?: Partial<Args>
   argTypes?: Record<keyof Args, any>
   parameters?: Record<string, any>
-  render?: (args: Args) => Fx.Fx<RenderEvent, any, any>
+  render?: (args: Args) => Fx.Fx<RenderEvent, any, any> | HTMLElement
   play?: (context: any) => Promise<void> | void
 }
 

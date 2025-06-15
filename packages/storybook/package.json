@@ -8,11 +8,15 @@
     "url": "https://github.com/OpenAgentsInc/openagents",
     "directory": "packages/storybook"
   },
+  "main": "./build/cjs/index.js",
+  "module": "./build/esm/index.js",
+  "types": "./build/dts/index.d.ts",
   "publishConfig": {
     "access": "public",
     "directory": "dist"
   },
   "scripts": {
+    "codegen": "build-utils prepare-v2",
     "build": "pnpm build-all && pnpm build-pack",
     "build-all": "tsc -b tsconfig.build.json",
     "build-pack": "concurrently \"pnpm build-cjs\" \"pnpm build-mjs\" && pnpm build-post",
@@ -22,7 +26,10 @@
     "clean": "rimraf build dist docs",
     "test": "vitest",
     "lint": "eslint --ext .ts,.tsx src/**/*",
-    "tc": "tsc --noEmit"
+    "tc": "tsc --noEmit",
+    "storybook": "storybook dev -p 6006",
+    "storybook-typed": "storybook dev -p 6006 -c .storybook --config-dir .storybook",
+    "build-storybook": "storybook build"
   },
   "peerDependencies": {
     "@storybook/builder-vite": "^8.3.5",
@@ -30,6 +37,7 @@
     "storybook": "^8.3.5"
   },
   "dependencies": {
+    "@openagentsinc/ui": "workspace:*",
     "@storybook/csf": "^0.1.11",
     "@storybook/types": "^8.3.5",
     "@typed/context": "^0.30.0",
@@ -40,14 +48,29 @@
     "@typed/route": "^10.1.2",
     "@typed/router": "^0.32.0",
     "@typed/template": "^0.14.0",
+    "@typed/ui": "^0.14.0",
     "effect": "^3.8.4"
   },
   "devDependencies": {
+    "@storybook/addon-essentials": "^8.3.5",
+    "@storybook/addon-interactions": "^8.3.5",
+    "@storybook/addon-links": "^8.3.5",
+    "@storybook/blocks": "^8.3.5",
     "@storybook/builder-vite": "^8.3.5",
     "@storybook/core": "^8.3.5",
+    "@storybook/html": "^8.3.5",
+    "@storybook/html-vite": "^8.3.5",
+    "@storybook/test": "^8.3.5",
+    "@vitejs/plugin-react": "^4.3.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "storybook": "^8.3.5",
+    "vite": "^5.4.19",
     "concurrently": "^8.2.2",
     "@babel/cli": "^7.23.4",
     "babel-plugin-annotate-pure-calls": "^0.4.0"
+  },
+  "effect": {
+    "includeInternal": false
   }
 }

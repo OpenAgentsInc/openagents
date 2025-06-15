@@ -18,7 +18,7 @@
     "changeset-version": "changeset version && node scripts/version.mjs",
     "changeset-publish": "pnpm build && TEST_DIST= pnpm vitest && changeset publish",
     "setup-hooks": "git config core.hooksPath .githooks",
-    "storybook": "pnpm --filter=@openagentsinc/storybook-app run storybook"
+    "storybook": "pnpm --filter=@openagentsinc/storybook run storybook"
   },
   "devDependencies": {
     "@babel/cli": "7.27.2",

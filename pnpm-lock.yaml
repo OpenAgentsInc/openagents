@@ -263,6 +263,9 @@ importers:
 
   packages/storybook:
     dependencies:
+      '@openagentsinc/ui':
+        specifier: workspace:*
+        version: link:../ui/dist
       '@storybook/csf':
         specifier: ^0.1.11
         version: 0.1.11
@@ -293,6 +296,9 @@ importers:
       '@typed/template':
         specifier: ^0.14.0
         version: 0.14.0(@effect/typeclass@0.24.27)
+      '@typed/ui':
+        specifier: ^0.14.0
+        version: 0.14.0(@effect/typeclass@0.24.27)(@typed/path@0.15.0)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
       effect:
         specifier: ^3.8.4
         version: 3.16.3
@@ -300,44 +306,6 @@ importers:
       '@babel/cli':
         specifier: ^7.23.4
         version: 7.27.2(@babel/core@7.27.4)
-      '@storybook/builder-vite':
-        specifier: ^8.3.5
-        version: 8.3.5(storybook@8.3.5)(typescript@5.8.3)(vite@5.4.19)
-      '@storybook/core':
-        specifier: ^8.3.5
-        version: 8.3.5
-      babel-plugin-annotate-pure-calls:
-        specifier: 0.4.0
-        version: 0.4.0(patch_hash=lz2aochwly4t7pzapzh4fqay4m)(@babel/core@7.27.4)
-      concurrently:
-        specifier: ^8.2.2
-        version: 8.2.2
-      storybook:
-        specifier: ^8.3.5
-        version: 8.3.5
-    publishDirectory: dist
-
-  packages/storybook-app:
-    dependencies:
-      '@openagentsinc/storybook':
-        specifier: workspace:*
-        version: link:../storybook/dist
-      '@openagentsinc/ui':
-        specifier: workspace:*
-        version: link:../ui/dist
-      '@typed/core':
-        specifier: ^3.7.0
-        version: 3.7.0(@effect/typeclass@0.24.27)(@types/node@22.15.29)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)(typescript@5.8.3)(vite-node@0.28.5)(vite@5.4.19)
-      '@typed/fx':
-        specifier: ^1.32.0
-        version: 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
-      '@typed/template':
-        specifier: ^0.14.0
-        version: 0.14.0(@effect/typeclass@0.24.27)
-      effect:
-        specifier: ^3.8.4
-        version: 3.16.3
-    devDependencies:
       '@storybook/addon-essentials':
         specifier: ^8.3.5
         version: 8.3.5(storybook@8.3.5)
@@ -350,6 +318,12 @@ importers:
       '@storybook/blocks':
         specifier: ^8.3.5
         version: 8.3.5(react-dom@18.3.1)(react@18.3.1)(storybook@8.3.5)
+      '@storybook/builder-vite':
+        specifier: ^8.3.5
+        version: 8.3.5(storybook@8.3.5)(typescript@5.8.3)(vite@5.4.19)
+      '@storybook/core':
+        specifier: ^8.3.5
+        version: 8.3.5
       '@storybook/html':
         specifier: ^8.3.5
         version: 8.3.5(storybook@8.3.5)
@@ -362,6 +336,12 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.3.2
         version: 4.5.0(vite@5.4.19)
+      babel-plugin-annotate-pure-calls:
+        specifier: 0.4.0
+        version: 0.4.0(patch_hash=lz2aochwly4t7pzapzh4fqay4m)(@babel/core@7.27.4)
+      concurrently:
+        specifier: ^8.2.2
+        version: 8.2.2
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -374,6 +354,7 @@ importers:
       vite:
         specifier: ^5.4.19
         version: 5.4.19(@types/node@22.15.29)
+    publishDirectory: dist
 
   packages/ui:
     dependencies:
@@ -1096,7 +1077,7 @@ packages:
       '@effect/platform': ^0.66.3
       effect: ^3.8.5
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/platform': 0.66.3(@effect/schema@0.67.24)(effect@3.16.3)
       '@parcel/watcher': 2.5.1
       effect: 3.16.3
       multipasta: 0.2.5
@@ -1130,7 +1111,7 @@ packages:
       '@effect/platform': ^0.66.3
       effect: ^3.8.5
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/platform': 0.66.3(@effect/schema@0.67.24)(effect@3.16.3)
       '@effect/platform-node-shared': 0.16.4(@effect/platform@0.66.3)(effect@3.16.3)
       effect: 3.16.3
       mime: 3.0.0
@@ -1162,6 +1143,18 @@ packages:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+    dev: false
+
+  /@effect/platform@0.66.3(@effect/schema@0.67.24)(effect@3.16.3):
+    resolution: {integrity: sha512-bwUNDRhxKa5IBXd0PGGh61DkphZnUDmE3LZ3PwSQqDbvQvm8X7wqdyrFOtpDBmHATckoibScvnIyXBbtGyEyAA==}
+    peerDependencies:
+      '@effect/schema': ^0.74.2
+      effect: ^3.8.5
+    dependencies:
+      '@effect/schema': 0.67.24(effect@3.16.3)
+      effect: 3.16.3
+      find-my-way-ts: 0.1.5
+      multipasta: 0.2.5
     dev: false
 
   /@effect/platform@0.66.3(@effect/schema@0.74.2)(effect@3.16.3):
@@ -4638,7 +4631,7 @@ packages:
   /@typed/core@3.7.0(@effect/typeclass@0.24.27)(@types/node@22.15.29)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)(typescript@5.8.3)(vite-node@0.28.5)(vite@5.4.19):
     resolution: {integrity: sha512-nFH8CdUT6ZyeiyCHsp81ngoJINm+u2GzVNDR1NuVqot2IVteDaXOR5zPfFBLPZvRRdG9jcOOq2ovJSDRDnim0Q==}
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/platform': 0.66.3(@effect/schema@0.67.24)(effect@3.16.3)
       '@effect/platform-node': 0.61.4(@effect/platform@0.66.3)(effect@3.16.3)
       '@effect/schema': 0.74.2(effect@3.16.3)
       '@typed/async-data': 0.12.0

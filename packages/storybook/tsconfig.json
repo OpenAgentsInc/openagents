@@ -2,10 +2,13 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "build/esm",
-    "declarationDir": "build/dts"
+    "declarationDir": "build/dts",
+    "allowJs": true,
+    "skipLibCheck": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "stories/**/*", ".storybook/**/*"],
   "references": [
-    { "path": "../domain" }
+    { "path": "../domain" },
+    { "path": "../ui" }
   ]
 }
