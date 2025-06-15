@@ -1,11 +1,11 @@
-# Nostr Relay (Pylon) Specification
+# Nostr Relay (Relay) Specification
 
 ## 1. Introduction
 
 ### 1.1 Purpose
-This document outlines the specifications for Pylon, a Nostr relay designed and developed by OpenAgents, Inc. Pylon aims to be a secure, performant, and highly customizable Nostr relay, optimized for privacy-focused use cases and forming a core component of the OpenAgents AI agent ecosystem.
+This document outlines the specifications for Relay, a Nostr relay designed and developed by OpenAgents, Inc. Relay aims to be a secure, performant, and highly customizable Nostr relay, optimized for privacy-focused use cases and forming a core component of the OpenAgents AI agent ecosystem.
 
-Pylon embraces Nostr's "smart client/dumb server" architecture while innovating at the boundaries through embedded relay capabilities. This enables unprecedented user sovereignty—users maintain complete control over their data while participating in the broader decentralized network.
+Relay embraces Nostr's "smart client/dumb server" architecture while innovating at the boundaries through embedded relay capabilities. This enables unprecedented user sovereignty—users maintain complete control over their data while participating in the broader decentralized network.
 
 ### 1.2 Project Goal
 To create a robust Nostr relay implementation that:
@@ -22,8 +22,8 @@ To create a robust Nostr relay implementation that:
 *   **Rivet + Actor Core**: Leveraging stateful actors for connection management and edge deployment.
 
 ### 1.4 Relationship to OpenAgents Ecosystem
-Pylon is the reference Nostr relay implementation for OpenAgents. It is designed to seamlessly integrate with:
-- **AI Agents**: Commander, Onyx, and Digital Srđa agents use Pylon for coordination
+Relay is the reference Nostr relay implementation for OpenAgents. It is designed to seamlessly integrate with:
+- **AI Agents**: Commander, Onyx, and Digital Srđa agents use Relay for coordination
 - **Actor Infrastructure**: Each WebSocket connection managed by dedicated Rivet actors
 - **Decentralized Platform**: Supporting 100M users with decentralized communication
 - **Bitcoin/Lightning**: NWC integration for micropayment-enabled features
@@ -42,16 +42,16 @@ Pylon is the reference Nostr relay implementation for OpenAgents. It is designed
 
 ## 3. Target Users and Systems
 
-*   **OpenAgents AI Agents**: Commander, Onyx, Digital Srđa, and other AI agents developed by OpenAgents will use Pylon as a primary communication and coordination backbone.
-*   **Privacy-Focused Users & Applications**: Tools and platforms developed by OpenAgents will leverage Pylon, targeting 100M users globally.
-*   **Nostr Clients**: Standard Nostr clients should be able to connect and interact with Pylon instances.
+*   **OpenAgents AI Agents**: Commander, Onyx, Digital Srđa, and other AI agents developed by OpenAgents will use Relay as a primary communication and coordination backbone.
+*   **Privacy-Focused Users & Applications**: Tools and platforms developed by OpenAgents will leverage Relay, targeting 100M users globally.
+*   **Nostr Clients**: Standard Nostr clients should be able to connect and interact with Relay instances.
 *   **Developers**: Developers building applications on the OpenAgents platform.
 *   **Organizations**: NGOs and organizations requiring secure, decentralized communication.
 
 ## 4. Functional Requirements
 
 ### 4.1 NIP-01: Basic Protocol Flow
-Pylon MUST fully implement NIP-01. This includes:
+Relay MUST fully implement NIP-01. This includes:
 *   **Event Structure**: Correctly parsing, validating (including signature verification), and storing NIP-01 event objects.
     *   `id`: 32-bytes hex-encoded sha256 of serialized event.
     *   `pubkey`: 32-bytes hex-encoded public key.
@@ -89,7 +89,7 @@ Pylon MUST fully implement NIP-01. This includes:
     *   **Addressable (Parameterized Replaceable) Events** (e.g., kind 30000-39999): Store only the latest event per `pubkey`, `kind`, and `d` tag value.
 
 ### 4.2 NIP Support (Initial Scope & Future)
-Pylon will aim to support the following NIPs, prioritized based on OpenAgents' needs:
+Relay will aim to support the following NIPs, prioritized based on OpenAgents' needs:
 
 **Phase 1 (Core Relay Functionality - MVP):**
 *   **NIP-01**: Basic protocol (Mandatory)
@@ -138,7 +138,7 @@ Pylon will aim to support the following NIPs, prioritized based on OpenAgents' n
 ## 5. Technical Architecture
 
 ### 5.1 System Overview
-Pylon will be architected as a modular, actor-based system leveraging Rivet for stateful connection management:
+Relay will be architected as a modular, actor-based system leveraging Rivet for stateful connection management:
 
 ```
 ┌─────────────────────┐     ┌──────────────────────┐     ┌─────────────────────┐
@@ -153,7 +153,7 @@ Pylon will be architected as a modular, actor-based system leveraging Rivet for 
                                    │                    │
                           ┌────────▼───────────────────▼────────┐
                           │      EffectTS Core Logic            │
-                          │         (Pylon Engine)              │
+                          │         (Relay Engine)              │
                           └────────┬───────────────────┬────────┘
                                    │                   │
                           ┌────────▼────────┐ ┌───────▼────────┐
@@ -162,7 +162,7 @@ Pylon will be architected as a modular, actor-based system leveraging Rivet for 
                           └─────────────────┘ └────────────────┘
 ```
 
-### 5.2 EffectTS Core Logic ("Pylon Engine")
+### 5.2 EffectTS Core Logic ("Relay Engine")
 *   **Services**: The application will be structured using EffectTS services:
     *   `WebSocketService`: Manages client connections and message framing
     *   `EventService`: Handles event validation, processing, and storage
@@ -723,8 +723,8 @@ CREATE TABLE event_tags (
 
 ## 14. Conclusion
 
-Pylon represents more than just a Nostr relay—it's the communication backbone for the next generation of decentralized applications. By combining cutting-edge technology (EffectTS, Rivet actors, pglite) with privacy-focused features, Pylon will enable secure, scalable, and censorship-resistant communication for 100 million users worldwide.
+Relay represents more than just a Nostr relay—it's the communication backbone for the next generation of decentralized applications. By combining cutting-edge technology (EffectTS, Rivet actors, pglite) with privacy-focused features, Relay will enable secure, scalable, and censorship-resistant communication for 100 million users worldwide.
 
-The architecture prioritizes flexibility, security, and performance while maintaining simplicity for operators and developers. With its actor-based design and multi-deployment options, Pylon can adapt to any environment—from high-performance cloud infrastructure to resource-constrained mobile devices operating under surveillance.
+The architecture prioritizes flexibility, security, and performance while maintaining simplicity for operators and developers. With its actor-based design and multi-deployment options, Relay can adapt to any environment—from high-performance cloud infrastructure to resource-constrained mobile devices operating under surveillance.
 
-This specification will guide the development of Pylon as a living document, evolving with the needs of the OpenAgents ecosystem and the global privacy-focused community it serves.
+This specification will guide the development of Relay as a living document, evolving with the needs of the OpenAgents ecosystem and the global privacy-focused community it serves.

@@ -11,12 +11,14 @@ This repo holds our new cross-platform version (v5), a work in progress.
 ### Core
 - **`@openagentsinc/domain`** - API contracts, schemas, and shared types
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
-- **`@openagentsinc/pylon`** - Nostr relay server implementation
+- **`@openagentsinc/relay`** - Nostr relay server implementation
+- **`@openagentsinc/pylon`** - Coming soon
+- **`@openagentsinc/sdk`** - Coming soon
 
 ### Interfaces
 - **`@openagentsinc/cli`** - Command-line interface with AI features
 - **`@openagentsinc/playground`** - Component development environment
-- **`@openagentsinc/ui`** - React component library (panes, hotbar, Tailwind CSS)
+- **`@openagentsinc/ui`** - WebTUI terminal-inspired CSS components
 
 ### AI
 - **`@openagentsinc/ai`** - Claude Code integration and AI provider abstraction

@@ -247,6 +247,19 @@ importers:
 
   packages/pylon:
     dependencies:
+      '@openagentsinc/sdk':
+        specifier: workspace:^
+        version: link:../sdk
+      '@openagentsinc/ui':
+        specifier: workspace:^
+        version: link:../ui/dist
+    devDependencies:
+      vite:
+        specifier: ^6.0.7
+        version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
+
+  packages/relay:
+    dependencies:
       '@effect/platform':
         specifier: 0.84.6
         version: 0.84.6(effect@3.16.3)
@@ -263,6 +276,12 @@ importers:
       '@types/ws':
         specifier: 8.5.14
         version: 8.5.14
+
+  packages/sdk:
+    dependencies:
+      effect:
+        specifier: 3.16.3
+        version: 3.16.3
 
   packages/storybook:
     dependencies:

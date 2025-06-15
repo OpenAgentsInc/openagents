@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document outlines the comprehensive plan for integrating Nostr protocol support into the OpenAgents monorepo. We will rename the existing 'server' package to 'pylon' (to serve as our Nostr relay implementation) and create a new '@openagentsinc/nostr' package that provides Effect-based implementations of Nostr NIPs (Nostr Implementation Possibilities).
+This document outlines the comprehensive plan for integrating Nostr protocol support into the OpenAgents monorepo. We will rename the existing 'server' package to 'relay' (to serve as our Nostr relay implementation) and create a new '@openagentsinc/nostr' package that provides Effect-based implementations of Nostr NIPs (Nostr Implementation Possibilities).
 
 The integration leverages Effect's powerful abstractions to create a type-safe, composable, and highly testable Nostr implementation that surpasses existing libraries in terms of developer experience and reliability.
 
@@ -12,7 +12,7 @@ The integration leverages Effect's powerful abstractions to create a type-safe, 
 
 ```
 packages/
-├── pylon/          # Renamed from 'server' - Nostr relay implementation
+├── relay/          # Renamed from 'server' - Nostr relay implementation
 ├── nostr/          # New package - Effect-based NIP implementations
 ├── domain/         # Extended with Nostr schemas and contracts
 └── ...
@@ -248,15 +248,15 @@ export const withEphemeralRelay = <A, E, R>(
   ).pipe(Effect.provide(EphemeralRelayService.Test))
 ```
 
-## Pylon (Relay) Implementation
+## Relay (Relay) Implementation
 
 ### Architecture Updates
 
-The existing 'server' package will be renamed to 'pylon' and extended with Nostr relay capabilities:
+The existing 'server' package will be renamed to 'relay' and extended with Nostr relay capabilities:
 
 ```typescript
-// packages/pylon/src/NostrRelay.ts
-export class NostrRelayService extends Effect.Service<NostrRelayService>()("pylon/NostrRelayService", {
+// packages/relay/src/NostrRelay.ts
+export class NostrRelayService extends Effect.Service<NostrRelayService>()("relay/NostrRelayService", {
   dependencies: [
     DatabaseService.Default,
     WebSocketService.Default,
@@ -322,7 +322,7 @@ export const TagRepository = Repository.make("event_tags", {
 ### Phase 1: Foundation (Weeks 1-2)
 
 1. **Package Setup**
-   - Rename 'server' to 'pylon'
+   - Rename 'server' to 'relay'
    - Create '@openagentsinc/nostr' package
    - Set up build configuration
 
@@ -343,7 +343,7 @@ export const TagRepository = Repository.make("event_tags", {
    - Message serialization/deserialization
    - Subscription handling with Effect Streams
 
-2. **Pylon Relay**
+2. **Relay Relay**
    - WebSocket server setup
    - Event storage and retrieval
    - Filter matching logic

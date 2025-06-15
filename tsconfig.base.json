@@ -52,9 +52,9 @@
       "@openagentsinc/playground": ["./packages/playground/src/index.js"],
       "@openagentsinc/playground/*": ["./packages/playground/src/*.js"],
       "@openagentsinc/playground/test/*": ["./packages/playground/test/*.js"],
-      "@openagentsinc/pylon": ["./packages/pylon/src/index.js"],
-      "@openagentsinc/pylon/*": ["./packages/pylon/src/*.js"],
-      "@openagentsinc/pylon/test/*": ["./packages/pylon/test/*.js"],
+      "@openagentsinc/relay": ["./packages/relay/src/index.js"],
+      "@openagentsinc/relay/*": ["./packages/relay/src/*.js"],
+      "@openagentsinc/relay/test/*": ["./packages/relay/test/*.js"],
       "@openagentsinc/ui": ["./packages/ui/src/index.js"],
       "@openagentsinc/ui/*": ["./packages/ui/src/*.js"],
       "@openagentsinc/ui/test/*": ["./packages/ui/test/*.js"]

@@ -25,6 +25,9 @@ packages/*/src/**/*.js.map
 !packages/*/src/**/*.tsx
 # Keep the worker.js file
 !packages/storybook/src/worker.js
+# Keep JavaScript source files for non-TypeScript packages
+!packages/pylon/src/**/*.js
+!packages/sdk/src/**/*.js
 
 # Private local research folder
 docs/private/
