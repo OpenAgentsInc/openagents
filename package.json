@@ -17,7 +17,8 @@
     "coverage": "vitest --coverage",
     "changeset-version": "changeset version && node scripts/version.mjs",
     "changeset-publish": "pnpm build && TEST_DIST= pnpm vitest && changeset publish",
-    "setup-hooks": "git config core.hooksPath .githooks"
+    "setup-hooks": "git config core.hooksPath .githooks",
+    "storybook": "pnpm --filter=@openagentsinc/storybook run storybook"
   },
   "devDependencies": {
     "@babel/cli": "7.27.2",
@@ -47,7 +48,8 @@
     "glob": "11.0.2",
     "tsx": "4.19.4",
     "typescript": "5.8.3",
-    "vitest": "3.2.1"
+    "vitest": "3.2.1",
+    "wrangler": "^4.20.0"
   },
   "pnpm": {
     "overrides": {

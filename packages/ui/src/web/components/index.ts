@@ -1,9 +1,7 @@
 // Web component exports
 export { Button } from "./button.js"
-export { ChatMessage, type ChatMessageProps, type Message } from "./chat-message.js"
+export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./card.js"
 export { CopyButton } from "./copy-button.js"
-export { FilePreview } from "./file-preview.js"
-export { MarkdownRenderer } from "./markdown-renderer.js"
 export {
   NavigationMenu,
   NavigationMenuContent,

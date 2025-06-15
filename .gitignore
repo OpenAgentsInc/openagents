@@ -23,6 +23,15 @@ packages/*/src/**/*.js.map
 # But keep the actual source TypeScript files
 !packages/*/src/**/*.ts
 !packages/*/src/**/*.tsx
+# Keep the worker.js file
+!packages/storybook/src/worker.js
 
 # Private local research folder
 docs/private/
+
+# Storybook build output
+storybook-static/
+packages/storybook/storybook-static/
+
+# Wrangler/Cloudflare
+.wrangler/
