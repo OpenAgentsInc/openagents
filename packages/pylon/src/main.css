@@ -7,6 +7,10 @@ html, body {
   padding: 0;
   height: 100%;
   width: 100%;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
 }
 
 #app {
@@ -16,6 +20,10 @@ html, body {
   align-items: center;
   justify-content: center;
   background-color: var(--webtui-background0);
+  position: fixed;
+  top: 0;
+  left: 0;
+  overflow: hidden;
 }
 
 .pylon-container {
@@ -33,6 +41,7 @@ html, body {
 
 .pylon-card h1 {
   margin: 0;
+  margin-bottom: 0 !important;
   color: var(--webtui-foreground2);
   font-size: 2.5rem;
   font-weight: 600;

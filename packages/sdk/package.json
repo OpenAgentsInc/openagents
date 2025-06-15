@@ -13,5 +13,8 @@
   "scripts": {
     "build": "echo 'Build not yet implemented'",
     "test": "echo 'Tests not yet implemented'"
+  },
+  "dependencies": {
+    "effect": "3.16.3"
   }
 }

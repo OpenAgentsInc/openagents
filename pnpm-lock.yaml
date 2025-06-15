@@ -247,6 +247,9 @@ importers:
 
   packages/pylon:
     dependencies:
+      '@openagentsinc/sdk':
+        specifier: workspace:^
+        version: link:../sdk
       '@openagentsinc/ui':
         specifier: workspace:^
         version: link:../ui/dist
@@ -274,7 +277,11 @@ importers:
         specifier: 8.5.14
         version: 8.5.14
 
-  packages/sdk: {}
+  packages/sdk:
+    dependencies:
+      effect:
+        specifier: 3.16.3
+        version: 3.16.3
 
   packages/storybook:
     dependencies:

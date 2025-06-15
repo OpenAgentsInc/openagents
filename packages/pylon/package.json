@@ -15,7 +15,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@openagentsinc/ui": "workspace:^"
+    "@openagentsinc/ui": "workspace:^",
+    "@openagentsinc/sdk": "workspace:^"
   },
   "devDependencies": {
     "vite": "^6.0.7"
