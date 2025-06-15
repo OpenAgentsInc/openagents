@@ -1,4 +1,6 @@
-/** @type {import('@openagentsinc/storybook').StorybookConfig} */
+import { join, dirname } from "path"
+
+/** @type {import('@typed/storybook').StorybookConfig} */
 const config = {
   stories: ["../stories/**/*.stories.@(js|jsx|mjs|ts|tsx)"],
   
@@ -9,7 +11,7 @@ const config = {
   ],
   
   framework: {
-    name: "@storybook/html-vite",
+    name: dirname(require.resolve("@typed/storybook/package.json")),
     options: {}
   },
   
@@ -19,27 +21,6 @@ const config = {
   
   docs: {
     autodocs: "tag"
-  },
-  
-  async viteFinal(config) {
-    return {
-      ...config,
-      resolve: {
-        ...config.resolve,
-        alias: {
-          ...config.resolve?.alias,
-          '@storybook/html/dist/entry-preview.mjs': '@storybook/html/dist/entry-preview.mjs',
-          '@storybook/html/dist/entry-preview-docs.mjs': '@storybook/html/dist/entry-preview-docs.mjs'
-        }
-      },
-      optimizeDeps: {
-        ...config.optimizeDeps,
-        include: [
-          ...(config.optimizeDeps?.include || []),
-          '@storybook/html'
-        ]
-      }
-    }
   }
 }
 

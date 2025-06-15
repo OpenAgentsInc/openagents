@@ -56,7 +56,6 @@
   },
   "devDependencies": {
     "@babel/cli": "^7.23.4",
-    "@cloudflare/kv-asset-handler": "^0.4.0",
     "@storybook/addon-essentials": "^8.3.5",
     "@storybook/addon-interactions": "^8.3.5",
     "@storybook/addon-links": "^8.3.5",
@@ -66,6 +65,8 @@
     "@storybook/html": "^8.3.5",
     "@storybook/html-vite": "^8.3.5",
     "@storybook/test": "^8.3.5",
+    "@typed/id": "^0.17.2",
+    "@typed/storybook": "^0.9.0",
     "@vitejs/plugin-react": "^4.3.2",
     "babel-plugin-annotate-pure-calls": "^0.4.0",
     "concurrently": "^8.2.2",

@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from "@openagentsinc/storybook"
+import type { Meta, StoryObj } from "@typed/storybook"
 import { button, div } from "@typed/ui/hyperscript"
 import type { Fx } from "@typed/fx/Fx"
-import * as Effect from "effect/Effect"
+import { RenderEvent } from "@typed/template/RenderEvent"
 
 type CardArgs = {
   title: string
@@ -11,71 +11,15 @@ type CardArgs = {
 }
 
 // Typed Card component using @typed/ui
-const TypedCard = (args: CardArgs): Fx<HTMLDivElement, never, any> => {
-  const cardStyle = `
-    font-family: 'Berkeley Mono', monospace;
-    background-color: #000000;
-    color: #ffffff;
-    border: 1px solid #ffffff;
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    box-shadow: 0 1px 3px 0 rgba(255, 255, 255, 0.1);
-    width: 400px;
-  `
-
-  const headerStyle = `
-    display: grid;
-    grid-template-rows: auto auto;
-    align-items: start;
-    gap: 6px;
-  `
-
-  const titleStyle = `
-    font-family: 'Berkeley Mono', monospace;
-    font-weight: 600;
-    line-height: 1;
-    font-size: 16px;
-  `
-
-  const descriptionStyle = `
-    font-family: 'Berkeley Mono', monospace;
-    color: #a1a1aa;
-    font-size: 14px;
-  `
-
-  const contentStyle = `
-    font-family: 'Berkeley Mono', monospace;
-    line-height: 1.5;
-  `
-
-  const footerStyle = `
-    font-family: 'Berkeley Mono', monospace;
-    display: flex;
-    align-items: center;
-    margin-top: 24px;
-  `
-
-  const buttonStyle = `
-    font-family: 'Berkeley Mono', monospace;
-    background-color: #ffffff;
-    color: #000000;
-    border: 1px solid #ffffff;
-    padding: 8px 16px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s;
-  `
-
+const createTypedCard = (args: CardArgs): Fx<RenderEvent, never, any> => {
   // Build the card structure
   const header = div(
-    { style: headerStyle },
-    div({ style: titleStyle }, args.title),
-    div({ style: descriptionStyle }, args.description)
+    { className: "card-header" },
+    div({ className: "card-title" }, args.title),
+    div({ className: "card-description" }, args.description)
   )
 
-  const content = div({ style: contentStyle }, args.content)
+  const content = div({ className: "card-content" }, args.content)
 
   // Conditionally add footer
   const children = args.hasFooter
@@ -83,10 +27,10 @@ const TypedCard = (args: CardArgs): Fx<HTMLDivElement, never, any> => {
         header,
         content,
         div(
-          { style: footerStyle },
+          { className: "card-footer" },
           button(
             {
-              style: buttonStyle,
+              className: "btn btn-primary btn-default",
               onclick: () => console.log("Card action clicked")
             },
             "Action"
@@ -95,12 +39,12 @@ const TypedCard = (args: CardArgs): Fx<HTMLDivElement, never, any> => {
       ]
     : [header, content]
 
-  return div({ style: cardStyle }, ...children)
+  return div({ className: "card" }, ...children)
 }
 
-const meta: Meta<CardArgs> = {
+const meta = {
   title: "Typed/Card",
-  component: TypedCard,
+  component: createTypedCard,
   parameters: {
     layout: "centered",
     backgrounds: {
@@ -113,14 +57,14 @@ const meta: Meta<CardArgs> = {
       control: { type: "boolean" }
     }
   }
-}
+} satisfies Meta<CardArgs>
 
 export default meta
 
-type Story = StoryObj<CardArgs>
+type Story = StoryObj<CardArgs, typeof meta>
 
 export const Default: Story = {
-  render: TypedCard,
+  render: createTypedCard,
   args: {
     title: "OpenAgents Card",
     description: "A beautiful card component with Berkeley Mono font",
@@ -131,7 +75,7 @@ export const Default: Story = {
 }
 
 export const WithFooter: Story = {
-  render: TypedCard,
+  render: createTypedCard,
   args: {
     title: "Card with Footer",
     description: "This card includes a footer section",
@@ -141,7 +85,7 @@ export const WithFooter: Story = {
 }
 
 export const LongContent: Story = {
-  render: TypedCard,
+  render: createTypedCard,
   args: {
     title: "Long Content Example",
     description: "Demonstrating how cards handle longer text content",
@@ -152,7 +96,7 @@ export const LongContent: Story = {
 }
 
 export const MinimalCard: Story = {
-  render: TypedCard,
+  render: createTypedCard,
   args: {
     title: "Minimal",
     description: "Clean and simple",

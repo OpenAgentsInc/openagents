@@ -1,4 +1,7 @@
-import type { Meta, StoryObj } from "@storybook/html"
+import type { Meta, StoryObj } from "@typed/storybook"
+import { button, div } from "@typed/ui/hyperscript"
+import type { Fx } from "@typed/fx/Fx"
+import { RenderEvent } from "@typed/template/RenderEvent"
 
 type CardArgs = {
   title: string
@@ -7,92 +10,41 @@ type CardArgs = {
   hasFooter: boolean
 }
 
-// Create HTML Card component
-const createCard = (args: CardArgs) => {
-  const card = document.createElement("div")
-  
-  // Card container styles
-  card.style.fontFamily = "'Berkeley Mono', monospace"
-  card.style.backgroundColor = "#000000"
-  card.style.color = "#ffffff"
-  card.style.border = "1px solid #ffffff"
-  card.style.padding = "24px"
-  card.style.display = "flex"
-  card.style.flexDirection = "column"
-  card.style.gap = "24px"
-  card.style.boxShadow = "0 1px 3px 0 rgba(255, 255, 255, 0.1)"
-  card.style.width = "400px" // Fixed width for consistent display
-  
-  // Header section
-  const header = document.createElement("div")
-  header.style.display = "grid"
-  header.style.gridTemplateRows = "auto auto"
-  header.style.alignItems = "start"
-  header.style.gap = "6px"
-  
-  // Title
-  const title = document.createElement("div")
-  title.style.fontFamily = "'Berkeley Mono', monospace"
-  title.style.fontWeight = "600"
-  title.style.lineHeight = "1"
-  title.style.fontSize = "16px"
-  title.textContent = args.title
-  
-  // Description
-  const description = document.createElement("div")
-  description.style.fontFamily = "'Berkeley Mono', monospace"
-  description.style.color = "#a1a1aa"
-  description.style.fontSize = "14px"
-  description.textContent = args.description
-  
-  header.appendChild(title)
-  header.appendChild(description)
-  
-  // Content
-  const content = document.createElement("div")
-  content.style.fontFamily = "'Berkeley Mono', monospace"
-  content.textContent = args.content
-  
-  // Build card
-  card.appendChild(header)
-  card.appendChild(content)
-  
-  // Footer (optional)
-  if (args.hasFooter) {
-    const footer = document.createElement("div")
-    footer.style.fontFamily = "'Berkeley Mono', monospace"
-    footer.style.display = "flex"
-    footer.style.alignItems = "center"
-    footer.style.marginTop = "24px"
-    
-    const button = document.createElement("button")
-    button.style.fontFamily = "'Berkeley Mono', monospace"
-    button.style.backgroundColor = "#ffffff"
-    button.style.color = "#000000"
-    button.style.border = "1px solid #ffffff"
-    button.style.padding = "8px 16px"
-    button.style.cursor = "pointer"
-    button.style.fontSize = "14px"
-    button.textContent = "Action"
-    
-    // Add hover effect
-    button.onmouseenter = () => {
-      button.style.backgroundColor = "#e5e5e5"
-    }
-    button.onmouseleave = () => {
-      button.style.backgroundColor = "#ffffff"
-    }
-    
-    footer.appendChild(button)
-    card.appendChild(footer)
-  }
-  
-  return card
+// Card component using @typed/ui
+const createCard = (args: CardArgs): Fx<RenderEvent, never, any> => {
+  // Build the card structure
+  const header = div(
+    { className: "card-header" },
+    div({ className: "card-title" }, args.title),
+    div({ className: "card-description" }, args.description)
+  )
+
+  const content = div({ className: "card-content" }, args.content)
+
+  // Conditionally add footer
+  const children = args.hasFooter
+    ? [
+        header,
+        content,
+        div(
+          { className: "card-footer" },
+          button(
+            {
+              className: "btn btn-primary btn-default",
+              onclick: () => console.log("Card action clicked")
+            },
+            "Action"
+          )
+        )
+      ]
+    : [header, content]
+
+  return div({ className: "card" }, ...children)
 }
 
-const meta: Meta<CardArgs> = {
+const meta = {
   title: "Components/Card",
-  render: createCard,
+  component: createCard,
   parameters: {
     layout: "centered",
     backgrounds: {
@@ -105,13 +57,14 @@ const meta: Meta<CardArgs> = {
       control: { type: "boolean" }
     }
   }
-}
+} satisfies Meta<CardArgs>
 
 export default meta
 
-type Story = StoryObj<CardArgs>
+type Story = StoryObj<CardArgs, typeof meta>
 
 export const Default: Story = {
+  render: createCard,
   args: {
     title: "OpenAgents Card",
     description: "A beautiful card component with Berkeley Mono font",
@@ -122,6 +75,7 @@ export const Default: Story = {
 }
 
 export const WithFooter: Story = {
+  render: createCard,
   args: {
     title: "Card with Footer",
     description: "This card includes a footer section",
@@ -131,6 +85,7 @@ export const WithFooter: Story = {
 }
 
 export const LongContent: Story = {
+  render: createCard,
   args: {
     title: "Long Content Example",
     description: "Demonstrating how cards handle longer text content",
@@ -141,6 +96,7 @@ export const LongContent: Story = {
 }
 
 export const MinimalCard: Story = {
+  render: createCard,
   args: {
     title: "Minimal",
     description: "Clean and simple",

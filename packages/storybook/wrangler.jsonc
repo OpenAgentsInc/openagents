@@ -1,36 +1,23 @@
 {
   // Cloudflare Worker configuration for OpenAgents Storybook
   "name": "openagents-storybook",
-  "main": "src/worker.js",
-  "compatibility_date": "2024-06-14",
+  "compatibility_date": "2025-06-14",
   
-  // Static site configuration
-  "site": {
-    "bucket": "./storybook-static"
+  // Build command
+  "build": {
+    "command": "pnpm build-storybook"
   },
   
-  // Custom domain configuration - automatically sets up DNS and certificates
+  // Static assets configuration - simplified like the working example
+  "assets": {
+    "directory": "./storybook-static"
+  },
+  
+  // Custom domain configuration
   "routes": [
     {
       "pattern": "storybook.openagents.com",
       "custom_domain": true
     }
-  ],
-  
-  // Build command for Storybook
-  "build": {
-    "command": "pnpm build-storybook"
-  },
-  
-  // Development environment configuration
-  "env": {
-    "development": {
-      "routes": [
-        {
-          "pattern": "storybook-dev.openagents.com",
-          "custom_domain": true
-        }
-      ]
-    }
-  }
+  ]
 }

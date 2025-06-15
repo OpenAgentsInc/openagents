@@ -1,67 +1,21 @@
-import type { Meta, StoryObj } from "@openagentsinc/storybook"
+import type { Meta, StoryObj } from "@typed/storybook"
 import { button } from "@typed/ui/hyperscript"
 import type { Fx } from "@typed/fx/Fx"
+import { RenderEvent } from "@typed/template/RenderEvent"
 
 type ButtonArgs = {
   label: string
   variant: "primary" | "secondary" | "danger"
   size: "sm" | "default" | "lg"
   disabled: boolean
-  onClick: () => void
+  onClick?: () => void
 }
 
 // Typed Button component using @typed/ui
-const TypedButton = (args: ButtonArgs): Fx<HTMLButtonElement, never, any> => {
-  // Base styles
-  const baseStyle = `
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    white-space: nowrap;
-    font-size: 14px;
-    font-weight: 500;
-    font-family: 'Berkeley Mono', monospace;
-    transition: all 0.2s;
-    border-radius: 0;
-    outline: none;
-  `
-
-  // Variant styles
-  const variantStyles = {
-    primary: `
-      background-color: #ffffff;
-      color: #000000;
-      border: 1px solid #ffffff;
-    `,
-    secondary: `
-      background-color: transparent;
-      color: #ffffff;
-      border: 1px solid #ffffff;
-    `,
-    danger: `
-      background-color: #dc2626;
-      color: #ffffff;
-      border: 1px solid #dc2626;
-    `
-  }
-
-  // Size styles
-  const sizeStyles = {
-    sm: "height: 32px; padding: 0 12px; font-size: 12px;",
-    default: "height: 36px; padding: 0 16px; font-size: 14px;",
-    lg: "height: 40px; padding: 0 32px; font-size: 16px;"
-  }
-
-  // Disabled styles
-  const disabledStyle = args.disabled ? "opacity: 0.5; cursor: not-allowed;" : ""
-
-  // Combine all styles
-  const style = `${baseStyle} ${variantStyles[args.variant]} ${sizeStyles[args.size]} ${disabledStyle}`
-
+const createTypedButton = (args: ButtonArgs): Fx<RenderEvent, never, any> => {
   return button(
     {
-      style,
+      className: `btn btn-${args.variant} btn-${args.size} ${args.disabled ? 'btn-disabled' : ''}`,
       disabled: args.disabled,
       onclick: args.onClick
     },
@@ -69,9 +23,9 @@ const TypedButton = (args: ButtonArgs): Fx<HTMLButtonElement, never, any> => {
   )
 }
 
-const meta: Meta<ButtonArgs> = {
+const meta = {
   title: "Typed/Button",
-  component: TypedButton,
+  component: createTypedButton,
   parameters: {
     layout: "centered",
     backgrounds: {
@@ -90,14 +44,14 @@ const meta: Meta<ButtonArgs> = {
     },
     onClick: { action: "clicked" }
   }
-}
+} satisfies Meta<ButtonArgs>
 
 export default meta
 
-type Story = StoryObj<ButtonArgs>
+type Story = StoryObj<ButtonArgs, typeof meta>
 
 export const Primary: Story = {
-  render: TypedButton,
+  render: createTypedButton,
   args: {
     label: "Primary Button",
     variant: "primary",
@@ -107,7 +61,7 @@ export const Primary: Story = {
 }
 
 export const Secondary: Story = {
-  render: TypedButton,
+  render: createTypedButton,
   args: {
     label: "Secondary Button",
     variant: "secondary",
@@ -117,7 +71,7 @@ export const Secondary: Story = {
 }
 
 export const Danger: Story = {
-  render: TypedButton,
+  render: createTypedButton,
   args: {
     label: "Danger Button",
     variant: "danger",
@@ -127,7 +81,7 @@ export const Danger: Story = {
 }
 
 export const Small: Story = {
-  render: TypedButton,
+  render: createTypedButton,
   args: {
     label: "Small Button",
     variant: "primary",
@@ -137,7 +91,7 @@ export const Small: Story = {
 }
 
 export const Large: Story = {
-  render: TypedButton,
+  render: createTypedButton,
   args: {
     label: "Large Button",
     variant: "primary",
@@ -147,7 +101,7 @@ export const Large: Story = {
 }
 
 export const Disabled: Story = {
-  render: TypedButton,
+  render: createTypedButton,
   args: {
     label: "Disabled Button",
     variant: "primary",
