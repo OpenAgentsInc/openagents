@@ -2,11 +2,11 @@ import { button } from "@typed/ui/hyperscript"
 
 export type ButtonProps = {
   children: string
-  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
-  size?: "default" | "sm" | "lg" | "icon"
-  disabled?: boolean
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | undefined
+  size?: "default" | "sm" | "lg" | "icon" | undefined
+  disabled?: boolean | undefined
   onClick?: any
-  className?: string
+  className?: string | undefined
 }
 
 export const Button = (props: ButtonProps): any => {

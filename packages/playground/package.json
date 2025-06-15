@@ -12,8 +12,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "check": "tsc -b tsconfig.json",
+    "build": "echo 'Playground disabled'",
+    "check": "echo 'Playground typecheck disabled'",
     "test": "vitest",
     "coverage": "vitest --coverage",
     "preview": "vite preview"

@@ -2,33 +2,33 @@ import { div } from "@typed/ui/hyperscript"
 
 export type CardProps = {
   children: Array<any>
-  size?: "default" | "sm" | "lg"
-  className?: string
+  size?: "default" | "sm" | "lg" | undefined
+  className?: string | undefined
 }
 
 export type CardHeaderProps = {
   children: Array<any>
-  className?: string
+  className?: string | undefined
 }
 
 export type CardTitleProps = {
   children: string
-  className?: string
+  className?: string | undefined
 }
 
 export type CardDescriptionProps = {
   children: string
-  className?: string
+  className?: string | undefined
 }
 
 export type CardContentProps = {
   children: string
-  className?: string
+  className?: string | undefined
 }
 
 export type CardFooterProps = {
   children: any
-  className?: string
+  className?: string | undefined
 }
 
 export const Card = (props: CardProps): any => {
