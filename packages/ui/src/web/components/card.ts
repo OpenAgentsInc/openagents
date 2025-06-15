@@ -32,41 +32,40 @@ export type CardFooterProps = {
 }
 
 export const Card = (props: CardProps): any => {
-  const baseStyle = "font-mono bg-card text-card-foreground border border-border flex flex-col shadow-sm"
+  const baseStyle = "font-family: monospace; background-color: #fff; color: #000; border: 1px solid #ccc; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"
 
   const sizeStyles = {
-    default: "p-6",
-    sm: "p-4",
-    lg: "p-8"
+    default: "padding: 24px;",
+    sm: "padding: 16px;",
+    lg: "padding: 32px;"
   }
 
   const size = props.size || "default"
-  const className = [baseStyle, sizeStyles[size], props.className].filter(Boolean).join(" ")
+  const style = [baseStyle, sizeStyles[size]].filter(Boolean).join(" ")
 
-  return div({ className }, ...props.children)
+  return div({ style, className: props.className }, ...props.children)
 }
 
 export const CardHeader = (props: CardHeaderProps): any => {
-  const className = ["flex flex-col space-y-1.5", props.className].filter(Boolean).join(" ")
-  return div({ className }, ...props.children)
+  const style = "display: flex; flex-direction: column; gap: 6px;"
+  return div({ style, className: props.className }, ...props.children)
 }
 
 export const CardTitle = (props: CardTitleProps): any => {
-  const className = ["font-semibold leading-none tracking-tight", props.className].filter(Boolean).join(" ")
-  return div({ className }, props.children)
+  const style = "font-weight: 600; line-height: 1; letter-spacing: -0.025em;"
+  return div({ style, className: props.className }, props.children)
 }
 
 export const CardDescription = (props: CardDescriptionProps): any => {
-  const className = ["text-sm text-muted-foreground", props.className].filter(Boolean).join(" ")
-  return div({ className }, props.children)
+  const style = "font-size: 14px; color: #6b7280;"
+  return div({ style, className: props.className }, props.children)
 }
 
 export const CardContent = (props: CardContentProps): any => {
-  const className = ["", props.className].filter(Boolean).join(" ")
-  return div({ className }, props.children)
+  return div({ className: props.className }, props.children)
 }
 
 export const CardFooter = (props: CardFooterProps): any => {
-  const className = ["flex items-center pt-6", props.className].filter(Boolean).join(" ")
-  return div({ className }, props.children)
+  const style = "display: flex; align-items: center; padding-top: 24px;"
+  return div({ style, className: props.className }, props.children)
 }

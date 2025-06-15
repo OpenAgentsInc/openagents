@@ -10,38 +10,37 @@ export type ButtonProps = {
 }
 
 export const Button = (props: ButtonProps): any => {
-  const baseStyle =
-    "cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 rounded-none"
+  const baseStyle = "display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 14px; font-weight: 500; font-family: monospace; transition: colors 0.2s; cursor: pointer; border: none; border-radius: 0;"
 
   const variantStyles = {
-    default: "bg-primary text-primary-foreground hover:bg-primary/90",
-    destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-    outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-    secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-    ghost: "hover:bg-accent hover:text-accent-foreground",
-    link: "text-primary underline-offset-4 hover:underline"
+    default: "background-color: #000; color: #fff;",
+    destructive: "background-color: #dc2626; color: #fff;",
+    outline: "background-color: transparent; color: #000; border: 1px solid #ccc;",
+    secondary: "background-color: #6b7280; color: #fff;",
+    ghost: "background-color: transparent; color: #000;",
+    link: "background-color: transparent; color: #3b82f6; text-decoration: underline;"
   }
 
   const sizeStyles = {
-    default: "h-9 px-4 py-2",
-    sm: "h-8 px-3 text-xs",
-    lg: "h-10 px-8",
-    icon: "h-9 w-9"
+    default: "height: 36px; padding: 8px 16px;",
+    sm: "height: 32px; padding: 4px 12px; font-size: 12px;",
+    lg: "height: 40px; padding: 8px 32px;",
+    icon: "height: 36px; width: 36px; padding: 8px;"
   }
 
   const variant = props.variant || "default"
   const size = props.size || "default"
 
-  const className = [
+  const style = [
     baseStyle,
     variantStyles[variant],
-    sizeStyles[size],
-    props.className
+    sizeStyles[size]
   ].filter(Boolean).join(" ")
 
   return button(
     {
-      className,
+      style,
+      className: props.className,
       disabled: props.disabled ?? false,
       onClick: props.onClick
     },
