@@ -1,4 +1,4 @@
-# @openagentsinc/pylon
+# @openagentsinc/sdk
 
 > 🚧 Under Construction
 
@@ -6,7 +6,7 @@ This package is currently being designed and will be available soon.
 
 ## Overview
 
-Pylon will be a key component of the OpenAgents ecosystem.
+The OpenAgents SDK will provide a comprehensive toolkit for building applications on the OpenAgents platform.
 
 ## Status
 

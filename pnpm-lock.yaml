@@ -245,7 +245,9 @@ importers:
         specifier: ^6.3.3
         version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
 
-  packages/pylon:
+  packages/pylon: {}
+
+  packages/relay:
     dependencies:
       '@effect/platform':
         specifier: 0.84.6
@@ -263,6 +265,8 @@ importers:
       '@types/ws':
         specifier: 8.5.14
         version: 8.5.14
+
+  packages/sdk: {}
 
   packages/storybook:
     dependencies:

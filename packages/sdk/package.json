@@ -1,13 +1,13 @@
 {
-  "name": "@openagentsinc/pylon",
+  "name": "@openagentsinc/sdk",
   "version": "0.0.0",
   "type": "module",
   "license": "CC0-1.0",
-  "description": "Pylon - Coming soon",
+  "description": "OpenAgents SDK - Coming soon",
   "repository": {
     "type": "git",
     "url": "https://github.com/OpenAgentsInc/openagents",
-    "directory": "packages/pylon"
+    "directory": "packages/sdk"
   },
   "main": "src/index.js",
   "scripts": {
