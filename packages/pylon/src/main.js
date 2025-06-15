@@ -11,14 +11,14 @@ const updateOllamaStatus = (status) => {
   const statusDot = document.getElementById('ollama-status-dot');
   const statusText = document.getElementById('ollama-status-text');
   const modelInfo = document.getElementById('ollama-model-info');
-  
+
   // Remove all status classes
   statusDot.classList.remove('checking', 'online', 'offline');
-  
+
   if (status.online) {
     statusDot.classList.add('online');
     statusText.textContent = 'Ollama: Online';
-    
+
     // Show model count if available
     if (status.modelCount > 0) {
       modelInfo.style.display = 'block';
@@ -35,11 +35,13 @@ const updateOllamaStatus = (status) => {
 
 // Check Ollama status on load
 const checkOllamaStatus = async () => {
+  console.log("checking")
   const statusDot = document.getElementById('ollama-status-dot');
   statusDot.classList.add('checking');
-  
+
   try {
     const status = await checkOllama();
+    console.log("Status:", status)
     updateOllamaStatus(status);
   } catch (error) {
     console.error('Error checking Ollama status:', error);

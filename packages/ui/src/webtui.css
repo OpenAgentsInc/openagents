@@ -182,23 +182,149 @@
   height: 2.5rem;
 }
 
-/* Box Utility */
+/* Box Utility - ASCII Box Drawing System */
 .webtui-box {
-  border: 1px solid var(--webtui-background2);
+  position: relative;
   padding: var(--webtui-spacing-md);
+  background-color: var(--webtui-background1);
+  margin: 0.5em;
 }
 
-.webtui-box.webtui-box-square {
-  border-style: solid;
+/* ASCII Box Drawing Implementation */
+/* Single-line box ┌─┐│└┘ */
+.webtui-box-single {
+  border: 1px solid var(--webtui-background3);
+  border-radius: 0;
+  overflow: visible;
 }
 
-.webtui-box.webtui-box-round {
-  border-radius: var(--webtui-radius-md);
+/* Draw ASCII corners using pseudo-elements */
+.webtui-box-single::before,
+.webtui-box-single::after,
+.webtui-box-single .box-corners::before,
+.webtui-box-single .box-corners::after {
+  position: absolute;
+  color: var(--webtui-background3);
+  font-family: var(--webtui-font-mono);
+  line-height: 1;
+  background: var(--webtui-background1);
+  z-index: 1;
 }
 
-.webtui-box.webtui-box-double {
-  border-width: 3px;
-  border-style: double;
+.webtui-box-single::before {
+  content: '┌';
+  top: -0.55em;
+  left: -1px;
+}
+
+.webtui-box-single::after {
+  content: '┐';
+  top: -0.55em;
+  right: -1px;
+}
+
+.webtui-box-single .box-corners::before {
+  content: '└';
+  bottom: -0.55em;
+  left: -1px;
+}
+
+.webtui-box-single .box-corners::after {
+  content: '┘';
+  bottom: -0.55em;
+  right: -1px;
+}
+
+/* Double-line box ╔═╗║╚╝ */
+.webtui-box-double {
+  border: 3px double var(--webtui-background3);
+  border-radius: 0;
+  overflow: visible;
+}
+
+.webtui-box-double::before,
+.webtui-box-double::after,
+.webtui-box-double .box-corners::before,
+.webtui-box-double .box-corners::after {
+  position: absolute;
+  color: var(--webtui-background3);
+  font-family: var(--webtui-font-mono);
+  line-height: 1;
+  background: var(--webtui-background1);
+  z-index: 1;
+}
+
+.webtui-box-double::before {
+  content: '╔';
+  top: -0.55em;
+  left: -1px;
+}
+
+.webtui-box-double::after {
+  content: '╗';
+  top: -0.55em;
+  right: -1px;
+}
+
+.webtui-box-double .box-corners::before {
+  content: '╚';
+  bottom: -0.55em;
+  left: -1px;
+}
+
+.webtui-box-double .box-corners::after {
+  content: '╝';
+  bottom: -0.55em;
+  right: -1px;
+}
+
+/* Rounded box ╭─╮│╰╯ */
+.webtui-box-round {
+  border: 1px solid var(--webtui-background3);
+  border-radius: 0;
+  overflow: visible;
+}
+
+.webtui-box-round::before,
+.webtui-box-round::after,
+.webtui-box-round .box-corners::before,
+.webtui-box-round .box-corners::after {
+  position: absolute;
+  color: var(--webtui-background3);
+  font-family: var(--webtui-font-mono);
+  line-height: 1;
+  background: var(--webtui-background1);
+  z-index: 1;
+}
+
+.webtui-box-round::before {
+  content: '╭';
+  top: -0.55em;
+  left: -1px;
+}
+
+.webtui-box-round::after {
+  content: '╮';
+  top: -0.55em;
+  right: -1px;
+}
+
+.webtui-box-round .box-corners::before {
+  content: '╰';
+  bottom: -0.55em;
+  left: -1px;
+}
+
+.webtui-box-round .box-corners::after {
+  content: '╯';
+  bottom: -0.55em;
+  right: -1px;
+}
+
+/* Square box (default/explicit) */
+.webtui-box-square {
+  border: 1px solid var(--webtui-background3);
+  border-radius: 0;
 }
 
 /* Input Component */

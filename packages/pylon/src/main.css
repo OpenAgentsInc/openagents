@@ -40,10 +40,10 @@ html, body {
 }
 
 .pylon-card {
-  padding: 2.5rem 4rem;
+  padding: 2.5rem 4rem !important;
   text-align: center;
-  background-color: var(--webtui-background1);
   display: inline-block;
+  min-width: 300px;
 }
 
 .pylon-card h1 {
@@ -58,9 +58,8 @@ html, body {
 
 /* Ollama status card styles */
 .ollama-status-card {
-  padding: 1rem 2rem;
-  background-color: var(--webtui-background1);
-  min-width: 200px;
+  padding: 1rem 2rem !important;
+  min-width: 250px;
   text-align: center;
 }
 

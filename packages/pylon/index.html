@@ -11,9 +11,11 @@
     <div class="pylon-container">
       <div class="pylon-cards">
         <div class="webtui-box webtui-box-double pylon-card">
+          <span class="box-corners"></span>
           <h1 class="webtui-typography webtui-variant-h1">Pylon</h1>
         </div>
         <div class="webtui-box webtui-box-single ollama-status-card">
+          <span class="box-corners"></span>
           <div class="status-indicator">
             <span class="status-dot" id="ollama-status-dot"></span>
             <span class="status-text webtui-typography" id="ollama-status-text">Ollama: Checking...</span>
@@ -21,6 +23,11 @@
           <div class="model-info" id="ollama-model-info" style="display: none;">
             <span class="webtui-typography webtui-variant-small"></span>
           </div>
+        </div>
+        <div class="webtui-box webtui-box-single model-list-card" id="model-list-card" style="display: none;">
+          <span class="box-corners"></span>
+          <h3 class="webtui-typography webtui-variant-h3">Available Models</h3>
+          <div class="model-list" id="model-list"></div>
         </div>
       </div>
     </div>
