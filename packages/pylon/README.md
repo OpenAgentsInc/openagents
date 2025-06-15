@@ -1,19 +1,38 @@
 # @openagentsinc/pylon
 
-> 🚧 Under Construction
-
-This package is currently being designed and will be available soon.
+The first application built with the OpenAgents SDK, showcasing WebTUI components.
 
 ## Overview
 
-Pylon will be a key component of the OpenAgents ecosystem.
+Pylon is a demonstration web application that:
+- Uses the new OpenAgents SDK (coming soon)
+- Showcases WebTUI terminal-inspired UI components from `@openagentsinc/ui`
+- Built with Vite for fast development
 
-## Status
+## Development
 
-- [ ] Architecture design
-- [ ] Implementation
-- [ ] Documentation
-- [ ] Tests
+```bash
+# Install dependencies
+pnpm install
+
+# Build the UI package first (required)
+pnpm --filter=@openagentsinc/ui build
+
+# Start development server
+pnpm --filter=@openagentsinc/pylon dev
+
+# Build for production
+pnpm --filter=@openagentsinc/pylon build
+
+# Preview production build
+pnpm --filter=@openagentsinc/pylon preview
+```
+
+## Architecture
+
+- **Vite** - Fast build tool and dev server
+- **WebTUI CSS** - Terminal-inspired components from `@openagentsinc/ui`
+- **OpenAgents SDK** - Core functionality (coming soon)
 
 ## License
 

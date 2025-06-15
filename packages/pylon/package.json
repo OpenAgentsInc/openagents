@@ -3,15 +3,21 @@
   "version": "0.0.0",
   "type": "module",
   "license": "CC0-1.0",
-  "description": "Pylon - Coming soon",
+  "description": "Pylon - OpenAgents SDK Demo App",
   "repository": {
     "type": "git",
     "url": "https://github.com/OpenAgentsInc/openagents",
     "directory": "packages/pylon"
   },
-  "main": "src/index.js",
   "scripts": {
-    "build": "echo 'Build not yet implemented'",
-    "test": "echo 'Tests not yet implemented'"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@openagentsinc/ui": "workspace:^"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7"
   }
 }
