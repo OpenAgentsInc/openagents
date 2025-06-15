@@ -81,7 +81,7 @@ export class TodosApiGroup extends HttpApiGroup.make("todos")
 
 These packages implement specific features or integrations:
 
-#### Pylon Package (`@openagentsinc/pylon`)
+#### Relay Package (`@openagentsinc/relay`)
 - Nostr relay server implementation
 - WebSocket server for Nostr protocol
 - Event storage and subscription management

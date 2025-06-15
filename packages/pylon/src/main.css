@@ -1,0 +1,50 @@
+/* Import WebTUI CSS from packages/ui */
+@import '@openagentsinc/ui';
+
+/* Pylon specific styles */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--webtui-background0);
+  position: fixed;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+}
+
+.pylon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pylon-card {
+  padding: 2.5rem 4rem;
+  text-align: center;
+  background-color: var(--webtui-background1);
+  display: inline-block;
+}
+
+.pylon-card h1 {
+  margin: 0;
+  margin-bottom: 0 !important;
+  color: var(--webtui-foreground2);
+  font-size: 2.5rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}

@@ -7,7 +7,7 @@
     { "path": "packages/domain/tsconfig.build.json" },
     { "path": "packages/nostr/tsconfig.build.json" },
     { "path": "packages/playground/tsconfig.build.json" },
-    { "path": "packages/pylon/tsconfig.build.json" },
+    { "path": "packages/relay/tsconfig.build.json" },
     { "path": "packages/ui/tsconfig.build.json" }
   ]
 }
