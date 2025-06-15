@@ -10,7 +10,8 @@ export type ButtonProps = {
 }
 
 export const Button = (props: ButtonProps): any => {
-  const baseStyle = "display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 14px; font-weight: 500; font-family: monospace; transition: colors 0.2s; cursor: pointer; border: none; border-radius: 0;"
+  const baseStyle =
+    "display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; font-size: 14px; font-weight: 500; font-family: monospace; transition: colors 0.2s; cursor: pointer; border: none; border-radius: 0;"
 
   const variantStyles = {
     default: "background-color: #000; color: #fff;",

@@ -32,7 +32,8 @@ export type CardFooterProps = {
 }
 
 export const Card = (props: CardProps): any => {
-  const baseStyle = "font-family: monospace; background-color: #fff; color: #000; border: 1px solid #ccc; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"
+  const baseStyle =
+    "font-family: monospace; background-color: #fff; color: #000; border: 1px solid #ccc; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"
 
   const sizeStyles = {
     default: "padding: 24px;",
