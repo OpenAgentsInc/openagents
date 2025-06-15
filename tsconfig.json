@@ -7,7 +7,6 @@
     { "path": "packages/domain" },
     { "path": "packages/nostr" },
     { "path": "packages/playground" },
-    { "path": "packages/pylon" },
     { "path": "packages/relay" },
     { "path": "packages/sdk" }
   ]
