@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./fonts.css";
+@import "./webtui.css";
 
 @theme {
   /* Font configuration */

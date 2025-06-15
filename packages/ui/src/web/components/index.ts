@@ -17,3 +17,6 @@ export { Toaster } from "./sonner.js"
 export { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "./table.js"
 export { ToggleGroup, ToggleGroupItem } from "./toggle-group.js"
 export { Toggle, toggleVariants } from "./toggle.js"
+
+// WebTUI components - Terminal-inspired UI components
+export * from "../webtui/index.js"

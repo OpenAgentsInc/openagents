@@ -427,6 +427,18 @@ importers:
       '@use-gesture/react':
         specifier: ^10.3.1
         version: 10.3.1(react@19.1.0)
+      '@webtui/css':
+        specifier: ^0.1.1
+        version: 0.1.1
+      '@webtui/theme-catppuccin':
+        specifier: ^0.0.3
+        version: 0.0.3
+      '@webtui/theme-gruvbox':
+        specifier: ^0.0.1
+        version: 0.0.1
+      '@webtui/theme-nord':
+        specifier: ^0.0.2
+        version: 0.0.2
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -6368,6 +6380,22 @@ packages:
 
   /@webreflection/uparser@0.2.4:
     resolution: {integrity: sha512-4cYSODHAbjsIlvlTLffaN+QiFcNSLTYkRLOrDqpK+m6Bzqyjudq/xHTiSl4/LxeijcQE48nJQuaBnJcnizXxrA==}
+
+  /@webtui/css@0.1.1:
+    resolution: {integrity: sha512-JDMIAt28xh8lSSa/CYADedxCc5tS0Bcfy7HuFkGC1gXw6LzFkohQaGTZpuj14KJv0daOzDwKw1pooMmYlBp9Yw==}
+    dev: false
+
+  /@webtui/theme-catppuccin@0.0.3:
+    resolution: {integrity: sha512-mn3qpyIDYzPm9DoDX7Rs/Ma/3YawbAZEu6/Cemj4kTodr4eBFuEOmkkd1RtChsXGH75fZ054MIzZoVwYvA5W2g==}
+    dev: false
+
+  /@webtui/theme-gruvbox@0.0.1:
+    resolution: {integrity: sha512-V4771VzVdriQg4gUMG0SbhtzB/4tebe5HyY1z21S8ib25i+fm6BNZearwhL+SwkS4T4teK+991uaLogJXiR+gg==}
+    dev: false
+
+  /@webtui/theme-nord@0.0.2:
+    resolution: {integrity: sha512-EwXUIJzfYkV25/c6eubNXA0uo7qZm+MTO5ex6hWUuxsaq4bQp2LmB3eT2Gvt0yX1xPw5dEsTT1x3Bm/AJ45nPw==}
+    dev: false
 
   /accepts@1.3.8:
     resolution: {integrity: sha512-PYAthTa2m2VKxuvSD3DPC/Gy+U+sOA1LAuT8mkmRuvw+NACSaeXEQ+NHcVF7rONl6qcaxV3Uuemwawk+7+SJLw==}

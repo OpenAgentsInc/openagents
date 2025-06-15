@@ -1,0 +1,39 @@
+/* WebTUI CSS Integration for @openagentsinc/ui */
+
+/* CSS Layer ordering - ensures proper cascade */
+@layer base, utils, components;
+
+/* Core WebTUI CSS */
+@import '@webtui/css';
+
+/* WebTUI Theme Packages */
+@import '@webtui/theme-catppuccin';
+@import '@webtui/theme-gruvbox';
+@import '@webtui/theme-nord';
+
+/* Theme switching CSS custom properties */
+:root {
+  /* Default theme variables (matches WebTUI base) */
+  --webtui-theme: 'default';
+}
+
+/* Theme-specific overrides */
+[data-webtui-theme="catppuccin"] {
+  /* Catppuccin theme will be applied */
+}
+
+[data-webtui-theme="gruvbox"] {
+  /* Gruvbox theme will be applied */
+}
+
+[data-webtui-theme="nord"] {
+  /* Nord theme will be applied */
+}
+
+/* Custom WebTUI component extensions */
+@layer components {
+  /* Extend WebTUI components with additional variants as needed */
+  .webtui-button-custom {
+    /* Custom button extensions */
+  }
+}
