@@ -9,12 +9,27 @@
     "url": "https://github.com/OpenAgentsInc/openagents",
     "directory": "packages/sdk"
   },
-  "main": "src/index.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
   "scripts": {
-    "build": "echo 'Build not yet implemented'",
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "test": "echo 'Tests not yet implemented'"
   },
   "dependencies": {
     "effect": "3.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.5.0",
+    "tsup": "8.3.5",
+    "typescript": "5.6.3"
   }
 }
