@@ -8,7 +8,7 @@ type CardArgs = {
   description: string
   content: string
   hasFooter: boolean
-  size?: "default" | "sm" | "lg"
+  size?: "default" | "sm" | "lg" | undefined
 }
 
 // Card component using @openagentsinc/ui
@@ -36,7 +36,7 @@ const createCard = (args: CardArgs): Fx<RenderEvent, never, any> => {
   }
 
   return Card({
-    size: args.size,
+    ...(args.size && { size: args.size }),
     children: cardContent
   })
 }

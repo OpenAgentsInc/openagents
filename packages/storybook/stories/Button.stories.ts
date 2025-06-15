@@ -5,19 +5,19 @@ import { RenderEvent } from "@typed/template/RenderEvent"
 
 type ButtonArgs = {
   children: string
-  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
-  size?: "default" | "sm" | "lg" | "icon"
-  disabled?: boolean
-  onClick?: () => void
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | undefined
+  size?: "default" | "sm" | "lg" | "icon" | undefined
+  disabled?: boolean | undefined
+  onClick?: (() => void) | undefined
 }
 
 // Button component using @openagentsinc/ui
 const createButton = (args: ButtonArgs): Fx<RenderEvent, never, any> => {
   return Button({
-    variant: args.variant,
-    size: args.size,
-    disabled: args.disabled,
-    onClick: args.onClick,
+    ...(args.variant && { variant: args.variant }),
+    ...(args.size && { size: args.size }),
+    ...(args.disabled !== undefined && { disabled: args.disabled }),
+    ...(args.onClick && { onClick: args.onClick }),
     children: args.children
   })
 }
