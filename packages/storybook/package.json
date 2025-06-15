@@ -32,6 +32,7 @@
     "build-storybook": "storybook build",
     "deploy": "wrangler deploy",
     "deploy:dev": "wrangler deploy --env development",
+    "deploy:prod": "pnpm build-storybook && wrangler deploy",
     "preview": "wrangler dev"
   },
   "peerDependencies": {

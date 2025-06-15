@@ -415,6 +415,15 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.7
         version: 1.2.7(@types/react-dom@19.1.0)(@types/react@19.1.0)(react-dom@19.1.0)(react@19.1.0)
+      '@typed/fx':
+        specifier: ^1.32.0
+        version: 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
+      '@typed/template':
+        specifier: ^0.14.0
+        version: 0.14.0(@effect/typeclass@0.24.27)
+      '@typed/ui':
+        specifier: ^0.14.0
+        version: 0.14.0(@effect/typeclass@0.24.27)(@typed/path@0.15.0)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
       '@use-gesture/react':
         specifier: ^10.3.1
         version: 10.3.1(react@19.1.0)
