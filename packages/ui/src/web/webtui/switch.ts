@@ -12,40 +12,40 @@ export type SwitchProps = {
 }
 
 export const Switch = (props: SwitchProps): any => {
-  const { id, checked, disabled, onChange, children, className, style, ...otherProps } = props
-  
+  const { checked, children, className, disabled, id, onChange, style, ...otherProps } = props
+
   const inputAttributes: Record<string, any> = {
     type: "checkbox",
     [`is-`]: "switch",
     ...otherProps
   }
-  
+
   if (id) {
     inputAttributes.id = id
   }
-  
+
   if (checked) {
     inputAttributes.checked = true
   }
-  
+
   if (disabled) {
     inputAttributes.disabled = true
   }
-  
+
   if (onChange) {
     inputAttributes.onChange = onChange
   }
-  
+
   const labelAttributes: Record<string, any> = {}
-  
+
   if (id) {
     labelAttributes.htmlFor = id
   }
-  
+
   if (className) {
     labelAttributes.className = className
   }
-  
+
   if (style) {
     labelAttributes.style = style
   }
@@ -56,6 +56,6 @@ export const Switch = (props: SwitchProps): any => {
       children
     ])
   }
-  
+
   return input(inputAttributes)
 }

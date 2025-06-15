@@ -16,42 +16,43 @@ export type WebTUIInputProps = {
 }
 
 export const WebTUIInput = (props: WebTUIInputProps): any => {
-  const { type = "text", placeholder, value, size, disabled, onChange, onInput, className, style, ...otherProps } = props
-  
+  const { className, disabled, onChange, onInput, placeholder, size, style, type = "text", value, ...otherProps } =
+    props
+
   const attributes: Record<string, any> = {
     type,
     ...otherProps
   }
-  
+
   if (placeholder) {
     attributes.placeholder = placeholder
   }
-  
+
   if (value !== undefined) {
     attributes.value = value
   }
-  
+
   // Add size attribute if specified (WebTUI default is handled by CSS)
   if (size && size !== "default") {
     attributes[`size-`] = size
   }
-  
+
   if (disabled) {
     attributes.disabled = true
   }
-  
+
   if (onChange) {
     attributes.onChange = onChange
   }
-  
+
   if (onInput) {
     attributes.onInput = onInput
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }

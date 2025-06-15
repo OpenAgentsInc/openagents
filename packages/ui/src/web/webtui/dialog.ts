@@ -1,10 +1,18 @@
 import { dialog } from "@typed/ui/hyperscript"
 
-export type DialogPosition = 
-  | "start" | "center" | "end"
-  | "start start" | "center start" | "end start"
-  | "start center" | "center center" | "end center" 
-  | "start end" | "center end" | "end end"
+export type DialogPosition =
+  | "start"
+  | "center"
+  | "end"
+  | "start start"
+  | "center start"
+  | "end start"
+  | "start center"
+  | "center center"
+  | "end center"
+  | "start end"
+  | "center end"
+  | "end end"
 
 export type DialogContainer = "auto" | "fill"
 export type DialogSize = "small" | "default" | "full"
@@ -22,36 +30,36 @@ export type WebTUIDialogProps = {
 }
 
 export const WebTUIDialog = (props: WebTUIDialogProps): any => {
-  const { children, position, container, size, popover, id, className, style, ...otherProps } = props
-  
+  const { children, className, container, id, popover, position, size, style, ...otherProps } = props
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (id) {
     attributes.id = id
   }
-  
+
   if (position) {
     attributes[`position-`] = position
   }
-  
+
   if (container) {
     attributes[`container-`] = container
   }
-  
+
   if (size && size !== "default") {
     attributes[`size-`] = size
   }
-  
+
   if (popover) {
     attributes.popover = true
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }

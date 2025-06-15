@@ -1,4 +1,4 @@
-import { Effect, Layer, Context, pipe } from "effect"
+import { Context, Effect, Layer, pipe } from "effect"
 
 export type WebTUITheme = "default" | "catppuccin" | "gruvbox" | "nord"
 
@@ -7,54 +7,53 @@ export class WebTUIThemeService extends Context.Tag("WebTUIThemeService")<
   {
     readonly setTheme: (theme: WebTUITheme) => Effect.Effect<void>
     readonly getCurrentTheme: () => Effect.Effect<WebTUITheme>
-    readonly availableThemes: () => Effect.Effect<readonly WebTUITheme[]>
+    readonly availableThemes: () => Effect.Effect<ReadonlyArray<WebTUITheme>>
   }
 >() {}
 
 export const WebTUIThemeServiceLive = Layer.succeed(
   WebTUIThemeService,
   {
-    setTheme: (theme: WebTUITheme) => 
+    setTheme: (theme: WebTUITheme) =>
       Effect.sync(() => {
-        document.documentElement.setAttribute('data-webtui-theme', theme)
+        document.documentElement.setAttribute("data-webtui-theme", theme)
         // Store theme preference in localStorage
-        localStorage.setItem('webtui-theme', theme)
+        localStorage.setItem("webtui-theme", theme)
       }),
-    
-    getCurrentTheme: () => 
+
+    getCurrentTheme: () =>
       Effect.sync(() => {
-        const stored = localStorage.getItem('webtui-theme')
-        const current = document.documentElement.getAttribute('data-webtui-theme')
-        return (stored || current || 'default') as WebTUITheme
+        const stored = localStorage.getItem("webtui-theme")
+        const current = document.documentElement.getAttribute("data-webtui-theme")
+        return (stored || current || "default") as WebTUITheme
       }),
-    
-    availableThemes: () => 
-      Effect.succeed(['default', 'catppuccin', 'gruvbox', 'nord'] as const)
+
+    availableThemes: () => Effect.succeed(["default", "catppuccin", "gruvbox", "nord"] as const)
   }
 )
 
 // Helper functions for easy theme usage
-export const setTheme = (theme: WebTUITheme) => 
+export const setTheme = (theme: WebTUITheme) =>
   pipe(
     WebTUIThemeService,
-    Effect.flatMap(service => service.setTheme(theme))
+    Effect.flatMap((service) => service.setTheme(theme))
   )
 
-export const getCurrentTheme = () => 
+export const getCurrentTheme = () =>
   pipe(
     WebTUIThemeService,
-    Effect.flatMap(service => service.getCurrentTheme())
+    Effect.flatMap((service) => service.getCurrentTheme())
   )
 
-export const getAvailableThemes = () => 
+export const getAvailableThemes = () =>
   pipe(
     WebTUIThemeService,
-    Effect.flatMap(service => service.availableThemes())
+    Effect.flatMap((service) => service.availableThemes())
   )
 
 // Initialize theme on page load
 export const initializeTheme = () =>
   pipe(
     getCurrentTheme(),
-    Effect.flatMap(theme => setTheme(theme))
+    Effect.flatMap((theme) => setTheme(theme))
   )

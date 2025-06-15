@@ -1,19 +1,19 @@
 import { span } from "@typed/ui/hyperscript"
 
-export type BadgeVariant = 
-  | "foreground0" 
-  | "foreground1" 
-  | "foreground2" 
-  | "background0" 
-  | "background1" 
-  | "background2" 
+export type BadgeVariant =
+  | "foreground0"
+  | "foreground1"
+  | "foreground2"
+  | "background0"
+  | "background1"
+  | "background2"
   | "background3"
 
-export type BadgeCap = 
-  | "round" 
-  | "triangle" 
-  | "slant-top" 
-  | "slant-bottom" 
+export type BadgeCap =
+  | "round"
+  | "triangle"
+  | "slant-top"
+  | "slant-bottom"
   | "ribbon"
 
 export type BadgeProps = {
@@ -27,32 +27,32 @@ export type BadgeProps = {
 }
 
 export const Badge = (props: BadgeProps): any => {
-  const { children, variant, capStart, capEnd, className, style, ...otherProps } = props
-  
+  const { capEnd, capStart, children, className, style, variant, ...otherProps } = props
+
   const attributes: Record<string, any> = {
     [`is-`]: "badge",
     ...otherProps
   }
-  
+
   // Add variant attribute if specified
   if (variant) {
     attributes[`variant-`] = variant
   }
-  
+
   // Add cap attributes if specified
   if (capStart) {
     attributes[`cap-^`] = capStart
   }
-  
+
   if (capEnd) {
     attributes[`cap-$`] = capEnd
   }
-  
+
   // Add className if provided
   if (className) {
     attributes.className = className
   }
-  
+
   // Add style if provided
   if (style) {
     attributes.style = style

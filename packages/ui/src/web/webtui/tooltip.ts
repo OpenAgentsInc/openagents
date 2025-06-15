@@ -9,20 +9,20 @@ export type TooltipProps = {
 }
 
 export const Tooltip = (props: TooltipProps): any => {
-  const { children, tooltip, className, style, ...otherProps } = props
-  
+  const { children, className, style, tooltip, ...otherProps } = props
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (tooltip) {
     attributes.title = tooltip
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }

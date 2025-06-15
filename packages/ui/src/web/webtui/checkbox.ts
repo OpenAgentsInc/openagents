@@ -12,39 +12,39 @@ export type CheckboxProps = {
 }
 
 export const Checkbox = (props: CheckboxProps): any => {
-  const { id, checked, disabled, onChange, children, className, style, ...otherProps } = props
-  
+  const { checked, children, className, disabled, id, onChange, style, ...otherProps } = props
+
   const inputAttributes: Record<string, any> = {
     type: "checkbox",
     ...otherProps
   }
-  
+
   if (id) {
     inputAttributes.id = id
   }
-  
+
   if (checked) {
     inputAttributes.checked = true
   }
-  
+
   if (disabled) {
     inputAttributes.disabled = true
   }
-  
+
   if (onChange) {
     inputAttributes.onChange = onChange
   }
-  
+
   const labelAttributes: Record<string, any> = {}
-  
+
   if (id) {
     labelAttributes.htmlFor = id
   }
-  
+
   if (className) {
     labelAttributes.className = className
   }
-  
+
   if (style) {
     labelAttributes.style = style
   }
@@ -55,6 +55,6 @@ export const Checkbox = (props: CheckboxProps): any => {
       children
     ])
   }
-  
+
   return input(inputAttributes)
 }

@@ -1,4 +1,4 @@
-import { table, thead, tbody, tfoot, tr, th, td } from "@typed/ui/hyperscript"
+import { table, tbody, td, tfoot, th, thead, tr } from "@typed/ui/hyperscript"
 
 export type TableProps = {
   children: any
@@ -51,15 +51,15 @@ export type TableCellProps = {
 
 export const Table = (props: TableProps): any => {
   const { children, className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }
@@ -69,15 +69,15 @@ export const Table = (props: TableProps): any => {
 
 export const TableHead = (props: TableHeadProps): any => {
   const { children, className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }
@@ -87,15 +87,15 @@ export const TableHead = (props: TableHeadProps): any => {
 
 export const TableBody = (props: TableBodyProps): any => {
   const { children, className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }
@@ -105,15 +105,15 @@ export const TableBody = (props: TableBodyProps): any => {
 
 export const TableFoot = (props: TableFootProps): any => {
   const { children, className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }
@@ -123,15 +123,15 @@ export const TableFoot = (props: TableFootProps): any => {
 
 export const TableRow = (props: TableRowProps): any => {
   const { children, className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }
@@ -141,15 +141,15 @@ export const TableRow = (props: TableRowProps): any => {
 
 export const TableHeader = (props: TableHeaderProps): any => {
   const { children, className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }
@@ -159,15 +159,15 @@ export const TableHeader = (props: TableHeaderProps): any => {
 
 export const TableCell = (props: TableCellProps): any => {
   const { children, className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }

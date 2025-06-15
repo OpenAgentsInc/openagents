@@ -17,48 +17,48 @@ export type WebTUITextareaProps = {
 }
 
 export const WebTUITextarea = (props: WebTUITextareaProps): any => {
-  const { placeholder, value, size, disabled, rows, cols, onChange, onInput, className, style, ...otherProps } = props
-  
+  const { className, cols, disabled, onChange, onInput, placeholder, rows, size, style, value, ...otherProps } = props
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (placeholder) {
     attributes.placeholder = placeholder
   }
-  
+
   if (value !== undefined) {
     attributes.value = value
   }
-  
+
   if (size && size !== "default") {
     attributes[`size-`] = size
   }
-  
+
   if (disabled) {
     attributes.disabled = true
   }
-  
+
   if (rows) {
     attributes.rows = rows
   }
-  
+
   if (cols) {
     attributes.cols = cols
   }
-  
+
   if (onChange) {
     attributes.onChange = onChange
   }
-  
+
   if (onInput) {
     attributes.onInput = onInput
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }

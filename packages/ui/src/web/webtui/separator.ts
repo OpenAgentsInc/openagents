@@ -8,15 +8,15 @@ export type SeparatorProps = {
 
 export const Separator = (props: SeparatorProps): any => {
   const { className, style, ...otherProps } = props
-  
+
   const attributes: Record<string, any> = {
     ...otherProps
   }
-  
+
   if (className) {
     attributes.className = className
   }
-  
+
   if (style) {
     attributes.style = style
   }
