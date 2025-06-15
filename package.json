@@ -48,7 +48,8 @@
     "glob": "11.0.2",
     "tsx": "4.19.4",
     "typescript": "5.8.3",
-    "vitest": "3.2.1"
+    "vitest": "3.2.1",
+    "wrangler": "^4.20.0"
   },
   "pnpm": {
     "overrides": {

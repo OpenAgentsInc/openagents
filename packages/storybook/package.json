@@ -29,7 +29,10 @@
     "tc": "tsc --noEmit",
     "storybook": "storybook dev -p 6006",
     "storybook-typed": "storybook dev -p 6006 -c .storybook --config-dir .storybook",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "deploy": "wrangler deploy",
+    "deploy:dev": "wrangler deploy --env development",
+    "preview": "wrangler dev"
   },
   "peerDependencies": {
     "@storybook/builder-vite": "^8.3.5",
@@ -52,6 +55,8 @@
     "effect": "^3.8.4"
   },
   "devDependencies": {
+    "@babel/cli": "^7.23.4",
+    "@cloudflare/kv-asset-handler": "^0.4.0",
     "@storybook/addon-essentials": "^8.3.5",
     "@storybook/addon-interactions": "^8.3.5",
     "@storybook/addon-links": "^8.3.5",
@@ -62,13 +67,12 @@
     "@storybook/html-vite": "^8.3.5",
     "@storybook/test": "^8.3.5",
     "@vitejs/plugin-react": "^4.3.2",
+    "babel-plugin-annotate-pure-calls": "^0.4.0",
+    "concurrently": "^8.2.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "storybook": "^8.3.5",
-    "vite": "^5.4.19",
-    "concurrently": "^8.2.2",
-    "@babel/cli": "^7.23.4",
-    "babel-plugin-annotate-pure-calls": "^0.4.0"
+    "vite": "^5.4.19"
   },
   "effect": {
     "includeInternal": false

@@ -1,0 +1,18 @@
+name = "openagents-storybook"
+main = "src/worker.js"
+compatibility_date = "2024-06-14"
+
+[site]
+bucket = "./storybook-static"
+
+# Custom domain will be configured in Cloudflare dashboard
+# [env.production]
+# route = "storybook.openagents.com/*"
+
+# Enable serving assets from the site bucket
+[build]
+command = "pnpm build-storybook"
+
+# Development configuration
+[env.development]
+route = "storybook-dev.openagents.com/*"

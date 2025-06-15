@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@openagentsinc/storybook"
-import { button, div } from "@typed/ui"
+import { button, div } from "@typed/ui/hyperscript"
 import type { Fx } from "@typed/fx/Fx"
 import * as Effect from "effect/Effect"
 

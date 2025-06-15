@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/html"
-import { button as typedButton } from "@typed/ui"
+import { button as typedButton } from "@typed/ui/hyperscript"
 import * as Runtime from "effect/Runtime"
 import * as Effect from "effect/Effect"
 
