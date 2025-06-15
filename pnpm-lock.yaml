@@ -245,7 +245,15 @@ importers:
         specifier: ^6.3.3
         version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
 
-  packages/pylon: {}
+  packages/pylon:
+    dependencies:
+      '@openagentsinc/ui':
+        specifier: workspace:^
+        version: link:../ui/dist
+    devDependencies:
+      vite:
+        specifier: ^6.0.7
+        version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
 
   packages/relay:
     dependencies:
