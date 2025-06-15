@@ -1,5 +1,5 @@
 import type { Fx } from "@typed/fx/Fx"
-import { RenderEvent } from "@typed/template/RenderEvent"
+import type { RenderEvent } from "@typed/template/RenderEvent"
 import { Button } from "./button.js"
 
 export type CopyButtonProps = {
@@ -15,7 +15,7 @@ export const CopyButton = (props: CopyButtonProps): Fx<RenderEvent, never, any> 
 
   return Button({
     variant: "ghost",
-    size: "icon", 
+    size: "icon",
     className: ["relative h-6 w-6", props.className].filter(Boolean).join(" "),
     onClick: handleCopy,
     children: "📋"

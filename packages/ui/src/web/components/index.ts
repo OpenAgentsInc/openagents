@@ -1,6 +1,6 @@
 // Web component exports
 export { Button } from "./button.js"
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from "./card.js"
+export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./card.js"
 export { CopyButton } from "./copy-button.js"
 export {
   NavigationMenu,

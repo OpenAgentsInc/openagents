@@ -10,7 +10,8 @@ export type ButtonProps = {
 }
 
 export const Button = (props: ButtonProps): any => {
-  const baseStyle = "cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 rounded-none"
+  const baseStyle =
+    "cursor-pointer inline-flex items-center justify-center whitespace-nowrap text-sm font-medium font-mono transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 rounded-none"
 
   const variantStyles = {
     default: "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -30,7 +31,7 @@ export const Button = (props: ButtonProps): any => {
 
   const variant = props.variant || "default"
   const size = props.size || "default"
-  
+
   const className = [
     baseStyle,
     variantStyles[variant],

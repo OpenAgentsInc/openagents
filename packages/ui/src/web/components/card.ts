@@ -1,13 +1,13 @@
 import { div } from "@typed/ui/hyperscript"
 
 export type CardProps = {
-  children: any[]
+  children: Array<any>
   size?: "default" | "sm" | "lg"
   className?: string
 }
 
 export type CardHeaderProps = {
-  children: any[]
+  children: Array<any>
   className?: string
 }
 
@@ -36,7 +36,7 @@ export const Card = (props: CardProps): any => {
 
   const sizeStyles = {
     default: "p-6",
-    sm: "p-4", 
+    sm: "p-4",
     lg: "p-8"
   }
 
