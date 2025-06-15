@@ -33,12 +33,12 @@ export type CardFooterProps = {
 
 export const Card = (props: CardProps): any => {
   const baseStyle =
-    "font-family: monospace; background-color: #fff; color: #000; border: 1px solid #ccc; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.1);"
+    "font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; background-color: hsl(0 0% 100%); color: hsl(222.2 84% 4.9%); border-width: 1px; border-color: hsl(214.3 31.8% 91.4%); display: flex; flex-direction: column; border-radius: 0.5rem; box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);"
 
   const sizeStyles = {
-    default: "padding: 24px;",
-    sm: "padding: 16px;",
-    lg: "padding: 32px;"
+    default: "padding: 1.5rem;",
+    sm: "padding: 1rem;",
+    lg: "padding: 2rem;"
   }
 
   const size = props.size || "default"
@@ -48,17 +48,17 @@ export const Card = (props: CardProps): any => {
 }
 
 export const CardHeader = (props: CardHeaderProps): any => {
-  const style = "display: flex; flex-direction: column; gap: 6px;"
+  const style = "display: flex; flex-direction: column; gap: 0.375rem;"
   return div({ style, className: props.className }, ...props.children)
 }
 
 export const CardTitle = (props: CardTitleProps): any => {
-  const style = "font-weight: 600; line-height: 1; letter-spacing: -0.025em;"
+  const style = "font-size: 1.5rem; line-height: 2rem; font-weight: 600; line-height: 1; letter-spacing: -0.025em;"
   return div({ style, className: props.className }, props.children)
 }
 
 export const CardDescription = (props: CardDescriptionProps): any => {
-  const style = "font-size: 14px; color: #6b7280;"
+  const style = "font-size: 0.875rem; line-height: 1.25rem; color: hsl(215.4 16.3% 46.9%);"
   return div({ style, className: props.className }, props.children)
 }
 
@@ -67,6 +67,6 @@ export const CardContent = (props: CardContentProps): any => {
 }
 
 export const CardFooter = (props: CardFooterProps): any => {
-  const style = "display: flex; align-items: center; padding-top: 24px;"
+  const style = "display: flex; align-items: center; padding-top: 1.5rem;"
   return div({ style, className: props.className }, props.children)
 }
