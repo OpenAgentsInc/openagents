@@ -9,8 +9,19 @@
 <body class="webtui webtui-theme-zinc">
   <div id="app">
     <div class="pylon-container">
-      <div class="webtui-box webtui-box-double pylon-card">
-        <h1 class="webtui-typography webtui-variant-h1">Pylon</h1>
+      <div class="pylon-cards">
+        <div class="webtui-box webtui-box-double pylon-card">
+          <h1 class="webtui-typography webtui-variant-h1">Pylon</h1>
+        </div>
+        <div class="webtui-box webtui-box-single ollama-status-card">
+          <div class="status-indicator">
+            <span class="status-dot" id="ollama-status-dot"></span>
+            <span class="status-text webtui-typography" id="ollama-status-text">Ollama: Checking...</span>
+          </div>
+          <div class="model-info" id="ollama-model-info" style="display: none;">
+            <span class="webtui-typography webtui-variant-small"></span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
