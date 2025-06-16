@@ -300,17 +300,31 @@ initializeOllamaStatus();
 
 // Enable/disable chat input based on model selection
 const enableChatInput = () => {
+  console.log('🔧 enableChatInput called, currentModel:', currentModel);
+  
   const input = document.getElementById('chat-input');
   const sendButton = document.getElementById('chat-send');
   const messagesContainer = document.getElementById('chat-messages');
   
+  console.log('📍 DOM elements:', {
+    input: !!input,
+    sendButton: !!sendButton,
+    messagesContainer: !!messagesContainer
+  });
+  
+  if (!input || !sendButton) {
+    console.error('❌ Chat input or send button not found!');
+    return;
+  }
+  
   if (currentModel) {
+    console.log('✅ Enabling chat input for model:', currentModel);
     input.disabled = false;
     sendButton.disabled = false;
     input.placeholder = `Type your message... (${currentModel})`;
     
     // Clear empty state if it's the first time
-    if (messagesContainer.querySelector('.empty-state')) {
+    if (messagesContainer && messagesContainer.querySelector('.empty-state')) {
       messagesContainer.innerHTML = '';
       // Add system message
       chatMessages = [{
@@ -319,6 +333,7 @@ const enableChatInput = () => {
       }];
     }
   } else {
+    console.log('⚠️ No model selected, disabling chat input');
     input.disabled = true;
     sendButton.disabled = true;
     input.placeholder = 'Select a model first...';
@@ -424,20 +439,33 @@ const sendChatMessage = async () => {
 
 // Initialize chat event handlers
 const initializeChatHandlers = () => {
+  console.log('🎮 Initializing chat handlers...');
+  
   const modelDropdown = document.getElementById('chat-model-select');
   const input = document.getElementById('chat-input');
   const sendButton = document.getElementById('chat-send');
   
+  console.log('📍 Chat handler elements:', {
+    modelDropdown: !!modelDropdown,
+    input: !!input,
+    sendButton: !!sendButton
+  });
+  
   if (modelDropdown) {
     modelDropdown.addEventListener('change', (e) => {
+      console.log('📋 Model dropdown changed:', e.target.value);
       currentModel = e.target.value;
       localStorage.setItem('selectedModel', currentModel);
       enableChatInput();
     });
+  } else {
+    console.error('❌ Model dropdown not found!');
   }
   
   if (sendButton) {
     sendButton.addEventListener('click', sendChatMessage);
+  } else {
+    console.error('❌ Send button not found!');
   }
   
   if (input) {
@@ -447,6 +475,8 @@ const initializeChatHandlers = () => {
         sendChatMessage();
       }
     });
+  } else {
+    console.error('❌ Chat input not found!');
   }
 };
 
