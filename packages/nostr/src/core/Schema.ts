@@ -1,11 +1,11 @@
 /**
- * Core Nostr schemas for NIP-01 protocol
+ * Core Nostr schemas - aggregates all schemas from primitives and NIPs
  * @module
  */
 
 import { pipe, Schema } from "effect"
 
-// Branded types for type safety
+// Fundamental cryptographic types used across all NIPs
 export const EventId = pipe(
   Schema.String,
   Schema.pattern(/^[0-9a-f]{64}$/),
@@ -61,6 +61,7 @@ export const UnixTimestamp = pipe(
 )
 export type UnixTimestamp = Schema.Schema.Type<typeof UnixTimestamp>
 
+// Event kind (0-65535)
 export const EventKind = pipe(
   Schema.Number,
   Schema.int(),
@@ -227,3 +228,65 @@ export const OkPrefix = Schema.Literal(
   "error"
 )
 export type OkPrefix = Schema.Schema.Type<typeof OkPrefix>
+
+// NIP-06 schemas
+export const Mnemonic = pipe(
+  Schema.String,
+  Schema.filter((str) => {
+    const words = str.trim().split(/\s+/)
+    return [12, 15, 18, 21, 24].includes(words.length)
+  }),
+  Schema.brand("Mnemonic"),
+  Schema.annotations({
+    title: "Mnemonic",
+    description: "BIP39 mnemonic phrase (12, 15, 18, 21, or 24 words)"
+  })
+)
+export type Mnemonic = Schema.Schema.Type<typeof Mnemonic>
+
+// Bech32-encoded private key (nsec format)
+export const Nsec = pipe(
+  Schema.String,
+  Schema.pattern(/^nsec1[ac-hj-np-z02-9]{58}$/),
+  Schema.brand("Nsec"),
+  Schema.annotations({
+    title: "Nsec",
+    description: "Bech32-encoded private key (nsec1...)"
+  })
+)
+export type Nsec = Schema.Schema.Type<typeof Nsec>
+
+// Bech32-encoded public key (npub format)
+export const Npub = pipe(
+  Schema.String,
+  Schema.pattern(/^npub1[ac-hj-np-z02-9]{58}$/),
+  Schema.brand("Npub"),
+  Schema.annotations({
+    title: "Npub",
+    description: "Bech32-encoded public key (npub1...)"
+  })
+)
+export type Npub = Schema.Schema.Type<typeof Npub>
+
+// BIP32 derivation path for Nostr keys
+export const DerivationPath = pipe(
+  Schema.String,
+  Schema.pattern(/^m\/44'\/1237'\/\d+'\/0\/0$/),
+  Schema.brand("DerivationPath"),
+  Schema.annotations({
+    title: "DerivationPath",
+    description: "BIP32 derivation path for Nostr keys (m/44'/1237'/account'/0/0)"
+  })
+)
+export type DerivationPath = Schema.Schema.Type<typeof DerivationPath>
+
+// Complete key derivation result
+export class KeyDerivationResult extends Schema.Class<KeyDerivationResult>("KeyDerivationResult")({
+  privateKey: PrivateKey,
+  publicKey: PublicKey,
+  nsec: Nsec,
+  npub: Npub
+}, {
+  title: "KeyDerivationResult",
+  description: "Complete key derivation result from NIP-06"
+}) {}

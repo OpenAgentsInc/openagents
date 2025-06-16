@@ -9,7 +9,7 @@ import { EventService, EventServiceLive } from "../../src/services/EventService.
 import { RelayPoolService, RelayPoolServiceLive } from "../../src/services/RelayPoolService.js"
 import { RelayServiceLive } from "../../src/services/RelayService.js"
 import { WebSocketServiceLive } from "../../src/services/WebSocketService.js"
-import { makeEphemeralRelay } from "../../src/test/EphemeralRelay.js"
+import { makeEphemeralRelay } from "../EphemeralRelay.js"
 
 describe("Relay Pool Integration Tests", () => {
   const TestLayer = Layer.mergeAll(
