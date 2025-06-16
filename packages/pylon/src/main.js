@@ -176,6 +176,9 @@ const updateOllamaStatus = (status) => {
         const modelItem = document.createElement('div');
         modelItem.className = 'model-item';
 
+        const modelInfo = document.createElement('div');
+        modelInfo.className = 'model-info';
+
         const modelName = document.createElement('div');
         modelName.className = 'model-name webtui-typography';
         modelName.textContent = model.name;
@@ -194,8 +197,16 @@ const updateOllamaStatus = (status) => {
 
         modelDetails.textContent = details.join(' • ');
 
-        modelItem.appendChild(modelName);
-        modelItem.appendChild(modelDetails);
+        modelInfo.appendChild(modelName);
+        modelInfo.appendChild(modelDetails);
+        
+        const testButton = document.createElement('button');
+        testButton.className = 'test-button';
+        testButton.textContent = 'Test';
+        testButton.onclick = () => testModel(model.name);
+
+        modelItem.appendChild(modelInfo);
+        modelItem.appendChild(testButton);
         modelList.appendChild(modelItem);
       });
       }
@@ -263,6 +274,96 @@ const initializeOllamaStatus = () => {
 
 // Initialize Ollama status checking
 initializeOllamaStatus();
+
+// Test a specific model
+const testModel = async (modelName) => {
+  console.log(`🧪 Testing model: ${modelName}`);
+  const resultsContainer = document.getElementById('inference-results');
+  
+  // Show loading state
+  const loadingId = `loading-${Date.now()}`;
+  const loadingHtml = `
+    <div id="${loadingId}" class="result-loading">
+      <div class="loading-spinner"></div>
+      <span>Testing ${modelName}...</span>
+    </div>
+  `;
+  
+  // Clear empty state if present
+  if (resultsContainer.querySelector('.empty-state')) {
+    resultsContainer.innerHTML = '';
+  }
+  
+  // Add loading at the top
+  resultsContainer.insertAdjacentHTML('afterbegin', loadingHtml);
+  
+  try {
+    const startTime = Date.now();
+    const result = await Inference.infer({
+      model: modelName,
+      system: "You are a helpful assistant. Be very concise.",
+      messages: [
+        { role: "user", content: "Say hello and tell me your model name in one sentence." }
+      ],
+      max_tokens: 50,
+      temperature: 0.7
+    });
+    
+    // Remove loading
+    document.getElementById(loadingId)?.remove();
+    
+    // Create result HTML
+    const resultHtml = `
+      <div class="inference-result">
+        <div class="result-header">
+          <div class="result-model">${modelName}</div>
+          <div class="result-timestamp">${new Date().toLocaleTimeString()}</div>
+        </div>
+        <div class="result-content">${result.content}</div>
+        <div class="result-stats">
+          <div class="stat-item">
+            <div class="stat-label">Tokens</div>
+            <div class="stat-value">${result.usage.total_tokens}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Latency</div>
+            <div class="stat-value">${result.latency}ms</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Finish</div>
+            <div class="stat-value">${result.finish_reason || 'complete'}</div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Add result at the top
+    resultsContainer.insertAdjacentHTML('afterbegin', resultHtml);
+    
+    console.log(`✅ Test successful for ${modelName}:`, {
+      response: result.content,
+      tokens: result.usage.total_tokens,
+      latency: `${result.latency}ms`
+    });
+  } catch (error) {
+    // Remove loading
+    document.getElementById(loadingId)?.remove();
+    
+    // Show error
+    const errorHtml = `
+      <div class="inference-result" style="border-color: var(--webtui-danger);">
+        <div class="result-header">
+          <div class="result-model" style="color: var(--webtui-danger);">${modelName} - Error</div>
+          <div class="result-timestamp">${new Date().toLocaleTimeString()}</div>
+        </div>
+        <div class="result-content" style="color: var(--webtui-danger);">${error.message}</div>
+      </div>
+    `;
+    
+    resultsContainer.insertAdjacentHTML('afterbegin', errorHtml);
+    console.error(`❌ Test failed for ${modelName}:`, error);
+  }
+};
 
 // ===== AGENT LIFECYCLE SIMULATION =====
 // Simulate agent earning revenue and managing resources

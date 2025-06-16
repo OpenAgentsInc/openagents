@@ -419,13 +419,26 @@ export namespace Inference {
         return msg.content
       }).join("\n\n") + "\n\nAssistant:"
       
+      // If no model specified, try to get the first available model
+      let modelToUse = request.model
+      if (!modelToUse) {
+        try {
+          const models = await listModels()
+          modelToUse = models[0]?.id || "llama3.2"
+          console.log(`📌 Auto-selected model: ${modelToUse}`)
+        } catch {
+          modelToUse = "llama3.2"
+          console.log(`📌 Using default model: ${modelToUse}`)
+        }
+      }
+      
       const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: request.model || "llama3.2",
+          model: modelToUse,
           prompt,
           options: {
             num_predict: request.max_tokens,
@@ -439,7 +452,9 @@ export namespace Inference {
       })
       
       if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.statusText}`)
+        const errorText = await response.text()
+        console.error(`Ollama API error (${response.status}):`, errorText)
+        throw new Error(`Ollama API error: ${response.statusText} - ${errorText}`)
       }
       
       const data = await response.json()
@@ -507,13 +522,26 @@ export namespace Inference {
         return msg.content
       }).join("\n\n") + "\n\nAssistant:"
       
+      // If no model specified, try to get the first available model
+      let modelToUse = request.model
+      if (!modelToUse) {
+        try {
+          const models = await listModels()
+          modelToUse = models[0]?.id || "llama3.2"
+          console.log(`📌 Auto-selected model: ${modelToUse}`)
+        } catch {
+          modelToUse = "llama3.2"
+          console.log(`📌 Using default model: ${modelToUse}`)
+        }
+      }
+      
       const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: request.model || "llama3.2",
+          model: modelToUse,
           prompt,
           options: {
             num_predict: request.max_tokens,
@@ -527,7 +555,9 @@ export namespace Inference {
       })
       
       if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.statusText}`)
+        const errorText = await response.text()
+        console.error(`Ollama API error (${response.status}):`, errorText)
+        throw new Error(`Ollama API error: ${response.statusText} - ${errorText}`)
       }
       
       const reader = response.body?.getReader()
