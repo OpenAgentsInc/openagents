@@ -166,20 +166,45 @@ const updateOllamaStatus = (status) => {
           
           // Get saved model from localStorage
           const savedModel = localStorage.getItem('selectedModel');
+          
+          // Find the largest model by size
+          let largestModel = null;
+          let largestSize = 0;
+          status.models.forEach(model => {
+            if (model.size > largestSize) {
+              largestSize = model.size;
+              largestModel = model;
+            }
+          });
 
+          let modelSelected = false;
           status.models.forEach(model => {
             const option = document.createElement('option');
             option.value = model.name;
             option.textContent = model.name;
-            if (model.name === savedModel && savedModel !== '') {
+            
+            // Select saved model if exists, otherwise select largest model
+            if (savedModel && model.name === savedModel && savedModel !== '') {
               option.selected = true;
               currentModel = model.name;
+              modelSelected = true;
               console.log('🔄 Restoring saved model:', savedModel);
-              // Delay enableChatInput to ensure DOM is ready
-              setTimeout(() => enableChatInput(), 100);
+            } else if (!savedModel && largestModel && model.name === largestModel.name && !modelSelected) {
+              option.selected = true;
+              currentModel = model.name;
+              modelSelected = true;
+              console.log('🎯 Auto-selecting largest model:', model.name, 'Size:', formatSize(model.size));
+              localStorage.setItem('selectedModel', currentModel);
             }
+            
             modelDropdown.appendChild(option);
           });
+          
+          // Enable chat input if a model was selected
+          if (modelSelected) {
+            // Delay enableChatInput to ensure DOM is ready
+            setTimeout(() => enableChatInput(), 100);
+          }
         }
 
         status.models.forEach(model => {
