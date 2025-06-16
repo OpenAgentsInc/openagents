@@ -11,7 +11,7 @@ import {
 } from '@openagentsinc/sdk';
 
 console.log('🚀 Pylon initialized - OpenAgents SDK Demo');
-console.log('━'.repeat(60));
+console.log('='.repeat(60));
 
 // Run the Effect program from SDK
 runHelloWorld();
@@ -118,10 +118,10 @@ console.log(`   🏃 Lifecycle State: BOOTSTRAPPING -> ACTIVE`);
 console.log(`   📈 Business Model: Subscription + Pay-per-use hybrid`);
 console.log(`   🤖 Sovereign Mode: ${advancedAgent.name} can make autonomous decisions`);
 
-console.log('\n━'.repeat(60));
+console.log('\n' + '='.repeat(60));
 console.log('🎉 SDK Demo completed! Agents are ready to earn their keep.');
 console.log('💡 Next: Fund an agent and watch it start earning Bitcoin!');
-console.log('━'.repeat(60));
+console.log('='.repeat(60));
 
 // Format file size
 const formatSize = (bytes) => {
