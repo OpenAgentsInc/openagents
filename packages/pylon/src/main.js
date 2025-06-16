@@ -137,6 +137,12 @@ const updateOllamaStatus = (status) => {
   const modelListCard = document.getElementById('model-list-card');
   const modelList = document.getElementById('model-list');
 
+  // Safety check for DOM elements
+  if (!statusDot || !statusText) {
+    console.warn('⚠️ Ollama UI elements not found - DOM may not be ready');
+    return;
+  }
+
   // Remove all status classes
   statusDot.classList.remove('checking', 'online', 'offline');
 
@@ -149,9 +155,10 @@ const updateOllamaStatus = (status) => {
       // modelInfo.style.display = 'block';
       // modelInfo.querySelector('span').textContent = `${status.modelCount} model${status.modelCount !== 1 ? 's' : ''} available`;
 
-      // Display model list
-      modelListCard.style.display = 'block';
-      modelList.innerHTML = '';
+      // Display model list (with safety check)
+      if (modelListCard && modelList) {
+        modelListCard.style.display = 'block';
+        modelList.innerHTML = '';
 
       status.models.forEach(model => {
         const modelItem = document.createElement('div');
@@ -179,15 +186,16 @@ const updateOllamaStatus = (status) => {
         modelItem.appendChild(modelDetails);
         modelList.appendChild(modelItem);
       });
+      }
     } else {
-      modelInfo.style.display = 'none';
-      modelListCard.style.display = 'none';
+      if (modelInfo) modelInfo.style.display = 'none';
+      if (modelListCard) modelListCard.style.display = 'none';
     }
   } else {
     statusDot.classList.add('offline');
     statusText.textContent = 'Offline';
-    modelInfo.style.display = 'none';
-    modelListCard.style.display = 'none';
+    if (modelInfo) modelInfo.style.display = 'none';
+    if (modelListCard) modelListCard.style.display = 'none';
   }
 };
 
@@ -207,11 +215,24 @@ const checkOllamaStatus = async () => {
   }
 };
 
-// Initial check
-checkOllamaStatus();
+// Wait for DOM to be ready before accessing elements
+const initializeOllamaStatus = () => {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initial check
+      checkOllamaStatus();
+      // Poll every 10 seconds
+      setInterval(checkOllamaStatus, 10000);
+    });
+  } else {
+    // DOM is already ready
+    checkOllamaStatus();
+    setInterval(checkOllamaStatus, 10000);
+  }
+};
 
-// Poll every 10 seconds
-setInterval(checkOllamaStatus, 10000);
+// Initialize Ollama status checking
+initializeOllamaStatus();
 
 // ===== AGENT LIFECYCLE SIMULATION =====
 // Simulate agent earning revenue and managing resources
