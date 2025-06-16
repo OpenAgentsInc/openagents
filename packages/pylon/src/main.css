@@ -64,8 +64,14 @@ html, body {
 
 /* Ollama status card styles */
 .ollama-status-card {
-  min-height: 100px;
   text-align: center;
+}
+
+.ollama-status-card .box-content {
+  padding: 0.5rem 2rem !important;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 
 .status-indicator {
@@ -115,10 +121,15 @@ html, body {
 
 /* Model list card styles */
 .model-list-card {
-  min-width: 350px;
-  max-width: 500px;
-  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  height: 420px;
+}
+
+.model-list-card .box-content {
+  /* flex: 1; */
   overflow-y: auto;
+  min-height: 0;
 }
 
 .model-list-card h3 {
