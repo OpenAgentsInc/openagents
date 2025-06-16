@@ -4,13 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an OpenAgents Effect monorepo demonstrating a Todo application using modern Effect patterns. The repository follows a clean architecture with these packages:
+This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agents. The repository follows a clean architecture with these packages:
 
-- **`@openagentsinc/domain`** - Core business logic and API contracts
+- **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
+- **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 - **`@openagentsinc/relay`** - Nostr relay server implementation
 - **`@openagentsinc/cli`** - Command-line interface client
 - **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
+- **`@openagentsinc/pylon`** - SDK demo application
 - **`@openagentsinc/playground`** - UI component testing playground
+- **`@openagentsinc/ai`** - AI provider abstraction
 
 ## Essential Commands
 
@@ -42,12 +45,12 @@ pnpm clean
 ```bash
 # Generate Effect package exports (run after adding new files)
 # IMPORTANT: Do NOT run codegen on @openagentsinc/ui package!
-pnpm --filter=@openagentsinc/domain codegen
-pnpm --filter=@openagentsinc/server codegen
+pnpm --filter=@openagentsinc/nostr codegen
+pnpm --filter=@openagentsinc/relay codegen
 pnpm --filter=@openagentsinc/cli codegen
 
 # Build individual packages
-pnpm --filter=@openagentsinc/domain build
+pnpm --filter=@openagentsinc/sdk build
 pnpm --filter=@openagentsinc/ui build
 ```
 
@@ -57,28 +60,30 @@ pnpm --filter=@openagentsinc/ui build
 pnpm coverage
 
 # Run tests for specific package
-pnpm --filter=@openagentsinc/domain test
+pnpm --filter=@openagentsinc/sdk test
 ```
 
 ## Architecture Patterns
 
 ### Effect Service Architecture
-- **Domain Package**: Defines API contracts using Effect Schema and HTTP API builders
-- **Server Package**: Implements services using Effect Layers for dependency injection
-- **CLI Package**: Uses generated HTTP clients from domain schemas
+- **SDK Package**: Core SDK with Agent, Lightning, Nostr, Compute, and Inference namespaces
+- **Nostr Package**: Effect-based Nostr protocol implementation with NIP support
+- **Relay Package**: Nostr relay server implementation
+- **CLI Package**: Command-line interface with AI features
 
 ### Key Patterns Used
 - **Schema-first development**: API contracts defined with `@effect/schema`
 - **Effect Services**: Dependency injection with `Effect.Service` and `Layer`
 - **Tagged errors**: Type-safe error handling with branded error types
-- **Repository pattern**: Data access abstraction using Effect services
+- **NIP-06 compliance**: Deterministic key derivation for agent identities
 
 ### Package Dependencies
 ```
-cli → domain (API contracts)
-server → domain (API contracts)
-domain → (standalone)
+sdk → nostr (NIP-06 key derivation)
+cli → ai (AI features)
+relay → (standalone)
 ui → (standalone, React components)
+pylon → sdk (demo app)
 playground → ui (component testing)
 ```
 
@@ -98,11 +103,18 @@ Each package builds in this order:
 
 ## Development Guidelines
 
+### Package Script Execution
+**IMPORTANT**: Always use `pnpm run <script>` instead of `pnpm <script>` to avoid conflicts with pnpm's built-in commands:
+- ✅ `pnpm run deploy` (runs package script)
+- ❌ `pnpm deploy` (pnpm built-in command, will fail)
+- ✅ `pnpm run dev` (runs package script)
+- ✅ `pnpm run build` (runs package script)
+
 ### Adding New Features
-1. **Domain-first**: Define schemas and API contracts in domain package
+1. **SDK-first**: Define new agent capabilities in SDK package
 2. **Generate exports**: Run `pnpm codegen` after adding new files
-3. **Implement server**: Add handlers and services in server package
-4. **CLI integration**: Add commands and client calls in CLI package
+3. **Implement services**: Add Effect services with proper layers
+4. **Demo integration**: Update Pylon demo to showcase new features
 
 ### Testing Strategy
 - Tests use `@effect/vitest` for Effect-specific utilities
@@ -110,9 +122,9 @@ Each package builds in this order:
 - Placeholder tests exist - implement comprehensive test coverage
 
 ### Code Organization
-- **Domain**: API schemas, branded types, error definitions
-- **Server**: Service implementations, repositories, HTTP handlers
-- **CLI**: Command definitions, HTTP clients, user interface
+- **SDK**: Agent lifecycle, Lightning integration, Nostr communication
+- **Nostr**: NIPs implementation, key derivation, protocol handling
+- **CLI**: Command definitions, AI integrations, user interface
 
 ### Effect Specific Notes
 - Use `Effect.gen` for readable async code composition
@@ -141,12 +153,12 @@ If you see CI errors about Effect build-utils failing on UI package:
 
 ## Common Development Tasks
 
-### Adding New API Endpoints
-1. Define schema in `domain/src/Api.ts`
-2. Add handler in `server/src/Api.ts`
-3. Update repository if data access needed
-4. Add CLI command if user-facing
-5. Run codegen for all packages
+### Adding New SDK Features
+1. Define new namespace or methods in SDK
+2. Add proper TypeScript types and branded types
+3. Implement Effect-based services if needed
+4. Update Pylon demo to showcase feature
+5. Run build and test across packages
 
 ### Package Management
 - All dependencies locked to exact versions (no ranges)
