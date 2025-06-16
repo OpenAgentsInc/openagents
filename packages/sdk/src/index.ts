@@ -357,17 +357,14 @@ export namespace Nostr {
  * Inference namespace - AI model interactions via Ollama
  */
 export namespace Inference {
-  const OLLAMA_BASE_URL = "http://localhost:11434/v1"
-  const OLLAMA_API_KEY = "ollama" // Required but ignored by Ollama
+  const OLLAMA_BASE_URL = "http://localhost:11434"
   
   /**
    * Check if Ollama is available
    */
   async function isOllamaAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/models`, {
-        headers: { "Authorization": `Bearer ${OLLAMA_API_KEY}` }
-      })
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`)
       return response.ok
     } catch {
       return false
@@ -414,23 +411,30 @@ export namespace Inference {
     ]
     
     try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/chat/completions`, {
+      // Convert messages to Ollama format
+      const prompt = messages.map(msg => {
+        if (msg.role === "system") return `System: ${msg.content}`
+        if (msg.role === "user") return `Human: ${msg.content}`
+        if (msg.role === "assistant") return `Assistant: ${msg.content}`
+        return msg.content
+      }).join("\n\n") + "\n\nAssistant:"
+      
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${OLLAMA_API_KEY}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           model: request.model || "llama3.2",
-          messages,
-          max_tokens: request.max_tokens,
-          temperature: request.temperature,
+          prompt,
+          options: {
+            num_predict: request.max_tokens,
+            temperature: request.temperature,
+            top_p: request.top_p,
+            seed: request.seed
+          },
           stream: false,
-          response_format: request.response_format,
-          seed: request.seed,
-          top_p: request.top_p,
-          frequency_penalty: request.frequency_penalty,
-          presence_penalty: request.presence_penalty
+          format: request.response_format?.type === "json_object" ? "json" : undefined
         })
       })
       
@@ -441,12 +445,20 @@ export namespace Inference {
       const data = await response.json()
       const endTime = Date.now()
       
+      // Calculate approximate token counts
+      const promptTokens = Math.floor(prompt.length / 4)
+      const completionTokens = Math.floor(data.response.length / 4)
+      
       const result: InferenceResponse = {
-        content: data.choices[0].message.content,
-        usage: data.usage,
+        content: data.response,
+        usage: {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: promptTokens + completionTokens
+        },
         model: data.model,
         latency: endTime - startTime,
-        finish_reason: data.choices[0].finish_reason
+        finish_reason: data.done ? "stop" : "length"
       }
       
       console.log(`🧠 Inference completed:`, {
@@ -487,23 +499,30 @@ export namespace Inference {
     ]
     
     try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/chat/completions`, {
+      // Convert messages to Ollama format
+      const prompt = messages.map(msg => {
+        if (msg.role === "system") return `System: ${msg.content}`
+        if (msg.role === "user") return `Human: ${msg.content}`
+        if (msg.role === "assistant") return `Assistant: ${msg.content}`
+        return msg.content
+      }).join("\n\n") + "\n\nAssistant:"
+      
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${OLLAMA_API_KEY}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           model: request.model || "llama3.2",
-          messages,
-          max_tokens: request.max_tokens,
-          temperature: request.temperature,
+          prompt,
+          options: {
+            num_predict: request.max_tokens,
+            temperature: request.temperature,
+            top_p: request.top_p,
+            seed: request.seed
+          },
           stream: true,
-          response_format: request.response_format,
-          seed: request.seed,
-          top_p: request.top_p,
-          frequency_penalty: request.frequency_penalty,
-          presence_penalty: request.presence_penalty
+          format: request.response_format?.type === "json_object" ? "json" : undefined
         })
       })
       
@@ -526,16 +545,21 @@ export namespace Inference {
         buffer = lines.pop() || ""
         
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6)
-            if (data === "[DONE]") return
-            
+          if (line.trim()) {
             try {
-              const chunk = JSON.parse(data)
-              const content = chunk.choices[0]?.delta?.content || ""
-              const finish_reason = chunk.choices[0]?.finish_reason || null
+              const chunk = JSON.parse(line)
               
-              yield { content, finish_reason, model: chunk.model }
+              if (chunk.response) {
+                yield { 
+                  content: chunk.response, 
+                  finish_reason: chunk.done ? "stop" : null,
+                  model: chunk.model 
+                }
+              }
+              
+              if (chunk.done) {
+                return
+              }
             } catch {
               // Skip invalid JSON
             }
@@ -554,16 +578,20 @@ export namespace Inference {
    */
   export async function listModels(): Promise<OllamaModelDetails[]> {
     try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/models`, {
-        headers: { "Authorization": `Bearer ${OLLAMA_API_KEY}` }
-      })
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`)
       
       if (!response.ok) {
         throw new Error(`Failed to list models: ${response.statusText}`)
       }
       
       const data = await response.json()
-      return data.data || []
+      // Convert Ollama format to OpenAI-like format
+      return (data.models || []).map((model: any) => ({
+        id: model.name,
+        object: "model",
+        created: Math.floor(new Date(model.modified_at).getTime() / 1000),
+        owned_by: "ollama"
+      }))
     } catch (error) {
       console.error("Failed to list Ollama models:", error)
       return []
@@ -577,28 +605,41 @@ export namespace Inference {
    */
   export async function embeddings(request: EmbeddingRequest): Promise<EmbeddingResponse> {
     try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/embeddings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${OLLAMA_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: request.model,
-          input: request.input
-        })
-      })
+      // Ollama uses /api/embeddings endpoint
+      const inputs = Array.isArray(request.input) ? request.input : [request.input]
+      const embeddings: number[][] = []
       
-      if (!response.ok) {
-        throw new Error(`Failed to generate embeddings: ${response.statusText}`)
+      // Process each input separately (Ollama doesn't support batch embeddings)
+      for (const input of inputs) {
+        const response = await fetch(`${OLLAMA_BASE_URL}/api/embeddings`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: request.model,
+            prompt: input
+          })
+        })
+        
+        if (!response.ok) {
+          throw new Error(`Failed to generate embeddings: ${response.statusText}`)
+        }
+        
+        const data = await response.json()
+        embeddings.push(data.embedding)
       }
       
-      const data = await response.json()
+      // Calculate token usage (approximate)
+      const totalTokens = inputs.reduce((sum, input) => sum + Math.floor(input.length / 4), 0)
       
       return {
-        embeddings: data.data.map((item: any) => item.embedding),
-        model: data.model,
-        usage: data.usage
+        embeddings,
+        model: request.model,
+        usage: {
+          prompt_tokens: totalTokens,
+          total_tokens: totalTokens
+        }
       }
     } catch (error) {
       console.error("Failed to generate embeddings:", error)
