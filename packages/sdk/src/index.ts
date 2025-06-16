@@ -7,7 +7,16 @@ export const runHelloWorld = (): void => Effect.runSync(helloWorld)
 
 // Ollama connection checker
 const OLLAMA_DEFAULT_PORT = 11434
-const OLLAMA_BASE_URL = `http://localhost:${OLLAMA_DEFAULT_PORT}`
+// Use a dynamic URL based on the current location
+const getOllamaBaseUrl = (): string => {
+  // If we're on localhost, use localhost
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return `http://localhost:${OLLAMA_DEFAULT_PORT}`
+  }
+  // For production, we can't directly access localhost from HTTPS
+  // Return a special value to indicate CORS restriction
+  return 'CORS_RESTRICTED'
+}
 
 // Types
 interface OllamaModel {
@@ -44,7 +53,19 @@ class OllamaConnectionError extends Error {
 // Check if Ollama is running by hitting the API tags endpoint
 export const checkOllamaStatus = Effect.tryPromise({
   try: async (): Promise<OllamaStatus> => {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+    const baseUrl = getOllamaBaseUrl()
+    
+    // If CORS restricted, return a special status
+    if (baseUrl === 'CORS_RESTRICTED') {
+      return {
+        online: false,
+        models: [],
+        modelCount: 0,
+        error: 'Cannot check Ollama status from HTTPS (CORS restriction). Please use localhost for development.'
+      }
+    }
+    
+    const response = await fetch(`${baseUrl}/api/tags`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json'
@@ -70,7 +91,7 @@ export const checkOllamaStatus = Effect.tryPromise({
 // Fallback to simpler root endpoint check if tags endpoint fails
 const checkOllamaRootEndpoint = Effect.tryPromise({
   try: async (): Promise<OllamaStatus> => {
-    const response = await fetch(`${OLLAMA_BASE_URL}/`, {
+    const response = await fetch(`${getOllamaBaseUrl()}/`, {
       method: 'GET',
       signal: AbortSignal.timeout(3000)
     })

@@ -1,30 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pylon - OpenAgents</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <link rel="stylesheet" href="/src/main.css">
 </head>
+
 <body class="webtui webtui-theme-zinc">
   <div id="app">
     <div class="pylon-container">
-      <div class="pylon-cards">
-        <div class="webtui-box webtui-box-double pylon-card">
-          <h1 class="webtui-typography webtui-variant-h1">Pylon</h1>
-        </div>
-        <div class="webtui-box webtui-box-single ollama-status-card">
-          <div class="status-indicator">
-            <span class="status-dot" id="ollama-status-dot"></span>
-            <span class="status-text webtui-typography" id="ollama-status-text">Ollama: Checking...</span>
+      <div class="pylon-sidebar">
+        <div class="webtui-box-single webtui-box-shear-top ollama-status-card" style="height: 60px;">
+          <div class=" webtui-box-header">
+            <span>Ollama Status</span>
           </div>
-          <div class="model-info" id="ollama-model-info" style="display: none;">
-            <span class="webtui-typography webtui-variant-small"></span>
+          <div class="box-content">
+            <div class="status-indicator">
+              <span class="status-dot" id="ollama-status-dot"></span>
+              <span class="status-text webtui-typography" id="ollama-status-text"></span>
+            </div>
           </div>
         </div>
+        <div class="webtui-box-single webtui-box-shear-top model-list-card" id="model-list-card" style="height: 420px;">
+          <div class="webtui-box-header">
+            <span>Available Models</span>
+          </div>
+          <div class="box-content">
+            <div class="model-list" id="model-list"></div>
+          </div>
+        </div>
+      </div>
+      <div class="pylon-main">
+        <!-- Main content area - empty for now -->
       </div>
     </div>
   </div>
   <script type="module" src="/src/main.js"></script>
 </body>
+
 </html>
