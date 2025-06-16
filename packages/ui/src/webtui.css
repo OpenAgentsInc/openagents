@@ -11,31 +11,31 @@
   --webtui-background1: #18181b;
   --webtui-background2: #27272a;
   --webtui-background3: #3f3f46;
-  
+
   --webtui-foreground0: #a1a1aa;
   --webtui-foreground1: #d4d4d8;
   --webtui-foreground2: #e4e4e7;
-  
+
   --webtui-accent: #71717a;
-  --webtui-success: #52525b;
-  --webtui-warning: #a1a1aa;
-  --webtui-danger: #52525b;
-  
+  --webtui-success: #22c55e;
+  --webtui-warning: #eab308;
+  --webtui-danger: #ef4444;
+
   /* Typography */
-  --webtui-font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-  
+  --webtui-font-mono: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
   /* Spacing */
   --webtui-spacing-xs: 0.25rem;
   --webtui-spacing-sm: 0.5rem;
   --webtui-spacing-md: 1rem;
   --webtui-spacing-lg: 1.5rem;
   --webtui-spacing-xl: 2rem;
-  
+
   /* Border Radius */
   --webtui-radius: 0;
   --webtui-radius-sm: 2px;
   --webtui-radius-md: 4px;
-  
+
   /* Shadows */
   --webtui-shadow: 0 0 0 1px var(--webtui-background2);
   --webtui-shadow-lg: 0 0 0 2px var(--webtui-background3);
@@ -182,23 +182,115 @@
   height: 2.5rem;
 }
 
-/* Box Utility */
-.webtui-box {
-  border: 1px solid var(--webtui-background2);
-  padding: var(--webtui-spacing-md);
+/* Box Utility - WebTUI Style Implementation */
+/* Base box styles for all variants */
+.webtui-box-square,
+.webtui-box-round,
+.webtui-box-double,
+.webtui-box-single {
+  --webtui-box-border-color: var(--webtui-foreground0);
+  --webtui-box-border-width: 2px;
+  --webtui-box-double-border-width: 1px;
+  --webtui-box-rounded-radius: 4px;
+
+  position: relative;
+  isolation: isolate;
+  padding: 1lh 1ch;
+  background-color: transparent;
 }
 
-.webtui-box.webtui-box-square {
-  border-style: solid;
+/* Single/Square box implementation */
+.webtui-box-square::before,
+.webtui-box-single::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch - var(--webtui-box-border-width));
+  height: calc(100% - 1lh - var(--webtui-box-border-width));
+  border: solid var(--webtui-box-border-width) var(--webtui-box-border-color);
+  z-index: -1;
 }
 
-.webtui-box.webtui-box-round {
-  border-radius: var(--webtui-radius-md);
+/* Round box implementation */
+.webtui-box-round::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch - var(--webtui-box-border-width));
+  height: calc(100% - 1lh - var(--webtui-box-border-width));
+  border: solid var(--webtui-box-border-width) var(--webtui-box-border-color);
+  border-radius: var(--webtui-box-rounded-radius);
+  z-index: -1;
 }
 
-.webtui-box.webtui-box-double {
-  border-width: 3px;
-  border-style: double;
+/* Double box implementation - inner border */
+.webtui-box-double::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch - var(--webtui-box-double-border-width));
+  height: calc(100% - 1lh - var(--webtui-box-double-border-width));
+  border: solid var(--webtui-box-double-border-width) var(--webtui-box-border-color);
+  z-index: -1;
+}
+
+/* Double box implementation - outer border */
+.webtui-box-double::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch + var(--webtui-box-double-border-width) * 2);
+  height: calc(100% - 1lh + var(--webtui-box-double-border-width) * 2);
+  border: solid var(--webtui-box-double-border-width) var(--webtui-box-border-color);
+  z-index: -1;
+}
+
+/* Round variant for double box */
+.webtui-box-double.webtui-box-round::before {
+  border-radius: var(--webtui-box-rounded-radius);
+}
+
+.webtui-box-double.webtui-box-round::after {
+  border-radius: calc(var(--webtui-box-rounded-radius) + 2px);
+}
+
+/* Shear variants - remove padding to allow content to overlay borders */
+.webtui-box-shear-both {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.webtui-box-shear-top {
+  padding-top: 0;
+}
+
+.webtui-box-shear-bottom {
+  padding-bottom: 0;
+}
+
+/* Box header for corner labels */
+.webtui-box-header {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 1ch; /* Move labels inward to show corners */
+}
+
+.webtui-box-header span {
+  background-color: var(--webtui-background0); /* Use page background */
+  padding: 0 0.5ch;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--webtui-foreground0);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* Input Component */
@@ -551,11 +643,11 @@
   --webtui-background1: #e6e9ef;
   --webtui-background2: #ccd0da;
   --webtui-background3: #bcc0cc;
-  
+
   --webtui-foreground0: #5c5f77;
   --webtui-foreground1: #4c4f69;
   --webtui-foreground2: #dc8a78;
-  
+
   --webtui-accent: #1e66f5;
   --webtui-success: #40a02b;
   --webtui-warning: #df8e1d;
