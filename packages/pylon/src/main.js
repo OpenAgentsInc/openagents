@@ -25,28 +25,28 @@ const updateOllamaStatus = (status) => {
 
   if (status.online) {
     statusDot.classList.add('online');
-    statusText.textContent = 'Ollama: Online';
+    statusText.textContent = 'Online';
 
     // Show model count if available
     if (status.modelCount > 0) {
-      modelInfo.style.display = 'block';
-      modelInfo.querySelector('span').textContent = `${status.modelCount} model${status.modelCount !== 1 ? 's' : ''} available`;
-      
+      // modelInfo.style.display = 'block';
+      // modelInfo.querySelector('span').textContent = `${status.modelCount} model${status.modelCount !== 1 ? 's' : ''} available`;
+
       // Display model list
       modelListCard.style.display = 'block';
       modelList.innerHTML = '';
-      
+
       status.models.forEach(model => {
         const modelItem = document.createElement('div');
         modelItem.className = 'model-item';
-        
+
         const modelName = document.createElement('div');
         modelName.className = 'model-name webtui-typography';
         modelName.textContent = model.name;
-        
+
         const modelDetails = document.createElement('div');
         modelDetails.className = 'model-details webtui-typography webtui-variant-small';
-        
+
         const details = [];
         if (model.details.parameter_size) {
           details.push(model.details.parameter_size);
@@ -55,9 +55,9 @@ const updateOllamaStatus = (status) => {
           details.push(model.details.quantization_level);
         }
         details.push(formatSize(model.size));
-        
+
         modelDetails.textContent = details.join(' • ');
-        
+
         modelItem.appendChild(modelName);
         modelItem.appendChild(modelDetails);
         modelList.appendChild(modelItem);
@@ -68,7 +68,7 @@ const updateOllamaStatus = (status) => {
     }
   } else {
     statusDot.classList.add('offline');
-    statusText.textContent = 'Ollama: Offline';
+    statusText.textContent = 'Offline';
     modelInfo.style.display = 'none';
     modelListCard.style.display = 'none';
   }
@@ -76,13 +76,11 @@ const updateOllamaStatus = (status) => {
 
 // Check Ollama status on load
 const checkOllamaStatus = async () => {
-  console.log("checking")
   const statusDot = document.getElementById('ollama-status-dot');
   statusDot.classList.add('checking');
 
   try {
     const status = await checkOllama();
-    console.log("Status:", status)
     updateOllamaStatus(status);
   } catch (error) {
     console.error('Error checking Ollama status:', error);
