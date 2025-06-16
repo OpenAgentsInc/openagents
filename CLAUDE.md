@@ -98,6 +98,13 @@ Each package builds in this order:
 
 ## Development Guidelines
 
+### Package Script Execution
+**IMPORTANT**: Always use `pnpm run <script>` instead of `pnpm <script>` to avoid conflicts with pnpm's built-in commands:
+- ✅ `pnpm run deploy` (runs package script)
+- ❌ `pnpm deploy` (pnpm built-in command, will fail)
+- ✅ `pnpm run dev` (runs package script)
+- ✅ `pnpm run build` (runs package script)
+
 ### Adding New Features
 1. **Domain-first**: Define schemas and API contracts in domain package
 2. **Generate exports**: Run `pnpm codegen` after adding new files
