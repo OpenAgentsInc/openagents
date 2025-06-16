@@ -131,6 +131,46 @@ interface OllamaModelDetails {
   owned_by: string
 }
 
+// Chat-specific interfaces
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+interface ChatRequest {
+  model: string
+  messages: ChatMessage[]
+  stream?: boolean
+  options?: ChatOptions
+  keep_alive?: string
+  format?: { type: string }
+}
+
+interface ChatOptions {
+  temperature?: number
+  num_ctx?: number
+  top_p?: number
+  seed?: number
+  num_predict?: number
+}
+
+interface ChatStreamChunk {
+  model: string
+  created_at: string
+  message: {
+    role: 'assistant'
+    content: string
+  }
+  done: boolean
+  done_reason?: string
+  total_duration?: number
+  load_duration?: number
+  prompt_eval_count?: number
+  prompt_eval_duration?: number
+  eval_count?: number
+  eval_duration?: number
+}
+
 // Connection status
 interface ConnectionStatus {
   connected: boolean
@@ -794,6 +834,180 @@ export namespace Inference {
       }
     } catch (error) {
       console.error("Failed to generate embeddings:", error)
+      throw error
+    }
+  }
+  
+  /**
+   * Stream chat completions with conversation history
+   * @param request Chat parameters including message history
+   * @yields Chat response chunks as they arrive
+   */
+  export async function* chat(request: ChatRequest): AsyncGenerator<ChatStreamChunk> {
+    const ollamaAvailable = await isOllamaAvailable()
+    
+    if (!ollamaAvailable) {
+      throw new Error("Ollama is not available. Please ensure Ollama is running at http://localhost:11434")
+    }
+    
+    // Default to streaming unless explicitly disabled
+    const shouldStream = request.stream !== false
+    
+    try {
+      if (useOpenAIMode) {
+        // OpenAI compatibility mode
+        const response = await fetch(`${OLLAMA_OPENAI_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${OLLAMA_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: request.model,
+            messages: request.messages,
+            stream: shouldStream,
+            temperature: request.options?.temperature,
+            max_tokens: request.options?.num_predict,
+            top_p: request.options?.top_p,
+            seed: request.options?.seed,
+            response_format: request.format ? { type: "json_object" } : undefined
+          })
+        })
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error(`Ollama chat error (${response.status}):`, errorText)
+          throw new Error(`Ollama API error: ${response.statusText} - ${errorText}`)
+        }
+        
+        if (!shouldStream) {
+          // Non-streaming response
+          const data = await response.json()
+          yield {
+            model: data.model,
+            created_at: new Date().toISOString(),
+            message: {
+              role: 'assistant',
+              content: data.choices[0].message.content
+            },
+            done: true,
+            total_duration: 0,
+            eval_count: data.usage?.completion_tokens || 0,
+            prompt_eval_count: data.usage?.prompt_tokens || 0
+          }
+          return
+        }
+        
+        // Streaming response
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error("No response body")
+        
+        const decoder = new TextDecoder()
+        let buffer = ""
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n")
+          buffer = lines.pop() || ""
+          
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data = line.slice(6)
+              if (data === "[DONE]") return
+              
+              try {
+                const chunk = JSON.parse(data)
+                const content = chunk.choices[0]?.delta?.content || ""
+                const isComplete = chunk.choices[0]?.finish_reason !== null
+                
+                yield {
+                  model: chunk.model || request.model,
+                  created_at: new Date().toISOString(),
+                  message: {
+                    role: 'assistant',
+                    content
+                  },
+                  done: isComplete,
+                  done_reason: chunk.choices[0]?.finish_reason
+                }
+              } catch {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      } else {
+        // Native Ollama API mode
+        const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: request.model,
+            messages: request.messages,
+            stream: shouldStream,
+            options: {
+              temperature: request.options?.temperature,
+              num_ctx: request.options?.num_ctx,
+              num_predict: request.options?.num_predict,
+              top_p: request.options?.top_p,
+              seed: request.options?.seed
+            },
+            keep_alive: request.keep_alive,
+            format: request.format?.type === "json_object" ? "json" : undefined
+          })
+        })
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error(`Ollama chat error (${response.status}):`, errorText)
+          throw new Error(`Ollama API error: ${response.statusText} - ${errorText}`)
+        }
+        
+        if (!shouldStream) {
+          // Non-streaming response
+          const data = await response.json()
+          yield data as ChatStreamChunk
+          return
+        }
+        
+        // Streaming response
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error("No response body")
+        
+        const decoder = new TextDecoder()
+        let buffer = ""
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split("\n")
+          buffer = lines.pop() || ""
+          
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const chunk = JSON.parse(line) as ChatStreamChunk
+                yield chunk
+                
+                if (chunk.done) {
+                  return
+                }
+              } catch {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Ollama chat error:", error)
       throw error
     }
   }

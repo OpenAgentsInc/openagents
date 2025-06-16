@@ -34,16 +34,33 @@
         </div>
       </div>
       <div class="pylon-main">
-        <!-- Inference Test Results -->
-        <div class="webtui-box-single webtui-box-shear-top inference-results-card" style="height: calc(100% - 2rem);">
+        <!-- Chat Interface -->
+        <div class="webtui-box-single webtui-box-shear-top chat-interface-card" style="height: calc(100% - 2rem);">
           <div class="webtui-box-header">
-            <span>Inference Test Results</span>
+            <span>Chat</span>
+            <div class="chat-model-selector">
+              <select id="chat-model-select" class="model-dropdown">
+                <option value="">Select a model...</option>
+              </select>
+            </div>
           </div>
-          <div class="box-content">
-            <div id="inference-results" class="inference-results">
+          <div class="box-content chat-container">
+            <div id="chat-messages" class="chat-messages">
               <div class="empty-state">
-                Click a "Test" button next to any model to see results here
+                Select a model and start chatting
               </div>
+            </div>
+            <div class="chat-input-container">
+              <input 
+                type="text" 
+                id="chat-input" 
+                class="chat-input" 
+                placeholder="Type your message..."
+                disabled
+              />
+              <button id="chat-send" class="chat-send-button" disabled>
+                Send
+              </button>
             </div>
           </div>
         </div>
