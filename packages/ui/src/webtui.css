@@ -280,12 +280,12 @@
 .webtui-box-header {
   display: flex;
   justify-content: space-between;
-  margin: 0 -0.5ch; /* Compensate for label padding */
+  margin: 0 1ch; /* Move labels inward to show corners */
 }
 
 .webtui-box-header span {
   background-color: var(--webtui-background0); /* Use page background */
-  padding: 0 1ch;
+  padding: 0 0.5ch;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--webtui-foreground0);
