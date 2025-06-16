@@ -4,9 +4,9 @@
 
 import { Effect } from "effect"
 import { describe, expect, it } from "vitest"
-import type { Mnemonic, Nsec, Npub, PrivateKey, PublicKey } from "../src/core/Schema.js"
-import { CryptoService, CryptoServiceLive } from "../src/services/CryptoService.js"
+import type { Mnemonic, Npub, Nsec, PrivateKey, PublicKey } from "../src/core/Schema.js"
 import { Nip06Service, Nip06ServiceLive } from "../src/nip06/Nip06Service.js"
+import { CryptoService, CryptoServiceLive } from "../src/services/CryptoService.js"
 
 describe("Nip06Service", () => {
   const runTest = <E, A>(effect: Effect.Effect<A, E, Nip06Service | CryptoService>) =>
@@ -28,7 +28,8 @@ describe("Nip06Service", () => {
       npub: "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu"
     },
     {
-      mnemonic: "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade",
+      mnemonic:
+        "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade",
       privateKey: "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add",
       publicKey: "d41b22899549e1f3d335a31002cfd382174006e166d3e658e3a5eecdb6463573",
       nsec: "nsec1c9wh8xy5eqdzln7n5t0ctgxjcrdug73gp5yj0x03gntn67h83twssdfhel",
@@ -45,7 +46,7 @@ describe("Nip06Service", () => {
 
           const words = mnemonic.split(/\s+/)
           expect(words).toHaveLength(12)
-          
+
           // Validate it's a valid mnemonic
           const isValid = yield* nip06.validateMnemonic(mnemonic)
           expect(isValid).toBe(true)
@@ -67,14 +68,14 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           const lengths = [12, 15, 18, 21, 24] as const
-          
+
           for (const length of lengths) {
             const mnemonic = yield* nip06.generateMnemonic(length)
             const words = mnemonic.split(/\s+/)
             expect(words).toHaveLength(length)
-            
+
             const isValid = yield* nip06.validateMnemonic(mnemonic)
             expect(isValid).toBe(true)
           }
@@ -87,7 +88,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const isValid = yield* nip06.validateMnemonic(vector.mnemonic)
             expect(isValid).toBe(true)
@@ -99,7 +100,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           const invalidMnemonics = [
             "invalid mnemonic phrase",
             "leader monkey parrot ring guide accident before fence cannon height naive", // wrong word
@@ -107,7 +108,7 @@ describe("Nip06Service", () => {
             "", // empty
             "leader monkey parrot ring guide accident before fence cannon height naive bean extra" // too long for standard
           ]
-          
+
           for (const invalid of invalidMnemonics) {
             const isValid = yield* nip06.validateMnemonic(invalid)
             expect(isValid).toBe(false)
@@ -121,7 +122,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const privateKey = yield* nip06.derivePrivateKey(vector.mnemonic as Mnemonic)
             expect(privateKey).toBe(vector.privateKey)
@@ -134,11 +135,11 @@ describe("Nip06Service", () => {
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
           const mnemonic = testVectors[0].mnemonic as Mnemonic
-          
+
           const key0 = yield* nip06.derivePrivateKey(mnemonic, 0)
           const key1 = yield* nip06.derivePrivateKey(mnemonic, 1)
           const key2 = yield* nip06.derivePrivateKey(mnemonic, 2)
-          
+
           expect(key0).not.toBe(key1)
           expect(key1).not.toBe(key2)
           expect(key0).not.toBe(key2)
@@ -150,12 +151,12 @@ describe("Nip06Service", () => {
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
           const invalidMnemonic = "invalid mnemonic phrase" as Mnemonic
-          
+
           const result = yield* nip06.derivePrivateKey(invalidMnemonic).pipe(
             Effect.map(() => "success" as const),
             Effect.catchTag("InvalidMnemonic", () => Effect.succeed("failed" as const))
           )
-          
+
           expect(result).toBe("failed")
         })
       ))
@@ -166,7 +167,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const publicKey = yield* nip06.derivePublicKey(vector.privateKey as PrivateKey)
             expect(publicKey).toBe(vector.publicKey)
@@ -180,7 +181,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const nsec = yield* nip06.encodeNsec(vector.privateKey as PrivateKey)
             expect(nsec).toBe(vector.nsec)
@@ -192,7 +193,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const privateKey = yield* nip06.decodeNsec(vector.nsec as Nsec)
             expect(privateKey).toBe(vector.privateKey)
@@ -205,10 +206,10 @@ describe("Nip06Service", () => {
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
           const originalKey = testVectors[0].privateKey as PrivateKey
-          
+
           const nsec = yield* nip06.encodeNsec(originalKey)
           const decodedKey = yield* nip06.decodeNsec(nsec)
-          
+
           expect(decodedKey).toBe(originalKey)
         })
       ))
@@ -219,7 +220,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const npub = yield* nip06.encodeNpub(vector.publicKey as PublicKey)
             expect(npub).toBe(vector.npub)
@@ -231,7 +232,7 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const publicKey = yield* nip06.decodeNpub(vector.npub as Npub)
             expect(publicKey).toBe(vector.publicKey)
@@ -244,10 +245,10 @@ describe("Nip06Service", () => {
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
           const originalKey = testVectors[0].publicKey as PublicKey
-          
+
           const npub = yield* nip06.encodeNpub(originalKey)
           const decodedKey = yield* nip06.decodeNpub(npub)
-          
+
           expect(decodedKey).toBe(originalKey)
         })
       ))
@@ -258,10 +259,10 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           for (const vector of testVectors) {
             const result = yield* nip06.deriveAllKeys(vector.mnemonic as Mnemonic)
-            
+
             expect(result.privateKey).toBe(vector.privateKey)
             expect(result.publicKey).toBe(vector.publicKey)
             expect(result.nsec).toBe(vector.nsec)
@@ -275,10 +276,10 @@ describe("Nip06Service", () => {
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
           const mnemonic = testVectors[0].mnemonic as Mnemonic
-          
+
           const keys0 = yield* nip06.deriveAllKeys(mnemonic, 0)
           const keys1 = yield* nip06.deriveAllKeys(mnemonic, 1)
-          
+
           expect(keys0.privateKey).not.toBe(keys1.privateKey)
           expect(keys0.publicKey).not.toBe(keys1.publicKey)
           expect(keys0.nsec).not.toBe(keys1.nsec)
@@ -292,13 +293,13 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           const path0 = yield* nip06.getDerivationPath(0)
           expect(path0).toBe("m/44'/1237'/0'/0/0")
-          
+
           const path1 = yield* nip06.getDerivationPath(1)
           expect(path1).toBe("m/44'/1237'/1'/0/0")
-          
+
           const path5 = yield* nip06.getDerivationPath(5)
           expect(path5).toBe("m/44'/1237'/5'/0/0")
         })
@@ -308,10 +309,10 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           const defaultPath = yield* nip06.getDerivationPath()
           const explicitPath = yield* nip06.getDerivationPath(0)
-          
+
           expect(defaultPath).toBe(explicitPath)
           expect(defaultPath).toBe("m/44'/1237'/0'/0/0")
         })
@@ -324,16 +325,16 @@ describe("Nip06Service", () => {
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
           const mnemonic = testVectors[0].mnemonic as Mnemonic
-          
+
           const keys = yield* nip06.deriveAllKeys(mnemonic)
-          
+
           // Use CryptoService to test signing
           const crypto = yield* CryptoService
           const message = "Hello, NIP-06!"
-          
+
           const signature = yield* crypto.sign(message, keys.privateKey)
           const isValid = yield* crypto.verify(signature, message, keys.publicKey)
-          
+
           expect(isValid).toBe(true)
         })
       ))
@@ -344,20 +345,20 @@ describe("Nip06Service", () => {
       runTest(
         Effect.gen(function*() {
           const nip06 = yield* Nip06Service
-          
+
           const invalidNsec = "invalid_nsec_format" as Nsec
           const invalidNpub = "invalid_npub_format" as Npub
-          
+
           const nsecResult = yield* nip06.decodeNsec(invalidNsec).pipe(
             Effect.map(() => "success" as const),
             Effect.catchTag("Nip06Error", () => Effect.succeed("failed" as const))
           )
-          
+
           const npubResult = yield* nip06.decodeNpub(invalidNpub).pipe(
             Effect.map(() => "success" as const),
             Effect.catchTag("Nip06Error", () => Effect.succeed("failed" as const))
           )
-          
+
           expect(nsecResult).toBe("failed")
           expect(npubResult).toBe("failed")
         })

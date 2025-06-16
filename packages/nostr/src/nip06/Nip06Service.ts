@@ -3,27 +3,16 @@
  * @module
  */
 
+import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"
+import { bech32 } from "@scure/base"
 import { HDKey } from "@scure/bip32"
 import * as bip39 from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
-import { bech32 } from "@scure/base"
-import { bytesToHex, hexToBytes, randomBytes } from "@noble/hashes/utils"
 import { Context, Effect, Layer } from "effect"
-import { CryptoService } from "../services/CryptoService.js"
-import {
-  InvalidMnemonic,
-  KeyDerivationError,
-  Nip06Error
-} from "../core/Errors.js"
-import type {
-  DerivationPath,
-  Mnemonic,
-  Npub,
-  Nsec,
-  PrivateKey,
-  PublicKey
-} from "../core/Schema.js"
+import { InvalidMnemonic, KeyDerivationError, Nip06Error } from "../core/Errors.js"
+import type { DerivationPath, Mnemonic, Npub, Nsec, PrivateKey, PublicKey } from "../core/Schema.js"
 import { KeyDerivationResult } from "../core/Schema.js"
+import { CryptoService } from "../services/CryptoService.js"
 
 /**
  * Service for NIP-06 key derivation operations
@@ -108,13 +97,13 @@ export const Nip06ServiceLive = Layer.effect(
         try: () => {
           // Map word count to entropy bytes
           const entropyBytesMap = {
-            12: 16,  // 128 bits
-            15: 20,  // 160 bits  
-            18: 24,  // 192 bits
-            21: 28,  // 224 bits
-            24: 32   // 256 bits
+            12: 16, // 128 bits
+            15: 20, // 160 bits
+            18: 24, // 192 bits
+            21: 28, // 224 bits
+            24: 32 // 256 bits
           }
-          
+
           const entropyBytes = entropyBytesMap[wordCount]
           if (!entropyBytes) {
             throw new Error(`Invalid word count: ${wordCount}`)
@@ -122,7 +111,7 @@ export const Nip06ServiceLive = Layer.effect(
 
           // Generate secure random entropy
           const entropy = randomBytes(entropyBytes)
-          
+
           const mnemonic = bip39.entropyToMnemonic(entropy, wordlist)
           return mnemonic as Mnemonic
         },
@@ -168,20 +157,20 @@ export const Nip06ServiceLive = Layer.effect(
         }
 
         const path = yield* getDerivationPath(account)
-        
+
         return yield* Effect.try({
           try: () => {
             // Convert mnemonic to seed
             const seed = bip39.mnemonicToSeedSync(mnemonic)
-            
+
             // Create master key and derive
             const masterKey = HDKey.fromMasterSeed(seed)
             const derived = masterKey.derive(path)
-            
+
             if (!derived.privateKey) {
               throw new Error("Failed to derive private key")
             }
-            
+
             return bytesToHex(derived.privateKey) as PrivateKey
           },
           catch: (error) =>
@@ -236,7 +225,7 @@ export const Nip06ServiceLive = Layer.effect(
       Effect.try({
         try: () => {
           const nsecStr = nsec as string
-          // Use a type assertion to work around strict typing  
+          // Use a type assertion to work around strict typing
           const { prefix, words } = (bech32.decode as any)(nsecStr, 90)
           if (prefix !== "nsec") {
             throw new Error(`Invalid prefix: expected 'nsec', got '${prefix}'`)
@@ -302,4 +291,3 @@ export const Nip06ServiceLive = Layer.effect(
     }
   })
 )
-
