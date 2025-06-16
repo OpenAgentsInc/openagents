@@ -5,10 +5,16 @@
 export * as Errors from "./core/Errors.js"
 
 /**
- * Core Nostr schemas for NIP-01 protocol
+ * Core Nostr schemas - aggregates all schemas from primitives and NIPs
  * @module
  */
 export * as Schema from "./core/Schema.js"
+
+/**
+ * NIP-06: Basic key derivation from mnemonic seed phrase
+ * @module
+ */
+export * as Nip06Service from "./nip06/Nip06Service.js"
 
 /**
  * Cryptographic operations for Nostr
@@ -45,9 +51,3 @@ export * as RelayService from "./services/RelayService.js"
  * @module
  */
 export * as WebSocketService from "./services/WebSocketService.js"
-
-/**
- * Ephemeral in-memory relay for testing
- * @module
- */
-export * as EphemeralRelay from "./test/EphemeralRelay.js"

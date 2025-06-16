@@ -8,7 +8,7 @@ import { CryptoService, CryptoServiceLive } from "../../src/services/CryptoServi
 import { EventService, EventServiceLive } from "../../src/services/EventService.js"
 import { RelayService, RelayServiceLive } from "../../src/services/RelayService.js"
 import { WebSocketServiceLive } from "../../src/services/WebSocketService.js"
-import { makeEphemeralRelay } from "../../src/test/EphemeralRelay.js"
+import { makeEphemeralRelay } from "../EphemeralRelay.js"
 
 describe("Relay Integration Tests", () => {
   const TestLayer = Layer.mergeAll(

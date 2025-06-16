@@ -15,7 +15,7 @@ import {
   type NostrEvent,
   type RelayMessage,
   type SubscriptionId
-} from "../core/Schema.js"
+} from "../src/core/Schema.js"
 
 interface ClientConnection {
   readonly id: string
@@ -58,7 +58,7 @@ const matchesFilter = (event: NostrEvent, filter: Filter): boolean => {
       .filter((tag) => tag[0] === tagKey)
       .map((tag) => tag[1])
 
-    if (values && !values.some((v: string) => eventTagValues.includes(v))) {
+    if (values && Array.isArray(values) && !values.some((v: string) => eventTagValues.includes(v))) {
       return false
     }
   }
