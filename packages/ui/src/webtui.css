@@ -11,31 +11,31 @@
   --webtui-background1: #18181b;
   --webtui-background2: #27272a;
   --webtui-background3: #3f3f46;
-  
+
   --webtui-foreground0: #a1a1aa;
   --webtui-foreground1: #d4d4d8;
   --webtui-foreground2: #e4e4e7;
-  
+
   --webtui-accent: #71717a;
   --webtui-success: #22c55e;
   --webtui-warning: #eab308;
   --webtui-danger: #ef4444;
-  
+
   /* Typography */
-  --webtui-font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-  
+  --webtui-font-mono: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
   /* Spacing */
   --webtui-spacing-xs: 0.25rem;
   --webtui-spacing-sm: 0.5rem;
   --webtui-spacing-md: 1rem;
   --webtui-spacing-lg: 1.5rem;
   --webtui-spacing-xl: 2rem;
-  
+
   /* Border Radius */
   --webtui-radius: 0;
   --webtui-radius-sm: 2px;
   --webtui-radius-md: 4px;
-  
+
   /* Shadows */
   --webtui-shadow: 0 0 0 1px var(--webtui-background2);
   --webtui-shadow-lg: 0 0 0 2px var(--webtui-background3);
@@ -192,11 +192,11 @@
   --webtui-box-border-width: 2px;
   --webtui-box-double-border-width: 1px;
   --webtui-box-rounded-radius: 4px;
-  
+
   position: relative;
   isolation: isolate;
   padding: 1lh 1ch;
-  background-color: var(--webtui-background1);
+  background-color: transparent;
 }
 
 /* Single/Square box implementation */
@@ -284,7 +284,7 @@
 }
 
 .webtui-box-header span {
-  background-color: var(--webtui-background1);
+  background-color: var(--webtui-background0); /* Use page background */
   padding: 0 1ch;
   font-size: 0.75rem;
   font-weight: 600;
@@ -643,11 +643,11 @@
   --webtui-background1: #e6e9ef;
   --webtui-background2: #ccd0da;
   --webtui-background3: #bcc0cc;
-  
+
   --webtui-foreground0: #5c5f77;
   --webtui-foreground1: #4c4f69;
   --webtui-foreground2: #dc8a78;
-  
+
   --webtui-accent: #1e66f5;
   --webtui-success: #40a02b;
   --webtui-warning: #df8e1d;

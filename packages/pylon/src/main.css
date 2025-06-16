@@ -44,6 +44,7 @@ html, body {
 /* Box content padding */
 .box-content {
   padding: 1rem 2rem;
+  background-color: transparent;
 }
 
 /* Ollama status card styles */
