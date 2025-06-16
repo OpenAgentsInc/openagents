@@ -51,9 +51,3 @@ export * as RelayService from "./services/RelayService.js"
  * @module
  */
 export * as WebSocketService from "./services/WebSocketService.js"
-
-/**
- * Ephemeral in-memory relay for testing
- * @module
- */
-export * as EphemeralRelay from "./test/EphemeralRelay.js"

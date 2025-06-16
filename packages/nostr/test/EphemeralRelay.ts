@@ -15,7 +15,7 @@ import {
   type NostrEvent,
   type RelayMessage,
   type SubscriptionId
-} from "../core/Schema.js"
+} from "../src/core/Schema.js"
 
 interface ClientConnection {
   readonly id: string
