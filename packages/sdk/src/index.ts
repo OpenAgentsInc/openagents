@@ -3,8 +3,8 @@
  * @module
  */
 
-import { Effect, Console } from "effect"
-// TODO: Import { Nip06Service } from "@openagentsinc/nostr" when build issues resolved
+import { Effect, Console, Layer } from "effect"
+import * as NostrLib from "@openagentsinc/nostr"
 
 // Core branded types for type safety
 type Satoshis = number & { readonly brand: unique symbol }
@@ -159,24 +159,28 @@ export namespace Agent {
     mnemonic: string, 
     config: AgentConfig = {}
   ): Promise<AgentIdentity> {
-    // This will use the actual NIP-06 service when fully integrated
-    // For now, create a deterministic agent based on mnemonic hash
-    const mnemonicHash = Array.from(mnemonic).reduce((hash, char) => 
-      ((hash << 5) - hash + char.charCodeAt(0)) & 0xffffffff, 0
+    // Use actual NIP-06 service for proper key derivation
+    const keys = await Effect.gen(function*() {
+      const nip06 = yield* NostrLib.Nip06Service.Nip06Service
+      return yield* nip06.deriveAllKeys(mnemonic as NostrLib.Schema.Mnemonic)
+    }).pipe(
+      Effect.provide(
+        NostrLib.Nip06Service.Nip06ServiceLive.pipe(
+          Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
+        )
+      ),
+      Effect.runPromise
     )
     
-    const id = `agent_mnemonic_${Math.abs(mnemonicHash).toString(36)}`
-    
-    // TODO: Integrate with Nip06Service.deriveAllKeys() when Effect service is available
-    const privateKey = Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('')
-    const publicKey = `npub${Array.from({length: 58}, () => Math.floor(Math.random() * 36).toString(36)).join('')}`
+    // Create deterministic ID from the public key
+    const id = `agent_${keys.npub.slice(-12)}`
     
     const agent: AgentIdentity = {
       id,
-      name: config.name || `Agent-${id.slice(-8)}`,
+      name: config.name || `Agent-${keys.npub.slice(-8)}`,
       nostrKeys: {
-        public: asNostrPubKey(publicKey),
-        private: asNostrPrivKey(privateKey)
+        public: asNostrPubKey(keys.npub),
+        private: asNostrPrivKey(keys.nsec)
       },
       birthTimestamp: asTimestamp(Date.now()),
       generation: 0
@@ -185,26 +189,31 @@ export namespace Agent {
     console.log(`🌱 Agent "${agent.name}" created from mnemonic (deterministic)`)
     console.log(`🔐 NIP-06 compliant key derivation`)
     console.log(`📊 Config:`, config)
+    console.log(`🆔 ID: ${agent.id}`)
+    console.log(`🔑 Pubkey: ${keys.npub.slice(0, 20)}...`)
     
     return agent
   }
   
   /**
    * Generate a new BIP39 mnemonic for agent creation
+   * @param wordCount Number of words in mnemonic (12, 15, 18, 21, or 24)
    * @returns 12-word mnemonic phrase
    */
-  export function generateMnemonic(): string {
-    // This is a stub - will integrate with Nip06Service.generateMnemonic()
-    const words = [
-      'abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract',
-      'absurd', 'abuse', 'access', 'accident', 'account', 'accuse', 'achieve', 'acid'
-    ]
+  export async function generateMnemonic(wordCount: 12 | 15 | 18 | 21 | 24 = 12): Promise<string> {
+    const mnemonic = await Effect.gen(function*() {
+      const nip06 = yield* NostrLib.Nip06Service.Nip06Service
+      return yield* nip06.generateMnemonic(wordCount)
+    }).pipe(
+      Effect.provide(
+        NostrLib.Nip06Service.Nip06ServiceLive.pipe(
+          Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
+        )
+      ),
+      Effect.runPromise
+    )
     
-    const mnemonic = Array.from({length: 12}, () => 
-      words[Math.floor(Math.random() * words.length)]
-    ).join(' ')
-    
-    console.log(`🎲 Generated BIP39 mnemonic (12 words)`)
+    console.log(`🎲 Generated BIP39 mnemonic (${wordCount} words)`)
     console.log(`💡 Use this to create deterministic agent identities`)
     
     return mnemonic
@@ -384,24 +393,12 @@ class OllamaConnectionError extends Error {
 
 const OLLAMA_DEFAULT_PORT = 11434
 const getOllamaBaseUrl = (): string => {
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return `http://localhost:${OLLAMA_DEFAULT_PORT}`
-  }
-  return 'CORS_RESTRICTED'
+  return `http://localhost:${OLLAMA_DEFAULT_PORT}`
 }
 
 export const checkOllamaStatus = Effect.tryPromise({
   try: async (): Promise<OllamaStatus> => {
     const baseUrl = getOllamaBaseUrl()
-    
-    if (baseUrl === 'CORS_RESTRICTED') {
-      return {
-        online: false,
-        models: [],
-        modelCount: 0,
-        error: 'Cannot check Ollama status from HTTPS (CORS restriction). Please use localhost for development.'
-      }
-    }
     
     const response = await fetch(`${baseUrl}/api/tags`, {
       method: 'GET',

@@ -71,11 +71,11 @@ console.log(`   🔗 Connected to ${nostrData.relays.length} relays`);
 
 // 6. Generate mnemonic and create agent from it
 console.log('\n6️⃣ Generating mnemonic and creating deterministic agent:');
-const mnemonic = Agent.generateMnemonic();
-console.log(`   🎯 Mnemonic: ${mnemonic}`);
-
 (async () => {
   try {
+    const mnemonic = await Agent.generateMnemonic();
+    console.log(`   🎯 Mnemonic: ${mnemonic}`);
+    
     const mnemonicAgent = await Agent.createFromMnemonic(mnemonic, {
       name: "Deterministic Agent",
       sovereign: false,
@@ -131,11 +131,21 @@ const formatSize = (bytes) => {
 
 // Update Ollama status in the UI
 const updateOllamaStatus = (status) => {
+  console.log('🎨 updateOllamaStatus() called with:', status);
+  
   const statusDot = document.getElementById('ollama-status-dot');
   const statusText = document.getElementById('ollama-status-text');
   const modelInfo = document.getElementById('ollama-model-info');
   const modelListCard = document.getElementById('model-list-card');
   const modelList = document.getElementById('model-list');
+
+  console.log('📍 DOM elements found:', {
+    statusDot: !!statusDot,
+    statusText: !!statusText,
+    modelInfo: !!modelInfo,
+    modelListCard: !!modelListCard,
+    modelList: !!modelList
+  });
 
   // Safety check for DOM elements
   if (!statusDot || !statusText) {
@@ -143,10 +153,12 @@ const updateOllamaStatus = (status) => {
     return;
   }
 
+  console.log('🧹 Removing status classes and updating UI');
   // Remove all status classes
   statusDot.classList.remove('checking', 'online', 'offline');
 
   if (status.online) {
+    console.log('✅ Status is online, updating UI');
     statusDot.classList.add('online');
     statusText.textContent = 'Online';
 
@@ -192,39 +204,57 @@ const updateOllamaStatus = (status) => {
       if (modelListCard) modelListCard.style.display = 'none';
     }
   } else {
+    console.log('❌ Status is offline, updating UI');
     statusDot.classList.add('offline');
     statusText.textContent = 'Offline';
     if (modelInfo) modelInfo.style.display = 'none';
     if (modelListCard) modelListCard.style.display = 'none';
   }
+  
+  console.log('🎨 updateOllamaStatus() completed');
 };
 
 // Check Ollama status on load (legacy functionality)
 const checkOllamaStatus = async () => {
+  console.log('🔍 checkOllamaStatus() called');
   const statusDot = document.getElementById('ollama-status-dot');
+  console.log('📍 statusDot element:', statusDot ? 'found' : 'not found');
+  
   if (statusDot) {
+    console.log('⏳ Adding checking class to status dot');
     statusDot.classList.add('checking');
 
     try {
+      console.log('🌐 Calling checkOllama()...');
       const status = await checkOllama();
+      console.log('✅ checkOllama() response:', status);
+      console.log('📊 Calling updateOllamaStatus with:', status);
       updateOllamaStatus(status);
     } catch (error) {
-      console.error('Error checking Ollama status:', error);
+      console.error('❌ Error checking Ollama status:', error);
+      console.log('🔄 Calling updateOllamaStatus with offline status');
       updateOllamaStatus({ online: false });
     }
+  } else {
+    console.warn('⚠️ statusDot not found, skipping Ollama check');
   }
 };
 
 // Wait for DOM to be ready before accessing elements
 const initializeOllamaStatus = () => {
+  console.log('🚀 initializeOllamaStatus() called, document.readyState:', document.readyState);
+  
   if (document.readyState === 'loading') {
+    console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
     document.addEventListener('DOMContentLoaded', () => {
+      console.log('✅ DOMContentLoaded fired, starting Ollama checks');
       // Initial check
       checkOllamaStatus();
       // Poll every 10 seconds
       setInterval(checkOllamaStatus, 10000);
     });
   } else {
+    console.log('✅ DOM already ready, starting Ollama checks immediately');
     // DOM is already ready
     checkOllamaStatus();
     setInterval(checkOllamaStatus, 10000);
