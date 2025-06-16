@@ -5,7 +5,7 @@
 export * as Errors from "./core/Errors.js"
 
 /**
- * Core Nostr schemas for NIP-01 protocol
+ * Core Nostr schemas - aggregates all schemas from primitives and NIPs
  * @module
  */
 export * as Schema from "./core/Schema.js"
