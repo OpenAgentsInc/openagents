@@ -285,6 +285,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@openagentsinc/nostr':
+        specifier: workspace:^
+        version: link:../nostr/dist
       effect:
         specifier: 3.16.3
         version: 3.16.3
