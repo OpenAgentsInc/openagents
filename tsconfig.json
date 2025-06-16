@@ -4,7 +4,6 @@
   "references": [
     { "path": "packages/ai" },
     { "path": "packages/cli" },
-    { "path": "packages/domain" },
     { "path": "packages/nostr" },
     { "path": "packages/playground" },
     { "path": "packages/relay" },
