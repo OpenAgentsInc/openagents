@@ -89,26 +89,9 @@ console.log('\n6️⃣ Generating mnemonic and creating deterministic agent:');
   }
 })();
 
-// 7. Demonstrate AI inference
-console.log('\n7️⃣ Performing AI inference:');
-(async () => {
-  try {
-    const inferenceResult = await Inference.infer({
-      system: "You are a helpful Bitcoin-powered digital agent that must earn to survive.",
-      messages: [
-        { role: "user", content: "Explain what makes you different from other AI assistants" }
-      ],
-      max_tokens: 200,
-      temperature: 0.7
-    });
-    console.log('   ✅ AI inference completed!');
-    console.log(`   🧠 Model: ${inferenceResult.model}`);
-    console.log(`   📊 Tokens: ${inferenceResult.usage.total_tokens}, Latency: ${inferenceResult.latency}ms`);
-    console.log(`   💬 Response: ${inferenceResult.content}`);
-  } catch (error) {
-    console.error('   ❌ Inference failed:', error);
-  }
-})();
+// 7. Demonstrate AI inference (commented out to prevent automatic inference)
+console.log('\n7️⃣ AI inference capability available - use the chat interface to test');
+// Removed automatic inference demo
 
 // 8. Display agent lifecycle and economics
 console.log('\n8️⃣ Agent Economics & Lifecycle:');
@@ -188,10 +171,12 @@ const updateOllamaStatus = (status) => {
             const option = document.createElement('option');
             option.value = model.name;
             option.textContent = model.name;
-            if (model.name === savedModel) {
+            if (model.name === savedModel && savedModel !== '') {
               option.selected = true;
               currentModel = model.name;
-              enableChatInput();
+              console.log('🔄 Restoring saved model:', savedModel);
+              // Delay enableChatInput to ensure DOM is ready
+              setTimeout(() => enableChatInput(), 100);
             }
             modelDropdown.appendChild(option);
           });
@@ -269,34 +254,6 @@ const checkOllamaStatus = async () => {
     console.warn('⚠️ statusDot not found, skipping Ollama check');
   }
 };
-
-// Wait for DOM to be ready before accessing elements
-const initializeOllamaStatus = () => {
-  console.log('🚀 initializeOllamaStatus() called, document.readyState:', document.readyState);
-  
-  if (document.readyState === 'loading') {
-    console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('✅ DOMContentLoaded fired, starting Ollama checks');
-      // Initial check
-      checkOllamaStatus();
-      // Poll every 10 seconds
-      setInterval(checkOllamaStatus, 10000);
-      // Initialize chat handlers
-      initializeChatHandlers();
-    });
-  } else {
-    console.log('✅ DOM already ready, starting Ollama checks immediately');
-    // DOM is already ready
-    checkOllamaStatus();
-    setInterval(checkOllamaStatus, 10000);
-    // Initialize chat handlers
-    initializeChatHandlers();
-  }
-};
-
-// Initialize Ollama status checking
-initializeOllamaStatus();
 
 // Enable/disable chat input based on model selection
 const enableChatInput = () => {
@@ -508,3 +465,31 @@ setInterval(() => {
     agentBalance = 0;
   }
 }, 60000); // Every minute
+
+// Wait for DOM to be ready before accessing elements
+const initializeOllamaStatus = () => {
+  console.log('🚀 initializeOllamaStatus() called, document.readyState:', document.readyState);
+  
+  if (document.readyState === 'loading') {
+    console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('✅ DOMContentLoaded fired, starting Ollama checks');
+      // Initial check
+      checkOllamaStatus();
+      // Poll every 10 seconds
+      setInterval(checkOllamaStatus, 10000);
+      // Initialize chat handlers
+      initializeChatHandlers();
+    });
+  } else {
+    console.log('✅ DOM already ready, starting Ollama checks immediately');
+    // DOM is already ready
+    checkOllamaStatus();
+    setInterval(checkOllamaStatus, 10000);
+    // Initialize chat handlers
+    initializeChatHandlers();
+  }
+};
+
+// Initialize Ollama status checking
+initializeOllamaStatus();
