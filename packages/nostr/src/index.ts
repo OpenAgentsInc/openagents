@@ -11,6 +11,12 @@ export * as Errors from "./core/Errors.js"
 export * as Schema from "./core/Schema.js"
 
 /**
+ * NIP-06: Basic key derivation from mnemonic seed phrase
+ * @module
+ */
+export * as Nip06Service from "./nip06/Nip06Service.js"
+
+/**
  * Cryptographic operations for Nostr
  * @module
  */

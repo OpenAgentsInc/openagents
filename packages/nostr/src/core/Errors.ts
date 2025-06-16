@@ -89,3 +89,19 @@ export class TimeoutError extends Schema.TaggedError<TimeoutError>()("TimeoutErr
   operation: Schema.String,
   timeoutMs: Schema.Number
 }) {}
+
+// NIP-06 errors
+export class Nip06Error extends Schema.TaggedError<Nip06Error>()("Nip06Error", {
+  operation: Schema.Literal("generateMnemonic", "validateMnemonic", "deriveKey", "encodeKey", "decodeKey"),
+  reason: Schema.String
+}) {}
+
+export class InvalidMnemonic extends Schema.TaggedError<InvalidMnemonic>()("InvalidMnemonic", {
+  mnemonic: Schema.String,
+  reason: Schema.String
+}) {}
+
+export class KeyDerivationError extends Schema.TaggedError<KeyDerivationError>()("KeyDerivationError", {
+  path: Schema.String,
+  reason: Schema.String
+}) {}
