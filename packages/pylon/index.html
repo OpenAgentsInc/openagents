@@ -10,10 +10,9 @@
   <div id="app">
     <div class="pylon-container">
       <div class="pylon-cards">
-        <div class="webtui-box-double pylon-card">
-          <h1 class="webtui-typography webtui-variant-h1">Pylon</h1>
-        </div>
         <div class="webtui-box-single ollama-status-card">
+          <span class="box-label-top-left">Pylon</span>
+          <span class="box-label-top-right">Status</span>
           <div class="status-indicator">
             <span class="status-dot" id="ollama-status-dot"></span>
             <span class="status-text webtui-typography" id="ollama-status-text">Ollama: Checking...</span>
@@ -23,6 +22,7 @@
           </div>
         </div>
         <div class="webtui-box-single model-list-card" id="model-list-card" style="display: none;">
+          <span class="box-label-top-left">Models</span>
           <h3 class="webtui-typography webtui-variant-h3">Available Models</h3>
           <div class="model-list" id="model-list"></div>
         </div>

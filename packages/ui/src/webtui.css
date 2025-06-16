@@ -262,6 +262,42 @@
   border-radius: calc(var(--webtui-box-rounded-radius) + 2px);
 }
 
+/* Box corner labels */
+.box-label-top-left,
+.box-label-top-right,
+.box-label-bottom-left,
+.box-label-bottom-right {
+  position: absolute;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--webtui-foreground0);
+  background-color: var(--webtui-background1);
+  padding: 0 0.5ch;
+  z-index: 10;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.box-label-top-left {
+  top: -0.5lh;
+  left: 1ch;
+}
+
+.box-label-top-right {
+  top: -0.5lh;
+  right: 1ch;
+}
+
+.box-label-bottom-left {
+  bottom: -0.5lh;
+  left: 1ch;
+}
+
+.box-label-bottom-right {
+  bottom: -0.5lh;
+  right: 1ch;
+}
+
 /* Input Component */
 .webtui-input {
   display: block;

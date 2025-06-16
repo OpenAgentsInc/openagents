@@ -107,3 +107,18 @@ Updated implementation to match WebTUI's approach:
 4. Matched WebTUI's exact border positioning technique
 
 This CSS-based approach is more reliable and avoids font rendering issues.
+
+### Step 6: Added Corner Labels and Removed Pylon Card
+
+Based on user feedback:
+1. Removed the main "Pylon" title card at the top
+2. Added ability to place labels in box corners
+3. Implemented CSS classes for all four corner positions:
+   - `.box-label-top-left`
+   - `.box-label-top-right`
+   - `.box-label-bottom-left`
+   - `.box-label-bottom-right`
+4. Added "Pylon" branding to top-left corner of status card
+5. Added descriptive labels to boxes (Status, Models)
+
+The corner labels are positioned to overlap the box borders perfectly, with proper z-index and background color to ensure readability.

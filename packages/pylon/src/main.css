@@ -39,22 +39,7 @@ html, body {
   align-items: center;
 }
 
-.pylon-card {
-  padding: 2.5rem 4rem !important;
-  text-align: center;
-  display: inline-block;
-  min-width: 300px;
-}
-
-.pylon-card h1 {
-  margin: 0;
-  margin-bottom: 0 !important;
-  color: var(--webtui-foreground2);
-  font-size: 2.5rem;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
+/* Removed pylon-card styles as we're no longer using the main title card */
 
 /* Ollama status card styles */
 .ollama-status-card {
