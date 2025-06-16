@@ -41,9 +41,13 @@ html, body {
 
 /* Removed pylon-card styles as we're no longer using the main title card */
 
+/* Box content padding */
+.box-content {
+  padding: 1rem 2rem;
+}
+
 /* Ollama status card styles */
 .ollama-status-card {
-  padding: 1rem 2rem !important;
   min-width: 250px;
   text-align: center;
 }
@@ -95,7 +99,6 @@ html, body {
 
 /* Model list card styles */
 .model-list-card {
-  padding: 1.5rem 2rem !important;
   min-width: 350px;
   max-width: 500px;
   max-height: 400px;

@@ -10,21 +10,29 @@
   <div id="app">
     <div class="pylon-container">
       <div class="pylon-cards">
-        <div class="webtui-box-single ollama-status-card">
-          <span class="box-label-top-left">Pylon</span>
-          <span class="box-label-top-right">Status</span>
-          <div class="status-indicator">
-            <span class="status-dot" id="ollama-status-dot"></span>
-            <span class="status-text webtui-typography" id="ollama-status-text">Ollama: Checking...</span>
+        <div class="webtui-box-single webtui-box-shear-top ollama-status-card">
+          <div class="webtui-box-header">
+            <span>Pylon</span>
+            <span>Status</span>
           </div>
-          <div class="model-info" id="ollama-model-info" style="display: none;">
-            <span class="webtui-typography webtui-variant-small"></span>
+          <div class="box-content">
+            <div class="status-indicator">
+              <span class="status-dot" id="ollama-status-dot"></span>
+              <span class="status-text webtui-typography" id="ollama-status-text">Ollama: Checking...</span>
+            </div>
+            <div class="model-info" id="ollama-model-info" style="display: none;">
+              <span class="webtui-typography webtui-variant-small"></span>
+            </div>
           </div>
         </div>
-        <div class="webtui-box-single model-list-card" id="model-list-card" style="display: none;">
-          <span class="box-label-top-left">Models</span>
-          <h3 class="webtui-typography webtui-variant-h3">Available Models</h3>
-          <div class="model-list" id="model-list"></div>
+        <div class="webtui-box-single webtui-box-shear-top model-list-card" id="model-list-card" style="display: none;">
+          <div class="webtui-box-header">
+            <span>Models</span>
+          </div>
+          <div class="box-content">
+            <h3 class="webtui-typography webtui-variant-h3">Available Models</h3>
+            <div class="model-list" id="model-list"></div>
+          </div>
         </div>
       </div>
     </div>
