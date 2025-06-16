@@ -223,6 +223,7 @@ html, body {
   font-size: 0.875rem;
   cursor: pointer;
   min-width: 150px;
+  font-family: 'Berkeley Mono', monospace;
 }
 
 .model-dropdown:hover {
@@ -369,6 +370,7 @@ html, body {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  font-family: 'Berkeley Mono', monospace;
 }
 
 .chat-send-button:hover:not(:disabled) {
