@@ -84,6 +84,12 @@ interface InferenceRequest {
   max_tokens: number
   temperature?: number
   model?: string
+  stream?: boolean
+  response_format?: { type: "json_object" }
+  seed?: number
+  top_p?: number
+  frequency_penalty?: number
+  presence_penalty?: number
 }
 
 interface InferenceResponse {
@@ -95,6 +101,34 @@ interface InferenceResponse {
   }
   model: string
   latency: number
+  finish_reason?: "stop" | "length" | "content_filter" | null
+}
+
+interface InferenceChunk {
+  content: string
+  finish_reason?: "stop" | "length" | "content_filter" | null
+  model?: string
+}
+
+interface EmbeddingRequest {
+  model: string
+  input: string | string[]
+}
+
+interface EmbeddingResponse {
+  embeddings: number[][]
+  model: string
+  usage: {
+    prompt_tokens: number
+    total_tokens: number
+  }
+}
+
+interface OllamaModelDetails {
+  id: string
+  object: "model"
+  created: number
+  owned_by: string
 }
 
 // Connection status
@@ -320,43 +354,256 @@ export namespace Nostr {
 }
 
 /**
- * Inference namespace - AI model interactions
+ * Inference namespace - AI model interactions via Ollama
  */
 export namespace Inference {
+  const OLLAMA_BASE_URL = "http://localhost:11434/v1"
+  const OLLAMA_API_KEY = "ollama" // Required but ignored by Ollama
+  
+  /**
+   * Check if Ollama is available
+   */
+  async function isOllamaAvailable(): Promise<boolean> {
+    try {
+      const response = await fetch(`${OLLAMA_BASE_URL}/models`, {
+        headers: { "Authorization": `Bearer ${OLLAMA_API_KEY}` }
+      })
+      return response.ok
+    } catch {
+      return false
+    }
+  }
+  
   /**
    * Perform AI inference with specified parameters
    * @param request Inference parameters
    * @returns AI response with usage metrics
    */
   export async function infer(request: InferenceRequest): Promise<InferenceResponse> {
-    // Simulate processing time
     const startTime = Date.now()
-    await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400))
-    const endTime = Date.now()
     
-    // Simulate token usage
-    const promptTokens = Math.floor(request.system.length / 4) + 
-      request.messages.reduce((sum, msg) => sum + Math.floor(msg.content.length / 4), 0)
-    const completionTokens = Math.min(request.max_tokens, 50 + Math.floor(Math.random() * 200))
+    // Check if Ollama is available
+    const ollamaAvailable = await isOllamaAvailable()
     
-    const response: InferenceResponse = {
-      content: `AI response to: "${request.messages[request.messages.length - 1]?.content.slice(0, 50)}..." (This is a stub response)`,
-      usage: {
-        prompt_tokens: promptTokens,
-        completion_tokens: completionTokens,
-        total_tokens: promptTokens + completionTokens
-      },
-      model: request.model || "gpt-4o-mini",
-      latency: endTime - startTime
+    if (!ollamaAvailable) {
+      // Fallback to stub response
+      await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400))
+      const endTime = Date.now()
+      
+      const promptTokens = Math.floor(request.system.length / 4) + 
+        request.messages.reduce((sum, msg) => sum + Math.floor(msg.content.length / 4), 0)
+      const completionTokens = Math.min(request.max_tokens, 50 + Math.floor(Math.random() * 200))
+      
+      return {
+        content: `AI response to: "${request.messages[request.messages.length - 1]?.content.slice(0, 50)}..." (Ollama offline - stub response)`,
+        usage: {
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          total_tokens: promptTokens + completionTokens
+        },
+        model: request.model || "gpt-4o-mini",
+        latency: endTime - startTime,
+        finish_reason: "stop"
+      }
     }
     
-    console.log(`🧠 Inference completed:`, {
-      model: response.model,
-      tokens: response.usage.total_tokens,
-      latency: `${response.latency}ms`
-    })
+    // Prepare messages with system prompt
+    const messages = [
+      { role: "system", content: request.system },
+      ...request.messages
+    ]
     
-    return response
+    try {
+      const response = await fetch(`${OLLAMA_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${OLLAMA_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: request.model || "llama3.2",
+          messages,
+          max_tokens: request.max_tokens,
+          temperature: request.temperature,
+          stream: false,
+          response_format: request.response_format,
+          seed: request.seed,
+          top_p: request.top_p,
+          frequency_penalty: request.frequency_penalty,
+          presence_penalty: request.presence_penalty
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      const endTime = Date.now()
+      
+      const result: InferenceResponse = {
+        content: data.choices[0].message.content,
+        usage: data.usage,
+        model: data.model,
+        latency: endTime - startTime,
+        finish_reason: data.choices[0].finish_reason
+      }
+      
+      console.log(`🧠 Inference completed:`, {
+        model: result.model,
+        tokens: result.usage.total_tokens,
+        latency: `${result.latency}ms`
+      })
+      
+      return result
+    } catch (error) {
+      console.error("Ollama inference error:", error)
+      throw error
+    }
+  }
+  
+  /**
+   * Perform streaming AI inference
+   * @param request Inference parameters
+   * @yields Inference chunks as they arrive
+   */
+  export async function* inferStream(request: InferenceRequest): AsyncGenerator<InferenceChunk> {
+    const ollamaAvailable = await isOllamaAvailable()
+    
+    if (!ollamaAvailable) {
+      // Fallback to simulated streaming
+      const words = "This is a simulated streaming response from the Ollama API stub.".split(" ")
+      for (const word of words) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        yield { content: word + " ", finish_reason: null }
+      }
+      yield { content: "", finish_reason: "stop" }
+      return
+    }
+    
+    const messages = [
+      { role: "system", content: request.system },
+      ...request.messages
+    ]
+    
+    try {
+      const response = await fetch(`${OLLAMA_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${OLLAMA_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: request.model || "llama3.2",
+          messages,
+          max_tokens: request.max_tokens,
+          temperature: request.temperature,
+          stream: true,
+          response_format: request.response_format,
+          seed: request.seed,
+          top_p: request.top_p,
+          frequency_penalty: request.frequency_penalty,
+          presence_penalty: request.presence_penalty
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.statusText}`)
+      }
+      
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error("No response body")
+      
+      const decoder = new TextDecoder()
+      let buffer = ""
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6)
+            if (data === "[DONE]") return
+            
+            try {
+              const chunk = JSON.parse(data)
+              const content = chunk.choices[0]?.delta?.content || ""
+              const finish_reason = chunk.choices[0]?.finish_reason || null
+              
+              yield { content, finish_reason, model: chunk.model }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Ollama streaming error:", error)
+      throw error
+    }
+  }
+  
+  /**
+   * List available Ollama models
+   * @returns Array of available models
+   */
+  export async function listModels(): Promise<OllamaModelDetails[]> {
+    try {
+      const response = await fetch(`${OLLAMA_BASE_URL}/models`, {
+        headers: { "Authorization": `Bearer ${OLLAMA_API_KEY}` }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to list models: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      return data.data || []
+    } catch (error) {
+      console.error("Failed to list Ollama models:", error)
+      return []
+    }
+  }
+  
+  /**
+   * Generate embeddings for text
+   * @param request Embedding parameters
+   * @returns Embedding vectors
+   */
+  export async function embeddings(request: EmbeddingRequest): Promise<EmbeddingResponse> {
+    try {
+      const response = await fetch(`${OLLAMA_BASE_URL}/embeddings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${OLLAMA_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: request.model,
+          input: request.input
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to generate embeddings: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      return {
+        embeddings: data.data.map((item: any) => item.embedding),
+        model: data.model,
+        usage: data.usage
+      }
+    } catch (error) {
+      console.error("Failed to generate embeddings:", error)
+      throw error
+    }
   }
 }
 
