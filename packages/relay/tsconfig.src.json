@@ -1,9 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "include": ["src"],
-  "references": [
-    { "path": "../domain" } 
-  ],
+  "references": [],
   "compilerOptions": {
     "types": ["node"],
     "outDir": "build/src",
