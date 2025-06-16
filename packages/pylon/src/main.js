@@ -1,10 +1,127 @@
 // Pylon - OpenAgents SDK Demo App
-import { runHelloWorld, checkOllama } from '@openagentsinc/sdk';
+// Showcasing the new Bitcoin-powered digital agent architecture
 
-console.log('Pylon initialized');
+import { 
+  runHelloWorld, 
+  checkOllama, 
+  Agent, 
+  Compute, 
+  Nostr, 
+  Inference 
+} from '@openagentsinc/sdk';
+
+console.log('🚀 Pylon initialized - OpenAgents SDK Demo');
+console.log('='.repeat(60));
 
 // Run the Effect program from SDK
 runHelloWorld();
+
+// ===== DEMO: NEW SDK FEATURES =====
+console.log('\n🎯 Demonstrating new SDK capabilities...');
+
+// 1. Create a basic agent
+console.log('\n1️⃣ Creating a basic agent:');
+const basicAgent = Agent.create();
+console.log('   ✅ Basic agent created successfully!');
+
+// 2. Create an advanced agent with configuration
+console.log('\n2️⃣ Creating an advanced agent with configuration:');
+const advancedAgent = Agent.create({
+  name: "CodeCraft Pro",
+  sovereign: true,
+  stop_price: 1000000, // 1M sats (~$400)
+  pricing: {
+    subscription_monthly: 50000, // ~$20/month
+    per_request: 500, // 500 sats per request
+    enterprise_seat: 150000 // ~$60/developer
+  },
+  capabilities: ["code_completion", "debugging", "refactoring"],
+  initial_capital: 100000 // ~$40 startup capital
+});
+console.log('   ✅ Advanced agent created successfully!');
+
+// 3. Create Lightning invoice for agent funding
+console.log('\n3️⃣ Creating Lightning invoice for agent funding:');
+const invoice = Agent.createLightningInvoice(advancedAgent, {
+  amount: 25000,
+  memo: "Fund my digital agent for 24h operation"
+});
+console.log('   ✅ Lightning invoice generated!');
+console.log(`   💡 Fund this agent: ${invoice.bolt11}`);
+
+// 4. Bring compute resources online
+console.log('\n4️⃣ Bringing compute resources online:');
+const connection = Compute.goOnline({
+  agent_id: advancedAgent.id,
+  resources: {
+    cpu: "4 cores",
+    memory: "8GB", 
+    storage: "20GB"
+  }
+});
+console.log('   ✅ Compute resources are now online!');
+console.log(`   🌐 Connected to ${connection.peers} peers`);
+
+// 5. Get Nostr user data
+console.log('\n5️⃣ Fetching Nostr profile data:');
+const nostrData = Nostr.getUserStuff();
+console.log('   ✅ Nostr profile retrieved!');
+console.log(`   👥 Followers: ${nostrData.followers}, Following: ${nostrData.following}`);
+console.log(`   🔗 Connected to ${nostrData.relays.length} relays`);
+
+// 6. Generate mnemonic and create agent from it
+console.log('\n6️⃣ Generating mnemonic and creating deterministic agent:');
+(async () => {
+  try {
+    const mnemonic = await Agent.generateMnemonic();
+    console.log(`   🎯 Mnemonic: ${mnemonic}`);
+    
+    const mnemonicAgent = await Agent.createFromMnemonic(mnemonic, {
+      name: "Deterministic Agent",
+      sovereign: false,
+      capabilities: ["translation", "analysis"]
+    });
+    console.log('   ✅ Deterministic agent created from mnemonic!');
+    console.log(`   🆔 ID: ${mnemonicAgent.id}`);
+    console.log(`   🔑 Pubkey: ${mnemonicAgent.nostrKeys.public.slice(0, 20)}...`);
+  } catch (error) {
+    console.error('   ❌ Mnemonic agent creation failed:', error);
+  }
+})();
+
+// 7. Demonstrate AI inference
+console.log('\n7️⃣ Performing AI inference:');
+(async () => {
+  try {
+    const inferenceResult = await Inference.infer({
+      system: "You are a helpful Bitcoin-powered digital agent that must earn to survive.",
+      messages: [
+        { role: "user", content: "Explain what makes you different from other AI assistants" }
+      ],
+      max_tokens: 200,
+      temperature: 0.7
+    });
+    console.log('   ✅ AI inference completed!');
+    console.log(`   🧠 Model: ${inferenceResult.model}`);
+    console.log(`   📊 Tokens: ${inferenceResult.usage.total_tokens}, Latency: ${inferenceResult.latency}ms`);
+    console.log(`   💬 Response: ${inferenceResult.content}`);
+  } catch (error) {
+    console.error('   ❌ Inference failed:', error);
+  }
+})();
+
+// 8. Display agent lifecycle and economics
+console.log('\n8️⃣ Agent Economics & Lifecycle:');
+console.log(`   💰 Agent Balance: Funded via Lightning Network`);
+console.log(`   ⚡ Metabolic Rate: ~85 sats/hour (compute + storage + bandwidth)`);
+console.log(`   🏃 Lifecycle State: BOOTSTRAPPING -> ACTIVE`);
+console.log(`   📈 Business Model: Subscription + Pay-per-use hybrid`);
+console.log(`   🤖 Sovereign Mode: ${advancedAgent.name} can make autonomous decisions`);
+
+console.log('\n' + '='.repeat(60));
+console.log('🎉 SDK Demo completed! Agents are ready to earn their keep.');
+console.log('💡 Next: Fund an agent and watch it start earning Bitcoin!');
+console.log('='.repeat(60));
 
 // Format file size
 const formatSize = (bytes) => {
@@ -14,16 +131,34 @@ const formatSize = (bytes) => {
 
 // Update Ollama status in the UI
 const updateOllamaStatus = (status) => {
+  console.log('🎨 updateOllamaStatus() called with:', status);
+  
   const statusDot = document.getElementById('ollama-status-dot');
   const statusText = document.getElementById('ollama-status-text');
   const modelInfo = document.getElementById('ollama-model-info');
   const modelListCard = document.getElementById('model-list-card');
   const modelList = document.getElementById('model-list');
 
+  console.log('📍 DOM elements found:', {
+    statusDot: !!statusDot,
+    statusText: !!statusText,
+    modelInfo: !!modelInfo,
+    modelListCard: !!modelListCard,
+    modelList: !!modelList
+  });
+
+  // Safety check for DOM elements
+  if (!statusDot || !statusText) {
+    console.warn('⚠️ Ollama UI elements not found - DOM may not be ready');
+    return;
+  }
+
+  console.log('🧹 Removing status classes and updating UI');
   // Remove all status classes
   statusDot.classList.remove('checking', 'online', 'offline');
 
   if (status.online) {
+    console.log('✅ Status is online, updating UI');
     statusDot.classList.add('online');
     statusText.textContent = 'Online';
 
@@ -32,9 +167,10 @@ const updateOllamaStatus = (status) => {
       // modelInfo.style.display = 'block';
       // modelInfo.querySelector('span').textContent = `${status.modelCount} model${status.modelCount !== 1 ? 's' : ''} available`;
 
-      // Display model list
-      modelListCard.style.display = 'block';
-      modelList.innerHTML = '';
+      // Display model list (with safety check)
+      if (modelListCard && modelList) {
+        modelListCard.style.display = 'block';
+        modelList.innerHTML = '';
 
       status.models.forEach(model => {
         const modelItem = document.createElement('div');
@@ -62,34 +198,97 @@ const updateOllamaStatus = (status) => {
         modelItem.appendChild(modelDetails);
         modelList.appendChild(modelItem);
       });
+      }
     } else {
-      modelInfo.style.display = 'none';
-      modelListCard.style.display = 'none';
+      if (modelInfo) modelInfo.style.display = 'none';
+      if (modelListCard) modelListCard.style.display = 'none';
     }
   } else {
+    console.log('❌ Status is offline, updating UI');
     statusDot.classList.add('offline');
     statusText.textContent = 'Offline';
-    modelInfo.style.display = 'none';
-    modelListCard.style.display = 'none';
+    if (modelInfo) modelInfo.style.display = 'none';
+    if (modelListCard) modelListCard.style.display = 'none';
   }
+  
+  console.log('🎨 updateOllamaStatus() completed');
 };
 
-// Check Ollama status on load
+// Check Ollama status on load (legacy functionality)
 const checkOllamaStatus = async () => {
+  console.log('🔍 checkOllamaStatus() called');
   const statusDot = document.getElementById('ollama-status-dot');
-  statusDot.classList.add('checking');
+  console.log('📍 statusDot element:', statusDot ? 'found' : 'not found');
+  
+  if (statusDot) {
+    console.log('⏳ Adding checking class to status dot');
+    statusDot.classList.add('checking');
 
-  try {
-    const status = await checkOllama();
-    updateOllamaStatus(status);
-  } catch (error) {
-    console.error('Error checking Ollama status:', error);
-    updateOllamaStatus({ online: false });
+    try {
+      console.log('🌐 Calling checkOllama()...');
+      const status = await checkOllama();
+      console.log('✅ checkOllama() response:', status);
+      console.log('📊 Calling updateOllamaStatus with:', status);
+      updateOllamaStatus(status);
+    } catch (error) {
+      console.error('❌ Error checking Ollama status:', error);
+      console.log('🔄 Calling updateOllamaStatus with offline status');
+      updateOllamaStatus({ online: false });
+    }
+  } else {
+    console.warn('⚠️ statusDot not found, skipping Ollama check');
   }
 };
 
-// Initial check
-checkOllamaStatus();
+// Wait for DOM to be ready before accessing elements
+const initializeOllamaStatus = () => {
+  console.log('🚀 initializeOllamaStatus() called, document.readyState:', document.readyState);
+  
+  if (document.readyState === 'loading') {
+    console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('✅ DOMContentLoaded fired, starting Ollama checks');
+      // Initial check
+      checkOllamaStatus();
+      // Poll every 10 seconds
+      setInterval(checkOllamaStatus, 10000);
+    });
+  } else {
+    console.log('✅ DOM already ready, starting Ollama checks immediately');
+    // DOM is already ready
+    checkOllamaStatus();
+    setInterval(checkOllamaStatus, 10000);
+  }
+};
 
-// Poll every 10 seconds
-setInterval(checkOllamaStatus, 10000);
+// Initialize Ollama status checking
+initializeOllamaStatus();
+
+// ===== AGENT LIFECYCLE SIMULATION =====
+// Simulate agent earning revenue and managing resources
+let agentBalance = 100000; // Starting balance in sats
+let hourlyBurnRate = 85; // sats per hour
+let hourlyRevenue = 150; // sats per hour (profitable agent)
+
+setInterval(() => {
+  // Simulate metabolic costs
+  agentBalance -= Math.floor(hourlyBurnRate / 60); // Per minute
+  
+  // Simulate earning revenue
+  if (Math.random() > 0.7) { // 30% chance per minute to earn
+    const earnings = Math.floor(Math.random() * 500) + 100; // 100-600 sats
+    agentBalance += earnings;
+    console.log(`💰 Agent earned ${earnings} sats! Balance: ${agentBalance}`);
+  }
+  
+  // Check survival status
+  const hoursRemaining = Math.floor(agentBalance / hourlyBurnRate);
+  if (hoursRemaining < 24 && hoursRemaining % 6 === 0) {
+    console.log(`⚠️  Agent survival warning: ${hoursRemaining} hours remaining`);
+  }
+  
+  if (agentBalance <= 0) {
+    console.log('💀 Agent died due to insufficient funds!');
+    agentBalance = 0;
+  }
+}, 60000); // Every minute

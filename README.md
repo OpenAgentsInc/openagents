@@ -9,11 +9,10 @@ This repo holds our new cross-platform version (v5), a work in progress.
 ## Packages
 
 ### Core
-- **`@openagentsinc/domain`** - API contracts, schemas, and shared types
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 - **`@openagentsinc/relay`** - Nostr relay server implementation
-- **`@openagentsinc/pylon`** - Coming soon
-- **`@openagentsinc/sdk`** - Coming soon
+- **`@openagentsinc/pylon`** - OpenAgents SDK demo application
+- **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 
 ### Interfaces
 - **`@openagentsinc/cli`** - Command-line interface with AI features

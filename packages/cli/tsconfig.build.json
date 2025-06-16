@@ -1,7 +1,6 @@
 {
   "extends": "./tsconfig.src.json",
   "references": [
-    { "path": "../domain/tsconfig.build.json" },
     { "path": "../ai/tsconfig.build.json" }
   ],
   "compilerOptions": {
