@@ -404,25 +404,7 @@ export namespace Inference {
     const ollamaAvailable = await isOllamaAvailable()
     
     if (!ollamaAvailable) {
-      // Fallback to stub response
-      await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 400))
-      const endTime = Date.now()
-      
-      const promptTokens = Math.floor(request.system.length / 4) + 
-        request.messages.reduce((sum, msg) => sum + Math.floor(msg.content.length / 4), 0)
-      const completionTokens = Math.min(request.max_tokens, 50 + Math.floor(Math.random() * 200))
-      
-      return {
-        content: `AI response to: "${request.messages[request.messages.length - 1]?.content.slice(0, 50)}..." (Ollama offline - stub response)`,
-        usage: {
-          prompt_tokens: promptTokens,
-          completion_tokens: completionTokens,
-          total_tokens: promptTokens + completionTokens
-        },
-        model: request.model || "gpt-4o-mini",
-        latency: endTime - startTime,
-        finish_reason: "stop"
-      }
+      throw new Error("Ollama is not available. Please ensure Ollama is running at http://localhost:11434")
     }
     
     // Prepare messages with system prompt
@@ -567,14 +549,7 @@ export namespace Inference {
     const ollamaAvailable = await isOllamaAvailable()
     
     if (!ollamaAvailable) {
-      // Fallback to simulated streaming
-      const words = "This is a simulated streaming response from the Ollama API stub.".split(" ")
-      for (const word of words) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-        yield { content: word + " ", finish_reason: null }
-      }
-      yield { content: "", finish_reason: "stop" }
-      return
+      throw new Error("Ollama is not available. Please ensure Ollama is running at http://localhost:11434")
     }
     
     const messages = [

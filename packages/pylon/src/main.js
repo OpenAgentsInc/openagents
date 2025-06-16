@@ -303,7 +303,7 @@ const testModel = async (modelName) => {
       model: modelName,
       system: "You are a helpful assistant. Be very concise.",
       messages: [
-        { role: "user", content: "Say hello and tell me your model name in one sentence." }
+        { role: "user", content: "Give me a sentence reflection on a random topic." }
       ],
       max_tokens: 50,
       temperature: 0.7
