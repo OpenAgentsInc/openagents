@@ -11,8 +11,8 @@
 <body class="webtui webtui-theme-zinc">
   <div id="app">
     <div class="pylon-container">
-      <div class="pylon-cards">
-        <div class="webtui-box-single webtui-box-shear-top ollama-status-card" style="height: 75px;">
+      <div class="pylon-sidebar">
+        <div class="webtui-box-single webtui-box-shear-top ollama-status-card">
           <div class="webtui-box-header">
             <span>Ollama Status</span>
           </div>
@@ -23,14 +23,17 @@
             </div>
           </div>
         </div>
-        <div class="webtui-box-single webtui-box-shear-top model-list-card" id="model-list-card" style="height: 420px;">
+        <div class="webtui-box-single webtui-box-shear-top model-list-card" id="model-list-card">
           <div class="webtui-box-header">
-            <span>Models Available</span>
+            <span>Available Models</span>
           </div>
           <div class="box-content">
             <div class="model-list" id="model-list"></div>
           </div>
         </div>
+      </div>
+      <div class="pylon-main">
+        <!-- Main content area - empty for now -->
       </div>
     </div>
   </div>
