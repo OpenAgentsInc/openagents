@@ -74,4 +74,36 @@ Converted Pylon cards to use:
 - Pylon UI has been converted to use WebTUI boxes
 - Built and deployed the updated CSS
 
----
+### Step 4: Created Pull Request
+
+Successfully created PR #925: "feat: Implement ASCII box drawing for WebTUI cards"
+- https://github.com/OpenAgentsInc/openagents/pull/925
+- Implements ASCII box drawing for issue #919
+- Adds terminal-style box rendering to Pylon UI
+
+## Summary
+
+Successfully implemented ASCII box drawing characters for WebTUI cards:
+1. Added CSS implementation for single-line, double-line, and rounded box styles
+2. Used pseudo-elements and `.box-corners` spans to position corner characters
+3. Converted Pylon UI to use WebTUI boxes
+4. Fixed TypeScript errors and pushed changes
+5. Created PR #925 to merge into main branch
+
+The implementation gives Pylon cards an authentic terminal appearance with proper ASCII box drawing.
+
+### Step 5: Updated to Match WebTUI's Actual Implementation
+
+After examining the WebTUI source code at `/Users/christopherdavid/code/webtui`, I discovered:
+- WebTUI does NOT use actual ASCII box-drawing characters
+- They use pure CSS borders with pseudo-elements for clean box rendering
+- The approach uses `ch` and `lh` units for terminal-style spacing
+- Double boxes use two borders via ::before and ::after pseudo-elements
+
+Updated implementation to match WebTUI's approach:
+1. Removed ASCII characters and `.box-corners` spans
+2. Implemented CSS-only box drawing using pseudo-elements
+3. Used proper `ch` and `lh` units for padding and calculations
+4. Matched WebTUI's exact border positioning technique
+
+This CSS-based approach is more reliable and avoids font rendering issues.
