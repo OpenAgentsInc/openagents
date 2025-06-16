@@ -304,6 +304,7 @@ const enableChatInput = () => {
     input.disabled = false;
     sendButton.disabled = false;
     input.placeholder = `Type your message... (${currentModel})`;
+    input.focus(); // Auto-focus the input
     
     // Clear empty state if it's the first time
     if (messagesContainer && messagesContainer.querySelector('.empty-state')) {
@@ -415,7 +416,7 @@ const sendChatMessage = async () => {
     isStreaming = false;
     input.disabled = false;
     sendButton.disabled = false;
-    input.focus();
+    input.focus(); // Auto-focus for next message
   }
 };
 
