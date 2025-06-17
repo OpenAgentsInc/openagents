@@ -172,8 +172,8 @@ html, body {
 }
 
 .test-button {
-  background: #2563eb;
-  color: white;
+  background: var(--webtui-foreground3);
+  color: var(--webtui-background0);
   border: none;
   padding: 0.5rem 1rem;
   cursor: pointer;
@@ -184,7 +184,7 @@ html, body {
 }
 
 .test-button:hover {
-  background: #1d4ed8;
+  background: var(--webtui-foreground2);
   transform: translateY(-1px);
 }
 
@@ -193,7 +193,7 @@ html, body {
 }
 
 .test-button:disabled {
-  background: #4b5563;
+  background: var(--webtui-foreground4);
   cursor: not-allowed;
   transform: none;
 }
@@ -232,7 +232,7 @@ html, body {
 
 .model-dropdown:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--webtui-foreground2);
 }
 
 .chat-container {
@@ -287,15 +287,15 @@ html, body {
 }
 
 .message-role.user {
-  color: #2563eb;
+  color: var(--webtui-foreground1);
 }
 
 .message-role.assistant {
-  color: var(--webtui-success);
+  color: var(--webtui-foreground2);
 }
 
 .message-role.system {
-  color: var(--webtui-warning);
+  color: var(--webtui-foreground3);
 }
 
 .message-content {
@@ -309,8 +309,8 @@ html, body {
 }
 
 .message-content.user {
-  background: rgba(37, 99, 235, 0.1);
-  border-color: rgba(37, 99, 235, 0.3);
+  background: var(--webtui-background2);
+  border-color: var(--webtui-foreground3);
   margin-left: 2rem;
 }
 
@@ -322,7 +322,7 @@ html, body {
 .message-content.streaming::after {
   content: '▋';
   animation: blink 1s infinite;
-  color: #2563eb;
+  color: var(--webtui-foreground2);
 }
 
 @keyframes blink {
@@ -352,7 +352,7 @@ html, body {
 
 .chat-input:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--webtui-foreground2);
 }
 
 .chat-input:disabled {
@@ -362,8 +362,8 @@ html, body {
 
 .chat-send-button {
   padding: 0.5rem 1.5rem;
-  background: #2563eb;
-  color: white;
+  background: var(--webtui-foreground3);
+  color: var(--webtui-background0);
   border: none;
   border-radius: 4px;
   font-size: 0.875rem;
@@ -374,7 +374,7 @@ html, body {
 }
 
 .chat-send-button:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: var(--webtui-foreground2);
   transform: translateY(-1px);
 }
 
