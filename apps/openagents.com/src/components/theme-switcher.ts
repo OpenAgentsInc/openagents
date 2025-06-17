@@ -17,32 +17,25 @@ export function themeSwitcher(): string {
     <script>
       // Theme switching functionality
       function switchTheme(theme) {
+        console.log('Switching to theme:', theme);
+        
         // Remove existing theme classes
         document.body.classList.remove('webtui-theme-zinc', 'webtui-theme-zinc-light', 'webtui-theme-catppuccin', 'webtui-theme-gruvbox', 'webtui-theme-nord');
         
         // Add new theme class (light theme is a variant of zinc)
         if (theme === 'light') {
           document.body.classList.add('webtui-theme-zinc-light');
+          console.log('Applied light theme class: webtui-theme-zinc-light');
         } else {
           document.body.classList.add('webtui-theme-' + theme);
+          console.log('Applied theme class: webtui-theme-' + theme);
         }
         
         // Save theme preference
         localStorage.setItem('openagents-theme', theme);
         
-        // Load theme CSS if not zinc (default) and not light (which uses zinc CSS)
-        const existingThemeLink = document.getElementById('theme-css');
-        if (existingThemeLink) {
-          existingThemeLink.remove();
-        }
-        
-        if (theme !== 'zinc' && theme !== 'light') {
-          const link = document.createElement('link');
-          link.id = 'theme-css';
-          link.rel = 'stylesheet';
-          link.href = '/theme-' + theme + '.css';
-          document.head.appendChild(link);
-        }
+        // Log current body classes for debugging
+        console.log('Current body classes:', document.body.className);
       }
       
       // Initialize theme on page load

@@ -4,6 +4,9 @@ import { css } from "@openagentsinc/psionic"
 export const webtuiStyles = css`
   @import '/webtui.css';
   @import '/theme-zinc.css';
+  @import '/theme-catppuccin.css';
+  @import '/theme-gruvbox.css';
+  @import '/theme-nord.css';
 `
 
 // Base styles for layout and WebTUI integration
