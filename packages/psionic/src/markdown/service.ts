@@ -59,9 +59,9 @@ const renderMarkdown = (markdown: string): string => {
   const window = dom.window as any
   const purify = DOMPurify(window)
 
-  // Configure DOMPurify to allow iframes and specific attributes
+  // Configure DOMPurify to allow iframes, embeds, and social media content
   return purify.sanitize(rendered, {
-    ADD_TAGS: ["iframe"],
+    ADD_TAGS: ["iframe", "script", "blockquote", "div"],
     ADD_ATTR: [
       "allow",
       "allowfullscreen",
@@ -72,9 +72,17 @@ const renderMarkdown = (markdown: string): string => {
       "height",
       "title",
       "class",
-      "alt"
+      "alt",
+      "style",
+      "async",
+      "charset",
+      "data-media-max-width",
+      "lang",
+      "dir",
+      "href",
+      "ref_src"
     ],
-    ALLOW_DATA_ATTR: false
+    ALLOW_DATA_ATTR: true
   })
 }
 
