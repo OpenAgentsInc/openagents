@@ -10,7 +10,11 @@ import { fileURLToPath } from 'url'
 const app = createPsionicApp({
   name: 'OpenAgents',
   port: 3003,
-  staticDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public')
+  staticDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public'),
+  // Component explorer configuration
+  componentsDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../stories'),
+  componentsPath: '/components',
+  enableComponents: true
 })
 
 // Define routes
