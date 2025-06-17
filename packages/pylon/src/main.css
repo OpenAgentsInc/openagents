@@ -268,6 +268,10 @@ html, body {
   animation: fadeIn 0.3s ease-out;
 }
 
+.chat-message:has(.message-content.user) {
+  align-items: flex-end;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -309,9 +313,12 @@ html, body {
 }
 
 .message-content.user {
-  background: var(--webtui-background2);
-  border-color: var(--webtui-foreground3);
-  margin-left: 2rem;
+  background: transparent;
+  border: 1px solid white;
+  border-radius: 0;
+  margin-left: auto;
+  margin-right: 0;
+  max-width: 80%;
 }
 
 .message-content.assistant {

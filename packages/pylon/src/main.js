@@ -312,7 +312,7 @@ const enableChatInput = () => {
       // Add system message
       chatMessages = [{
         role: 'system',
-        content: 'You are a helpful assistant.'
+        content: 'You are a helpful assistant. Do not respond in markdown. Use plain text only.'
       }];
     }
   } else {
