@@ -13,6 +13,21 @@ export const webtuiStyles = css`
     --foreground0: #a1a1aa;
     --foreground1: #d4d4d8;
     --foreground2: #e4e4e7;
+    --accent: #71717a;
+    --success: #52525b;
+    --warning: #a1a1aa;
+    --danger: #52525b;
+    --surface0: #18181b;
+    --surface1: #27272a;
+    --surface2: #3f3f46;
+    --overlay0: #52525b;
+    --overlay1: #71717a;
+    --overlay2: #a1a1aa;
+    --font-size: 16px;
+    --line-height: 1.3;
+    --font-weight-bold: 700;
+    --font-weight-normal: 400;
+    --font-family: monospace;
   }
   
   :root:has(.theme-zinc-light) {
@@ -23,6 +38,21 @@ export const webtuiStyles = css`
     --foreground0: #52525b;
     --foreground1: #3f3f46;
     --foreground2: #27272a;
+    --accent: #52525b;
+    --success: #71717a;
+    --warning: #52525b;
+    --danger: #3f3f46;
+    --surface0: #f4f4f5;
+    --surface1: #e4e4e7;
+    --surface2: #d4d4d8;
+    --overlay0: #a1a1aa;
+    --overlay1: #71717a;
+    --overlay2: #52525b;
+    --font-size: 16px;
+    --line-height: 1.3;
+    --font-weight-bold: 700;
+    --font-weight-normal: 400;
+    --font-family: monospace;
   }
   
   :root:has(.theme-catppuccin) {
@@ -69,6 +99,21 @@ export const baseStyles = css`
     --foreground0: #a1a1aa;
     --foreground1: #d4d4d8;
     --foreground2: #e4e4e7;
+    --accent: #71717a;
+    --success: #52525b;
+    --warning: #a1a1aa;
+    --danger: #52525b;
+    --surface0: #18181b;
+    --surface1: #27272a;
+    --surface2: #3f3f46;
+    --overlay0: #52525b;
+    --overlay1: #71717a;
+    --overlay2: #a1a1aa;
+    --font-size: 16px;
+    --line-height: 1.3;
+    --font-weight-bold: 700;
+    --font-weight-normal: 400;
+    --font-family: monospace;
   }
   
   html, body {
