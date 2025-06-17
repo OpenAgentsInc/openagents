@@ -161,7 +161,7 @@ export function renderComponentExplorer(
     title: "Component Library Explorer",
     styles: combinedStyles,
     body: html`
-      <div class="${options.baseClass || ""}"
+      <div class="${options.baseClass || ""}">
         ${options.navigation || ""}
         
         <div class="component-explorer">
@@ -285,7 +285,7 @@ export function renderStoryPage(
     title: `${story.name || storyKey} - ${storyModule.title}`,
     styles: combinedStyles,
     body: html`
-      <div class="${options.baseClass || ""}"
+      <div class="${options.baseClass || ""}">
         ${options.navigation || ""}
         
         <div class="story-page">
