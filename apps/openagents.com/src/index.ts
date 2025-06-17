@@ -20,7 +20,7 @@ const app = createPsionicApp({
   componentExplorerOptions: {
     styles: baseStyles,
     navigation: navigation({ current: 'components' }),
-    baseClass: 'webtui'
+    baseClass: ''
   }
 })
 

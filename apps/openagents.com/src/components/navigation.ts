@@ -17,8 +17,8 @@ export function navigation({ current }: { current: string }) {
         ${
     links.map((link) => {
       const isActive = current === link.key
-      return `<a href="${link.href}" class="webtui-button ${
-        isActive ? "webtui-variant-foreground1" : "webtui-variant-background1"
+      return `<a href="${link.href}" is-="button" variant-="${
+        isActive ? "foreground1" : "background1"
       }">${link.label}</a>`
     }).join("")
   }
