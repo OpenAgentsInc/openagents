@@ -9,6 +9,20 @@ Sync-first hypermedia web framework for OpenAgents.
 - Bun runtime installed
 - Run `pnpm install` from the repository root to install dependencies
 
+### Dependency Management
+
+This package uses a **hybrid approach**:
+- **pnpm** for all dependency management (installing, adding, removing packages)
+- **Bun** for runtime execution only (running the server, tests, etc.)
+
+To add dependencies:
+```bash
+# From repository root
+pnpm add <package> --filter=@openagentsinc/psionic
+
+# Never use 'bun install' or 'bun add' in this monorepo
+```
+
 ### Running the development server
 
 From the repository root:
