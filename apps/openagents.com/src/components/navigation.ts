@@ -12,6 +12,15 @@ export function navigation({ current }: { current: string }) {
   ]
 
   return html`
+    <script>
+      // Apply theme immediately to prevent flash of wrong theme
+      (function() {
+        const savedTheme = localStorage.getItem('openagents-theme') || 'zinc';
+        // Handle old 'light' value for backwards compatibility
+        const theme = savedTheme === 'light' ? 'zinc-light' : savedTheme;
+        document.body.classList.add('theme-' + theme);
+      })();
+    </script>
     <div class="nav-container">
       <nav class="nav-links">
         ${
