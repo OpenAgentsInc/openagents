@@ -34,6 +34,7 @@ export function document(options: {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>${options.title || "Psionic App"}</title>
+        <link rel="icon" type="image/x-icon" href="/favicon.ico">
         ${metaTags}
         ${options.styles ? `<style>${options.styles}</style>` : ""}
       </head>
