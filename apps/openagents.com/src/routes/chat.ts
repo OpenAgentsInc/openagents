@@ -222,9 +222,7 @@ export function chat() {
         }
       </style>
 
-      <script type="module">
-        import { checkOllama, Inference } from '@openagentsinc/sdk'
-
+      <script>
         // Chat state
         let chatMessages = []
         let currentModel = ''
@@ -302,8 +300,8 @@ export function chat() {
                   const modelDetails = document.createElement('div')
                   modelDetails.className = 'model-details'
                   const details = []
-                  if (model.details.parameter_size) details.push(model.details.parameter_size)
-                  if (model.details.quantization_level) details.push(model.details.quantization_level)
+                  if (model.details?.parameter_size) details.push(model.details.parameter_size)
+                  if (model.details?.quantization_level) details.push(model.details.quantization_level)
                   details.push(formatSize(model.size))
                   modelDetails.textContent = details.join(' • ')
 
@@ -330,7 +328,8 @@ export function chat() {
           if (statusDot) {
             statusDot.classList.add('checking')
             try {
-              const status = await checkOllama()
+              const response = await fetch('/api/ollama/status')
+              const status = await response.json()
               updateOllamaStatus(status)
             } catch (error) {
               console.error('Error checking Ollama:', error)
@@ -406,28 +405,63 @@ export function chat() {
           let assistantContent = ''
           
           try {
-            const chatRequest = {
-              model: currentModel,
-              messages: chatMessages,
-              stream: true,
-              options: {
-                temperature: 0.7,
-                num_ctx: 4096
-              }
+            const response = await fetch('/api/ollama/chat', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: currentModel,
+                messages: chatMessages,
+                options: {
+                  temperature: 0.7,
+                  num_ctx: 4096
+                }
+              })
+            })
+            
+            if (!response.ok) {
+              throw new Error(\`HTTP error! status: \${response.status}\`)
             }
             
-            for await (const chunk of Inference.chat(chatRequest)) {
-              if (chunk.message && chunk.message.content) {
-                assistantContent += chunk.message.content
-                assistantDiv.textContent = assistantContent
-                
-                const messagesContainer = document.getElementById('chat-messages')
-                messagesContainer.scrollTop = messagesContainer.scrollHeight
-              }
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+            
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
               
-              if (chunk.done) {
-                assistantDiv.classList.remove('streaming')
-                break
+              const chunk = decoder.decode(value)
+              const lines = chunk.split('\\n')
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6)
+                  if (data === '[DONE]') {
+                    assistantDiv.classList.remove('streaming')
+                    break
+                  }
+                  
+                  try {
+                    const parsed = JSON.parse(data)
+                    if (parsed.error) {
+                      throw new Error(parsed.error)
+                    }
+                    if (parsed.message && parsed.message.content) {
+                      assistantContent += parsed.message.content
+                      assistantDiv.textContent = assistantContent
+                      
+                      const messagesContainer = document.getElementById('chat-messages')
+                      messagesContainer.scrollTop = messagesContainer.scrollHeight
+                    }
+                    
+                    if (parsed.done) {
+                      assistantDiv.classList.remove('streaming')
+                    }
+                  } catch (e) {
+                    console.error('Error parsing chunk:', e)
+                  }
+                }
               }
             }
             
