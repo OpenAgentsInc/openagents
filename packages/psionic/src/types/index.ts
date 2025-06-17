@@ -2,6 +2,7 @@ export interface PsionicConfig {
   name?: string
   port?: number
   catchAllRedirect?: boolean
+  staticDir?: string // Path to static files directory
   // Future: WebSocket relay configuration
   // relays?: string[]
 }
