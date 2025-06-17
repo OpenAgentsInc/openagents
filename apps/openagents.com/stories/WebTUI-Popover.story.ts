@@ -1,6 +1,32 @@
 export const title = "WebTUI Popover"
 export const component = "Popover"
 
+export const SimpleTest = {
+  name: "Simple Test Popover",
+  html: `
+    <div style="padding: 2rem;">
+      <p style="margin-bottom: 1rem;">This is a basic test to ensure popover CSS is loaded:</p>
+      <details is-="popover">
+        <summary style="cursor: pointer;">
+          <span style="text-decoration: underline;">Click me to test</span>
+        </summary>
+        <div style="padding: 1rem; background: var(--background1); border: 1px solid var(--foreground2);">
+          <p>If you can see this, the popover is working!</p>
+        </div>
+      </details>
+      
+      <p style="margin-top: 2rem; margin-bottom: 1rem;">Plain HTML details (no WebTUI):</p>
+      <details style="margin-bottom: 2rem;">
+        <summary style="cursor: pointer;">Plain details element</summary>
+        <div style="padding: 1rem; background: var(--background1); border: 1px solid var(--foreground2);">
+          <p>This is a regular HTML details element without WebTUI styling.</p>
+        </div>
+      </details>
+    </div>
+  `,
+  description: "Simple popover test without button styling"
+}
+
 export const Default = {
   name: "Default Popover",
   html: `
@@ -135,22 +161,25 @@ export const WithOffset = {
 export const MenuExample = {
   name: "Dropdown Menu",
   html: `
-    <details is-="popover">
-      <summary>
-        <button is-="button" box-="square">
-          Menu <span style="font-size: 0.8em;">▼</span>
-        </button>
-      </summary>
-      <div style="background: var(--background0); border: 1px solid var(--foreground2); min-width: 200px;">
-        <div box-="square" style="padding: 0;">
-          <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Profile</a>
-          <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Settings</a>
-          <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Help</a>
-          <span is-="separator" style="width: 100%;"></span>
-          <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Sign Out</a>
+    <div style="padding: 2rem;">
+      <details is-="popover">
+        <summary>
+          <button is-="button" box-="square">
+            Menu <span style="font-size: 0.8em;">▼</span>
+          </button>
+        </summary>
+        <div style="background: var(--background0); border: 1px solid var(--foreground2); min-width: 200px;">
+          <div box-="square" style="padding: 0;">
+            <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Profile</a>
+            <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Settings</a>
+            <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Help</a>
+            <span is-="separator" style="width: 100%;"></span>
+            <a href="#" style="display: block; padding: 0.5rem 1rem; color: inherit; text-decoration: none;">Sign Out</a>
+          </div>
         </div>
-      </div>
-    </details>
+      </details>
+      <p style="margin-top: 4rem; color: var(--foreground2);">Click the Menu button above to see the dropdown popover.</p>
+    </div>
   `,
   description: "Popover used as dropdown menu"
 }
