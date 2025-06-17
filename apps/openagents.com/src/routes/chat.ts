@@ -219,6 +219,25 @@ export function chat() {
 
         #chat-model-select {
           min-width: 200px;
+          font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+          font-size: var(--font-size);
+          padding: 0.5rem 1rem;
+          background: var(--background1);
+          color: var(--foreground1);
+          border: 1px solid var(--foreground2);
+          border-radius: 4px;
+          cursor: pointer;
+        }
+
+        #chat-model-select:focus {
+          outline: none;
+          border-color: var(--foreground0);
+        }
+
+        #chat-model-select option {
+          background: var(--background1);
+          color: var(--foreground1);
+          font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
         }
       </style>
 

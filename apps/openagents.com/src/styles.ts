@@ -27,7 +27,7 @@ export const webtuiStyles = css`
     --line-height: 1.3;
     --font-weight-bold: 700;
     --font-weight-normal: 400;
-    --font-family: monospace;
+    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   }
   
   :root:has(.theme-zinc-light) {
@@ -52,7 +52,7 @@ export const webtuiStyles = css`
     --line-height: 1.3;
     --font-weight-bold: 700;
     --font-weight-normal: 400;
-    --font-family: monospace;
+    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   }
   
   :root:has(.theme-catppuccin) {
@@ -113,7 +113,7 @@ export const baseStyles = css`
     --line-height: 1.3;
     --font-weight-bold: 700;
     --font-weight-normal: 400;
-    --font-family: monospace;
+    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   }
   
   html, body {
@@ -124,7 +124,7 @@ export const baseStyles = css`
     background-color: var(--background0);
     color: var(--foreground1);
     overflow-x: hidden;
-    font-family: monospace;
+    font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   }
   
   /* Fix white overflow bars */
