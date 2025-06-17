@@ -283,25 +283,6 @@ html, body {
   }
 }
 
-.message-role {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.message-role.user {
-  color: var(--webtui-foreground1);
-}
-
-.message-role.assistant {
-  color: var(--webtui-foreground2);
-}
-
-.message-role.system {
-  color: var(--webtui-foreground3);
-}
-
 .message-content {
   background: var(--webtui-background1);
   border: 1px solid var(--webtui-foreground4);

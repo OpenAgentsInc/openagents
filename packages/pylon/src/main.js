@@ -330,15 +330,10 @@ const addMessageToUI = (role, content, isStreaming = false) => {
   const messageDiv = document.createElement('div');
   messageDiv.className = 'chat-message';
   
-  const roleDiv = document.createElement('div');
-  roleDiv.className = `message-role ${role}`;
-  roleDiv.textContent = role;
-  
   const contentDiv = document.createElement('div');
   contentDiv.className = `message-content ${role} ${isStreaming ? 'streaming' : ''}`;
   contentDiv.textContent = content;
   
-  messageDiv.appendChild(roleDiv);
   messageDiv.appendChild(contentDiv);
   messagesContainer.appendChild(messageDiv);
   
