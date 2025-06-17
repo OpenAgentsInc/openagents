@@ -3,6 +3,15 @@ export interface PsionicConfig {
   port?: number
   catchAllRedirect?: boolean
   staticDir?: string // Path to static files directory
+  // Component explorer configuration
+  componentsDir?: string // Default: "stories"
+  componentsPath?: string // Default: "/components"
+  enableComponents?: boolean // Default: true
+  componentExplorerOptions?: {
+    styles?: string
+    navigation?: string
+    baseClass?: string
+  }
   // Future: WebSocket relay configuration
   // relays?: string[]
 }
@@ -20,4 +29,19 @@ export interface PsionicEvent {
   type: string
   data: any
   timestamp: number
+}
+
+// Component story interfaces
+export interface PsionicStory {
+  name: string
+  html: string
+  description?: string
+  props?: Record<string, any>
+}
+
+export interface StoryModule {
+  title: string
+  component?: string
+  stories: Record<string, PsionicStory>
+  filePath: string
 }
