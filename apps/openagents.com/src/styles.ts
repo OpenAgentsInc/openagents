@@ -49,6 +49,13 @@ export const webtuiStyles = css`
     --webtui-warning: #fabd2f;
     --webtui-danger: #fb4934;
   }
+  
+  /* Fix light theme button contrast */
+  .webtui-theme-zinc-light .webtui-button.webtui-variant-foreground1 {
+    background-color: #3f3f46 !important;
+    color: #fafafa !important;
+    border-color: #3f3f46 !important;
+  }
 `
 
 // Base styles for layout and WebTUI integration
