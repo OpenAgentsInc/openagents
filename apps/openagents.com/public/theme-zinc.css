@@ -4,144 +4,144 @@
  */
 
 /* Zinc Dark (Default) */
-.webtui-theme-zinc {
+.theme-zinc {
   /* Dark backgrounds */
-  --webtui-background0: #09090b;  /* zinc-950 */
-  --webtui-background1: #18181b;  /* zinc-900 */
-  --webtui-background2: #27272a;  /* zinc-800 */
-  --webtui-background3: #3f3f46;  /* zinc-700 */
+  --background0: #09090b;  /* zinc-950 */
+  --background1: #18181b;  /* zinc-900 */
+  --background2: #27272a;  /* zinc-800 */
+  --background3: #3f3f46;  /* zinc-700 */
   
   /* Light foregrounds */
-  --webtui-foreground0: #a1a1aa;  /* zinc-400 */
-  --webtui-foreground1: #d4d4d8;  /* zinc-300 */
-  --webtui-foreground2: #e4e4e7;  /* zinc-200 */
+  --foreground0: #a1a1aa;  /* zinc-400 */
+  --foreground1: #d4d4d8;  /* zinc-300 */
+  --foreground2: #e4e4e7;  /* zinc-200 */
   
   /* Accent colors - using zinc scale with subtle blue tint */
-  --webtui-accent: #71717a;       /* zinc-500 */
-  --webtui-success: #52525b;      /* zinc-600 */
-  --webtui-warning: #a1a1aa;      /* zinc-400 */
-  --webtui-danger: #52525b;       /* zinc-600 */
+  --accent: #71717a;       /* zinc-500 */
+  --success: #52525b;      /* zinc-600 */
+  --warning: #a1a1aa;      /* zinc-400 */
+  --danger: #52525b;       /* zinc-600 */
   
   /* Surface colors */
-  --webtui-surface0: #18181b;
-  --webtui-surface1: #27272a;
-  --webtui-surface2: #3f3f46;
+  --surface0: #18181b;
+  --surface1: #27272a;
+  --surface2: #3f3f46;
   
   /* Overlay colors */
-  --webtui-overlay0: #52525b;
-  --webtui-overlay1: #71717a;
-  --webtui-overlay2: #a1a1aa;
+  --overlay0: #52525b;
+  --overlay1: #71717a;
+  --overlay2: #a1a1aa;
 }
 
 /* Zinc Light */
-.webtui-theme-zinc-light {
+.theme-zinc-light {
   /* Light backgrounds */
-  --webtui-background0: #fafafa;  /* zinc-50 */
-  --webtui-background1: #f4f4f5;  /* zinc-100 */
-  --webtui-background2: #e4e4e7;  /* zinc-200 */
-  --webtui-background3: #d4d4d8;  /* zinc-300 */
+  --background0: #fafafa;  /* zinc-50 */
+  --background1: #f4f4f5;  /* zinc-100 */
+  --background2: #e4e4e7;  /* zinc-200 */
+  --background3: #d4d4d8;  /* zinc-300 */
   
   /* Dark foregrounds */
-  --webtui-foreground0: #52525b;  /* zinc-600 */
-  --webtui-foreground1: #3f3f46;  /* zinc-700 */
-  --webtui-foreground2: #27272a;  /* zinc-800 */
+  --foreground0: #52525b;  /* zinc-600 */
+  --foreground1: #3f3f46;  /* zinc-700 */
+  --foreground2: #27272a;  /* zinc-800 */
   
   /* Accent colors */
-  --webtui-accent: #52525b;       /* zinc-600 */
-  --webtui-success: #71717a;      /* zinc-500 */
-  --webtui-warning: #52525b;      /* zinc-600 */
-  --webtui-danger: #3f3f46;       /* zinc-700 */
+  --accent: #52525b;       /* zinc-600 */
+  --success: #71717a;      /* zinc-500 */
+  --warning: #52525b;      /* zinc-600 */
+  --danger: #3f3f46;       /* zinc-700 */
   
   /* Surface colors */
-  --webtui-surface0: #f4f4f5;
-  --webtui-surface1: #e4e4e7;
-  --webtui-surface2: #d4d4d8;
+  --surface0: #f4f4f5;
+  --surface1: #e4e4e7;
+  --surface2: #d4d4d8;
   
   /* Overlay colors */
-  --webtui-overlay0: #a1a1aa;
-  --webtui-overlay1: #71717a;
-  --webtui-overlay2: #52525b;
+  --overlay0: #a1a1aa;
+  --overlay1: #71717a;
+  --overlay2: #52525b;
 }
 
 /* Zinc theme specific overrides for better contrast */
-.webtui-theme-zinc {
+.theme-zinc {
   /* Buttons with better contrast */
   .webtui-button {
-    background-color: var(--webtui-background2);
-    border-color: var(--webtui-background3);
+    background-color: var(--background2);
+    border-color: var(--background3);
   }
   
   .webtui-button:hover {
-    background-color: var(--webtui-background3);
-    border-color: var(--webtui-overlay0);
+    background-color: var(--background3);
+    border-color: var(--overlay0);
   }
   
   /* Ensure variant buttons have proper contrast */
   .webtui-variant-foreground0 {
-    background-color: var(--webtui-foreground0);
-    color: var(--webtui-background0);
+    background-color: var(--foreground0);
+    color: var(--background0);
   }
   
   .webtui-variant-foreground1 {
-    background-color: var(--webtui-foreground1);
-    color: var(--webtui-background0);
+    background-color: var(--foreground1);
+    color: var(--background0);
   }
   
   .webtui-variant-foreground2 {
-    background-color: var(--webtui-foreground2);
-    color: var(--webtui-background0);
+    background-color: var(--foreground2);
+    color: var(--background0);
   }
   
   /* Input focus states */
   .webtui-input:focus,
   .webtui-textarea:focus {
-    border-color: var(--webtui-overlay1);
+    border-color: var(--overlay1);
   }
   
   /* Checkbox and radio checked states */
   .webtui-checkbox input[type="checkbox"]:checked ~ .webtui-checkbox-visual,
   .webtui-switch input[type="checkbox"]:checked ~ .webtui-switch-visual,
   .webtui-radio input[type="radio"]:checked ~ .webtui-radio-visual {
-    border-color: var(--webtui-foreground0);
+    border-color: var(--foreground0);
   }
   
   .webtui-checkbox input[type="checkbox"]:checked ~ .webtui-checkbox-visual,
   .webtui-switch input[type="checkbox"]:checked ~ .webtui-switch-visual {
-    background-color: var(--webtui-foreground0);
+    background-color: var(--foreground0);
   }
   
   .webtui-radio input[type="radio"]:checked ~ .webtui-radio-visual::after {
-    background-color: var(--webtui-foreground0);
+    background-color: var(--foreground0);
   }
   
   /* Table styling */
   .webtui-table th {
-    background-color: var(--webtui-background2);
-    border-color: var(--webtui-background3);
+    background-color: var(--background2);
+    border-color: var(--background3);
   }
   
   .webtui-table tr:hover {
-    background-color: var(--webtui-background2);
+    background-color: var(--background2);
   }
 }
 
 /* Zinc light theme specific overrides */
-.webtui-theme-zinc-light {
+.theme-zinc-light {
   /* Buttons */
   .webtui-button {
-    background-color: var(--webtui-background1);
-    border-color: var(--webtui-background3);
+    background-color: var(--background1);
+    border-color: var(--background3);
   }
   
   .webtui-button:hover {
-    background-color: var(--webtui-background2);
+    background-color: var(--background2);
   }
   
   /* Inputs */
   .webtui-input,
   .webtui-textarea,
   .webtui-select select {
-    background-color: var(--webtui-background0);
-    border-color: var(--webtui-background3);
+    background-color: var(--background0);
+    border-color: var(--background3);
   }
 }

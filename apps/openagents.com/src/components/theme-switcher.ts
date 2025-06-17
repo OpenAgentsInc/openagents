@@ -3,15 +3,13 @@ import { html } from "@openagentsinc/psionic"
 export function themeSwitcher(): string {
   return html`
     <div class="theme-switcher">
-      <div class="webtui-select">
-        <select id="theme-select" onchange="switchTheme(this.value)">
-          <option value="zinc">Zinc</option>
-          <option value="catppuccin">Catppuccin</option>
-          <option value="gruvbox">Gruvbox</option>
-          <option value="nord">Nord</option>
-          <option value="light">Light</option>
-        </select>
-      </div>
+      <select id="theme-select" onchange="switchTheme(this.value)" style="font-family: monospace;">
+        <option value="zinc">Zinc Dark</option>
+        <option value="zinc-light">Zinc Light</option>
+        <option value="catppuccin">Catppuccin</option>
+        <option value="gruvbox">Gruvbox</option>
+        <option value="nord">Nord</option>
+      </select>
     </div>
     
     <script>
@@ -20,16 +18,11 @@ export function themeSwitcher(): string {
         console.log('Switching to theme:', theme);
         
         // Remove existing theme classes
-        document.body.classList.remove('webtui-theme-zinc', 'webtui-theme-zinc-light', 'webtui-theme-catppuccin', 'webtui-theme-gruvbox', 'webtui-theme-nord');
+        document.body.classList.remove('theme-zinc', 'theme-zinc-light', 'theme-catppuccin', 'theme-gruvbox', 'theme-nord');
         
-        // Add new theme class (light theme is a variant of zinc)
-        if (theme === 'light') {
-          document.body.classList.add('webtui-theme-zinc-light');
-          console.log('Applied light theme class: webtui-theme-zinc-light');
-        } else {
-          document.body.classList.add('webtui-theme-' + theme);
-          console.log('Applied theme class: webtui-theme-' + theme);
-        }
+        // Add new theme class
+        document.body.classList.add('theme-' + theme);
+        console.log('Applied theme class: theme-' + theme);
         
         // Save theme preference
         localStorage.setItem('openagents-theme', theme);
@@ -44,8 +37,14 @@ export function themeSwitcher(): string {
         const themeSelect = document.getElementById('theme-select');
         
         if (themeSelect) {
-          themeSelect.value = savedTheme;
-          switchTheme(savedTheme);
+          // Handle old 'light' value for backwards compatibility
+          if (savedTheme === 'light') {
+            themeSelect.value = 'zinc-light';
+            switchTheme('zinc-light');
+          } else {
+            themeSelect.value = savedTheme;
+            switchTheme(savedTheme);
+          }
         }
       })();
       

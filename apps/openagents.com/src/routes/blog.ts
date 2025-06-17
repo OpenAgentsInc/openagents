@@ -59,29 +59,28 @@ export const blogIndex: RouteHandler = async () => {
     title: "Blog | OpenAgents",
     styles: baseStyles,
     body: `
-      <div class="webtui ">
-        ${navigation({ current: "blog" })}
-        <div class="container">
-          <div class="webtui-box webtui-box-single">
-            <div style="padding: 2rem;">
-              <h1 class="webtui-typography webtui-variant-h1" style="color: var(--webtui-foreground1); margin-bottom: 2rem;">Blog</h1>
+      ${navigation({ current: "blog" })}
+      <div class="container">
+        <div box-="square">
+          <div style="padding: 2rem;">
+            <h1 style="color: var(--foreground1); margin-bottom: 2rem;">Blog</h1>
               <div class="blog-list">
                 ${
       posts.map((post) => `
-                  <article class="webtui-box webtui-box-single" style="margin-bottom: 2rem;">
+                  <article box-="square" style="margin-bottom: 2rem;">
                     <div style="padding: 1.5rem;">
-                      <h2 class="webtui-typography webtui-variant-h2" style="margin-bottom: 0.5rem;">
-                        <a href="/blog/${post.slug}" style="color: var(--webtui-foreground1); text-decoration: none;">${post.title}</a>
+                      <h2 style="margin-bottom: 0.5rem;">
+                        <a href="/blog/${post.slug}" style="color: var(--foreground1); text-decoration: none;">${post.title}</a>
                       </h2>
-                      <time class="webtui-typography webtui-variant-caption" style="color: var(--webtui-foreground3);" datetime="${post.date}">${
+                      <time style="color: var(--foreground3); font-size: 0.875rem;" datetime="${post.date}">${
         formatDate(post.date)
       }</time>
                       ${
         post.summary
-          ? `<p class="webtui-typography webtui-variant-body" style="color: var(--webtui-foreground2); margin: 1rem 0; line-height: 1.8;">${post.summary}</p>`
+          ? `<p style="color: var(--foreground2); margin: 1rem 0; line-height: 1.8;">${post.summary}</p>`
           : ""
       }
-                      <a href="/blog/${post.slug}" class="webtui-button webtui-variant-background2 webtui-size-small" style="text-decoration: none;">Read more →</a>
+                      <a href="/blog/${post.slug}" is-="button" variant-="background2" size-="small" style="text-decoration: none;">Read more →</a>
                     </div>
                   </article>
                 `).join("")
@@ -90,7 +89,6 @@ export const blogIndex: RouteHandler = async () => {
             </div>
           </div>
         </div>
-      </div>
     `
   })
 }
@@ -113,25 +111,23 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
       title: `${rendered.metadata.title} | OpenAgents`,
       styles: baseStyles,
       body: `
-        <div class="webtui ">
-          ${navigation({ current: "blog" })}
-          <div class="container">
-            <div class="webtui-box webtui-box-single" style="max-width: 900px; margin: 0 auto;">
-              <article style="padding: 2rem;">
-                <header style="margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--webtui-background2);">
-                  <h1 class="webtui-typography webtui-variant-h1" style="color: var(--webtui-foreground1); margin-bottom: 0.5rem;">${rendered.metadata.title}</h1>
-                  <time class="webtui-typography webtui-variant-caption" style="color: var(--webtui-foreground3);" datetime="${rendered.metadata.date}">${
+        ${navigation({ current: "blog" })}
+        <div class="container">
+          <div box-="square" style="max-width: 900px; margin: 0 auto;">
+            <article style="padding: 2rem;">
+              <header style="margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--background2);">
+                <h1 style="color: var(--foreground1); margin-bottom: 0.5rem;">${rendered.metadata.title}</h1>
+                <time style="color: var(--foreground3); font-size: 0.875rem;" datetime="${rendered.metadata.date}">${
         formatDate(rendered.metadata.date)
       }</time>
-                </header>
-                <div class="blog-content webtui-typography webtui-variant-body" style="line-height: 1.8; color: var(--webtui-foreground2);">
-                  ${rendered.html}
-                </div>
-                <footer style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--webtui-background2);">
-                  <a href="/blog" class="webtui-button webtui-variant-background2 webtui-size-small" style="text-decoration: none;">← Back to all posts</a>
-                </footer>
-              </article>
-            </div>
+              </header>
+              <div class="blog-content" style="line-height: 1.8; color: var(--foreground2);">
+                ${rendered.html}
+              </div>
+              <footer style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--background2);">
+                <a href="/blog" is-="button" variant-="background2" size-="small" style="text-decoration: none;">← Back to all posts</a>
+              </footer>
+            </article>
           </div>
         </div>
       `

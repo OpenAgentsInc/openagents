@@ -26,10 +26,13 @@
     "./theme-catppuccin.css": "./dist/theme-catppuccin.css",
     "./theme-gruvbox.css": "./dist/theme-gruvbox.css",
     "./theme-nord.css": "./dist/theme-nord.css",
-    "./theme-zinc.css": "./dist/theme-zinc.css"
+    "./theme-zinc.css": "./dist/theme-zinc.css",
+    "./webtui/index.css": "./dist/webtui/index.css",
+    "./webtui/full.css": "./dist/webtui/full.css",
+    "./webtui/base.css": "./dist/webtui/base.css"
   },
   "scripts": {
-    "build": "mkdir -p dist && cp src/*.css dist/",
+    "build": "mkdir -p dist dist/webtui && cp src/*.css dist/ && cp -r src/webtui dist/",
     "clean": "rm -rf dist"
   },
   "keywords": [

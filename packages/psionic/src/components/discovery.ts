@@ -99,11 +99,11 @@ export function renderComponentExplorer(
       border-bottom: 1px solid var(--webtui-border);
     }
     .explorer-header h1 {
-      color: var(--webtui-foreground1);
+      color: var(--foreground1);
       margin-bottom: 0.5rem;
     }
     .explorer-stats {
-      color: var(--webtui-foreground2);
+      color: var(--foreground2);
       font-size: 0.9rem;
     }
     .explorer-grid {
@@ -114,22 +114,22 @@ export function renderComponentExplorer(
       margin: 0 auto;
     }
     .story-card {
-      background: var(--webtui-background2);
-      border: 1px solid var(--webtui-border);
+      background: var(--background2);
+      border: 1px solid var(--foreground2);
       border-radius: 4px;
       padding: 1.5rem;
       transition: border-color 0.2s;
     }
     .story-card:hover {
-      border-color: var(--webtui-foreground2);
+      border-color: var(--foreground1);
     }
     .story-title {
-      color: var(--webtui-foreground1);
+      color: var(--foreground1);
       margin: 0 0 1rem 0;
       font-size: 1.1rem;
     }
     .story-component {
-      color: var(--webtui-foreground2);
+      color: var(--foreground2);
       font-size: 0.8rem;
       margin-bottom: 1rem;
     }
@@ -142,7 +142,7 @@ export function renderComponentExplorer(
       margin-bottom: 0.5rem;
     }
     .story-link {
-      color: var(--webtui-foreground2);
+      color: var(--foreground2);
       text-decoration: none;
       display: block;
       padding: 0.5rem;
@@ -150,8 +150,8 @@ export function renderComponentExplorer(
       transition: all 0.2s;
     }
     .story-link:hover {
-      background-color: var(--webtui-background3);
-      color: var(--webtui-foreground1);
+      background-color: var(--background3);
+      color: var(--foreground1);
     }
   `
 
@@ -161,12 +161,12 @@ export function renderComponentExplorer(
     title: "Component Library Explorer",
     styles: combinedStyles,
     body: html`
-      <div class="${options.baseClass || "webtui"}">
+      <div class="${options.baseClass || ""}">
         ${options.navigation || ""}
         
         <div class="component-explorer">
           <div class="explorer-header">
-            <h1 class="webtui-typography webtui-variant-h1">📚 Component Library Explorer</h1>
+            <h1>📚 Component Library Explorer</h1>
             <div class="explorer-stats">
               ${stories.length} components • ${storyCount} stories
             </div>
@@ -219,39 +219,39 @@ export function renderStoryPage(
     }
     .back-link {
       display: inline-block;
-      color: var(--webtui-foreground2);
+      color: var(--foreground2);
       text-decoration: none;
       margin-bottom: 2rem;
       padding: 0.5rem 1rem;
-      border: 1px solid var(--webtui-border);
+      border: 1px solid var(--foreground2);
       border-radius: 4px;
       transition: all 0.2s;
     }
     .back-link:hover {
-      color: var(--webtui-foreground1);
-      border-color: var(--webtui-foreground2);
+      color: var(--foreground1);
+      border-color: var(--foreground1);
     }
     .story-header {
       margin-bottom: 3rem;
       padding-bottom: 2rem;
-      border-bottom: 1px solid var(--webtui-border);
+      border-bottom: 1px solid var(--foreground2);
     }
     .story-title {
-      color: var(--webtui-foreground1);
+      color: var(--foreground1);
       margin: 0 0 0.5rem 0;
     }
     .story-component {
-      color: var(--webtui-foreground2);
+      color: var(--foreground2);
       font-size: 0.9rem;
       margin-bottom: 1rem;
     }
     .story-description {
-      color: var(--webtui-foreground2);
+      color: var(--foreground2);
       margin: 0;
     }
     .preview-section {
-      background: var(--webtui-background2);
-      border: 1px solid var(--webtui-border);
+      background: var(--background2);
+      border: 1px solid var(--foreground2);
       border-radius: 4px;
       padding: 2rem;
       margin-bottom: 2rem;
@@ -259,20 +259,20 @@ export function renderStoryPage(
     }
     .code-section {
       background: var(--webtui-background3);
-      border: 1px solid var(--webtui-border);
+      border: 1px solid var(--foreground2);
       border-radius: 4px;
       padding: 1.5rem;
       margin-bottom: 2rem;
     }
     .code-header {
-      color: var(--webtui-foreground2);
+      color: var(--foreground2);
       font-size: 0.8rem;
       margin-bottom: 1rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
     .code-content {
-      color: var(--webtui-foreground1);
+      color: var(--foreground1);
       font-family: inherit;
       white-space: pre-wrap;
       overflow-x: auto;
@@ -285,14 +285,14 @@ export function renderStoryPage(
     title: `${story.name || storyKey} - ${storyModule.title}`,
     styles: combinedStyles,
     body: html`
-      <div class="${options.baseClass || "webtui"}">
+      <div class="${options.baseClass || ""}">
         ${options.navigation || ""}
         
         <div class="story-page">
           <a href="${basePath}" class="back-link">← Back to Components</a>
 
           <div class="story-header">
-            <h1 class="story-title webtui-typography webtui-variant-h1">${story.name || storyKey}</h1>
+            <h1 class="story-title">${story.name || storyKey}</h1>
             ${storyModule.component ? `<div class="story-component">&lt;${storyModule.component}&gt;</div>` : ""}
             ${story.description ? `<p class="story-description">${story.description}</p>` : ""}
           </div>
