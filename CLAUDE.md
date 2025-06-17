@@ -9,13 +9,14 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 ### Packages (Libraries)
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
-- **`@openagentsinc/relay`** - Nostr relay server implementation
 - **`@openagentsinc/cli`** - Command-line interface client
 - **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
 - **`@openagentsinc/ai`** - AI provider abstraction
 - **`@openagentsinc/psionic`** - Hypermedia web framework
+- **`@openagentsinc/storybook`** - Component development and documentation
 
 ### Apps (User-facing applications)
+- **`@openagentsinc/openagents.com`** - Main website built with Psionic
 - **`@openagentsinc/pylon`** - SDK demo application
 - **`@openagentsinc/playground`** - UI component testing playground
 
@@ -50,7 +51,6 @@ pnpm clean
 # Generate Effect package exports (run after adding new files)
 # IMPORTANT: Do NOT run codegen on @openagentsinc/ui package!
 pnpm --filter=@openagentsinc/nostr codegen
-pnpm --filter=@openagentsinc/relay codegen
 pnpm --filter=@openagentsinc/cli codegen
 
 # Build individual packages
@@ -72,7 +72,6 @@ pnpm --filter=@openagentsinc/sdk test
 ### Effect Service Architecture
 - **SDK Package**: Core SDK with Agent, Lightning, Nostr, Compute, and Inference namespaces
 - **Nostr Package**: Effect-based Nostr protocol implementation with NIP support
-- **Relay Package**: Nostr relay server implementation
 - **CLI Package**: Command-line interface with AI features
 
 ### Key Patterns Used
@@ -85,10 +84,12 @@ pnpm --filter=@openagentsinc/sdk test
 ```
 sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
-relay → (standalone)
 ui → (standalone, React components)
+psionic → (standalone, web framework)
+storybook → (standalone, component docs)
 pylon → sdk (demo app)
 playground → ui (component testing)
+openagents.com → psionic, sdk, nostr (main website)
 ```
 
 ## Build System
