@@ -4,6 +4,7 @@ import { css } from "@openagentsinc/psionic"
 export const webtuiStyles = css`
   @import '/webtui.css';
   @import '/theme-zinc.css';
+  @import '/webtui/index.css';
   
   /* Catppuccin Theme */
   .webtui-theme-catppuccin {
