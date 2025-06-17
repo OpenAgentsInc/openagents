@@ -382,8 +382,6 @@ const sendChatMessage = async () => {
       }
     };
     
-    console.log('💬 Sending chat request:', chatRequest);
-    
     // Stream the response
     for await (const chunk of Inference.chat(chatRequest)) {
       if (chunk.message && chunk.message.content) {
@@ -396,7 +394,6 @@ const sendChatMessage = async () => {
       }
       
       if (chunk.done) {
-        console.log('✅ Chat streaming complete');
         assistantDiv.classList.remove('streaming');
         break;
       }

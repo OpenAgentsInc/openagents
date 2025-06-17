@@ -212,13 +212,6 @@ export namespace Agent {
       generation: 0
     }
     
-    console.log(`🤖 Agent "${agent.name}" created with ID: ${agent.id}`)
-    console.log(`🔑 Nostr identity generated (NIP-06 compatible)`)
-    console.log(`📊 Initial config:`, {
-      sovereign: config.sovereign || false,
-      stop_price: config.stop_price || 'not set',
-      pricing: config.pricing || 'default'
-    })
     
     return agent
   }
@@ -260,11 +253,6 @@ export namespace Agent {
       generation: 0
     }
     
-    console.log(`🌱 Agent "${agent.name}" created from mnemonic (deterministic)`)
-    console.log(`🔐 NIP-06 compliant key derivation`)
-    console.log(`📊 Config:`, config)
-    console.log(`🆔 ID: ${agent.id}`)
-    console.log(`🔑 Pubkey: ${keys.npub.slice(0, 20)}...`)
     
     return agent
   }
@@ -287,8 +275,6 @@ export namespace Agent {
       Effect.runPromise
     )
     
-    console.log(`🎲 Generated BIP39 mnemonic (${wordCount} words)`)
-    console.log(`💡 Use this to create deterministic agent identities`)
     
     return mnemonic
   }
@@ -312,11 +298,6 @@ export namespace Agent {
       status: "pending"
     }
     
-    console.log(`⚡ Lightning invoice created for ${agent.name}:`, {
-      amount: `${params.amount} sats`,
-      memo: params.memo,
-      bolt11: invoice.bolt11
-    })
     
     return invoice
   }
@@ -350,7 +331,6 @@ export namespace Compute {
       uptime: Date.now()
     }
     
-    console.log(`🌐 Compute resources online:`, status)
     return status
   }
 }
@@ -382,12 +362,6 @@ export namespace Nostr {
       following: Math.floor(Math.random() * 500)
     }
     
-    console.log(`🔗 Nostr user data retrieved:`, {
-      pubkey: userData.pubkey.slice(0, 20) + '...',
-      name: userData.profile?.name,
-      followers: userData.followers,
-      relays: userData.relays.length
-    })
     
     return userData
   }
@@ -414,7 +388,6 @@ export namespace Inference {
       })
       if (response.ok) {
         useOpenAIMode = true
-        console.log("🔄 Using Ollama OpenAI compatibility mode")
         return true
       }
     } catch {}
@@ -424,7 +397,6 @@ export namespace Inference {
       const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`)
       if (response.ok) {
         useOpenAIMode = false
-        console.log("🔄 Using Ollama native API mode")
         return true
       }
     } catch {}
@@ -460,10 +432,8 @@ export namespace Inference {
         try {
           const models = await listModels()
           modelToUse = models[0]?.id || "llama3.2"
-          console.log(`📌 Auto-selected model: ${modelToUse}`)
         } catch {
           modelToUse = "llama3.2"
-          console.log(`📌 Using default model: ${modelToUse}`)
         }
       }
       
@@ -506,11 +476,6 @@ export namespace Inference {
           finish_reason: data.choices[0].finish_reason
         }
         
-        console.log(`🧠 Inference completed (OpenAI mode):`, {
-          model: result.model,
-          tokens: result.usage.total_tokens,
-          latency: `${result.latency}ms`
-        })
         
         return result
       } else {
@@ -566,11 +531,6 @@ export namespace Inference {
           finish_reason: data.done ? "stop" : "length"
         }
         
-        console.log(`🧠 Inference completed (native mode):`, {
-          model: result.model,
-          tokens: result.usage.total_tokens,
-          latency: `${result.latency}ms`
-        })
         
         return result
       }
@@ -603,10 +563,8 @@ export namespace Inference {
       try {
         const models = await listModels()
         modelToUse = models[0]?.id || "llama3.2"
-        console.log(`📌 Auto-selected model: ${modelToUse}`)
       } catch {
         modelToUse = "llama3.2"
-        console.log(`📌 Using default model: ${modelToUse}`)
       }
     }
     
