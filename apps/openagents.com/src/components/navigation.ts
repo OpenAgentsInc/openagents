@@ -1,12 +1,13 @@
 import { html } from "@openagentsinc/psionic"
 
-export function navigation(currentPath: string) {
+export function navigation({ current }: { current: string }) {
   return html`
     <nav>
-      <a href="/" class="${currentPath === "/" ? "active" : ""}">Home</a>
-      <a href="/agents" class="${currentPath === "/agents" ? "active" : ""}">Agents</a>
-      <a href="/docs" class="${currentPath === "/docs" ? "active" : ""}">Docs</a>
-      <a href="/about" class="${currentPath === "/about" ? "active" : ""}">About</a>
+      <a href="/" class="${current === "home" ? "active" : ""}">Home</a>
+      <a href="/agents" class="${current === "agents" ? "active" : ""}">Agents</a>
+      <a href="/docs" class="${current === "docs" ? "active" : ""}">Docs</a>
+      <a href="/blog" class="${current === "blog" ? "active" : ""}">Blog</a>
+      <a href="/about" class="${current === "about" ? "active" : ""}">About</a>
     </nav>
   `
 }
