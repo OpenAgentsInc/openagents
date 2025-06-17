@@ -157,9 +157,23 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
           margin: 2rem 0;
           line-height: 1.8;
         }
-        .blog-content h2, 
-        .blog-content h3, 
+        .blog-content h1 {
+          font-size: 2.5rem;
+          margin: 2rem 0 1rem;
+          color: var(--accent);
+        }
+        .blog-content h2 {
+          font-size: 2rem;
+          margin: 2rem 0 1rem;
+          color: var(--accent);
+        }
+        .blog-content h3 {
+          font-size: 1.5rem;
+          margin: 2rem 0 1rem;
+          color: var(--accent);
+        }
         .blog-content h4 {
+          font-size: 1.25rem;
           margin: 2rem 0 1rem;
           color: var(--accent);
         }
