@@ -124,6 +124,9 @@ importers:
       '@openagentsinc/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@openagentsinc/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui/dist
     devDependencies:
       '@types/bun':
         specifier: ^1.2.16

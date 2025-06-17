@@ -1,29 +1,80 @@
 import { css } from "@openagentsinc/psionic"
 
-export const baseStyles = css`
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+// Import WebTUI CSS (will be included via link tags)
+export const webtuiStyles = css`
+  @import '/webtui.css';
+  @import '/theme-zinc.css';
+  
+  /* Catppuccin Theme */
+  .webtui-theme-catppuccin {
+    --webtui-background0: #1e1e2e;
+    --webtui-background1: #313244;
+    --webtui-background2: #45475a;
+    --webtui-background3: #585b70;
+    --webtui-foreground0: #bac2de;
+    --webtui-foreground1: #cdd6f4;
+    --webtui-foreground2: #f5e0dc;
+    --webtui-accent: #89b4fa;
+    --webtui-success: #a6e3a1;
+    --webtui-warning: #f9e2af;
+    --webtui-danger: #f38ba8;
   }
   
-  :root {
-    --bg-primary: #000;
-    --bg-secondary: #111;
-    --text-primary: #fff;
-    --text-secondary: #aaa;
-    --accent: #00ff9f;
-    --font-mono: "Berkeley Mono", "SF Mono", "Monaco", monospace;
+  /* Nord Theme */
+  .webtui-theme-nord {
+    --webtui-background0: #2e3440;
+    --webtui-background1: #3b4252;
+    --webtui-background2: #434c5e;
+    --webtui-background3: #4c566a;
+    --webtui-foreground0: #d8dee9;
+    --webtui-foreground1: #e5e9f0;
+    --webtui-foreground2: #eceff4;
+    --webtui-accent: #88c0d0;
+    --webtui-success: #a3be8c;
+    --webtui-warning: #ebcb8b;
+    --webtui-danger: #bf616a;
   }
+  
+  /* Gruvbox Theme */
+  .webtui-theme-gruvbox {
+    --webtui-background0: #282828;
+    --webtui-background1: #3c3836;
+    --webtui-background2: #504945;
+    --webtui-background3: #665c54;
+    --webtui-foreground0: #bdae93;
+    --webtui-foreground1: #ebdbb2;
+    --webtui-foreground2: #fbf1c7;
+    --webtui-accent: #83a598;
+    --webtui-success: #b8bb26;
+    --webtui-warning: #fabd2f;
+    --webtui-danger: #fb4934;
+  }
+  
+  /* Fix light theme button contrast */
+  .webtui-theme-zinc-light .webtui-button.webtui-variant-foreground1 {
+    background-color: #3f3f46 !important;
+    color: #fafafa !important;
+    border-color: #3f3f46 !important;
+  }
+`
+
+// Base styles for layout and WebTUI integration
+export const baseStyles = css`
+  ${webtuiStyles}
   
   html, body {
+    margin: 0;
+    padding: 0;
     width: 100%;
     min-height: 100vh;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: 16px;
-    line-height: 1.6;
+    background-color: var(--webtui-background0);
+    color: var(--webtui-foreground1);
+    overflow-x: hidden;
+  }
+  
+  /* Fix white overflow bars */
+  html {
+    background-color: var(--webtui-background0);
   }
   
   .container {
@@ -32,56 +83,9 @@ export const baseStyles = css`
     padding: 2rem;
   }
   
-  nav {
-    display: flex;
-    gap: 2rem;
-    padding: 2rem;
-    border-bottom: 1px solid var(--bg-secondary);
-    margin-bottom: 3rem;
-  }
-  
-  nav a {
-    color: var(--text-secondary);
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-  
-  nav a:hover,
-  nav a.active {
-    color: var(--text-primary);
-  }
-  
-  h1 {
-    font-size: 3rem;
-    font-weight: normal;
-    margin-bottom: 1rem;
-  }
-  
-  h2 {
-    font-size: 2rem;
-    font-weight: normal;
-    margin-bottom: 1rem;
-  }
-  
-  p {
-    color: var(--text-secondary);
-    margin-bottom: 1rem;
-  }
-  
   .hero {
     text-align: center;
     padding: 4rem 0;
-  }
-  
-  .hero h1 {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-  }
-  
-  .hero .tagline {
-    font-size: 1.5rem;
-    color: var(--text-secondary);
-    margin-bottom: 2rem;
   }
   
   .grid {
@@ -91,40 +95,23 @@ export const baseStyles = css`
     margin-top: 3rem;
   }
   
-  .card {
-    background: var(--bg-secondary);
-    border: 1px solid #222;
+  .theme-switcher {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+  }
+  
+  .nav-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     padding: 2rem;
-    transition: border-color 0.2s;
+    border-bottom: 1px solid var(--webtui-background2);
+    margin-bottom: 3rem;
   }
   
-  .card:hover {
-    border-color: var(--accent);
-  }
-  
-  .status-indicator {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    margin-right: 0.5rem;
-  }
-  
-  .status-indicator.offline {
-    background: #ff3333;
-  }
-  
-  code {
-    background: var(--bg-secondary);
-    padding: 0.2rem 0.4rem;
-    border-radius: 3px;
-  }
-  
-  pre {
-    background: var(--bg-secondary);
-    padding: 1rem;
-    overflow-x: auto;
-    margin-bottom: 1rem;
+  .nav-links {
+    display: flex;
+    gap: 2rem;
   }
 `

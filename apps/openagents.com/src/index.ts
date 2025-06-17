@@ -5,11 +5,12 @@ import { docs } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
 import path from 'path'
+import { fileURLToPath } from 'url'
 
 const app = createPsionicApp({
   name: 'OpenAgents',
   port: 3003,
-  staticDir: path.join(process.cwd(), 'public')
+  staticDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public')
 })
 
 // Define routes

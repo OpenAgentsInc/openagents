@@ -1,0 +1,655 @@
+/*!
+ * WebTUI CSS Components
+ * Terminal-inspired UI components with class-based selectors
+ * Based on WebTUI's design principles
+ */
+
+/* CSS Variables */
+:root {
+  /* Colors - Zinc theme (default) */
+  --webtui-background0: #09090b;
+  --webtui-background1: #18181b;
+  --webtui-background2: #27272a;
+  --webtui-background3: #3f3f46;
+
+  --webtui-foreground0: #a1a1aa;
+  --webtui-foreground1: #d4d4d8;
+  --webtui-foreground2: #e4e4e7;
+
+  --webtui-accent: #71717a;
+  --webtui-success: #22c55e;
+  --webtui-warning: #eab308;
+  --webtui-danger: #ef4444;
+
+  /* Typography */
+  --webtui-font-mono: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+  /* Spacing */
+  --webtui-spacing-xs: 0.25rem;
+  --webtui-spacing-sm: 0.5rem;
+  --webtui-spacing-md: 1rem;
+  --webtui-spacing-lg: 1.5rem;
+  --webtui-spacing-xl: 2rem;
+
+  /* Border Radius */
+  --webtui-radius: 0;
+  --webtui-radius-sm: 2px;
+  --webtui-radius-md: 4px;
+
+  /* Shadows */
+  --webtui-shadow: 0 0 0 1px var(--webtui-background2);
+  --webtui-shadow-lg: 0 0 0 2px var(--webtui-background3);
+}
+
+/* Base Styles */
+.webtui {
+  font-family: var(--webtui-font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--webtui-foreground1);
+  background-color: var(--webtui-background0);
+}
+
+/* Badge Component */
+.webtui-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--webtui-spacing-sm);
+  height: 1.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--webtui-foreground1);
+  background-color: var(--webtui-background1);
+  border: 1px solid var(--webtui-background2);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.webtui-badge.webtui-variant-background0 {
+  background-color: var(--webtui-background0);
+  border-color: var(--webtui-background1);
+}
+
+.webtui-badge.webtui-variant-background1 {
+  background-color: var(--webtui-background1);
+  border-color: var(--webtui-background2);
+}
+
+.webtui-badge.webtui-variant-background2 {
+  background-color: var(--webtui-background2);
+  border-color: var(--webtui-background3);
+}
+
+.webtui-badge.webtui-variant-background3 {
+  background-color: var(--webtui-background3);
+  color: var(--webtui-foreground2);
+}
+
+.webtui-badge.webtui-variant-foreground0 {
+  background-color: var(--webtui-foreground0);
+  color: var(--webtui-background0);
+}
+
+.webtui-badge.webtui-variant-foreground1 {
+  background-color: var(--webtui-foreground1);
+  color: var(--webtui-background0);
+}
+
+.webtui-badge.webtui-variant-foreground2 {
+  background-color: var(--webtui-foreground2);
+  color: var(--webtui-background0);
+}
+
+/* Button Component */
+.webtui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--webtui-spacing-xs) var(--webtui-spacing-md);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--webtui-foreground1);
+  background-color: var(--webtui-background1);
+  border: 1px solid var(--webtui-background2);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: all 0.1s ease;
+}
+
+.webtui-button:hover {
+  background-color: var(--webtui-background2);
+}
+
+.webtui-button:active {
+  transform: translateY(1px);
+}
+
+.webtui-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.webtui-button.webtui-variant-background0 {
+  background-color: var(--webtui-background0);
+  border-color: var(--webtui-background1);
+}
+
+.webtui-button.webtui-variant-background1 {
+  background-color: var(--webtui-background1);
+  border-color: var(--webtui-background2);
+}
+
+.webtui-button.webtui-variant-background2 {
+  background-color: var(--webtui-background2);
+  border-color: var(--webtui-background3);
+}
+
+.webtui-button.webtui-variant-background3 {
+  background-color: var(--webtui-background3);
+  color: var(--webtui-foreground2);
+}
+
+.webtui-button.webtui-variant-foreground0 {
+  background-color: var(--webtui-foreground0);
+  color: var(--webtui-background0);
+  border-color: var(--webtui-foreground0);
+}
+
+.webtui-button.webtui-variant-foreground1 {
+  background-color: var(--webtui-foreground1);
+  color: var(--webtui-background0);
+  border-color: var(--webtui-foreground1);
+}
+
+.webtui-button.webtui-variant-foreground2 {
+  background-color: var(--webtui-foreground2);
+  color: var(--webtui-background0);
+  border-color: var(--webtui-foreground2);
+}
+
+/* Size Modifiers */
+.webtui-button.webtui-size-small {
+  padding: 0 var(--webtui-spacing-sm);
+  font-size: 0.75rem;
+  height: 1.75rem;
+}
+
+.webtui-button.webtui-size-large {
+  padding: var(--webtui-spacing-sm) var(--webtui-spacing-lg);
+  font-size: 1rem;
+  height: 2.5rem;
+}
+
+/* Box Utility - WebTUI Style Implementation */
+/* Base box styles for all variants */
+.webtui-box-square,
+.webtui-box-round,
+.webtui-box-double,
+.webtui-box-single {
+  --webtui-box-border-color: var(--webtui-foreground0);
+  --webtui-box-border-width: 2px;
+  --webtui-box-double-border-width: 1px;
+  --webtui-box-rounded-radius: 4px;
+
+  position: relative;
+  isolation: isolate;
+  padding: 1lh 1ch;
+  background-color: transparent;
+}
+
+/* Single/Square box implementation */
+.webtui-box-square::before,
+.webtui-box-single::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch - var(--webtui-box-border-width));
+  height: calc(100% - 1lh - var(--webtui-box-border-width));
+  border: solid var(--webtui-box-border-width) var(--webtui-box-border-color);
+  z-index: -1;
+}
+
+/* Round box implementation */
+.webtui-box-round::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch - var(--webtui-box-border-width));
+  height: calc(100% - 1lh - var(--webtui-box-border-width));
+  border: solid var(--webtui-box-border-width) var(--webtui-box-border-color);
+  border-radius: var(--webtui-box-rounded-radius);
+  z-index: -1;
+}
+
+/* Double box implementation - inner border */
+.webtui-box-double::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch - var(--webtui-box-double-border-width));
+  height: calc(100% - 1lh - var(--webtui-box-double-border-width));
+  border: solid var(--webtui-box-double-border-width) var(--webtui-box-border-color);
+  z-index: -1;
+}
+
+/* Double box implementation - outer border */
+.webtui-box-double::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: calc(100% - 1ch + var(--webtui-box-double-border-width) * 2);
+  height: calc(100% - 1lh + var(--webtui-box-double-border-width) * 2);
+  border: solid var(--webtui-box-double-border-width) var(--webtui-box-border-color);
+  z-index: -1;
+}
+
+/* Round variant for double box */
+.webtui-box-double.webtui-box-round::before {
+  border-radius: var(--webtui-box-rounded-radius);
+}
+
+.webtui-box-double.webtui-box-round::after {
+  border-radius: calc(var(--webtui-box-rounded-radius) + 2px);
+}
+
+/* Shear variants - remove padding to allow content to overlay borders */
+.webtui-box-shear-both {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.webtui-box-shear-top {
+  padding-top: 0;
+}
+
+.webtui-box-shear-bottom {
+  padding-bottom: 0;
+}
+
+/* Box header for corner labels */
+.webtui-box-header {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 1ch; /* Move labels inward to show corners */
+}
+
+.webtui-box-header span {
+  background-color: var(--webtui-background0); /* Use page background */
+  padding: 0 0.5ch;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--webtui-foreground0);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Input Component */
+.webtui-input {
+  display: block;
+  width: 100%;
+  padding: var(--webtui-spacing-xs) var(--webtui-spacing-sm);
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--webtui-foreground1);
+  background-color: var(--webtui-background0);
+  border: 1px solid var(--webtui-background2);
+  outline: none;
+  transition: border-color 0.1s ease;
+}
+
+.webtui-input:focus {
+  border-color: var(--webtui-accent);
+}
+
+.webtui-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Textarea Component */
+.webtui-textarea {
+  display: block;
+  width: 100%;
+  min-height: 4rem;
+  padding: var(--webtui-spacing-xs) var(--webtui-spacing-sm);
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--webtui-foreground1);
+  background-color: var(--webtui-background0);
+  border: 1px solid var(--webtui-background2);
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.1s ease;
+}
+
+.webtui-textarea:focus {
+  border-color: var(--webtui-accent);
+}
+
+/* Checkbox Component */
+.webtui-checkbox {
+  position: relative;
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  vertical-align: middle;
+}
+
+.webtui-checkbox input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.webtui-checkbox-visual {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--webtui-background0);
+  border: 1px solid var(--webtui-background2);
+  transition: all 0.1s ease;
+}
+
+.webtui-checkbox input[type="checkbox"]:checked ~ .webtui-checkbox-visual {
+  background-color: var(--webtui-accent);
+  border-color: var(--webtui-accent);
+}
+
+.webtui-checkbox input[type="checkbox"]:checked ~ .webtui-checkbox-visual::after {
+  content: "✓";
+  position: absolute;
+  top: -2px;
+  left: 2px;
+  color: var(--webtui-background0);
+  font-size: 0.75rem;
+}
+
+/* Radio Component */
+.webtui-radio {
+  position: relative;
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  vertical-align: middle;
+}
+
+.webtui-radio input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.webtui-radio-visual {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--webtui-background0);
+  border: 1px solid var(--webtui-background2);
+  border-radius: 50%;
+  transition: all 0.1s ease;
+}
+
+.webtui-radio input[type="radio"]:checked ~ .webtui-radio-visual {
+  border-color: var(--webtui-accent);
+}
+
+.webtui-radio input[type="radio"]:checked ~ .webtui-radio-visual::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 6px;
+  height: 6px;
+  background-color: var(--webtui-accent);
+  border-radius: 50%;
+}
+
+/* Switch Component */
+.webtui-switch {
+  position: relative;
+  display: inline-block;
+  width: 2rem;
+  height: 1rem;
+  vertical-align: middle;
+}
+
+.webtui-switch input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.webtui-switch-visual {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--webtui-background2);
+  border: 1px solid var(--webtui-background3);
+  transition: all 0.2s ease;
+}
+
+.webtui-switch-visual::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 12px;
+  height: 12px;
+  background-color: var(--webtui-foreground1);
+  transition: all 0.2s ease;
+}
+
+.webtui-switch input[type="checkbox"]:checked ~ .webtui-switch-visual {
+  background-color: var(--webtui-accent);
+  border-color: var(--webtui-accent);
+}
+
+.webtui-switch input[type="checkbox"]:checked ~ .webtui-switch-visual::after {
+  transform: translateX(1rem);
+}
+
+/* Select Component */
+.webtui-select {
+  display: inline-block;
+  position: relative;
+  min-width: 10rem;
+}
+
+.webtui-select select {
+  display: block;
+  width: 100%;
+  padding: var(--webtui-spacing-xs) var(--webtui-spacing-sm);
+  padding-right: 2rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--webtui-foreground1);
+  background-color: var(--webtui-background0);
+  border: 1px solid var(--webtui-background2);
+  cursor: pointer;
+  appearance: none;
+  outline: none;
+  transition: border-color 0.1s ease;
+}
+
+.webtui-select::after {
+  content: "▼";
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 0.75rem;
+  color: var(--webtui-foreground0);
+}
+
+.webtui-select select:focus {
+  border-color: var(--webtui-accent);
+}
+
+/* Table Component */
+.webtui-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.webtui-table th,
+.webtui-table td {
+  padding: var(--webtui-spacing-xs) var(--webtui-spacing-sm);
+  text-align: left;
+  border: 1px solid var(--webtui-background2);
+}
+
+.webtui-table th {
+  background-color: var(--webtui-background1);
+  font-weight: 600;
+  color: var(--webtui-foreground2);
+}
+
+.webtui-table tr:hover {
+  background-color: var(--webtui-background1);
+}
+
+/* Separator Component */
+.webtui-separator {
+  width: 100%;
+  height: 1px;
+  background-color: var(--webtui-background2);
+  border: none;
+  margin: var(--webtui-spacing-md) 0;
+}
+
+.webtui-separator.webtui-variant-double {
+  height: 3px;
+  border-top: 1px solid var(--webtui-background2);
+  border-bottom: 1px solid var(--webtui-background2);
+  background-color: transparent;
+}
+
+/* Pre Component */
+.webtui-pre {
+  display: block;
+  padding: var(--webtui-spacing-md);
+  font-family: var(--webtui-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--webtui-foreground1);
+  background-color: var(--webtui-background0);
+  border: 1px solid var(--webtui-background2);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* Dialog Component */
+.webtui-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 20rem;
+  max-width: 90vw;
+  max-height: 90vh;
+  padding: var(--webtui-spacing-lg);
+  background-color: var(--webtui-background0);
+  border: 1px solid var(--webtui-background2);
+  box-shadow: var(--webtui-shadow-lg);
+  z-index: 1000;
+}
+
+.webtui-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+/* Popover Component */
+.webtui-popover {
+  position: absolute;
+  padding: var(--webtui-spacing-sm);
+  background-color: var(--webtui-background1);
+  border: 1px solid var(--webtui-background2);
+  box-shadow: var(--webtui-shadow);
+  z-index: 100;
+}
+
+/* Tooltip Component */
+.webtui-tooltip {
+  position: absolute;
+  padding: var(--webtui-spacing-xs) var(--webtui-spacing-sm);
+  font-size: 0.75rem;
+  color: var(--webtui-foreground2);
+  background-color: var(--webtui-background3);
+  border: 1px solid var(--webtui-background3);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 200;
+}
+
+/* Typography Component */
+.webtui-typography {
+  font-family: var(--webtui-font-mono);
+  color: var(--webtui-foreground1);
+  line-height: 1.5;
+}
+
+.webtui-typography.webtui-variant-h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: var(--webtui-spacing-lg);
+}
+
+.webtui-typography.webtui-variant-h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: var(--webtui-spacing-md);
+}
+
+.webtui-typography.webtui-variant-h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: var(--webtui-spacing-sm);
+}
+
+.webtui-typography.webtui-variant-body {
+  font-size: 0.875rem;
+  margin-bottom: var(--webtui-spacing-sm);
+}
+
+.webtui-typography.webtui-variant-caption {
+  font-size: 0.75rem;
+  color: var(--webtui-foreground0);
+}
+
+/* Light Theme */
+.webtui-theme-light {
+  --webtui-background0: #eff1f5;
+  --webtui-background1: #e6e9ef;
+  --webtui-background2: #ccd0da;
+  --webtui-background3: #bcc0cc;
+
+  --webtui-foreground0: #5c5f77;
+  --webtui-foreground1: #4c4f69;
+  --webtui-foreground2: #dc8a78;
+
+  --webtui-accent: #1e66f5;
+  --webtui-success: #40a02b;
+  --webtui-warning: #df8e1d;
+  --webtui-danger: #d20f39;
+}

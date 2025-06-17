@@ -1,0 +1,57 @@
+/*!
+ * WebTUI Gruvbox Theme
+ * Gruvbox color palette for WebTUI components
+ */
+
+/* Gruvbox Dark */
+.webtui-theme-gruvbox,
+.webtui-theme-gruvbox-dark {
+  --webtui-background0: #282828;
+  --webtui-background1: #3c3836;
+  --webtui-background2: #504945;
+  --webtui-background3: #665c54;
+  
+  --webtui-foreground0: #bdae93;
+  --webtui-foreground1: #ebdbb2;
+  --webtui-foreground2: #fbf1c7;
+  
+  --webtui-accent: #83a598;
+  --webtui-success: #b8bb26;
+  --webtui-warning: #fabd2f;
+  --webtui-danger: #fb4934;
+  
+  /* Gruvbox specific colors */
+  --webtui-red: #cc241d;
+  --webtui-green: #98971a;
+  --webtui-yellow: #d79921;
+  --webtui-blue: #458588;
+  --webtui-purple: #b16286;
+  --webtui-aqua: #689d6a;
+  --webtui-orange: #d65d0e;
+}
+
+/* Gruvbox Light */
+.webtui-theme-gruvbox-light {
+  --webtui-background0: #fbf1c7;
+  --webtui-background1: #ebdbb2;
+  --webtui-background2: #d5c4a1;
+  --webtui-background3: #bdae93;
+  
+  --webtui-foreground0: #665c54;
+  --webtui-foreground1: #3c3836;
+  --webtui-foreground2: #282828;
+  
+  --webtui-accent: #076678;
+  --webtui-success: #79740e;
+  --webtui-warning: #b57614;
+  --webtui-danger: #9d0006;
+  
+  /* Gruvbox specific colors */
+  --webtui-red: #9d0006;
+  --webtui-green: #79740e;
+  --webtui-yellow: #b57614;
+  --webtui-blue: #076678;
+  --webtui-purple: #8f3f71;
+  --webtui-aqua: #427b58;
+  --webtui-orange: #af3a03;
+}

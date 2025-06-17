@@ -11,7 +11,8 @@
   "dependencies": {
     "@openagentsinc/psionic": "workspace:*",
     "@openagentsinc/sdk": "workspace:*",
-    "@openagentsinc/nostr": "workspace:*"
+    "@openagentsinc/nostr": "workspace:*",
+    "@openagentsinc/ui": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.2.16"
