@@ -89,26 +89,9 @@ console.log('\n6️⃣ Generating mnemonic and creating deterministic agent:');
   }
 })();
 
-// 7. Demonstrate AI inference
-console.log('\n7️⃣ Performing AI inference:');
-(async () => {
-  try {
-    const inferenceResult = await Inference.infer({
-      system: "You are a helpful Bitcoin-powered digital agent that must earn to survive.",
-      messages: [
-        { role: "user", content: "Explain what makes you different from other AI assistants" }
-      ],
-      max_tokens: 200,
-      temperature: 0.7
-    });
-    console.log('   ✅ AI inference completed!');
-    console.log(`   🧠 Model: ${inferenceResult.model}`);
-    console.log(`   📊 Tokens: ${inferenceResult.usage.total_tokens}, Latency: ${inferenceResult.latency}ms`);
-    console.log(`   💬 Response: ${inferenceResult.content}`);
-  } catch (error) {
-    console.error('   ❌ Inference failed:', error);
-  }
-})();
+// 7. Demonstrate AI inference (commented out to prevent automatic inference)
+console.log('\n7️⃣ AI inference capability available - use the chat interface to test');
+// Removed automatic inference demo
 
 // 8. Display agent lifecycle and economics
 console.log('\n8️⃣ Agent Economics & Lifecycle:');
@@ -129,6 +112,11 @@ const formatSize = (bytes) => {
   return gb.toFixed(2) + ' GB';
 };
 
+// Chat state management
+let chatMessages = [];
+let currentModel = '';
+let isStreaming = false;
+
 // Update Ollama status in the UI
 const updateOllamaStatus = (status) => {
   console.log('🎨 updateOllamaStatus() called with:', status);
@@ -138,13 +126,15 @@ const updateOllamaStatus = (status) => {
   const modelInfo = document.getElementById('ollama-model-info');
   const modelListCard = document.getElementById('model-list-card');
   const modelList = document.getElementById('model-list');
+  const modelDropdown = document.getElementById('chat-model-select');
 
   console.log('📍 DOM elements found:', {
     statusDot: !!statusDot,
     statusText: !!statusText,
     modelInfo: !!modelInfo,
     modelListCard: !!modelListCard,
-    modelList: !!modelList
+    modelList: !!modelList,
+    modelDropdown: !!modelDropdown
   });
 
   // Safety check for DOM elements
@@ -164,51 +154,90 @@ const updateOllamaStatus = (status) => {
 
     // Show model count if available
     if (status.modelCount > 0) {
-      // modelInfo.style.display = 'block';
-      // modelInfo.querySelector('span').textContent = `${status.modelCount} model${status.modelCount !== 1 ? 's' : ''} available`;
-
       // Display model list (with safety check)
       if (modelListCard && modelList) {
         modelListCard.style.display = 'block';
         modelList.innerHTML = '';
 
-      status.models.forEach(model => {
-        const modelItem = document.createElement('div');
-        modelItem.className = 'model-item';
+        // Update dropdown with models
+        if (modelDropdown) {
+          // Keep the first option
+          modelDropdown.innerHTML = '<option value="">Select a model...</option>';
+          
+          // Get saved model from localStorage
+          const savedModel = localStorage.getItem('selectedModel');
+          
+          // Find the largest model by size
+          let largestModel = null;
+          let largestSize = 0;
+          status.models.forEach(model => {
+            if (model.size > largestSize) {
+              largestSize = model.size;
+              largestModel = model;
+            }
+          });
 
-        const modelInfo = document.createElement('div');
-        modelInfo.className = 'model-info';
-
-        const modelName = document.createElement('div');
-        modelName.className = 'model-name webtui-typography';
-        modelName.textContent = model.name;
-
-        const modelDetails = document.createElement('div');
-        modelDetails.className = 'model-details webtui-typography webtui-variant-small';
-
-        const details = [];
-        if (model.details.parameter_size) {
-          details.push(model.details.parameter_size);
+          let modelSelected = false;
+          status.models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.name;
+            option.textContent = model.name;
+            
+            // Select saved model if exists, otherwise select largest model
+            if (savedModel && model.name === savedModel && savedModel !== '') {
+              option.selected = true;
+              currentModel = model.name;
+              modelSelected = true;
+              console.log('🔄 Restoring saved model:', savedModel);
+            } else if (!savedModel && largestModel && model.name === largestModel.name && !modelSelected) {
+              option.selected = true;
+              currentModel = model.name;
+              modelSelected = true;
+              console.log('🎯 Auto-selecting largest model:', model.name, 'Size:', formatSize(model.size));
+              localStorage.setItem('selectedModel', currentModel);
+            }
+            
+            modelDropdown.appendChild(option);
+          });
+          
+          // Enable chat input if a model was selected
+          if (modelSelected) {
+            // Delay enableChatInput to ensure DOM is ready
+            setTimeout(() => enableChatInput(), 100);
+          }
         }
-        if (model.details.quantization_level) {
-          details.push(model.details.quantization_level);
-        }
-        details.push(formatSize(model.size));
 
-        modelDetails.textContent = details.join(' • ');
+        status.models.forEach(model => {
+          const modelItem = document.createElement('div');
+          modelItem.className = 'model-item';
 
-        modelInfo.appendChild(modelName);
-        modelInfo.appendChild(modelDetails);
-        
-        const testButton = document.createElement('button');
-        testButton.className = 'test-button';
-        testButton.textContent = 'Test';
-        testButton.onclick = () => testModel(model.name);
+          const modelInfo = document.createElement('div');
+          modelInfo.className = 'model-info';
 
-        modelItem.appendChild(modelInfo);
-        modelItem.appendChild(testButton);
-        modelList.appendChild(modelItem);
-      });
+          const modelName = document.createElement('div');
+          modelName.className = 'model-name webtui-typography';
+          modelName.textContent = model.name;
+
+          const modelDetails = document.createElement('div');
+          modelDetails.className = 'model-details webtui-typography webtui-variant-small';
+
+          const details = [];
+          if (model.details.parameter_size) {
+            details.push(model.details.parameter_size);
+          }
+          if (model.details.quantization_level) {
+            details.push(model.details.quantization_level);
+          }
+          details.push(formatSize(model.size));
+
+          modelDetails.textContent = details.join(' • ');
+
+          modelInfo.appendChild(modelName);
+          modelInfo.appendChild(modelDetails);
+
+          modelItem.appendChild(modelInfo);
+          modelList.appendChild(modelItem);
+        });
       }
     } else {
       if (modelInfo) modelInfo.style.display = 'none';
@@ -251,117 +280,178 @@ const checkOllamaStatus = async () => {
   }
 };
 
-// Wait for DOM to be ready before accessing elements
-const initializeOllamaStatus = () => {
-  console.log('🚀 initializeOllamaStatus() called, document.readyState:', document.readyState);
+// Enable/disable chat input based on model selection
+const enableChatInput = () => {
+  console.log('🔧 enableChatInput called, currentModel:', currentModel);
   
-  if (document.readyState === 'loading') {
-    console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('✅ DOMContentLoaded fired, starting Ollama checks');
-      // Initial check
-      checkOllamaStatus();
-      // Poll every 10 seconds
-      setInterval(checkOllamaStatus, 10000);
-    });
+  const input = document.getElementById('chat-input');
+  const sendButton = document.getElementById('chat-send');
+  const messagesContainer = document.getElementById('chat-messages');
+  
+  console.log('📍 DOM elements:', {
+    input: !!input,
+    sendButton: !!sendButton,
+    messagesContainer: !!messagesContainer
+  });
+  
+  if (!input || !sendButton) {
+    console.error('❌ Chat input or send button not found!');
+    return;
+  }
+  
+  if (currentModel) {
+    console.log('✅ Enabling chat input for model:', currentModel);
+    input.disabled = false;
+    sendButton.disabled = false;
+    input.placeholder = `Type your message... (${currentModel})`;
+    input.focus(); // Auto-focus the input
+    
+    // Clear empty state if it's the first time
+    if (messagesContainer && messagesContainer.querySelector('.empty-state')) {
+      messagesContainer.innerHTML = '';
+      // Add system message
+      chatMessages = [{
+        role: 'system',
+        content: 'You are a helpful assistant. Do not respond in markdown. Use plain text only.'
+      }];
+    }
   } else {
-    console.log('✅ DOM already ready, starting Ollama checks immediately');
-    // DOM is already ready
-    checkOllamaStatus();
-    setInterval(checkOllamaStatus, 10000);
+    console.log('⚠️ No model selected, disabling chat input');
+    input.disabled = true;
+    sendButton.disabled = true;
+    input.placeholder = 'Select a model first...';
   }
 };
 
-// Initialize Ollama status checking
-initializeOllamaStatus();
+// Add message to chat UI
+const addMessageToUI = (role, content, isStreaming = false) => {
+  const messagesContainer = document.getElementById('chat-messages');
+  
+  const messageDiv = document.createElement('div');
+  messageDiv.className = 'chat-message';
+  
+  const contentDiv = document.createElement('div');
+  contentDiv.className = `message-content ${role} ${isStreaming ? 'streaming' : ''}`;
+  contentDiv.textContent = content;
+  
+  messageDiv.appendChild(contentDiv);
+  messagesContainer.appendChild(messageDiv);
+  
+  // Auto-scroll to bottom
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  
+  return contentDiv; // Return for streaming updates
+};
 
-// Test a specific model
-const testModel = async (modelName) => {
-  console.log(`🧪 Testing model: ${modelName}`);
-  const resultsContainer = document.getElementById('inference-results');
+// Send chat message
+const sendChatMessage = async () => {
+  const input = document.getElementById('chat-input');
+  const sendButton = document.getElementById('chat-send');
+  const message = input.value.trim();
   
-  // Show loading state
-  const loadingId = `loading-${Date.now()}`;
-  const loadingHtml = `
-    <div id="${loadingId}" class="result-loading">
-      <div class="loading-spinner"></div>
-      <span>Testing ${modelName}...</span>
-    </div>
-  `;
+  if (!message || !currentModel || isStreaming) return;
   
-  // Clear empty state if present
-  if (resultsContainer.querySelector('.empty-state')) {
-    resultsContainer.innerHTML = '';
-  }
+  // Add user message
+  chatMessages.push({ role: 'user', content: message });
+  addMessageToUI('user', message);
   
-  // Add loading at the top
-  resultsContainer.insertAdjacentHTML('afterbegin', loadingHtml);
+  // Clear input and disable while processing
+  input.value = '';
+  input.disabled = true;
+  sendButton.disabled = true;
+  isStreaming = true;
+  
+  // Add streaming assistant message
+  const assistantDiv = addMessageToUI('assistant', '', true);
+  let assistantContent = '';
   
   try {
-    const startTime = Date.now();
-    const result = await Inference.infer({
-      model: modelName,
-      system: "You are a helpful assistant. Be very concise.",
-      messages: [
-        { role: "user", content: "Give me a sentence reflection on a random topic." }
-      ],
-      max_tokens: 50,
-      temperature: 0.7
-    });
+    // Use the new chat method from SDK
+    const chatRequest = {
+      model: currentModel,
+      messages: chatMessages,
+      stream: true,
+      options: {
+        temperature: 0.7,
+        num_ctx: 4096
+      }
+    };
     
-    // Remove loading
-    document.getElementById(loadingId)?.remove();
+    // Stream the response
+    for await (const chunk of Inference.chat(chatRequest)) {
+      if (chunk.message && chunk.message.content) {
+        assistantContent += chunk.message.content;
+        assistantDiv.textContent = assistantContent;
+        
+        // Auto-scroll
+        const messagesContainer = document.getElementById('chat-messages');
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+      
+      if (chunk.done) {
+        assistantDiv.classList.remove('streaming');
+        break;
+      }
+    }
     
-    // Create result HTML
-    const resultHtml = `
-      <div class="inference-result">
-        <div class="result-header">
-          <div class="result-model">${modelName}</div>
-          <div class="result-timestamp">${new Date().toLocaleTimeString()}</div>
-        </div>
-        <div class="result-content">${result.content}</div>
-        <div class="result-stats">
-          <div class="stat-item">
-            <div class="stat-label">Tokens</div>
-            <div class="stat-value">${result.usage.total_tokens}</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-label">Latency</div>
-            <div class="stat-value">${result.latency}ms</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-label">Finish</div>
-            <div class="stat-value">${result.finish_reason || 'complete'}</div>
-          </div>
-        </div>
-      </div>
-    `;
+    // Add assistant message to history
+    chatMessages.push({ role: 'assistant', content: assistantContent });
     
-    // Add result at the top
-    resultsContainer.insertAdjacentHTML('afterbegin', resultHtml);
-    
-    console.log(`✅ Test successful for ${modelName}:`, {
-      response: result.content,
-      tokens: result.usage.total_tokens,
-      latency: `${result.latency}ms`
-    });
   } catch (error) {
-    // Remove loading
-    document.getElementById(loadingId)?.remove();
-    
-    // Show error
-    const errorHtml = `
-      <div class="inference-result" style="border-color: var(--webtui-danger);">
-        <div class="result-header">
-          <div class="result-model" style="color: var(--webtui-danger);">${modelName} - Error</div>
-          <div class="result-timestamp">${new Date().toLocaleTimeString()}</div>
-        </div>
-        <div class="result-content" style="color: var(--webtui-danger);">${error.message}</div>
-      </div>
-    `;
-    
-    resultsContainer.insertAdjacentHTML('afterbegin', errorHtml);
-    console.error(`❌ Test failed for ${modelName}:`, error);
+    console.error('❌ Chat error:', error);
+    assistantDiv.textContent = `Error: ${error.message}`;
+    assistantDiv.classList.remove('streaming');
+    assistantDiv.style.borderColor = 'var(--webtui-danger)';
+    assistantDiv.style.color = 'var(--webtui-danger)';
+  } finally {
+    // Re-enable input
+    isStreaming = false;
+    input.disabled = false;
+    sendButton.disabled = false;
+    input.focus(); // Auto-focus for next message
+  }
+};
+
+// Initialize chat event handlers
+const initializeChatHandlers = () => {
+  console.log('🎮 Initializing chat handlers...');
+  
+  const modelDropdown = document.getElementById('chat-model-select');
+  const input = document.getElementById('chat-input');
+  const sendButton = document.getElementById('chat-send');
+  
+  console.log('📍 Chat handler elements:', {
+    modelDropdown: !!modelDropdown,
+    input: !!input,
+    sendButton: !!sendButton
+  });
+  
+  if (modelDropdown) {
+    modelDropdown.addEventListener('change', (e) => {
+      console.log('📋 Model dropdown changed:', e.target.value);
+      currentModel = e.target.value;
+      localStorage.setItem('selectedModel', currentModel);
+      enableChatInput();
+    });
+  } else {
+    console.error('❌ Model dropdown not found!');
+  }
+  
+  if (sendButton) {
+    sendButton.addEventListener('click', sendChatMessage);
+  } else {
+    console.error('❌ Send button not found!');
+  }
+  
+  if (input) {
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
+  } else {
+    console.error('❌ Chat input not found!');
   }
 };
 
@@ -393,3 +483,31 @@ setInterval(() => {
     agentBalance = 0;
   }
 }, 60000); // Every minute
+
+// Wait for DOM to be ready before accessing elements
+const initializeOllamaStatus = () => {
+  console.log('🚀 initializeOllamaStatus() called, document.readyState:', document.readyState);
+  
+  if (document.readyState === 'loading') {
+    console.log('⏳ DOM still loading, adding DOMContentLoaded listener');
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('✅ DOMContentLoaded fired, starting Ollama checks');
+      // Initial check
+      checkOllamaStatus();
+      // Poll every 10 seconds
+      setInterval(checkOllamaStatus, 10000);
+      // Initialize chat handlers
+      initializeChatHandlers();
+    });
+  } else {
+    console.log('✅ DOM already ready, starting Ollama checks immediately');
+    // DOM is already ready
+    checkOllamaStatus();
+    setInterval(checkOllamaStatus, 10000);
+    // Initialize chat handlers
+    initializeChatHandlers();
+  }
+};
+
+// Initialize Ollama status checking
+initializeOllamaStatus();
