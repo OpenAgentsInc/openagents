@@ -4,16 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agents. The repository follows a clean architecture with these packages:
+This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agents. The repository follows a clean architecture with packages and apps:
 
+### Packages (Libraries)
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 - **`@openagentsinc/relay`** - Nostr relay server implementation
 - **`@openagentsinc/cli`** - Command-line interface client
 - **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
+- **`@openagentsinc/ai`** - AI provider abstraction
+- **`@openagentsinc/psionic`** - Hypermedia web framework
+
+### Apps (User-facing applications)
 - **`@openagentsinc/pylon`** - SDK demo application
 - **`@openagentsinc/playground`** - UI component testing playground
-- **`@openagentsinc/ai`** - AI provider abstraction
 
 ## Essential Commands
 

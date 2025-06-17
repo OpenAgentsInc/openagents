@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["vite/client"],
+    "lib": ["ESNext", "DOM"],
+    "target": "ESNext",
+    "module": "ESNext"
+  },
+  "include": ["src"]
+}

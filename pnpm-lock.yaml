@@ -113,6 +113,87 @@ importers:
         specifier: ^4.20.0
         version: 4.20.0
 
+  apps/openagents.com:
+    dependencies:
+      '@openagentsinc/nostr':
+        specifier: workspace:*
+        version: link:../../packages/nostr/dist
+      '@openagentsinc/psionic':
+        specifier: workspace:*
+        version: link:../../packages/psionic
+      '@openagentsinc/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/bun':
+        specifier: ^1.2.16
+        version: 1.2.16
+
+  apps/playground:
+    dependencies:
+      '@openagentsinc/ai':
+        specifier: workspace:^
+        version: link:../../packages/ai/dist
+      '@openagentsinc/ui':
+        specifier: workspace:^
+        version: link:../../packages/ui/dist
+      effect:
+        specifier: 3.16.3
+        version: 3.16.3
+      lucide-react:
+        specifier: ^0.510.0
+        version: 0.510.0(react@19.1.0)
+      react:
+        specifier: ^19.1.0
+        version: 19.1.0
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.1.0(react@19.1.0)
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: ^4.1.4
+        version: 4.1.4(vite@6.3.3)
+      '@testing-library/jest-dom':
+        specifier: ^6.6.3
+        version: 6.6.3
+      '@types/react':
+        specifier: ^19.1.0
+        version: 19.1.0
+      '@types/react-dom':
+        specifier: ^19.1.0
+        version: 19.1.0(@types/react@19.1.0)
+      '@vitejs/plugin-react':
+        specifier: ^4.5.0
+        version: 4.5.0(vite@6.3.3)
+      autoprefixer:
+        specifier: ^10.4.21
+        version: 10.4.21(postcss@8.5.5)
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+      tailwindcss:
+        specifier: ^4.1.7
+        version: 4.1.7
+      typescript:
+        specifier: 5.8.3
+        version: 5.8.3
+      vite:
+        specifier: ^6.3.3
+        version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
+
+  apps/pylon:
+    dependencies:
+      '@openagentsinc/sdk':
+        specifier: workspace:^
+        version: link:../../packages/sdk
+      '@openagentsinc/ui':
+        specifier: workspace:^
+        version: link:../../packages/ui/dist
+    devDependencies:
+      vite:
+        specifier: ^6.0.7
+        version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
+
   packages/ai:
     dependencies:
       '@effect/platform':
@@ -183,58 +264,6 @@ importers:
         version: 8.5.14
     publishDirectory: dist
 
-  packages/playground:
-    dependencies:
-      '@openagentsinc/ai':
-        specifier: workspace:^
-        version: link:../ai/dist
-      '@openagentsinc/ui':
-        specifier: workspace:^
-        version: link:../ui/dist
-      effect:
-        specifier: 3.16.3
-        version: 3.16.3
-      lucide-react:
-        specifier: ^0.510.0
-        version: 0.510.0(react@19.1.0)
-      react:
-        specifier: ^19.1.0
-        version: 19.1.0
-      react-dom:
-        specifier: ^19.1.0
-        version: 19.1.0(react@19.1.0)
-    devDependencies:
-      '@tailwindcss/vite':
-        specifier: ^4.1.4
-        version: 4.1.4(vite@6.3.3)
-      '@testing-library/jest-dom':
-        specifier: ^6.6.3
-        version: 6.6.3
-      '@types/react':
-        specifier: ^19.1.0
-        version: 19.1.0
-      '@types/react-dom':
-        specifier: ^19.1.0
-        version: 19.1.0(@types/react@19.1.0)
-      '@vitejs/plugin-react':
-        specifier: ^4.5.0
-        version: 4.5.0(vite@6.3.3)
-      autoprefixer:
-        specifier: ^10.4.21
-        version: 10.4.21(postcss@8.5.5)
-      jsdom:
-        specifier: ^26.1.0
-        version: 26.1.0
-      tailwindcss:
-        specifier: ^4.1.7
-        version: 4.1.7
-      typescript:
-        specifier: 5.8.3
-        version: 5.8.3
-      vite:
-        specifier: ^6.3.3
-        version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
-
   packages/psionic:
     dependencies:
       elysia:
@@ -244,19 +273,6 @@ importers:
       '@types/bun':
         specifier: ^1.2.16
         version: 1.2.16
-
-  packages/pylon:
-    dependencies:
-      '@openagentsinc/sdk':
-        specifier: workspace:^
-        version: link:../sdk
-      '@openagentsinc/ui':
-        specifier: workspace:^
-        version: link:../ui/dist
-    devDependencies:
-      vite:
-        specifier: ^6.0.7
-        version: 6.3.3(@types/node@22.15.29)(tsx@4.19.4)
 
   packages/relay:
     dependencies:
