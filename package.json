@@ -19,7 +19,7 @@
     "changeset-publish": "pnpm build && TEST_DIST= pnpm vitest && changeset publish",
     "setup-hooks": "git config core.hooksPath .githooks",
     "storybook": "pnpm --filter=@openagentsinc/storybook run storybook",
-    "dev:site": "pnpm --filter=@openagentsinc/openagents.com run dev"
+    "site": "pnpm --filter=@openagentsinc/openagents.com run dev"
   },
   "devDependencies": {
     "@babel/cli": "7.27.2",
