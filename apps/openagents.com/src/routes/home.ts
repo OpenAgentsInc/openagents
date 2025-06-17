@@ -7,7 +7,7 @@ export function home() {
     title: "OpenAgents - Autonomous Economic Agents",
     styles: baseStyles,
     body: html`
-      ${navigation("/")}
+      ${navigation({ current: "home" })}
       
       <div class="container">
         <div class="hero">

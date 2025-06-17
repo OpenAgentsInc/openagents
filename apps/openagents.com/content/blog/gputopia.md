@@ -1,0 +1,54 @@
+---
+title: "GPUtopia 2.0"
+date: 2025-05-14
+summary: We're rebooting our swarm compute network as OpenAgents Compute.
+image: "/images/blog05.png"
+---
+
+<div class="w-full mx-auto flex justify-center items-center">
+<blockquote class="twitter-tweet" data-media-max-width="560"><p lang="en" dir="ltr">Episode 174: GPUtopia 2.0<br><br>We announce we&#39;re rebooting our swarm compute network: previously called GPUtopia, now called OpenAgents Compute.<br><br>This will enable anyone in the world to sell their spare compute for bitcoin, simply by running a desktop app with a built-in bitcoin… <a href="https://t.co/Tq0eVVFq5D">pic.twitter.com/Tq0eVVFq5D</a></p>&mdash; OpenAgents ⚡ (@OpenAgentsInc) <a href="https://twitter.com/OpenAgentsInc/status/1922738011621687492?ref_src=twsrc%5Etfw">May 14, 2025</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+</div>
+
+Transcript of episode 174:
+
+Folks I'm excited to announce that this month we are rebooting our swarm compute network, previously called GPUtopia, now called OpenAgents Compute.
+
+Why should you care?
+
+Because you can sell your spare compute for bitcoin - as simple as running a simple desktop app, adding your computer to our global compute marketplace and getting paid in bitcoin.
+
+This is something we already launched. It worked. We paid out I don't know how many tens or hundreds of compute providers. You could provide your compute first through a web application, then through a "workerbee" software that supported inference, finetuning, embedding, image generation, all through an OpenAI-compatible endpoint.
+
+We phased this out. Part of this was, we had a bunch of sellers, not enough buyers. Now this was 18 months ago. And we thought that in the future, the ideal buyer that's going to really help launch this as a two-sided marketplace are going to be agents.
+
+Once agents are good and easy enough to use, that should solve that demand issue.
+
+Eighteen months later, a pivot to OpenAgents later, 170 videos of building a whole bunch of agents infrastructure later, we're ready to bring this back in.
+
+So much has changed in the last 18 months.
+
+We've got great ways of running local models so that we don't need to be building this infrastructure anymore.
+
+We can just pay people for running things like Ollama, focusing on what we're good at.
+
+The thing we'll uniquely provide to this is the super cool interface. You're going to install an app, it's going to be a way for you to see the earnings and visualize the network activity, paired with a cool game-style sci-fi HUD for actually using these agents.
+
+It's going to feel a little bit like a video game, but it's going to have agent payments tied directly into it.
+
+We are going to be building and beta-testing this over the next week or so in our Discord.
+
+Our objective is to take all this stuff we've built so far and put it into one open-source software package.
+
+We're going to continue doing the whole build-in-public thing.
+
+We're going to be beta-testing things still in our Discord, that's been going great.
+
+We want to get the first payments out to sellers of compute a week from today at the latest.
+
+If you want to get a start on that, we're going to be using Ollama as our local model provider. So you'll need Ollama installed locally.
+
+Go [install Ollama](https://ollama.com/download) and then obviously you'll have through OpenAgents the wallet, which works just fine as you can see in our [last video](https://x.com/OpenAgentsInc/status/1922303008617984363).
+
+Stay tuned!
+
+<img src="/images/blog05a.png" class="border border-zinc-700 rounded-lg" />

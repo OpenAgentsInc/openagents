@@ -7,7 +7,7 @@ export function about() {
     title: "About - OpenAgents",
     styles: baseStyles,
     body: html`
-      ${navigation("/about")}
+      ${navigation({ current: "about" })}
       
       <div class="container">
         <h1>About OpenAgents</h1>

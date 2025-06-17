@@ -12,7 +12,7 @@ export const baseStyles = css`
     --bg-secondary: #111;
     --text-primary: #fff;
     --text-secondary: #aaa;
-    --accent: #00ff00;
+    --accent: #00ff9f;
     --font-mono: "Berkeley Mono", "SF Mono", "Monaco", monospace;
   }
   

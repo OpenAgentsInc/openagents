@@ -7,7 +7,7 @@ export function docs() {
     title: "Documentation - OpenAgents",
     styles: baseStyles,
     body: html`
-      ${navigation("/docs")}
+      ${navigation({ current: "docs" })}
       
       <div class="container">
         <h1>Documentation</h1>

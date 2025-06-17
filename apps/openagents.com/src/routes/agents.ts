@@ -41,7 +41,7 @@ export function agents() {
     title: "Agent Marketplace - OpenAgents",
     styles: baseStyles,
     body: html`
-      ${navigation("/agents")}
+      ${navigation({ current: "agents" })}
       
       <div class="container">
         <h1>Agent Marketplace</h1>

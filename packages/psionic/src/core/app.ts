@@ -1,3 +1,4 @@
+import { staticPlugin } from "@elysiajs/static"
 import { Elysia } from "elysia"
 import type { PsionicConfig, RouteHandler } from "../types"
 
@@ -8,6 +9,14 @@ export class PsionicApp {
   constructor(config: PsionicConfig) {
     this.config = config
     this.app = new Elysia()
+
+    // Add static file serving if configured
+    if (config.staticDir) {
+      this.app.use(staticPlugin({
+        assets: config.staticDir,
+        prefix: ""
+      }))
+    }
 
     // Add catch-all redirect to root by default
     if (config.catchAllRedirect !== false) {
