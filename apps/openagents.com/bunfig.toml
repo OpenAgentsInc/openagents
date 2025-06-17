@@ -1,0 +1,14 @@
+# Bun configuration for openagents.com app
+# This app uses a hybrid approach: pnpm for dependencies, Bun for runtime
+
+[install]
+# Prevent accidental bun install usage - we use pnpm for dependency management
+exact = false
+linkWorkspacePackages = false  # Don't override pnpm's workspace linking
+saveTextLockfile = true       # Use text-based lockfile if someone accidentally runs bun install
+
+[run]
+shell = "system"  # Compatibility with existing shell scripts
+
+# Note: Dependencies should be installed using pnpm from the repository root:
+# pnpm add <package> --filter=@openagentsinc/openagents.com

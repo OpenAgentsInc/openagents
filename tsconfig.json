@@ -5,8 +5,10 @@
     { "path": "packages/ai" },
     { "path": "packages/cli" },
     { "path": "packages/nostr" },
-    { "path": "packages/playground" },
-    { "path": "packages/relay" },
-    { "path": "packages/sdk" }
+    { "path": "packages/psionic" },
+    { "path": "packages/sdk" },
+    { "path": "apps/openagents.com" },
+    { "path": "apps/playground" },
+    { "path": "apps/pylon" }
   ]
 }
