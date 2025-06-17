@@ -71,6 +71,7 @@ export const baseStyles = css`
     background-color: var(--background0);
     color: var(--foreground1);
     overflow-x: hidden;
+    font-family: monospace;
   }
   
   /* Fix white overflow bars */
