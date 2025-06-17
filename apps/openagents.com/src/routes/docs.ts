@@ -1,13 +1,13 @@
-import { html, document } from '@openagentsinc/psionic'
-import { baseStyles } from '../styles'
-import { navigation } from '../components/navigation'
+import { document, html } from "@openagentsinc/psionic"
+import { navigation } from "../components/navigation"
+import { baseStyles } from "../styles"
 
 export function docs() {
   return document({
-    title: 'Documentation - OpenAgents',
+    title: "Documentation - OpenAgents",
     styles: baseStyles,
     body: html`
-      ${navigation('/docs')}
+      ${navigation("/docs")}
       
       <div class="container">
         <h1>Documentation</h1>

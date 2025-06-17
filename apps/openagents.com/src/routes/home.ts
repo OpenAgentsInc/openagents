@@ -1,13 +1,13 @@
-import { html, document } from '@openagentsinc/psionic'
-import { baseStyles } from '../styles'
-import { navigation } from '../components/navigation'
+import { document, html } from "@openagentsinc/psionic"
+import { navigation } from "../components/navigation"
+import { baseStyles } from "../styles"
 
 export function home() {
   return document({
-    title: 'OpenAgents - Autonomous Economic Agents',
+    title: "OpenAgents - Autonomous Economic Agents",
     styles: baseStyles,
     body: html`
-      ${navigation('/')}
+      ${navigation("/")}
       
       <div class="container">
         <div class="hero">

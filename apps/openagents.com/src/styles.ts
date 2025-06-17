@@ -1,4 +1,4 @@
-import { css } from '@openagentsinc/psionic'
+import { css } from "@openagentsinc/psionic"
 
 export const baseStyles = css`
   * {

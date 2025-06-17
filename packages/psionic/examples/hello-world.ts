@@ -1,7 +1,7 @@
-import { createPsionicApp, html, css, document } from '../src'
+import { createPsionicApp, css, document, html } from "../src"
 
 const app = createPsionicApp({
-  name: 'Psionic Hello World',
+  name: "Psionic Hello World",
   port: 3002
 })
 
@@ -35,9 +35,9 @@ const styles = css`
   }
 `
 
-app.route('/', () => {
+app.route("/", () => {
   return document({
-    title: 'Psionic',
+    title: "Psionic",
     styles,
     body: html`<h1>Psionic ⚡</h1>`
   })
