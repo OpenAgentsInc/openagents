@@ -2,8 +2,8 @@ import { css } from "@openagentsinc/psionic"
 
 // Import WebTUI CSS (will be included via link tags)
 export const webtuiStyles = css`
-  @import '@openagentsinc/ui/webtui.css';
-  @import '@openagentsinc/ui/theme-zinc.css';
+  @import '/webtui.css';
+  @import '/theme-zinc.css';
 `
 
 // Base styles for layout and WebTUI integration

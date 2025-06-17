@@ -36,7 +36,7 @@ export function themeSwitcher(): string {
           const link = document.createElement('link');
           link.id = 'theme-css';
           link.rel = 'stylesheet';
-          link.href = '/node_modules/@openagentsinc/ui/dist/theme-' + theme + '.css';
+          link.href = '/theme-' + theme + '.css';
           document.head.appendChild(link);
         }
       }
