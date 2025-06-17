@@ -135,38 +135,38 @@ export const baseStyles = css`
   .container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 1rem;
   }
   
   .hero {
     text-align: center;
-    padding: 4rem 0;
+    padding: 2rem 0;
   }
   
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 2rem;
-    margin-top: 3rem;
+    gap: 1rem;
+    margin-top: 1.5rem;
   }
   
   .theme-switcher {
     position: absolute;
-    top: 1rem;
-    right: 1rem;
+    top: 0.5rem;
+    right: 0.5rem;
   }
   
   .nav-container {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 2rem;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--background2);
-    margin-bottom: 3rem;
+    margin-bottom: 1rem;
   }
   
   .nav-links {
     display: flex;
-    gap: 2rem;
+    gap: 0.5rem;
   }
 `

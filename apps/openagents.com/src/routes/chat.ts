@@ -72,17 +72,17 @@ export function chat() {
       <style>
         .chat-layout {
           display: flex;
-          height: calc(100vh - 80px); /* Adjust for navigation height */
-          gap: 1rem;
-          padding: 1rem;
+          height: calc(100vh - 60px); /* Adjust for compact navigation height */
+          gap: 0.5rem;
+          padding: 0.5rem;
         }
 
         .sidebar {
-          width: 300px;
-          min-width: 300px;
+          width: 280px;
+          min-width: 280px;
           display: flex;
           flex-direction: column;
-          gap: 1rem;
+          gap: 0.5rem;
           overflow-y: auto;
         }
 
@@ -92,12 +92,12 @@ export function chat() {
         }
 
         .status-card, .model-list-card {
-          padding: 1rem;
+          padding: 0.75rem;
         }
 
         .status-card h4, .model-list-card h4 {
-          margin: 0 0 1rem 0;
-          font-size: 0.9em;
+          margin: 0 0 0.5rem 0;
+          font-size: 0.85em;
           color: var(--foreground1);
         }
 
@@ -169,24 +169,24 @@ export function chat() {
           display: flex;
           flex-direction: column;
           height: 100%;
-          padding: 1rem;
+          padding: 0.75rem;
         }
 
         .chat-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding-bottom: 1rem;
+          padding-bottom: 0.75rem;
           border-bottom: 1px solid var(--foreground2);
         }
 
         .chat-messages {
           flex: 1;
           overflow-y: auto;
-          padding: 1rem 0;
+          padding: 0.75rem 0;
           display: flex;
           flex-direction: column;
-          gap: 1rem;
+          gap: 0.75rem;
         }
 
         .empty-state {
@@ -232,7 +232,7 @@ export function chat() {
         .chat-input-container {
           display: flex;
           gap: 0.5rem;
-          padding-top: 1rem;
+          padding-top: 0.75rem;
           border-top: 1px solid var(--foreground2);
         }
 
@@ -273,13 +273,13 @@ export function chat() {
           .sidebar {
             width: 100%;
             min-width: 100%;
-            max-height: 300px;
+            max-height: 200px;
             overflow-y: auto;
           }
 
           .main-chat {
-            height: calc(100vh - 400px);
-            min-height: 400px;
+            height: calc(100vh - 300px);
+            min-height: 300px;
           }
 
           .model-list {
