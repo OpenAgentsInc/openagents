@@ -4,6 +4,7 @@ import { agents } from './routes/agents'
 import { docs } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
+import { chat } from './routes/chat'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -31,6 +32,7 @@ app.route('/docs', docs)
 app.route('/about', about)
 app.route('/blog', blogIndex)
 app.route('/blog/:slug', blogPost)
+app.route('/chat', chat)
 
 // Start the server
 app.start()
