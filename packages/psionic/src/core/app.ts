@@ -1,7 +1,7 @@
 import { staticPlugin } from "@elysiajs/static"
 import { Elysia } from "elysia"
-import type { PsionicConfig, RouteHandler } from "../types"
 import { discoverStories, renderComponentExplorer, renderStoryPage } from "../components/discovery"
+import type { PsionicConfig, RouteHandler } from "../types"
 
 export class PsionicApp {
   private app: Elysia
@@ -36,9 +36,9 @@ export class PsionicApp {
   }
 
   private async setupComponentExplorer() {
-    const componentsPath = this.config.componentsPath || '/components'
-    const componentsDir = this.config.componentsDir || 'stories'
-    
+    const componentsPath = this.config.componentsPath || "/components"
+    const componentsDir = this.config.componentsDir || "stories"
+
     // Main component explorer route
     this.app.get(componentsPath, async ({ set }) => {
       try {
@@ -47,9 +47,9 @@ export class PsionicApp {
         set.headers["content-type"] = "text/html; charset=utf-8"
         return html
       } catch (error) {
-        console.error('Error rendering component explorer:', error)
+        console.error("Error rendering component explorer:", error)
         set.status = 500
-        return 'Error loading component explorer'
+        return "Error loading component explorer"
       }
     })
 
@@ -57,26 +57,26 @@ export class PsionicApp {
     this.app.get(`${componentsPath}/:component/:story`, async ({ params, set }) => {
       try {
         const stories = await discoverStories(componentsDir)
-        const storyModule = stories.find(m => m.title === params.component)
-        
+        const storyModule = stories.find((m) => m.title === params.component)
+
         if (!storyModule) {
           set.status = 404
-          return 'Component not found'
+          return "Component not found"
         }
 
         const story = storyModule.stories[params.story]
         if (!story) {
           set.status = 404
-          return 'Story not found'
+          return "Story not found"
         }
 
         const html = renderStoryPage(storyModule, params.story, story, componentsPath)
         set.headers["content-type"] = "text/html; charset=utf-8"
         return html
       } catch (error) {
-        console.error('Error rendering story page:', error)
+        console.error("Error rendering story page:", error)
         set.status = 500
-        return 'Error loading story'
+        return "Error loading story"
       }
     })
 

@@ -1,19 +1,19 @@
 import fs from "fs/promises"
 import path from "path"
-import type { StoryModule, PsionicStory } from "../types"
+import type { PsionicStory, StoryModule } from "../types"
 
 /**
  * Discovers story files in the specified directory
  * Looks for *.story.ts files and loads their exported stories
  */
-export async function discoverStories(storiesDir: string): Promise<StoryModule[]> {
+export async function discoverStories(storiesDir: string): Promise<Array<StoryModule>> {
   try {
-    const storyModules: StoryModule[] = []
-    
+    const storyModules: Array<StoryModule> = []
+
     // Check if stories directory exists
     const storiesPath = path.resolve(storiesDir)
     const dirExists = await fs.access(storiesPath).then(() => true).catch(() => false)
-    
+
     if (!dirExists) {
       console.log(`📚 Stories directory not found: ${storiesPath}`)
       return []
@@ -21,7 +21,7 @@ export async function discoverStories(storiesDir: string): Promise<StoryModule[]
 
     // Read all files in stories directory
     const files = await fs.readdir(storiesPath)
-    const storyFiles = files.filter(file => file.endsWith('.story.ts'))
+    const storyFiles = files.filter((file) => file.endsWith(".story.ts"))
 
     console.log(`📚 Found ${storyFiles.length} story files in ${storiesPath}`)
 
@@ -30,28 +30,28 @@ export async function discoverStories(storiesDir: string): Promise<StoryModule[]
       try {
         const filePath = path.join(storiesPath, file)
         const relativePath = path.relative(process.cwd(), filePath)
-        
+
         // Import the story module dynamically
         const module = await import(filePath)
-        
+
         // Extract stories from module exports
         const stories: Record<string, PsionicStory> = {}
-        
+
         for (const [key, value] of Object.entries(module)) {
           // Skip title, component, and default exports
-          if (key === 'title' || key === 'component' || key === 'default') {
+          if (key === "title" || key === "component" || key === "default") {
             continue
           }
-          
+
           // Check if export looks like a story
-          if (value && typeof value === 'object' && 'html' in value) {
+          if (value && typeof value === "object" && "html" in value) {
             stories[key] = value as PsionicStory
           }
         }
 
         // Create story module
         const storyModule: StoryModule = {
-          title: module.title || path.basename(file, '.story.ts'),
+          title: module.title || path.basename(file, ".story.ts"),
           component: module.component,
           stories,
           filePath: relativePath
@@ -59,16 +59,14 @@ export async function discoverStories(storiesDir: string): Promise<StoryModule[]
 
         storyModules.push(storyModule)
         console.log(`📖 Loaded story: ${storyModule.title} (${Object.keys(stories).length} variants)`)
-        
       } catch (error) {
         console.error(`❌ Error loading story file ${file}:`, error)
       }
     }
 
     return storyModules.sort((a, b) => a.title.localeCompare(b.title))
-    
   } catch (error) {
-    console.error('❌ Error discovering stories:', error)
+    console.error("❌ Error discovering stories:", error)
     return []
   }
 }
@@ -76,9 +74,9 @@ export async function discoverStories(storiesDir: string): Promise<StoryModule[]
 /**
  * Renders the main component explorer page
  */
-export function renderComponentExplorer(stories: StoryModule[], basePath: string = '/components'): string {
+export function renderComponentExplorer(stories: Array<StoryModule>, basePath: string = "/components"): string {
   const storyCount = stories.reduce((sum, module) => sum + Object.keys(module.stories).length, 0)
-  
+
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -176,21 +174,25 @@ export function renderComponentExplorer(stories: StoryModule[], basePath: string
       </div>
 
       <div class="grid">
-        ${stories.map(storyModule => `
+        ${
+    stories.map((storyModule) => `
           <div class="story-card">
             <h3 class="story-title">${storyModule.title}</h3>
-            ${storyModule.component ? `<div class="story-component">&lt;${storyModule.component}&gt;</div>` : ''}
+            ${storyModule.component ? `<div class="story-component">&lt;${storyModule.component}&gt;</div>` : ""}
             <ul class="story-list">
-              ${Object.entries(storyModule.stories).map(([key, story]) => `
+              ${
+      Object.entries(storyModule.stories).map(([key, story]) => `
                 <li class="story-item">
                   <a href="${basePath}/${storyModule.title}/${key}" class="story-link">
                     ${story.name || key}
                   </a>
                 </li>
-              `).join('')}
+              `).join("")
+    }
             </ul>
           </div>
-        `).join('')}
+        `).join("")
+  }
       </div>
     </body>
     </html>
@@ -201,10 +203,10 @@ export function renderComponentExplorer(stories: StoryModule[], basePath: string
  * Renders an individual story page
  */
 export function renderStoryPage(
-  storyModule: StoryModule, 
-  storyKey: string, 
+  storyModule: StoryModule,
+  storyKey: string,
   story: PsionicStory,
-  basePath: string = '/components'
+  basePath: string = "/components"
 ): string {
   return `
     <!DOCTYPE html>
@@ -319,8 +321,8 @@ export function renderStoryPage(
 
       <div class="story-header">
         <h1 class="story-title">${story.name || storyKey}</h1>
-        ${storyModule.component ? `<div class="story-component">&lt;${storyModule.component}&gt;</div>` : ''}
-        ${story.description ? `<p class="story-description">${story.description}</p>` : ''}
+        ${storyModule.component ? `<div class="story-component">&lt;${storyModule.component}&gt;</div>` : ""}
+        ${story.description ? `<p class="story-description">${story.description}</p>` : ""}
       </div>
 
       <div class="preview-section">
@@ -329,15 +331,19 @@ export function renderStoryPage(
 
       <div class="code-section">
         <div class="code-header">HTML</div>
-        <div class="code-content">${story.html.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+        <div class="code-content">${story.html.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
       </div>
 
-      ${story.props ? `
+      ${
+    story.props ?
+      `
         <div class="code-section">
           <div class="code-header">Props</div>
           <div class="code-content">${JSON.stringify(story.props, null, 2)}</div>
         </div>
-      ` : ''}
+      ` :
+      ""
+  }
     </body>
     </html>
   `

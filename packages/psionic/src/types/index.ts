@@ -4,9 +4,9 @@ export interface PsionicConfig {
   catchAllRedirect?: boolean
   staticDir?: string // Path to static files directory
   // Component explorer configuration
-  componentsDir?: string      // Default: "stories"
-  componentsPath?: string     // Default: "/components"  
-  enableComponents?: boolean  // Default: true
+  componentsDir?: string // Default: "stories"
+  componentsPath?: string // Default: "/components"
+  enableComponents?: boolean // Default: true
   // Future: WebSocket relay configuration
   // relays?: string[]
 }
