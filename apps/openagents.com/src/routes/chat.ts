@@ -9,12 +9,13 @@ export function chat() {
     body: html`
       ${navigation({ current: "chat" })}
       
-      <div class="container">
-        <div class="chat-container">
+      <div class="chat-layout">
+        <!-- Left Sidebar -->
+        <div class="sidebar">
           <!-- Ollama Status Card -->
           <div class="status-card" box-="square">
             <div class="status-header">
-              <h3>Ollama Status</h3>
+              <h4>Ollama Status</h4>
               <div class="status-indicator">
                 <span id="ollama-status-dot" class="status-dot"></span>
                 <span id="ollama-status-text" class="status-text">Checking...</span>
@@ -24,11 +25,13 @@ export function chat() {
 
           <!-- Models List Card -->
           <div id="model-list-card" class="model-list-card" box-="square" style="display: none;">
-            <h3>Available Models</h3>
+            <h4>Available Models</h4>
             <div id="model-list" class="model-list"></div>
           </div>
+        </div>
 
-          <!-- Chat Interface -->
+        <!-- Main Chat Area -->
+        <div class="main-chat">
           <div class="chat-interface" box-="square">
             <div class="chat-header">
               <h3>Chat Interface</h3>
@@ -67,19 +70,35 @@ export function chat() {
       </div>
 
       <style>
-        .container {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 2rem;
+        .chat-layout {
+          display: flex;
+          height: calc(100vh - 80px); /* Adjust for navigation height */
+          gap: 1rem;
+          padding: 1rem;
         }
 
-        .chat-container {
-          display: grid;
+        .sidebar {
+          width: 300px;
+          min-width: 300px;
+          display: flex;
+          flex-direction: column;
           gap: 1rem;
+          overflow-y: auto;
+        }
+
+        .main-chat {
+          flex: 1;
+          min-width: 0; /* Allow flex item to shrink */
         }
 
         .status-card, .model-list-card {
           padding: 1rem;
+        }
+
+        .status-card h4, .model-list-card h4 {
+          margin: 0 0 1rem 0;
+          font-size: 0.9em;
+          color: var(--foreground1);
         }
 
         .status-header {
@@ -122,30 +141,34 @@ export function chat() {
         .model-list {
           display: flex;
           flex-direction: column;
-          gap: 0.5rem;
-          margin-top: 1rem;
+          gap: 0.25rem;
+          max-height: 400px;
+          overflow-y: auto;
         }
 
         .model-item {
-          padding: 0.75rem;
+          padding: 0.5rem;
           background: var(--background1);
           border-radius: 4px;
+          font-size: 0.85em;
         }
 
         .model-name {
           font-weight: bold;
-          margin-bottom: 0.25rem;
+          margin-bottom: 0.125rem;
+          font-size: 0.9em;
         }
 
         .model-details {
-          font-size: 0.9em;
+          font-size: 0.75em;
           color: var(--foreground0);
+          line-height: 1.2;
         }
 
         .chat-interface {
           display: flex;
           flex-direction: column;
-          height: 600px;
+          height: 100%;
           padding: 1rem;
         }
 
@@ -238,6 +261,30 @@ export function chat() {
           background: var(--background1);
           color: var(--foreground1);
           font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+          .chat-layout {
+            flex-direction: column;
+            height: auto;
+          }
+
+          .sidebar {
+            width: 100%;
+            min-width: 100%;
+            max-height: 300px;
+            overflow-y: auto;
+          }
+
+          .main-chat {
+            height: calc(100vh - 400px);
+            min-height: 400px;
+          }
+
+          .model-list {
+            max-height: 150px;
+          }
         }
       </style>
 
