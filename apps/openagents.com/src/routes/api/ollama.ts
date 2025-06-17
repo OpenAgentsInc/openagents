@@ -10,9 +10,9 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       return Response.json({ online: false, models: [], modelCount: 0 }, { status: 503 })
     }
   })
-  .post("/chat", async ({ body }) => {
+  .post("/chat", async ({ body }: { body: any }) => {
     try {
-      const { messages, model, options } = body as any
+      const { messages, model, options } = body
 
       // Create a TransformStream for streaming response
       const stream = new TransformStream()
@@ -31,7 +31,7 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
             await writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
           }
           await writer.write(encoder.encode(`data: [DONE]\n\n`))
-        } catch (error) {
+        } catch (error: any) {
           await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
         } finally {
           await writer.close()
@@ -45,7 +45,7 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
           "Connection": "keep-alive"
         }
       })
-    } catch (error) {
+    } catch (error: any) {
       return Response.json({ error: error.message }, { status: 500 })
     }
   })
