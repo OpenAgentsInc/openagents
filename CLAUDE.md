@@ -10,10 +10,9 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 - **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
-- **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
-- **`@openagentsinc/ai`** - AI provider abstraction
-- **`@openagentsinc/psionic`** - Hypermedia web framework
-- **`@openagentsinc/storybook`** - Component development and documentation
+- **`@openagentsinc/ui`** - Shared UI components (WebTUI CSS library)
+- **`@openagentsinc/ai`** - AI provider abstraction  
+- **`@openagentsinc/psionic`** - Hypermedia web framework with built-in component explorer
 
 ### Apps (User-facing applications)
 - **`@openagentsinc/openagents.com`** - Main website built with Psionic
@@ -84,9 +83,8 @@ pnpm --filter=@openagentsinc/sdk test
 ```
 sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
-ui → (standalone, React components)
-psionic → (standalone, web framework)
-storybook → (standalone, component docs)
+ui → (standalone, WebTUI CSS components)
+psionic → (standalone, web framework with component explorer)
 pylon → sdk (demo app)
 playground → ui (component testing)
 openagents.com → psionic, sdk, nostr (main website)
@@ -174,3 +172,53 @@ If you see CI errors about Effect build-utils failing on UI package:
 - Uses Changesets for version management
 - Automated build validation before publishing
 - Packages build independently but share common configuration
+
+## Component Explorer
+
+### Overview
+Psionic includes a built-in component explorer that provides a lightweight alternative to Storybook. It automatically discovers and renders component stories for documentation and testing.
+
+### Configuration
+Add component explorer options to your `PsionicConfig`:
+
+```typescript
+const app = createPsionicApp({
+  // ... other config
+  componentsDir: 'stories',        // Directory containing .story.ts files (default: "stories")
+  componentsPath: '/components',   // URL path for explorer (default: "/components") 
+  enableComponents: true          // Enable/disable explorer (default: true)
+})
+```
+
+### Creating Stories
+Create `.story.ts` files in your stories directory:
+
+```typescript
+// stories/Button.story.ts
+export const title = "Button"
+export const component = "webtui-button"
+
+export const Default = {
+  name: "Default Button",
+  html: `<button class="webtui-button">Click me</button>`,
+  description: "A standard button component"
+}
+
+export const Primary = {
+  name: "Primary Button", 
+  html: `<button class="webtui-button webtui-variant-foreground1">Primary</button>`,
+  description: "Primary button with emphasized styling"
+}
+```
+
+### Features
+- **Auto-discovery**: Automatically finds and loads `.story.ts` files
+- **Theme switching**: Built-in theme switcher in story pages  
+- **Simple format**: HTML-based stories without complex meta objects
+- **Zero dependencies**: Uses only Psionic's existing capabilities
+- **Integrated**: Same styling and theming as your main application
+
+### Accessing the Explorer
+- Main explorer: `http://localhost:3003/components`
+- Individual stories: `http://localhost:3003/components/ComponentName/StoryName`
+- Automatically added to navigation when enabled
