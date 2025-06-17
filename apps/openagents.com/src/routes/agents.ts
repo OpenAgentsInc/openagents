@@ -41,48 +41,47 @@ export function agents() {
     title: "Agent Marketplace - OpenAgents",
     styles: baseStyles,
     body: html`
-      <div class="webtui">
-        ${navigation({ current: "agents" })}
-        
-        <div class="container">
-          <div class="webtui-box webtui-box-single">
-            <div style="padding: 2rem;">
-              <h1 class="webtui-typography webtui-variant-h1" style="color: var(--webtui-foreground1); margin-bottom: 1rem;">Agent Marketplace</h1>
-              <p class="webtui-typography webtui-variant-body" style="color: var(--webtui-foreground2); margin-bottom: 2rem; line-height: 1.8;">
-                Discover and hire autonomous agents for your needs
-              </p>
+      ${navigation({ current: "agents" })}
+      
+      <div class="container">
+        <div box-="square">
+          <div style="padding: 2rem;">
+            <h1 style="color: var(--foreground1); margin-bottom: 1rem;">Agent Marketplace</h1>
+            <p style="color: var(--foreground2); margin-bottom: 2rem; line-height: 1.8;">
+              Discover and hire autonomous agents for your needs
+            </p>
               
               <div class="grid" style="margin-top: 2rem;">
                 ${
       mockAgents.map((agent) =>
         html`
-                <div class="webtui-box webtui-box-single">
+                <div box-="square">
                   <div style="padding: 1.5rem;">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                      <h2 class="webtui-typography webtui-variant-h3" style="color: var(--webtui-foreground1); margin: 0;">${agent.name}</h2>
-                      <span class="webtui-badge ${
-          agent.status === "active" ? "webtui-variant-foreground0" : "webtui-variant-background2"
+                      <h2 style="color: var(--foreground1); margin: 0;">${agent.name}</h2>
+                      <span is-="badge" variant-="${
+          agent.status === "active" ? "foreground0" : "background2"
         }">${agent.status}</span>
                     </div>
                     
-                    <p class="webtui-typography webtui-variant-caption" style="color: var(--webtui-foreground3); margin-bottom: 1rem;">
+                    <p style="color: var(--foreground3); margin-bottom: 1rem; font-size: 0.875rem;">
                       ${agent.id}
                     </p>
                     
                     <div style="margin: 1rem 0;">
-                      <p class="webtui-typography webtui-variant-body" style="color: var(--webtui-foreground2); margin: 0.5rem 0;">⚡ ${agent.hourlyRate} sats/request</p>
-                      <p class="webtui-typography webtui-variant-body" style="color: var(--webtui-foreground2); margin: 0.5rem 0;">💰 ${
+                      <p style="color: var(--foreground2); margin: 0.5rem 0;">⚡ ${agent.hourlyRate} sats/request</p>
+                      <p style="color: var(--foreground2); margin: 0.5rem 0;">💰 ${
           (agent.balance / 1000).toFixed(0)
         }k sats balance</p>
-                      <p class="webtui-typography webtui-variant-body" style="color: var(--webtui-foreground2); margin: 0.5rem 0;">⭐ ${agent.rating} (${agent.requests} requests)</p>
+                      <p style="color: var(--foreground2); margin: 0.5rem 0;">⭐ ${agent.rating} (${agent.requests} requests)</p>
                     </div>
                     
                     <div style="margin-top: 1rem;">
-                      <p class="webtui-typography webtui-variant-caption" style="color: var(--webtui-foreground3); margin-bottom: 0.5rem;">Capabilities:</p>
+                      <p style="color: var(--foreground3); margin-bottom: 0.5rem; font-size: 0.875rem;">Capabilities:</p>
                       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         ${
           agent.capabilities.map((cap) =>
-            html`<span class="webtui-badge webtui-variant-background2 webtui-size-small">${cap}</span>`
+            html`<span is-="badge" variant-="background2" size-="small">${cap}</span>`
           ).join("")
         }
                       </div>
@@ -91,8 +90,8 @@ export function agents() {
                     <div style="margin-top: 1.5rem; text-align: center;">
                       ${
           agent.status === "active"
-            ? html`<button class="webtui-button webtui-variant-foreground1">Hire Agent</button>`
-            : html`<span class="webtui-typography webtui-variant-body" style="color: var(--webtui-foreground3);">Currently Hibernating</span>`
+            ? html`<button is-="button" variant-="foreground1">Hire Agent</button>`
+            : html`<span style="color: var(--foreground3);">Currently Hibernating</span>`
         }
                     </div>
                   </div>
@@ -103,10 +102,10 @@ export function agents() {
               </div>
               
               <section style="margin-top: 4rem;">
-                <div class="webtui-box webtui-box-single" style="background: var(--webtui-background1); text-align: center;">
+                <div box-="square" style="background: var(--background1); text-align: center;">
                   <div style="padding: 2rem;">
-                    <h2 class="webtui-typography webtui-variant-h2" style="color: var(--webtui-foreground1); margin-bottom: 1rem;">Coming Soon</h2>
-                    <p class="webtui-typography webtui-variant-body" style="color: var(--webtui-foreground2); line-height: 1.8;">
+                    <h2 style="color: var(--foreground1); margin-bottom: 1rem;">Coming Soon</h2>
+                    <p style="color: var(--foreground2); line-height: 1.8;">
                       Real agents will populate this marketplace once the network launches.
                       Each agent will have verifiable performance metrics and reputation scores.
                     </p>
@@ -116,7 +115,6 @@ export function agents() {
             </div>
           </div>
         </div>
-      </div>
     `
   })
 }
