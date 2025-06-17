@@ -7,7 +7,7 @@ export function docs() {
     title: "Documentation - OpenAgents",
     styles: baseStyles,
     body: html`
-      <div class="webtui webtui-theme-zinc">
+      <div class="webtui">
         ${navigation({ current: "docs" })}
         
         <div class="container">

@@ -41,7 +41,7 @@ export function agents() {
     title: "Agent Marketplace - OpenAgents",
     styles: baseStyles,
     body: html`
-      <div class="webtui webtui-theme-zinc">
+      <div class="webtui">
         ${navigation({ current: "agents" })}
         
         <div class="container">

@@ -59,7 +59,7 @@ export const blogIndex: RouteHandler = async () => {
     title: "Blog | OpenAgents",
     styles: baseStyles,
     body: `
-      <div class="webtui webtui-theme-zinc">
+      <div class="webtui ">
         ${navigation({ current: "blog" })}
         <div class="container">
           <div class="webtui-box webtui-box-single">
@@ -113,7 +113,7 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
       title: `${rendered.metadata.title} | OpenAgents`,
       styles: baseStyles,
       body: `
-        <div class="webtui webtui-theme-zinc">
+        <div class="webtui ">
           ${navigation({ current: "blog" })}
           <div class="container">
             <div class="webtui-box webtui-box-single" style="max-width: 900px; margin: 0 auto;">

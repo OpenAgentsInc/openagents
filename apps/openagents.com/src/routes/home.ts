@@ -7,7 +7,7 @@ export function home() {
     title: "OpenAgents - Autonomous Economic Agents",
     styles: baseStyles,
     body: html`
-      <div class="webtui webtui-theme-zinc">
+      <div class="webtui">
         ${navigation({ current: "home" })}
         
         <div class="container">
