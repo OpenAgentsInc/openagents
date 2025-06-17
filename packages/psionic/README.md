@@ -42,8 +42,7 @@ The server will start on http://localhost:3002
 
 ### Available endpoints
 
-- `GET /` - Basic hello world endpoint
-- `GET /hypermedia` - Example hypermedia HTML response
+- `GET /` - Minimal Psionic landing page (black background, centered text)
 
 ### Hot reload
 
