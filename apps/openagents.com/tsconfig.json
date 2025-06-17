@@ -6,11 +6,10 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": false,
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true,
-    "outDir": "./dist"
+    "noEmit": true
   },
-  "include": ["src", "examples"]
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/psionic" }
+  ]
 }

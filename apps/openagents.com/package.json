@@ -1,0 +1,19 @@
+{
+  "name": "@openagentsinc/openagents.com",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/psionic": "workspace:*",
+    "@openagentsinc/sdk": "workspace:*",
+    "@openagentsinc/nostr": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.16"
+  }
+}

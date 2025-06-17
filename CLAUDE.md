@@ -4,16 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agents. The repository follows a clean architecture with these packages:
+This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agents. The repository follows a clean architecture with packages and apps:
 
+### Packages (Libraries)
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
-- **`@openagentsinc/relay`** - Nostr relay server implementation
-- **`@openagentsinc/cli`** - Command-line interface client
+- **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
 - **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
+- **`@openagentsinc/ai`** - AI provider abstraction
+- **`@openagentsinc/psionic`** - Hypermedia web framework
+- **`@openagentsinc/storybook`** - Component development and documentation
+
+### Apps (User-facing applications)
+- **`@openagentsinc/openagents.com`** - Main website built with Psionic
 - **`@openagentsinc/pylon`** - SDK demo application
 - **`@openagentsinc/playground`** - UI component testing playground
-- **`@openagentsinc/ai`** - AI provider abstraction
 
 ## Essential Commands
 
@@ -46,7 +51,6 @@ pnpm clean
 # Generate Effect package exports (run after adding new files)
 # IMPORTANT: Do NOT run codegen on @openagentsinc/ui package!
 pnpm --filter=@openagentsinc/nostr codegen
-pnpm --filter=@openagentsinc/relay codegen
 pnpm --filter=@openagentsinc/cli codegen
 
 # Build individual packages
@@ -68,8 +72,7 @@ pnpm --filter=@openagentsinc/sdk test
 ### Effect Service Architecture
 - **SDK Package**: Core SDK with Agent, Lightning, Nostr, Compute, and Inference namespaces
 - **Nostr Package**: Effect-based Nostr protocol implementation with NIP support
-- **Relay Package**: Nostr relay server implementation
-- **CLI Package**: Command-line interface with AI features
+- **CLI Package**: Command-line interface demo
 
 ### Key Patterns Used
 - **Schema-first development**: API contracts defined with `@effect/schema`
@@ -81,10 +84,12 @@ pnpm --filter=@openagentsinc/sdk test
 ```
 sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
-relay → (standalone)
 ui → (standalone, React components)
+psionic → (standalone, web framework)
+storybook → (standalone, component docs)
 pylon → sdk (demo app)
 playground → ui (component testing)
+openagents.com → psionic, sdk, nostr (main website)
 ```
 
 ## Build System
@@ -124,7 +129,7 @@ Each package builds in this order:
 ### Code Organization
 - **SDK**: Agent lifecycle, Lightning integration, Nostr communication
 - **Nostr**: NIPs implementation, key derivation, protocol handling
-- **CLI**: Command definitions, AI integrations, user interface
+- **CLI**: Command definitions, user interface (demo package)
 
 ### Effect Specific Notes
 - Use `Effect.gen` for readable async code composition
