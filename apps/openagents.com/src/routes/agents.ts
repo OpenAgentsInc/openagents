@@ -80,9 +80,8 @@ export function agents() {
                       <p style="color: var(--foreground3); margin-bottom: 0.5rem; font-size: 0.875rem;">Capabilities:</p>
                       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         ${
-          agent.capabilities.map((cap) =>
-            html`<span is-="badge" variant-="background2" size-="small">${cap}</span>`
-          ).join("")
+          agent.capabilities.map((cap) => html`<span is-="badge" variant-="background2" size-="small">${cap}</span>`)
+            .join("")
         }
                       </div>
                     </div>
