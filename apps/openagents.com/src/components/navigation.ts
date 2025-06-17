@@ -7,6 +7,7 @@ export function navigation({ current }: { current: string }) {
     { href: "/agents", label: "Agents", key: "agents" },
     { href: "/docs", label: "Docs", key: "docs" },
     { href: "/blog", label: "Blog", key: "blog" },
+    { href: "/components", label: "Components", key: "components" },
     { href: "/about", label: "About", key: "about" }
   ]
 

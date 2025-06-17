@@ -10,10 +10,9 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 - **`@openagentsinc/sdk`** - Bitcoin-powered digital agents SDK
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 - **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
-- **`@openagentsinc/ui`** - Shared UI components (React/Tailwind)
+- **`@openagentsinc/ui`** - WebTUI CSS library
 - **`@openagentsinc/ai`** - AI provider abstraction
-- **`@openagentsinc/psionic`** - Hypermedia web framework
-- **`@openagentsinc/storybook`** - Component development and documentation
+- **`@openagentsinc/psionic`** - Hypermedia web framework with built-in component explorer
 
 ### Apps (User-facing applications)
 - **`@openagentsinc/openagents.com`** - Main website built with Psionic
@@ -84,9 +83,8 @@ pnpm --filter=@openagentsinc/sdk test
 ```
 sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
-ui → (standalone, React components)
+ui → (standalone, WebTUI CSS)
 psionic → (standalone, web framework)
-storybook → (standalone, component docs)
 pylon → sdk (demo app)
 playground → ui (component testing)
 openagents.com → psionic, sdk, nostr (main website)
@@ -174,3 +172,50 @@ If you see CI errors about Effect build-utils failing on UI package:
 - Uses Changesets for version management
 - Automated build validation before publishing
 - Packages build independently but share common configuration
+
+## Component Explorer
+
+Psionic includes a built-in component library explorer for systematic UI development.
+
+### Configuration
+```typescript
+const app = createPsionicApp({
+  name: 'MyApp',
+  // Component explorer configuration
+  componentsDir: 'stories',          // Default: "stories"
+  componentsPath: '/components',     // Default: "/components"
+  enableComponents: true,            // Default: true
+  componentExplorerOptions: {
+    styles: customStyles,            // CSS to include
+    navigation: navComponent,        // Navigation HTML
+    baseClass: 'my-theme'           // Root CSS class
+  }
+})
+```
+
+### Creating Stories
+Create `.story.ts` files in your stories directory:
+
+```typescript
+// Button.story.ts
+export const title = "Button"
+export const component = "Button"
+
+export const Default = {
+  name: "Default Button",
+  html: `<button class="btn">Click me</button>`,
+  description: "Basic button component"
+}
+
+export const Primary = {
+  name: "Primary Button", 
+  html: `<button class="btn btn-primary">Primary</button>`
+}
+```
+
+### Features
+- **Zero Dependencies**: Built into Psionic, no external packages
+- **Theme Integration**: Inherits your app's styling and theme system
+- **Simple Format**: HTML-based stories without complex abstractions
+- **Auto-discovery**: Automatically finds all `.story.ts` files
+- **Hot Navigation**: Accessible at `/components` by default

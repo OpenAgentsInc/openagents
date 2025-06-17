@@ -4,13 +4,24 @@ import { agents } from './routes/agents'
 import { docs } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
+import { navigation } from './components/navigation'
+import { baseStyles } from './styles'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const app = createPsionicApp({
   name: 'OpenAgents',
   port: 3003,
-  staticDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public')
+  staticDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public'),
+  // Component explorer configuration
+  componentsDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../stories'),
+  componentsPath: '/components',
+  enableComponents: true,
+  componentExplorerOptions: {
+    styles: baseStyles,
+    navigation: navigation({ current: 'components' }),
+    baseClass: 'webtui'
+  }
 })
 
 // Define routes
