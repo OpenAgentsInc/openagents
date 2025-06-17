@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "include": ["src"],
   "references": [
-    { "path": "../ai" }
+    { "path": "../../packages/ai" }
   ],
   "compilerOptions": {
     "types": ["node", "vite/client"],

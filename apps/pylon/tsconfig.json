@@ -6,7 +6,9 @@
     "types": ["vite/client"],
     "lib": ["ESNext", "DOM"],
     "target": "ESNext",
-    "module": "ESNext"
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true
   },
   "include": ["src"]
 }
