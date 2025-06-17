@@ -1,5 +1,5 @@
 import * as path from "node:path"
-import type { UserConfig } from "vitest/config"
+import { defineConfig } from "vitest/config"
 
 const alias = (name: string) => {
   const target = process.env.TEST_DIST !== undefined ? "dist/dist/esm" : "src"
@@ -9,8 +9,7 @@ const alias = (name: string) => {
   })
 }
 
-// This is a workaround, see https://github.com/vitest-dev/vitest/issues/4744
-const config: UserConfig = {
+export default defineConfig({
   esbuild: {
     target: "es2020"
   },
@@ -31,8 +30,11 @@ const config: UserConfig = {
       ...alias("cli"),
       ...alias("domain"),
       ...alias("server")
-    }
+    },
+    // Use the projects field instead of workspace file
+    projects: [
+      "packages/*",
+      "apps/*"
+    ]
   }
-}
-
-export default config
+})
