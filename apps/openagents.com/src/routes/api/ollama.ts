@@ -49,4 +49,3 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       return Response.json({ error: error.message }, { status: 500 })
     }
   })
-
