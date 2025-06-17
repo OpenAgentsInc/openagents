@@ -16,7 +16,7 @@ This repo holds our new cross-platform version (v5), a work in progress.
 - **`@openagentsinc/psionic`** - Hypermedia web framework using Bun and Elysia
 
 ### Interfaces
-- **`@openagentsinc/cli`** - Command-line interface with AI features
+- **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
 - **`@openagentsinc/ui`** - WebTUI terminal-inspired CSS components
 
 ### AI
