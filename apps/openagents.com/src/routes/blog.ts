@@ -3,6 +3,7 @@ import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
 import { navigation } from "../components/navigation"
+import { baseStyles } from "../styles"
 
 const BLOG_DIR = path.join(process.cwd(), "content", "blog")
 
@@ -56,6 +57,46 @@ export const blogIndex: RouteHandler = async () => {
 
   return document({
     title: "Blog | OpenAgents",
+    styles: `
+      ${baseStyles}
+      .blog-list {
+        margin-top: 2rem;
+      }
+      .blog-item {
+        margin-bottom: 3rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid #333;
+      }
+      .blog-item:last-child {
+        border-bottom: none;
+      }
+      .blog-item h2 {
+        margin-bottom: 0.5rem;
+      }
+      .blog-item h2 a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      .blog-item h2 a:hover {
+        text-decoration: underline;
+      }
+      .blog-item time {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+      }
+      .blog-item p {
+        margin: 1rem 0;
+        color: var(--text-secondary);
+      }
+      .read-more {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .read-more:hover {
+        text-decoration: underline;
+      }
+    `,
     body: `
       ${navigation({ current: "blog" })}
       <div class="container">
@@ -73,51 +114,12 @@ export const blogIndex: RouteHandler = async () => {
     }
         </div>
       </div>
-    `,
-    styles: `
-      .blog-list {
-        margin-top: 2rem;
-      }
-      .blog-item {
-        margin-bottom: 3rem;
-        padding-bottom: 2rem;
-        border-bottom: 1px solid #333;
-      }
-      .blog-item:last-child {
-        border-bottom: none;
-      }
-      .blog-item h2 {
-        margin-bottom: 0.5rem;
-      }
-      .blog-item h2 a {
-        color: #00ff9f;
-        text-decoration: none;
-      }
-      .blog-item h2 a:hover {
-        text-decoration: underline;
-      }
-      .blog-item time {
-        color: #888;
-        font-size: 0.9rem;
-      }
-      .blog-item p {
-        margin: 1rem 0;
-        color: #ccc;
-      }
-      .read-more {
-        color: #00ff9f;
-        text-decoration: none;
-        font-weight: 500;
-      }
-      .read-more:hover {
-        text-decoration: underline;
-      }
     `
   })
 }
 
 export const blogPost: RouteHandler = async (context: any): Promise<string> => {
-  const slug = context.params?.slug
+  const slug = context.params?.slug || context.slug
 
   if (!slug) {
     return "<h1>Blog post not found</h1>"
@@ -132,24 +134,8 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
 
     return document({
       title: `${rendered.metadata.title} | OpenAgents`,
-      body: `
-        ${navigation({ current: "blog" })}
-        <div class="container">
-          <article class="blog-post">
-            <header>
-              <h1>${rendered.metadata.title}</h1>
-              <time datetime="${rendered.metadata.date}">${formatDate(rendered.metadata.date)}</time>
-            </header>
-            <div class="blog-content">
-              ${rendered.html}
-            </div>
-            <footer>
-              <a href="/blog" class="back-link">← Back to all posts</a>
-            </footer>
-          </article>
-        </div>
-      `,
       styles: `
+        ${baseStyles}
         .blog-post {
           max-width: 800px;
           margin: 0 auto;
@@ -161,10 +147,10 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
         }
         .blog-post h1 {
           margin-bottom: 0.5rem;
-          color: #00ff9f;
+          color: var(--accent);
         }
         .blog-post time {
-          color: #888;
+          color: var(--text-secondary);
           font-size: 0.9rem;
         }
         .blog-content {
@@ -175,14 +161,14 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
         .blog-content h3, 
         .blog-content h4 {
           margin: 2rem 0 1rem;
-          color: #00ff9f;
+          color: var(--accent);
         }
         .blog-content p {
           margin: 1rem 0;
-          color: #ccc;
+          color: var(--text-secondary);
         }
         .blog-content a {
-          color: #00ff9f;
+          color: var(--accent);
           text-decoration: underline;
         }
         .blog-content a:hover {
@@ -202,17 +188,17 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
         .blog-content blockquote {
           margin: 2rem 0;
           padding-left: 1rem;
-          border-left: 3px solid #00ff9f;
-          color: #aaa;
+          border-left: 3px solid var(--accent);
+          color: var(--text-secondary);
         }
         .blog-content code {
-          background: #1a1a1a;
+          background: var(--bg-secondary);
           padding: 0.2rem 0.4rem;
           border-radius: 3px;
-          font-family: 'Courier New', monospace;
+          font-family: var(--font-mono);
         }
         .blog-content pre {
-          background: #1a1a1a;
+          background: var(--bg-secondary);
           padding: 1rem;
           border-radius: 5px;
           overflow-x: auto;
@@ -229,7 +215,7 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
         }
         .blog-content li {
           margin: 0.5rem 0;
-          color: #ccc;
+          color: var(--text-secondary);
         }
         .blog-content hr {
           margin: 3rem 0;
@@ -246,13 +232,30 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
           border-color: #3f3f46;
         }
         .back-link {
-          color: #888;
+          color: var(--text-secondary);
           text-decoration: none;
           font-size: 0.9rem;
         }
         .back-link:hover {
-          color: #00ff9f;
+          color: var(--accent);
         }
+      `,
+      body: `
+        ${navigation({ current: "blog" })}
+        <div class="container">
+          <article class="blog-post">
+            <header>
+              <h1>${rendered.metadata.title}</h1>
+              <time datetime="${rendered.metadata.date}">${formatDate(rendered.metadata.date)}</time>
+            </header>
+            <div class="blog-content">
+              ${rendered.html}
+            </div>
+            <footer>
+              <a href="/blog" class="back-link">← Back to all posts</a>
+            </footer>
+          </article>
+        </div>
       `
     })
   } catch (error) {
