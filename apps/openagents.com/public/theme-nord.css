@@ -4,56 +4,56 @@
  */
 
 /* Nord Dark */
-.theme-nord,
-.theme-nord-dark {
+.webtui-theme-nord,
+.webtui-theme-nord-dark {
   /* Polar Night */
-  --background0: #2e3440;
-  --background1: #3b4252;
-  --background2: #434c5e;
-  --background3: #4c566a;
+  --webtui-background0: #2e3440;
+  --webtui-background1: #3b4252;
+  --webtui-background2: #434c5e;
+  --webtui-background3: #4c566a;
   
   /* Snow Storm */
-  --foreground0: #d8dee9;
-  --foreground1: #e5e9f0;
-  --foreground2: #eceff4;
+  --webtui-foreground0: #d8dee9;
+  --webtui-foreground1: #e5e9f0;
+  --webtui-foreground2: #eceff4;
   
   /* Frost */
-  --accent: #88c0d0;
-  --accent-light: #8fbcbb;
-  --accent-dark: #81a1c1;
-  --accent-darker: #5e81ac;
+  --webtui-accent: #88c0d0;
+  --webtui-accent-light: #8fbcbb;
+  --webtui-accent-dark: #81a1c1;
+  --webtui-accent-darker: #5e81ac;
   
   /* Aurora */
-  --success: #a3be8c;
-  --warning: #ebcb8b;
-  --danger: #bf616a;
-  --purple: #b48ead;
-  --orange: #d08770;
+  --webtui-success: #a3be8c;
+  --webtui-warning: #ebcb8b;
+  --webtui-danger: #bf616a;
+  --webtui-purple: #b48ead;
+  --webtui-orange: #d08770;
 }
 
 /* Nord Light (custom interpretation) */
-.theme-nord-light {
+.webtui-theme-nord-light {
   /* Inverted Polar Night */
-  --background0: #eceff4;
-  --background1: #e5e9f0;
-  --background2: #d8dee9;
-  --background3: #c5ccd8;
+  --webtui-background0: #eceff4;
+  --webtui-background1: #e5e9f0;
+  --webtui-background2: #d8dee9;
+  --webtui-background3: #c5ccd8;
   
   /* Inverted Snow Storm */
-  --foreground0: #4c566a;
-  --foreground1: #434c5e;
-  --foreground2: #3b4252;
+  --webtui-foreground0: #4c566a;
+  --webtui-foreground1: #434c5e;
+  --webtui-foreground2: #3b4252;
   
   /* Frost (adjusted for light theme) */
-  --accent: #5e81ac;
-  --accent-light: #81a1c1;
-  --accent-dark: #88c0d0;
-  --accent-darker: #8fbcbb;
+  --webtui-accent: #5e81ac;
+  --webtui-accent-light: #81a1c1;
+  --webtui-accent-dark: #88c0d0;
+  --webtui-accent-darker: #8fbcbb;
   
   /* Aurora (slightly adjusted) */
-  --success: #8fa876;
-  --warning: #d7b566;
-  --danger: #a54e56;
-  --purple: #9d7e97;
-  --orange: #bc7a5c;
+  --webtui-success: #8fa876;
+  --webtui-warning: #d7b566;
+  --webtui-danger: #a54e56;
+  --webtui-purple: #9d7e97;
+  --webtui-orange: #bc7a5c;
 }
