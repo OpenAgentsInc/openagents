@@ -74,18 +74,18 @@ export const blogIndex: RouteHandler = async () => {
               ${
       posts.map((post) => `
                 <article class="blog-card" box-="square">
-                  <div class="blog-card-content">
-                    <h2 class="blog-card-title">
-                      <a href="/blog/${post.slug}">${post.title}</a>
-                    </h2>
-                    <time class="blog-card-date" datetime="${post.date}">${formatDate(post.date)}</time>
-                    ${
+                  <a href="/blog/${post.slug}" class="blog-card-link">
+                    <div class="blog-card-content">
+                      <h2 class="blog-card-title">${post.title}</h2>
+                      <time class="blog-card-date" datetime="${post.date}">${formatDate(post.date)}</time>
+                      ${
         post.summary
           ? `<p class="blog-card-summary">${post.summary}</p>`
           : ""
       }
-                    <a href="/blog/${post.slug}" is-="button" variant-="foreground1" size-="small" class="blog-card-button">Read more →</a>
-                  </div>
+                      <div class="blog-card-button" is-="button" variant-="foreground1" size-="small">Read more →</div>
+                    </div>
+                  </a>
                 </article>
               `).join("")
     }
@@ -162,6 +162,13 @@ export const blogIndex: RouteHandler = async () => {
           background: var(--background2);
         }
 
+        .blog-card-link {
+          display: block;
+          text-decoration: none;
+          color: inherit;
+          height: 100%;
+        }
+
         .blog-card-content {
           padding: 2rem;
         }
@@ -170,15 +177,11 @@ export const blogIndex: RouteHandler = async () => {
           margin: 0 0 0.5rem 0;
           font-size: 1.25rem;
           font-weight: 600;
-        }
-
-        .blog-card-title a {
           color: var(--foreground0);
-          text-decoration: none;
           transition: color 0.2s ease;
         }
 
-        .blog-card-title a:hover {
+        .blog-card:hover .blog-card-title {
           color: var(--foreground1);
         }
 
@@ -196,7 +199,8 @@ export const blogIndex: RouteHandler = async () => {
         }
 
         .blog-card-button {
-          text-decoration: none;
+          display: inline-block;
+          margin-top: 1rem;
         }
 
         /* Responsive */
@@ -307,7 +311,7 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
           .article-header {
             margin-bottom: 3rem;
             padding-bottom: 2rem;
-            border-bottom: 1px solid var(--foreground2);
+            border-bottom: 1px solid var(--background3);
           }
 
           .article-title {
