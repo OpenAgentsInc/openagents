@@ -1,7 +1,7 @@
 {
   "project": {
     "root": "/Users/christopherdavid/code/openagents/packages/autotest",
-    "startCommand": "bun run test-server.ts",
+    "startCommand": "bun test-server.ts",
     "port": 3333,
     "readyPattern": "ready"
   },

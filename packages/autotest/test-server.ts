@@ -8,7 +8,20 @@ const app = new Elysia()
   .get("/error", () => {
     throw new Error("Test error")
   })
-  .listen(3333)
 
-console.log("Test server is running at http://localhost:3333")
+const port = parseInt(process.env.PORT || "3333")
+const server = await app.listen(port)
+
+console.log(`Test server is running at http://localhost:${port}`)
 console.log("Server ready")
+
+// Keep the process alive
+process.on('SIGINT', () => {
+  console.log("Shutting down...")
+  process.exit(0)
+})
+
+process.on('SIGTERM', () => {
+  console.log("Shutting down...")
+  process.exit(0)
+})

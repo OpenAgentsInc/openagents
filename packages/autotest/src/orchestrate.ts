@@ -19,10 +19,10 @@ if (args.length === 0) {
 // Default configuration for testing OpenAgents
 const defaultConfig: OrchestratorConfig = {
   project: {
-    root: process.cwd(),
+    root: "/Users/christopherdavid/code/openagents/apps/openagents.com",
     startCommand: "bun run dev",
     port: 3003,
-    readyPattern: /OpenAgents is running at|listening on|ready/i
+    readyPattern: /is running at|Server listening|ready/i
   },
   testing: {
     routes: ["/", "/chat", "/docs", "/about", "/components"],
