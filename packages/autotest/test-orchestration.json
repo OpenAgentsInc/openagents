@@ -1,0 +1,18 @@
+{
+  "project": {
+    "root": "/Users/christopherdavid/code/openagents/packages/autotest",
+    "startCommand": "bun test-server.ts",
+    "port": 3333,
+    "readyPattern": "ready"
+  },
+  "testing": {
+    "routes": ["/", "/about", "/error"],
+    "timeout": 10000
+  },
+  "monitoring": {
+    "captureConsole": true,
+    "captureNetwork": true,
+    "captureErrors": true,
+    "screenshotOnError": true
+  }
+}

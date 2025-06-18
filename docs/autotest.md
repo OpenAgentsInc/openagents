@@ -1,391 +1,408 @@
-# Programmatic screenshot automation for Claude Code with TypeScript and Bun
+# Autotest - Browser Automation & Visual Testing
 
-Enabling Claude Code to programmatically capture screenshots of local Bun/HTML applications requires careful consideration of browser automation tools, integration patterns, and security implications. Based on comprehensive research, **Puppeteer emerges as the optimal choice** due to confirmed Bun compatibility, while Playwright faces ongoing stability issues with the Bun runtime.
+## Overview
 
-## Browser automation tool selection
+The `@openagentsinc/autotest` package provides comprehensive browser automation and visual testing capabilities for Claude Code. It enables programmatic control over development servers, browser navigation, screenshot capture, and automated testing of web applications.
 
-### Puppeteer: The recommended solution
+## Key Features
 
-**Puppeteer offers the best combination of features for this use case:**
-- ✅ **Confirmed Bun compatibility** since v0.6.7
-- ✅ **Excellent TypeScript support** with native typing
-- ✅ **Lightweight architecture** ideal for screenshot automation
-- ✅ **Simple integration** with minimal setup requirements
+- **Server Lifecycle Management**: Start, monitor, and stop development servers programmatically
+- **Browser Automation**: Headless browser control via Puppeteer
+- **Screenshot Capture**: Visual testing and regression detection
+- **Test Orchestration**: Coordinate server startup, testing, and cleanup
+- **Comprehensive Monitoring**: Track console messages, network requests, and errors
+- **Effect-based Architecture**: Built with Effect for type-safe, composable operations
 
-**Basic implementation with Bun and TypeScript:**
+## Quick Start
+
+### Basic Screenshot Capture
+
+```bash
+# Navigate to autotest package
+cd packages/autotest
+
+# Capture a screenshot of any URL
+bun run src/cli.ts '{"url":"http://localhost:3000","fullPage":true}'
+```
+
+### Test Orchestration
+
+```bash
+# Run full test orchestration with a configuration file
+bun src/orchestrate.ts "$(cat test-orchestration.json)"
+
+# Test OpenAgents.com with default configuration
+bun src/orchestrate.ts --default
+```
+
+## Architecture
+
+### Core Services
+
+#### ServerService
+Manages development server lifecycle using Effect's daemon fibers to keep processes alive:
 
 ```typescript
-// screenshot-service.ts
-import { chromium } from 'puppeteer';
-
-interface ScreenshotOptions {
-  url: string;
-  fullPage?: boolean;
-  width?: number;
-  height?: number;
-  interactions?: () => Promise<void>;
-}
-
-export async function captureScreenshot(options: ScreenshotOptions): Promise<Buffer> {
-  const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-
-  if (options.width && options.height) {
-    await page.setViewportSize({ width: options.width, height: options.height });
-  }
-
-  await page.goto(options.url);
-  await page.waitForLoadState('networkidle');
-
-  // Execute any interactions before screenshot
-  if (options.interactions) {
-    await options.interactions();
-  }
-
-  const screenshot = await page.screenshot({ fullPage: options.fullPage ?? false });
-  await browser.close();
-
-  return screenshot;
+interface ServerService {
+  start: (options: ServerOptions) => Effect<ServerProcess, ServerError>
+  stop: (process: ServerProcess) => Effect<void, ServerError>
+  getState: (process: ServerProcess) => Effect<ServerState>
+  waitForReady: (process: ServerProcess, options?: WaitOptions) => Effect<void, ServerTimeoutError>
 }
 ```
 
-### Playwright's Bun compatibility challenges
+Key features:
+- Automatic port finding
+- Environment variable injection (PORT)
+- Real-time log streaming
+- Ready state detection via regex patterns
+- Graceful shutdown with SIGTERM
 
-While Playwright offers superior features, **significant compatibility issues with Bun persist**:
-- Hanging processes when using `bunx --bun playwright test`
-- Zombie process accumulation
-- Module resolution conflicts
-- Stability problems in production environments
-
-**If you must use Playwright with Bun**, these workarounds help:
-1. Use `playwright-chromium` instead of the full package
-2. Avoid `@playwright/test` with Bun runtime
-3. Run tests with Node.js while using Bun for development
-
-## Integration patterns for Claude Code
-
-### Pattern 1: MCP Server Architecture (Most Secure)
-
-The **Model Context Protocol provides the cleanest integration** with built-in security features:
+#### BrowserService
+Controls headless browser instances:
 
 ```typescript
-// mcp-screenshot-server.ts
-interface ScreenshotRequest {
-  url: string;
-  fullPage: boolean;
-  interactions?: InteractionStep[];
+interface BrowserService {
+  launch: (options?: LaunchOptions) => Effect<Browser, BrowserError>
+  close: (browser: Browser) => Effect<void, BrowserError>
+  newPage: (browser: Browser) => Effect<Page, PageError>
+  closePage: (page: Page) => Effect<void, PageError>
+}
+```
+
+#### ScreenshotService
+Captures and manages screenshots:
+
+```typescript
+interface ScreenshotService {
+  capture: (options: ScreenshotOptions) => Effect<Screenshot, ScreenshotError>
+  save: (screenshot: Screenshot, filePath: string) => Effect<void, FileError>
+  load: (filePath: string) => Effect<Screenshot, FileError>
+  compare: (baseline: Screenshot, current: Screenshot, threshold?: number) => Effect<DiffResult, ComparisonError>
+}
+```
+
+#### TestOrchestrator
+Coordinates the complete testing workflow:
+
+```typescript
+interface TestOrchestrator {
+  testRoute: (page: Page, route: string, interactions?: InteractionStep[]) => Effect<RouteTestResult, Error>
+  runFullTest: (config: OrchestratorConfig) => Effect<TestReport, Error>
+}
+```
+
+## Configuration
+
+### Orchestrator Configuration
+
+```typescript
+interface OrchestratorConfig {
+  project: {
+    root: string              // Project root directory
+    startCommand: string      // Command to start dev server
+    port: number             // Port to use (will find available)
+    env?: Record<string, string>  // Additional environment variables
+    readyPattern?: RegExp    // Pattern to detect server ready
+  }
+  testing: {
+    routes: string[]         // Routes to test
+    baseUrl?: string         // Override base URL
+    timeout?: number         // Test timeout in ms
+    interactions?: Array<{   // Interactions per route
+      route: string
+      actions: Array<string | InteractionStep>
+    }>
+  }
+  monitoring?: {
+    captureConsole?: boolean    // Monitor console messages
+    captureNetwork?: boolean    // Track network requests
+    captureErrors?: boolean     // Capture page errors
+    screenshotOnError?: boolean // Take screenshots on error
+  }
+}
+```
+
+### Example Configuration
+
+```json
+{
+  "project": {
+    "root": "/path/to/project",
+    "startCommand": "bun run dev",
+    "port": 3000,
+    "readyPattern": "Server is running at"
+  },
+  "testing": {
+    "routes": ["/", "/about", "/products"],
+    "timeout": 30000
+  },
+  "monitoring": {
+    "captureConsole": true,
+    "captureNetwork": true,
+    "captureErrors": true,
+    "screenshotOnError": true
+  }
+}
+```
+
+## Test Reports
+
+The orchestrator generates comprehensive test reports:
+
+```typescript
+interface TestReport {
+  startedAt: Date
+  completedAt: Date
+  duration: number
+  serverLogs: string[]
+  routes: RouteTestResult[]
+  summary: TestSummary
+  suggestedFixes?: SuggestedFix[]
 }
 
-interface InteractionStep {
-  action: 'click' | 'fill' | 'select';
-  selector: string;
-  value?: string;
+interface RouteTestResult {
+  route: string
+  success: boolean
+  duration: number
+  errors: TestError[]
+  screenshots: string[]
+  console: ConsoleMessage[]
+  network: NetworkRequest[]
 }
+```
 
-export class ScreenshotMCPServer {
-  async handleRequest(request: ScreenshotRequest): Promise<Buffer> {
-    // Validate request parameters
-    this.validateRequest(request);
+## Usage Examples
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+### 1. Testing a Local Development Server
 
-    try {
-      const page = await browser.newPage();
-      await page.goto(request.url);
+```bash
+# Create test configuration
+cat > test-config.json << EOF
+{
+  "project": {
+    "root": "$(pwd)",
+    "startCommand": "npm run dev",
+    "port": 3000,
+    "readyPattern": "ready"
+  },
+  "testing": {
+    "routes": ["/", "/api/health", "/dashboard"],
+    "timeout": 20000
+  }
+}
+EOF
 
-      // Execute interactions
-      for (const step of request.interactions || []) {
-        await this.executeInteraction(page, step);
-      }
+# Run tests
+bun packages/autotest/src/orchestrate.ts "$(cat test-config.json)"
+```
 
-      return await page.screenshot({ fullPage: request.fullPage });
-    } finally {
-      await browser.close();
+### 2. Visual Regression Testing
+
+```typescript
+// Capture baseline screenshots
+const baseline = yield* screenshotService.capture({
+  page,
+  fullPage: true
+})
+yield* screenshotService.save(baseline, "baseline.png")
+
+// Later, capture current state and compare
+const current = yield* screenshotService.capture({
+  page,
+  fullPage: true
+})
+const diff = yield* screenshotService.compare(baseline, current, 0.1)
+
+if (!diff.match) {
+  console.log(`Visual regression detected: ${diff.difference}% difference`)
+}
+```
+
+### 3. Programmatic Server Testing
+
+```typescript
+import { Effect } from "effect"
+import { ServerService } from "@openagentsinc/autotest"
+
+const program = Effect.gen(function* () {
+  const serverService = yield* ServerService
+  
+  // Start server
+  const server = yield* serverService.start({
+    command: "bun run dev",
+    cwd: "/path/to/project",
+    port: 3000,
+    env: { NODE_ENV: "test" }
+  })
+  
+  // Wait for ready
+  yield* serverService.waitForReady(server, {
+    timeout: 30000,
+    pattern: /Server is running/
+  })
+  
+  // Run tests...
+  
+  // Clean up
+  yield* serverService.stop(server)
+})
+```
+
+## Best Practices
+
+### 1. Server Readiness Patterns
+Always define appropriate ready patterns for your server:
+
+```typescript
+// Good patterns
+readyPattern: /listening on|Server is running at|ready/i
+
+// Be specific when possible
+readyPattern: /\[vite\] Local:.*http:\/\/localhost:\d+/
+```
+
+### 2. Error Handling
+Use Effect's error handling for robust test flows:
+
+```typescript
+const result = yield* testRoute(page, "/fragile-route").pipe(
+  Effect.catchTag("NavigationError", () => 
+    Effect.succeed({
+      success: false,
+      errors: [{ type: "navigation", message: "Route unavailable" }]
+    })
+  )
+)
+```
+
+### 3. Resource Cleanup
+Always ensure proper cleanup, even on failure:
+
+```typescript
+yield* Effect.acquireUseRelease(
+  serverService.start(options),
+  (server) => runTests(server),
+  (server) => serverService.stop(server)
+)
+```
+
+### 4. Screenshot Organization
+Use descriptive filenames with timestamps:
+
+```typescript
+const filename = `screenshot-${route.replace(/\//g, '-')}-${Date.now()}.png`
+const filepath = `.autotest/screenshots/${testRun}/${filename}`
+```
+
+## Troubleshooting
+
+### Server Won't Start
+- Check if the port is already in use
+- Verify the start command is correct
+- Ensure the working directory is set properly
+- Check server logs in the test report
+
+### Ready Detection Timeout
+- Verify your ready pattern matches actual server output
+- Increase the timeout for slower servers
+- Check if the server is outputting to stderr instead of stdout
+
+### Screenshot Failures
+- Ensure the `.autotest/screenshots/` directory exists
+- Check disk space
+- Verify Puppeteer dependencies are installed
+
+### Port Conflicts
+The service automatically finds available ports, but you can specify a range:
+
+```typescript
+const port = yield* findAvailablePort(3000) // Searches 3000-3099
+```
+
+## CLI Commands
+
+### Screenshot Capture
+```bash
+bun run src/cli.ts '{"url":"http://localhost:3000","fullPage":true,"outputPath":"./screenshots/"}'
+```
+
+Options:
+- `url` (required): URL to capture
+- `fullPage`: Capture full scrollable area
+- `viewport`: Custom viewport dimensions
+- `outputPath`: Where to save screenshots
+
+### Test Orchestration
+```bash
+bun src/orchestrate.ts <config-json>
+bun src/orchestrate.ts --default  # Test OpenAgents.com
+```
+
+## Integration with Claude Code
+
+When Claude Code needs to test a web application:
+
+1. **Start with orchestration**: Use the orchestrator for full testing
+2. **Capture screenshots**: Visual verification of UI states
+3. **Monitor errors**: Check console and network errors
+4. **Analyze reports**: Review the generated test report
+
+Example workflow:
+```bash
+# 1. Start dev server and test
+bun packages/autotest/src/orchestrate.ts --default
+
+# 2. View test results
+cat packages/autotest/test-report.json
+
+# 3. View screenshots
+Read: packages/autotest/.autotest/screenshots/screenshot-*.png
+```
+
+## Technical Implementation Details
+
+### Daemon Fibers for Process Management
+The ServerService uses Effect's `forkDaemon` to create long-lived processes that survive beyond their creating scope:
+
+```typescript
+const fiber = yield* Effect.forkDaemon(
+  Effect.scoped(
+    Effect.gen(function* () {
+      const proc = yield* executor.start(command)
+      // Process stays alive until fiber is interrupted
+      yield* Effect.never
+    })
+  )
+)
+```
+
+### Stream-based Log Collection
+Logs are collected in real-time using Effect streams:
+
+```typescript
+yield* proc.stdout.pipe(
+  Stream.decodeText(),
+  Stream.splitLines,
+  Stream.tap((line) => updateState(line)),
+  Stream.runDrain
+).pipe(Effect.forkDaemon)
+```
+
+### Port Management
+Automatic port finding with fallback:
+
+```typescript
+const findAvailablePort = (startPort: number) =>
+  Effect.gen(function* () {
+    for (let port = startPort; port < startPort + 100; port++) {
+      const available = yield* isPortAvailable(port)
+      if (available) return port
     }
-  }
-}
+    return yield* Effect.fail(new ServerPortError(startPort))
+  })
 ```
 
-### Pattern 2: Subprocess with Validation
+## Future Enhancements
 
-For **direct subprocess execution**, implement strict validation:
-
-```typescript
-// secure-subprocess-runner.ts
-import { spawn } from 'child_process';
-import { z } from 'zod';
-
-const CommandSchema = z.object({
-  url: z.string().url().startsWith('http://localhost'),
-  outputPath: z.string().regex(/^screenshots\/[\w-]+\.png$/),
-  fullPage: z.boolean().optional()
-});
-
-export async function executeScreenshotCommand(params: unknown): Promise<void> {
-  // Validate input
-  const validated = CommandSchema.parse(params);
-
-  return new Promise((resolve, reject) => {
-    const child = spawn('bun', [
-      'run',
-      'screenshot-script.ts',
-      JSON.stringify(validated)
-    ], {
-      timeout: 30000,
-      env: { ...process.env, NODE_ENV: 'production' }
-    });
-
-    child.on('exit', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`Process exited with code ${code}`));
-    });
-  });
-}
-```
-
-### Pattern 3: API Gateway Approach
-
-An **HTTP API provides network-level isolation**:
-
-```typescript
-// screenshot-api-server.ts
-import { Hono } from 'hono';
-import { jwt } from 'hono/jwt';
-
-const app = new Hono();
-
-app.use('/api/*', jwt({ secret: process.env.JWT_SECRET }));
-
-app.post('/api/screenshot', async (c) => {
-  const { url, interactions } = await c.req.json();
-
-  // Validate localhost URLs only
-  if (!url.startsWith('http://localhost')) {
-    return c.json({ error: 'Only localhost URLs allowed' }, 400);
-  }
-
-  const screenshot = await captureWithInteractions(url, interactions);
-  return c.body(screenshot, 200, { 'Content-Type': 'image/png' });
-});
-
-export default app;
-```
-
-## Interactive automation implementation
-
-### Form filling and element interaction
-
-```typescript
-// interaction-helpers.ts
-export async function performInteractions(page: Page, steps: InteractionStep[]) {
-  for (const step of steps) {
-    switch (step.action) {
-      case 'fill':
-        await page.fill(step.selector, step.value!);
-        break;
-      case 'click':
-        await page.click(step.selector);
-        break;
-      case 'select':
-        await page.selectOption(step.selector, step.value!);
-        break;
-    }
-
-    // Wait for any triggered animations/transitions
-    await page.waitForTimeout(500);
-  }
-}
-
-// Advanced interaction workflow
-export async function captureFormWorkflow(page: Page) {
-  // Fill form fields
-  await page.fill('#username', 'testuser');
-  await page.fill('#email', 'test@example.com');
-
-  // Handle dynamic content
-  await page.click('#load-options');
-  await page.waitForSelector('.options-loaded');
-
-  // Select from dynamic dropdown
-  await page.selectOption('#country', 'US');
-
-  // Submit and wait for response
-  await page.click('#submit');
-  await page.waitForSelector('.success-message', { timeout: 10000 });
-}
-```
-
-### Robust waiting strategies
-
-**Ensure page stability before screenshots**:
-
-```typescript
-async function waitForStableState(page: Page): Promise<void> {
-  // Wait for network to settle
-  await page.waitForLoadState('networkidle');
-
-  // Wait for specific indicators
-  await page.waitForSelector('.loading', { state: 'hidden' })
-    .catch(() => {}); // Loading indicator might not exist
-
-  // Additional wait for animations
-  await page.waitForTimeout(1000);
-
-  // Check for dynamic content stability
-  const initialHTML = await page.content();
-  await page.waitForTimeout(500);
-  const finalHTML = await page.content();
-
-  if (initialHTML !== finalHTML) {
-    await page.waitForTimeout(1500); // Content still changing
-  }
-}
-```
-
-## Security considerations
-
-### Critical security measures
-
-1. **URL Validation**: Restrict to localhost/local development servers only
-2. **Input Sanitization**: Validate all selectors and values before execution
-3. **Resource Limits**: Set timeouts and memory limits for browser processes
-4. **Subprocess Isolation**: Use clean environment variables and restricted permissions
-5. **Audit Logging**: Track all screenshot requests and interactions
-
-### Secure implementation example
-
-```typescript
-// security-wrapper.ts
-export class SecureScreenshotService {
-  private readonly allowedHosts = ['localhost', '127.0.0.1'];
-  private readonly maxExecutionTime = 30000;
-
-  async capture(request: ScreenshotRequest): Promise<Buffer> {
-    // Validate URL
-    const url = new URL(request.url);
-    if (!this.allowedHosts.includes(url.hostname)) {
-      throw new Error('Invalid host');
-    }
-
-    // Sanitize selectors
-    for (const interaction of request.interactions || []) {
-      if (!/^[a-zA-Z0-9\-._#\[\]=:]+$/.test(interaction.selector)) {
-        throw new Error('Invalid selector');
-      }
-    }
-
-    // Execute with timeout
-    return await Promise.race([
-      this.executeCapture(request),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout')), this.maxExecutionTime)
-      )
-    ]);
-  }
-}
-```
-
-## Complete implementation example
-
-### Bun-compatible service with TypeScript
-
-```typescript
-// screenshot-automation-service.ts
-import puppeteer from 'puppeteer';
-import { z } from 'zod';
-
-// Type definitions
-const InteractionSchema = z.object({
-  action: z.enum(['click', 'fill', 'select', 'wait']),
-  selector: z.string(),
-  value: z.string().optional(),
-  timeout: z.number().optional()
-});
-
-const RequestSchema = z.object({
-  url: z.string().url(),
-  outputPath: z.string(),
-  fullPage: z.boolean().default(true),
-  viewport: z.object({
-    width: z.number(),
-    height: z.number()
-  }).optional(),
-  interactions: z.array(InteractionSchema).optional()
-});
-
-type ScreenshotRequest = z.infer<typeof RequestSchema>;
-
-export class ScreenshotAutomationService {
-  async processRequest(rawRequest: unknown): Promise<void> {
-    // Validate request
-    const request = RequestSchema.parse(rawRequest);
-
-    // Launch browser
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-
-    try {
-      const page = await browser.newPage();
-
-      // Set viewport if specified
-      if (request.viewport) {
-        await page.setViewportSize(request.viewport);
-      }
-
-      // Navigate to URL
-      await page.goto(request.url, { waitUntil: 'networkidle0' });
-
-      // Execute interactions
-      if (request.interactions) {
-        for (const interaction of request.interactions) {
-          await this.executeInteraction(page, interaction);
-        }
-      }
-
-      // Capture screenshot
-      await page.screenshot({
-        path: request.outputPath,
-        fullPage: request.fullPage
-      });
-
-    } finally {
-      await browser.close();
-    }
-  }
-
-  private async executeInteraction(page: any, interaction: any): Promise<void> {
-    const timeout = interaction.timeout || 5000;
-
-    switch (interaction.action) {
-      case 'click':
-        await page.click(interaction.selector, { timeout });
-        break;
-      case 'fill':
-        await page.fill(interaction.selector, interaction.value!, { timeout });
-        break;
-      case 'select':
-        await page.selectOption(interaction.selector, interaction.value!, { timeout });
-        break;
-      case 'wait':
-        await page.waitForSelector(interaction.selector, { timeout });
-        break;
-    }
-  }
-}
-
-// CLI usage
-if (import.meta.main) {
-  const service = new ScreenshotAutomationService();
-  const request = JSON.parse(process.argv[2]);
-  await service.processRequest(request);
-}
-```
-
-## Conclusion
-
-For Claude Code integration with Bun runtime, **Puppeteer provides the most reliable solution** for programmatic screenshot capture. The MCP server pattern offers the best security model, while subprocess execution with proper validation provides a simpler alternative. Key success factors include robust error handling, comprehensive waiting strategies, and strict security measures to prevent malicious use of browser automation capabilities.
+See GitHub issue #967 for planned improvements and feature requests.
