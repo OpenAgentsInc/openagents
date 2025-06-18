@@ -20,10 +20,10 @@ export function home() {
               <p>In the meantime, explore our resources:</p>
               <div class="notice-links">
                 <a href="/blog" is-="button" variant-="foreground1" box-="square">
-                  Read our Blog →
+                  Read our blog →
                 </a>
                 <a href="/docs" is-="button" variant-="foreground1" box-="square">
-                  View Documentation →
+                  View the docs →
                 </a>
               </div>
             </div>
