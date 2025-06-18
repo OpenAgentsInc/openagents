@@ -57,14 +57,18 @@ export class PsionicApp {
     this.app.get(`${componentsPath}/:component/:story`, async ({ params, set }) => {
       try {
         const stories = await discoverStories(componentsDir)
-        const storyModule = stories.find((m) => m.title === params.component)
+        // Decode URL parameters to handle spaces and special characters
+        const componentName = decodeURIComponent(params.component)
+        const storyName = decodeURIComponent(params.story)
+
+        const storyModule = stories.find((m) => m.title === componentName)
 
         if (!storyModule) {
           set.status = 404
           return "Component not found"
         }
 
-        const story = storyModule.stories[params.story]
+        const story = storyModule.stories[storyName]
         if (!story) {
           set.status = 404
           return "Story not found"
@@ -72,7 +76,7 @@ export class PsionicApp {
 
         const html = renderStoryPage(
           storyModule,
-          params.story,
+          storyName,
           story,
           componentsPath,
           this.config.componentExplorerOptions
