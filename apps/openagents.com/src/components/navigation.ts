@@ -4,7 +4,7 @@ export function navigation({ current }: { current: string }) {
   const rightLinks = [
     { href: "/docs", label: "📄 Docs", key: "docs" },
     { href: "/components", label: "🧩 Examples", key: "components" },
-    { href: "https://github.com/openagentsinc/openagents", label: "🔗 Github", key: "github", external: true },
+    { href: "https://github.com/openagentsinc/openagents", label: "🔗 Github", key: "github", external: true }
   ]
 
   return html`
@@ -17,13 +17,15 @@ export function navigation({ current }: { current: string }) {
       </div>
       
       <nav class="header-nav">
-        ${rightLinks.map((link) => {
-          const isActive = current === link.key
-          return `<a href="${link.href}" 
-                     class="nav-link ${isActive ? 'active' : ''}" 
-                     ${link.external ? 'target="_blank" rel="noopener noreferrer"' : ''}
+        ${
+    rightLinks.map((link) => {
+      const isActive = current === link.key
+      return `<a href="${link.href}" 
+                     class="nav-link ${isActive ? "active" : ""}" 
+                     ${link.external ? "target=\"_blank\" rel=\"noopener noreferrer\"" : ""}
                    >${link.label}</a>`
-        }).join("")}
+    }).join("")
+  }
         
         <button class="search-button" aria-label="Search">
           🔍 Search
