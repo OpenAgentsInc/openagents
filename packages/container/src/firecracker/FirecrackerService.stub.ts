@@ -1,7 +1,7 @@
 import { Context, Effect, Layer } from "effect"
-import type { FirecrackerError, VMAlreadyExistsError, VMNotFoundError } from "./errors.js"
-import { FirecrackerBinaryNotFoundError } from "./errors.js"
-import type { CreateVMRequest, CreateVMRequest, StopVMRequest, StopVMRequest } from "./MicroVMConfig.js"
+import type { FirecrackerError, VMAlreadyExistsError } from "./errors.js"
+import { FirecrackerBinaryNotFoundError, VMNotFoundError } from "./errors.js"
+import type { CreateVMRequest, StopVMRequest } from "./MicroVMConfig.js"
 import { VMState } from "./MicroVMConfig.js"
 
 export class FirecrackerService extends Context.Tag("@openagentsinc/container/FirecrackerService")<
@@ -28,17 +28,9 @@ export const FirecrackerServiceLive = Layer.succeed(
         })
       ),
 
-    stopVM: (_request: StopVMRequest) => Effect.void,
+    stopVM: (_request: StopVMRequest) => Effect.fail(new VMNotFoundError({ vmId: _request.id })),
 
-    getVM: (id: string) =>
-      Effect.succeed(
-        new VMState({
-          id,
-          status: "running",
-          pid: 12345,
-          startedAt: new Date()
-        })
-      ),
+    getVM: (id: string) => Effect.fail(new VMNotFoundError({ vmId: id })),
 
     listVMs: () => Effect.succeed([]),
 
