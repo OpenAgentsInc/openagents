@@ -51,7 +51,12 @@ const program = Effect.gen(function*() {
     yield* Console.log("Using default configuration for OpenAgents.com")
   } else {
     try {
-      config = JSON.parse(args[0])
+      const parsed = JSON.parse(args[0])
+      // Convert readyPattern string to RegExp if provided
+      if (parsed.project?.readyPattern) {
+        parsed.project.readyPattern = new RegExp(parsed.project.readyPattern, "i")
+      }
+      config = parsed
     } catch (error) {
       yield* Console.error(`Invalid JSON: ${error}`)
       return yield* Effect.fail("Invalid configuration format")
@@ -102,12 +107,10 @@ const program = Effect.gen(function*() {
 })
 
 // Create the layer with all services
-const MainLive = Layer.mergeAll(
-  ServerServiceLive,
-  BrowserServiceLive,
-  ScreenshotServiceLive,
-  TestOrchestratorLive
-).pipe(
+const MainLive = TestOrchestratorLive.pipe(
+  Layer.provide(ServerServiceLive),
+  Layer.provide(BrowserServiceLive),
+  Layer.provide(ScreenshotServiceLive),
   Layer.provide(BunContext.layer)
 )
 
