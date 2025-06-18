@@ -396,8 +396,8 @@ importers:
         specifier: ^3.2.6
         version: 3.2.6
       effect:
-        specifier: ^3.16.8
-        version: 3.16.8
+        specifier: 3.16.3
+        version: 3.16.3
       elysia:
         specifier: ^1.3.5
         version: 1.3.5(exact-mirror@0.1.2)(file-type@21.0.0)(typescript@5.8.3)
@@ -1356,15 +1356,15 @@ packages:
     resolution: {integrity: sha512-Wk7x6W7pI5C9ix/7xE2Ad9ruWrk26uJuc8IgVzxH98AoiHO1G0f8Cblj6N1WaLB0PTyQoQPmrNsIII2Th6ywuw==}
     dev: true
 
-  /@effect/platform-node-shared@0.16.4(@effect/platform@0.66.3)(effect@3.16.8):
+  /@effect/platform-node-shared@0.16.4(@effect/platform@0.66.3)(effect@3.16.3):
     resolution: {integrity: sha512-JIg2qEKmTEnWGEMm0ZetfJ6RrEb1eWdCqhCdmxiFVU9YpNdkMpG1xASCBRX3n/13IUleb5tFLjhnLResEg3Y0A==}
     peerDependencies:
       '@effect/platform': ^0.66.3
       effect: ^3.8.5
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
       '@parcel/watcher': 2.5.1
-      effect: 3.16.8
+      effect: 3.16.3
       multipasta: 0.2.5
 
   /@effect/platform-node-shared@0.39.16(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3):
@@ -1389,15 +1389,15 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@effect/platform-node@0.61.4(@effect/platform@0.66.3)(effect@3.16.8):
+  /@effect/platform-node@0.61.4(@effect/platform@0.66.3)(effect@3.16.3):
     resolution: {integrity: sha512-AflnzkFzhwQKgbGsex80io8sCQjzR1Tjck69lPLRfSr/kjAVCrwWjla+FOc/3Xt2rjxXLKGj052+OrkbBt8NsA==}
     peerDependencies:
       '@effect/platform': ^0.66.3
       effect: ^3.8.5
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
-      '@effect/platform-node-shared': 0.16.4(@effect/platform@0.66.3)(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/platform-node-shared': 0.16.4(@effect/platform@0.66.3)(effect@3.16.3)
+      effect: 3.16.3
       mime: 3.0.0
       undici: 6.21.3
       ws: 8.18.0
@@ -1428,14 +1428,14 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@effect/platform@0.66.3(@effect/schema@0.74.2)(effect@3.16.8):
+  /@effect/platform@0.66.3(@effect/schema@0.74.2)(effect@3.16.3):
     resolution: {integrity: sha512-bwUNDRhxKa5IBXd0PGGh61DkphZnUDmE3LZ3PwSQqDbvQvm8X7wqdyrFOtpDBmHATckoibScvnIyXBbtGyEyAA==}
     peerDependencies:
       '@effect/schema': ^0.74.2
       effect: ^3.8.5
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      effect: 3.16.3
       find-my-way-ts: 0.1.5
       multipasta: 0.2.5
 
@@ -1515,16 +1515,6 @@ packages:
       effect: ^3.8.5
     dependencies:
       effect: 3.16.3
-      fast-check: 3.23.2
-    dev: false
-
-  /@effect/schema@0.74.2(effect@3.16.8):
-    resolution: {integrity: sha512-R+XA1E49mkcRUzYE9t24IWshvOI361uMf/KH9nF09Jr3UKZYSSiF+bHJHW1jeJu9MXFh3VIv++9CjKMb3nt13A==}
-    deprecated: this package has been merged into the main effect package
-    peerDependencies:
-      effect: ^3.8.5
-    dependencies:
-      effect: 3.16.8
       fast-check: 3.23.2
 
   /@effect/schema@0.75.5(effect@3.16.3):
@@ -4490,8 +4480,8 @@ packages:
   /@typed/async-data@0.12.0:
     resolution: {integrity: sha512-787/BM+M7JoulOjSRbRN4UblmSlkef203zunCQy7KefhNC3FlqbTTJQlDLpTK3z0OaQBN4V6JoTq66LRNvm6tw==}
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      effect: 3.16.3
       fast-check: 3.23.2
 
   /@typed/compiler@0.4.0(@types/node@22.15.29):
@@ -4522,14 +4512,6 @@ packages:
       effect: ^3.3.1
     dependencies:
       effect: 3.16.3
-    dev: false
-
-  /@typed/context@0.30.0(effect@3.16.8):
-    resolution: {integrity: sha512-tIXC1y0ZbIRcYgm8XRljnq63Wg5eU3ls1CqvGyIudipIyWiZtxa5LgxtAD8IolozjkVLBD4XO/Z8u6YlzfxPBg==}
-    peerDependencies:
-      effect: ^3.3.1
-    dependencies:
-      effect: 3.16.8
 
   /@typed/context@0.4.0:
     resolution: {integrity: sha512-HZ2q4rKqqbImzQhBxUWyJpJGfNRmq8Yid950GdYc5OWRp1pdSdE8CVvCaNNVM3Q5Fzig6avrVkgUbjph71kmyA==}
@@ -4541,27 +4523,27 @@ packages:
   /@typed/core@3.7.0(@effect/typeclass@0.24.27)(@types/node@22.15.29)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)(typescript@5.8.3)(vite-node@0.28.5)(vite@5.4.19):
     resolution: {integrity: sha512-nFH8CdUT6ZyeiyCHsp81ngoJINm+u2GzVNDR1NuVqot2IVteDaXOR5zPfFBLPZvRRdG9jcOOq2ovJSDRDnim0Q==}
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
-      '@effect/platform-node': 0.61.4(@effect/platform@0.66.3)(effect@3.16.8)
-      '@effect/schema': 0.74.2(effect@3.16.8)
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/platform-node': 0.61.4(@effect/platform@0.66.3)(effect@3.16.3)
+      '@effect/schema': 0.74.2(effect@3.16.3)
       '@typed/async-data': 0.12.0
-      '@typed/context': 0.30.0(effect@3.16.8)
+      '@typed/context': 0.30.0(effect@3.16.3)
       '@typed/decoder': 0.21.0
-      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.8)
+      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.3)
       '@typed/environment': 0.11.0
-      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.8)
+      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
       '@typed/guard': 0.6.0
       '@typed/id': 0.11.0
       '@typed/navigation': 0.18.0(@effect/typeclass@0.24.27)
       '@typed/path': 0.15.0(ts-toolbelt@9.6.0)
-      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.8)(path-to-regexp@6.3.0)
+      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.3)(path-to-regexp@6.3.0)
       '@typed/router': 0.32.0(@effect/typeclass@0.24.27)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
       '@typed/server': 0.5.0(@effect/typeclass@0.24.27)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
       '@typed/template': 0.14.0(@effect/typeclass@0.24.27)
       '@typed/ui': 0.14.0(@effect/typeclass@0.24.27)(@typed/path@0.15.0)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
       '@typed/vite-plugin': 0.4.0(@types/node@22.15.29)(typescript@5.8.3)(vite-node@0.28.5)
       '@typed/vite-plugin-types': 0.4.0(vite@5.4.19)
-      effect: 3.16.8
+      effect: 3.16.3
       vavite: 5.1.0(vite@5.4.19)
     transitivePeerDependencies:
       - '@effect/typeclass'
@@ -4586,8 +4568,8 @@ packages:
   /@typed/decoder@0.21.0:
     resolution: {integrity: sha512-zPmMJJ26T4Glxj3DyKgS0YBLg5+xlTt4gm+/H8O8Z3bBpfiWtJd6OtXmSv3VBiUZ6BWC0Pm7o5H4GrXaApuliQ==}
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      effect: 3.16.3
 
   /@typed/decoder@0.3.0:
     resolution: {integrity: sha512-tmLY1nBdCLxgwJwLuIaRTgS+9hOggHIVAaYmz1PBFXQuAyPz5NZ3NxjQWq1t4SGJZiMZRu7w6n0OQS6bxFHVJw==}
@@ -4609,16 +4591,16 @@ packages:
       typed-query-selector: 2.12.0
     dev: false
 
-  /@typed/dom@18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.8):
+  /@typed/dom@18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.3):
     resolution: {integrity: sha512-N8bJ0rN/H6w4ROvTQ9Uj8XbfWWFASun/0HIeZP2/crqH+tBGbBJrnVipEUVblfx29CL+8nNhjt/AUzkhljeBrQ==}
     peerDependencies:
       '@effect/schema': ^0.67.22
       '@typed/context': 0.30.0
       effect: ^3.3.1
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@typed/context': 0.30.0(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      '@typed/context': 0.30.0(effect@3.16.3)
+      effect: 3.16.3
       typed-query-selector: 2.12.0
 
   /@typed/dom@8.4.0:
@@ -4636,8 +4618,8 @@ packages:
   /@typed/environment@0.11.0:
     resolution: {integrity: sha512-G4MLZNOu6hWacrAPIDpIcIPLnDt1Ki5Rg9koPZTsy1A+7wLunUir4DxVUv1SrPF73OgoUMh+8BsBIQ/WrIZ5Eg==}
     dependencies:
-      '@typed/context': 0.30.0(effect@3.16.8)
-      effect: 3.16.8
+      '@typed/context': 0.30.0(effect@3.16.3)
+      effect: 3.16.3
 
   /@typed/framework@0.4.0(@types/node@22.15.29):
     resolution: {integrity: sha512-4QCjZAA0oz1+87xxVb/vLpyWZZgDa37nXaTVg6gcrD4KYRY4eRW+tXpeaCCCkHW6UOwH2pqatrKdlCL4TDTY4w==}
@@ -4684,22 +4666,6 @@ packages:
       effect: 3.16.3
       fast-check: 3.23.2
       fast-deep-equal: 3.1.3
-    dev: false
-
-  /@typed/fx@1.32.0(@effect/typeclass@0.24.27)(effect@3.16.8):
-    resolution: {integrity: sha512-iAFIxv9XfTDS0RnETONgNPGoW7pll+SBq3ZYMN/CX9hIQfqpCCaxbBFgHafy62m5IxyohzMM475YTW70cvNJyw==}
-    peerDependencies:
-      '@effect/typeclass': 0.24.27
-      effect: ^3.3.1
-    dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@effect/typeclass': 0.24.27(effect@3.16.3)
-      '@typed/async-data': 0.12.0
-      '@typed/context': 0.30.0(effect@3.16.8)
-      '@typed/guard': 0.6.0
-      effect: 3.16.8
-      fast-check: 3.23.2
-      fast-deep-equal: 3.1.3
 
   /@typed/fx@1.4.0:
     resolution: {integrity: sha512-oZYBqoyE6+PgnaAE+AgyBS+ItccI2afNkzNHdRpZif4D+LjSLFJkLx6ZaiP4/IOqjii0TF+Z+7GsUP8ZXpH7Cg==}
@@ -4710,8 +4676,8 @@ packages:
   /@typed/guard@0.6.0:
     resolution: {integrity: sha512-+p2WxaaVmne3VfjKwme/c6pgvsk8/xi+0mbAqKiP0oMY3x0vVHugQYq4jVAGT1OktujkfEuSPN4luUbMnEiXng==}
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      effect: 3.16.3
 
   /@typed/guard@0.7.3(effect@3.16.3):
     resolution: {integrity: sha512-gK0Ouw8h7kQbNKKaRXK4zmThYT5Imdl6oaGaR8RuKCUPNsoyKL46+gIW4my8YEI3xMk783YFmq6b1gVm784IQw==}
@@ -4735,9 +4701,9 @@ packages:
   /@typed/id@0.11.0:
     resolution: {integrity: sha512-4pBstlX4TS3z7FrZU2AjacLaRxi78w4zbURzmK06tXYaeq+MiAnLYRMWv8/7nEZE4OXgyjIdgBC7BRm1e1Pkug==}
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@typed/context': 0.30.0(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      '@typed/context': 0.30.0(effect@3.16.3)
+      effect: 3.16.3
       fast-check: 3.23.2
 
   /@typed/id@0.17.2(effect@3.16.3):
@@ -4758,13 +4724,13 @@ packages:
   /@typed/navigation@0.18.0(@effect/typeclass@0.24.27):
     resolution: {integrity: sha512-bQFC4yZC/cX+dAgKynEy0ReXN9YhbMWKJFu7q1JeO5Pg0JIpTgW65Khdvq5vKXaGWN6GVNMWHhGAamanb1XjZQ==}
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@typed/context': 0.30.0(effect@3.16.8)
-      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.8)
-      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.8)
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      '@typed/context': 0.30.0(effect@3.16.3)
+      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.3)
+      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
       '@typed/id': 0.11.0
-      effect: 3.16.8
+      effect: 3.16.3
     transitivePeerDependencies:
       - '@effect/typeclass'
 
@@ -4789,9 +4755,9 @@ packages:
     peerDependencies:
       ts-toolbelt: ^9.6.0
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      effect: 3.16.8
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      effect: 3.16.3
       ts-toolbelt: 9.6.0
 
   /@typed/route@0.3.0:
@@ -4813,7 +4779,7 @@ packages:
       ts-toolbelt: 9.6.0
     dev: false
 
-  /@typed/route@9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.8)(path-to-regexp@6.3.0):
+  /@typed/route@9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.3)(path-to-regexp@6.3.0):
     resolution: {integrity: sha512-5T7MrsdGAnh4sPAS1JII6/8qzEt9jatHzLEhkrUxo8I9RzZQ5Q1qvfAfTKK11DY/FjPRaU50KZBastxJmf/mPA==}
     peerDependencies:
       '@effect/schema': ^0.67.22
@@ -4821,28 +4787,28 @@ packages:
       effect: ^3.3.1
       path-to-regexp: ^6.2.1
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
+      '@effect/schema': 0.74.2(effect@3.16.3)
       '@typed/decoder': 0.21.0
       '@typed/guard': 0.6.0
       '@typed/id': 0.11.0
       '@typed/path': 0.15.0(ts-toolbelt@9.6.0)
-      effect: 3.16.8
+      effect: 3.16.3
       path-to-regexp: 6.3.0
       ts-toolbelt: 9.6.0
 
   /@typed/router@0.32.0(@effect/typeclass@0.24.27)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0):
     resolution: {integrity: sha512-BAW3bcuxChhsruAVpJVwA5RPIbGjQQ8XTfM+D7fJwt1+0f6NFyUt0c+cI6VNVfbNMNqja1NJVs/A7ozzV1rRsg==}
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@typed/context': 0.30.0(effect@3.16.8)
-      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.8)
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      '@typed/context': 0.30.0(effect@3.16.3)
+      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.3)
       '@typed/environment': 0.11.0
-      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.8)
+      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
       '@typed/guard': 0.6.0
       '@typed/navigation': 0.18.0(@effect/typeclass@0.24.27)
       '@typed/path': 0.15.0(ts-toolbelt@9.6.0)
-      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.8)(path-to-regexp@6.3.0)
-      effect: 3.16.8
+      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.3)(path-to-regexp@6.3.0)
+      effect: 3.16.3
     transitivePeerDependencies:
       - '@effect/typeclass'
       - path-to-regexp
@@ -4863,15 +4829,15 @@ packages:
   /@typed/server@0.5.0(@effect/typeclass@0.24.27)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0):
     resolution: {integrity: sha512-pH++vC1kTSQCo9HuE/7qL4QL8nUHS74jW5wRifqgjCJxnPL1AdITcqt2y1CUQQcJhubA8M7asifHRUqB0kinAQ==}
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
-      '@effect/platform-node': 0.61.4(@effect/platform@0.66.3)(effect@3.16.8)
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@typed/context': 0.30.0(effect@3.16.8)
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/platform-node': 0.61.4(@effect/platform@0.66.3)(effect@3.16.3)
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      '@typed/context': 0.30.0(effect@3.16.3)
       '@typed/navigation': 0.18.0(@effect/typeclass@0.24.27)
       '@typed/path': 0.15.0(ts-toolbelt@9.6.0)
-      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.8)(path-to-regexp@6.3.0)
+      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.3)(path-to-regexp@6.3.0)
       '@typed/router': 0.32.0(@effect/typeclass@0.24.27)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
-      effect: 3.16.8
+      effect: 3.16.3
     transitivePeerDependencies:
       - '@effect/typeclass'
       - bufferutil
@@ -4882,26 +4848,26 @@ packages:
   /@typed/storybook@0.9.0(@effect/typeclass@0.24.27)(@types/node@22.15.29)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)(typescript@5.8.3)(vite-node@0.28.5)(vite@5.4.19):
     resolution: {integrity: sha512-WasX0KZDiaIEN5vwe1RrNq14NQ6g5nS3HSYM1QMbNHYKJS4yfyC0IngQ+jud1O5HjXyuz7G8ENcgJy6/dgl56g==}
     dependencies:
-      '@effect/schema': 0.74.2(effect@3.16.8)
+      '@effect/schema': 0.74.2(effect@3.16.3)
       '@storybook/builder-vite': 8.3.5(storybook@8.3.5)(typescript@5.8.3)(vite@5.4.19)
       '@storybook/core': 8.3.5
       '@storybook/csf': 0.1.11
       '@storybook/types': 8.3.5(storybook@8.3.5)
       '@typed/async-data': 0.12.0
-      '@typed/context': 0.30.0(effect@3.16.8)
+      '@typed/context': 0.30.0(effect@3.16.3)
       '@typed/core': 3.7.0(@effect/typeclass@0.24.27)(@types/node@22.15.29)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)(typescript@5.8.3)(vite-node@0.28.5)(vite@5.4.19)
       '@typed/decoder': 0.21.0
-      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.8)
+      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.3)
       '@typed/environment': 0.11.0
-      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.8)
+      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
       '@typed/id': 0.11.0
       '@typed/navigation': 0.18.0(@effect/typeclass@0.24.27)
       '@typed/path': 0.15.0(ts-toolbelt@9.6.0)
-      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.8)(path-to-regexp@6.3.0)
+      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.3)(path-to-regexp@6.3.0)
       '@typed/router': 0.32.0(@effect/typeclass@0.24.27)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
       '@typed/template': 0.14.0(@effect/typeclass@0.24.27)
       '@typed/ui': 0.14.0(@effect/typeclass@0.24.27)(@typed/path@0.15.0)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
-      effect: 3.16.8
+      effect: 3.16.3
       storybook: 8.3.5
     transitivePeerDependencies:
       - '@effect/typeclass'
@@ -4929,14 +4895,14 @@ packages:
   /@typed/template@0.14.0(@effect/typeclass@0.24.27):
     resolution: {integrity: sha512-uMQbE2O9R44z+BvsOB9ASij3Gd2wpOgbnXmEvBcl5GVyrm57YvPkBW7x0uQVtdxGe+TGAVswAAgQ1vL9u8NC1Q==}
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@typed/context': 0.30.0(effect@3.16.8)
-      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.8)
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      '@typed/context': 0.30.0(effect@3.16.3)
+      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.3)
       '@typed/environment': 0.11.0
-      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.8)
+      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
       '@typed/wire': 0.6.0
-      effect: 3.16.8
+      effect: 3.16.3
       fast-check: 3.23.2
       html5parser: 2.0.2
       typed-query-selector: 2.12.0
@@ -4947,18 +4913,18 @@ packages:
   /@typed/ui@0.14.0(@effect/typeclass@0.24.27)(@typed/path@0.15.0)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0):
     resolution: {integrity: sha512-NrK18X9uEr1/SdN5Ohy7e+hEvE/hU7C/CuZ2RDmsal3PGxkYUOBC6/9fNK37WAAwsVzKs9b9l8F5GpRggCSSnw==}
     dependencies:
-      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.8)
-      '@effect/schema': 0.74.2(effect@3.16.8)
-      '@typed/context': 0.30.0(effect@3.16.8)
-      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.8)
+      '@effect/platform': 0.66.3(@effect/schema@0.74.2)(effect@3.16.3)
+      '@effect/schema': 0.74.2(effect@3.16.3)
+      '@typed/context': 0.30.0(effect@3.16.3)
+      '@typed/dom': 18.0.0(@effect/schema@0.74.2)(@typed/context@0.30.0)(effect@3.16.3)
       '@typed/environment': 0.11.0
-      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.8)
+      '@typed/fx': 1.32.0(@effect/typeclass@0.24.27)(effect@3.16.3)
       '@typed/navigation': 0.18.0(@effect/typeclass@0.24.27)
-      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.8)(path-to-regexp@6.3.0)
+      '@typed/route': 9.0.0(@effect/schema@0.74.2)(@typed/path@0.15.0)(effect@3.16.3)(path-to-regexp@6.3.0)
       '@typed/router': 0.32.0(@effect/typeclass@0.24.27)(path-to-regexp@6.3.0)(ts-toolbelt@9.6.0)
       '@typed/template': 0.14.0(@effect/typeclass@0.24.27)
       csstype: 3.1.3
-      effect: 3.16.8
+      effect: 3.16.3
     transitivePeerDependencies:
       - '@effect/typeclass'
       - '@typed/path'
@@ -7120,12 +7086,6 @@ packages:
 
   /effect@3.16.3:
     resolution: {integrity: sha512-SWndb1UavNWvet1+hnkU4qp3EHtnmDKhUeP14eB+7vf/2nCFlM77/oIjdDeZctveibNjE65P9H/sBBmF0NTy/w==}
-    dependencies:
-      '@standard-schema/spec': 1.0.0
-      fast-check: 3.23.2
-
-  /effect@3.16.8:
-    resolution: {integrity: sha512-E4U0MZFBun99myxOogy9ZZ1c3IYR47L/A5GqCP9Lp+6ORag0YLmGHOrYxQ3agN1FOMTrElgtJmciicwnHdE+Ug==}
     dependencies:
       '@standard-schema/spec': 1.0.0
       fast-check: 3.23.2
