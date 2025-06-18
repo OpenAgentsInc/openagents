@@ -10,39 +10,39 @@ describe("BrowserService", () => {
   const testName2 = isCI ? "should create new page (skipped in CI)" : "should create new page"
 
   it.effect(testName1, () =>
-    isCI 
+    isCI
       ? Effect.void
       : Effect.gen(function*() {
-          const service = yield* BrowserService
+        const service = yield* BrowserService
 
-          // Launch browser
-          const browser = yield* service.launch({ headless: true })
-          expect(browser._tag).toBe("Browser")
-          expect(browser.instance).toBeDefined()
+        // Launch browser
+        const browser = yield* service.launch({ headless: true })
+        expect(browser._tag).toBe("Browser")
+        expect(browser.instance).toBeDefined()
 
-          // Close browser
-          yield* service.close(browser)
-        }).pipe(
-          Effect.provide(BrowserServiceLive),
-          Effect.timeout("10 seconds")
-        ))
+        // Close browser
+        yield* service.close(browser)
+      }).pipe(
+        Effect.provide(BrowserServiceLive),
+        Effect.timeout("10 seconds")
+      ))
 
   it.effect(testName2, () =>
     isCI
-      ? Effect.void  
+      ? Effect.void
       : Effect.gen(function*() {
-          const service = yield* BrowserService
+        const service = yield* BrowserService
 
-          const browser = yield* service.launch({ headless: true })
-          const page = yield* service.newPage(browser)
+        const browser = yield* service.launch({ headless: true })
+        const page = yield* service.newPage(browser)
 
-          expect(page._tag).toBe("Page")
-          expect(page.instance).toBeDefined()
+        expect(page._tag).toBe("Page")
+        expect(page.instance).toBeDefined()
 
-          yield* service.closePage(page)
-          yield* service.close(browser)
-        }).pipe(
-          Effect.provide(BrowserServiceLive),
-          Effect.timeout("10 seconds")
-        ))
+        yield* service.closePage(page)
+        yield* service.close(browser)
+      }).pipe(
+        Effect.provide(BrowserServiceLive),
+        Effect.timeout("10 seconds")
+      ))
 })

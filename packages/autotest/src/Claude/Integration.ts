@@ -6,7 +6,7 @@ import { navigate, performInteractions } from "../Testing/Interactions.js"
 import { InvalidRequestError, SecurityError } from "./errors.js"
 import type { ClaudeScreenshotRequest, SecurityOptions } from "./types.js"
 
-const DEFAULT_ALLOWED_HOSTS: string[] = [] // Empty array means allow all hosts
+const DEFAULT_ALLOWED_HOSTS: Array<string> = [] // Empty array means allow all hosts
 const DEFAULT_MAX_EXECUTION_TIME = 30000
 const DEFAULT_OUTPUT_DIR = ".autotest/screenshots"
 
