@@ -378,11 +378,9 @@ console.log(translation.content) // "Hola mundo"</code></pre>
         }
 
         /* Horizontal Rules */
-        hr,
-        .doc-body hr,
-        .docs-content hr {
-          border: none !important;
-          border-top: 1px solid var(--background3) !important;
+        hr {
+          border: none;
+          border-top: 1px solid var(--background3);
           margin: 2rem 0;
         }
 
