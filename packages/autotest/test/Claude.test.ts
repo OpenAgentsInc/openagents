@@ -47,7 +47,9 @@ describe("Claude Integration", () => {
 
         for (const url of urls) {
           const result = yield* validateSecurity(url, undefined)
-          expect(result.url).toBe(url)
+          // URL constructor normalizes URLs, adding trailing slash to bare domain URLs
+          const expectedUrl = new URL(url).toString()
+          expect(result.url).toBe(expectedUrl)
         }
       }))
 
