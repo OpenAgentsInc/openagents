@@ -60,7 +60,7 @@ export class PsionicApp {
         // Decode URL parameters to handle spaces and special characters
         const componentName = decodeURIComponent(params.component)
         const storyName = decodeURIComponent(params.story)
-        
+
         const storyModule = stories.find((m) => m.title === componentName)
 
         if (!storyModule) {

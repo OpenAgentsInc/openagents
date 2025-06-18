@@ -182,7 +182,9 @@ export function renderComponentExplorer(
                   ${
         Object.entries(storyModule.stories).map(([key, story]) => `
                     <li class="story-item">
-                      <a href="${basePath}/${encodeURIComponent(storyModule.title)}/${encodeURIComponent(key)}" class="story-link">
+                      <a href="${basePath}/${encodeURIComponent(storyModule.title)}/${
+          encodeURIComponent(key)
+        }" class="story-link">
                         ${story.name || key}
                       </a>
                     </li>
