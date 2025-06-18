@@ -14,7 +14,7 @@
     "test": "vitest",
     "coverage": "vitest --coverage",
     "circular": "madge --ts-config ./tsconfig.madge.json --circular --no-color --no-spinner --warning dist/esm",
-    "codegen": "build-utils prepare-v2",
+    "codegen": "echo 'Skipping codegen for container package - manually managed exports'",
     "clean": "rm -rf dist/*"
   },
   "effect": {},
