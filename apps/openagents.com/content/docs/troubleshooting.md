@@ -184,69 +184,41 @@ try {
 }
 ```
 
-## Lightning Network Issues
+## Package-Specific Issues
 
-### Lightning invoice creation fails
+### Nostr Integration Not Working
 
-**Symptoms**: `createLightningInvoice()` throws errors
+**Symptoms**: Agent Nostr keys are placeholder values
 
-**Common Causes**:
-1. No Lightning node connected
-2. Insufficient channel capacity
-3. Invalid invoice parameters
+**Cause**: The Nostr package exists but isn't integrated with the SDK yet.
 
-**Solutions**:
-
-**Validate Invoice Parameters**:
+**Current State**:
 ```typescript
-// Correct invoice creation
-const invoice = Agent.createLightningInvoice(agent, {
-  amount: 1000,        // ✅ Positive integer (sats)
-  memo: "Test payment" // ✅ Non-empty memo
-})
+// Current: Returns placeholder keys
+const agent = Agent.create({ name: "Test" })
+console.log(agent.nostrKeys.public) // "npub..."
 
-// Avoid these mistakes
-const badInvoice = Agent.createLightningInvoice(agent, {
-  amount: 0,    // ❌ Zero amount
-  memo: ""      // ❌ Empty memo
-})
+// Future: Will use actual NIP-06 derivation
 ```
 
-**Test Lightning Connection**:
-```bash
-# If using LND
-lncli getinfo
+**Workaround**: Use the `@openagentsinc/nostr` package directly for Nostr functionality.
 
-# If using CLN
-lightning-cli getinfo
+### AI Provider Selection
 
-# Check available balance
-lncli walletbalance
-```
+**Symptoms**: Can't use providers other than Ollama
 
-### Payment timeout issues
+**Cause**: The AI package supports multiple providers but SDK only uses Ollama.
 
-**Symptoms**: Invoices expire before payment
-
-**Solution**:
+**Solution**: For now, use Ollama for all inference:
 ```typescript
-// Create invoice with longer expiry
-const invoice = Agent.createLightningInvoice(agent, {
-  amount: 10000,
-  memo: "Extended payment",
-  // Add custom expiry if supported
-  expiry: 3600 // 1 hour instead of default 15 minutes
-})
-
-// Monitor invoice status
-const checkPayment = setInterval(async () => {
-  const status = await invoice.getStatus()
-  if (status === "paid") {
-    console.log("✅ Payment received")
-    clearInterval(checkPayment)
-  }
-}, 5000) // Check every 5 seconds
+// Ensure Ollama is running
+const status = await checkOllama()
+if (!status.online) {
+  console.error("Ollama required for inference")
+}
 ```
+
+**Alternative**: Use the `@openagentsinc/ai` package directly for Claude integration.
 
 ## Inference Issues
 
@@ -543,9 +515,9 @@ reproduce()
 ### Community Resources
 
 - **GitHub Issues**: [Report bugs](https://github.com/OpenAgentsInc/openagents/issues)
-- **Discord**: Join our community chat
-- **Documentation**: [Full API reference](./api-reference)
-- **Examples**: [GitHub repository examples](https://github.com/OpenAgentsInc/openagents/tree/main/examples)
+- **Discord**: Join our community (coming soon)
+- **Documentation**: [Full SDK reference](./sdk-reference)
+- **Source Code**: [Browse packages](https://github.com/OpenAgentsInc/openagents/tree/main/packages)
 
 ---
 

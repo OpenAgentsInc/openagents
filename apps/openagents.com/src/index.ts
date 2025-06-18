@@ -13,7 +13,8 @@ import { fileURLToPath } from 'url'
 
 const app = createPsionicApp({
   name: 'OpenAgents',
-  port: 3003,
+  port: process.env.PORT ? parseInt(process.env.PORT) : 3003,
+  host: '0.0.0.0', // Bind to all interfaces
   staticDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public'),
   // Component explorer configuration
   componentsDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../stories'),
