@@ -2,8 +2,11 @@ import { describe, expect, it } from "@effect/vitest"
 import { Effect } from "effect"
 import { BrowserService, BrowserServiceLive } from "../src/Browser/index.js"
 
+// Skip browser tests in CI where Chrome may not be available
+const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true"
+
 describe("BrowserService", () => {
-  it.effect("should launch and close browser", () =>
+  it.skipIf(isCI).effect("should launch and close browser", () =>
     Effect.gen(function*() {
       const service = yield* BrowserService
 
@@ -19,7 +22,7 @@ describe("BrowserService", () => {
       Effect.timeout("10 seconds")
     ))
 
-  it.effect("should create new page", () =>
+  it.skipIf(isCI).effect("should create new page", () =>
     Effect.gen(function*() {
       const service = yield* BrowserService
 
