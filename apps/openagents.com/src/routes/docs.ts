@@ -4,6 +4,7 @@ import fs from "fs/promises"
 import path from "path"
 import { fileURLToPath } from "url"
 import { sharedHeader } from "../components/shared-header"
+import { docsMenu } from "../components/docs-menu"
 import { baseStyles } from "../styles"
 
 // Get the directory of the current module
