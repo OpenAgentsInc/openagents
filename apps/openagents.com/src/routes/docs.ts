@@ -377,11 +377,14 @@ console.log(translation.content) // "Hola mundo"</code></pre>
           padding: 2rem !important;
         }
 
-        /* Horizontal Rules */
-        hr {
-          border: none;
-          border-top: 1px solid var(--background3);
-          margin: 2rem 0;
+        /* Comprehensive HR styling for all horizontal rules */
+        hr,
+        .docs-content hr,
+        .doc-body hr {
+          border: none !important;
+          border-top: 1px solid var(--background3) !important;
+          margin: 2rem 0 !important;
+          background: none !important;
         }
 
         /* Mobile responsiveness */
@@ -749,10 +752,14 @@ export const docPage: RouteHandler = async (context) => {
             color: var(--foreground1);
           }
 
-          .doc-body hr {
-            border: none;
-            border-top: 1px solid var(--background3);
-            margin: 3rem 0;
+          /* Comprehensive HR styling for individual doc pages */
+          hr,
+          .doc-body hr,
+          .doc-article hr {
+            border: none !important;
+            border-top: 1px solid var(--background3) !important;
+            margin: 3rem 0 !important;
+            background: none !important;
           }
 
           .doc-body table {

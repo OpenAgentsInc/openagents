@@ -358,10 +358,14 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
             color: var(--foreground1);
           }
 
-          .article-body hr {
-            border: none;
-            border-top: 1px solid var(--background3);
-            margin: 3rem 0;
+          /* Comprehensive HR styling for all horizontal rules */
+          hr,
+          .article-body hr,
+          .blog-post hr {
+            border: none !important;
+            border-top: 1px solid var(--background3) !important;
+            margin: 3rem 0 !important;
+            background: none !important;
           }
 
           .article-body h1,
