@@ -30,18 +30,8 @@ export const syntaxHighlightingStyles = css`
   /* Terminal-style enhancements */
   pre[is-="pre"][box-="square"] {
     position: relative;
-    padding-top: 2.5rem !important;
   }
 
-  pre[is-="pre"][box-="square"]::before {
-    content: "◆ ◆ ◆";
-    position: absolute;
-    top: 0.75rem;
-    left: 1rem;
-    color: var(--foreground2);
-    font-size: 0.75rem;
-    letter-spacing: 0.5rem;
-  }
 
   /* Language indicator */
   pre[is-="pre"][box-="square"]::after {

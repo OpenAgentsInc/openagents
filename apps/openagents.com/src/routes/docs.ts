@@ -2,7 +2,6 @@ import { document, html, renderMarkdownWithHighlighting } from "@openagentsinc/p
 import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
-import { createHighlighter } from "shiki"
 import { fileURLToPath } from "url"
 import { docsMenu } from "../components/docs-menu"
 import { sharedHeader } from "../components/shared-header"
@@ -15,12 +14,13 @@ const DOCS_DIR = path.resolve(__dirname, "..", "..", "content", "docs")
 
 // Helper function to get highlighted code for the example
 async function getHighlightedCode() {
-  const highlighter = await createHighlighter({
-    themes: ["github-dark"],
-    langs: ["bash", "typescript"]
-  })
+  const markdownContent = `---
+title: "Code Example"
+date: "2025-06-18"
+---
 
-  const codeExample = `# Install the SDK
+\`\`\`typescript
+# Install the SDK
 pnpm add @openagentsinc/sdk
 
 # Create your first agent
@@ -39,21 +39,12 @@ const translation = await Inference.infer({
   model: "llama3.2"
 })
 
-console.log(translation.content) // "Hola mundo"`
+console.log(translation.content) // "Hola mundo"
+\`\`\`
+`
 
-  return highlighter.codeToHtml(codeExample, {
-    lang: "typescript",
-    theme: "github-dark",
-    transformers: [
-      {
-        pre(node) {
-          node.properties["is-"] = "pre"
-          node.properties["box-"] = "square"
-          node.properties["data-language"] = "typescript"
-        }
-      }
-    ]
-  })
+  const result = await renderMarkdownWithHighlighting(markdownContent, "zinc")
+  return result.html
 }
 
 // Main docs index page
