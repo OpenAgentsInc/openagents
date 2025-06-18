@@ -1,6 +1,7 @@
 export interface PsionicConfig {
   name?: string
   port?: number
+  host?: string // Hostname to bind to (default: "localhost")
   catchAllRedirect?: boolean
   staticDir?: string // Path to static files directory
   // Component explorer configuration

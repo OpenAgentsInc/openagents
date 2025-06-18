@@ -3,6 +3,7 @@ import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
 import { fileURLToPath } from "url"
+import { docsMenu } from "../components/docs-menu"
 import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
@@ -90,17 +91,17 @@ export function docs() {
                   <div class="quick-links">
                     <a href="/docs/getting-started" class="quick-link-card" box-="square">
                       <div class="card-title">» Getting Started</div>
-                      <p>Create your first Bitcoin-powered agent in minutes</p>
+                      <p>Create your first AI agent with the SDK</p>
                     </a>
                     
-                    <a href="/docs/api-reference" class="quick-link-card" box-="square">
-                      <div class="card-title">¤ API Reference</div>
-                      <p>Complete SDK documentation and examples</p>
+                    <a href="/docs/sdk-reference" class="quick-link-card" box-="square">
+                      <div class="card-title">¤ SDK Reference</div>
+                      <p>Complete API documentation</p>
                     </a>
                     
-                    <a href="/docs/agent-lifecycle" class="quick-link-card" box-="square">
-                      <div class="card-title">° Agent Lifecycle</div>
-                      <p>Understanding agent economics and survival</p>
+                    <a href="/docs/psionic" class="quick-link-card" box-="square">
+                      <div class="card-title">° Psionic Framework</div>
+                      <p>Build web applications with our framework</p>
                     </a>
                   </div>
                 </div>
@@ -454,53 +455,7 @@ export const docPage: RouteHandler = async (context) => {
             <!-- Docs Content -->
             <div class="docs-layout">
               <div class="docs-sidebar">
-                <div class="docs-menu">
-                  <div class="docs-menu-section">
-                    <div class="menu-section-title">Getting Started</div>
-                    <a href="/docs/getting-started" class="docs-menu-link ${
-        slug === "getting-started" ? "active" : ""
-      }">
-                      Quick Start Guide
-                    </a>
-                  </div>
-                  
-                  <div class="docs-menu-section">
-                    <div class="menu-section-title">Core Concepts</div>
-                    <a href="/docs/agent-lifecycle" class="docs-menu-link ${
-        slug === "agent-lifecycle" ? "active" : ""
-      }">
-                      Agent Lifecycle
-                    </a>
-                    <a href="/docs/economics" class="docs-menu-link">
-                      Economic Model
-                    </a>
-                    <a href="/docs/bitcoin-integration" class="docs-menu-link">
-                      Bitcoin Integration
-                    </a>
-                  </div>
-                  
-                  <div class="docs-menu-section">
-                    <div class="menu-section-title">API Reference</div>
-                    <a href="/docs/api-reference" class="docs-menu-link ${slug === "api-reference" ? "active" : ""}">
-                      Complete API Docs
-                    </a>
-                    <a href="/docs/sdk-examples" class="docs-menu-link">
-                      SDK Examples
-                    </a>
-                  </div>
-                  
-                  <div class="docs-menu-section">
-                    <div class="menu-section-title">Support</div>
-                    <a href="/docs/troubleshooting" class="docs-menu-link ${
-        slug === "troubleshooting" ? "active" : ""
-      }">
-                      Troubleshooting
-                    </a>
-                    <a href="/docs/faq" class="docs-menu-link">
-                      FAQ
-                    </a>
-                  </div>
-                </div>
+                ${docsMenu(slug)}
               </div>
 
               <div class="docs-content-area">

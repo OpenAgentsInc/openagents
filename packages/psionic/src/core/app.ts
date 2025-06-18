@@ -110,9 +110,14 @@ export class PsionicApp {
 
   start() {
     const port = this.config.port || 3000
-    this.app.listen(port)
+    const host = this.config.host || "localhost"
 
-    console.log(`🧠 ${this.config.name || "Psionic"} is running at http://localhost:${port}`)
+    this.app.listen({
+      port,
+      hostname: host
+    })
+
+    console.log(`🧠 ${this.config.name || "Psionic"} is running at http://${host}:${port}`)
 
     return this
   }
