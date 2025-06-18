@@ -1,5 +1,4 @@
 import { html } from "@openagentsinc/psionic"
-import { themeSwitcher } from "./theme-switcher"
 
 export function navigation({ current }: { current: string }) {
   const rightLinks = [
