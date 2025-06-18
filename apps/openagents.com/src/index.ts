@@ -1,7 +1,7 @@
 import { createPsionicApp } from '@openagentsinc/psionic'
 import { home } from './routes/home'
 import { agents } from './routes/agents'
-import { docs } from './routes/docs'
+import { docs, docPage } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
 import { chat } from './routes/chat'
@@ -30,6 +30,7 @@ const app = createPsionicApp({
 app.route('/', home)
 app.route('/agents', agents)
 app.route('/docs', docs)
+app.route('/docs/:slug', docPage)
 app.route('/about', about)
 app.route('/blog', blogIndex)
 app.route('/blog/:slug', blogPost)
