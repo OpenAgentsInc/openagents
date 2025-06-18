@@ -30,30 +30,6 @@ export const webtuiStyles = css`
     --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   }
   
-  :root:has(.theme-zinc-light) {
-    --background0: #fafafa;
-    --background1: #f4f4f5;
-    --background2: #e4e4e7;
-    --background3: #d4d4d8;
-    --foreground0: #52525b;
-    --foreground1: #3f3f46;
-    --foreground2: #27272a;
-    --accent: #52525b;
-    --success: #71717a;
-    --warning: #52525b;
-    --danger: #3f3f46;
-    --surface0: #f4f4f5;
-    --surface1: #e4e4e7;
-    --surface2: #d4d4d8;
-    --overlay0: #a1a1aa;
-    --overlay1: #71717a;
-    --overlay2: #52525b;
-    --font-size: 16px;
-    --line-height: 1.3;
-    --font-weight-bold: 700;
-    --font-weight-normal: 400;
-    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-  }
   
   :root:has(.theme-catppuccin) {
     --background0: #1e1e2e;
