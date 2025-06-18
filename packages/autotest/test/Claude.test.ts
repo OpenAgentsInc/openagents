@@ -53,10 +53,11 @@ describe("Claude Integration", () => {
         }
       }))
 
-    it.effect("should reject non-localhost URLs", () =>
+    it.effect("should reject non-localhost URLs when restricted", () =>
       Effect.gen(function*() {
         const url = "http://example.com"
-        yield* validateSecurity(url, undefined)
+        const options = { allowedHosts: ["localhost", "127.0.0.1", "0.0.0.0"] }
+        yield* validateSecurity(url, undefined, options)
       }).pipe(
         Effect.flip,
         Effect.map((error) => {
