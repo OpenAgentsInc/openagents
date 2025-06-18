@@ -217,9 +217,6 @@ importers:
       gpt-tokenizer:
         specifier: ^3.0.1
         version: 3.0.1
-      node-pty:
-        specifier: ^1.0.0
-        version: 1.0.0
     publishDirectory: dist
 
   packages/autotest:
@@ -9799,10 +9796,6 @@ packages:
     hasBin: true
     dev: true
 
-  /nan@2.22.2:
-    resolution: {integrity: sha512-DANghxFkS1plDdRsX0X9pm0Z6SJNN6gBdtXfanwoZ8hooC5gosGFSBGRYHUVPz1asKA/kMRqDRdHrluZ61SpBQ==}
-    dev: false
-
   /nanoid@3.3.11:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -9865,13 +9858,6 @@ packages:
       detect-libc: 2.0.4
     dev: false
     optional: true
-
-  /node-pty@1.0.0:
-    resolution: {integrity: sha512-wtBMWWS7dFZm/VgqElrTvtfMq4GzJ6+edFI0Y0zyzygUSZMgZdraDUMUhCIvkjhJjme15qWmbyJbtAx4ot4uZA==}
-    requiresBuild: true
-    dependencies:
-      nan: 2.22.2
-    dev: false
 
   /node-releases@2.0.19:
     resolution: {integrity: sha512-xxOWJsBKtzAq7DY0J+DTzuz58K8e7sJbdgwkbMWQe8UYB6ekmsQ45q0M/tJDsGaZmbC+l7n57UV8Hl5tHxO9uw==}
