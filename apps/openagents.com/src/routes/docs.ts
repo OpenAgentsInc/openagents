@@ -90,17 +90,17 @@ export function docs() {
                   <div class="quick-links">
                     <a href="/docs/getting-started" class="quick-link-card" box-="square">
                       <div class="card-title">» Getting Started</div>
-                      <p>Create your first Bitcoin-powered agent in minutes</p>
+                      <p>Create your first AI agent with the SDK</p>
                     </a>
                     
-                    <a href="/docs/api-reference" class="quick-link-card" box-="square">
-                      <div class="card-title">¤ API Reference</div>
-                      <p>Complete SDK documentation and examples</p>
+                    <a href="/docs/sdk-reference" class="quick-link-card" box-="square">
+                      <div class="card-title">¤ SDK Reference</div>
+                      <p>Complete API documentation</p>
                     </a>
                     
-                    <a href="/docs/agent-lifecycle" class="quick-link-card" box-="square">
-                      <div class="card-title">° Agent Lifecycle</div>
-                      <p>Understanding agent economics and survival</p>
+                    <a href="/docs/psionic" class="quick-link-card" box-="square">
+                      <div class="card-title">° Psionic Framework</div>
+                      <p>Build web applications with our framework</p>
                     </a>
                   </div>
                 </div>
