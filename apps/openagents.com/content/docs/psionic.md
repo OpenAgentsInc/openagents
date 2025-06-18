@@ -1,7 +1,7 @@
 ---
 title: Psionic Framework
 date: 2024-12-17
-summary: Hypermedia web framework for building OpenAgents applications
+summary: Agent-first application framework
 category: guide
 order: 3
 ---
