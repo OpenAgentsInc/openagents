@@ -3,8 +3,9 @@
  * @module
  */
 
-import { Effect, Console, Layer } from "effect"
-import * as NostrLib from "@openagentsinc/nostr"
+import { Effect, Console } from "effect"
+// TODO: Re-enable after build order is fixed
+// import * as NostrLib from "@openagentsinc/nostr"
 
 // Core branded types for type safety
 type Satoshis = number & { readonly brand: unique symbol }
@@ -226,6 +227,9 @@ export namespace Agent {
     mnemonic: string, 
     config: AgentConfig = {}
   ): Promise<AgentIdentity> {
+    // TODO: Implement after Nostr build issue is resolved
+    throw new Error("createFromMnemonic not yet implemented - Nostr integration pending")
+    /*
     // Use actual NIP-06 service for proper key derivation
     const keys = await Effect.gen(function*() {
       const nip06 = yield* NostrLib.Nip06Service.Nip06Service
@@ -255,6 +259,7 @@ export namespace Agent {
     
     
     return agent
+    */
   }
   
   /**
@@ -263,6 +268,9 @@ export namespace Agent {
    * @returns 12-word mnemonic phrase
    */
   export async function generateMnemonic(wordCount: 12 | 15 | 18 | 21 | 24 = 12): Promise<string> {
+    // TODO: Implement after Nostr build issue is resolved
+    throw new Error("generateMnemonic not yet implemented - Nostr integration pending")
+    /*
     const mnemonic = await Effect.gen(function*() {
       const nip06 = yield* NostrLib.Nip06Service.Nip06Service
       return yield* nip06.generateMnemonic(wordCount)
@@ -277,6 +285,7 @@ export namespace Agent {
     
     
     return mnemonic
+    */
   }
   
   /**
