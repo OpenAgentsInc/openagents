@@ -3,8 +3,9 @@
  * @module
  */
 
-import { Effect, Console, Layer } from "effect"
-import * as NostrLib from "@openagentsinc/nostr"
+import { Effect, Console } from "effect"
+// TODO: Re-enable after build order is fixed
+// import * as NostrLib from "@openagentsinc/nostr"
 
 // Core branded types for type safety
 type Satoshis = number & { readonly brand: unique symbol }
@@ -226,28 +227,33 @@ export namespace Agent {
     mnemonic: string, 
     config: AgentConfig = {}
   ): Promise<AgentIdentity> {
+    // TODO: Re-enable after build order is fixed
     // Use actual NIP-06 service for proper key derivation
-    const keys = await Effect.gen(function*() {
-      const nip06 = yield* NostrLib.Nip06Service.Nip06Service
-      return yield* nip06.deriveAllKeys(mnemonic as NostrLib.Schema.Mnemonic)
-    }).pipe(
-      Effect.provide(
-        NostrLib.Nip06Service.Nip06ServiceLive.pipe(
-          Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
-        )
-      ),
-      Effect.runPromise
-    )
+    // const keys = await Effect.gen(function*() {
+    //   const nip06 = yield* NostrLib.Nip06Service.Nip06Service
+    //   return yield* nip06.deriveAllKeys(mnemonic as NostrLib.Schema.Mnemonic)
+    // }).pipe(
+    //   Effect.provide(
+    //     NostrLib.Nip06Service.Nip06ServiceLive.pipe(
+    //       Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
+    //     )
+    //   ),
+    //   Effect.runPromise
+    // )
+    
+    // STUB: Generate random keys until Nostr service is available
+    const privateKey = Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('')
+    const publicKey = `npub${Array.from({length: 58}, () => Math.floor(Math.random() * 36).toString(36)).join('')}`
     
     // Create deterministic ID from the public key
-    const id = `agent_${keys.npub.slice(-12)}`
+    const id = `agent_${publicKey.slice(-12)}`
     
     const agent: AgentIdentity = {
       id,
-      name: config.name || `Agent-${keys.npub.slice(-8)}`,
+      name: config.name || `Agent-${publicKey.slice(-8)}`,
       nostrKeys: {
-        public: asNostrPubKey(keys.npub),
-        private: asNostrPrivKey(keys.nsec)
+        public: asNostrPubKey(publicKey),
+        private: asNostrPrivKey(privateKey)
       },
       birthTimestamp: asTimestamp(Date.now()),
       generation: 0
@@ -263,18 +269,22 @@ export namespace Agent {
    * @returns 12-word mnemonic phrase
    */
   export async function generateMnemonic(wordCount: 12 | 15 | 18 | 21 | 24 = 12): Promise<string> {
-    const mnemonic = await Effect.gen(function*() {
-      const nip06 = yield* NostrLib.Nip06Service.Nip06Service
-      return yield* nip06.generateMnemonic(wordCount)
-    }).pipe(
-      Effect.provide(
-        NostrLib.Nip06Service.Nip06ServiceLive.pipe(
-          Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
-        )
-      ),
-      Effect.runPromise
-    )
+    // TODO: Re-enable after build order is fixed
+    // const mnemonic = await Effect.gen(function*() {
+    //   const nip06 = yield* NostrLib.Nip06Service.Nip06Service
+    //   return yield* nip06.generateMnemonic(wordCount)
+    // }).pipe(
+    //   Effect.provide(
+    //     NostrLib.Nip06Service.Nip06ServiceLive.pipe(
+    //       Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
+    //     )
+    //   ),
+    //   Effect.runPromise
+    // )
     
+    // STUB: Generate a dummy mnemonic until Nostr service is available
+    const words = ['abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse', 'access', 'accident']
+    const mnemonic = Array.from({length: wordCount}, () => words[Math.floor(Math.random() * words.length)]).join(' ')
     
     return mnemonic
   }
@@ -301,6 +311,48 @@ export namespace Agent {
     
     return invoice
   }
+}
+
+// Container deployment interfaces (exported for external use)
+export interface ContainerConfig {
+  vcpus?: number
+  memoryMb?: number
+  kernelPath?: string
+  rootfsPath?: string
+  networkEnabled?: boolean
+}
+
+export interface DeploymentStatus {
+  id: string
+  status: "pending" | "running" | "stopped" | "error"
+  vmId?: string
+  error?: string
+  startedAt?: Date
+}
+
+export interface ContainerStatus {
+  deploymentId: string
+  status: "running" | "stopped" | "hibernated" | "error"
+  resources: {
+    cpu: number
+    memory: number
+    storage: number
+  }
+  network?: {
+    ipAddress?: string
+    tapDevice?: string
+  }
+}
+
+export interface HibernationResult {
+  success: boolean
+  snapshotPath?: string
+  error?: string
+}
+
+export interface WakeResult {
+  success: boolean
+  error?: string
 }
 
 /**
@@ -332,6 +384,87 @@ export namespace Compute {
     }
     
     return status
+  }
+  
+  /**
+   * Deploy an agent to a Firecracker container (STUB)
+   * @param agent Agent identity to deploy
+   * @param config Container configuration
+   * @returns Deployment status
+   */
+  export function deployToContainer(agent: AgentIdentity, config: ContainerConfig = {}): DeploymentStatus {
+    const deploymentId = `deployment_${agent.id}_${Date.now()}`
+    
+    // STUB: In real implementation, this would call the container service
+    const status: DeploymentStatus = {
+      id: deploymentId,
+      status: "pending",
+      vmId: `vm_${deploymentId}`,
+      startedAt: new Date()
+    }
+    
+    console.log(`[STUB] Deploying agent ${agent.id} to container with config:`, config)
+    
+    return status
+  }
+  
+  /**
+   * Get container status for a deployment (STUB)
+   * @param deploymentId Deployment ID
+   * @returns Container status
+   */
+  export function getContainerStatus(deploymentId: string): ContainerStatus {
+    // STUB: In real implementation, this would query the container service
+    const status: ContainerStatus = {
+      deploymentId,
+      status: "running",
+      resources: {
+        cpu: 1,
+        memory: 256,
+        storage: 1024
+      },
+      network: {
+        ipAddress: "10.0.0.2",
+        tapDevice: "tap0"
+      }
+    }
+    
+    console.log(`[STUB] Getting container status for deployment ${deploymentId}`)
+    
+    return status
+  }
+  
+  /**
+   * Hibernate a container to save resources (STUB)
+   * @param deploymentId Deployment ID
+   * @returns Hibernation result
+   */
+  export function hibernateContainer(deploymentId: string): HibernationResult {
+    // STUB: In real implementation, this would use CRIU via container service
+    const result: HibernationResult = {
+      success: true,
+      snapshotPath: `/var/lib/openagents/snapshots/${deploymentId}.img`
+    }
+    
+    console.log(`[STUB] Hibernating container for deployment ${deploymentId}`)
+    
+    return result
+  }
+  
+  /**
+   * Wake a hibernated container (STUB)
+   * @param deploymentId Deployment ID
+   * @returns Wake result
+   */
+  export function wakeContainer(deploymentId: string): WakeResult {
+    // STUB: In real implementation, this would restore from CRIU snapshot
+    const result: WakeResult = {
+      success: true
+    }
+    
+    console.log(`[STUB] Waking container for deployment ${deploymentId}`)
+    
+    return result
   }
 }
 
