@@ -249,6 +249,10 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
             <div class="article-container">
               <div class="article-content" box-="square">
                 <article class="blog-post">
+                  <div class="article-nav-top">
+                    <a href="/blog" is-="button" variant-="background1" size-="small" class="back-button-top">← Back to all posts</a>
+                  </div>
+                  
                   <header class="article-header">
                     <h1 class="article-title">${rendered.metadata.title}</h1>
                     <time class="article-date" datetime="${rendered.metadata.date}">${
@@ -305,6 +309,15 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
 
           .blog-post {
             padding: 3rem;
+          }
+
+          /* Article Top Navigation */
+          .article-nav-top {
+            margin-bottom: 2rem;
+          }
+
+          .back-button-top {
+            text-decoration: none;
           }
 
           /* Article Header */

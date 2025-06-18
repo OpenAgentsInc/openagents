@@ -435,31 +435,88 @@ export const docPage: RouteHandler = async (context) => {
           ${sharedHeader({ current: "docs" })}
           
           <!-- Main Content -->
-          <main class="doc-main">
-            <div class="doc-container">
-              <div class="doc-content" box-="square">
-                <article class="doc-article">
-                  <header class="doc-header">
-                    <div class="doc-title">${result.metadata.title}</div>
-                    ${result.metadata.summary ? `<p class="doc-summary">${result.metadata.summary}</p>` : ""}
-                  </header>
-                  
-                  <div class="doc-body">
-                    ${result.html}
+          <main class="docs-main">
+            <!-- Docs Content -->
+            <div class="docs-layout">
+              <div class="docs-sidebar">
+                <div class="docs-menu">
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">Getting Started</div>
+                    <a href="/docs/getting-started" class="docs-menu-link ${
+        slug === "getting-started" ? "active" : ""
+      }">
+                      Quick Start Guide
+                    </a>
                   </div>
                   
-                  <footer class="doc-footer">
-                    <div class="doc-nav-buttons">
-                      <a href="/docs" is-="button" variant-="foreground1" class="doc-nav-button">
-                        ← Back to Docs
-                      </a>
-                      <a href="https://github.com/OpenAgentsInc/openagents/edit/main/content/docs/${slug}.md" 
-                         is-="button" variant-="background1" class="doc-nav-button">
-                        Edit on GitHub →
-                      </a>
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">Core Concepts</div>
+                    <a href="/docs/agent-lifecycle" class="docs-menu-link ${
+        slug === "agent-lifecycle" ? "active" : ""
+      }">
+                      Agent Lifecycle
+                    </a>
+                    <a href="/docs/economics" class="docs-menu-link">
+                      Economic Model
+                    </a>
+                    <a href="/docs/bitcoin-integration" class="docs-menu-link">
+                      Bitcoin Integration
+                    </a>
+                  </div>
+                  
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">API Reference</div>
+                    <a href="/docs/api-reference" class="docs-menu-link ${slug === "api-reference" ? "active" : ""}">
+                      Complete API Docs
+                    </a>
+                    <a href="/docs/sdk-examples" class="docs-menu-link">
+                      SDK Examples
+                    </a>
+                  </div>
+                  
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">Support</div>
+                    <a href="/docs/troubleshooting" class="docs-menu-link ${
+        slug === "troubleshooting" ? "active" : ""
+      }">
+                      Troubleshooting
+                    </a>
+                    <a href="/docs/faq" class="docs-menu-link">
+                      FAQ
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div class="docs-content-area">
+                <div class="docs-content">
+                  <div class="doc-container">
+                    <div class="doc-content" box-="square">
+                      <article class="doc-article">
+                        <header class="doc-header">
+                          <div class="doc-title">${result.metadata.title}</div>
+                          ${result.metadata.summary ? `<p class="doc-summary">${result.metadata.summary}</p>` : ""}
+                        </header>
+                        
+                        <div class="doc-body">
+                          ${result.html}
+                        </div>
+                        
+                        <footer class="doc-footer">
+                          <div class="doc-nav-buttons">
+                            <a href="/docs" is-="button" variant-="foreground1" class="doc-nav-button">
+                              ← Back to Docs
+                            </a>
+                            <a href="https://github.com/OpenAgentsInc/openagents/edit/main/content/docs/${slug}.md" 
+                               is-="button" variant-="background1" class="doc-nav-button">
+                              Edit on GitHub →
+                            </a>
+                          </div>
+                        </footer>
+                      </article>
                     </div>
-                  </footer>
-                </article>
+                  </div>
+                </div>
               </div>
             </div>
           </main>
@@ -494,11 +551,68 @@ export const docPage: RouteHandler = async (context) => {
             content: "" !important;
           }
 
-          /* Doc Main */
-          .doc-main {
+          /* Docs Main */
+          .docs-main {
             flex: 1;
             overflow-y: auto;
             padding: 2rem;
+          }
+
+          /* Docs Layout */
+          .docs-layout {
+            display: flex;
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+          }
+
+          .docs-sidebar {
+            width: 280px;
+            min-width: 280px;
+            background: var(--background1);
+            padding: 2rem;
+            border-radius: 4px;
+            height: fit-content;
+          }
+
+          .docs-menu-section {
+            margin-bottom: 2rem;
+          }
+
+          .menu-section-title {
+            margin: 0 0 1rem 0;
+            color: var(--foreground0);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
+
+          .docs-menu-link {
+            display: block;
+            padding: 0.5rem;
+            margin-bottom: 0.25rem;
+            color: var(--foreground1);
+            text-decoration: none;
+            font-size: 0.875rem;
+            border-radius: 4px;
+            transition: all 0.2s;
+          }
+
+          .docs-menu-link:hover,
+          .docs-menu-link.active {
+            background: var(--background2);
+            color: var(--foreground0);
+          }
+
+          /* Content Area */
+          .docs-content-area {
+            flex: 1;
+            min-width: 0;
+          }
+
+          .docs-content {
+            max-width: 800px;
           }
 
           .doc-container {
@@ -681,8 +795,18 @@ export const docPage: RouteHandler = async (context) => {
 
           /* Responsive */
           @media (max-width: 768px) {
-            .doc-main {
+            .docs-main {
               padding: 1rem;
+            }
+
+            .docs-layout {
+              flex-direction: column;
+              gap: 1rem;
+            }
+
+            .docs-sidebar {
+              width: 100%;
+              min-width: 100%;
             }
 
             .doc-article {
