@@ -1,10 +1,10 @@
 import { Console, Context, Effect, Layer } from "effect"
 import { BrowserService } from "../Browser/Service.js"
 import type { Page } from "../Browser/types.js"
+import { ScreenshotService } from "../Screenshot/Service.js"
 import { ServerService } from "../Server/Service.js"
 import { navigate, performInteractions } from "../Testing/Interactions.js"
 import type { InteractionStep } from "../Testing/types.js"
-import { ScreenshotService } from "../Screenshot/Service.js"
 import type {
   ConsoleMessage,
   NetworkRequest,
@@ -28,10 +28,10 @@ export class TestOrchestrator extends Context.Tag("@openagentsinc/autotest/TestO
 >() {}
 
 const setupPageMonitoring = (page: Page, config: OrchestratorConfig) =>
-  Effect.gen(function*() {
-    const consoleMessages: ConsoleMessage[] = []
-    const networkRequests: NetworkRequest[] = []
-    const errors: TestError[] = []
+  Effect.sync(() => {
+    const consoleMessages: Array<ConsoleMessage> = []
+    const networkRequests: Array<NetworkRequest> = []
+    const errors: Array<TestError> = []
 
     if (config.monitoring?.captureConsole) {
       page.instance.on("console", (msg) => {
@@ -62,7 +62,7 @@ const setupPageMonitoring = (page: Page, config: OrchestratorConfig) =>
       })
 
       page.instance.on("response", (res) => {
-        const request = networkRequests.find(r => r.url === res.url())
+        const request = networkRequests.find((r) => r.url === res.url())
         if (request) {
           request.status = res.status()
           if (res.status() >= 400) {
@@ -76,7 +76,7 @@ const setupPageMonitoring = (page: Page, config: OrchestratorConfig) =>
       })
 
       page.instance.on("requestfailed", (req) => {
-        const request = networkRequests.find(r => r.url === req.url())
+        const request = networkRequests.find((r) => r.url === req.url())
         if (request) {
           request.error = req.failure()?.errorText || "Unknown error"
           errors.push({
@@ -113,7 +113,7 @@ export const TestOrchestratorLive = Layer.effect(
       testRoute: (page, route, interactions) =>
         Effect.gen(function*() {
           const startTime = Date.now()
-          const screenshots: string[] = []
+          const screenshots: Array<string> = []
           let success = true
 
           try {
@@ -146,10 +146,9 @@ export const TestOrchestratorLive = Layer.effect(
               fullPage: true
             })
             screenshots.push(screenshot.filename)
-
-          } catch (error) {
+          } catch {
             success = false
-            
+
             // Take error screenshot if configured
             try {
               const errorScreenshot = yield* screenshotService.capture({
@@ -185,7 +184,7 @@ export const TestOrchestratorLive = Layer.effect(
       runFullTest: (config) =>
         Effect.gen(function*() {
           const startedAt = new Date()
-          
+
           yield* Console.log("Starting test orchestration...")
 
           // Start server
@@ -211,7 +210,7 @@ export const TestOrchestratorLive = Layer.effect(
 
           // Launch browser
           const browser = yield* browserService.launch({ headless: true })
-          const routeResults: RouteTestResult[] = []
+          const routeResults: Array<RouteTestResult> = []
 
           try {
             // Test each route
@@ -231,11 +230,11 @@ export const TestOrchestratorLive = Layer.effect(
 
                 // Find interactions for this route
                 const routeInteractions = config.testing.interactions?.find(
-                  i => i.route === route
+                  (i) => i.route === route
                 )
 
                 // Convert string actions to interaction steps
-                const interactions = routeInteractions?.actions.map(action => {
+                const interactions = routeInteractions?.actions.map((action) => {
                   if (typeof action === "string") {
                     // Simple action mapping
                     if (action === "select-model") {
@@ -269,12 +268,10 @@ export const TestOrchestratorLive = Layer.effect(
                 yield* Console.log(
                   `Route ${route}: ${result.success ? "✓ PASSED" : "✗ FAILED"} (${result.duration}ms)`
                 )
-
               } finally {
                 yield* browserService.closePage(page)
               }
             }
-
           } finally {
             // Clean up
             yield* browserService.close(browser)
@@ -288,11 +285,11 @@ export const TestOrchestratorLive = Layer.effect(
           // Calculate summary
           const summary: TestSummary = {
             totalRoutes: routeResults.length,
-            passedRoutes: routeResults.filter(r => r.success).length,
-            failedRoutes: routeResults.filter(r => !r.success).length,
+            passedRoutes: routeResults.filter((r) => r.success).length,
+            failedRoutes: routeResults.filter((r) => !r.success).length,
             totalErrors: routeResults.reduce((sum, r) => sum + r.errors.length, 0),
             errorsByType: routeResults.reduce((acc, r) => {
-              r.errors.forEach(e => {
+              r.errors.forEach((e) => {
                 acc[e.type] = (acc[e.type] || 0) + 1
               })
               return acc

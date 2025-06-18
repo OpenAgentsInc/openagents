@@ -27,7 +27,7 @@ export interface ServerState {
 
 export class ServerError extends Error {
   readonly _tag = "ServerError" as const
-  
+
   constructor(
     message: string,
     readonly cause?: unknown
@@ -39,7 +39,7 @@ export class ServerError extends Error {
 
 export class ServerTimeoutError extends Error {
   readonly _tag = "ServerTimeoutError" as const
-  
+
   constructor(
     readonly timeout: number,
     readonly cause?: unknown
@@ -51,7 +51,7 @@ export class ServerTimeoutError extends Error {
 
 export class ServerPortError extends Error {
   readonly _tag = "ServerPortError" as const
-  
+
   constructor(
     readonly port: number,
     readonly cause?: unknown

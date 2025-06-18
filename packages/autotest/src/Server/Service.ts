@@ -1,17 +1,22 @@
-import { CommandExecutor } from "@effect/platform/CommandExecutor"
 import * as Command from "@effect/platform/Command"
-import { Context, Effect, Layer, Ref, Schedule, Stream, Fiber } from "effect"
+import { CommandExecutor } from "@effect/platform/CommandExecutor"
+import { Context, Effect, Fiber, Layer, Ref, Stream } from "effect"
 import * as net from "node:net"
-import type { ServerOptions, ServerProcess, ServerState } from "./types.js"
 import { ServerError, ServerPortError, ServerTimeoutError } from "./errors.js"
+import type { ServerOptions, ServerProcess, ServerState } from "./types.js"
 
 export class ServerService extends Context.Tag("@openagentsinc/autotest/ServerService")<
   ServerService,
   {
-    readonly start: (options: ServerOptions) => Effect.Effect<ServerProcess, ServerError | ServerTimeoutError | ServerPortError>
+    readonly start: (
+      options: ServerOptions
+    ) => Effect.Effect<ServerProcess, ServerError | ServerTimeoutError | ServerPortError>
     readonly stop: (process: ServerProcess) => Effect.Effect<void, ServerError>
     readonly getState: (process: ServerProcess) => Effect.Effect<ServerState>
-    readonly waitForReady: (process: ServerProcess, options?: { timeout?: number; pattern?: RegExp }) => Effect.Effect<void, ServerTimeoutError>
+    readonly waitForReady: (
+      process: ServerProcess,
+      options?: { timeout?: number; pattern?: RegExp }
+    ) => Effect.Effect<void, ServerTimeoutError>
   }
 >() {}
 
@@ -70,7 +75,7 @@ export const ServerServiceLive = Layer.effect(
           )
 
           // Use a promise to get the process info from the daemon fiber
-          const { promise, resolve, reject } = yield* Effect.sync(() => {
+          const { promise, reject, resolve } = yield* Effect.sync(() => {
             let resolve: (value: any) => void
             let reject: (error: any) => void
             const promise = new Promise((res, rej) => {
@@ -123,8 +128,7 @@ export const ServerServiceLive = Layer.effect(
               status: "starting",
               process: serverProcess,
               startedAt: new Date()
-            })
-          )
+            }))
 
           // Set up log collection using daemon fibers so they outlive the scope
           const collectLogs = Effect.gen(function*() {
@@ -137,7 +141,7 @@ export const ServerServiceLive = Layer.effect(
                   const trimmedLine = line.trim()
                   if (trimmedLine) {
                     console.log(`[${proc.pid}]`, trimmedLine)
-                    
+
                     // Update state immediately with new log
                     yield* Ref.update(processStates, (states) => {
                       const state = states.get(proc.pid)
@@ -163,7 +167,7 @@ export const ServerServiceLive = Layer.effect(
                   const trimmedLine = line.trim()
                   if (trimmedLine) {
                     console.error(`[${proc.pid}] [stderr]`, trimmedLine)
-                    
+
                     // Update state immediately with new log
                     yield* Ref.update(processStates, (states) => {
                       const state = states.get(proc.pid)
@@ -183,7 +187,7 @@ export const ServerServiceLive = Layer.effect(
 
           // Start log collection
           yield* collectLogs
-          
+
           // Give the process a moment to start and output initial logs
           yield* Effect.sleep("100 millis")
 
@@ -207,9 +211,7 @@ export const ServerServiceLive = Layer.effect(
           )
 
           // Store the fiber reference
-          yield* Ref.update(processFibers, (fibers) =>
-            new Map(fibers).set(proc.pid, fiber)
-          )
+          yield* Ref.update(processFibers, (fibers) => new Map(fibers).set(proc.pid, fiber))
 
           return serverProcess
         }),
@@ -270,14 +272,14 @@ export const ServerServiceLive = Layer.effect(
           const checkReady = Effect.gen(function*() {
             const state = yield* Ref.get(processStates)
             const procState = state.get(process.pid)
-            
+
             if (!procState?.process) {
               return false
             }
 
             // Check if any log matches the ready pattern
-            const isReady = procState.process.logs.some(log => pattern.test(log))
-            
+            const isReady = procState.process.logs.some((log) => pattern.test(log))
+
             if (isReady && procState.status === "starting") {
               // Update state to ready
               yield* Ref.update(processStates, (states) => {

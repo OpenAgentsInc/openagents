@@ -2,17 +2,19 @@
 import { BunContext, BunRuntime } from "@effect/platform-bun"
 import { Console, Effect, Layer } from "effect"
 import { BrowserServiceLive } from "./Browser/Service.js"
+import { TestOrchestrator, TestOrchestratorLive } from "./Orchestrator/TestOrchestrator.js"
+import type { OrchestratorConfig } from "./Orchestrator/types.js"
 import { ScreenshotServiceLive } from "./Screenshot/Service.js"
 import { ServerServiceLive } from "./Server/Service.js"
-import { TestOrchestratorLive, TestOrchestrator } from "./Orchestrator/TestOrchestrator.js"
-import type { OrchestratorConfig } from "./Orchestrator/types.js"
 
 // Parse command line arguments
 const args = process.argv.slice(2)
 
 if (args.length === 0) {
   console.error("Usage: bun run orchestrate <config-json>")
-  console.error("Example: bun run orchestrate '{\"project\":{\"root\":\"/path/to/project\",\"startCommand\":\"bun run dev\"}}'")
+  console.error(
+    "Example: bun run orchestrate '{\"project\":{\"root\":\"/path/to/project\",\"startCommand\":\"bun run dev\"}}'"
+  )
   process.exit(1)
 }
 
@@ -45,7 +47,7 @@ const defaultConfig: OrchestratorConfig = {
 const program = Effect.gen(function*() {
   // Parse config from command line or use default
   let config: OrchestratorConfig
-  
+
   if (args[0] === "--default") {
     config = defaultConfig
     yield* Console.log("Using default configuration for OpenAgents.com")
@@ -73,10 +75,10 @@ const program = Effect.gen(function*() {
   yield* Console.log(`Routes tested: ${report.summary.totalRoutes}`)
   yield* Console.log(`Passed: ${report.summary.passedRoutes}`)
   yield* Console.log(`Failed: ${report.summary.failedRoutes}`)
-  
+
   if (report.summary.failedRoutes > 0) {
     yield* Console.error("\n=== Failed Routes ===")
-    for (const route of report.routes.filter(r => !r.success)) {
+    for (const route of report.routes.filter((r) => !r.success)) {
       yield* Console.error(`- ${route.route}: ${route.errors.length} errors`)
       for (const error of route.errors) {
         yield* Console.error(`  - [${error.type}] ${error.message}`)
@@ -97,7 +99,7 @@ const program = Effect.gen(function*() {
     try: () => Bun.write(reportPath, JSON.stringify(report, null, 2)),
     catch: (error) => new Error(`Failed to write report: ${error}`)
   })
-  
+
   yield* Console.log(`\nDetailed report saved to: ${reportPath}`)
 
   // Exit with appropriate code
