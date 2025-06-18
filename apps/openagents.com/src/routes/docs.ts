@@ -3,8 +3,8 @@ import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
 import { fileURLToPath } from "url"
-import { sharedHeader } from "../components/shared-header"
 import { docsMenu } from "../components/docs-menu"
+import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
 // Get the directory of the current module
