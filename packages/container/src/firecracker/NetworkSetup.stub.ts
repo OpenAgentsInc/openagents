@@ -1,5 +1,5 @@
-import { Effect, Context, Layer } from "effect"
-import { NetworkSetupError } from "./errors.js"
+import { Context, Effect, Layer } from "effect"
+import type { NetworkSetupError } from "./errors.js"
 
 export interface NetworkConfig {
   readonly tapDevice: string
@@ -31,14 +31,11 @@ export const NetworkSetupServiceLive = Layer.succeed(
         name,
         macAddress: "02:00:00:00:00:01"
       }),
-      
-    deleteTapInterface: (name: string) =>
-      Effect.void,
-      
-    setupBridge: (config: NetworkConfig) =>
-      Effect.void,
-      
-    checkPermissions: () =>
-      Effect.succeed(false)
+
+    deleteTapInterface: (_name: string) => Effect.void,
+
+    setupBridge: (_config: NetworkConfig) => Effect.void,
+
+    checkPermissions: () => Effect.succeed(false)
   }
 )

@@ -3,6 +3,6 @@
  */
 
 export * from "./errors.js"
-export * from "./MicroVMConfig.js"
 export * from "./FirecrackerService.stub.js"
+export * from "./MicroVMConfig.js"
 export * from "./NetworkSetup.stub.js"

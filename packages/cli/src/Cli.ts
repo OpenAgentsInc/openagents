@@ -169,37 +169,27 @@ const deploymentIdArg = Args.text({ name: "deploymentId" }).pipe(
 
 const containerDeploy = Command.make("deploy", { agentId: agentIdArg }).pipe(
   Command.withDescription("Deploy an agent to a Firecracker container"),
-  Command.withHandler(({ agentId }) =>
-    ContainerCommands.containerDeploy(agentId, {})
-  )
+  Command.withHandler(({ agentId }) => ContainerCommands.containerDeploy(agentId, {}))
 )
 
 const containerStatus = Command.make("status", { deploymentId: deploymentIdArg }).pipe(
   Command.withDescription("Get status of a container deployment"),
-  Command.withHandler(({ deploymentId }) =>
-    ContainerCommands.containerStatus(deploymentId)
-  )
+  Command.withHandler(({ deploymentId }) => ContainerCommands.containerStatus(deploymentId))
 )
 
 const containerHibernate = Command.make("hibernate", { deploymentId: deploymentIdArg }).pipe(
   Command.withDescription("Hibernate a container to save resources"),
-  Command.withHandler(({ deploymentId }) =>
-    ContainerCommands.containerHibernate(deploymentId)
-  )
+  Command.withHandler(({ deploymentId }) => ContainerCommands.containerHibernate(deploymentId))
 )
 
 const containerWake = Command.make("wake", { deploymentId: deploymentIdArg }).pipe(
   Command.withDescription("Wake a hibernated container"),
-  Command.withHandler(({ deploymentId }) =>
-    ContainerCommands.containerWake(deploymentId)
-  )
+  Command.withHandler(({ deploymentId }) => ContainerCommands.containerWake(deploymentId))
 )
 
 const containerTest = Command.make("test").pipe(
   Command.withDescription("Test Firecracker integration"),
-  Command.withHandler(() =>
-    ContainerCommands.containerTest()
-  )
+  Command.withHandler(() => ContainerCommands.containerTest())
 )
 
 const containerCommand = Command.make("container").pipe(

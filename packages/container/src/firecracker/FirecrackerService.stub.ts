@@ -1,15 +1,8 @@
 import { Context, Effect, Layer } from "effect"
-import { 
-  CreateVMRequest, 
-  StopVMRequest, 
-  VMState 
-} from "./MicroVMConfig.js"
-import {
-  FirecrackerBinaryNotFoundError,
-  FirecrackerError,
-  VMAlreadyExistsError,
-  VMNotFoundError,
-} from "./errors.js"
+import type { FirecrackerError, VMAlreadyExistsError, VMNotFoundError } from "./errors.js"
+import { FirecrackerBinaryNotFoundError } from "./errors.js"
+import type { CreateVMRequest, CreateVMRequest, StopVMRequest, StopVMRequest } from "./MicroVMConfig.js"
+import { VMState } from "./MicroVMConfig.js"
 
 export class FirecrackerService extends Context.Tag("@openagentsinc/container/FirecrackerService")<
   FirecrackerService,
@@ -25,29 +18,30 @@ export class FirecrackerService extends Context.Tag("@openagentsinc/container/Fi
 export const FirecrackerServiceLive = Layer.succeed(
   FirecrackerService,
   {
-    createVM: (request: CreateVMRequest) => 
-      Effect.succeed(new VMState({
-        id: request.id,
-        status: "running",
-        pid: 12345,
-        startedAt: new Date(),
-      })),
-      
-    stopVM: (request: StopVMRequest) => 
-      Effect.void,
-      
-    getVM: (id: string) => 
-      Effect.succeed(new VMState({
-        id,
-        status: "running",
-        pid: 12345,
-        startedAt: new Date(),
-      })),
-      
-    listVMs: () => 
-      Effect.succeed([]),
-      
-    getBinaryPath: () => 
-      Effect.fail(new FirecrackerBinaryNotFoundError({ path: "/usr/bin/firecracker" }))
+    createVM: (_request: CreateVMRequest) =>
+      Effect.succeed(
+        new VMState({
+          id: _request.id,
+          status: "running",
+          pid: 12345,
+          startedAt: new Date()
+        })
+      ),
+
+    stopVM: (_request: StopVMRequest) => Effect.void,
+
+    getVM: (id: string) =>
+      Effect.succeed(
+        new VMState({
+          id,
+          status: "running",
+          pid: 12345,
+          startedAt: new Date()
+        })
+      ),
+
+    listVMs: () => Effect.succeed([]),
+
+    getBinaryPath: () => Effect.fail(new FirecrackerBinaryNotFoundError({ path: "/usr/bin/firecracker" }))
   }
 )
