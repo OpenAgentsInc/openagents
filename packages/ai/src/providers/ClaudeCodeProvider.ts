@@ -2,7 +2,7 @@ import { Effect, Layer } from "effect"
 import { AiService } from "../AiService.js"
 import { ClaudeCodeConfig, ClaudeCodeConfigDefault } from "../config/ClaudeCodeConfig.js"
 import { ClaudeCodeClient } from "./ClaudeCodeClient.js"
-import { ClaudeCodePtyClientLive } from "./ClaudeCodePty.js"
+import { ClaudeCodeClientLive } from "./ClaudeCodeSimple.js"
 
 /**
  * Claude Code provider for AI Service
@@ -79,7 +79,7 @@ export const ClaudeCodeProviderLive = Layer.effect(
     }
   })
 ).pipe(
-  Layer.provide(ClaudeCodePtyClientLive),
+  Layer.provide(ClaudeCodeClientLive),
   Layer.provide(ClaudeCodeConfigDefault)
 )
 

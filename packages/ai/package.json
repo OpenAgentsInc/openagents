@@ -29,7 +29,6 @@
     "@effect/platform-node": "0.85.2",
     "@effect/schema": "0.75.5",
     "effect": "3.16.3",
-    "gpt-tokenizer": "^3.0.1",
-    "node-pty": "^1.0.0"
+    "gpt-tokenizer": "^3.0.1"
   }
 }

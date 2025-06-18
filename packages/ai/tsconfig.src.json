@@ -8,7 +8,6 @@
     "src/config/ClaudeCodeConfig.ts",
     "src/errors/index.ts",
     "src/providers/ClaudeCodeProvider.ts",
-    "src/providers/ClaudeCodePty.ts",
     "src/providers/ClaudeCodeSimple.ts",
     "src/providers/ClaudeCodeClient.ts"
   ],
