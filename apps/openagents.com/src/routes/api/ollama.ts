@@ -1,95 +1,12 @@
+import * as Ai from "@openagentsinc/ai"
+import { Effect, Stream } from "effect"
 import { Elysia } from "elysia"
-
-// Simple Ollama status check
-async function checkOllamaStatus() {
-  try {
-    const response = await fetch("http://localhost:11434/api/tags")
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-    }
-    const data = await response.json()
-    return {
-      online: true,
-      models: data.models || [],
-      modelCount: (data.models || []).length
-    }
-  } catch (error) {
-    return {
-      online: false,
-      models: [],
-      modelCount: 0,
-      error: "Cannot connect to Ollama"
-    }
-  }
-}
-
-// Simple chat streaming function
-async function* chatStream(request: {
-  model: string
-  messages: Array<{ role: string; content: string }>
-  options?: any
-}) {
-  const response = await fetch("http://localhost:11434/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: request.model,
-      messages: request.messages,
-      stream: true,
-      options: request.options || {}
-    })
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Ollama API error: ${response.status} - ${errorText}`)
-  }
-
-  const reader = response.body?.getReader()
-  if (!reader) throw new Error("No response body")
-
-  const decoder = new TextDecoder()
-  let buffer = ""
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split("\n")
-      buffer = lines.pop() ?? ""
-
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const chunk = JSON.parse(line)
-            // Yield in the format expected by the frontend
-            yield {
-              model: request.model,
-              created_at: new Date().toISOString(),
-              message: {
-                role: "assistant" as const,
-                content: chunk.message?.content || ""
-              },
-              done: chunk.done || false
-            }
-            if (chunk.done) return
-          } catch {
-            // Skip invalid JSON
-          }
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock()
-  }
-}
 
 export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
   .get("/status", async () => {
     try {
-      const status = await checkOllamaStatus()
+      // Use the Ollama provider's checkStatus function
+      const status = await Effect.runPromise(Ai.Ollama.checkStatus())
       return Response.json(status)
     } catch {
       return Response.json({ online: false, models: [], modelCount: 0 }, { status: 503 })
@@ -104,12 +21,59 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       const writer = stream.writable.getWriter()
       const encoder = new TextEncoder()
 
-      // Start streaming in background
+      // Start streaming in background using Effect patterns
       ;(async () => {
         try {
-          for await (const chunk of chatStream({ model, messages, options })) {
-            await writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
-          }
+          // Create the chat effect using the Ollama client
+          const chatProgram = Effect.gen(function*() {
+            const client = yield* Ai.Ollama.OllamaClient
+            
+            // Get the async generator directly (not wrapped in Effect)
+            const generator = client.chat({
+              model,
+              messages,
+              stream: true,
+              options: {
+                temperature: options?.temperature || 0.7,
+                num_ctx: options?.num_ctx || 4096,
+                ...options
+              }
+            })
+            
+            // Process the generator manually within Effect
+            yield* Effect.tryPromise({
+              try: async () => {
+                for await (const chunk of generator) {
+                  const responseChunk = {
+                    model,
+                    created_at: new Date().toISOString(),
+                    message: {
+                      role: "assistant" as const,
+                      content: chunk.content
+                    },
+                    done: chunk.done || false
+                  }
+                  await writer.write(encoder.encode(`data: ${JSON.stringify(responseChunk)}\n\n`))
+                }
+              },
+              catch: (error) => new Error(`Stream processing error: ${error}`)
+            })
+          })
+          
+          // Run the program with the Ollama layer
+          await Effect.runPromise(
+            chatProgram.pipe(
+              Effect.provide(Ai.Ollama.OllamaClientLive()),
+              Effect.tapError((error) => 
+                Effect.sync(() => {
+                  console.error("Effect chat error:", error)
+                  return error
+                })
+              )
+            )
+          )
+
+          // Send completion signal
           await writer.write(encoder.encode(`data: [DONE]\n\n`))
         } catch (error: any) {
           console.error("Chat streaming error:", error)
