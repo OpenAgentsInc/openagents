@@ -147,7 +147,7 @@ export const TestOrchestratorLive = Layer.effect(
             })
             // Save screenshot with timestamp
             const timestamp = Date.now()
-            const filename = `screenshot-${route.replace(/\//g, '-')}-${timestamp}.png`
+            const filename = `screenshot-${route.replace(/\//g, "-")}-${timestamp}.png`
             const filepath = `.autotest/screenshots/${filename}`
             yield* screenshotService.save(screenshot, filepath)
             screenshots.push(filename)
@@ -162,7 +162,7 @@ export const TestOrchestratorLive = Layer.effect(
               })
               // Save error screenshot with timestamp
               const timestamp = Date.now()
-              const filename = `error-${route.replace(/\//g, '-')}-${timestamp}.png`
+              const filename = `error-${route.replace(/\//g, "-")}-${timestamp}.png`
               const filepath = `.autotest/screenshots/${filename}`
               yield* screenshotService.save(errorScreenshot, filepath)
               screenshots.push(filename)
