@@ -15,8 +15,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
           <a href="/blog" class="nav-link ${current === "blog" ? "active" : ""}">¶ Blog</a>
           <div class="theme-switcher-container">
             <select id="theme-select" class="theme-select" onchange="switchTheme(this.value)">
-              <option value="zinc">Zinc Dark</option>
-              <option value="zinc-light">Zinc Light</option>
+              <option value="zinc">Zinc</option>
               <option value="catppuccin">Catppuccin</option>
               <option value="gruvbox">Gruvbox</option>
               <option value="nord">Nord</option>
@@ -136,7 +135,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         console.log('Switching to theme:', theme);
         
         // Remove existing theme classes
-        document.body.classList.remove('theme-zinc', 'theme-zinc-light', 'theme-catppuccin', 'theme-gruvbox', 'theme-nord');
+        document.body.classList.remove('theme-zinc', 'theme-catppuccin', 'theme-gruvbox', 'theme-nord');
         
         // Add new theme class
         document.body.classList.add('theme-' + theme);
@@ -155,10 +154,10 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         const themeSelect = document.getElementById('theme-select');
         
         if (themeSelect) {
-          // Handle old 'light' value for backwards compatibility
-          if (savedTheme === 'light') {
-            themeSelect.value = 'zinc-light';
-            switchTheme('zinc-light');
+          // Handle old 'light' or 'zinc-light' values for backwards compatibility
+          if (savedTheme === 'light' || savedTheme === 'zinc-light') {
+            themeSelect.value = 'zinc';
+            switchTheme('zinc');
           } else {
             themeSelect.value = savedTheme;
             switchTheme(savedTheme);
