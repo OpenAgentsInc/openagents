@@ -6,7 +6,7 @@ import { navigate, performInteractions } from "../Testing/Interactions.js"
 import { InvalidRequestError, SecurityError } from "./errors.js"
 import type { ClaudeScreenshotRequest, SecurityOptions } from "./types.js"
 
-const DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0"]
+const DEFAULT_ALLOWED_HOSTS: Array<string> = [] // Empty array means allow all hosts
 const DEFAULT_MAX_EXECUTION_TIME = 30000
 const DEFAULT_OUTPUT_DIR = ".autotest/screenshots"
 
@@ -58,7 +58,8 @@ export const validateSecurity = (
       catch: () => new SecurityError({ url, message: "Invalid URL format" })
     })
 
-    if (!allowedHosts.includes(parsedUrl.hostname)) {
+    // Only check allowed hosts if the list is not empty (empty means allow all)
+    if (allowedHosts.length > 0 && !allowedHosts.includes(parsedUrl.hostname)) {
       yield* Effect.fail(
         new SecurityError({
           url,
