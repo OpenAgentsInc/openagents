@@ -41,3 +41,6 @@ packages/storybook/storybook-static/
 
 # Autotest screenshots and artifacts
 .autotest/
+
+# Development server logs
+dev-server.log
