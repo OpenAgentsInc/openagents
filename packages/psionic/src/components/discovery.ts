@@ -22,15 +22,12 @@ export async function discoverStories(storiesDir: string): Promise<Array<StoryMo
     const dirExists = await fs.access(storiesPath).then(() => true).catch(() => false)
 
     if (!dirExists) {
-      console.log(`📚 Stories directory not found: ${storiesPath}`)
       return []
     }
 
     // Read all files in stories directory
     const files = await fs.readdir(storiesPath)
     const storyFiles = files.filter((file) => file.endsWith(".story.ts"))
-
-    console.log(`📚 Found ${storyFiles.length} story files in ${storiesPath}`)
 
     // Load each story file
     for (const file of storyFiles) {
@@ -65,7 +62,6 @@ export async function discoverStories(storiesDir: string): Promise<Array<StoryMo
         }
 
         storyModules.push(storyModule)
-        console.log(`📖 Loaded story: ${storyModule.title} (${Object.keys(stories).length} variants)`)
       } catch (error) {
         console.error(`❌ Error loading story file ${file}:`, error)
       }
