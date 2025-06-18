@@ -1,4 +1,4 @@
-import { document, html, renderMarkdownWithMetadata } from "@openagentsinc/psionic"
+import { document, html, renderMarkdownWithHighlighting } from "@openagentsinc/psionic"
 import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
@@ -400,7 +400,10 @@ export const docPage: RouteHandler = async (context) => {
   try {
     const filePath = path.join(DOCS_DIR, `${slug}.md`)
     const content = await fs.readFile(filePath, "utf-8")
-    const result = renderMarkdownWithMetadata(content)
+    
+    // Get theme from query params or cookie (for now default to zinc)
+    const theme = context.query?.theme || context.cookie?.theme || "zinc"
+    const result = await renderMarkdownWithHighlighting(content, theme)
 
     return document({
       title: `${result.metadata.title} - OpenAgents Documentation`,

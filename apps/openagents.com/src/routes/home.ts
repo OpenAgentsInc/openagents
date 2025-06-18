@@ -14,7 +14,7 @@ export function home() {
         <!-- Main Content -->
         <main class="homepage-main">
           <div class="launch-notice" box-="square">
-            <div class="notice-title">※ Welcome to our new site</div>
+            <div class="notice-title">Welcome to OpenAgents</div>
             <div class="notice-content">
               <p>We're launching a few new products on <strong>Saturday June 21</strong>.</p>
               <p>In the meantime, explore our resources:</p>
