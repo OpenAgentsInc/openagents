@@ -224,6 +224,12 @@ importers:
 
   packages/autotest:
     dependencies:
+      '@effect/platform':
+        specifier: 0.84.6
+        version: 0.84.6(effect@3.16.3)
+      '@effect/platform-bun':
+        specifier: ^0.70.2
+        version: 0.70.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3)
       effect:
         specifier: 3.16.3
         version: 3.16.3
@@ -1310,6 +1316,22 @@ packages:
       effect: 3.16.3
     dev: false
 
+  /@effect/cluster@0.39.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(@effect/workflow@0.2.2)(effect@3.16.3):
+    resolution: {integrity: sha512-oU/UDcKzQDPoEHW+1wMLxJRmdlA5n/Ek7AG0vrKFQ7AiBxUpJwlJlym8BVgpRBVs3VTI+Jwigmx5z8rp1dJA+g==}
+    peerDependencies:
+      '@effect/platform': ^0.85.1
+      '@effect/rpc': ^0.62.2
+      '@effect/sql': ^0.38.1
+      '@effect/workflow': ^0.2.2
+      effect: ^3.16.8
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/workflow': 0.2.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(effect@3.16.3)
+      effect: 3.16.3
+    dev: false
+
   /@effect/data@0.7.4:
     resolution: {integrity: sha512-vHDyTq66H5JIFMysp11KawygR7ikc2do5FdRdvruLN4H6hFW7u404Bl/UVOu4MiKugHvV1MUaV2fy/dzOlwY7w==}
     deprecated: this package has been merged into the main effect package
@@ -1340,6 +1362,24 @@ packages:
       uuid: 11.1.0
     dev: false
 
+  /@effect/experimental@0.49.1(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-puU0tZR+vEQ8RwdBXkMXVGlV5WG4tyVQA6J5LCJJoDnHDzNmEKsEjcjrD6YKmt/MNr9Jdm0H5LkkEfRYTiCL2g==}
+    peerDependencies:
+      '@effect/platform': ^0.85.1
+      effect: ^3.16.8
+      ioredis: ^5
+      lmdb: ^3
+    peerDependenciesMeta:
+      ioredis:
+        optional: true
+      lmdb:
+        optional: true
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      effect: 3.16.3
+      uuid: 11.1.0
+    dev: false
+
   /@effect/io@0.15.3:
     resolution: {integrity: sha512-45CP387UW9eqtNRP7bALwqaAc4D7toGx1HWvFlmZtvIcVLLGzuZ9GcUpRgy1lp6isb4gzGRov9kwi5J2ELRP7Q==}
     deprecated: this package has been merged into the main effect package
@@ -1355,6 +1395,27 @@ packages:
   /@effect/language-service@0.18.0:
     resolution: {integrity: sha512-Wk7x6W7pI5C9ix/7xE2Ad9ruWrk26uJuc8IgVzxH98AoiHO1G0f8Cblj6N1WaLB0PTyQoQPmrNsIII2Th6ywuw==}
     dev: true
+
+  /@effect/platform-bun@0.70.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3):
+    resolution: {integrity: sha512-oq9erseR3YjlqXZZXk1VqB7q3WfmwTP9pwCSRd9X/xowLLRY1tx8Y1jjer3g5EGpF5nfoDLX5zTW3HEwQFHRWA==}
+    peerDependencies:
+      '@effect/cluster': ^0.39.2
+      '@effect/platform': ^0.85.1
+      '@effect/rpc': ^0.62.2
+      '@effect/sql': ^0.38.1
+      effect: ^3.16.8
+    dependencies:
+      '@effect/cluster': 0.39.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(@effect/workflow@0.2.2)(effect@3.16.3)
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      '@effect/platform-node-shared': 0.40.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3)
+      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      effect: 3.16.3
+      multipasta: 0.2.5
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+    dev: false
 
   /@effect/platform-node-shared@0.16.4(@effect/platform@0.66.3)(effect@3.16.3):
     resolution: {integrity: sha512-JIg2qEKmTEnWGEMm0ZetfJ6RrEb1eWdCqhCdmxiFVU9YpNdkMpG1xASCBRX3n/13IUleb5tFLjhnLResEg3Y0A==}
@@ -1380,6 +1441,28 @@ packages:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@parcel/watcher': 2.5.1
+      effect: 3.16.3
+      multipasta: 0.2.5
+      ws: 8.18.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+    dev: false
+
+  /@effect/platform-node-shared@0.40.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3):
+    resolution: {integrity: sha512-f9FbZN1pTMlR4bTwlR/mER9Qqd1MwMdryn3cz5/lapmXvgrRxQ+vgGS15d286mZeoc6aHtXGEr0GgoPNDFscKw==}
+    peerDependencies:
+      '@effect/cluster': ^0.39.2
+      '@effect/platform': ^0.85.1
+      '@effect/rpc': ^0.62.2
+      '@effect/sql': ^0.38.1
+      effect: ^3.16.8
+    dependencies:
+      '@effect/cluster': 0.39.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(@effect/workflow@0.2.2)(effect@3.16.3)
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
       '@parcel/watcher': 2.5.1
       effect: 3.16.3
       multipasta: 0.2.5
@@ -1498,6 +1581,16 @@ packages:
       effect: 3.16.3
     dev: false
 
+  /@effect/rpc@0.62.2(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-m9Vit6U0hZ/Yt/yKdz5fBoHI7cY4qFJdidYZTVqzAo5tctKQtfJFKjAn4Oq0TWVfbTC7JrCK0GM51j5iQuI33Q==}
+    peerDependencies:
+      '@effect/platform': ^0.85.1
+      effect: ^3.16.8
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      effect: 3.16.3
+    dev: false
+
   /@effect/schema@0.67.24(effect@3.16.3):
     resolution: {integrity: sha512-IaJYTqvWxOCTio8PHHtiZALDfYkUX90lElsqtQtuCTcrR14nzxwUb1gPye5iS3rZjbcc4NiDsROBJJs4+wMP0g==}
     deprecated: this package has been merged into the main effect package
@@ -1549,6 +1642,20 @@ packages:
       uuid: 11.1.0
     dev: false
 
+  /@effect/sql@0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-oS5s8j8C1W7rugZeDpwfRjrjfRaqUqhO+wtL1yRgXqE0px7fVI3y2Am5f6aq63cR9UMKOwFc5NzEl3Af9uYlSw==}
+    peerDependencies:
+      '@effect/experimental': ^0.49.1
+      '@effect/platform': ^0.85.1
+      effect: ^3.16.8
+    dependencies:
+      '@effect/experimental': 0.49.1(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      '@opentelemetry/semantic-conventions': 1.34.0
+      effect: 3.16.3
+      uuid: 11.1.0
+    dev: false
+
   /@effect/typeclass@0.24.27(effect@3.16.3):
     resolution: {integrity: sha512-QVdOjejL6c+5ElSi4N+lYGiKAnEyjqFhap4gerQ1eMtIIYsvzaOTQgRYOR4OBc8dSwmGFmxWpqLZGHracamYIQ==}
     peerDependencies:
@@ -1571,7 +1678,7 @@ packages:
       vitest: ^3.0.0
     dependencies:
       effect: 3.16.3
-      vitest: 3.2.1(@types/node@22.15.29)(tsx@4.19.4)
+      vitest: 3.2.1(@types/node@22.10.5)(tsx@4.19.4)
     dev: true
 
   /@effect/workflow@0.1.14(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(effect@3.16.3):
@@ -1583,6 +1690,18 @@ packages:
     dependencies:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
+      effect: 3.16.3
+    dev: false
+
+  /@effect/workflow@0.2.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(effect@3.16.3):
+    resolution: {integrity: sha512-fAXH0S3roA1LUFItlXmHZPaL57ZWxySf4QveidOoZuB+1rXVKk79OX++Y1G+l7Omugb7JzsyL1JCt5qo+Detzg==}
+    peerDependencies:
+      '@effect/platform': ^0.85.1
+      '@effect/rpc': ^0.62.2
+      effect: ^3.16.8
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
       effect: 3.16.3
     dev: false
 
@@ -5796,7 +5915,7 @@ packages:
       '@vitest/spy': 3.2.1
       estree-walker: 3.0.3
       magic-string: 0.30.17
-      vite: 6.3.5(@types/node@22.15.29)(tsx@4.19.4)
+      vite: 6.3.5(@types/node@22.10.5)(tsx@4.19.4)
     dev: true
 
   /@vitest/pretty-format@2.0.5:
@@ -6905,6 +7024,7 @@ packages:
   /detect-libc@2.0.4:
     resolution: {integrity: sha512-3UDv+G9CsCKO1WKMGw9fwq/SWJYbI0c5Y7LU1AXYoDdbhE2AHQ6N6Nb34sG8Fj7T5APy8qXDCKuuIHd1BR0tVA==}
     engines: {node: '>=8'}
+    requiresBuild: true
 
   /detective-amd@6.0.1:
     resolution: {integrity: sha512-TtyZ3OhwUoEEIhTFoc1C9IyJIud3y+xYkSRjmvCt65+ycQuc3VcBrPRTMWoO/AnuCyOB8T5gky+xf7Igxtjd3g==}
@@ -8270,6 +8390,7 @@ packages:
   /glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
     engines: {node: '>= 6'}
+    requiresBuild: true
     dependencies:
       is-glob: 4.0.3
 
@@ -8781,6 +8902,7 @@ packages:
   /is-glob@4.0.3:
     resolution: {integrity: sha512-xelSayHH36ZgE7ZWhli7pW34hNbNl8Ojv5KVmkJD4hBdD3th8Tfk9vYasLM+mXWOZhFkgZfxhLSnrwRr4elSSg==}
     engines: {node: '>=0.10.0'}
+    requiresBuild: true
     dependencies:
       is-extglob: 2.1.1
 
@@ -11000,6 +11122,7 @@ packages:
   /source-map@0.6.1:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
+    requiresBuild: true
 
   /space-separated-tokens@2.0.2:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}

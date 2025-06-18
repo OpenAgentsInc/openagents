@@ -47,10 +47,9 @@ export const ServerServiceLive = Layer.effect(
 
     return ServerService.of({
       start: (options: ServerOptions) =>
-        Effect.gen(function*() {
-          // Find available port if not specified
-          const port = options.port ?? 3000
-          const actualPort = yield* findAvailablePort(port)
+        Effect.scoped(Effect.gen(function*() {
+          // Find available port
+          const actualPort = yield* findAvailablePort(options.port)
 
           // Parse command and args
           const [cmd, ...cmdArgs] = options.command.split(" ")
@@ -64,8 +63,8 @@ export const ServerServiceLive = Layer.effect(
               ...options.env,
               PORT: actualPort.toString()
             }),
-            Command.stdout("piped"),
-            Command.stderr("piped")
+            Command.stdout("pipe"),
+            Command.stderr("pipe")
           )
 
           // Start process
@@ -162,7 +161,7 @@ export const ServerServiceLive = Layer.effect(
           )
 
           return serverProcess
-        }),
+        })),
 
       stop: (process: ServerProcess) =>
         Effect.gen(function*() {

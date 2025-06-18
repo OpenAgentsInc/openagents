@@ -1,5 +1,4 @@
 import type { InteractionStep } from "../Testing/types.js"
-import type { ServerOptions } from "../Server/types.js"
 
 export interface ProjectConfig {
   readonly root: string
@@ -58,11 +57,11 @@ export interface ConsoleMessage {
 }
 
 export interface NetworkRequest {
-  readonly url: string
-  readonly method: string
-  readonly status?: number
-  readonly duration?: number
-  readonly error?: string
+  url: string
+  method: string
+  status?: number
+  duration?: number
+  error?: string
 }
 
 export interface TestReport {

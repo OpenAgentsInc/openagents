@@ -1,11 +1,9 @@
-import { PlatformError } from "@effect/platform/Error"
-
 export interface ServerOptions {
   readonly command: string
   readonly args?: ReadonlyArray<string>
   readonly cwd?: string
   readonly env: Record<string, string>
-  readonly port?: number
+  readonly port: number
   readonly readyPattern?: RegExp
   readonly timeout?: number
 }
@@ -27,35 +25,38 @@ export interface ServerState {
   readonly stoppedAt?: Date
 }
 
-export class ServerError extends PlatformError {
-  readonly _tag = "ServerError"
+export class ServerError extends Error {
+  readonly _tag = "ServerError" as const
   
   constructor(
-    readonly message: string,
+    message: string,
     readonly cause?: unknown
   ) {
     super(message)
+    this.name = "ServerError"
   }
 }
 
-export class ServerTimeoutError extends PlatformError {
-  readonly _tag = "ServerTimeoutError"
+export class ServerTimeoutError extends Error {
+  readonly _tag = "ServerTimeoutError" as const
   
   constructor(
     readonly timeout: number,
     readonly cause?: unknown
   ) {
     super(`Server failed to start within ${timeout}ms`)
+    this.name = "ServerTimeoutError"
   }
 }
 
-export class ServerPortError extends PlatformError {
-  readonly _tag = "ServerPortError"
+export class ServerPortError extends Error {
+  readonly _tag = "ServerPortError" as const
   
   constructor(
     readonly port: number,
     readonly cause?: unknown
   ) {
     super(`Port ${port} is already in use`)
+    this.name = "ServerPortError"
   }
 }

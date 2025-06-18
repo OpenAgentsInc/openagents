@@ -2,7 +2,6 @@ import { Console, Context, Effect, Layer } from "effect"
 import { BrowserService } from "../Browser/Service.js"
 import type { Page } from "../Browser/types.js"
 import { ServerService } from "../Server/Service.js"
-import type { ServerProcess } from "../Server/types.js"
 import { navigate, performInteractions } from "../Testing/Interactions.js"
 import type { InteractionStep } from "../Testing/types.js"
 import { ScreenshotService } from "../Screenshot/Service.js"
@@ -55,12 +54,9 @@ const setupPageMonitoring = (page: Page, config: OrchestratorConfig) =>
 
     if (config.monitoring?.captureNetwork) {
       page.instance.on("request", (req) => {
-        const request = {
+        const request: NetworkRequest = {
           url: req.url(),
-          method: req.method(),
-          status: undefined,
-          duration: undefined,
-          error: undefined
+          method: req.method()
         }
         networkRequests.push(request)
       })
@@ -82,7 +78,7 @@ const setupPageMonitoring = (page: Page, config: OrchestratorConfig) =>
       page.instance.on("requestfailed", (req) => {
         const request = networkRequests.find(r => r.url === req.url())
         if (request) {
-          request.error = req.failure()?.errorText
+          request.error = req.failure()?.errorText || "Unknown error"
           errors.push({
             type: "network",
             message: `${request.method} ${request.url} failed: ${request.error}`,
@@ -145,7 +141,8 @@ export const TestOrchestratorLive = Layer.effect(
             }
 
             // Take screenshot
-            const screenshot = yield* screenshotService.capture(page, {
+            const screenshot = yield* screenshotService.capture({
+              page,
               fullPage: true
             })
             screenshots.push(screenshot.filename)
@@ -155,7 +152,8 @@ export const TestOrchestratorLive = Layer.effect(
             
             // Take error screenshot if configured
             try {
-              const errorScreenshot = yield* screenshotService.capture(page, {
+              const errorScreenshot = yield* screenshotService.capture({
+                page,
                 fullPage: true
               })
               screenshots.push(errorScreenshot.filename)
@@ -195,7 +193,7 @@ export const TestOrchestratorLive = Layer.effect(
           const serverProcess = yield* serverService.start({
             command: config.project.startCommand,
             cwd: config.project.root,
-            port: config.project.port,
+            port: config.project.port || 3000,
             env: config.project.env || {},
             readyPattern: config.project.readyPattern
           })
