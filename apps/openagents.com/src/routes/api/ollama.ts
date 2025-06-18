@@ -1,10 +1,12 @@
-import { checkOllama, Inference } from "@openagentsinc/sdk"
+import * as Ai from "@openagentsinc/ai"
 import { Elysia } from "elysia"
+import { Effect } from "effect"
 
 export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
   .get("/status", async () => {
     try {
-      const status = await checkOllama()
+      // Use the Ollama provider's checkStatus function
+      const status = await Effect.runPromise(Ai.Ollama.checkStatus())
       return Response.json(status)
     } catch {
       return Response.json({ online: false, models: [], modelCount: 0 }, { status: 503 })
@@ -17,18 +19,47 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       // Create a TransformStream for streaming response
       const stream = new TransformStream()
       const writer = stream.writable.getWriter()
-      const encoder = new TextEncoder() // Start streaming in background
+      const encoder = new TextEncoder()
+
+      // Start streaming in background using new AI library
       ;(async () => {
         try {
-          for await (
-            const chunk of Inference.chat({
+          // Create Ollama client and run chat
+          const chatEffect = Effect.gen(function*() {
+            const client = yield* Ai.Ollama.OllamaClient
+            const generator = yield* client.chat({
               model,
               messages,
               stream: true,
-              options
+              options: {
+                temperature: options?.temperature || 0.7,
+                num_ctx: options?.num_ctx || 4096,
+                ...options
+              }
             })
-          ) {
-            await writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+            return generator
+          })
+
+          // Run the effect with the Ollama layer
+          const generator = await Effect.runPromise(
+            chatEffect.pipe(
+              Effect.provide(Ai.Ollama.OllamaClientLive())
+            )
+          )
+          
+          // Stream the results
+          for await (const chunk of generator) {
+            // Convert to expected format for frontend compatibility
+            const formattedChunk = {
+              model,
+              created_at: new Date().toISOString(),
+              message: {
+                role: 'assistant' as const,
+                content: chunk.content
+              },
+              done: chunk.done || false
+            }
+            await writer.write(encoder.encode(`data: ${JSON.stringify(formattedChunk)}\n\n`))
           }
           await writer.write(encoder.encode(`data: [DONE]\n\n`))
         } catch (error: any) {
