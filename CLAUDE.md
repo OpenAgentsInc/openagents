@@ -219,3 +219,45 @@ export const Primary = {
 - **Simple Format**: HTML-based stories without complex abstractions
 - **Auto-discovery**: Automatically finds all `.story.ts` files
 - **Hot Navigation**: Accessible at `/components` by default
+
+## Browser Automation & Screenshots
+
+The `@openagentsinc/autotest` package provides browser automation capabilities for Claude Code to capture screenshots and analyze web pages.
+
+### Taking Screenshots
+To capture a screenshot of a local development server or any localhost URL:
+
+```bash
+# Navigate to the autotest package
+cd packages/autotest
+
+# Capture a screenshot (any URL allowed by default)
+bun run src/cli.ts '{"url":"http://localhost:3000","fullPage":true}'
+```
+
+The command accepts a JSON object with the following options:
+- `url` (required): The URL to capture (any valid URL allowed)
+- `fullPage` (optional): Whether to capture the full page or just the viewport
+- `viewport` (optional): Set custom viewport dimensions (defaults to 1280x1024)
+- `outputPath` (optional): Custom path for the screenshot (defaults to `.autotest/screenshots/`)
+
+### Reading Screenshots
+After capturing, use the Read tool to view the screenshot:
+```
+Read: /Users/christopherdavid/code/openagents/packages/autotest/.autotest/screenshots/claude-[timestamp].png
+```
+
+The Read tool will display the image visually, allowing Claude Code to analyze and describe the contents.
+
+### Example Workflow
+1. Start a local dev server (e.g., `pnpm --filter=@openagentsinc/openagents.com run dev`)
+2. Capture a screenshot using the autotest CLI
+3. Read the screenshot file to analyze the UI
+4. Make changes based on visual feedback
+5. Capture another screenshot to verify changes
+
+### Security Notes
+- By default, all URLs are allowed for maximum flexibility
+- Can be restricted to specific hosts by passing `allowedHosts` in security options
+- Screenshots are saved to `.autotest/screenshots/` which is gitignored
+- The browser runs in headless mode with a 30-second timeout
