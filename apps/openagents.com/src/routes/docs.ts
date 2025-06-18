@@ -2,10 +2,14 @@ import { document, html, renderMarkdownWithMetadata } from "@openagentsinc/psion
 import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
+import { fileURLToPath } from "url"
 import { navigation } from "../components/navigation"
 import { baseStyles } from "../styles"
 
-const DOCS_DIR = path.join(process.cwd(), "content", "docs")
+// Get the directory of the current module
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// Navigate from src/routes to root, then to content/docs
+const DOCS_DIR = path.resolve(__dirname, "..", "..", "..", "content", "docs")
 
 // Main docs index page
 export function docs() {
@@ -475,6 +479,9 @@ export const docPage: RouteHandler = async (context) => {
 
   try {
     const filePath = path.join(DOCS_DIR, `${slug}.md`)
+    console.log(`Attempting to read doc file: ${filePath}`)
+    console.log(`DOCS_DIR: ${DOCS_DIR}`)
+    console.log(`slug: ${slug}`)
     const content = await fs.readFile(filePath, "utf-8")
     const result = renderMarkdownWithMetadata(content)
 
