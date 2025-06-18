@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": ".tsbuildinfo.build",
+    "rootDir": "src",
+    "outDir": "build/esm",
+    "module": "NodeNext",
+    "target": "ES2022",
+    "moduleResolution": "NodeNext"
+  },
+  "exclude": ["test", "examples", "dist", "build"]
+}

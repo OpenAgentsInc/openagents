@@ -57,7 +57,14 @@
       "@openagentsinc/openagents.com/*": ["./apps/openagents.com/src/*.ts"],
       "@openagentsinc/ui": ["./packages/ui/src/index.js"],
       "@openagentsinc/ui/*": ["./packages/ui/src/*.js"],
-      "@openagentsinc/ui/test/*": ["./packages/ui/test/*.js"]
+      "@openagentsinc/ui/test/*": ["./packages/ui/test/*.js"],
+      "@openagentsinc/container": ["./packages/container/src/index.ts"],
+      "@openagentsinc/container/*": ["./packages/container/src/*.ts"],
+      "@openagentsinc/container/test/*": ["./packages/container/test/*.ts"],
+      "@openagentsinc/sdk": ["./packages/sdk/src/index.ts"],
+      "@openagentsinc/sdk/*": ["./packages/sdk/src/*.ts"],
+      "@openagentsinc/autotest": ["./packages/autotest/src/index.ts"],
+      "@openagentsinc/autotest/*": ["./packages/autotest/src/*.ts"]
     }
   }
 }

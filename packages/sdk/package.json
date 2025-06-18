@@ -20,9 +20,14 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
-    "test": "echo 'Tests not yet implemented'"
+    "codegen": "build-utils prepare-v2",
+    "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",
+    "build-esm": "tsc -b tsconfig.build.json",
+    "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
+    "build-annotate": "babel build/esm --plugins annotate-pure-calls --out-dir build/esm --source-maps",
+    "check": "tsc -b tsconfig.json",
+    "test": "echo 'Tests not yet implemented'",
+    "coverage": "echo 'Coverage not yet implemented'"
   },
   "dependencies": {
     "@openagentsinc/container": "workspace:^",
@@ -30,8 +35,25 @@
     "effect": "3.16.3"
   },
   "devDependencies": {
+    "@babel/cli": "7.27.2",
+    "@babel/core": "7.27.4",
+    "@babel/plugin-transform-export-namespace-from": "7.27.1",
+    "@babel/plugin-transform-modules-commonjs": "7.27.1",
+    "@babel/preset-typescript": "^7.23.3",
+    "@effect/build-utils": "0.8.3",
     "@types/node": "22.5.0",
-    "tsup": "8.3.5",
+    "babel-plugin-annotate-pure-calls": "0.4.0",
     "typescript": "5.6.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
+  "effect": {
+    "generateExports": {
+      "include": [
+        "**/*.ts"
+      ]
+    }
   }
 }
