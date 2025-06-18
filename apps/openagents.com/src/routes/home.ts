@@ -20,12 +20,24 @@ export function home() {
       </div>
 
       <style>
-        body {
+        html, body {
           background: var(--background0);
           margin: 0;
           padding: 0;
-          min-height: 100vh;
+          height: 100vh;
+          overflow: hidden;
           font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+          position: fixed;
+          width: 100%;
+        }
+
+        /* Fixed Header for Homepage */
+        .ascii-header {
+          position: fixed !important;
+          top: 0;
+          left: 0;
+          right: 0;
+          z-index: 1000;
         }
 
         /* Fixed Layout */
@@ -35,6 +47,7 @@ export function home() {
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          padding-top: 80px; /* Account for fixed header height */
         }
 
         /* Main Content */
@@ -44,6 +57,7 @@ export function home() {
           align-items: center;
           justify-content: center;
           padding: 2rem;
+          overflow: hidden;
         }
 
         .centered-card {
