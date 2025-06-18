@@ -231,12 +231,12 @@ To capture a screenshot of a local development server or any localhost URL:
 # Navigate to the autotest package
 cd packages/autotest
 
-# Capture a screenshot (URL must be localhost, 127.0.0.1, or 0.0.0.0)
+# Capture a screenshot (any URL allowed by default)
 bun run src/cli.ts '{"url":"http://localhost:3000","fullPage":true}'
 ```
 
 The command accepts a JSON object with the following options:
-- `url` (required): The URL to capture (must be a localhost URL for security)
+- `url` (required): The URL to capture (any valid URL allowed)
 - `fullPage` (optional): Whether to capture the full page or just the viewport
 - `viewport` (optional): Set custom viewport dimensions (defaults to 1280x1024)
 - `outputPath` (optional): Custom path for the screenshot (defaults to `.autotest/screenshots/`)
@@ -257,6 +257,7 @@ The Read tool will display the image visually, allowing Claude Code to analyze a
 5. Capture another screenshot to verify changes
 
 ### Security Notes
-- Only localhost URLs are allowed (localhost, 127.0.0.1, 0.0.0.0)
+- By default, all URLs are allowed for maximum flexibility
+- Can be restricted to specific hosts by passing `allowedHosts` in security options
 - Screenshots are saved to `.autotest/screenshots/` which is gitignored
 - The browser runs in headless mode with a 30-second timeout
