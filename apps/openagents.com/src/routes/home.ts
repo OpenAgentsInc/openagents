@@ -13,8 +13,20 @@ export function home() {
 
         <!-- Main Content -->
         <main class="homepage-main">
-          <div class="centered-card" box-="square">
-            <div class="card-title">OpenAgents</div>
+          <div class="launch-notice" box-="square">
+            <div class="notice-title">※ Welcome to our new site</div>
+            <div class="notice-content">
+              <p>We're launching a few new products on <strong>Saturday June 21</strong>.</p>
+              <p>In the meantime, explore our resources:</p>
+              <div class="notice-links">
+                <a href="/blog" is-="button" variant-="foreground1" box-="square">
+                  Read our Blog →
+                </a>
+                <a href="/docs" is-="button" variant-="foreground1" box-="square">
+                  View Documentation →
+                </a>
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -60,29 +72,60 @@ export function home() {
           overflow: hidden;
         }
 
-        .centered-card {
+        .launch-notice {
           text-align: center;
           padding: 3rem 4rem;
           background: var(--background1);
-          min-width: 300px;
+          min-width: 400px;
+          max-width: 600px;
         }
 
-        .card-title {
-          margin: 0;
-          font-size: 2.5rem;
+        .notice-title {
+          margin: 0 0 2rem 0;
+          font-size: 2rem;
           font-weight: 700;
           color: var(--foreground0);
         }
 
+        .notice-content {
+          color: var(--foreground1);
+        }
+
+        .notice-content p {
+          margin: 1rem 0;
+          line-height: 1.6;
+        }
+
+        .notice-content strong {
+          color: var(--foreground0);
+          font-weight: 600;
+        }
+
+        .notice-links {
+          display: flex;
+          gap: 1.5rem;
+          justify-content: center;
+          margin-top: 2.5rem;
+        }
+
+        .notice-links a {
+          text-decoration: none;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
-          .centered-card {
+          .launch-notice {
             padding: 2rem;
             min-width: 250px;
           }
 
-          .card-title {
-            font-size: 2rem;
+          .notice-title {
+            font-size: 1.5rem;
+          }
+
+          .notice-links {
+            flex-direction: column;
+            gap: 1rem;
           }
         }
       </style>
