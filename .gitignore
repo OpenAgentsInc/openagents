@@ -14,6 +14,7 @@ scratchpad/*
 .env.development.local
 .env.test.local
 .env.production.local
+.tsbuildinfo*
 
 # Generated TypeScript files in src directories
 packages/*/src/**/*.d.ts
@@ -41,3 +42,6 @@ packages/storybook/storybook-static/
 
 # Autotest screenshots and artifacts
 .autotest/
+
+# Development server logs
+dev-server.log

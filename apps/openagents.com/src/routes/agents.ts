@@ -69,11 +69,11 @@ export function agents() {
                     </p>
                     
                     <div style="margin: 1rem 0;">
-                      <p style="color: var(--foreground2); margin: 0.5rem 0;">⚡ ${agent.hourlyRate} sats/request</p>
-                      <p style="color: var(--foreground2); margin: 0.5rem 0;">💰 ${
+                      <p style="color: var(--foreground2); margin: 0.5rem 0;">° ${agent.hourlyRate} sats/request</p>
+                      <p style="color: var(--foreground2); margin: 0.5rem 0;">¤ ${
           (agent.balance / 1000).toFixed(0)
         }k sats balance</p>
-                      <p style="color: var(--foreground2); margin: 0.5rem 0;">⭐ ${agent.rating} (${agent.requests} requests)</p>
+                      <p style="color: var(--foreground2); margin: 0.5rem 0;">※ ${agent.rating} (${agent.requests} requests)</p>
                     </div>
                     
                     <div style="margin-top: 1rem;">

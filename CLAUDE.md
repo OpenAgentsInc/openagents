@@ -264,3 +264,30 @@ bun src/orchestrate.ts "$(cat test-config.json)"
 - Ready state detection via configurable regex patterns
 
 For detailed usage, configuration options, and troubleshooting, see [docs/autotest.md](docs/autotest.md).
+
+## Component Library Reference
+
+**For Coding Agents**: Use [docs/components.md](docs/components.md) as the definitive guide to all UI components. This contains complete documentation for:
+
+### WebTUI Components (Attribute-Based Styling)
+- **Button**: `<button is-="button" variant-="foreground1" box-="square">Text</button>`
+- **Input/Textarea**: `<input is-="input" box-="square">` and `<textarea is-="textarea">`
+- **Dialog**: `<dialog position-="center-center" box-="square">` with 9-point positioning
+- **Badge**: `<span is-="badge" variant-="foreground0" cap-="round">Status</span>`
+- **Form Controls**: Checkbox, radio, switch with `box-="square/round/double"`
+- **Popover/Tooltip**: `<details is-="popover">` and `<div is-="tooltip">`
+- **Typography**: Automatic styling for headings, lists, and semantic HTML
+
+### Custom OpenAgents Components
+- **Navigation**: `${navigation({ current: "home" })}` with responsive header
+- **Theme Switcher**: `${themeSwitcher()}` with 5 built-in themes (zinc, catppuccin, gruvbox, nord)
+
+### Key Principles
+- **Attribute-based styling**: Use `is-="component"` instead of CSS classes
+- **Box system**: All components support `box-="square/round/double"` ASCII borders
+- **Color system**: `foreground0-2` (bright to dim) and `background0-3` (dark to light)
+- **Semantic HTML first**: WebTUI enhances rather than replaces standard HTML
+
+**Quick Reference**: Most common pattern is `<element is-="component" variant-="foreground1" box-="square">content</element>`
+
+**DO NOT explore the component library manually** - everything you need is documented in [docs/components.md](docs/components.md).

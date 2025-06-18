@@ -3,7 +3,7 @@ import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
 import { fileURLToPath } from "url"
-import { navigation } from "../components/navigation"
+import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
 // Get the directory of the current module
@@ -17,122 +17,122 @@ export function docs() {
     title: "Documentation - OpenAgents",
     styles: baseStyles,
     body: html`
-      ${navigation({ current: "docs" })}
-      
-      <!-- Docs Header -->
-      <div class="docs-header">
-        <div class="docs-header-content">
-          <div class="docs-title">
-            <h1># 📚 Documentation</h1>
-            <p>Learn to build Bitcoin-powered AI agents</p>
-          </div>
-          
-          <div class="docs-search">
-            <input type="text" placeholder="Search docs..." />
-          </div>
-        </div>
-      </div>
-
-      <!-- Docs Content -->
-      <div class="docs-layout">
-        <div class="docs-sidebar">
-          <div class="docs-menu">
-            <div class="docs-menu-section">
-              <h3>### Getting Started</h3>
-              <a href="/docs/getting-started" class="docs-menu-link active">
-                Quick Start Guide
-              </a>
-            </div>
-            
-            <div class="docs-menu-section">
-              <h3>### Core Concepts</h3>
-              <a href="/docs/agent-lifecycle" class="docs-menu-link">
-                Agent Lifecycle
-              </a>
-              <a href="/docs/economics" class="docs-menu-link">
-                Economic Model
-              </a>
-              <a href="/docs/bitcoin-integration" class="docs-menu-link">
-                Bitcoin Integration
-              </a>
-            </div>
-            
-            <div class="docs-menu-section">
-              <h3>### API Reference</h3>
-              <a href="/docs/api-reference" class="docs-menu-link">
-                Complete API Docs
-              </a>
-              <a href="/docs/sdk-examples" class="docs-menu-link">
-                SDK Examples
-              </a>
-            </div>
-            
-            <div class="docs-menu-section">
-              <h3>### Support</h3>
-              <a href="/docs/troubleshooting" class="docs-menu-link">
-                Troubleshooting
-              </a>
-              <a href="/docs/faq" class="docs-menu-link">
-                FAQ
-              </a>
-            </div>
-          </div>
-        </div>
-
-        <div class="docs-main">
-          <div class="docs-content">
-            <div class="welcome-section">
-              <h2>## 🚀 Welcome to OpenAgents</h2>
-              <p class="lead">
-                Build autonomous AI agents that earn Bitcoin by providing valuable services. Each agent must sustain itself economically, ensuring alignment with user needs.
-              </p>
-              
-              <div class="quick-links">
-                <a href="/docs/getting-started" class="quick-link-card">
-                  <h3>### 📖 Getting Started</h3>
-                  <p>Create your first Bitcoin-powered agent in minutes</p>
-                </a>
-                
-                <a href="/docs/api-reference" class="quick-link-card">
-                  <h3>### 🔧 API Reference</h3>
-                  <p>Complete SDK documentation and examples</p>
-                </a>
-                
-                <a href="/docs/agent-lifecycle" class="quick-link-card">
-                  <h3>### ⚡ Agent Lifecycle</h3>
-                  <p>Understanding agent economics and survival</p>
-                </a>
+      <!-- Fixed Layout Container -->
+      <div class="fixed-layout">
+        ${sharedHeader({ current: "docs" })}
+        
+        <!-- Main Content -->
+        <main class="docs-main">
+          <!-- Docs Header -->
+          <div class="docs-header" box-="square" shear-="bottom">
+            <div class="docs-header-content">
+              <div class="docs-title">
+                <div class="docs-main-title">§ Documentation</div>
+                <p>Learn to build Bitcoin-powered AI agents</p>
               </div>
             </div>
-            
-            <div class="features-section">
-              <h2>## 🌟 Key Features</h2>
-              <div class="features-grid">
-                <div class="feature-item">
-                  <h3>### 🧠 Intelligent Agents</h3>
-                  <p>AI agents that learn and adapt to provide better services over time</p>
+          </div>
+
+          <!-- Docs Content -->
+          <div class="docs-layout">
+            <div class="docs-sidebar">
+              <div class="docs-menu">
+                <div class="docs-menu-section">
+                  <div class="menu-section-title">Getting Started</div>
+                  <a href="/docs/getting-started" class="docs-menu-link active">
+                    Quick Start Guide
+                  </a>
                 </div>
                 
-                <div class="feature-item">
-                  <h3>### 💰 Bitcoin Economics</h3>
-                  <p>Agents must earn Bitcoin to survive, naturally aligning with human needs</p>
+                <div class="docs-menu-section">
+                  <div class="menu-section-title">Core Concepts</div>
+                  <a href="/docs/agent-lifecycle" class="docs-menu-link">
+                    Agent Lifecycle
+                  </a>
+                  <a href="/docs/economics" class="docs-menu-link">
+                    Economic Model
+                  </a>
+                  <a href="/docs/bitcoin-integration" class="docs-menu-link">
+                    Bitcoin Integration
+                  </a>
                 </div>
                 
-                <div class="feature-item">
-                  <h3>### 🔓 Open Protocols</h3>
-                  <p>Built on Nostr for identity and Lightning for instant micropayments</p>
+                <div class="docs-menu-section">
+                  <div class="menu-section-title">API Reference</div>
+                  <a href="/docs/api-reference" class="docs-menu-link">
+                    Complete API Docs
+                  </a>
+                  <a href="/docs/sdk-examples" class="docs-menu-link">
+                    SDK Examples
+                  </a>
                 </div>
                 
-                <div class="feature-item">
-                  <h3>### ⚡ Real-time Streaming</h3>
-                  <p>Streaming inference with live token generation and cost tracking</p>
+                <div class="docs-menu-section">
+                  <div class="menu-section-title">Support</div>
+                  <a href="/docs/troubleshooting" class="docs-menu-link">
+                    Troubleshooting
+                  </a>
+                  <a href="/docs/faq" class="docs-menu-link">
+                    FAQ
+                  </a>
                 </div>
               </div>
             </div>
-            
-            <div class="code-example">
-              <h2>## 💻 Quick Example</h2>
-              <pre is-="pre"><code># Install the SDK
+
+            <div class="docs-content-area">
+              <div class="docs-content">
+                <div class="welcome-section">
+                  <div class="section-title">» Welcome to OpenAgents</div>
+                  <p class="lead">
+                    Build autonomous AI agents that earn Bitcoin by providing valuable services. Each agent must sustain itself economically, ensuring alignment with user needs.
+                  </p>
+                  
+                  <div class="quick-links">
+                    <a href="/docs/getting-started" class="quick-link-card" box-="square">
+                      <div class="card-title">» Getting Started</div>
+                      <p>Create your first Bitcoin-powered agent in minutes</p>
+                    </a>
+                    
+                    <a href="/docs/api-reference" class="quick-link-card" box-="square">
+                      <div class="card-title">¤ API Reference</div>
+                      <p>Complete SDK documentation and examples</p>
+                    </a>
+                    
+                    <a href="/docs/agent-lifecycle" class="quick-link-card" box-="square">
+                      <div class="card-title">° Agent Lifecycle</div>
+                      <p>Understanding agent economics and survival</p>
+                    </a>
+                  </div>
+                </div>
+                
+                <div class="features-section">
+                  <div class="section-title">※ Key Features</div>
+                  <div class="features-grid">
+                    <div class="feature-item" box-="square">
+                      <div class="feature-title">◊ Intelligent Agents</div>
+                      <p>AI agents that learn and adapt to provide better services over time</p>
+                    </div>
+                    
+                    <div class="feature-item" box-="square">
+                      <div class="feature-title">¤ Bitcoin Economics</div>
+                      <p>Agents must earn Bitcoin to survive, naturally aligning with human needs</p>
+                    </div>
+                    
+                    <div class="feature-item" box-="square">
+                      <div class="feature-title">§ Open Protocols</div>
+                      <p>Built on Nostr for identity and Lightning for instant micropayments</p>
+                    </div>
+                    
+                    <div class="feature-item" box-="square">
+                      <div class="feature-title">° Real-time Streaming</div>
+                      <p>Streaming inference with live token generation and cost tracking</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="code-example">
+                  <div class="section-title">¤ Quick Example</div>
+                  <pre is-="pre" box-="square"><code># Install the SDK
 pnpm add @openagentsinc/sdk
 
 # Create your first agent
@@ -152,174 +152,163 @@ const translation = await Inference.infer({
 })
 
 console.log(translation.content) // "Hola mundo"</code></pre>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </main>
       </div>
 
       <style>
-        .docs-header {
+        body {
           background: var(--background0);
-          border-bottom: 1px solid var(--background2);
-          padding: 1.5rem 0;
+          margin: 0;
+          padding: 0;
+          min-height: 100vh;
+          font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
         }
-        
+
+        /* Fixed Layout */
+        .fixed-layout {
+          width: 100vw;
+          height: 100vh;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        /* Main Content */
+        .docs-main {
+          flex: 1;
+          overflow-y: auto;
+          padding: 2rem;
+        }
+
+        /* Override WebTUI heading styles to remove # symbols */
+        .docs-main-title::before,
+        .section-title::before,
+        .card-title::before,
+        .feature-title::before,
+        .menu-section-title::before,
+        h1::before,
+        h2::before,
+        h3::before,
+        h4::before,
+        h5::before,
+        h6::before {
+          content: "" !important;
+        }
+
+        /* Docs Header */
+        .docs-header {
+          padding: 2rem;
+          background: var(--background1);
+          margin-bottom: 2rem;
+        }
+
         .docs-header-content {
-          max-width: 1400px;
-          margin: 0 auto;
-          padding: 0 2rem;
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 2rem;
+          justify-content: center;
+          max-width: 1200px;
+          margin: 0 auto;
         }
-        
-        .docs-title h1 {
-          margin: 0 0 0.25rem 0;
-          color: var(--foreground1);
-          font-size: 1.75rem;
-          font-weight: 600;
-          font-family: "Berkeley Mono", monospace;
+
+        .docs-main-title {
+          margin: 0 0 0.5rem 0;
+          color: var(--foreground0);
+          font-size: 2rem;
+          font-weight: 700;
         }
-        
+
         .docs-title p {
           margin: 0;
-          color: var(--foreground0);
-          font-size: 0.875rem;
-          opacity: 0.8;
-        }
-        
-        .docs-search {
-          position: relative;
-        }
-        
-        .docs-search input {
-          padding: 0.5rem 1rem;
-          background: var(--background1);
-          border: 1px solid var(--background2);
-          border-radius: 6px;
           color: var(--foreground1);
-          font-family: "Berkeley Mono", monospace;
-          font-size: 0.875rem;
-          width: 300px;
-          transition: all 0.2s;
+          font-size: 0.9rem;
         }
-        
-        .docs-search input:focus {
-          outline: none;
-          border-color: var(--background3);
-          background: var(--background2);
-        }
-        
-        .docs-search input::placeholder {
-          color: var(--foreground0);
-          opacity: 0.5;
-        }
-        
+
+
+        /* Docs Layout */
         .docs-layout {
           display: flex;
-          max-width: 1400px;
+          gap: 2rem;
+          max-width: 1200px;
           margin: 0 auto;
-          gap: 0;
-          padding: 0;
         }
-        
+
         .docs-sidebar {
-          width: 300px;
-          min-width: 300px;
-          background: var(--background0);
-          border-right: 1px solid var(--background2);
-          height: calc(100vh - 8rem);
-          overflow-y: auto;
+          width: 280px;
+          min-width: 280px;
+          background: var(--background1);
+          padding: 2rem;
+          height: fit-content;
         }
-        
-        .docs-menu {
-          padding: 2rem 1.5rem;
-        }
-        
+
         .docs-menu-section {
-          margin-bottom: 2.5rem;
+          margin-bottom: 2rem;
         }
-        
-        .docs-menu-section:last-child {
-          margin-bottom: 0;
-        }
-        
-        .docs-menu-section h3 {
+
+        .menu-section-title {
           margin: 0 0 1rem 0;
-          color: var(--foreground1);
+          color: var(--foreground0);
           font-size: 0.75rem;
           font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          opacity: 0.8;
-          font-family: "Berkeley Mono", monospace;
         }
-        
+
         .docs-menu-link {
           display: block;
-          padding: 0.5rem 0.75rem;
-          margin: 0 -0.75rem;
-          color: var(--foreground0);
+          padding: 0.5rem;
+          margin-bottom: 0.25rem;
+          color: var(--foreground1);
           text-decoration: none;
           font-size: 0.875rem;
-          line-height: 1.5;
-          transition: all 0.15s;
           border-radius: 4px;
-          font-family: "Berkeley Mono", monospace;
+          transition: all 0.2s;
         }
-        
-        .docs-menu-link:hover {
-          color: var(--foreground1);
-          background: var(--background1);
-        }
-        
+
+        .docs-menu-link:hover,
         .docs-menu-link.active {
-          color: var(--foreground1);
           background: var(--background2);
-          font-weight: 500;
+          color: var(--foreground0);
         }
-        
-        .docs-main {
+
+        /* Content Area */
+        .docs-content-area {
           flex: 1;
           min-width: 0;
-          background: var(--background0);
-          overflow-y: auto;
-          height: calc(100vh - 8rem);
         }
-        
+
         .docs-content {
-          padding: 3rem 4rem;
-          max-width: 900px;
+          max-width: 800px;
         }
-        
+
         .welcome-section {
           margin-bottom: 4rem;
         }
-        
-        .welcome-section h2 {
-          margin: 0 0 1.5rem 0;
-          color: var(--foreground1);
-          font-size: 1.25rem;
-          font-weight: 600;
-          font-family: "Berkeley Mono", monospace;
-        }
-        
-        .lead {
-          font-size: 1rem;
-          line-height: 1.75;
+
+        .section-title {
+          margin: 0 0 2rem 0;
           color: var(--foreground0);
-          margin-bottom: 3rem;
-          opacity: 0.9;
+          font-size: 1.5rem;
+          font-weight: 600;
         }
-        
+
+        .lead {
+          font-size: 1.1rem;
+          line-height: 1.7;
+          color: var(--foreground1);
+          margin-bottom: 3rem;
+        }
+
         .quick-links {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
           gap: 1.5rem;
           margin-bottom: 4rem;
         }
-        
+
         .quick-link-card {
           display: block;
           padding: 2rem;
@@ -327,139 +316,109 @@ console.log(translation.content) // "Hola mundo"</code></pre>
           color: inherit;
           transition: all 0.2s;
           background: var(--background1);
-          border: 1px solid var(--background2);
-          border-radius: 8px;
         }
-        
+
         .quick-link-card:hover {
           background: var(--background2);
-          border-color: var(--background3);
           transform: translateY(-2px);
         }
-        
-        .quick-link-card h3 {
-          margin: 0 0 0.75rem 0;
-          color: var(--foreground1);
-          font-size: 1rem;
+
+        .card-title {
+          margin: 0 0 1rem 0;
+          color: var(--foreground0);
+          font-size: 1.1rem;
           font-weight: 600;
-          font-family: "Berkeley Mono", monospace;
         }
-        
+
         .quick-link-card p {
           margin: 0;
-          color: var(--foreground0);
-          font-size: 0.875rem;
+          color: var(--foreground1);
+          font-size: 0.9rem;
           line-height: 1.5;
-          opacity: 0.8;
         }
-        
+
         .features-section {
           margin-bottom: 4rem;
         }
-        
-        .features-section h2 {
-          margin: 0 0 2rem 0;
-          color: var(--foreground1);
-          font-size: 1.25rem;
-          font-weight: 600;
-          font-family: "Berkeley Mono", monospace;
-        }
-        
+
         .features-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
           gap: 1.5rem;
         }
-        
+
         .feature-item {
           padding: 2rem;
           background: var(--background1);
-          border: 1px solid var(--background2);
-          border-radius: 8px;
         }
-        
-        .feature-item h3 {
+
+        .feature-title {
           margin: 0 0 1rem 0;
-          color: var(--foreground1);
+          color: var(--foreground0);
           font-size: 1rem;
           font-weight: 600;
-          font-family: "Berkeley Mono", monospace;
         }
-        
+
         .feature-item p {
           margin: 0;
-          color: var(--foreground0);
-          font-size: 0.875rem;
-          line-height: 1.5;
-          opacity: 0.8;
-        }
-        
-        .code-example h2 {
-          margin: 0 0 1.5rem 0;
           color: var(--foreground1);
-          font-size: 1.25rem;
-          font-weight: 600;
-          font-family: "Berkeley Mono", monospace;
+          font-size: 0.9rem;
+          line-height: 1.5;
         }
-        
+
+        .code-example {
+          margin-bottom: 4rem;
+        }
+
         pre[is-="pre"] {
-          font-family: "Berkeley Mono", monospace;
+          font-family: inherit;
           font-size: 0.875rem;
           line-height: 1.6;
+          padding: 2rem !important;
         }
-        
-        /* Dark theme adjustments */
-        @media (prefers-color-scheme: dark) {
-          .docs-header {
-            background: var(--background0);
-          }
-          
-          .docs-sidebar {
-            background: var(--background0);
-          }
-          
-          .docs-main {
-            background: var(--background0);
-          }
+
+        /* Kill all HR styles and rebuild */
+        hr {
+          all: unset !important;
+          display: block !important;
+          width: 100% !important;
+          height: 0 !important;
+          border: 0 !important;
+          border-top: 1px solid var(--foreground1) !important;
+          margin: 2rem 0 !important;
+          padding: 0 !important;
+          background: transparent !important;
+          color: transparent !important;
+          opacity: 0.3 !important;
         }
-        
+
         /* Mobile responsiveness */
         @media (max-width: 768px) {
+          .docs-main {
+            padding: 1rem;
+          }
+
+          .docs-header {
+            padding: 1.5rem;
+          }
+
           .docs-header-content {
             flex-direction: column;
-            align-items: stretch;
+            align-items: center;
             gap: 1rem;
-            padding: 0 1rem;
           }
-          
-          .docs-search input {
-            width: 100%;
-          }
-          
+
           .docs-layout {
             flex-direction: column;
+            gap: 1rem;
           }
-          
+
           .docs-sidebar {
             width: 100%;
             min-width: 100%;
-            height: auto;
-            border-right: none;
-            border-bottom: 1px solid var(--background2);
           }
-          
-          .docs-main {
-            height: auto;
-          }
-          
-          .docs-content {
-            padding: 2rem 1rem;
-          }
-          
-          .quick-links {
-            grid-template-columns: 1fr;
-          }
-          
+
+          .quick-links,
           .features-grid {
             grid-template-columns: 1fr;
           }
@@ -486,406 +445,408 @@ export const docPage: RouteHandler = async (context) => {
       title: `${result.metadata.title} - OpenAgents Documentation`,
       styles: baseStyles,
       body: html`
-        ${navigation({ current: "docs" })}
-        
-        <!-- Docs Header -->
-        <div class="docs-header">
-          <div class="docs-header-content">
-            <div class="docs-title">
-              <h1># 📚 Documentation</h1>
-              <p>Learn to build Bitcoin-powered AI agents</p>
-            </div>
-            
-            <div class="docs-search">
-              <input type="text" placeholder="Search docs..." />
-            </div>
-          </div>
-        </div>
-
-        <!-- Docs Content -->
-        <div class="docs-layout">
-          <div class="docs-sidebar">
-            <div class="docs-menu">
-              <div class="docs-menu-section">
-                <h3>### Getting Started</h3>
-                <a href="/docs/getting-started" class="docs-menu-link ${slug === "getting-started" ? "active" : ""}">
-                  Quick Start Guide
-                </a>
-              </div>
-              
-              <div class="docs-menu-section">
-                <h3>### Core Concepts</h3>
-                <a href="/docs/agent-lifecycle" class="docs-menu-link ${slug === "agent-lifecycle" ? "active" : ""}">
-                  Agent Lifecycle
-                </a>
-                <a href="/docs/economics" class="docs-menu-link">
-                  Economic Model
-                </a>
-                <a href="/docs/bitcoin-integration" class="docs-menu-link">
-                  Bitcoin Integration
-                </a>
-              </div>
-              
-              <div class="docs-menu-section">
-                <h3>### API Reference</h3>
-                <a href="/docs/api-reference" class="docs-menu-link ${slug === "api-reference" ? "active" : ""}">
-                  Complete API Docs
-                </a>
-                <a href="/docs/sdk-examples" class="docs-menu-link">
-                  SDK Examples
-                </a>
-              </div>
-              
-              <div class="docs-menu-section">
-                <h3>### Support</h3>
-                <a href="/docs/troubleshooting" class="docs-menu-link ${slug === "troubleshooting" ? "active" : ""}">
-                  Troubleshooting
-                </a>
-                <a href="/docs/faq" class="docs-menu-link">
-                  FAQ
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <div class="docs-main">
-            <article class="docs-content">
-              <div class="doc-header">
-                <h1>${result.metadata.title}</h1>
-                ${result.metadata.summary ? `<p class="doc-summary">${result.metadata.summary}</p>` : ""}
-              </div>
-              
-              <div class="doc-body">
-                ${result.html}
-              </div>
-              
-              <div class="doc-footer">
-                <div class="doc-nav-buttons">
-                  <a href="/docs" class="doc-nav-button" is-="button" variant-="background1">
-                    ← Back to Docs
-                  </a>
-                  <a href="https://github.com/OpenAgentsInc/openagents/edit/main/content/docs/${slug}.md" 
-                     class="doc-nav-button" is-="button" variant-="background1">
-                    Edit on GitHub →
-                  </a>
+        <!-- Fixed Layout Container -->
+        <div class="fixed-layout">
+          ${sharedHeader({ current: "docs" })}
+          
+          <!-- Main Content -->
+          <main class="docs-main">
+            <!-- Docs Content -->
+            <div class="docs-layout">
+              <div class="docs-sidebar">
+                <div class="docs-menu">
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">Getting Started</div>
+                    <a href="/docs/getting-started" class="docs-menu-link ${
+        slug === "getting-started" ? "active" : ""
+      }">
+                      Quick Start Guide
+                    </a>
+                  </div>
+                  
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">Core Concepts</div>
+                    <a href="/docs/agent-lifecycle" class="docs-menu-link ${
+        slug === "agent-lifecycle" ? "active" : ""
+      }">
+                      Agent Lifecycle
+                    </a>
+                    <a href="/docs/economics" class="docs-menu-link">
+                      Economic Model
+                    </a>
+                    <a href="/docs/bitcoin-integration" class="docs-menu-link">
+                      Bitcoin Integration
+                    </a>
+                  </div>
+                  
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">API Reference</div>
+                    <a href="/docs/api-reference" class="docs-menu-link ${slug === "api-reference" ? "active" : ""}">
+                      Complete API Docs
+                    </a>
+                    <a href="/docs/sdk-examples" class="docs-menu-link">
+                      SDK Examples
+                    </a>
+                  </div>
+                  
+                  <div class="docs-menu-section">
+                    <div class="menu-section-title">Support</div>
+                    <a href="/docs/troubleshooting" class="docs-menu-link ${
+        slug === "troubleshooting" ? "active" : ""
+      }">
+                      Troubleshooting
+                    </a>
+                    <a href="/docs/faq" class="docs-menu-link">
+                      FAQ
+                    </a>
+                  </div>
                 </div>
               </div>
-            </article>
-          </div>
+
+              <div class="docs-content-area">
+                <div class="docs-content">
+                  <div class="doc-container">
+                    <div class="doc-content" box-="square">
+                      <article class="doc-article">
+                        <header class="doc-header">
+                          <div class="doc-title">${result.metadata.title}</div>
+                          ${result.metadata.summary ? `<p class="doc-summary">${result.metadata.summary}</p>` : ""}
+                        </header>
+                        
+                        <div class="doc-body">
+                          ${result.html}
+                        </div>
+                        
+                        <footer class="doc-footer">
+                          <div class="doc-nav-buttons">
+                            <a href="/docs" is-="button" variant-="foreground1" class="doc-nav-button">
+                              ← Back to Docs
+                            </a>
+                          </div>
+                        </footer>
+                      </article>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
         </div>
 
         <style>
-          .docs-header {
+          body {
             background: var(--background0);
-            border-bottom: 1px solid var(--background2);
-            padding: 1.5rem 0;
-          }
-          
-          .docs-header-content {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 2rem;
-          }
-          
-          .docs-title h1 {
-            margin: 0 0 0.25rem 0;
-            color: var(--foreground1);
-            font-size: 1.75rem;
-            font-weight: 600;
-            font-family: "Berkeley Mono", monospace;
-          }
-          
-          .docs-title p {
             margin: 0;
-            color: var(--foreground0);
-            font-size: 0.875rem;
-            opacity: 0.8;
+            padding: 0;
+            min-height: 100vh;
+            font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
           }
-          
-          .docs-search {
-            position: relative;
+
+          /* Fixed Layout */
+          .fixed-layout {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
           }
-          
-          .docs-search input {
-            padding: 0.5rem 1rem;
-            background: var(--background1);
-            border: 1px solid var(--background2);
-            border-radius: 6px;
-            color: var(--foreground1);
-            font-family: "Berkeley Mono", monospace;
-            font-size: 0.875rem;
-            width: 300px;
-            transition: all 0.2s;
+
+          /* Override WebTUI heading styles to remove # symbols */
+          .doc-title::before,
+          .doc-body h1::before,
+          .doc-body h2::before,
+          .doc-body h3::before,
+          .doc-body h4::before,
+          .doc-body h5::before,
+          .doc-body h6::before {
+            content: "" !important;
           }
-          
-          .docs-search input:focus {
-            outline: none;
-            border-color: var(--background3);
-            background: var(--background2);
+
+          /* Docs Main */
+          .docs-main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
           }
-          
-          .docs-search input::placeholder {
-            color: var(--foreground0);
-            opacity: 0.5;
-          }
-          
+
+          /* Docs Layout */
           .docs-layout {
             display: flex;
-            max-width: 1400px;
+            gap: 2rem;
+            max-width: 1200px;
             margin: 0 auto;
-            gap: 0;
-            padding: 0;
           }
-          
+
           .docs-sidebar {
-            width: 300px;
-            min-width: 300px;
-            background: var(--background0);
-            border-right: 1px solid var(--background2);
-            height: calc(100vh - 8rem);
-            overflow-y: auto;
+            width: 280px;
+            min-width: 280px;
+            background: var(--background1);
+            padding: 2rem;
+            height: fit-content;
           }
-          
-          .docs-menu {
-            padding: 2rem 1.5rem;
-          }
-          
+
           .docs-menu-section {
-            margin-bottom: 2.5rem;
+            margin-bottom: 2rem;
           }
-          
-          .docs-menu-section:last-child {
-            margin-bottom: 0;
-          }
-          
-          .docs-menu-section h3 {
+
+          .menu-section-title {
             margin: 0 0 1rem 0;
-            color: var(--foreground1);
+            color: var(--foreground0);
             font-size: 0.75rem;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.05em;
-            opacity: 0.8;
-            font-family: "Berkeley Mono", monospace;
           }
-          
+
           .docs-menu-link {
             display: block;
-            padding: 0.5rem 0.75rem;
-            margin: 0 -0.75rem;
-            color: var(--foreground0);
+            padding: 0.5rem;
+            margin-bottom: 0.25rem;
+            color: var(--foreground1);
             text-decoration: none;
             font-size: 0.875rem;
-            line-height: 1.5;
-            transition: all 0.15s;
             border-radius: 4px;
-            font-family: "Berkeley Mono", monospace;
+            transition: all 0.2s;
           }
-          
-          .docs-menu-link:hover {
-            color: var(--foreground1);
-            background: var(--background1);
-          }
-          
+
+          .docs-menu-link:hover,
           .docs-menu-link.active {
-            color: var(--foreground1);
             background: var(--background2);
-            font-weight: 500;
+            color: var(--foreground0);
           }
-          
-          .docs-main {
+
+          /* Content Area */
+          .docs-content-area {
             flex: 1;
             min-width: 0;
-            background: var(--background0);
-            overflow-y: auto;
-            height: calc(100vh - 8rem);
           }
-          
+
           .docs-content {
-            padding: 3rem 4rem;
-            max-width: 900px;
+            max-width: 800px;
           }
-          
-          .doc-header h1 {
+
+          .doc-container {
+            max-width: 900px;
+            margin: 0 auto;
+          }
+
+          .doc-content {
+            background: var(--background1);
+          }
+
+          .doc-article {
+            padding: 3rem;
+          }
+
+          /* Doc Header */
+          .doc-header {
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--foreground2);
+          }
+
+          .doc-title {
             margin: 0 0 1rem 0;
-            color: var(--foreground1);
             font-size: 2.25rem;
             font-weight: 700;
-            font-family: "Berkeley Mono", monospace;
+            color: var(--foreground0);
+            line-height: 1.2;
           }
-          
+
           .doc-summary {
             font-size: 1.125rem;
-            line-height: 1.75;
-            color: var(--foreground0);
-            margin-bottom: 2.5rem;
-            padding-bottom: 2.5rem;
-            border-bottom: 1px solid var(--background2);
-            opacity: 0.9;
-          }
-          
-          .doc-body {
-            line-height: 1.75;
+            line-height: 1.7;
             color: var(--foreground1);
-            font-family: var(--font-family);
+            margin: 0;
           }
-          
+
+          /* Doc Body - Enhanced Typography */
+          .doc-body {
+            line-height: 1.8;
+            color: var(--foreground1);
+          }
+
           .doc-body h1,
           .doc-body h2,
           .doc-body h3,
           .doc-body h4,
           .doc-body h5,
           .doc-body h6 {
-            color: var(--foreground1);
-            margin-top: 2.5rem;
-            margin-bottom: 1rem;
-            font-family: "Berkeley Mono", monospace;
+            color: var(--foreground0);
+            margin: 2.5rem 0 1rem 0;
             font-weight: 600;
+            line-height: 1.3;
           }
-          
+
           .doc-body h1 {
             font-size: 1.875rem;
-            border-bottom: 1px solid var(--background2);
-            padding-bottom: 0.75rem;
           }
-          
+
           .doc-body h2 {
             font-size: 1.5rem;
           }
-          
+
           .doc-body h3 {
             font-size: 1.25rem;
           }
-          
+
           .doc-body p {
-            margin-bottom: 1.25rem;
-            color: var(--foreground0);
-            opacity: 0.9;
+            margin: 1.5rem 0;
+            line-height: 1.8;
           }
-          
+
           .doc-body ul,
           .doc-body ol {
-            margin-bottom: 1.25rem;
-            color: var(--foreground0);
-            padding-left: 1.75rem;
-            opacity: 0.9;
-          }
-          
-          .doc-body li {
-            margin-bottom: 0.5rem;
-            line-height: 1.6;
-          }
-          
-          .doc-body code {
-            background: var(--background1);
-            padding: 0.125rem 0.375rem;
-            border-radius: 4px;
-            font-family: "Berkeley Mono", monospace;
-            font-size: 0.875em;
-            color: var(--foreground1);
-            border: 1px solid var(--background2);
-          }
-          
-          .doc-body pre {
-            background: var(--background1);
-            padding: 1.5rem;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin-bottom: 1.5rem;
-            border: 1px solid var(--background2);
-          }
-          
-          .doc-body pre code {
-            background: none;
-            padding: 0;
-            color: var(--foreground1);
-            border: none;
-            font-size: 0.875rem;
-            line-height: 1.6;
-          }
-          
-          .doc-body blockquote {
-            border-left: 3px solid var(--background3);
-            padding-left: 1.5rem;
             margin: 1.5rem 0;
-            color: var(--foreground0);
+            padding-left: 2rem;
+          }
+
+          .doc-body li {
+            margin: 0.5rem 0;
+            line-height: 1.7;
+          }
+
+          .doc-body blockquote {
+            margin: 2rem 0;
+            padding: 1rem 1.5rem;
+            border-left: 4px solid var(--foreground2);
+            background: var(--background2);
             font-style: italic;
-            opacity: 0.85;
-          }
-          
-          .doc-body a {
-            color: var(--foreground1);
-            text-decoration: underline;
-            text-decoration-color: var(--background3);
-            text-underline-offset: 2px;
-            transition: all 0.2s;
-          }
-          
-          .doc-body a:hover {
             color: var(--foreground2);
-            text-decoration-color: var(--foreground1);
           }
-          
+
+          .doc-body code {
+            background: var(--background2);
+            color: var(--foreground0);
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.9em;
+            font-family: inherit;
+          }
+
+          .doc-body pre {
+            background: var(--background0);
+            color: var(--foreground1);
+            padding: 2rem;
+            border-radius: 4px;
+            margin: 2rem 0;
+            overflow-x: auto;
+            border: 1px solid var(--foreground2);
+          }
+
+          .doc-body pre code {
+            background: transparent;
+            padding: 0;
+            border-radius: 0;
+            font-size: 0.85em;
+          }
+
+          .doc-body a {
+            color: var(--foreground0);
+            text-decoration: underline;
+            transition: color 0.2s ease;
+          }
+
+          .doc-body a:hover {
+            color: var(--foreground1);
+          }
+
+          /* Kill all HR styles and rebuild */
+          hr,
+          .doc-body hr,
+          .doc-article hr,
+          .doc-content hr,
+          article hr,
+          div hr {
+            all: unset !important;
+            display: block !important;
+            width: 100% !important;
+            height: 0 !important;
+            border: 0 !important;
+            border-top: 1px solid var(--foreground1) !important;
+            margin: 3rem 0 !important;
+            padding: 0 !important;
+            background: transparent !important;
+            color: transparent !important;
+            opacity: 0.3 !important;
+          }
+
+          .doc-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 2rem 0;
+          }
+
+          .doc-body th,
+          .doc-body td {
+            padding: 0.75rem;
+            border: 1px solid var(--foreground2);
+            text-align: left;
+          }
+
+          .doc-body th {
+            background: var(--background2);
+            font-weight: 600;
+            color: var(--foreground0);
+          }
+
+          .doc-body img {
+            max-width: 100%;
+            height: auto;
+            margin: 2rem 0;
+            border-radius: 4px;
+          }
+
+          /* Doc Footer */
           .doc-footer {
-            margin-top: 4rem;
-            padding-top: 2.5rem;
-            border-top: 1px solid var(--background2);
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--foreground2);
           }
-          
+
           .doc-nav-buttons {
             display: flex;
             justify-content: space-between;
             gap: 1.5rem;
             flex-wrap: wrap;
           }
-          
+
           .doc-nav-button {
             text-decoration: none;
-            font-family: "Berkeley Mono", monospace;
-            font-size: 0.875rem;
           }
-          
-          /* Mobile responsiveness */
+
+          /* Responsive */
           @media (max-width: 768px) {
-            .docs-header-content {
-              flex-direction: column;
-              align-items: stretch;
-              gap: 1rem;
+            .docs-main {
+              padding: 1rem;
             }
-            
-            .docs-nav {
-              justify-content: center;
-            }
-            
-            .docs-search {
-              margin-left: 0;
-            }
-            
-            .docs-search input {
-              width: 100%;
-            }
-            
+
             .docs-layout {
               flex-direction: column;
+              gap: 1rem;
             }
-            
+
             .docs-sidebar {
               width: 100%;
               min-width: 100%;
             }
-            
-            .docs-menu {
-              position: static;
+
+            .doc-article {
+              padding: 2rem;
             }
-            
-            .doc-header h1 {
-              font-size: 2rem;
+
+            .doc-title {
+              font-size: 1.875rem;
             }
-            
+
+            .doc-body h1 {
+              font-size: 1.5rem;
+            }
+
+            .doc-body h2 {
+              font-size: 1.25rem;
+            }
+
             .doc-nav-buttons {
               flex-direction: column;
             }
@@ -900,7 +861,7 @@ export const docPage: RouteHandler = async (context) => {
       title: "Page Not Found - OpenAgents Documentation",
       styles: baseStyles,
       body: html`
-        ${navigation({ current: "docs" })}
+        ${sharedHeader({ current: "docs" })}
         
         <div class="container">
           <div style="text-align: center; padding: 4rem 2rem;">
