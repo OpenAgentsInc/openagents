@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-date: 2024-12-17
+date: 2025-06-18
 summary: Current state and future plans for OpenAgents
 category: guide
 order: 6
@@ -12,7 +12,7 @@ This document outlines the current state of OpenAgents and our vision for the fu
 
 > **Important**: OpenAgents is heavily in development. APIs and features are subject to change.
 
-## Current State (December 2024)
+## Current State (June 2025)
 
 ### ✅ Implemented
 
@@ -64,7 +64,7 @@ This document outlines the current state of OpenAgents and our vision for the fu
 - **Compute management**: Resource allocation stubs
 - **Distributed agents**: Multi-node deployment concepts
 
-## Short Term (Q1 2025)
+## Short Term (Q3 2025)
 
 ### 1. Complete Core Integration
 - [ ] Wire Nostr package into SDK for real key generation
@@ -90,7 +90,7 @@ This document outlines the current state of OpenAgents and our vision for the fu
 - [ ] Architecture deep dives
 - [ ] Migration guides
 
-## Medium Term (Q2-Q3 2025)
+## Medium Term (Q4 2025 - Q1 2026)
 
 ### 1. Lightning Network Integration
 - [ ] Real Lightning invoice generation
