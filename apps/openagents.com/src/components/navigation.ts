@@ -27,9 +27,6 @@ export function navigation({ current }: { current: string }) {
     }).join("")
   }
         
-        <button class="search-button" aria-label="Search">
-          🔍 Search
-        </button>
       </nav>
     </header>
 
@@ -96,23 +93,6 @@ export function navigation({ current }: { current: string }) {
         border-bottom-color: var(--foreground0);
       }
 
-      .search-button {
-        background: var(--background1);
-        color: var(--foreground1);
-        border: 1px solid var(--foreground2);
-        border-radius: 4px;
-        padding: 0.5rem 0.75rem;
-        font-family: inherit;
-        font-size: inherit;
-        cursor: pointer;
-        transition: all 0.2s ease;
-      }
-
-      .search-button:hover {
-        background: var(--background2);
-        border-color: var(--foreground1);
-        color: var(--foreground0);
-      }
 
       /* Responsive design */
       @media (max-width: 768px) {
@@ -129,9 +109,6 @@ export function navigation({ current }: { current: string }) {
           padding: 0.25rem;
         }
 
-        .search-button {
-          padding: 0.4rem 0.6rem;
-        }
       }
 
       @media (max-width: 640px) {
@@ -143,10 +120,6 @@ export function navigation({ current }: { current: string }) {
           font-size: 0.8rem;
         }
         
-        .search-button {
-          font-size: 0.8rem;
-          padding: 0.3rem 0.5rem;
-        }
       }
     </style>
   `
