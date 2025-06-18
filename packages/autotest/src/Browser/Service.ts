@@ -38,6 +38,8 @@ export const BrowserServiceLive = Layer.succeed(
       Effect.tryPromise({
         try: async () => {
           const page = await browser.instance.newPage()
+          // Set a reasonable default viewport to avoid cut-off issues
+          await page.setViewport({ width: 1280, height: 1024 })
           return { _tag: "Page", instance: page } as const
         },
         catch: (error) =>
