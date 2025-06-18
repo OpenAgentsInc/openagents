@@ -8,9 +8,14 @@
     "outDir": "build/dts",
     "lib": ["ESNext", "DOM"],
     "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "paths": {}
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "paths": {
+      "@openagentsinc/nostr": ["../../packages/nostr/src/index.ts"],
+      "@openagentsinc/nostr/*": ["../../packages/nostr/src/*.ts"],
+      "@openagentsinc/container": ["../../packages/container/src/index.ts"],
+      "@openagentsinc/container/*": ["../../packages/container/src/*.ts"]
+    }
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "build"]

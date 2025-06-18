@@ -1,6 +1,7 @@
 import { Args, Command, Options } from "@effect/cli"
 import * as Ai from "@openagentsinc/ai"
 import { Console, Effect } from "effect"
+import * as ContainerCommands from "./commands/container.js"
 
 // AI Commands for testing Claude Code integration
 const promptArg = Args.text({ name: "prompt" }).pipe(
@@ -157,8 +158,47 @@ const aiCommand = Command.make("ai").pipe(
   Command.withSubcommands([aiPrompt, aiChat, aiCheck])
 )
 
+// Container Commands
+const agentIdArg = Args.text({ name: "agentId" }).pipe(
+  Args.withDescription("The agent ID to deploy")
+)
+
+const deploymentIdArg = Args.text({ name: "deploymentId" }).pipe(
+  Args.withDescription("The deployment ID")
+)
+
+const containerDeploy = Command.make("deploy", { agentId: agentIdArg }).pipe(
+  Command.withDescription("Deploy an agent to a Firecracker container"),
+  Command.withHandler(({ agentId }) => ContainerCommands.containerDeploy(agentId, {}))
+)
+
+const containerStatus = Command.make("status", { deploymentId: deploymentIdArg }).pipe(
+  Command.withDescription("Get status of a container deployment"),
+  Command.withHandler(({ deploymentId }) => ContainerCommands.containerStatus(deploymentId))
+)
+
+const containerHibernate = Command.make("hibernate", { deploymentId: deploymentIdArg }).pipe(
+  Command.withDescription("Hibernate a container to save resources"),
+  Command.withHandler(({ deploymentId }) => ContainerCommands.containerHibernate(deploymentId))
+)
+
+const containerWake = Command.make("wake", { deploymentId: deploymentIdArg }).pipe(
+  Command.withDescription("Wake a hibernated container"),
+  Command.withHandler(({ deploymentId }) => ContainerCommands.containerWake(deploymentId))
+)
+
+const containerTest = Command.make("test").pipe(
+  Command.withDescription("Test Firecracker integration"),
+  Command.withHandler(() => ContainerCommands.containerTest())
+)
+
+const containerCommand = Command.make("container").pipe(
+  Command.withDescription("Container management commands"),
+  Command.withSubcommands([containerDeploy, containerStatus, containerHibernate, containerWake, containerTest])
+)
+
 const command = Command.make("openagents").pipe(
-  Command.withSubcommands([aiCommand])
+  Command.withSubcommands([aiCommand, containerCommand])
 )
 
 export const cli = Command.run(command, {
