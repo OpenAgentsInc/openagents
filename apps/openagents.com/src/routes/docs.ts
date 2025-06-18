@@ -377,14 +377,19 @@ console.log(translation.content) // "Hola mundo"</code></pre>
           padding: 2rem !important;
         }
 
-        /* Comprehensive HR styling for all horizontal rules */
-        hr,
-        .docs-content hr,
-        .doc-body hr {
-          border: none !important;
-          border-top: 1px solid var(--background3) !important;
+        /* Kill all HR styles and rebuild */
+        hr {
+          all: unset !important;
+          display: block !important;
+          width: 100% !important;
+          height: 0 !important;
+          border: 0 !important;
+          border-top: 1px solid var(--foreground1) !important;
           margin: 2rem 0 !important;
-          background: none !important;
+          padding: 0 !important;
+          background: transparent !important;
+          color: transparent !important;
+          opacity: 0.3 !important;
         }
 
         /* Mobile responsiveness */
@@ -679,8 +684,6 @@ export const docPage: RouteHandler = async (context) => {
 
           .doc-body h1 {
             font-size: 1.875rem;
-            border-bottom: 1px solid var(--foreground2);
-            padding-bottom: 0.5rem;
           }
 
           .doc-body h2 {
@@ -752,14 +755,24 @@ export const docPage: RouteHandler = async (context) => {
             color: var(--foreground1);
           }
 
-          /* Comprehensive HR styling for individual doc pages */
+          /* Kill all HR styles and rebuild */
           hr,
           .doc-body hr,
-          .doc-article hr {
-            border: none !important;
-            border-top: 1px solid var(--background3) !important;
+          .doc-article hr,
+          .doc-content hr,
+          article hr,
+          div hr {
+            all: unset !important;
+            display: block !important;
+            width: 100% !important;
+            height: 0 !important;
+            border: 0 !important;
+            border-top: 1px solid var(--foreground1) !important;
             margin: 3rem 0 !important;
-            background: none !important;
+            padding: 0 !important;
+            background: transparent !important;
+            color: transparent !important;
+            opacity: 0.3 !important;
           }
 
           .doc-body table {

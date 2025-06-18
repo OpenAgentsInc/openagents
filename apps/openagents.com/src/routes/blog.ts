@@ -358,14 +358,23 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
             color: var(--foreground1);
           }
 
-          /* Comprehensive HR styling for all horizontal rules */
+          /* Kill all HR styles and rebuild */
           hr,
           .article-body hr,
-          .blog-post hr {
-            border: none !important;
-            border-top: 1px solid var(--background3) !important;
+          .blog-post hr,
+          article hr,
+          div hr {
+            all: unset !important;
+            display: block !important;
+            width: 100% !important;
+            height: 0 !important;
+            border: 0 !important;
+            border-top: 1px solid var(--foreground1) !important;
             margin: 3rem 0 !important;
-            background: none !important;
+            padding: 0 !important;
+            background: transparent !important;
+            color: transparent !important;
+            opacity: 0.3 !important;
           }
 
           .article-body h1,
@@ -382,8 +391,6 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
 
           .article-body h1 {
             font-size: 1.875rem;
-            border-bottom: 1px solid var(--foreground2);
-            padding-bottom: 0.5rem;
           }
 
           .article-body h2 {
