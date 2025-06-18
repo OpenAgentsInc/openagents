@@ -11,8 +11,8 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
       <div class="header-content">
         <a href="/" class="brand">OpenAgents</a>
         <nav class="header-nav">
-          <a href="/docs" class="nav-link ${current === "docs" ? "active" : ""}">📄 Docs</a>
-          <a href="/blog" class="nav-link ${current === "blog" ? "active" : ""}">📝 Blog</a>
+          <a href="/docs" class="nav-link ${current === "docs" ? "active" : ""}">§ Docs</a>
+          <a href="/blog" class="nav-link ${current === "blog" ? "active" : ""}">¶ Blog</a>
           <div class="theme-switcher-container">
             <select id="theme-select" class="theme-select" onchange="switchTheme(this.value)">
               <option value="zinc">Zinc Dark</option>
@@ -85,7 +85,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         background: var(--background1);
         color: var(--foreground1);
         border: 1px solid var(--background3);
-        padding: 0.5rem 0.75rem;
+        padding: 0.5rem 1.25rem 0.5rem 0.75rem;
         font-family: inherit;
         font-size: 0.85rem;
         cursor: pointer;

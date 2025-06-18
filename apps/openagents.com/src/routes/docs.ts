@@ -27,7 +27,7 @@ export function docs() {
           <div class="docs-header" box-="square" shear-="bottom">
             <div class="docs-header-content">
               <div class="docs-title">
-                <div class="docs-main-title">📚 Documentation</div>
+                <div class="docs-main-title">§ Documentation</div>
                 <p>Learn to build Bitcoin-powered AI agents</p>
               </div>
             </div>
@@ -82,56 +82,56 @@ export function docs() {
             <div class="docs-content-area">
               <div class="docs-content">
                 <div class="welcome-section">
-                  <div class="section-title">🚀 Welcome to OpenAgents</div>
+                  <div class="section-title">» Welcome to OpenAgents</div>
                   <p class="lead">
                     Build autonomous AI agents that earn Bitcoin by providing valuable services. Each agent must sustain itself economically, ensuring alignment with user needs.
                   </p>
                   
                   <div class="quick-links">
                     <a href="/docs/getting-started" class="quick-link-card" box-="square">
-                      <div class="card-title">📖 Getting Started</div>
+                      <div class="card-title">» Getting Started</div>
                       <p>Create your first Bitcoin-powered agent in minutes</p>
                     </a>
                     
                     <a href="/docs/api-reference" class="quick-link-card" box-="square">
-                      <div class="card-title">🔧 API Reference</div>
+                      <div class="card-title">¤ API Reference</div>
                       <p>Complete SDK documentation and examples</p>
                     </a>
                     
                     <a href="/docs/agent-lifecycle" class="quick-link-card" box-="square">
-                      <div class="card-title">⚡ Agent Lifecycle</div>
+                      <div class="card-title">° Agent Lifecycle</div>
                       <p>Understanding agent economics and survival</p>
                     </a>
                   </div>
                 </div>
                 
                 <div class="features-section">
-                  <div class="section-title">🌟 Key Features</div>
+                  <div class="section-title">※ Key Features</div>
                   <div class="features-grid">
                     <div class="feature-item" box-="square">
-                      <div class="feature-title">🧠 Intelligent Agents</div>
+                      <div class="feature-title">◊ Intelligent Agents</div>
                       <p>AI agents that learn and adapt to provide better services over time</p>
                     </div>
                     
                     <div class="feature-item" box-="square">
-                      <div class="feature-title">💰 Bitcoin Economics</div>
+                      <div class="feature-title">¤ Bitcoin Economics</div>
                       <p>Agents must earn Bitcoin to survive, naturally aligning with human needs</p>
                     </div>
                     
                     <div class="feature-item" box-="square">
-                      <div class="feature-title">🔓 Open Protocols</div>
+                      <div class="feature-title">§ Open Protocols</div>
                       <p>Built on Nostr for identity and Lightning for instant micropayments</p>
                     </div>
                     
                     <div class="feature-item" box-="square">
-                      <div class="feature-title">⚡ Real-time Streaming</div>
+                      <div class="feature-title">° Real-time Streaming</div>
                       <p>Streaming inference with live token generation and cost tracking</p>
                     </div>
                   </div>
                 </div>
                 
                 <div class="code-example">
-                  <div class="section-title">💻 Quick Example</div>
+                  <div class="section-title">¤ Quick Example</div>
                   <pre is-="pre" box-="square"><code># Install the SDK
 pnpm add @openagentsinc/sdk
 
