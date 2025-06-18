@@ -522,10 +522,6 @@ export const docPage: RouteHandler = async (context) => {
                             <a href="/docs" is-="button" variant-="foreground1" class="doc-nav-button">
                               ← Back to Docs
                             </a>
-                            <a href="https://github.com/OpenAgentsInc/openagents/edit/main/content/docs/${slug}.md" 
-                               is-="button" variant-="background1" class="doc-nav-button">
-                              Edit on GitHub →
-                            </a>
                           </div>
                         </footer>
                       </article>
