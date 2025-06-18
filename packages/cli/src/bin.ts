@@ -6,9 +6,11 @@ import { cli } from "./Cli.js"
 
 const MainLive = NodeContext.layer
 
-const main = cli(process.argv).pipe(
-  Effect.provide(MainLive),
-  Effect.catchAll((error) => Effect.die(error))
+const main = Effect.provide(
+  cli(process.argv).pipe(
+    Effect.catchAll((error) => Effect.die(error))
+  ),
+  MainLive
 )
 
-NodeRuntime.runMain(main)
+NodeRuntime.runMain(main as Effect.Effect<void, never, never>)

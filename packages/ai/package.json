@@ -14,7 +14,7 @@
     "directory": "dist"
   },
   "scripts": {
-    "codegen": "build-utils prepare-v2",
+    "codegen": "echo 'AI package exports are manually managed - skipping codegen'",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2 && pnpm fix-dist",
     "build-esm": "tsc -b tsconfig.build.json",
     "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
@@ -29,24 +29,7 @@
     "@effect/platform-node": "0.85.2",
     "@effect/schema": "0.75.5",
     "effect": "3.16.3",
+    "gpt-tokenizer": "^3.0.1",
     "node-pty": "^1.0.0"
-  },
-  "effect": {
-    "generateExports": {
-      "include": [
-        "**/*.ts"
-      ],
-      "exclude": [
-        "**/*.d.ts"
-      ]
-    },
-    "generateIndex": {
-      "include": [
-        "**/*.ts"
-      ],
-      "exclude": [
-        "**/*.d.ts"
-      ]
-    }
   }
 }
