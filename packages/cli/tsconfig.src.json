@@ -2,7 +2,8 @@
   "extends": "../../tsconfig.base.json",
   "include": ["src"],
   "references": [
-    { "path": "../ai" }
+    { "path": "../ai" },
+    { "path": "../sdk" }
   ],
   "compilerOptions": {
     "types": ["node"],

@@ -8,7 +8,7 @@
     "outDir": "build/dts",
     "lib": ["ESNext", "DOM"],
     "target": "ES2022",
-    "module": "ESNext",
+    "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "paths": {
       "@openagentsinc/nostr": ["../../packages/nostr/src/index.ts"],
