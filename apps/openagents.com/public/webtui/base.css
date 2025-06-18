@@ -14,7 +14,7 @@
 
     --font-weight-bold: 700;
     --font-weight-normal: 400;
-    --font-family: monospace;
+    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   }
 
   [data-webtui-theme="dark"] {
