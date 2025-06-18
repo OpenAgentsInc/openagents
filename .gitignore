@@ -38,3 +38,6 @@ packages/storybook/storybook-static/
 
 # Wrangler/Cloudflare
 .wrangler/
+
+# Autotest screenshots and artifacts
+.autotest/
