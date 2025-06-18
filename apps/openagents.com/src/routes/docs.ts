@@ -37,47 +37,7 @@ export function docs() {
           <!-- Docs Content -->
           <div class="docs-layout">
             <div class="docs-sidebar">
-              <div class="docs-menu">
-                <div class="docs-menu-section">
-                  <div class="menu-section-title">Getting Started</div>
-                  <a href="/docs/getting-started" class="docs-menu-link active">
-                    Quick Start Guide
-                  </a>
-                </div>
-                
-                <div class="docs-menu-section">
-                  <div class="menu-section-title">Core Concepts</div>
-                  <a href="/docs/agent-lifecycle" class="docs-menu-link">
-                    Agent Lifecycle
-                  </a>
-                  <a href="/docs/economics" class="docs-menu-link">
-                    Economic Model
-                  </a>
-                  <a href="/docs/bitcoin-integration" class="docs-menu-link">
-                    Bitcoin Integration
-                  </a>
-                </div>
-                
-                <div class="docs-menu-section">
-                  <div class="menu-section-title">API Reference</div>
-                  <a href="/docs/api-reference" class="docs-menu-link">
-                    Complete API Docs
-                  </a>
-                  <a href="/docs/sdk-examples" class="docs-menu-link">
-                    SDK Examples
-                  </a>
-                </div>
-                
-                <div class="docs-menu-section">
-                  <div class="menu-section-title">Support</div>
-                  <a href="/docs/troubleshooting" class="docs-menu-link">
-                    Troubleshooting
-                  </a>
-                  <a href="/docs/faq" class="docs-menu-link">
-                    FAQ
-                  </a>
-                </div>
-              </div>
+              ${docsMenu()}
             </div>
 
             <div class="docs-content-area">
@@ -460,6 +420,15 @@ export const docPage: RouteHandler = async (context) => {
 
               <div class="docs-content-area">
                 <div class="docs-content">
+                  <!-- Work in Progress Alert -->
+                  <div class="wip-alert" box-="square">
+                    <div class="wip-icon">⚠</div>
+                    <div class="wip-message">
+                      <strong>Documentation is a work in progress</strong>
+                      <p>This documentation is in very early stages and actively being developed. Content may be incomplete or subject to change.</p>
+                    </div>
+                  </div>
+
                   <div class="doc-container">
                     <div class="doc-content" box-="square">
                       <article class="doc-article">
@@ -578,6 +547,41 @@ export const docPage: RouteHandler = async (context) => {
 
           .docs-content {
             max-width: 800px;
+          }
+
+          /* Work in Progress Alert */
+          .wip-alert {
+            background: var(--background1);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-start;
+          }
+
+          .wip-icon {
+            font-size: 2rem;
+            color: var(--foreground2);
+            line-height: 1;
+            flex-shrink: 0;
+          }
+
+          .wip-message {
+            flex: 1;
+          }
+
+          .wip-message strong {
+            display: block;
+            color: var(--foreground0);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+          }
+
+          .wip-message p {
+            margin: 0;
+            color: var(--foreground1);
+            font-size: 0.875rem;
+            line-height: 1.5;
           }
 
           .doc-container {
