@@ -6,7 +6,7 @@ export const syntaxHighlightingStyles = css`
   .doc-body pre,
   .blog-content pre {
     background: var(--background1) !important;
-    border: 1px solid var(--background3);
+    border: none !important;
     border-radius: 0;
     padding: 1.5rem !important;
     overflow-x: auto;
@@ -20,6 +20,7 @@ export const syntaxHighlightingStyles = css`
   .shiki {
     background-color: var(--background1) !important;
     color: var(--foreground1) !important;
+    border: none !important;
   }
 
   /* Override Shiki's inline styles with our theme colors */

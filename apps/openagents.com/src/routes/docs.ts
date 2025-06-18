@@ -571,7 +571,7 @@ export const docPage: RouteHandler = async (context) => {
           /* Work in Progress Alert */
           .wip-alert {
             background: var(--background1);
-            padding: 1.5rem;
+            padding: 0.75rem 1.5rem;
             margin-bottom: 2rem;
             display: flex;
             gap: 1.5rem;
@@ -685,8 +685,8 @@ export const docPage: RouteHandler = async (context) => {
           }
 
           .doc-body blockquote {
-            margin: 2rem 0;
-            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            padding: 0.75rem 1.5rem;
             border-left: 4px solid var(--foreground2);
             background: var(--background2);
             font-style: italic;
