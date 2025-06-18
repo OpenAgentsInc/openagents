@@ -421,7 +421,7 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
           .article-body pre {
             background: var(--background0);
             color: var(--foreground1);
-            padding: 1.5rem;
+            padding: 2rem;
             border-radius: 4px;
             margin: 2rem 0;
             overflow-x: auto;
@@ -447,7 +447,7 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
 
           .article-body hr {
             border: none;
-            border-top: 1px solid var(--foreground2);
+            border-top: 1px solid var(--background3);
             margin: 3rem 0;
           }
 

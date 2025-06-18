@@ -241,7 +241,6 @@ console.log(translation.content) // "Hola mundo"</code></pre>
           min-width: 280px;
           background: var(--background1);
           padding: 2rem;
-          border-radius: 4px;
           height: fit-content;
         }
 
@@ -375,6 +374,14 @@ console.log(translation.content) // "Hola mundo"</code></pre>
           font-family: inherit;
           font-size: 0.875rem;
           line-height: 1.6;
+          padding: 2rem !important;
+        }
+
+        /* Horizontal Rules */
+        hr {
+          border: none;
+          border-top: 1px solid var(--background3);
+          margin: 2rem 0;
         }
 
         /* Mobile responsiveness */
@@ -571,7 +578,6 @@ export const docPage: RouteHandler = async (context) => {
             min-width: 280px;
             background: var(--background1);
             padding: 2rem;
-            border-radius: 4px;
             height: fit-content;
           }
 
@@ -719,7 +725,7 @@ export const docPage: RouteHandler = async (context) => {
           .doc-body pre {
             background: var(--background0);
             color: var(--foreground1);
-            padding: 1.5rem;
+            padding: 2rem;
             border-radius: 4px;
             margin: 2rem 0;
             overflow-x: auto;
@@ -745,7 +751,7 @@ export const docPage: RouteHandler = async (context) => {
 
           .doc-body hr {
             border: none;
-            border-top: 1px solid var(--foreground2);
+            border-top: 1px solid var(--background3);
             margin: 3rem 0;
           }
 
