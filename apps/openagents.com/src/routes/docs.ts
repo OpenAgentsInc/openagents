@@ -30,10 +30,6 @@ export function docs() {
                 <div class="docs-main-title">📚 Documentation</div>
                 <p>Learn to build Bitcoin-powered AI agents</p>
               </div>
-              
-              <div class="docs-search">
-                <input type="text" placeholder="Search docs..." />
-              </div>
             </div>
           </div>
 
@@ -213,8 +209,7 @@ console.log(translation.content) // "Hola mundo"</code></pre>
         .docs-header-content {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          gap: 2rem;
+          justify-content: center;
           max-width: 1200px;
           margin: 0 auto;
         }
@@ -232,27 +227,6 @@ console.log(translation.content) // "Hola mundo"</code></pre>
           font-size: 0.9rem;
         }
 
-        .docs-search input {
-          padding: 0.5rem 1rem;
-          background: var(--background2);
-          border: 1px solid var(--foreground2);
-          border-radius: 4px;
-          color: var(--foreground1);
-          font-family: inherit;
-          font-size: 0.875rem;
-          width: 300px;
-          transition: all 0.2s;
-        }
-
-        .docs-search input:focus {
-          outline: none;
-          border-color: var(--foreground0);
-          background: var(--background3);
-        }
-
-        .docs-search input::placeholder {
-          color: var(--foreground2);
-        }
 
         /* Docs Layout */
         .docs-layout {
@@ -415,12 +389,8 @@ console.log(translation.content) // "Hola mundo"</code></pre>
 
           .docs-header-content {
             flex-direction: column;
-            align-items: stretch;
+            align-items: center;
             gap: 1rem;
-          }
-
-          .docs-search input {
-            width: 100%;
           }
 
           .docs-layout {

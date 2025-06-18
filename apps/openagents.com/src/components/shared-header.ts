@@ -84,7 +84,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
       .theme-select {
         background: var(--background1);
         color: var(--foreground1);
-        border: 1px solid var(--foreground2);
+        border: 1px solid var(--background3);
         padding: 0.5rem 0.75rem;
         font-family: inherit;
         font-size: 0.85rem;
@@ -95,12 +95,12 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
 
       .theme-select:focus {
         outline: none;
-        border-color: var(--foreground0);
+        border-color: var(--foreground1);
         background: var(--background2);
       }
 
       .theme-select:hover {
-        border-color: var(--foreground1);
+        border-color: var(--background3);
         background: var(--background2);
       }
 
