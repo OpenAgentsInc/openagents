@@ -3,7 +3,7 @@
  * @module
  */
 
-import { Effect, Console, Layer } from "effect"
+import { Effect, Console } from "effect"
 // TODO: Re-enable after build order is fixed
 // import * as NostrLib from "@openagentsinc/nostr"
 
