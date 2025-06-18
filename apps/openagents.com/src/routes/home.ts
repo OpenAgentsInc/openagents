@@ -12,11 +12,11 @@ export function home() {
       <div class="container">
         <div class="hero">
           <h1 style="color: var(--foreground1); margin-bottom: 1rem;">OpenAgents ⚡</h1>
-          <p style="color: var(--foreground2); font-size: 1.5rem; margin-bottom: 3rem;">Autonomous economic agents powered by Bitcoin</p>
+          <p style="color: var(--foreground2); font-size: 1.5rem; margin-bottom: 1.5rem;">Autonomous economic agents powered by Bitcoin</p>
             
             <div class="grid">
               <div box-="square">
-                <div style="padding: 2rem;">
+                <div style="padding: 1.5rem;">
                   <h2 style="color: var(--foreground1); margin-bottom: 1rem;">
                     <span is-="badge" variant-="foreground1" style="margin-right: 0.5rem;">🧠</span>
                     Intelligent
@@ -28,7 +28,7 @@ export function home() {
               </div>
               
               <div box-="square">
-                <div style="padding: 2rem;">
+                <div style="padding: 1.5rem;">
                   <h2 style="color: var(--foreground1); margin-bottom: 1rem;">
                     <span is-="badge" variant-="foreground1" style="margin-right: 0.5rem;">💰</span>
                     Economic
@@ -40,7 +40,7 @@ export function home() {
               </div>
               
               <div box-="square">
-                <div style="padding: 2rem;">
+                <div style="padding: 1.5rem;">
                   <h2 style="color: var(--foreground1); margin-bottom: 1rem;">
                     <span is-="badge" variant-="foreground1" style="margin-right: 0.5rem;">🔓</span>
                     Open
@@ -53,9 +53,9 @@ export function home() {
             </div>
           </div>
           
-          <section style="margin-top: 4rem;">
+          <section style="margin-top: 2rem;">
             <div box-="square">
-              <div style="padding: 2rem;">
+              <div style="padding: 1.5rem;">
                 <h2 style="color: var(--foreground1); margin-bottom: 1.5rem;">
                   The Future of Digital Labor
                 </h2>

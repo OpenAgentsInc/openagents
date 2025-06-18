@@ -426,16 +426,8 @@ export namespace Inference {
     ]
     
     try {
-      // If no model specified, try to get the first available model
-      let modelToUse = request.model
-      if (!modelToUse) {
-        try {
-          const models = await listModels()
-          modelToUse = models[0]?.id || "llama3.2"
-        } catch {
-          modelToUse = "llama3.2"
-        }
-      }
+      // If no model specified, use default
+      let modelToUse = request.model || "llama3.2"
       
       if (useOpenAIMode) {
         // OpenAI compatibility mode
@@ -557,16 +549,8 @@ export namespace Inference {
       ...request.messages
     ]
     
-    // If no model specified, try to get the first available model
-    let modelToUse = request.model
-    if (!modelToUse) {
-      try {
-        const models = await listModels()
-        modelToUse = models[0]?.id || "llama3.2"
-      } catch {
-        modelToUse = "llama3.2"
-      }
-    }
+    // If no model specified, use default
+    let modelToUse = request.model || "llama3.2"
     
     try {
       if (useOpenAIMode) {
@@ -711,36 +695,37 @@ export namespace Inference {
    */
   export async function listModels(): Promise<OllamaModelDetails[]> {
     try {
-      // Check which mode we're in
-      await isOllamaAvailable()
+      // Try OpenAI compatibility first, then fall back to native API
+      let response: Response
       
-      if (useOpenAIMode) {
-        const response = await fetch(`${OLLAMA_OPENAI_URL}/models`, {
+      try {
+        response = await fetch(`${OLLAMA_OPENAI_URL}/models`, {
           headers: { "Authorization": `Bearer ${OLLAMA_API_KEY}` }
         })
         
-        if (!response.ok) {
-          throw new Error(`Failed to list models: ${response.statusText}`)
+        if (response.ok) {
+          const data = await response.json()
+          useOpenAIMode = true
+          return data.data || []
         }
-        
-        const data = await response.json()
-        return data.data || []
-      } else {
-        const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`)
-        
-        if (!response.ok) {
-          throw new Error(`Failed to list models: ${response.statusText}`)
-        }
-        
-        const data = await response.json()
-        // Convert Ollama format to OpenAI-like format
-        return (data.models || []).map((model: any) => ({
-          id: model.name,
-          object: "model",
-          created: Math.floor(new Date(model.modified_at).getTime() / 1000),
-          owned_by: "ollama"
-        }))
+      } catch {}
+      
+      // Fall back to native API
+      response = await fetch(`${OLLAMA_BASE_URL}/api/tags`)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to list models: ${response.statusText}`)
       }
+      
+      const data = await response.json()
+      useOpenAIMode = false
+      // Convert Ollama format to OpenAI-like format
+      return (data.models || []).map((model: any) => ({
+        id: model.name,
+        object: "model",
+        created: Math.floor(new Date(model.modified_at).getTime() / 1000),
+        owned_by: "ollama"
+      }))
     } catch (error) {
       console.error("Failed to list Ollama models:", error)
       return []

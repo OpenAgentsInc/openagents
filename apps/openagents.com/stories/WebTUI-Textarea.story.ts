@@ -94,7 +94,7 @@ export const CodeEditor = {
         <span>config.json</span>
         <button is-="button" size-="small" box-="square">Save</button>
       </div>
-      <textarea is-="textarea" box-="double" rows="10" style="font-family: monospace;">{
+      <textarea is-="textarea" box-="double" rows="10" style="font-family: 'Berkeley Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;">{
   "name": "webtui-demo",
   "version": "1.0.0",
   "description": "WebTUI component demo",

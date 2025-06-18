@@ -3,7 +3,7 @@ import { html } from "@openagentsinc/psionic"
 export function themeSwitcher(): string {
   return html`
     <div class="theme-switcher">
-      <select id="theme-select" onchange="switchTheme(this.value)" style="font-family: monospace;">
+      <select id="theme-select" onchange="switchTheme(this.value)" style="font-family: 'Berkeley Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;">
         <option value="zinc">Zinc Dark</option>
         <option value="zinc-light">Zinc Light</option>
         <option value="catppuccin">Catppuccin</option>

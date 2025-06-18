@@ -5,6 +5,7 @@ export function navigation({ current }: { current: string }) {
   const links = [
     { href: "/", label: "Home", key: "home" },
     { href: "/agents", label: "Agents", key: "agents" },
+    { href: "/chat", label: "Chat", key: "chat" },
     { href: "/docs", label: "Docs", key: "docs" },
     { href: "/blog", label: "Blog", key: "blog" },
     { href: "/components", label: "Components", key: "components" },
