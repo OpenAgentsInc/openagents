@@ -39,7 +39,7 @@ export class MarkdownSanitizationError extends Error {
 // Theme mappings for our WebTUI themes - using themes available in Shiki v3.6.0
 const THEME_MAPPINGS: Record<string, string> = {
   zinc: "github-dark",
-  catppuccin: "catppuccin-mocha", 
+  catppuccin: "catppuccin-mocha",
   gruvbox: "gruvbox-dark-medium",
   nord: "nord"
 }
@@ -53,7 +53,7 @@ const getHighlighter = async (): Promise<Highlighter> => {
       themes: Object.values(THEME_MAPPINGS),
       langs: [
         "typescript",
-        "javascript", 
+        "javascript",
         "jsx",
         "tsx",
         "json",
@@ -89,12 +89,12 @@ const parseMarkdown = (content: string): ParsedMarkdown => {
 const createShikiPlugin = (highlighter: Highlighter, theme: string = "github-dark") => {
   return (md: MarkdownIt) => {
     const defaultFence = md.renderer.rules.fence
-    
+
     md.renderer.rules.fence = (tokens, idx, options, env, renderer) => {
       const token = tokens[idx]
       const lang = token.info.trim() || "text"
       const code = token.content
-      
+
       try {
         // Use Shiki to highlight the code
         const highlighted = highlighter.codeToHtml(code, {
@@ -104,15 +104,15 @@ const createShikiPlugin = (highlighter: Highlighter, theme: string = "github-dar
             {
               pre(node) {
                 // Add our custom classes for WebTUI styling
-                node.properties['is-'] = 'pre'
-                node.properties['box-'] = 'square'
-                node.properties['data-language'] = lang
+                node.properties["is-"] = "pre"
+                node.properties["box-"] = "square"
+                node.properties["data-language"] = lang
               }
             }
           ]
         })
         return highlighted
-      } catch (error) {
+      } catch {
         // Fallback to default rendering if highlighting fails
         if (defaultFence) {
           return defaultFence(tokens, idx, options, env, renderer)
@@ -126,13 +126,13 @@ const createShikiPlugin = (highlighter: Highlighter, theme: string = "github-dar
 const renderMarkdown = async (markdown: string, theme: string = "zinc"): Promise<string> => {
   const highlighter = await getHighlighter()
   const shikiTheme = THEME_MAPPINGS[theme] || "github-dark"
-  
+
   const md = new MarkdownIt({
     html: true,
     linkify: true,
     typographer: true
   })
-  
+
   // Add Shiki plugin
   md.use(createShikiPlugin(highlighter, shikiTheme))
 
@@ -172,7 +172,10 @@ const renderMarkdown = async (markdown: string, theme: string = "zinc"): Promise
   })
 }
 
-const renderMarkdownWithMetadata = async (content: string, theme: string = "zinc"): Promise<{ html: string; metadata: BlogPostMetadata }> => {
+const renderMarkdownWithMetadata = async (
+  content: string,
+  theme: string = "zinc"
+): Promise<{ html: string; metadata: BlogPostMetadata }> => {
   const parsed = parseMarkdown(content)
   const html = await renderMarkdown(parsed.content, theme)
 
@@ -193,7 +196,10 @@ export class MarkdownService extends Context.Tag("@openagentsinc/psionic/Markdow
   MarkdownService,
   {
     readonly parse: (content: string) => Effect.Effect<ParsedMarkdown, MarkdownParseError>
-    readonly render: (markdown: string, theme?: string) => Effect.Effect<string, MarkdownParseError | MarkdownSanitizationError>
+    readonly render: (
+      markdown: string,
+      theme?: string
+    ) => Effect.Effect<string, MarkdownParseError | MarkdownSanitizationError>
     readonly renderWithMetadata: (content: string, theme?: string) => Effect.Effect<{
       html: string
       metadata: BlogPostMetadata
@@ -296,7 +302,7 @@ export const formatDate = (dateString: string): string => {
 // Synchronous wrapper for backward compatibility - uses default zinc theme
 export const renderMarkdownWithMetadataSync = (content: string): { html: string; metadata: BlogPostMetadata } => {
   const parsed = parseMarkdown(content)
-  
+
   // Validate metadata
   const metadata = parsed.data as BlogPostMetadata
   if (!metadata.title || !metadata.date) {
@@ -310,14 +316,14 @@ export const renderMarkdownWithMetadataSync = (content: string): { html: string;
     linkify: true,
     typographer: true
   })
-  
+
   const rendered = md.render(parsed.content)
-  
+
   // Create a JSDOM instance for DOMPurify
   const dom = new JSDOM("")
   const window = dom.window as any
   const purify = DOMPurify(window)
-  
+
   const html = purify.sanitize(rendered, {
     ADD_TAGS: ["iframe", "script", "blockquote", "div", "pre", "code"],
     ADD_ATTR: [
@@ -356,6 +362,6 @@ export { renderMarkdownWithMetadataSync as renderMarkdownWithMetadata }
 
 // Export async version for syntax highlighting
 export const renderMarkdownWithHighlighting = renderMarkdownWithMetadata as (
-  content: string, 
+  content: string,
   theme?: string
 ) => Promise<{ html: string; metadata: BlogPostMetadata }>
