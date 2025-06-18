@@ -303,6 +303,48 @@ export namespace Agent {
   }
 }
 
+// Container deployment interfaces (exported for external use)
+export interface ContainerConfig {
+  vcpus?: number
+  memoryMb?: number
+  kernelPath?: string
+  rootfsPath?: string
+  networkEnabled?: boolean
+}
+
+export interface DeploymentStatus {
+  id: string
+  status: "pending" | "running" | "stopped" | "error"
+  vmId?: string
+  error?: string
+  startedAt?: Date
+}
+
+export interface ContainerStatus {
+  deploymentId: string
+  status: "running" | "stopped" | "hibernated" | "error"
+  resources: {
+    cpu: number
+    memory: number
+    storage: number
+  }
+  network?: {
+    ipAddress?: string
+    tapDevice?: string
+  }
+}
+
+export interface HibernationResult {
+  success: boolean
+  snapshotPath?: string
+  error?: string
+}
+
+export interface WakeResult {
+  success: boolean
+  error?: string
+}
+
 /**
  * Compute namespace - Resource and infrastructure management
  */
@@ -332,6 +374,87 @@ export namespace Compute {
     }
     
     return status
+  }
+  
+  /**
+   * Deploy an agent to a Firecracker container (STUB)
+   * @param agent Agent identity to deploy
+   * @param config Container configuration
+   * @returns Deployment status
+   */
+  export function deployToContainer(agent: AgentIdentity, config: ContainerConfig = {}): DeploymentStatus {
+    const deploymentId = `deployment_${agent.id}_${Date.now()}`
+    
+    // STUB: In real implementation, this would call the container service
+    const status: DeploymentStatus = {
+      id: deploymentId,
+      status: "pending",
+      vmId: `vm_${deploymentId}`,
+      startedAt: new Date()
+    }
+    
+    console.log(`[STUB] Deploying agent ${agent.id} to container with config:`, config)
+    
+    return status
+  }
+  
+  /**
+   * Get container status for a deployment (STUB)
+   * @param deploymentId Deployment ID
+   * @returns Container status
+   */
+  export function getContainerStatus(deploymentId: string): ContainerStatus {
+    // STUB: In real implementation, this would query the container service
+    const status: ContainerStatus = {
+      deploymentId,
+      status: "running",
+      resources: {
+        cpu: 1,
+        memory: 256,
+        storage: 1024
+      },
+      network: {
+        ipAddress: "10.0.0.2",
+        tapDevice: "tap0"
+      }
+    }
+    
+    console.log(`[STUB] Getting container status for deployment ${deploymentId}`)
+    
+    return status
+  }
+  
+  /**
+   * Hibernate a container to save resources (STUB)
+   * @param deploymentId Deployment ID
+   * @returns Hibernation result
+   */
+  export function hibernateContainer(deploymentId: string): HibernationResult {
+    // STUB: In real implementation, this would use CRIU via container service
+    const result: HibernationResult = {
+      success: true,
+      snapshotPath: `/var/lib/openagents/snapshots/${deploymentId}.img`
+    }
+    
+    console.log(`[STUB] Hibernating container for deployment ${deploymentId}`)
+    
+    return result
+  }
+  
+  /**
+   * Wake a hibernated container (STUB)
+   * @param deploymentId Deployment ID
+   * @returns Wake result
+   */
+  export function wakeContainer(deploymentId: string): WakeResult {
+    // STUB: In real implementation, this would restore from CRIU snapshot
+    const result: WakeResult = {
+      success: true
+    }
+    
+    console.log(`[STUB] Waking container for deployment ${deploymentId}`)
+    
+    return result
   }
 }
 

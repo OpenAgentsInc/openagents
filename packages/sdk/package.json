@@ -25,6 +25,7 @@
     "test": "echo 'Tests not yet implemented'"
   },
   "dependencies": {
+    "@openagentsinc/container": "workspace:^",
     "@openagentsinc/nostr": "workspace:^",
     "effect": "3.16.3"
   },
