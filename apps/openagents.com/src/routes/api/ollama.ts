@@ -1,6 +1,6 @@
 import * as Ai from "@openagentsinc/ai"
-import { Elysia } from "elysia"
 import { Effect } from "effect"
+import { Elysia } from "elysia"
 
 export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
   .get("/status", async () => {
@@ -19,9 +19,7 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       // Create a TransformStream for streaming response
       const stream = new TransformStream()
       const writer = stream.writable.getWriter()
-      const encoder = new TextEncoder()
-
-      // Start streaming in background using new AI library
+      const encoder = new TextEncoder() // Start streaming in background using new AI library
       ;(async () => {
         try {
           // Create Ollama client and run chat
@@ -46,7 +44,7 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
               Effect.provide(Ai.Ollama.OllamaClientLive())
             )
           )
-          
+
           // Stream the results
           for await (const chunk of generator) {
             // Convert to expected format for frontend compatibility
@@ -54,7 +52,7 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
               model,
               created_at: new Date().toISOString(),
               message: {
-                role: 'assistant' as const,
+                role: "assistant" as const,
                 content: chunk.content
               },
               done: chunk.done || false
