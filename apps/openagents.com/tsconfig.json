@@ -10,6 +10,7 @@
   },
   "include": ["src"],
   "references": [
+    { "path": "../../packages/ai" },
     { "path": "../../packages/psionic" },
     { "path": "../../packages/sdk" }
   ]

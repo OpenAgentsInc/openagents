@@ -109,7 +109,7 @@ const aiChat = Command.make("chat", { prompt: promptArg, session: sessionIdOptio
         }
       })
     ).pipe(
-      Effect.provide(Ai.internal.ClaudeCodePtyClientLive),
+      Effect.provide(Ai.internal.ClaudeCodeClientLive),
       Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
@@ -141,7 +141,7 @@ const aiCheck = Command.make("check").pipe(
         }
       })
     ).pipe(
-      Effect.provide(Ai.internal.ClaudeCodePtyClientLive),
+      Effect.provide(Ai.internal.ClaudeCodeClientLive),
       Effect.provide(Ai.internal.ClaudeCodeConfigDefault),
       Effect.catchAll((error) =>
         Effect.gen(function*() {
