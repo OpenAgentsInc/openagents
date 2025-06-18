@@ -82,14 +82,14 @@ export function home() {
             </div>
             
             <div class="chat-input-container">
-              <input 
-                type="text" 
+              <textarea 
                 id="chat-input" 
-                is-="input" 
+                is-="textarea"
                 box-="square"
+                rows="1"
                 placeholder="Select a model first..."
                 disabled
-              />
+              ></textarea>
               <button 
                 id="chat-send" 
                 is-="button" 
@@ -271,6 +271,10 @@ export function home() {
 
         #chat-input {
           flex: 1;
+          resize: none;
+          min-height: 2.5lh;
+          max-height: 8lh;
+          overflow-y: auto;
         }
 
         #chat-model-select {
@@ -509,6 +513,7 @@ export function home() {
           addMessageToUI('user', message)
           
           input.value = ''
+          input.style.height = 'auto' // Reset height after sending
           input.disabled = true
           sendButton.disabled = true
           isStreaming = true
@@ -614,15 +619,25 @@ export function home() {
             sendButton.addEventListener('click', sendChatMessage)
           }
 
-          // Input handler
+          // Input handler with auto-resize
           const input = document.getElementById('chat-input')
           if (input) {
+            // Auto-resize function
+            const autoResize = () => {
+              input.style.height = 'auto'
+              input.style.height = Math.min(input.scrollHeight, parseFloat(getComputedStyle(input).maxHeight)) + 'px'
+            }
+
+            input.addEventListener('input', autoResize)
             input.addEventListener('keypress', (e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 sendChatMessage()
               }
             })
+            
+            // Initial resize
+            autoResize()
           }
         })
       </script>
