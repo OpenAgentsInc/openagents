@@ -107,7 +107,7 @@ export function home() {
       <style>
         .chat-layout {
           display: flex;
-          height: calc(100vh - 60px); /* Adjust for compact navigation height */
+          height: calc(100vh - 70px); /* Adjust for WebTUI header height */
           gap: 0.5rem;
           padding: 0.5rem;
         }
