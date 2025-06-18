@@ -1,5 +1,5 @@
 import * as Ai from "@openagentsinc/ai"
-import { Effect, Stream } from "effect"
+import { Effect } from "effect"
 import { Elysia } from "elysia"
 
 export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
@@ -19,15 +19,13 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
       // Create a TransformStream for streaming response
       const stream = new TransformStream()
       const writer = stream.writable.getWriter()
-      const encoder = new TextEncoder()
-
-      // Start streaming in background using Effect patterns
+      const encoder = new TextEncoder() // Start streaming in background using Effect patterns
       ;(async () => {
         try {
           // Create the chat effect using the Ollama client
           const chatProgram = Effect.gen(function*() {
             const client = yield* Ai.Ollama.OllamaClient
-            
+
             // Get the async generator directly (not wrapped in Effect)
             const generator = client.chat({
               model,
@@ -39,7 +37,7 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
                 ...options
               }
             })
-            
+
             // Process the generator manually within Effect
             yield* Effect.tryPromise({
               try: async () => {
@@ -59,12 +57,12 @@ export const ollamaApi = new Elysia({ prefix: "/api/ollama" })
               catch: (error) => new Error(`Stream processing error: ${error}`)
             })
           })
-          
+
           // Run the program with the Ollama layer
           await Effect.runPromise(
             chatProgram.pipe(
               Effect.provide(Ai.Ollama.OllamaClientLive()),
-              Effect.tapError((error) => 
+              Effect.tapError((error) =>
                 Effect.sync(() => {
                   console.error("Effect chat error:", error)
                   return error

@@ -76,26 +76,20 @@ export const OllamaClientLive = (config: OllamaConfig = {}): Layer.Layer<OllamaC
  * Internal chat generator function
  */
 async function* chatGenerator(request: ChatRequest, baseUrl: string): AsyncGenerator<ChatChunk> {
-  let response: Response
-  
-  try {
-    response = await fetch(`${baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: request.model,
-        messages: request.messages,
-        stream: request.stream ?? true,
-        options: request.options ?? {}
-      })
+  const response = await fetch(`${baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: request.model,
+      messages: request.messages,
+      stream: request.stream ?? true,
+      options: request.options ?? {}
     })
+  })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Ollama API error: ${response.status} - ${errorText}`)
-    }
-  } catch (error) {
-    throw error
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Ollama API error: ${response.status} - ${errorText}`)
   }
 
   if (!request.stream) {
