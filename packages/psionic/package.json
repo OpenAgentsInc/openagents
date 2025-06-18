@@ -28,6 +28,7 @@
     "markdown-it": "^14.1.0"
   },
   "devDependencies": {
+    "@openagentsinc/autotest": "workspace:*",
     "@types/bun": "^1.2.16",
     "@types/dompurify": "^3.2.0",
     "@types/jsdom": "^21.1.7",

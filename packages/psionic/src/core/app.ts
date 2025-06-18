@@ -5,7 +5,7 @@ import type { PsionicConfig, RouteHandler } from "../types"
 
 export class PsionicApp {
   private app: Elysia
-  private config: PsionicConfig
+  public config: PsionicConfig
 
   constructor(config: PsionicConfig) {
     this.config = config
