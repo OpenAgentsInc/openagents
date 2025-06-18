@@ -214,6 +214,9 @@ importers:
       effect:
         specifier: 3.16.3
         version: 3.16.3
+      gpt-tokenizer:
+        specifier: ^3.0.1
+        version: 3.0.1
       node-pty:
         specifier: ^1.0.0
         version: 1.0.0
@@ -1578,7 +1581,7 @@ packages:
       vitest: ^3.0.0
     dependencies:
       effect: 3.16.3
-      vitest: 3.2.1(@types/node@22.10.5)(tsx@4.19.4)
+      vitest: 3.2.1(@types/node@22.15.29)(tsx@4.19.4)
     dev: true
 
   /@effect/workflow@0.1.14(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(effect@3.16.3):
@@ -5827,7 +5830,7 @@ packages:
       '@vitest/spy': 3.2.1
       estree-walker: 3.0.3
       magic-string: 0.30.17
-      vite: 6.3.5(@types/node@22.10.5)(tsx@4.19.4)
+      vite: 6.3.5(@types/node@22.15.29)(tsx@4.19.4)
     dev: true
 
   /@vitest/pretty-format@2.0.5:
@@ -8402,6 +8405,10 @@ packages:
   /gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
+
+  /gpt-tokenizer@3.0.1:
+    resolution: {integrity: sha512-5jdaspBq/w4sWw322SvQj1Fku+CN4OAfYZeeEg8U7CWtxBz+zkxZ3h0YOHD43ee+nZYZ5Ud70HRN0ANcdIj4qg==}
+    dev: false
 
   /graceful-fs@4.2.11:
     resolution: {integrity: sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==}
