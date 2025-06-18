@@ -358,6 +358,14 @@ export const blogPost: RouteHandler = async (context: any): Promise<string> => {
             color: var(--foreground1);
           }
 
+          /* Ensure all HR elements use secondary color */
+          .article-body hr,
+          hr {
+            border: none;
+            border-top: 1px solid var(--background3) !important;
+            margin: 3rem 0;
+          }
+
           .article-body h1,
           .article-body h2,
           .article-body h3,
