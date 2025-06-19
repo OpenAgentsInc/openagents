@@ -26,7 +26,7 @@ export function chat() {
           <!-- API Keys Card -->
           <div class="api-keys-card" box-="square">
             <h4>API Keys</h4>
-            <div class="api-key-section">
+            <form class="api-key-section">
               <label for="openrouter-api-key">OpenRouter API Key</label>
               <div class="api-key-input-wrapper">
                 <input 
@@ -35,8 +35,10 @@ export function chat() {
                   is-="input" 
                   box-="square"
                   placeholder="sk-or-v1-..."
+                  autocomplete="off"
                 />
                 <button 
+                  type="button"
                   id="openrouter-save" 
                   is-="button" 
                   box-="square"
@@ -46,7 +48,7 @@ export function chat() {
                 </button>
               </div>
               <div id="openrouter-status" class="api-key-status"></div>
-            </div>
+            </form>
           </div>
 
           <!-- Models List Card -->
@@ -517,101 +519,6 @@ export function chat() {
           messagesContainer.scrollTop = messagesContainer.scrollHeight
           
           return contentDiv
-        }
-
-        // Send chat message
-        const sendChatMessage = async () => {
-          const input = document.getElementById('chat-input')
-          const sendButton = document.getElementById('chat-send')
-          const message = input.value.trim()
-          
-          if (!message || !currentModel || isStreaming) return
-          
-          chatMessages.push({ role: 'user', content: message })
-          addMessageToUI('user', message)
-          
-          input.value = ''
-          input.disabled = true
-          sendButton.disabled = true
-          isStreaming = true
-          
-          const assistantDiv = addMessageToUI('assistant', '', true)
-          let assistantContent = ''
-          
-          try {
-            const response = await fetch('/api/ollama/chat', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                model: currentModel,
-                messages: chatMessages,
-                options: {
-                  temperature: 0.7,
-                  num_ctx: 4096
-                }
-              })
-            })
-            
-            if (!response.ok) {
-              throw new Error(\`HTTP error! status: \${response.status}\`)
-            }
-            
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-            
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              
-              const chunk = decoder.decode(value)
-              const lines = chunk.split('\\n')
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const data = line.slice(6)
-                  if (data === '[DONE]') {
-                    assistantDiv.classList.remove('streaming')
-                    break
-                  }
-                  
-                  try {
-                    const parsed = JSON.parse(data)
-                    if (parsed.error) {
-                      throw new Error(parsed.error)
-                    }
-                    if (parsed.message && parsed.message.content) {
-                      assistantContent += parsed.message.content
-                      assistantDiv.textContent = assistantContent
-                      
-                      const messagesContainer = document.getElementById('chat-messages')
-                      messagesContainer.scrollTop = messagesContainer.scrollHeight
-                    }
-                    
-                    if (parsed.done) {
-                      assistantDiv.classList.remove('streaming')
-                    }
-                  } catch (e) {
-                    console.error('Error parsing chunk:', e)
-                  }
-                }
-              }
-            }
-            
-            chatMessages.push({ role: 'assistant', content: assistantContent })
-            
-          } catch (error) {
-            console.error('Chat error:', error)
-            assistantDiv.textContent = \`Error: \${error.message}\`
-            assistantDiv.classList.remove('streaming')
-            assistantDiv.style.color = 'var(--danger)'
-          } finally {
-            isStreaming = false
-            input.disabled = false
-            sendButton.disabled = false
-            input.focus()
-          }
         }
 
         // Handle OpenRouter API key
