@@ -100,6 +100,9 @@ importers:
       glob:
         specifier: 11.0.2
         version: 11.0.2
+      gray-matter:
+        specifier: 4.0.3
+        version: 4.0.3
       tsx:
         specifier: 4.19.4
         version: 4.19.4
