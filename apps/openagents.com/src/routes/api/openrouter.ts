@@ -88,7 +88,7 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
               Layer.mergeAll(HttpClientLive, OpenRouterClientLive)
             )
           )
-          
+
           await Effect.runPromise(runnable)
 
           // Send completion signal
