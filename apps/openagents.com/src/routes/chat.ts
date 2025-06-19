@@ -1250,8 +1250,8 @@ export function chat() {
           const examplePrompts = document.querySelectorAll('.example-prompt')
           examplePrompts.forEach(prompt => {
             prompt.addEventListener('click', () => {
-              // Remove only the emoji (first 2-3 characters including space)
-              const text = prompt.textContent.trim().replace(/^[^\w]+ /, '')
+              // Just strip the first 2 characters (emoji and space)
+              const text = prompt.textContent.trim().substring(2)
               handleExamplePrompt(text)
             })
           })
@@ -1289,8 +1289,8 @@ export function chat() {
               const newPrompts = elements.chatMessages.querySelectorAll('.example-prompt')
               newPrompts.forEach(prompt => {
                 prompt.addEventListener('click', () => {
-                  // Remove only the emoji (first 2-3 characters including space)
-                  const text = prompt.textContent.trim().replace(/^[^\w]+ /, '')
+                  // Just strip the first 2 characters (emoji and space)
+                  const text = prompt.textContent.trim().substring(2)
                   handleExamplePrompt(text)
                 })
               })
