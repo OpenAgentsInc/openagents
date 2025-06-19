@@ -78,14 +78,14 @@ export const makeLanguageModel = (
       return Effect.scoped(
         Stream.runCollect(client.stream(openRouterRequest)).pipe(
           Effect.map((chunks) => {
-            const responses: AiResponse.AiResponse[] = []
+            const responses: Array<AiResponse.AiResponse> = []
             for (const chunk of chunks) {
-              responses.push(...chunk.parts.map(part => 
-                AiResponse.AiResponse.make({ parts: [part] }, { disableValidation: true })
-              ))
+              for (const part of chunk.parts) {
+                responses.push(AiResponse.AiResponse.make({ parts: [part] }, { disableValidation: true }))
+              }
             }
-            return AiResponse.AiResponse.make({ 
-              parts: responses.flatMap(r => r.parts) 
+            return AiResponse.AiResponse.make({
+              parts: responses.flatMap((r) => r.parts)
             }, { disableValidation: true })
           }),
           Effect.mapError((error) =>

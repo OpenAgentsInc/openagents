@@ -53,7 +53,7 @@ export const convertToOpenRouterMessages = (
   messages: ReadonlyArray<AiInput.Message>
 ): ReadonlyArray<OpenRouterMessage> => {
   const result: Array<OpenRouterMessage> = []
-  
+
   for (const message of messages) {
     if (message._tag === "UserMessage") {
       const parts = message.parts
@@ -156,7 +156,7 @@ export const convertToOpenRouterMessages = (
       }
     } else if (message._tag === "ToolMessage") {
       const parts = message.parts
-      
+
       for (const part of parts) {
         if (part._tag === "ToolCallResultPart") {
           result.push({
@@ -168,6 +168,6 @@ export const convertToOpenRouterMessages = (
       }
     }
   }
-  
+
   return result
 }
