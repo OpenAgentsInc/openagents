@@ -4,6 +4,8 @@
     "src/index.ts",
     "src/AiService.ts",
     "src/providers/ollama/**/*",
+    "src/providers/openrouter/**/*",
+    "src/core/**/*",
     "src/internal.ts",
     "src/config/ClaudeCodeConfig.ts",
     "src/errors/index.ts",

@@ -129,7 +129,7 @@ export const makeDataLoader = (options: {
     const resolver = makeBatchedResolver(options.embedMany)
     const resolverDelayed = yield* dataLoader(resolver, {
       window: options.window,
-      maxBatchSize: options.maxBatchSize
+      ...(options.maxBatchSize !== undefined ? { maxBatchSize: options.maxBatchSize } : {})
     })
 
     function embed(input: string) {

@@ -23,6 +23,34 @@ export function chat() {
             </div>
           </div>
 
+          <!-- API Keys Card -->
+          <div class="api-keys-card" box-="square">
+            <h4>API Keys</h4>
+            <form class="api-key-section">
+              <label for="openrouter-api-key">OpenRouter API Key</label>
+              <div class="api-key-input-wrapper">
+                <input 
+                  type="password" 
+                  id="openrouter-api-key" 
+                  is-="input" 
+                  box-="square"
+                  placeholder="sk-or-v1-..."
+                  autocomplete="off"
+                />
+                <button 
+                  type="button"
+                  id="openrouter-save" 
+                  is-="button" 
+                  box-="square"
+                  variant-="foreground1"
+                >
+                  Save
+                </button>
+              </div>
+              <div id="openrouter-status" class="api-key-status"></div>
+            </form>
+          </div>
+
           <!-- Models List Card -->
           <div id="model-list-card" class="model-list-card" box-="square" style="display: none;">
             <h4>Available Models</h4>
@@ -91,14 +119,54 @@ export function chat() {
           min-width: 0; /* Allow flex item to shrink */
         }
 
-        .status-card, .model-list-card {
+        .status-card, .api-keys-card, .model-list-card {
           padding: 0.75rem;
         }
 
-        .status-card h4, .model-list-card h4 {
+        .status-card h4, .api-keys-card h4, .model-list-card h4 {
           margin: 0 0 0.5rem 0;
           font-size: 0.85em;
           color: var(--foreground1);
+        }
+
+        .api-key-section {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .api-key-section label {
+          font-size: 0.8em;
+          color: var(--foreground0);
+        }
+
+        .api-key-input-wrapper {
+          display: flex;
+          gap: 0.5rem;
+        }
+
+        .api-key-input-wrapper input {
+          flex: 1;
+          font-size: 0.85em;
+        }
+
+        .api-key-input-wrapper button {
+          font-size: 0.85em;
+          padding: 0.25rem 0.75rem;
+        }
+
+        .api-key-status {
+          font-size: 0.75em;
+          color: var(--foreground0);
+          min-height: 1.2em;
+        }
+
+        .api-key-status.success {
+          color: #10b981;
+        }
+
+        .api-key-status.error {
+          color: #ef4444;
         }
 
         .status-header {
@@ -292,7 +360,9 @@ export function chat() {
         // Chat state
         let chatMessages = []
         let currentModel = ''
+        let currentProvider = 'ollama' // 'ollama' or 'openrouter'
         let isStreaming = false
+        let openRouterApiKey = localStorage.getItem('openRouterApiKey') || ''
 
         // Format file size
         const formatSize = (bytes) => {
@@ -320,9 +390,33 @@ export function chat() {
               modelListCard.style.display = 'block'
               modelList.innerHTML = ''
 
-              // Update dropdown
+              // Update dropdown - preserve OpenRouter models
               if (modelDropdown) {
-                modelDropdown.innerHTML = '<option value="">Select a model...</option>'
+                // Remove existing Ollama optgroup if it exists
+                const existingOllamaGroup = modelDropdown.querySelector('optgroup[label="Ollama"]')
+                if (existingOllamaGroup) {
+                  existingOllamaGroup.remove()
+                }
+                
+                // Ensure we have the default option if dropdown is empty or only has optgroups
+                const hasDefaultOption = modelDropdown.querySelector('option[value=""]')
+                const hasOnlyOptgroups = modelDropdown.children.length > 0 && 
+                  Array.from(modelDropdown.children).every(child => child.tagName === 'OPTGROUP')
+                
+                if (!hasDefaultOption || hasOnlyOptgroups) {
+                  // Remove any existing default option first
+                  const existingDefault = modelDropdown.querySelector('option[value=""]')
+                  if (existingDefault) existingDefault.remove()
+                  
+                  const defaultOption = document.createElement('option')
+                  defaultOption.value = ''
+                  defaultOption.textContent = 'Select a model...'
+                  modelDropdown.insertBefore(defaultOption, modelDropdown.firstChild)
+                }
+                
+                // Create Ollama optgroup
+                const ollamaGroup = document.createElement('optgroup')
+                ollamaGroup.label = 'Ollama'
                 
                 const savedModel = localStorage.getItem('selectedModel')
                 let largestModel = null
@@ -353,7 +447,7 @@ export function chat() {
                     localStorage.setItem('selectedModel', currentModel)
                   }
                   
-                  modelDropdown.appendChild(option)
+                  ollamaGroup.appendChild(option)
 
                   // Add to list
                   const modelItem = document.createElement('div')
@@ -375,6 +469,9 @@ export function chat() {
                   modelItem.appendChild(modelDetails)
                   modelList.appendChild(modelItem)
                 })
+                
+                // Add the Ollama group to dropdown
+                modelDropdown.appendChild(ollamaGroup)
 
                 if (modelSelected) {
                   setTimeout(() => enableChatInput(), 100)
@@ -451,13 +548,96 @@ export function chat() {
           return contentDiv
         }
 
-        // Send chat message
+        // Handle OpenRouter API key
+        const saveOpenRouterApiKey = () => {
+          const input = document.getElementById('openrouter-api-key')
+          const statusDiv = document.getElementById('openrouter-status')
+          const dropdown = document.getElementById('chat-model-select')
+          
+          if (!input || !statusDiv) return
+          
+          const apiKey = input.value.trim()
+          if (!apiKey) {
+            statusDiv.textContent = 'API key is required'
+            statusDiv.className = 'api-key-status error'
+            return
+          }
+          
+          // Save to localStorage
+          localStorage.setItem('openRouterApiKey', apiKey)
+          openRouterApiKey = apiKey
+          
+          // Update status
+          statusDiv.textContent = 'API key saved!'
+          statusDiv.className = 'api-key-status success'
+          
+          // Add OpenRouter models to dropdown
+          if (dropdown && apiKey) {
+            // Check if OpenRouter option group already exists
+            let openRouterGroup = dropdown.querySelector('optgroup[label="OpenRouter"]')
+            if (!openRouterGroup) {
+              openRouterGroup = document.createElement('optgroup')
+              openRouterGroup.label = 'OpenRouter'
+              dropdown.appendChild(openRouterGroup)
+            } else {
+              openRouterGroup.innerHTML = ''
+            }
+            
+            // Add popular OpenRouter models
+            const openRouterModels = [
+              { value: 'openrouter/auto', name: 'Auto (Best Available)' },
+              { value: 'openai/gpt-4o', name: 'GPT-4o' },
+              { value: 'openai/gpt-4o-mini', name: 'GPT-4o Mini' },
+              { value: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
+              { value: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku' },
+              { value: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5' },
+              { value: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
+              { value: 'meta-llama/llama-3.1-8b-instruct', name: 'Llama 3.1 8B' },
+              { value: 'mistralai/mistral-large', name: 'Mistral Large' },
+              { value: 'deepseek/deepseek-chat', name: 'DeepSeek Chat' }
+            ]
+            
+            const savedModel = localStorage.getItem('selectedModel')
+            let autoSelected = false
+            
+            openRouterModels.forEach((model, index) => {
+              const option = document.createElement('option')
+              option.value = model.value
+              option.textContent = model.name
+              
+              // Auto-select the first model (Auto) if no saved model or if saved model doesn't exist
+              if ((index === 0 && !savedModel) || (savedModel === model.value)) {
+                option.selected = true
+                currentModel = model.value
+                autoSelected = true
+                localStorage.setItem('selectedModel', currentModel)
+              }
+              
+              openRouterGroup.appendChild(option)
+            })
+            
+            // Enable chat input if auto-selected
+            if (autoSelected) {
+              setTimeout(() => enableChatInput(), 100)
+            }
+          }
+          
+          setTimeout(() => {
+            statusDiv.textContent = ''
+            statusDiv.className = 'api-key-status'
+          }, 3000)
+        }
+
+        // Update send message to handle both providers
         const sendChatMessage = async () => {
           const input = document.getElementById('chat-input')
           const sendButton = document.getElementById('chat-send')
           const message = input.value.trim()
           
           if (!message || !currentModel || isStreaming) return
+          
+          // Determine provider from model name
+          currentProvider = currentModel.includes('/') ? 'openrouter' : 'ollama'
           
           chatMessages.push({ role: 'user', content: message })
           addMessageToUI('user', message)
@@ -471,11 +651,18 @@ export function chat() {
           let assistantContent = ''
           
           try {
-            const response = await fetch('/api/ollama/chat', {
+            const endpoint = currentProvider === 'openrouter' ? '/api/openrouter/chat' : '/api/ollama/chat'
+            const headers = {
+              'Content-Type': 'application/json'
+            }
+            
+            if (currentProvider === 'openrouter' && openRouterApiKey) {
+              headers['X-API-Key'] = openRouterApiKey
+            }
+            
+            const response = await fetch(endpoint, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
+              headers,
               body: JSON.stringify({
                 model: currentModel,
                 messages: chatMessages,
@@ -513,15 +700,24 @@ export function chat() {
                     if (parsed.error) {
                       throw new Error(parsed.error)
                     }
-                    if (parsed.message && parsed.message.content) {
-                      assistantContent += parsed.message.content
+                    
+                    // Handle both Ollama and OpenRouter response formats
+                    let content = ''
+                    if (currentProvider === 'ollama' && parsed.message?.content) {
+                      content = parsed.message.content
+                    } else if (currentProvider === 'openrouter' && parsed.choices?.[0]?.delta?.content) {
+                      content = parsed.choices[0].delta.content
+                    }
+                    
+                    if (content) {
+                      assistantContent += content
                       assistantDiv.textContent = assistantContent
                       
                       const messagesContainer = document.getElementById('chat-messages')
                       messagesContainer.scrollTop = messagesContainer.scrollHeight
                     }
                     
-                    if (parsed.done) {
+                    if (parsed.done || (parsed.choices?.[0]?.finish_reason)) {
                       assistantDiv.classList.remove('streaming')
                     }
                   } catch (e) {
@@ -548,9 +744,34 @@ export function chat() {
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-          // Check status
-          checkOllamaStatus()
-          setInterval(checkOllamaStatus, 10000)
+          // Load saved OpenRouter API key first
+          const apiKeyInput = document.getElementById('openrouter-api-key')
+          if (apiKeyInput && openRouterApiKey) {
+            apiKeyInput.value = openRouterApiKey
+            // Trigger save to populate models immediately
+            saveOpenRouterApiKey()
+          }
+          
+          // Check status after a short delay to avoid conflicts
+          setTimeout(() => {
+            checkOllamaStatus()
+            setInterval(checkOllamaStatus, 10000)
+          }, 100)
+          
+          // OpenRouter API key handler
+          const saveButton = document.getElementById('openrouter-save')
+          if (saveButton) {
+            saveButton.addEventListener('click', saveOpenRouterApiKey)
+          }
+          
+          if (apiKeyInput) {
+            apiKeyInput.addEventListener('keypress', (e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                saveOpenRouterApiKey()
+              }
+            })
+          }
 
           // Model dropdown handler
           const modelDropdown = document.getElementById('chat-model-select')
