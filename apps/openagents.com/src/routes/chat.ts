@@ -639,11 +639,56 @@ export function chat() {
             if (data.available) {
               cloudflareAvailable = true
               addCloudflareModels()
+              updateCloudflareModelsList()
             }
           } catch (error) {
             console.log('Cloudflare not configured on server')
             cloudflareAvailable = false
           }
+        }
+
+        // Update the Available Models list with Cloudflare models
+        const updateCloudflareModelsList = () => {
+          const modelListCard = document.getElementById('model-list-card')
+          const modelList = document.getElementById('model-list')
+          
+          if (!modelListCard || !modelList) return
+          
+          // Show the model list card
+          modelListCard.style.display = 'block'
+          
+          // Add Cloudflare models to the list
+          const cloudflareModels = [
+            { value: '@cf/meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', size: '70B' },
+            { value: '@cf/meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B', size: '8B' },
+            { value: '@cf/meta/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision', size: '11B' },
+            { value: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B', size: '3B' },
+            { value: '@cf/google/gemma-2-9b-it', name: 'Gemma 2 9B', size: '9B' },
+            { value: '@cf/deepseek-ai/deepseek-coder-6.7b-instruct-awq', name: 'DeepSeek Coder', size: '6.7B' },
+            { value: '@cf/qwen/qwen1.5-7b-chat-awq', name: 'Qwen 1.5 7B Chat', size: '7B' },
+            { value: '@cf/microsoft/phi-2', name: 'Phi-2', size: '2.7B' }
+          ]
+          
+          // Add a header for Cloudflare models
+          const cloudflareHeader = document.createElement('div')
+          cloudflareHeader.style.marginTop = modelList.children.length > 0 ? '1rem' : '0'
+          cloudflareHeader.style.marginBottom = '0.5rem'
+          cloudflareHeader.style.fontWeight = 'bold'
+          cloudflareHeader.style.color = 'var(--foreground0)'
+          cloudflareHeader.textContent = 'Cloudflare Models'
+          modelList.appendChild(cloudflareHeader)
+          
+          cloudflareModels.forEach(model => {
+            const item = document.createElement('div')
+            item.className = 'model-item'
+            item.innerHTML = \`
+              <div class="model-name">\${model.name}</div>
+              <div style="font-size: 0.8em; color: var(--foreground2);">
+                \${model.value} • \${model.size}
+              </div>
+            \`
+            modelList.appendChild(item)
+          })
         }
 
         // Add Cloudflare models to dropdown (server-configured)
