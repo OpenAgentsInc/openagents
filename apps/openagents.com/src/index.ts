@@ -10,6 +10,8 @@ import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const app = createPsionicApp({
   name: 'OpenAgents',
@@ -39,6 +41,26 @@ app.route('/chat', chat)
 
 // Mount API routes
 app.elysia.use(ollamaApi)
+
+// Serve llms.txt
+app.elysia.get('/llms.txt', async () => {
+  try {
+    const llmsTxtPath = join(path.dirname(fileURLToPath(import.meta.url)), '../static/llms.txt')
+    const content = await readFile(llmsTxtPath, 'utf-8')
+    return new Response(content, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8'
+      }
+    })
+  } catch (error) {
+    return new Response('llms.txt not found. Please run: bun run generate:llms-txt', {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8'
+      }
+    })
+  }
+})
 
 // Start the server
 app.start()

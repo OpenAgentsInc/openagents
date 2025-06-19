@@ -22,6 +22,8 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/setup
       - run: pnpm codegen
+      - name: Generate llms.txt
+        run: pnpm exec tsx scripts/generate-llms-txt.ts
       - name: Check source state
         run: git add packages/*/src && git diff-index --cached HEAD --exit-code packages/*/src
 
