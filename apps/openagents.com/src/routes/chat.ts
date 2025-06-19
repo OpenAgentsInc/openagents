@@ -390,9 +390,33 @@ export function chat() {
               modelListCard.style.display = 'block'
               modelList.innerHTML = ''
 
-              // Update dropdown
+              // Update dropdown - preserve OpenRouter models
               if (modelDropdown) {
-                modelDropdown.innerHTML = '<option value="">Select a model...</option>'
+                // Remove existing Ollama optgroup if it exists
+                const existingOllamaGroup = modelDropdown.querySelector('optgroup[label="Ollama"]')
+                if (existingOllamaGroup) {
+                  existingOllamaGroup.remove()
+                }
+                
+                // Ensure we have the default option if dropdown is empty or only has optgroups
+                const hasDefaultOption = modelDropdown.querySelector('option[value=""]')
+                const hasOnlyOptgroups = modelDropdown.children.length > 0 && 
+                  Array.from(modelDropdown.children).every(child => child.tagName === 'OPTGROUP')
+                
+                if (!hasDefaultOption || hasOnlyOptgroups) {
+                  // Remove any existing default option first
+                  const existingDefault = modelDropdown.querySelector('option[value=""]')
+                  if (existingDefault) existingDefault.remove()
+                  
+                  const defaultOption = document.createElement('option')
+                  defaultOption.value = ''
+                  defaultOption.textContent = 'Select a model...'
+                  modelDropdown.insertBefore(defaultOption, modelDropdown.firstChild)
+                }
+                
+                // Create Ollama optgroup
+                const ollamaGroup = document.createElement('optgroup')
+                ollamaGroup.label = 'Ollama'
                 
                 const savedModel = localStorage.getItem('selectedModel')
                 let largestModel = null
@@ -423,7 +447,7 @@ export function chat() {
                     localStorage.setItem('selectedModel', currentModel)
                   }
                   
-                  modelDropdown.appendChild(option)
+                  ollamaGroup.appendChild(option)
 
                   // Add to list
                   const modelItem = document.createElement('div')
@@ -445,6 +469,9 @@ export function chat() {
                   modelItem.appendChild(modelDetails)
                   modelList.appendChild(modelItem)
                 })
+                
+                // Add the Ollama group to dropdown
+                modelDropdown.appendChild(ollamaGroup)
 
                 if (modelSelected) {
                   setTimeout(() => enableChatInput(), 100)
@@ -570,12 +597,29 @@ export function chat() {
               { value: 'deepseek/deepseek-chat', name: 'DeepSeek Chat' }
             ]
             
-            openRouterModels.forEach(model => {
+            const savedModel = localStorage.getItem('selectedModel')
+            let autoSelected = false
+            
+            openRouterModels.forEach((model, index) => {
               const option = document.createElement('option')
               option.value = model.value
               option.textContent = model.name
+              
+              // Auto-select the first model (Auto) if no saved model or if saved model doesn't exist
+              if ((index === 0 && !savedModel) || (savedModel === model.value)) {
+                option.selected = true
+                currentModel = model.value
+                autoSelected = true
+                localStorage.setItem('selectedModel', currentModel)
+              }
+              
               openRouterGroup.appendChild(option)
             })
+            
+            // Enable chat input if auto-selected
+            if (autoSelected) {
+              setTimeout(() => enableChatInput(), 100)
+            }
           }
           
           setTimeout(() => {
@@ -700,17 +744,19 @@ export function chat() {
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-          // Check status
-          checkOllamaStatus()
-          setInterval(checkOllamaStatus, 10000)
-          
-          // Load saved OpenRouter API key
+          // Load saved OpenRouter API key first
           const apiKeyInput = document.getElementById('openrouter-api-key')
           if (apiKeyInput && openRouterApiKey) {
             apiKeyInput.value = openRouterApiKey
-            // Trigger save to populate models
+            // Trigger save to populate models immediately
             saveOpenRouterApiKey()
           }
+          
+          // Check status after a short delay to avoid conflicts
+          setTimeout(() => {
+            checkOllamaStatus()
+            setInterval(checkOllamaStatus, 10000)
+          }, 100)
           
           // OpenRouter API key handler
           const saveButton = document.getElementById('openrouter-save')
