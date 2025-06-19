@@ -4,7 +4,7 @@
 import * as Sse from "@effect/experimental/Sse"
 import * as HttpBody from "@effect/platform/HttpBody"
 import * as HttpClient from "@effect/platform/HttpClient"
-import * as HttpClientError from "@effect/platform/HttpClientError"
+import type * as HttpClientError from "@effect/platform/HttpClientError"
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
 import * as Config from "effect/Config"
 import type { ConfigError } from "effect/ConfigError"
