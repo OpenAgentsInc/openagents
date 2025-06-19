@@ -118,6 +118,15 @@ importers:
 
   apps/openagents.com:
     dependencies:
+      '@effect/platform':
+        specifier: 0.84.6
+        version: 0.84.6(effect@3.16.3)
+      '@effect/platform-node':
+        specifier: 0.85.2
+        version: 0.85.2(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
+      '@openagentsinc/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai/dist
       '@openagentsinc/nostr':
         specifier: workspace:*
         version: link:../../packages/nostr/dist
@@ -130,6 +139,9 @@ importers:
       '@openagentsinc/ui':
         specifier: workspace:*
         version: link:../../packages/ui/dist
+      effect:
+        specifier: 3.16.3
+        version: 3.16.3
       elysia:
         specifier: ^1.3.5
         version: 1.3.5(exact-mirror@0.1.2)(file-type@21.0.0)(typescript@5.8.3)
@@ -208,18 +220,27 @@ importers:
 
   packages/ai:
     dependencies:
+      '@effect/experimental':
+        specifier: 0.45.1
+        version: 0.45.1(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/platform':
         specifier: 0.84.6
         version: 0.84.6(effect@3.16.3)
       '@effect/platform-node':
         specifier: 0.85.2
         version: 0.85.2(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
+      '@effect/rpc':
+        specifier: 0.61.15
+        version: 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/schema':
         specifier: 0.75.5
         version: 0.75.5(effect@3.16.3)
       effect:
         specifier: 3.16.3
         version: 3.16.3
+      find-my-way-ts:
+        specifier: ^0.1.5
+        version: 0.1.5
       gpt-tokenizer:
         specifier: ^3.0.1
         version: 3.0.1
@@ -1352,6 +1373,24 @@ packages:
       '@dprint/typescript': 0.91.8
       prettier-linter-helpers: 1.0.0
     dev: true
+
+  /@effect/experimental@0.45.1(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-vfr8z0UalIk0fWHnPwOPzvkKKzVvyPqZuXB0VMyMeSK0uZkXPC3yPaiP/2rvuyeLbLXXMZqo1DF40106GUvfjg==}
+    peerDependencies:
+      '@effect/platform': ^0.81.1
+      effect: ^3.14.22
+      ioredis: ^5
+      lmdb: ^3
+    peerDependenciesMeta:
+      ioredis:
+        optional: true
+      lmdb:
+        optional: true
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      effect: 3.16.3
+      uuid: 11.1.0
+    dev: false
 
   /@effect/experimental@0.48.12(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-tRCt57mdArna62L3xu7HIlGXOwHoUDZOQCbMqzQX29TtMflY26mCb9GF3/6s2DsTDWVUCCOroHnfA/XNP+uS/w==}

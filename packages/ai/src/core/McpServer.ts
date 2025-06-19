@@ -603,7 +603,8 @@ export const registerResource: {
   ): <
     E,
     R,
-    const Completions extends Partial<ResourceCompletions<Schemas>> = Record<string, never>
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    const Completions extends Partial<ResourceCompletions<Schemas>> = {}
   >(options: {
     readonly name: string
     readonly description?: string | undefined
@@ -752,7 +753,8 @@ export const resource: {
   ): <
     E,
     R,
-    const Completions extends Partial<ResourceCompletions<Schemas>> = Record<string, never>
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    const Completions extends Partial<ResourceCompletions<Schemas>> = {}
   >(options: {
     readonly name: string
     readonly description?: string | undefined

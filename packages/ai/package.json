@@ -25,10 +25,13 @@
     "coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@effect/experimental": "0.45.1",
     "@effect/platform": "0.84.6",
     "@effect/platform-node": "0.85.2",
+    "@effect/rpc": "0.61.15",
     "@effect/schema": "0.75.5",
     "effect": "3.16.3",
+    "find-my-way-ts": "^0.1.5",
     "gpt-tokenizer": "^3.0.1"
   }
 }
