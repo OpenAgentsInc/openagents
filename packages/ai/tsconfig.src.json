@@ -5,6 +5,7 @@
     "src/AiService.ts",
     "src/providers/ollama/**/*",
     "src/providers/openrouter/**/*",
+    "src/providers/cloudflare/**/*",
     "src/core/**/*",
     "src/internal.ts",
     "src/config/ClaudeCodeConfig.ts",
