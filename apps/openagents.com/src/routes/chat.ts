@@ -1094,6 +1094,8 @@ export function chat() {
           elements.chatInput.value = prompt
           autoResizeTextarea()
           elements.chatInput.focus()
+          // Auto-submit the message
+          sendChatMessage()
         }
 
         // Send chat message
@@ -1248,7 +1250,8 @@ export function chat() {
           const examplePrompts = document.querySelectorAll('.example-prompt')
           examplePrompts.forEach(prompt => {
             prompt.addEventListener('click', () => {
-              const text = prompt.textContent.trim().replace(/^[^\s]+ /, '') // Remove emoji
+              // Remove only the emoji (first 2-3 characters including space)
+              const text = prompt.textContent.trim().replace(/^[^\w]+ /, '')
               handleExamplePrompt(text)
             })
           })
@@ -1286,7 +1289,8 @@ export function chat() {
               const newPrompts = elements.chatMessages.querySelectorAll('.example-prompt')
               newPrompts.forEach(prompt => {
                 prompt.addEventListener('click', () => {
-                  const text = prompt.textContent.trim().replace(/^[^\s]+ /, '') // Remove emoji
+                  // Remove only the emoji (first 2-3 characters including space)
+                  const text = prompt.textContent.trim().replace(/^[^\w]+ /, '')
                   handleExamplePrompt(text)
                 })
               })
