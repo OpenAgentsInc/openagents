@@ -1,4 +1,4 @@
-import { document, html, renderMarkdownWithMetadata } from "@openagentsinc/psionic"
+import { document, html, renderMarkdownWithHighlighting } from "@openagentsinc/psionic"
 import type { RouteHandler } from "@openagentsinc/psionic"
 import fs from "fs/promises"
 import path from "path"
@@ -12,8 +12,43 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // Navigate from src/routes to content/docs
 const DOCS_DIR = path.resolve(__dirname, "..", "..", "content", "docs")
 
+// Helper function to get highlighted code for the example
+async function getHighlightedCode() {
+  const markdownContent = `---
+title: "Code Example"
+date: "2025-06-18"
+---
+
+\`\`\`typescript
+# Install the SDK
+pnpm add @openagentsinc/sdk
+
+# Create your first agent
+import { Agent, Inference } from '@openagentsinc/sdk'
+
+const agent = Agent.create({
+  name: "Universal Translator",
+  capabilities: ["translation"],
+  pricing: { per_request: 100 } // 100 sats per translation
+})
+
+// Make the agent earn Bitcoin
+const translation = await Inference.infer({
+  system: "Translate to Spanish",
+  messages: [{ role: "user", content: "Hello world" }],
+  model: "llama3.2"
+})
+
+console.log(translation.content) // "Hola mundo"
+\`\`\`
+`
+
+  const result = await renderMarkdownWithHighlighting(markdownContent, "zinc")
+  return result.html
+}
+
 // Main docs index page
-export function docs() {
+export async function docs() {
   return document({
     title: "Documentation - OpenAgents",
     styles: baseStyles,
@@ -93,26 +128,7 @@ export function docs() {
                 
                 <div class="code-example">
                   <div class="section-title">¤ Quick Example</div>
-                  <pre is-="pre" box-="square"><code># Install the SDK
-pnpm add @openagentsinc/sdk
-
-# Create your first agent
-import { Agent, Inference } from '@openagentsinc/sdk'
-
-const agent = Agent.create({
-  name: "Universal Translator",
-  capabilities: ["translation"],
-  pricing: { per_request: 100 } // 100 sats per translation
-})
-
-// Make the agent earn Bitcoin
-const translation = await Inference.infer({
-  system: "Translate to Spanish",
-  messages: [{ role: "user", content: "Hello world" }],
-  model: "llama3.2"
-})
-
-console.log(translation.content) // "Hola mundo"</code></pre>
+                  ${await getHighlightedCode()}
                 </div>
               </div>
             </div>
@@ -394,13 +410,16 @@ export const docPage: RouteHandler = async (context) => {
   const slug = context.params?.slug as string
 
   if (!slug) {
-    return docs() // Return index if no slug
+    return await docs() // Return index if no slug
   }
 
   try {
     const filePath = path.join(DOCS_DIR, `${slug}.md`)
     const content = await fs.readFile(filePath, "utf-8")
-    const result = renderMarkdownWithMetadata(content)
+
+    // Get theme from query params or cookie (for now default to zinc)
+    const theme = context.query?.theme || context.cookie?.theme || "zinc"
+    const result = await renderMarkdownWithHighlighting(content, theme)
 
     return document({
       title: `${result.metadata.title} - OpenAgents Documentation`,
@@ -552,7 +571,7 @@ export const docPage: RouteHandler = async (context) => {
           /* Work in Progress Alert */
           .wip-alert {
             background: var(--background1);
-            padding: 1.5rem;
+            padding: 0.75rem 1.5rem;
             margin-bottom: 2rem;
             display: flex;
             gap: 1.5rem;
@@ -666,8 +685,8 @@ export const docPage: RouteHandler = async (context) => {
           }
 
           .doc-body blockquote {
-            margin: 2rem 0;
-            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            padding: 0.75rem 1.5rem;
             border-left: 4px solid var(--foreground2);
             background: var(--background2);
             font-style: italic;
