@@ -378,13 +378,11 @@ export function chat() {
           line-height: 1.4;
           cursor: pointer;
           background: var(--background1);
-          border: 1px solid var(--foreground2);
           transition: all 0.2s;
         }
 
         .example-prompt:hover {
           background: var(--background2);
-          border-color: var(--foreground1);
         }
 
         /* Chat Messages */
@@ -809,9 +807,8 @@ export function chat() {
             elements.chatInput.placeholder = 'Type your message...'
             elements.chatInput.focus()
             
-            // Clear empty state if needed
-            if (elements.emptyState && elements.emptyState.style.display !== 'none') {
-              elements.emptyState.style.display = 'none'
+            // Don't clear empty state here - only clear when actually sending a message
+            if (chatMessages.length === 0) {
               chatMessages = [{
                 role: 'system',
                 content: 'You are a helpful assistant.'
@@ -1066,6 +1063,14 @@ export function chat() {
           localStorage.setItem('selectedModel', currentModel)
           updateModelIndicator()
           updateChatInput()
+          
+          // If there was a pending prompt, use it now
+          if (window.pendingPrompt && currentModel) {
+            elements.chatInput.value = window.pendingPrompt
+            autoResizeTextarea()
+            elements.chatInput.focus()
+            window.pendingPrompt = null
+          }
         }
 
         // Add message to UI
@@ -1092,8 +1097,14 @@ export function chat() {
 
         // Handle example prompt click
         const handleExamplePrompt = (prompt) => {
+          // Store the prompt for later use
+          const pendingPrompt = prompt
+          
           if (!currentModel) {
+            // Open settings and show a message
             openSettings()
+            // Set a flag to use this prompt after model selection
+            window.pendingPrompt = pendingPrompt
             return
           }
           
@@ -1109,6 +1120,11 @@ export function chat() {
           const message = elements.chatInput.value.trim()
           elements.chatInput.value = ''
           autoResizeTextarea()
+          
+          // Hide empty state when sending first message
+          if (elements.emptyState && elements.emptyState.style.display !== 'none') {
+            elements.emptyState.style.display = 'none'
+          }
           
           // Add user message
           chatMessages.push({ role: 'user', content: message })
@@ -1262,7 +1278,39 @@ export function chat() {
                 content: 'You are a helpful assistant.'
               }]
               elements.chatMessages.innerHTML = ''
-              elements.emptyState.style.display = 'flex'
+              
+              // Re-add the empty state
+              const emptyStateHTML = '<div class="empty-state" id="empty-state">' +
+                '<h2>How can I help you today?</h2>' +
+                '<div class="example-prompts">' +
+                  '<button class="example-prompt" box-="square" variant-="foreground2">' +
+                    '💡 Explain quantum computing in simple terms' +
+                  '</button>' +
+                  '<button class="example-prompt" box-="square" variant-="foreground2">' +
+                    '🎨 Help me design a RESTful API' +
+                  '</button>' +
+                  '<button class="example-prompt" box-="square" variant-="foreground2">' +
+                    '📊 Create a Python data analysis script' +
+                  '</button>' +
+                  '<button class="example-prompt" box-="square" variant-="foreground2">' +
+                    '🔧 Debug my JavaScript code' +
+                  '</button>' +
+                '</div>' +
+              '</div>'
+              elements.chatMessages.innerHTML = emptyStateHTML
+              
+              // Re-attach event listeners to new example prompts
+              const newPrompts = elements.chatMessages.querySelectorAll('.example-prompt')
+              newPrompts.forEach(prompt => {
+                prompt.addEventListener('click', () => {
+                  const text = prompt.textContent.trim().replace(/^[^\s]+ /, '') // Remove emoji
+                  handleExamplePrompt(text)
+                })
+              })
+              
+              // Update elements reference
+              elements.emptyState = document.getElementById('empty-state')
+              
               updateChatInput()
             })
           }
