@@ -2,25 +2,30 @@
  * Client-side utilities for PGlite persistence
  * Provides a simple API for browser usage without Effect
  */
-import { Effect, Runtime } from 'effect'
-import { v4 as uuidv4 } from 'uuid'
-import type { Conversation, Message, NewConversation, NewMessage } from './schema'
-import { ConversationRepository, MessageRepository, PersistenceLive, type PGliteConfig } from './services'
+import { Effect, Layer, ManagedRuntime, Runtime } from "effect"
+import type { Conversation, Message, NewConversation, NewMessage } from "./schema"
+import { ConversationRepository, ConversationRepositoryLive, MessageRepository, MessageRepositoryLive, PGliteServiceLive, type PGliteConfig } from "./services"
 
 export class ChatClient {
+  private managedRuntime: any
   private runtime: Runtime.Runtime<ConversationRepository | MessageRepository>
-  private listeners: Map<string, Set<(messages: Message[]) => void>> = new Map()
+  private listeners: Map<string, Set<(messages: Array<Message>) => void>> = new Map()
   private unsubscribers: Map<string, () => void> = new Map()
 
   constructor(config?: PGliteConfig) {
     // Create runtime with persistence services
-    this.runtime = Runtime.make(PersistenceLive(config)).runtime
+    const layer = Layer.provide(
+      Layer.mergeAll(ConversationRepositoryLive, MessageRepositoryLive),
+      PGliteServiceLive(config)
+    )
+    this.managedRuntime = ManagedRuntime.make(layer)
+    this.runtime = (this.managedRuntime as any).runtime
   }
 
   // Conversation methods
   async createConversation(conversation: Partial<NewConversation> = {}): Promise<Conversation> {
     const newConversation: NewConversation = {
-      userId: conversation.userId || 'local',
+      userId: conversation.userId || "local",
       title: conversation.title,
       model: conversation.model,
       metadata: conversation.metadata || {},
@@ -28,7 +33,7 @@ export class ChatClient {
     }
 
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* ConversationRepository
         return yield* repo.create(newConversation)
       })
@@ -37,16 +42,16 @@ export class ChatClient {
 
   async getConversation(id: string): Promise<Conversation | undefined> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* ConversationRepository
         return yield* repo.get(id)
       })
     )
   }
 
-  async listConversations(userId = 'local', includeArchived = false): Promise<Conversation[]> {
+  async listConversations(userId = "local", includeArchived = false): Promise<Array<Conversation>> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* ConversationRepository
         return yield* repo.list(userId, includeArchived)
       })
@@ -55,7 +60,7 @@ export class ChatClient {
 
   async updateConversation(id: string, updates: Partial<Conversation>): Promise<Conversation | undefined> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* ConversationRepository
         return yield* repo.update(id, updates)
       })
@@ -65,9 +70,9 @@ export class ChatClient {
   async deleteConversation(id: string): Promise<boolean> {
     // Clean up any listeners for this conversation
     this.unsubscribeFromConversation(id)
-    
+
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* ConversationRepository
         return yield* repo.delete(id)
       })
@@ -76,7 +81,7 @@ export class ChatClient {
 
   async archiveConversation(id: string): Promise<boolean> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* ConversationRepository
         return yield* repo.archive(id)
       })
@@ -86,27 +91,27 @@ export class ChatClient {
   // Message methods
   async sendMessage(message: NewMessage): Promise<Message> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* MessageRepository
         const sent = yield* repo.send(message)
-        
+
         // Auto-generate title if this is the first user message
-        if (message.role === 'user') {
+        if (message.role === "user") {
           const conversationRepo = yield* ConversationRepository
           const conversation = yield* conversationRepo.get(message.conversationId)
           if (conversation && !conversation.title) {
             yield* conversationRepo.generateTitle(message.conversationId)
           }
         }
-        
+
         return sent
       })
     )
   }
 
-  async getMessages(conversationId: string, limit?: number): Promise<Message[]> {
+  async getMessages(conversationId: string, limit?: number): Promise<Array<Message>> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* MessageRepository
         const messages = yield* repo.getConversation(conversationId, limit)
         // Reverse to get chronological order (query returns desc)
@@ -115,9 +120,9 @@ export class ChatClient {
     )
   }
 
-  async searchMessages(query: string, userId = 'local'): Promise<Message[]> {
+  async searchMessages(query: string, userId = "local"): Promise<Array<Message>> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* MessageRepository
         return yield* repo.search(query, userId)
       })
@@ -126,7 +131,7 @@ export class ChatClient {
 
   async deleteMessage(id: string): Promise<boolean> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* MessageRepository
         return yield* repo.delete(id)
       })
@@ -136,7 +141,7 @@ export class ChatClient {
   // Live updates
   subscribeToConversation(
     conversationId: string,
-    callback: (messages: Message[]) => void
+    callback: (messages: Array<Message>) => void
   ): () => void {
     // Store callback
     if (!this.listeners.has(conversationId)) {
@@ -146,21 +151,22 @@ export class ChatClient {
 
     // Set up live query if not already active
     if (!this.unsubscribers.has(conversationId)) {
+      const self = this
       Runtime.runPromise(this.runtime)(
-        Effect.gen(function* () {
+        Effect.gen(function*() {
           const repo = yield* MessageRepository
           const unsubscribe = yield* repo.watchConversation(conversationId, (messages) => {
             // Notify all listeners for this conversation
-            const listeners = this.listeners.get(conversationId)
+            const listeners = self.listeners.get(conversationId)
             if (listeners) {
               // Ensure chronological order
-              const orderedMessages = [...messages].sort((a, b) => 
+              const orderedMessages = [...messages].sort((a, b) =>
                 new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
               )
-              listeners.forEach(cb => cb(orderedMessages))
+              listeners.forEach((cb) => cb(orderedMessages))
             }
           })
-          this.unsubscribers.set(conversationId, unsubscribe)
+          self.unsubscribers.set(conversationId, unsubscribe)
         })
       )
     }
@@ -202,7 +208,7 @@ export class ChatClient {
     // Send initial message
     const message = await this.sendMessage({
       conversationId: conversation.id,
-      role: 'user',
+      role: "user",
       content: initialMessage,
       metadata: {}
     })
@@ -212,4 +218,4 @@ export class ChatClient {
 }
 
 // Export types for convenience
-export type { Conversation, Message, NewConversation, NewMessage } from './schema'
+export type { Conversation, Message, NewConversation, NewMessage } from "./schema"

@@ -5,44 +5,44 @@
 
 // Schema exports
 export {
-  conversations,
-  messages,
   type Conversation,
-  type NewConversation,
+  conversations,
   type Message,
-  type NewMessage,
-  type MessageWithConversation
-} from './schema'
+  messages,
+  type MessageWithConversation,
+  type NewConversation,
+  type NewMessage
+} from "./schema"
 
 // Service exports
 export {
-  PGliteError,
-  PGliteService,
-  PGliteServiceLive,
   ConversationRepository,
   ConversationRepositoryLive,
   MessageRepository,
   MessageRepositoryLive,
   PersistenceLive,
-  type PGliteConfig
-} from './services'
+  type PGliteConfig,
+  PGliteError,
+  PGliteService,
+  PGliteServiceLive
+} from "./services"
 
 // Client exports
-export { ChatClient } from './client'
-export { BrowserChatClient } from './browser-client'
-export { BrowserEffectChatClient } from './browser-effect-client'
+export { BrowserChatClient } from "./browser-client"
+export { BrowserEffectChatClient } from "./browser-effect-client"
+export { ChatClient } from "./client"
 
 // Browser-safe Effect services
 export {
-  BrowserPersistenceError,
-  BrowserPGliteService,
   BrowserConversationRepository,
-  BrowserMessageRepository,
-  BrowserPGliteServiceLive,
   BrowserConversationRepositoryLive,
+  BrowserMessageRepository,
   BrowserMessageRepositoryLive,
-  BrowserPersistenceLive
-} from './client-services'
+  BrowserPersistenceError,
+  BrowserPersistenceLive,
+  BrowserPGliteService,
+  BrowserPGliteServiceLive
+} from "./client-services"
 
 // Re-export PGlite types for convenience
-export type { PGlite } from '@electric-sql/pglite'
+export type { PGlite } from "@electric-sql/pglite"

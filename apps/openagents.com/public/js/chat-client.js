@@ -10639,299 +10639,6 @@ J2 = new WeakMap, j2 = new WeakMap, V = new WeakMap, Q2 = new WeakMap, $2 = new 
 var qe2 = ue2;
 u();
 
-// ../../node_modules/.pnpm/@electric-sql+pglite@0.3.3/node_modules/@electric-sql/pglite/dist/live/index.js
-u();
-var M2 = 5;
-var U3 = async (l3, w2) => {
-  let g3 = new Set, h3 = { async query(e, $3, s2) {
-    let v2, c, r2;
-    if (typeof e != "string" && (v2 = e.signal, $3 = e.params, s2 = e.callback, c = e.offset, r2 = e.limit, e = e.query), c === undefined != (r2 === undefined))
-      throw new Error("offset and limit must be provided together");
-    let a = c !== undefined && r2 !== undefined, d2;
-    if (a && (typeof c != "number" || isNaN(c) || typeof r2 != "number" || isNaN(r2)))
-      throw new Error("offset and limit must be numbers");
-    let u3 = s2 ? [s2] : [], _2 = Cr().replace(/-/g, ""), f = false, T3, y2, N2 = async () => {
-      await l3.transaction(async (t) => {
-        let i2 = $3 && $3.length > 0 ? await Pr(l3, e, $3, t) : e;
-        await t.exec(`CREATE OR REPLACE TEMP VIEW live_query_${_2}_view AS ${i2}`), y2 = await q2(t, `live_query_${_2}_view`), await F3(t, y2, g3), a ? (await t.exec(`
-              PREPARE live_query_${_2}_get(int, int) AS
-              SELECT * FROM live_query_${_2}_view
-              LIMIT $1 OFFSET $2;
-            `), await t.exec(`
-              PREPARE live_query_${_2}_get_total_count AS
-              SELECT COUNT(*) FROM live_query_${_2}_view;
-            `), d2 = (await t.query(`EXECUTE live_query_${_2}_get_total_count;`)).rows[0].count, T3 = { ...await t.query(`EXECUTE live_query_${_2}_get(${r2}, ${c});`), offset: c, limit: r2, totalCount: d2 }) : (await t.exec(`
-              PREPARE live_query_${_2}_get AS
-              SELECT * FROM live_query_${_2}_view;
-            `), T3 = await t.query(`EXECUTE live_query_${_2}_get;`));
-      });
-    };
-    await N2();
-    let A3 = Ur(async ({ offset: t, limit: i2 } = {}) => {
-      if (!a && (t !== undefined || i2 !== undefined))
-        throw new Error("offset and limit cannot be provided for non-windowed queries");
-      if (t && (typeof t != "number" || isNaN(t)) || i2 && (typeof i2 != "number" || isNaN(i2)))
-        throw new Error("offset and limit must be numbers");
-      c = t ?? c, r2 = i2 ?? r2;
-      let m2 = async (E2 = 0) => {
-        if (u3.length !== 0) {
-          try {
-            a ? T3 = { ...await l3.query(`EXECUTE live_query_${_2}_get(${r2}, ${c});`), offset: c, limit: r2, totalCount: d2 } : T3 = await l3.query(`EXECUTE live_query_${_2}_get;`);
-          } catch (n) {
-            let p = n.message;
-            if (p.startsWith(`prepared statement "live_query_${_2}`) && p.endsWith("does not exist")) {
-              if (E2 > M2)
-                throw n;
-              await N2(), m2(E2 + 1);
-            } else
-              throw n;
-          }
-          if (S2(u3, T3), a) {
-            let n = (await l3.query(`EXECUTE live_query_${_2}_get_total_count;`)).rows[0].count;
-            n !== d2 && (d2 = n, A3());
-          }
-        }
-      };
-      await m2();
-    }), R4 = await Promise.all(y2.map((t) => l3.listen(`"table_change__${t.schema_name}__${t.table_name}"`, async () => {
-      A3();
-    }))), L3 = (t) => {
-      if (f)
-        throw new Error("Live query is no longer active and cannot be subscribed to");
-      u3.push(t);
-    }, o3 = async (t) => {
-      t ? u3 = u3.filter((i2) => i2 !== i2) : u3 = [], u3.length === 0 && !f && (f = true, await Promise.all(R4.map((i2) => i2())), await l3.exec(`
-            DROP VIEW IF EXISTS live_query_${_2}_view;
-            DEALLOCATE live_query_${_2}_get;
-          `));
-    };
-    return v2?.aborted ? await o3() : v2?.addEventListener("abort", () => {
-      o3();
-    }, { once: true }), S2(u3, T3), { initialResults: T3, subscribe: L3, unsubscribe: o3, refresh: A3 };
-  }, async changes(e, $3, s2, v2) {
-    let c;
-    if (typeof e != "string" && (c = e.signal, $3 = e.params, s2 = e.key, v2 = e.callback, e = e.query), !s2)
-      throw new Error("key is required for changes queries");
-    let r2 = v2 ? [v2] : [], a = Cr().replace(/-/g, ""), d2 = false, u3, _2 = 1, f, T3 = async () => {
-      await l3.transaction(async (o3) => {
-        let t = await Pr(l3, e, $3, o3);
-        await o3.query(`CREATE OR REPLACE TEMP VIEW live_query_${a}_view AS ${t}`), u3 = await q2(o3, `live_query_${a}_view`), await F3(o3, u3, g3);
-        let i2 = [...(await o3.query(`
-                SELECT column_name, data_type, udt_name
-                FROM information_schema.columns 
-                WHERE table_name = 'live_query_${a}_view'
-              `)).rows, { column_name: "__after__", data_type: "integer" }];
-        await o3.exec(`
-            CREATE TEMP TABLE live_query_${a}_state1 (LIKE live_query_${a}_view INCLUDING ALL);
-            CREATE TEMP TABLE live_query_${a}_state2 (LIKE live_query_${a}_view INCLUDING ALL);
-          `);
-        for (let m2 of [1, 2]) {
-          let E2 = m2 === 1 ? 2 : 1;
-          await o3.exec(`
-              PREPARE live_query_${a}_diff${m2} AS
-              WITH
-                prev AS (SELECT LAG("${s2}") OVER () as __after__, * FROM live_query_${a}_state${E2}),
-                curr AS (SELECT LAG("${s2}") OVER () as __after__, * FROM live_query_${a}_state${m2}),
-                data_diff AS (
-                  -- INSERT operations: Include all columns
-                  SELECT 
-                    'INSERT' AS __op__,
-                    ${i2.map(({ column_name: n }) => `curr."${n}" AS "${n}"`).join(`,
-`)},
-                    ARRAY[]::text[] AS __changed_columns__
-                  FROM curr
-                  LEFT JOIN prev ON curr.${s2} = prev.${s2}
-                  WHERE prev.${s2} IS NULL
-                UNION ALL
-                  -- DELETE operations: Include only the primary key
-                  SELECT 
-                    'DELETE' AS __op__,
-                    ${i2.map(({ column_name: n, data_type: p, udt_name: b3 }) => n === s2 ? `prev."${n}" AS "${n}"` : `NULL${p === "USER-DEFINED" ? `::${b3}` : ""} AS "${n}"`).join(`,
-`)},
-                      ARRAY[]::text[] AS __changed_columns__
-                  FROM prev
-                  LEFT JOIN curr ON prev.${s2} = curr.${s2}
-                  WHERE curr.${s2} IS NULL
-                UNION ALL
-                  -- UPDATE operations: Include only changed columns
-                  SELECT 
-                    'UPDATE' AS __op__,
-                    ${i2.map(({ column_name: n, data_type: p, udt_name: b3 }) => n === s2 ? `curr."${n}" AS "${n}"` : `CASE 
-                              WHEN curr."${n}" IS DISTINCT FROM prev."${n}" 
-                              THEN curr."${n}"
-                              ELSE NULL${p === "USER-DEFINED" ? `::${b3}` : ""}
-                              END AS "${n}"`).join(`,
-`)},
-                      ARRAY(SELECT unnest FROM unnest(ARRAY[${i2.filter(({ column_name: n }) => n !== s2).map(({ column_name: n }) => `CASE
-                              WHEN curr."${n}" IS DISTINCT FROM prev."${n}" 
-                              THEN '${n}' 
-                              ELSE NULL 
-                              END`).join(", ")}]) WHERE unnest IS NOT NULL) AS __changed_columns__
-                  FROM curr
-                  INNER JOIN prev ON curr.${s2} = prev.${s2}
-                  WHERE NOT (curr IS NOT DISTINCT FROM prev)
-                )
-              SELECT * FROM data_diff;
-            `);
-        }
-      });
-    };
-    await T3();
-    let y2 = Ur(async () => {
-      if (r2.length === 0 && f)
-        return;
-      let o3 = false;
-      for (let t = 0;t < 5; t++)
-        try {
-          await l3.transaction(async (i2) => {
-            await i2.exec(`
-                INSERT INTO live_query_${a}_state${_2} 
-                  SELECT * FROM live_query_${a}_view;
-              `), f = await i2.query(`EXECUTE live_query_${a}_diff${_2};`), _2 = _2 === 1 ? 2 : 1, await i2.exec(`
-                TRUNCATE live_query_${a}_state${_2};
-              `);
-          });
-          break;
-        } catch (i2) {
-          if (i2.message === `relation "live_query_${a}_state${_2}" does not exist`) {
-            o3 = true, await T3();
-            continue;
-          } else
-            throw i2;
-        }
-      D2(r2, [...o3 ? [{ __op__: "RESET" }] : [], ...f.rows]);
-    }), N2 = await Promise.all(u3.map((o3) => l3.listen(`table_change__${o3.schema_name}__${o3.table_name}`, async () => y2()))), A3 = (o3) => {
-      if (d2)
-        throw new Error("Live query is no longer active and cannot be subscribed to");
-      r2.push(o3);
-    }, R4 = async (o3) => {
-      o3 ? r2 = r2.filter((t) => t !== t) : r2 = [], r2.length === 0 && !d2 && (d2 = true, await Promise.all(N2.map((t) => t())), await l3.exec(`
-            DROP VIEW IF EXISTS live_query_${a}_view;
-            DROP TABLE IF EXISTS live_query_${a}_state1;
-            DROP TABLE IF EXISTS live_query_${a}_state2;
-            DEALLOCATE live_query_${a}_diff1;
-            DEALLOCATE live_query_${a}_diff2;
-          `));
-    };
-    return c?.aborted ? await R4() : c?.addEventListener("abort", () => {
-      R4();
-    }, { once: true }), await y2(), { fields: f.fields.filter((o3) => !["__after__", "__op__", "__changed_columns__"].includes(o3.name)), initialChanges: f.rows, subscribe: A3, unsubscribe: R4, refresh: y2 };
-  }, async incrementalQuery(e, $3, s2, v2) {
-    let c;
-    if (typeof e != "string" && (c = e.signal, $3 = e.params, s2 = e.key, v2 = e.callback, e = e.query), !s2)
-      throw new Error("key is required for incremental queries");
-    let r2 = v2 ? [v2] : [], a = new Map, d2 = new Map, u3 = [], _2 = true, { fields: f, unsubscribe: T3, refresh: y2 } = await h3.changes(e, $3, s2, (R4) => {
-      for (let t of R4) {
-        let { __op__: i2, __changed_columns__: m2, ...E2 } = t;
-        switch (i2) {
-          case "RESET":
-            a.clear(), d2.clear();
-            break;
-          case "INSERT":
-            a.set(E2[s2], E2), d2.set(E2.__after__, E2[s2]);
-            break;
-          case "DELETE": {
-            let n = a.get(E2[s2]);
-            a.delete(E2[s2]), n.__after__ !== null && d2.delete(n.__after__);
-            break;
-          }
-          case "UPDATE": {
-            let n = { ...a.get(E2[s2]) ?? {} };
-            for (let p of m2)
-              n[p] = E2[p], p === "__after__" && d2.set(E2.__after__, E2[s2]);
-            a.set(E2[s2], n);
-            break;
-          }
-        }
-      }
-      let L3 = [], o3 = null;
-      for (let t = 0;t < a.size; t++) {
-        let i2 = d2.get(o3), m2 = a.get(i2);
-        if (!m2)
-          break;
-        let E2 = { ...m2 };
-        delete E2.__after__, L3.push(E2), o3 = i2;
-      }
-      u3 = L3, _2 || S2(r2, { rows: L3, fields: f });
-    });
-    _2 = false, S2(r2, { rows: u3, fields: f });
-    let N2 = (R4) => {
-      r2.push(R4);
-    }, A3 = async (R4) => {
-      R4 ? r2 = r2.filter((L3) => L3 !== L3) : r2 = [], r2.length === 0 && await T3();
-    };
-    return c?.aborted ? await A3() : c?.addEventListener("abort", () => {
-      A3();
-    }, { once: true }), { initialResults: { rows: u3, fields: f }, subscribe: N2, unsubscribe: A3, refresh: y2 };
-  } };
-  return { namespaceObj: h3 };
-};
-var j3 = { name: "Live Queries", setup: U3 };
-async function q2(l3, w2) {
-  return (await l3.query(`
-      WITH RECURSIVE view_dependencies AS (
-        -- Base case: Get the initial view's dependencies
-        SELECT DISTINCT
-          cl.relname AS dependent_name,
-          n.nspname AS schema_name,
-          cl.relkind = 'v' AS is_view
-        FROM pg_rewrite r
-        JOIN pg_depend d ON r.oid = d.objid
-        JOIN pg_class cl ON d.refobjid = cl.oid
-        JOIN pg_namespace n ON cl.relnamespace = n.oid
-        WHERE
-          r.ev_class = (
-              SELECT oid FROM pg_class WHERE relname = $1 AND relkind = 'v'
-          )
-          AND d.deptype = 'n'
-
-        UNION ALL
-
-        -- Recursive case: Traverse dependencies for views
-        SELECT DISTINCT
-          cl.relname AS dependent_name,
-          n.nspname AS schema_name,
-          cl.relkind = 'v' AS is_view
-        FROM view_dependencies vd
-        JOIN pg_rewrite r ON vd.dependent_name = (
-          SELECT relname FROM pg_class WHERE oid = r.ev_class AND relkind = 'v'
-        )
-        JOIN pg_depend d ON r.oid = d.objid
-        JOIN pg_class cl ON d.refobjid = cl.oid
-        JOIN pg_namespace n ON cl.relnamespace = n.oid
-        WHERE d.deptype = 'n'
-      )
-      SELECT DISTINCT
-        dependent_name AS table_name,
-        schema_name
-      FROM view_dependencies
-      WHERE NOT is_view; -- Exclude intermediate views
-    `, [w2])).rows.map((h3) => ({ table_name: h3.table_name, schema_name: h3.schema_name }));
-}
-async function F3(l3, w2, g3) {
-  let h3 = w2.filter((e) => !g3.has(`${e.schema_name}_${e.table_name}`)).map((e) => `
-      CREATE OR REPLACE FUNCTION "_notify_${e.schema_name}_${e.table_name}"() RETURNS TRIGGER AS $$
-      BEGIN
-        PERFORM pg_notify('table_change__${e.schema_name}__${e.table_name}', '');
-        RETURN NULL;
-      END;
-      $$ LANGUAGE plpgsql;
-      CREATE OR REPLACE TRIGGER "_notify_trigger_${e.schema_name}_${e.table_name}"
-      AFTER INSERT OR UPDATE OR DELETE ON "${e.schema_name}"."${e.table_name}"
-      FOR EACH STATEMENT EXECUTE FUNCTION "_notify_${e.schema_name}_${e.table_name}"();
-      `).join(`
-`);
-  h3.trim() !== "" && await l3.exec(h3), w2.map((e) => g3.add(`${e.schema_name}_${e.table_name}`));
-}
-var S2 = (l3, w2) => {
-  for (let g3 of l3)
-    g3(w2);
-};
-var D2 = (l3, w2) => {
-  for (let g3 of l3)
-    g3(w2);
-};
-
 // ../../node_modules/.pnpm/@electric-sql+client@1.0.0/node_modules/@electric-sql/client/dist/index.mjs
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -12177,7 +11884,7 @@ function B(n) {
   return `"${n}"."${te3}"`;
 }
 async function Q3({ pg: n, table: o3, schema: e = "public", message: a, mapColumns: u3, primaryKey: b3, debug: m2 }) {
-  let f = u3 ? U4(u3, a) : a.value;
+  let f = u3 ? U3(u3, a) : a.value;
   switch (a.headers.operation) {
     case "insert": {
       m2 && console.log("inserting", f);
@@ -12206,7 +11913,7 @@ async function Q3({ pg: n, table: o3, schema: e = "public", message: a, mapColum
   }
 }
 async function G2({ pg: n, table: o3, schema: e = "public", messages: a, mapColumns: u3, debug: b3 }) {
-  let m2 = a.map((t) => u3 ? U4(u3, t) : t.value);
+  let m2 = a.map((t) => u3 ? U3(u3, t) : t.value);
   b3 && console.log("inserting", m2);
   let f = Object.keys(m2[0]), g3 = (t) => {
     if (t === null)
@@ -12239,11 +11946,11 @@ async function G2({ pg: n, table: o3, schema: e = "public", messages: a, mapColu
         case "number":
           return d2 + l3.length * 8;
         case "string":
-          return d2 + l3.reduce((j4, $3) => j4 + $3.length, 0);
+          return d2 + l3.reduce((j3, $3) => j3 + $3.length, 0);
         case "boolean":
           return d2 + l3.length;
         default:
-          return _2 instanceof Date ? d2 + l3.length * 8 : d2 + l3.reduce((j4, $3) => j4 + g3($3), 0);
+          return _2 instanceof Date ? d2 + l3.length * 8 : d2 + l3.reduce((j3, $3) => j3 + g3($3), 0);
       }
     }
     return d2 + g3(l3);
@@ -12252,7 +11959,7 @@ async function G2({ pg: n, table: o3, schema: e = "public", messages: a, mapColu
       INSERT INTO "${e}"."${o3}"
       (${f.map((l3) => `"${l3}"`).join(", ")})
       VALUES
-      ${t.map((l3, _2) => `(${f.map((j4, $3) => "$" + (_2 * f.length + $3 + 1)).join(", ")})`).join(", ")}
+      ${t.map((l3, _2) => `(${f.map((j3, $3) => "$" + (_2 * f.length + $3 + 1)).join(", ")})`).join(", ")}
     `, E2 = t.flatMap((l3) => f.map((_2) => l3[_2]));
     await n.query(d2, E2);
   }, c = [], h3 = 0, P3 = 0;
@@ -12264,7 +11971,7 @@ async function G2({ pg: n, table: o3, schema: e = "public", messages: a, mapColu
 }
 async function z3({ pg: n, table: o3, schema: e = "public", messages: a, mapColumns: u3, debug: b3 }) {
   b3 && console.log("applying messages with json_to_recordset");
-  let m2 = a.map((s2) => u3 ? U4(u3, s2) : s2.value), f = (await n.query(`
+  let m2 = a.map((s2) => u3 ? U3(u3, s2) : s2.value), f = (await n.query(`
         SELECT column_name, udt_name, data_type
         FROM information_schema.columns
         WHERE table_name = $1 AND table_schema = $2
@@ -12278,9 +11985,9 @@ async function z3({ pg: n, table: o3, schema: e = "public", messages: a, mapColu
   }
   b3 && console.log(`Inserted ${a.length} rows using json_to_recordset`);
 }
-async function F4({ pg: n, table: o3, schema: e = "public", messages: a, mapColumns: u3, debug: b3 }) {
+async function F3({ pg: n, table: o3, schema: e = "public", messages: a, mapColumns: u3, debug: b3 }) {
   b3 && console.log("applying messages with COPY");
-  let m2 = a.map((y2) => u3 ? U4(u3, y2) : y2.value), f = Object.keys(m2[0]), g3 = m2.map((y2) => f.map((I) => {
+  let m2 = a.map((y2) => u3 ? U3(u3, y2) : y2.value), f = Object.keys(m2[0]), g3 = m2.map((y2) => f.map((I) => {
     let O2 = y2[I];
     return typeof O2 == "string" && (O2.includes(",") || O2.includes('"') || O2.includes(`
 `)) ? `"${O2.replace(/"/g, '""')}"` : O2 === null ? "\\N" : O2;
@@ -12292,7 +11999,7 @@ async function F4({ pg: n, table: o3, schema: e = "public", messages: a, mapColu
       WITH (FORMAT csv, NULL '\\N')
     `, [], { blob: s2 }), b3 && console.log(`Inserted ${a.length} rows using COPY`);
 }
-function U4(n, o3) {
+function U3(n, o3) {
   if (typeof n == "function")
     return n(o3);
   let e = {};
@@ -12314,17 +12021,17 @@ async function oe2(n, o3) {
     c !== null && (l3 = await H3({ pg: n, metadataSchema: a, subscriptionKey: c }), e && l3 && console.log("resuming from subscription state", l3));
     let _2 = l3 === null;
     P3 && t === "insert" && (t = "csv", console.warn("The useCopy option is deprecated and will be removed in a future version. Use initialInsertMethod instead."));
-    let j4 = !_2 || t === "insert", $3 = false, v2 = new Map(Object.keys(h3).map((r2) => [r2, new Map])), k2 = new Map(Object.keys(h3).map((r2) => [r2, BigInt(-1)])), x3 = new Set, K3 = l3?.last_lsn ?? BigInt(-1), D3 = new AbortController;
+    let j3 = !_2 || t === "insert", $3 = false, v2 = new Map(Object.keys(h3).map((r2) => [r2, new Map])), k2 = new Map(Object.keys(h3).map((r2) => [r2, BigInt(-1)])), x3 = new Set, K3 = l3?.last_lsn ?? BigInt(-1), D2 = new AbortController;
     Object.values(h3).filter((r2) => !!r2.shape.signal).forEach((r2) => {
-      r2.shape.signal.addEventListener("abort", () => D3.abort(), { once: true });
+      r2.shape.signal.addEventListener("abort", () => D2.abort(), { once: true });
     });
     let R4 = new MultiShapeStream({ shapes: Object.fromEntries(Object.entries(h3).map(([r2, L3]) => {
-      let S3 = l3?.shape_metadata[r2];
-      return [r2, { ...L3.shape, ...S3 ? { offset: S3.offset, handle: S3.handle } : {}, signal: D3.signal }];
-    })) }), Z3 = { json: z3, csv: F4, useCopy: F4, insert: G2 }, ee3 = async (r2) => {
-      let L3 = new Map(Object.keys(h3).map((S3) => [S3, []]));
-      for (let [S3, w2] of v2.entries()) {
-        let i2 = L3.get(S3);
+      let S2 = l3?.shape_metadata[r2];
+      return [r2, { ...L3.shape, ...S2 ? { offset: S2.offset, handle: S2.handle } : {}, signal: D2.signal }];
+    })) }), Z3 = { json: z3, csv: F3, useCopy: F3, insert: G2 }, ee3 = async (r2) => {
+      let L3 = new Map(Object.keys(h3).map((S2) => [S2, []]));
+      for (let [S2, w2] of v2.entries()) {
+        let i2 = L3.get(S2);
         for (let p of w2.keys())
           if (p <= r2) {
             for (let T3 of w2.get(p))
@@ -12332,32 +12039,32 @@ async function oe2(n, o3) {
             w2.delete(p);
           }
       }
-      await n.transaction(async (S3) => {
-        e && console.time("commit"), await S3.exec(`SET LOCAL ${a}.syncing = true;`);
+      await n.transaction(async (S2) => {
+        e && console.time("commit"), await S2.exec(`SET LOCAL ${a}.syncing = true;`);
         for (let [w2, i2] of L3.entries()) {
           let p = h3[w2], T3 = i2;
           if (x3.has(w2)) {
             if (e && console.log("truncating table", p.table), p.onMustRefetch)
-              await p.onMustRefetch(S3);
+              await p.onMustRefetch(S2);
             else {
-              let M3 = p.schema || "public";
-              await S3.exec(`DELETE FROM "${M3}"."${p.table}";`);
+              let M2 = p.schema || "public";
+              await S2.exec(`DELETE FROM "${M2}"."${p.table}";`);
             }
             x3.delete(w2);
           }
-          if (!j4) {
-            let M3 = [], N2 = [], X3 = false;
-            for (let q3 of T3)
-              !X3 && q3.headers.operation === "insert" ? M3.push(q3) : (X3 = true, N2.push(q3));
-            M3.length > 0 && t === "csv" && N2.unshift(M3.pop()), T3 = N2, M3.length > 0 && (await Z3[t]({ pg: S3, table: p.table, schema: p.schema, messages: M3, mapColumns: p.mapColumns, debug: e }), j4 = true);
+          if (!j3) {
+            let M2 = [], N2 = [], X3 = false;
+            for (let q2 of T3)
+              !X3 && q2.headers.operation === "insert" ? M2.push(q2) : (X3 = true, N2.push(q2));
+            M2.length > 0 && t === "csv" && N2.unshift(M2.pop()), T3 = N2, M2.length > 0 && (await Z3[t]({ pg: S2, table: p.table, schema: p.schema, messages: M2, mapColumns: p.mapColumns, debug: e }), j3 = true);
           }
           let C3 = [], A3 = null, W2 = T3.length;
-          for (let M3 = 0;M3 < W2; M3++) {
-            let N2 = T3[M3];
-            N2.headers.operation === "insert" ? C3.push(N2) : A3 = N2, (A3 || M3 === W2 - 1) && (C3.length > 0 && (await G2({ pg: S3, table: p.table, schema: p.schema, messages: C3, mapColumns: p.mapColumns, debug: e }), C3.length = 0), A3 && (await Q3({ pg: S3, table: p.table, schema: p.schema, message: A3, mapColumns: p.mapColumns, primaryKey: p.primaryKey, debug: e }), A3 = null));
+          for (let M2 = 0;M2 < W2; M2++) {
+            let N2 = T3[M2];
+            N2.headers.operation === "insert" ? C3.push(N2) : A3 = N2, (A3 || M2 === W2 - 1) && (C3.length > 0 && (await G2({ pg: S2, table: p.table, schema: p.schema, messages: C3, mapColumns: p.mapColumns, debug: e }), C3.length = 0), A3 && (await Q3({ pg: S2, table: p.table, schema: p.schema, message: A3, mapColumns: p.mapColumns, primaryKey: p.primaryKey, debug: e }), A3 = null));
           }
         }
-        c && await Y3({ pg: S3, metadataSchema: a, subscriptionKey: c, shapeMetadata: Object.fromEntries(Object.keys(h3).map((w2) => [w2, { handle: R4.shapes[w2].shapeHandle, offset: R4.shapes[w2].lastOffset }])), lastLsn: r2, debug: e }), E2 && await S3.rollback();
+        c && await Y3({ pg: S2, metadataSchema: a, subscriptionKey: c, shapeMetadata: Object.fromEntries(Object.keys(h3).map((w2) => [w2, { handle: R4.shapes[w2].shapeHandle, offset: R4.shapes[w2].lastOffset }])), lastLsn: r2, debug: e }), E2 && await S2.rollback();
       }), e && console.timeEnd("commit"), d2 && !$3 && R4.isUpToDate && (d2(), $3 = true);
     };
     return R4.subscribe(async (r2) => {
@@ -12388,10 +12095,10 @@ async function oe2(n, o3) {
             }
           }
       });
-      let L3 = Array.from(k2.values()).reduce((i2, p) => p < i2 ? p : i2), S3 = L3 > K3, w2 = L3 >= K3 && x3.size > 0;
-      (S3 || w2) && (ee3(L3), await new Promise((i2) => setTimeout(i2)));
-    }), u3.push({ stream: R4, aborter: D3 }), { unsubscribe: () => {
-      e && console.log("unsubscribing"), E2 = true, R4.unsubscribeAll(), D3.abort();
+      let L3 = Array.from(k2.values()).reduce((i2, p) => p < i2 ? p : i2), S2 = L3 > K3, w2 = L3 >= K3 && x3.size > 0;
+      (S2 || w2) && (ee3(L3), await new Promise((i2) => setTimeout(i2)));
+    }), u3.push({ stream: R4, aborter: D2 }), { unsubscribe: () => {
+      e && console.log("unsubscribing"), E2 = true, R4.unsubscribeAll(), D2.abort();
       for (let r2 of Object.values(h3))
         b3.delete(r2.table);
     }, get isUpToDate() {
@@ -12416,6 +12123,521 @@ function me3(n) {
     return { namespaceObj: e, close: a };
   } };
 }
+
+// ../../node_modules/.pnpm/@electric-sql+pglite@0.3.3/node_modules/@electric-sql/pglite/dist/live/index.js
+u();
+var M2 = 5;
+var U4 = async (l3, w2) => {
+  let g3 = new Set, h3 = { async query(e, $3, s2) {
+    let v2, c, r2;
+    if (typeof e != "string" && (v2 = e.signal, $3 = e.params, s2 = e.callback, c = e.offset, r2 = e.limit, e = e.query), c === undefined != (r2 === undefined))
+      throw new Error("offset and limit must be provided together");
+    let a = c !== undefined && r2 !== undefined, d2;
+    if (a && (typeof c != "number" || isNaN(c) || typeof r2 != "number" || isNaN(r2)))
+      throw new Error("offset and limit must be numbers");
+    let u3 = s2 ? [s2] : [], _2 = Cr().replace(/-/g, ""), f = false, T3, y2, N2 = async () => {
+      await l3.transaction(async (t) => {
+        let i2 = $3 && $3.length > 0 ? await Pr(l3, e, $3, t) : e;
+        await t.exec(`CREATE OR REPLACE TEMP VIEW live_query_${_2}_view AS ${i2}`), y2 = await q2(t, `live_query_${_2}_view`), await F4(t, y2, g3), a ? (await t.exec(`
+              PREPARE live_query_${_2}_get(int, int) AS
+              SELECT * FROM live_query_${_2}_view
+              LIMIT $1 OFFSET $2;
+            `), await t.exec(`
+              PREPARE live_query_${_2}_get_total_count AS
+              SELECT COUNT(*) FROM live_query_${_2}_view;
+            `), d2 = (await t.query(`EXECUTE live_query_${_2}_get_total_count;`)).rows[0].count, T3 = { ...await t.query(`EXECUTE live_query_${_2}_get(${r2}, ${c});`), offset: c, limit: r2, totalCount: d2 }) : (await t.exec(`
+              PREPARE live_query_${_2}_get AS
+              SELECT * FROM live_query_${_2}_view;
+            `), T3 = await t.query(`EXECUTE live_query_${_2}_get;`));
+      });
+    };
+    await N2();
+    let A3 = Ur(async ({ offset: t, limit: i2 } = {}) => {
+      if (!a && (t !== undefined || i2 !== undefined))
+        throw new Error("offset and limit cannot be provided for non-windowed queries");
+      if (t && (typeof t != "number" || isNaN(t)) || i2 && (typeof i2 != "number" || isNaN(i2)))
+        throw new Error("offset and limit must be numbers");
+      c = t ?? c, r2 = i2 ?? r2;
+      let m2 = async (E2 = 0) => {
+        if (u3.length !== 0) {
+          try {
+            a ? T3 = { ...await l3.query(`EXECUTE live_query_${_2}_get(${r2}, ${c});`), offset: c, limit: r2, totalCount: d2 } : T3 = await l3.query(`EXECUTE live_query_${_2}_get;`);
+          } catch (n) {
+            let p = n.message;
+            if (p.startsWith(`prepared statement "live_query_${_2}`) && p.endsWith("does not exist")) {
+              if (E2 > M2)
+                throw n;
+              await N2(), m2(E2 + 1);
+            } else
+              throw n;
+          }
+          if (S2(u3, T3), a) {
+            let n = (await l3.query(`EXECUTE live_query_${_2}_get_total_count;`)).rows[0].count;
+            n !== d2 && (d2 = n, A3());
+          }
+        }
+      };
+      await m2();
+    }), R4 = await Promise.all(y2.map((t) => l3.listen(`"table_change__${t.schema_name}__${t.table_name}"`, async () => {
+      A3();
+    }))), L3 = (t) => {
+      if (f)
+        throw new Error("Live query is no longer active and cannot be subscribed to");
+      u3.push(t);
+    }, o3 = async (t) => {
+      t ? u3 = u3.filter((i2) => i2 !== i2) : u3 = [], u3.length === 0 && !f && (f = true, await Promise.all(R4.map((i2) => i2())), await l3.exec(`
+            DROP VIEW IF EXISTS live_query_${_2}_view;
+            DEALLOCATE live_query_${_2}_get;
+          `));
+    };
+    return v2?.aborted ? await o3() : v2?.addEventListener("abort", () => {
+      o3();
+    }, { once: true }), S2(u3, T3), { initialResults: T3, subscribe: L3, unsubscribe: o3, refresh: A3 };
+  }, async changes(e, $3, s2, v2) {
+    let c;
+    if (typeof e != "string" && (c = e.signal, $3 = e.params, s2 = e.key, v2 = e.callback, e = e.query), !s2)
+      throw new Error("key is required for changes queries");
+    let r2 = v2 ? [v2] : [], a = Cr().replace(/-/g, ""), d2 = false, u3, _2 = 1, f, T3 = async () => {
+      await l3.transaction(async (o3) => {
+        let t = await Pr(l3, e, $3, o3);
+        await o3.query(`CREATE OR REPLACE TEMP VIEW live_query_${a}_view AS ${t}`), u3 = await q2(o3, `live_query_${a}_view`), await F4(o3, u3, g3);
+        let i2 = [...(await o3.query(`
+                SELECT column_name, data_type, udt_name
+                FROM information_schema.columns 
+                WHERE table_name = 'live_query_${a}_view'
+              `)).rows, { column_name: "__after__", data_type: "integer" }];
+        await o3.exec(`
+            CREATE TEMP TABLE live_query_${a}_state1 (LIKE live_query_${a}_view INCLUDING ALL);
+            CREATE TEMP TABLE live_query_${a}_state2 (LIKE live_query_${a}_view INCLUDING ALL);
+          `);
+        for (let m2 of [1, 2]) {
+          let E2 = m2 === 1 ? 2 : 1;
+          await o3.exec(`
+              PREPARE live_query_${a}_diff${m2} AS
+              WITH
+                prev AS (SELECT LAG("${s2}") OVER () as __after__, * FROM live_query_${a}_state${E2}),
+                curr AS (SELECT LAG("${s2}") OVER () as __after__, * FROM live_query_${a}_state${m2}),
+                data_diff AS (
+                  -- INSERT operations: Include all columns
+                  SELECT 
+                    'INSERT' AS __op__,
+                    ${i2.map(({ column_name: n }) => `curr."${n}" AS "${n}"`).join(`,
+`)},
+                    ARRAY[]::text[] AS __changed_columns__
+                  FROM curr
+                  LEFT JOIN prev ON curr.${s2} = prev.${s2}
+                  WHERE prev.${s2} IS NULL
+                UNION ALL
+                  -- DELETE operations: Include only the primary key
+                  SELECT 
+                    'DELETE' AS __op__,
+                    ${i2.map(({ column_name: n, data_type: p, udt_name: b3 }) => n === s2 ? `prev."${n}" AS "${n}"` : `NULL${p === "USER-DEFINED" ? `::${b3}` : ""} AS "${n}"`).join(`,
+`)},
+                      ARRAY[]::text[] AS __changed_columns__
+                  FROM prev
+                  LEFT JOIN curr ON prev.${s2} = curr.${s2}
+                  WHERE curr.${s2} IS NULL
+                UNION ALL
+                  -- UPDATE operations: Include only changed columns
+                  SELECT 
+                    'UPDATE' AS __op__,
+                    ${i2.map(({ column_name: n, data_type: p, udt_name: b3 }) => n === s2 ? `curr."${n}" AS "${n}"` : `CASE 
+                              WHEN curr."${n}" IS DISTINCT FROM prev."${n}" 
+                              THEN curr."${n}"
+                              ELSE NULL${p === "USER-DEFINED" ? `::${b3}` : ""}
+                              END AS "${n}"`).join(`,
+`)},
+                      ARRAY(SELECT unnest FROM unnest(ARRAY[${i2.filter(({ column_name: n }) => n !== s2).map(({ column_name: n }) => `CASE
+                              WHEN curr."${n}" IS DISTINCT FROM prev."${n}" 
+                              THEN '${n}' 
+                              ELSE NULL 
+                              END`).join(", ")}]) WHERE unnest IS NOT NULL) AS __changed_columns__
+                  FROM curr
+                  INNER JOIN prev ON curr.${s2} = prev.${s2}
+                  WHERE NOT (curr IS NOT DISTINCT FROM prev)
+                )
+              SELECT * FROM data_diff;
+            `);
+        }
+      });
+    };
+    await T3();
+    let y2 = Ur(async () => {
+      if (r2.length === 0 && f)
+        return;
+      let o3 = false;
+      for (let t = 0;t < 5; t++)
+        try {
+          await l3.transaction(async (i2) => {
+            await i2.exec(`
+                INSERT INTO live_query_${a}_state${_2} 
+                  SELECT * FROM live_query_${a}_view;
+              `), f = await i2.query(`EXECUTE live_query_${a}_diff${_2};`), _2 = _2 === 1 ? 2 : 1, await i2.exec(`
+                TRUNCATE live_query_${a}_state${_2};
+              `);
+          });
+          break;
+        } catch (i2) {
+          if (i2.message === `relation "live_query_${a}_state${_2}" does not exist`) {
+            o3 = true, await T3();
+            continue;
+          } else
+            throw i2;
+        }
+      D2(r2, [...o3 ? [{ __op__: "RESET" }] : [], ...f.rows]);
+    }), N2 = await Promise.all(u3.map((o3) => l3.listen(`table_change__${o3.schema_name}__${o3.table_name}`, async () => y2()))), A3 = (o3) => {
+      if (d2)
+        throw new Error("Live query is no longer active and cannot be subscribed to");
+      r2.push(o3);
+    }, R4 = async (o3) => {
+      o3 ? r2 = r2.filter((t) => t !== t) : r2 = [], r2.length === 0 && !d2 && (d2 = true, await Promise.all(N2.map((t) => t())), await l3.exec(`
+            DROP VIEW IF EXISTS live_query_${a}_view;
+            DROP TABLE IF EXISTS live_query_${a}_state1;
+            DROP TABLE IF EXISTS live_query_${a}_state2;
+            DEALLOCATE live_query_${a}_diff1;
+            DEALLOCATE live_query_${a}_diff2;
+          `));
+    };
+    return c?.aborted ? await R4() : c?.addEventListener("abort", () => {
+      R4();
+    }, { once: true }), await y2(), { fields: f.fields.filter((o3) => !["__after__", "__op__", "__changed_columns__"].includes(o3.name)), initialChanges: f.rows, subscribe: A3, unsubscribe: R4, refresh: y2 };
+  }, async incrementalQuery(e, $3, s2, v2) {
+    let c;
+    if (typeof e != "string" && (c = e.signal, $3 = e.params, s2 = e.key, v2 = e.callback, e = e.query), !s2)
+      throw new Error("key is required for incremental queries");
+    let r2 = v2 ? [v2] : [], a = new Map, d2 = new Map, u3 = [], _2 = true, { fields: f, unsubscribe: T3, refresh: y2 } = await h3.changes(e, $3, s2, (R4) => {
+      for (let t of R4) {
+        let { __op__: i2, __changed_columns__: m2, ...E2 } = t;
+        switch (i2) {
+          case "RESET":
+            a.clear(), d2.clear();
+            break;
+          case "INSERT":
+            a.set(E2[s2], E2), d2.set(E2.__after__, E2[s2]);
+            break;
+          case "DELETE": {
+            let n = a.get(E2[s2]);
+            a.delete(E2[s2]), n.__after__ !== null && d2.delete(n.__after__);
+            break;
+          }
+          case "UPDATE": {
+            let n = { ...a.get(E2[s2]) ?? {} };
+            for (let p of m2)
+              n[p] = E2[p], p === "__after__" && d2.set(E2.__after__, E2[s2]);
+            a.set(E2[s2], n);
+            break;
+          }
+        }
+      }
+      let L3 = [], o3 = null;
+      for (let t = 0;t < a.size; t++) {
+        let i2 = d2.get(o3), m2 = a.get(i2);
+        if (!m2)
+          break;
+        let E2 = { ...m2 };
+        delete E2.__after__, L3.push(E2), o3 = i2;
+      }
+      u3 = L3, _2 || S2(r2, { rows: L3, fields: f });
+    });
+    _2 = false, S2(r2, { rows: u3, fields: f });
+    let N2 = (R4) => {
+      r2.push(R4);
+    }, A3 = async (R4) => {
+      R4 ? r2 = r2.filter((L3) => L3 !== L3) : r2 = [], r2.length === 0 && await T3();
+    };
+    return c?.aborted ? await A3() : c?.addEventListener("abort", () => {
+      A3();
+    }, { once: true }), { initialResults: { rows: u3, fields: f }, subscribe: N2, unsubscribe: A3, refresh: y2 };
+  } };
+  return { namespaceObj: h3 };
+};
+var j3 = { name: "Live Queries", setup: U4 };
+async function q2(l3, w2) {
+  return (await l3.query(`
+      WITH RECURSIVE view_dependencies AS (
+        -- Base case: Get the initial view's dependencies
+        SELECT DISTINCT
+          cl.relname AS dependent_name,
+          n.nspname AS schema_name,
+          cl.relkind = 'v' AS is_view
+        FROM pg_rewrite r
+        JOIN pg_depend d ON r.oid = d.objid
+        JOIN pg_class cl ON d.refobjid = cl.oid
+        JOIN pg_namespace n ON cl.relnamespace = n.oid
+        WHERE
+          r.ev_class = (
+              SELECT oid FROM pg_class WHERE relname = $1 AND relkind = 'v'
+          )
+          AND d.deptype = 'n'
+
+        UNION ALL
+
+        -- Recursive case: Traverse dependencies for views
+        SELECT DISTINCT
+          cl.relname AS dependent_name,
+          n.nspname AS schema_name,
+          cl.relkind = 'v' AS is_view
+        FROM view_dependencies vd
+        JOIN pg_rewrite r ON vd.dependent_name = (
+          SELECT relname FROM pg_class WHERE oid = r.ev_class AND relkind = 'v'
+        )
+        JOIN pg_depend d ON r.oid = d.objid
+        JOIN pg_class cl ON d.refobjid = cl.oid
+        JOIN pg_namespace n ON cl.relnamespace = n.oid
+        WHERE d.deptype = 'n'
+      )
+      SELECT DISTINCT
+        dependent_name AS table_name,
+        schema_name
+      FROM view_dependencies
+      WHERE NOT is_view; -- Exclude intermediate views
+    `, [w2])).rows.map((h3) => ({ table_name: h3.table_name, schema_name: h3.schema_name }));
+}
+async function F4(l3, w2, g3) {
+  let h3 = w2.filter((e) => !g3.has(`${e.schema_name}_${e.table_name}`)).map((e) => `
+      CREATE OR REPLACE FUNCTION "_notify_${e.schema_name}_${e.table_name}"() RETURNS TRIGGER AS $$
+      BEGIN
+        PERFORM pg_notify('table_change__${e.schema_name}__${e.table_name}', '');
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE OR REPLACE TRIGGER "_notify_trigger_${e.schema_name}_${e.table_name}"
+      AFTER INSERT OR UPDATE OR DELETE ON "${e.schema_name}"."${e.table_name}"
+      FOR EACH STATEMENT EXECUTE FUNCTION "_notify_${e.schema_name}_${e.table_name}"();
+      `).join(`
+`);
+  h3.trim() !== "" && await l3.exec(h3), w2.map((e) => g3.add(`${e.schema_name}_${e.table_name}`));
+}
+var S2 = (l3, w2) => {
+  for (let g3 of l3)
+    g3(w2);
+};
+var D2 = (l3, w2) => {
+  for (let g3 of l3)
+    g3(w2);
+};
+
+// ../../node_modules/.pnpm/drizzle-orm@0.44.2_@electric-sql+pglite@0.3.3/node_modules/drizzle-orm/logger.js
+class ConsoleLogWriter {
+  static [entityKind] = "ConsoleLogWriter";
+  write(message) {
+    console.log(message);
+  }
+}
+
+class DefaultLogger {
+  static [entityKind] = "DefaultLogger";
+  writer;
+  constructor(config) {
+    this.writer = config?.writer ?? new ConsoleLogWriter;
+  }
+  logQuery(query, params) {
+    const stringifiedParams = params.map((p) => {
+      try {
+        return JSON.stringify(p);
+      } catch {
+        return String(p);
+      }
+    });
+    const paramsStr = stringifiedParams.length ? ` -- params: [${stringifiedParams.join(", ")}]` : "";
+    this.writer.write(`Query: ${query}${paramsStr}`);
+  }
+}
+
+class NoopLogger {
+  static [entityKind] = "NoopLogger";
+  logQuery() {
+  }
+}
+
+// ../../node_modules/.pnpm/drizzle-orm@0.44.2_@electric-sql+pglite@0.3.3/node_modules/drizzle-orm/pglite/session.js
+class PglitePreparedQuery extends PgPreparedQuery {
+  constructor(client, queryString, params, logger, cache, queryMetadata, cacheConfig, fields, name2, _isResponseInArrayMode, customResultMapper) {
+    super({ sql: queryString, params }, cache, queryMetadata, cacheConfig);
+    this.client = client;
+    this.queryString = queryString;
+    this.params = params;
+    this.logger = logger;
+    this.fields = fields;
+    this._isResponseInArrayMode = _isResponseInArrayMode;
+    this.customResultMapper = customResultMapper;
+    this.rawQueryConfig = {
+      rowMode: "object",
+      parsers: {
+        [hn.TIMESTAMP]: (value) => value,
+        [hn.TIMESTAMPTZ]: (value) => value,
+        [hn.INTERVAL]: (value) => value,
+        [hn.DATE]: (value) => value,
+        [1231]: (value) => value,
+        [1115]: (value) => value,
+        [1185]: (value) => value,
+        [1187]: (value) => value,
+        [1182]: (value) => value
+      }
+    };
+    this.queryConfig = {
+      rowMode: "array",
+      parsers: {
+        [hn.TIMESTAMP]: (value) => value,
+        [hn.TIMESTAMPTZ]: (value) => value,
+        [hn.INTERVAL]: (value) => value,
+        [hn.DATE]: (value) => value,
+        [1231]: (value) => value,
+        [1115]: (value) => value,
+        [1185]: (value) => value,
+        [1187]: (value) => value,
+        [1182]: (value) => value
+      }
+    };
+  }
+  static [entityKind] = "PglitePreparedQuery";
+  rawQueryConfig;
+  queryConfig;
+  async execute(placeholderValues = {}) {
+    const params = fillPlaceholders(this.params, placeholderValues);
+    this.logger.logQuery(this.queryString, params);
+    const { fields, client, queryConfig, joinsNotNullableMap, customResultMapper, queryString, rawQueryConfig } = this;
+    if (!fields && !customResultMapper) {
+      return this.queryWithCache(queryString, params, async () => {
+        return await client.query(queryString, params, rawQueryConfig);
+      });
+    }
+    const result = await this.queryWithCache(queryString, params, async () => {
+      return await client.query(queryString, params, queryConfig);
+    });
+    return customResultMapper ? customResultMapper(result.rows) : result.rows.map((row) => mapResultRow(fields, row, joinsNotNullableMap));
+  }
+  all(placeholderValues = {}) {
+    const params = fillPlaceholders(this.params, placeholderValues);
+    this.logger.logQuery(this.queryString, params);
+    return this.queryWithCache(this.queryString, params, async () => {
+      return await this.client.query(this.queryString, params, this.rawQueryConfig);
+    }).then((result) => result.rows);
+  }
+  isResponseInArrayMode() {
+    return this._isResponseInArrayMode;
+  }
+}
+
+class PgliteSession extends PgSession {
+  constructor(client, dialect, schema, options = {}) {
+    super(dialect);
+    this.client = client;
+    this.schema = schema;
+    this.options = options;
+    this.logger = options.logger ?? new NoopLogger;
+    this.cache = options.cache ?? new NoopCache;
+  }
+  static [entityKind] = "PgliteSession";
+  logger;
+  cache;
+  prepareQuery(query, fields, name2, isResponseInArrayMode, customResultMapper, queryMetadata, cacheConfig) {
+    return new PglitePreparedQuery(this.client, query.sql, query.params, this.logger, this.cache, queryMetadata, cacheConfig, fields, name2, isResponseInArrayMode, customResultMapper);
+  }
+  async transaction(transaction, config) {
+    return this.client.transaction(async (client) => {
+      const session = new PgliteSession(client, this.dialect, this.schema, this.options);
+      const tx = new PgliteTransaction(this.dialect, session, this.schema);
+      if (config) {
+        await tx.setTransaction(config);
+      }
+      return transaction(tx);
+    });
+  }
+  async count(sql2) {
+    const res = await this.execute(sql2);
+    return Number(res["rows"][0]["count"]);
+  }
+}
+
+class PgliteTransaction extends PgTransaction {
+  static [entityKind] = "PgliteTransaction";
+  async transaction(transaction) {
+    const savepointName = `sp${this.nestedIndex + 1}`;
+    const tx = new PgliteTransaction(this.dialect, this.session, this.schema, this.nestedIndex + 1);
+    await tx.execute(sql.raw(`savepoint ${savepointName}`));
+    try {
+      const result = await transaction(tx);
+      await tx.execute(sql.raw(`release savepoint ${savepointName}`));
+      return result;
+    } catch (err2) {
+      await tx.execute(sql.raw(`rollback to savepoint ${savepointName}`));
+      throw err2;
+    }
+  }
+}
+
+// ../../node_modules/.pnpm/drizzle-orm@0.44.2_@electric-sql+pglite@0.3.3/node_modules/drizzle-orm/pglite/driver.js
+class PgliteDriver {
+  constructor(client, dialect, options = {}) {
+    this.client = client;
+    this.dialect = dialect;
+    this.options = options;
+  }
+  static [entityKind] = "PgliteDriver";
+  createSession(schema) {
+    return new PgliteSession(this.client, this.dialect, schema, {
+      logger: this.options.logger,
+      cache: this.options.cache
+    });
+  }
+}
+
+class PgliteDatabase extends PgDatabase {
+  static [entityKind] = "PgliteDatabase";
+}
+function construct(client, config = {}) {
+  const dialect = new PgDialect({ casing: config.casing });
+  let logger;
+  if (config.logger === true) {
+    logger = new DefaultLogger;
+  } else if (config.logger !== false) {
+    logger = config.logger;
+  }
+  let schema;
+  if (config.schema) {
+    const tablesConfig = extractTablesRelationalConfig(config.schema, createTableRelationsHelpers);
+    schema = {
+      fullSchema: config.schema,
+      schema: tablesConfig.tables,
+      tableNamesMap: tablesConfig.tableNamesMap
+    };
+  }
+  const driver = new PgliteDriver(client, dialect, { logger, cache: config.cache });
+  const session = driver.createSession(schema);
+  const db = new PgliteDatabase(dialect, session, schema);
+  db.$client = client;
+  db.$cache = config.cache;
+  if (db.$cache) {
+    db.$cache["invalidate"] = config.cache?.onMutate;
+  }
+  return db;
+}
+function drizzle(...params) {
+  if (params[0] === undefined || typeof params[0] === "string") {
+    const instance2 = new qe2(params[0]);
+    return construct(instance2, params[1]);
+  }
+  if (isConfig(params[0])) {
+    const { connection, client, ...drizzleConfig } = params[0];
+    if (client)
+      return construct(client, drizzleConfig);
+    if (typeof connection === "object") {
+      const { dataDir, ...options } = connection;
+      const instance22 = new qe2(dataDir, options);
+      return construct(instance22, drizzleConfig);
+    }
+    const instance2 = new qe2(connection);
+    return construct(instance2, drizzleConfig);
+  }
+  return construct(params[0], params[1]);
+}
+((drizzle2) => {
+  function mock(config) {
+    return construct({}, config);
+  }
+  drizzle2.mock = mock;
+})(drizzle || (drizzle = {}));
 
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Function.js
 var isFunction = (input) => typeof input === "function";
@@ -27858,6 +28080,7 @@ var isDone4 = isDone3;
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Scope.js
 var Scope = scopeTag;
 var close = scopeClose;
+var extend2 = scopeExtend;
 var fork2 = scopeFork;
 
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/internal/effect/circular.js
@@ -28808,63 +29031,10 @@ var withConsole = /* @__PURE__ */ dual(2, (effect, value) => fiberRefLocallyWith
 var withConsoleScoped = (console3) => fiberRefLocallyScopedWith(currentServices, add2(consoleTag, console3));
 
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Data.js
-var exports_Data = {};
-__export(exports_Data, {
-  unsafeStruct: () => unsafeStruct,
-  unsafeArray: () => unsafeArray,
-  tuple: () => tuple3,
-  taggedEnum: () => taggedEnum,
-  tagged: () => tagged2,
-  struct: () => struct2,
-  case: () => _case,
-  array: () => array5,
-  TaggedError: () => TaggedError,
-  TaggedClass: () => TaggedClass,
-  Structural: () => Structural2,
-  Error: () => Error3,
-  Class: () => Class3
-});
 var struct2 = struct;
-var unsafeStruct = (as3) => Object.setPrototypeOf(as3, StructuralPrototype);
-var tuple3 = (...as3) => unsafeArray(as3);
 var array5 = (as3) => unsafeArray(as3.slice(0));
 var unsafeArray = (as3) => Object.setPrototypeOf(as3, ArrayProto);
-var _case = () => (args3) => args3 === undefined ? Object.create(StructuralPrototype) : struct2(args3);
-var tagged2 = (tag) => (args3) => {
-  const value = args3 === undefined ? Object.create(StructuralPrototype) : struct2(args3);
-  value._tag = tag;
-  return value;
-};
 var Class3 = Structural;
-var TaggedClass = (tag) => {
-
-  class Base3 extends Class3 {
-    _tag = tag;
-  }
-  return Base3;
-};
-var Structural2 = Structural;
-var taggedEnum = () => new Proxy({}, {
-  get(_target, tag, _receiver) {
-    if (tag === "$is") {
-      return isTagged;
-    } else if (tag === "$match") {
-      return taggedMatch;
-    }
-    return tagged2(tag);
-  }
-});
-function taggedMatch() {
-  if (arguments.length === 1) {
-    const cases2 = arguments[0];
-    return function(value2) {
-      return cases2[value2._tag](value2);
-    };
-  }
-  const value = arguments[0];
-  const cases = arguments[1];
-  return cases[value._tag](value);
-}
 var Error3 = /* @__PURE__ */ function() {
   const plainArgsSymbol = /* @__PURE__ */ Symbol.for("effect/Data/Error/plainArgs");
   const O2 = {
@@ -29354,7 +29524,7 @@ class ScheduleDriverImpl {
     this.ref = ref;
   }
   get state() {
-    return map9(get11(this.ref), (tuple4) => tuple4[1]);
+    return map9(get11(this.ref), (tuple3) => tuple3[1]);
   }
   get last() {
     return flatMap7(get11(this.ref), ([element, _2]) => {
@@ -29373,7 +29543,7 @@ class ScheduleDriverImpl {
     return set5(this.ref, [none2(), this.schedule.initial]).pipe(zipLeft(set5(this.iterationMeta, defaultIterationMetadata)));
   }
   next(input) {
-    return pipe(map9(get11(this.ref), (tuple4) => tuple4[1]), flatMap7((state) => pipe(currentTimeMillis2, flatMap7((now) => pipe(suspend(() => this.schedule.step(now, input, state)), flatMap7(([state2, out2, decision]) => {
+    return pipe(map9(get11(this.ref), (tuple3) => tuple3[1]), flatMap7((state) => pipe(currentTimeMillis2, flatMap7((now) => pipe(suspend(() => this.schedule.step(now, input, state)), flatMap7(([state2, out2, decision]) => {
       const setState = set5(this.ref, [some2(out2), state2]);
       if (isDone4(decision)) {
         return setState.pipe(zipRight(fail2(none2())));
@@ -33702,7 +33872,23 @@ var reportUnhandledError = (cause3) => withFiberRuntime((fiber) => {
   }
   return void_;
 });
+// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/ManagedRuntime.js
+var exports_ManagedRuntime = {};
+__export(exports_ManagedRuntime, {
+  make: () => make62,
+  isManagedRuntime: () => isManagedRuntime2,
+  TypeId: () => TypeId27
+});
+
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/internal/managedRuntime.js
+var isManagedRuntime = (u3) => hasProperty(u3, TypeId16);
+function provide4(managed, effect4) {
+  return flatMap7(managed.runtimeEffect, (rt2) => withFiberRuntime((fiber) => {
+    fiber.setFiberRefs(rt2.fiberRefs);
+    fiber.currentRuntimeFlags = rt2.runtimeFlags;
+    return provideContext(effect4, rt2.context);
+  }));
+}
 var ManagedRuntimeProto = {
   ...CommitPrototype2,
   [TypeId16]: TypeId16,
@@ -33713,10 +33899,67 @@ var ManagedRuntimeProto = {
     return this.runtimeEffect;
   }
 };
+var make61 = (layer, memoMap) => {
+  memoMap = memoMap ?? unsafeMakeMemoMap();
+  const scope5 = unsafeRunSyncEffect(scopeMake());
+  let buildFiber;
+  const runtimeEffect = withFiberRuntime((fiber) => {
+    if (!buildFiber) {
+      buildFiber = unsafeForkEffect(tap(extend2(toRuntimeWithMemoMap(layer, memoMap), scope5), (rt2) => {
+        self2.cachedRuntime = rt2;
+      }), {
+        scope: scope5,
+        scheduler: fiber.currentScheduler
+      });
+    }
+    return flatten5(buildFiber.await);
+  });
+  const self2 = Object.assign(Object.create(ManagedRuntimeProto), {
+    memoMap,
+    scope: scope5,
+    runtimeEffect,
+    cachedRuntime: undefined,
+    runtime() {
+      return self2.cachedRuntime === undefined ? unsafeRunPromiseEffect(self2.runtimeEffect) : Promise.resolve(self2.cachedRuntime);
+    },
+    dispose() {
+      return unsafeRunPromiseEffect(self2.disposeEffect);
+    },
+    disposeEffect: suspend(() => {
+      self2.runtimeEffect = die2("ManagedRuntime disposed");
+      self2.cachedRuntime = undefined;
+      return close(self2.scope, exitVoid);
+    }),
+    runFork(effect4, options) {
+      return self2.cachedRuntime === undefined ? unsafeForkEffect(provide4(self2, effect4), options) : unsafeFork2(self2.cachedRuntime)(effect4, options);
+    },
+    runSyncExit(effect4) {
+      return self2.cachedRuntime === undefined ? unsafeRunSyncExitEffect(provide4(self2, effect4)) : unsafeRunSyncExit(self2.cachedRuntime)(effect4);
+    },
+    runSync(effect4) {
+      return self2.cachedRuntime === undefined ? unsafeRunSyncEffect(provide4(self2, effect4)) : unsafeRunSync(self2.cachedRuntime)(effect4);
+    },
+    runPromiseExit(effect4, options) {
+      return self2.cachedRuntime === undefined ? unsafeRunPromiseExitEffect(provide4(self2, effect4), options) : unsafeRunPromiseExit(self2.cachedRuntime)(effect4, options);
+    },
+    runCallback(effect4, options) {
+      return self2.cachedRuntime === undefined ? unsafeRunCallback(defaultRuntime)(provide4(self2, effect4), options) : unsafeRunCallback(self2.cachedRuntime)(effect4, options);
+    },
+    runPromise(effect4, options) {
+      return self2.cachedRuntime === undefined ? unsafeRunPromiseEffect(provide4(self2, effect4), options) : unsafeRunPromise(self2.cachedRuntime)(effect4, options);
+    }
+  });
+  return self2;
+};
+
+// ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/ManagedRuntime.js
+var TypeId27 = TypeId16;
+var isManagedRuntime2 = isManagedRuntime;
+var make62 = make61;
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/internal/matcher.js
-var TypeId27 = /* @__PURE__ */ Symbol.for("@effect/matcher/Matcher");
+var TypeId28 = /* @__PURE__ */ Symbol.for("@effect/matcher/Matcher");
 var TypeMatcherProto = {
-  [TypeId27]: {
+  [TypeId28]: {
     _input: identity,
     _filters: identity,
     _remaining: identity,
@@ -33724,8 +33967,8 @@ var TypeMatcherProto = {
     _return: identity
   },
   _tag: "TypeMatcher",
-  add(_case2) {
-    return makeTypeMatcher([...this.cases, _case2]);
+  add(_case) {
+    return makeTypeMatcher([...this.cases, _case]);
   },
   pipe() {
     return pipeArguments(this, arguments);
@@ -33737,21 +33980,21 @@ function makeTypeMatcher(cases) {
   return matcher;
 }
 var ValueMatcherProto = {
-  [TypeId27]: {
+  [TypeId28]: {
     _input: identity,
     _filters: identity,
     _result: identity,
     _return: identity
   },
   _tag: "ValueMatcher",
-  add(_case2) {
+  add(_case) {
     if (this.value._tag === "Right") {
       return this;
     }
-    if (_case2._tag === "When" && _case2.guard(this.provided) === true) {
-      return makeValueMatcher(this.provided, right2(_case2.evaluate(this.provided)));
-    } else if (_case2._tag === "Not" && _case2.guard(this.provided) === false) {
-      return makeValueMatcher(this.provided, right2(_case2.evaluate(this.provided)));
+    if (_case._tag === "When" && _case.guard(this.provided) === true) {
+      return makeValueMatcher(this.provided, right2(_case.evaluate(this.provided)));
+    } else if (_case._tag === "Not" && _case.guard(this.provided) === false) {
+      return makeValueMatcher(this.provided, right2(_case.evaluate(this.provided)));
     }
     return this;
   },
@@ -33766,9 +34009,9 @@ function makeValueMatcher(provided, value2) {
   return matcher;
 }
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/MutableHashSet.js
-var TypeId28 = /* @__PURE__ */ Symbol.for("effect/MutableHashSet");
+var TypeId29 = /* @__PURE__ */ Symbol.for("effect/MutableHashSet");
 var MutableHashSetProto = {
-  [TypeId28]: TypeId28,
+  [TypeId29]: TypeId29,
   [Symbol.iterator]() {
     return Array.from(this.keyMap).map(([_2]) => _2)[Symbol.iterator]();
   },
@@ -33790,7 +34033,7 @@ var MutableHashSetProto = {
 };
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Redacted.js
 var isRedacted2 = isRedacted;
-var make66 = make53;
+var make67 = make53;
 var value4 = value;
 var getEquivalence7 = (isEquivalent) => make((x3, y2) => isEquivalent(value4(x3), value4(y2)));
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/internal/scopedRef.js
@@ -33806,7 +34049,7 @@ var proto14 = {
   },
   [ScopedRefTypeId]: scopedRefVariance
 };
-var get21 = (self2) => map9(get11(self2.ref), (tuple4) => tuple4[1]);
+var get21 = (self2) => map9(get11(self2.ref), (tuple3) => tuple3[1]);
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/internal/resource.js
 var ResourceSymbolKey = "effect/Resource";
 var ResourceTypeId = /* @__PURE__ */ Symbol.for(ResourceSymbolKey);
@@ -33894,7 +34137,7 @@ __export(exports_Schema, {
   maxLength: () => maxLength,
   maxItems: () => maxItems,
   makePropertySignature: () => makePropertySignature,
-  make: () => make68,
+  make: () => make69,
   lowercased: () => lowercased,
   lessThanOrEqualToDuration: () => lessThanOrEqualToDuration,
   lessThanOrEqualToDate: () => lessThanOrEqualToDate,
@@ -34014,7 +34257,7 @@ __export(exports_Schema, {
   URL: () => URL$,
   ULIDSchemaId: () => ULIDSchemaId,
   ULID: () => ULID,
-  TypeId: () => TypeId29,
+  TypeId: () => TypeId30,
   Tuple: () => Tuple,
   TrimmedSchemaId: () => TrimmedSchemaId,
   Trimmed: () => Trimmed,
@@ -34031,7 +34274,7 @@ __export(exports_Schema, {
   TaggedStruct: () => TaggedStruct,
   TaggedRequest: () => TaggedRequest,
   TaggedError: () => TaggedError2,
-  TaggedClass: () => TaggedClass3,
+  TaggedClass: () => TaggedClass2,
   SymbolFromSelf: () => SymbolFromSelf,
   Symbol: () => Symbol$,
   Struct: () => Struct,
@@ -34230,13 +34473,13 @@ var omit4 = /* @__PURE__ */ dual((args3) => isObject(args3[0]), (s2, ...keys7) =
 });
 
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Schema.js
-var TypeId29 = /* @__PURE__ */ Symbol.for("effect/Schema");
-function make68(ast) {
+var TypeId30 = /* @__PURE__ */ Symbol.for("effect/Schema");
+function make69(ast) {
   return class SchemaClass {
-    [TypeId29] = variance9;
+    [TypeId30] = variance9;
     static ast = ast;
     static annotations(annotations2) {
-      return make68(mergeSchemaAnnotations(this.ast, annotations2));
+      return make69(mergeSchemaAnnotations(this.ast, annotations2));
     }
     static pipe() {
       return pipeArguments(this, arguments);
@@ -34247,7 +34490,7 @@ function make68(ast) {
     static Type;
     static Encoded;
     static Context;
-    static [TypeId29] = variance9;
+    static [TypeId30] = variance9;
   };
 }
 var variance9 = {
@@ -34271,7 +34514,7 @@ var standardSchemaV1 = (schema, overrideOptions) => {
   const decodeUnknown3 = decodeUnknown2(schema, {
     errors: "all"
   });
-  return class StandardSchemaV1Class extends make68(schema.ast) {
+  return class StandardSchemaV1Class extends make69(schema.ast) {
     static "~standard" = {
       version: 1,
       vendor: "effect",
@@ -34340,9 +34583,9 @@ function asSchema(schema) {
   return schema;
 }
 var format6 = (schema) => String(schema.ast);
-var encodedSchema = (schema) => make68(encodedAST(schema.ast));
-var encodedBoundSchema = (schema) => make68(encodedBoundAST(schema.ast));
-var typeSchema = (schema) => make68(typeAST(schema.ast));
+var encodedSchema = (schema) => make69(encodedAST(schema.ast));
+var encodedBoundSchema = (schema) => make69(encodedBoundAST(schema.ast));
+var typeSchema = (schema) => make69(typeAST(schema.ast));
 var encodeUnknown2 = (schema, options) => {
   const encodeUnknown3 = encodeUnknown(schema, options);
   return (u3, overrideOptions) => mapError6(encodeUnknown3(u3, overrideOptions), parseError);
@@ -34385,12 +34628,12 @@ var validatePromise = (schema, options) => {
   const parser = validate5(schema, options);
   return (u3, overrideOptions) => runPromise(parser(u3, overrideOptions));
 };
-var isSchema = (u3) => hasProperty(u3, TypeId29) && isObject(u3[TypeId29]);
+var isSchema = (u3) => hasProperty(u3, TypeId30) && isObject(u3[TypeId30]);
 function getDefaultLiteralAST(literals) {
   return isMembers(literals) ? Union.make(mapMembers(literals, (literal2) => new Literal(literal2))) : new Literal(literals[0]);
 }
 function makeLiteralClass(literals, ast = getDefaultLiteralAST(literals)) {
-  return class LiteralClass extends make68(ast) {
+  return class LiteralClass extends make69(ast) {
     static annotations(annotations2) {
       return makeLiteralClass(this.literals, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -34401,9 +34644,9 @@ function Literal2(...literals) {
   return isNonEmptyReadonlyArray(literals) ? makeLiteralClass(literals) : Never;
 }
 var pickLiteral = (...literals) => (_schema2) => Literal2(...literals);
-var UniqueSymbolFromSelf = (symbol3) => make68(new UniqueSymbol(symbol3));
+var UniqueSymbolFromSelf = (symbol3) => make69(new UniqueSymbol(symbol3));
 var getDefaultEnumsAST = (enums) => new Enums(Object.keys(enums).filter((key) => typeof enums[enums[key]] !== "number").map((key) => [key, enums[key]]));
-var makeEnumsClass = (enums, ast = getDefaultEnumsAST(enums)) => class EnumsClass extends make68(ast) {
+var makeEnumsClass = (enums, ast = getDefaultEnumsAST(enums)) => class EnumsClass extends make69(ast) {
   static annotations(annotations2) {
     return makeEnumsClass(this.enums, mergeSchemaAnnotations(this.ast, annotations2));
   }
@@ -34448,9 +34691,9 @@ var TemplateLiteral2 = (...[head8, ...tail]) => {
     }
   }
   if (isNonEmptyArray2(spans)) {
-    return make68(new TemplateLiteral(h3, spans));
+    return make69(new TemplateLiteral(h3, spans));
   } else {
-    return make68(new TemplateLiteral("", [new TemplateLiteralSpan(new Literal(h3), "")]));
+    return make69(new TemplateLiteral("", [new TemplateLiteralSpan(new Literal(h3), "")]));
   }
 };
 function getTemplateLiteralParserCoercedElement(encoded, schema) {
@@ -34474,7 +34717,7 @@ function getTemplateLiteralParserCoercedElement(encoded, schema) {
       const members = [];
       let hasCoercions = false;
       for (const member of ast.types) {
-        const schema2 = make68(member);
+        const schema2 = make69(member);
         const encoded2 = encodedSchema(schema2);
         const coerced = getTemplateLiteralParserCoercedElement(encoded2, schema2);
         if (coerced) {
@@ -34519,19 +34762,19 @@ var TemplateLiteralParser = (...params) => {
       const match23 = re3.exec(i2);
       return match23 ? succeed15(match23.slice(1, params.length + 1)) : fail16(new Type2(ast, i2, `${re3.source}: no match for ${JSON.stringify(i2)}`));
     },
-    encode: (tuple4) => succeed15(tuple4.join(""))
+    encode: (tuple3) => succeed15(tuple3.join(""))
   }) {
     static params = params.slice();
   };
 };
-var declareConstructor = (typeParameters, options, annotations2) => makeDeclareClass(typeParameters, new Declaration(typeParameters.map((tp) => tp.ast), (...typeParameters2) => options.decode(...typeParameters2.map(make68)), (...typeParameters2) => options.encode(...typeParameters2.map(make68)), toASTAnnotations(annotations2)));
+var declareConstructor = (typeParameters, options, annotations2) => makeDeclareClass(typeParameters, new Declaration(typeParameters.map((tp) => tp.ast), (...typeParameters2) => options.decode(...typeParameters2.map(make69)), (...typeParameters2) => options.encode(...typeParameters2.map(make69)), toASTAnnotations(annotations2)));
 var declarePrimitive = (is4, annotations2) => {
   const decodeUnknown4 = () => (input, _2, ast) => is4(input) ? succeed15(input) : fail16(new Type2(ast, input));
   const encodeUnknown3 = decodeUnknown4;
   return makeDeclareClass([], new Declaration([], decodeUnknown4, encodeUnknown3, toASTAnnotations(annotations2)));
 };
 function makeDeclareClass(typeParameters, ast) {
-  return class DeclareClass extends make68(ast) {
+  return class DeclareClass extends make69(ast) {
     static annotations(annotations2) {
       return makeDeclareClass(this.typeParameters, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -34575,44 +34818,44 @@ var instanceOf2 = (constructor, annotations2) => declare((u3) => u3 instanceof c
   ...annotations2
 });
 
-class Undefined extends (/* @__PURE__ */ make68(undefinedKeyword)) {
+class Undefined extends (/* @__PURE__ */ make69(undefinedKeyword)) {
 }
 
-class Void extends (/* @__PURE__ */ make68(voidKeyword)) {
+class Void extends (/* @__PURE__ */ make69(voidKeyword)) {
 }
 
-class Null extends (/* @__PURE__ */ make68($null)) {
+class Null extends (/* @__PURE__ */ make69($null)) {
 }
 
-class Never extends (/* @__PURE__ */ make68(neverKeyword)) {
+class Never extends (/* @__PURE__ */ make69(neverKeyword)) {
 }
 
-class Unknown extends (/* @__PURE__ */ make68(unknownKeyword)) {
+class Unknown extends (/* @__PURE__ */ make69(unknownKeyword)) {
 }
 
-class Any extends (/* @__PURE__ */ make68(anyKeyword)) {
+class Any extends (/* @__PURE__ */ make69(anyKeyword)) {
 }
 
-class BigIntFromSelf extends (/* @__PURE__ */ make68(bigIntKeyword)) {
+class BigIntFromSelf extends (/* @__PURE__ */ make69(bigIntKeyword)) {
 }
 
-class SymbolFromSelf extends (/* @__PURE__ */ make68(symbolKeyword)) {
+class SymbolFromSelf extends (/* @__PURE__ */ make69(symbolKeyword)) {
 }
 
-class String$ extends (/* @__PURE__ */ make68(stringKeyword)) {
+class String$ extends (/* @__PURE__ */ make69(stringKeyword)) {
 }
 
-class Number$ extends (/* @__PURE__ */ make68(numberKeyword)) {
+class Number$ extends (/* @__PURE__ */ make69(numberKeyword)) {
 }
 
-class Boolean$ extends (/* @__PURE__ */ make68(booleanKeyword)) {
+class Boolean$ extends (/* @__PURE__ */ make69(booleanKeyword)) {
 }
 
-class Object$ extends (/* @__PURE__ */ make68(objectKeyword)) {
+class Object$ extends (/* @__PURE__ */ make69(objectKeyword)) {
 }
 var getDefaultUnionAST = (members) => Union.make(members.map((m2) => m2.ast));
 function makeUnionClass(members, ast = getDefaultUnionAST(members)) {
-  return class UnionClass extends make68(ast) {
+  return class UnionClass extends make69(ast) {
     static annotations(annotations2) {
       return makeUnionClass(this.members, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -34625,14 +34868,14 @@ function Union2(...members) {
 var NullOr = (self2) => Union2(self2, Null);
 var UndefinedOr = (self2) => Union2(self2, Undefined);
 var NullishOr = (self2) => Union2(self2, Null, Undefined);
-var keyof2 = (self2) => make68(keyof(self2.ast));
+var keyof2 = (self2) => make69(keyof(self2.ast));
 var element = (self2) => new ElementImpl(new OptionalType(self2.ast, false), self2);
 var optionalElement = (self2) => new ElementImpl(new OptionalType(self2.ast, true), self2);
 
 class ElementImpl {
   ast;
   from;
-  [TypeId29];
+  [TypeId30];
   _Token;
   constructor(ast, from) {
     this.ast = ast;
@@ -34650,7 +34893,7 @@ class ElementImpl {
 }
 var getDefaultTupleTypeAST = (elements, rest) => new TupleType(elements.map((el) => isSchema(el) ? new OptionalType(el.ast, false) : el.ast), rest.map((el) => isSchema(el) ? new Type(el.ast) : el.ast), true);
 function makeTupleTypeClass(elements, rest, ast = getDefaultTupleTypeAST(elements, rest)) {
-  return class TupleTypeClass extends make68(ast) {
+  return class TupleTypeClass extends make69(ast) {
     static annotations(annotations2) {
       return makeTupleTypeClass(this.elements, this.rest, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -34777,7 +35020,7 @@ var isPropertySignature = (u3) => hasProperty(u3, PropertySignatureTypeId);
 
 class PropertySignatureImpl {
   ast;
-  [TypeId29];
+  [TypeId30];
   [PropertySignatureTypeId] = null;
   _TypeToken;
   _Key;
@@ -35039,7 +35282,7 @@ var lazilyMergeDefaults = (fields, out2) => {
   return out2;
 };
 function makeTypeLiteralClass(fields, records, ast = getDefaultTypeLiteralAST(fields, records)) {
-  return class TypeLiteralClass extends make68(ast) {
+  return class TypeLiteralClass extends make69(ast) {
     static annotations(annotations2) {
       return makeTypeLiteralClass(this.fields, this.records, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -35082,11 +35325,11 @@ function makeRecordClass(key, value5, ast) {
   };
 }
 var Record = (options) => makeRecordClass(options.key, options.value);
-var pick5 = (...keys7) => (self2) => make68(pick(self2.ast, keys7));
-var omit5 = (...keys7) => (self2) => make68(omit(self2.ast, keys7));
+var pick5 = (...keys7) => (self2) => make69(pick(self2.ast, keys7));
+var omit5 = (...keys7) => (self2) => make69(omit(self2.ast, keys7));
 var pluck = /* @__PURE__ */ dual(2, (schema, key) => {
   const ps = getPropertyKeyIndexedAccess(typeAST(schema.ast), key);
-  const value5 = make68(ps.isOptional ? orUndefined(ps.type) : ps.type);
+  const value5 = make69(ps.isOptional ? orUndefined(ps.type) : ps.type);
   const out2 = transform2(schema.pipe(pick5(key)), value5, {
     strict: true,
     decode: (i2) => i2[key],
@@ -35097,7 +35340,7 @@ var pluck = /* @__PURE__ */ dual(2, (schema, key) => {
   return out2;
 });
 function makeBrandClass(from, ast) {
-  return class BrandClass extends make68(ast) {
+  return class BrandClass extends make69(ast) {
     static annotations(annotations2) {
       return makeBrandClass(this.from, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -35118,10 +35361,10 @@ var brand = (brand2, annotations2) => (self2) => {
   }));
   return makeBrandClass(self2, ast);
 };
-var partial2 = (self2) => make68(partial(self2.ast));
-var partialWith = /* @__PURE__ */ dual((args3) => isSchema(args3[0]), (self2, options) => make68(partial(self2.ast, options)));
-var required2 = (self2) => make68(required(self2.ast));
-var mutable2 = (schema) => make68(mutable(schema.ast));
+var partial2 = (self2) => make69(partial(self2.ast));
+var partialWith = /* @__PURE__ */ dual((args3) => isSchema(args3[0]), (self2, options) => make69(partial(self2.ast, options)));
+var required2 = (self2) => make69(required(self2.ast));
+var mutable2 = (schema) => make69(mutable(schema.ast));
 var intersectTypeLiterals = (x3, y2, path) => {
   if (isTypeLiteral(x3) && isTypeLiteral(y2)) {
     const propertySignatures = [...x3.propertySignatures];
@@ -35241,12 +35484,12 @@ var intersectUnionMembers = (xs, ys, path) => flatMap2(xs, (x3) => flatMap2(ys, 
   }
   throw new Error(getSchemaExtendErrorMessage(x3, y2, path));
 }));
-var extend3 = /* @__PURE__ */ dual(2, (self2, that) => make68(extendAST(self2.ast, that.ast, [])));
+var extend3 = /* @__PURE__ */ dual(2, (self2, that) => make69(extendAST(self2.ast, that.ast, [])));
 var compose3 = /* @__PURE__ */ dual((args3) => isSchema(args3[1]), (from, to) => makeTransformationClass(from, to, compose(from.ast, to.ast)));
-var suspend9 = (f) => make68(new Suspend(() => f().ast));
+var suspend9 = (f) => make69(new Suspend(() => f().ast));
 var RefineSchemaId = /* @__PURE__ */ Symbol.for("effect/SchemaId/Refine");
 function makeRefineClass(from, filter12, ast) {
-  return class RefineClass extends make68(ast) {
+  return class RefineClass extends make69(ast) {
     static annotations(annotations2) {
       return makeRefineClass(this.from, this.filter, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -35304,7 +35547,7 @@ var filterEffect2 = /* @__PURE__ */ dual(2, (self2, f) => transformOrFail(self2,
   encode: (a) => succeed15(a)
 }));
 function makeTransformationClass(from, to, ast) {
-  return class TransformationClass extends make68(ast) {
+  return class TransformationClass extends make69(ast) {
     static annotations(annotations2) {
       return makeTransformationClass(this.from, this.to, mergeSchemaAnnotations(this.ast, annotations2));
     }
@@ -35332,10 +35575,10 @@ var attachPropertySignature = /* @__PURE__ */ dual((args3) => isSchema(args3[0])
   const ast = extend3(typeSchema(schema), Struct({
     [key]: isSymbol(value5) ? UniqueSymbolFromSelf(value5) : Literal2(value5)
   })).ast;
-  return make68(new Transformation(schema.ast, annotations2 ? mergeSchemaAnnotations(ast, annotations2) : ast, new TypeLiteralTransformation([new PropertySignatureTransformation(key, key, () => some2(value5), () => none2())])));
+  return make69(new Transformation(schema.ast, annotations2 ? mergeSchemaAnnotations(ast, annotations2) : ast, new TypeLiteralTransformation([new PropertySignatureTransformation(key, key, () => some2(value5), () => none2())])));
 });
 var annotations2 = /* @__PURE__ */ dual(2, (self2, annotations3) => self2.annotations(annotations3));
-var rename2 = /* @__PURE__ */ dual(2, (self2, mapping) => make68(rename(self2.ast, mapping)));
+var rename2 = /* @__PURE__ */ dual(2, (self2, mapping) => make69(rename(self2.ast, mapping)));
 var TrimmedSchemaId = /* @__PURE__ */ Symbol.for("effect/SchemaId/Trimmed");
 var trimmed = (annotations3) => (self2) => self2.pipe(filter12((a) => a === a.trim(), {
   schemaId: TrimmedSchemaId,
@@ -35989,12 +36232,12 @@ class BigIntFromNumber extends (/* @__PURE__ */ transformOrFail(Number$.annotati
   identifier: "BigIntFromNumber"
 })) {
 }
-var redactedArbitrary = (value5) => (fc) => value5(fc).map(make66);
+var redactedArbitrary = (value5) => (fc) => value5(fc).map(make67);
 var toComposite = (eff, onSuccess, ast, actual) => mapBoth6(eff, {
   onFailure: (e) => new Composite2(ast, actual, e),
   onSuccess
 });
-var redactedParse = (decodeUnknown4) => (u3, options, ast) => isRedacted2(u3) ? toComposite(decodeUnknown4(value4(u3), options), make66, ast, u3) : fail16(new Type2(ast, u3));
+var redactedParse = (decodeUnknown4) => (u3, options, ast) => isRedacted2(u3) ? toComposite(decodeUnknown4(value4(u3), options), make67, ast, u3) : fail16(new Type2(ast, u3));
 var RedactedFromSelf = (value5) => declare([value5], {
   decode: (value6) => redactedParse(decodeUnknown2(value6)),
   encode: (value6) => redactedParse(encodeUnknown(value6))
@@ -36007,7 +36250,7 @@ var RedactedFromSelf = (value5) => declare([value5], {
 function Redacted(value5) {
   return transform2(value5, RedactedFromSelf(typeSchema(asSchema(value5))), {
     strict: true,
-    decode: (i2) => make66(i2),
+    decode: (i2) => make67(i2),
     encode: (a) => value4(a)
   });
 }
@@ -36285,7 +36528,7 @@ var itemsCount = (n, annotations3) => (self2) => {
     ...annotations3
   }));
 };
-var getNumberIndexedAccess2 = (self2) => make68(getNumberIndexedAccess(self2.ast));
+var getNumberIndexedAccess2 = (self2) => make69(getNumberIndexedAccess(self2.ast));
 function head8(self2) {
   return transform2(self2, OptionFromSelf(getNumberIndexedAccess2(typeSchema(self2))), {
     strict: false,
@@ -37107,14 +37350,14 @@ var Class5 = (identifier2) => (fieldsOr, annotations3) => makeClass({
   annotations: annotations3
 });
 var getClassTag = (tag3) => withConstructorDefault(propertySignature(Literal2(tag3)), () => tag3);
-var TaggedClass3 = (identifier2) => (tag3, fieldsOr, annotations3) => {
+var TaggedClass2 = (identifier2) => (tag3, fieldsOr, annotations3) => {
   const fields = getFieldsFromFieldsOr(fieldsOr);
   const schema = getSchemaFromFieldsOr(fieldsOr);
   const newFields = {
     _tag: getClassTag(tag3)
   };
   const taggedFields = extendFields(newFields, fields);
-  return class TaggedClass4 extends makeClass({
+  return class TaggedClass3 extends makeClass({
     kind: "TaggedClass",
     identifier: identifier2 ?? tag3,
     schema: extend3(schema, Struct(newFields)),
@@ -37234,7 +37477,7 @@ var makeClass = ({
       }
       super(props, true);
     }
-    static [TypeId29] = variance9;
+    static [TypeId30] = variance9;
     static get ast() {
       let out2 = astCache.get(this);
       if (out2) {
@@ -37266,7 +37509,7 @@ var makeClass = ({
       return pipeArguments(this, arguments);
     }
     static annotations(annotations4) {
-      return make68(this.ast).annotations(annotations4);
+      return make69(this.ast).annotations(annotations4);
     }
     static toString() {
       return `(${String(encodedSide)} <-> ${identifier2})`;
@@ -38093,9 +38336,9 @@ class ArrayFormatterIssue extends (/* @__PURE__ */ Struct({
 })) {
 }
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/SortedMap.js
-var TypeId30 = /* @__PURE__ */ Symbol.for("effect/SortedMap");
+var TypeId31 = /* @__PURE__ */ Symbol.for("effect/SortedMap");
 var SortedMapProto = {
-  [TypeId30]: {
+  [TypeId31]: {
     _K: (_2) => _2,
     _V: (_2) => _2
   },
@@ -38124,12 +38367,12 @@ var SortedMapProto = {
     return pipeArguments(this, arguments);
   }
 };
-var isSortedMap = (u3) => hasProperty(u3, TypeId30);
+var isSortedMap = (u3) => hasProperty(u3, TypeId31);
 // ../../node_modules/.pnpm/effect@3.16.3/node_modules/effect/dist/esm/Subscribable.js
-var TypeId31 = /* @__PURE__ */ Symbol.for("effect/Subscribable");
+var TypeId32 = /* @__PURE__ */ Symbol.for("effect/Subscribable");
 var Proto7 = {
   [TypeId13]: TypeId13,
-  [TypeId31]: TypeId31,
+  [TypeId32]: TypeId32,
   pipe() {
     return pipeArguments(this, arguments);
   }
@@ -38235,228 +38478,6 @@ class TrieIterator {
   }
 }
 var isTrie = (u3) => hasProperty(u3, TrieTypeId);
-// ../../node_modules/.pnpm/drizzle-orm@0.44.2_@electric-sql+pglite@0.3.3/node_modules/drizzle-orm/logger.js
-class ConsoleLogWriter {
-  static [entityKind] = "ConsoleLogWriter";
-  write(message) {
-    console.log(message);
-  }
-}
-
-class DefaultLogger {
-  static [entityKind] = "DefaultLogger";
-  writer;
-  constructor(config2) {
-    this.writer = config2?.writer ?? new ConsoleLogWriter;
-  }
-  logQuery(query, params) {
-    const stringifiedParams = params.map((p) => {
-      try {
-        return JSON.stringify(p);
-      } catch {
-        return String(p);
-      }
-    });
-    const paramsStr = stringifiedParams.length ? ` -- params: [${stringifiedParams.join(", ")}]` : "";
-    this.writer.write(`Query: ${query}${paramsStr}`);
-  }
-}
-
-class NoopLogger {
-  static [entityKind] = "NoopLogger";
-  logQuery() {
-  }
-}
-
-// ../../node_modules/.pnpm/drizzle-orm@0.44.2_@electric-sql+pglite@0.3.3/node_modules/drizzle-orm/pglite/session.js
-class PglitePreparedQuery extends PgPreparedQuery {
-  constructor(client, queryString, params, logger, cache, queryMetadata, cacheConfig, fields, name2, _isResponseInArrayMode, customResultMapper) {
-    super({ sql: queryString, params }, cache, queryMetadata, cacheConfig);
-    this.client = client;
-    this.queryString = queryString;
-    this.params = params;
-    this.logger = logger;
-    this.fields = fields;
-    this._isResponseInArrayMode = _isResponseInArrayMode;
-    this.customResultMapper = customResultMapper;
-    this.rawQueryConfig = {
-      rowMode: "object",
-      parsers: {
-        [hn.TIMESTAMP]: (value6) => value6,
-        [hn.TIMESTAMPTZ]: (value6) => value6,
-        [hn.INTERVAL]: (value6) => value6,
-        [hn.DATE]: (value6) => value6,
-        [1231]: (value6) => value6,
-        [1115]: (value6) => value6,
-        [1185]: (value6) => value6,
-        [1187]: (value6) => value6,
-        [1182]: (value6) => value6
-      }
-    };
-    this.queryConfig = {
-      rowMode: "array",
-      parsers: {
-        [hn.TIMESTAMP]: (value6) => value6,
-        [hn.TIMESTAMPTZ]: (value6) => value6,
-        [hn.INTERVAL]: (value6) => value6,
-        [hn.DATE]: (value6) => value6,
-        [1231]: (value6) => value6,
-        [1115]: (value6) => value6,
-        [1185]: (value6) => value6,
-        [1187]: (value6) => value6,
-        [1182]: (value6) => value6
-      }
-    };
-  }
-  static [entityKind] = "PglitePreparedQuery";
-  rawQueryConfig;
-  queryConfig;
-  async execute(placeholderValues = {}) {
-    const params = fillPlaceholders(this.params, placeholderValues);
-    this.logger.logQuery(this.queryString, params);
-    const { fields, client, queryConfig, joinsNotNullableMap, customResultMapper, queryString, rawQueryConfig } = this;
-    if (!fields && !customResultMapper) {
-      return this.queryWithCache(queryString, params, async () => {
-        return await client.query(queryString, params, rawQueryConfig);
-      });
-    }
-    const result = await this.queryWithCache(queryString, params, async () => {
-      return await client.query(queryString, params, queryConfig);
-    });
-    return customResultMapper ? customResultMapper(result.rows) : result.rows.map((row) => mapResultRow(fields, row, joinsNotNullableMap));
-  }
-  all(placeholderValues = {}) {
-    const params = fillPlaceholders(this.params, placeholderValues);
-    this.logger.logQuery(this.queryString, params);
-    return this.queryWithCache(this.queryString, params, async () => {
-      return await this.client.query(this.queryString, params, this.rawQueryConfig);
-    }).then((result) => result.rows);
-  }
-  isResponseInArrayMode() {
-    return this._isResponseInArrayMode;
-  }
-}
-
-class PgliteSession extends PgSession {
-  constructor(client, dialect, schema, options = {}) {
-    super(dialect);
-    this.client = client;
-    this.schema = schema;
-    this.options = options;
-    this.logger = options.logger ?? new NoopLogger;
-    this.cache = options.cache ?? new NoopCache;
-  }
-  static [entityKind] = "PgliteSession";
-  logger;
-  cache;
-  prepareQuery(query, fields, name2, isResponseInArrayMode, customResultMapper, queryMetadata, cacheConfig) {
-    return new PglitePreparedQuery(this.client, query.sql, query.params, this.logger, this.cache, queryMetadata, cacheConfig, fields, name2, isResponseInArrayMode, customResultMapper);
-  }
-  async transaction(transaction, config2) {
-    return this.client.transaction(async (client) => {
-      const session = new PgliteSession(client, this.dialect, this.schema, this.options);
-      const tx = new PgliteTransaction(this.dialect, session, this.schema);
-      if (config2) {
-        await tx.setTransaction(config2);
-      }
-      return transaction(tx);
-    });
-  }
-  async count(sql2) {
-    const res = await this.execute(sql2);
-    return Number(res["rows"][0]["count"]);
-  }
-}
-
-class PgliteTransaction extends PgTransaction {
-  static [entityKind] = "PgliteTransaction";
-  async transaction(transaction) {
-    const savepointName = `sp${this.nestedIndex + 1}`;
-    const tx = new PgliteTransaction(this.dialect, this.session, this.schema, this.nestedIndex + 1);
-    await tx.execute(sql.raw(`savepoint ${savepointName}`));
-    try {
-      const result = await transaction(tx);
-      await tx.execute(sql.raw(`release savepoint ${savepointName}`));
-      return result;
-    } catch (err2) {
-      await tx.execute(sql.raw(`rollback to savepoint ${savepointName}`));
-      throw err2;
-    }
-  }
-}
-
-// ../../node_modules/.pnpm/drizzle-orm@0.44.2_@electric-sql+pglite@0.3.3/node_modules/drizzle-orm/pglite/driver.js
-class PgliteDriver {
-  constructor(client, dialect, options = {}) {
-    this.client = client;
-    this.dialect = dialect;
-    this.options = options;
-  }
-  static [entityKind] = "PgliteDriver";
-  createSession(schema) {
-    return new PgliteSession(this.client, this.dialect, schema, {
-      logger: this.options.logger,
-      cache: this.options.cache
-    });
-  }
-}
-
-class PgliteDatabase extends PgDatabase {
-  static [entityKind] = "PgliteDatabase";
-}
-function construct(client, config2 = {}) {
-  const dialect = new PgDialect({ casing: config2.casing });
-  let logger;
-  if (config2.logger === true) {
-    logger = new DefaultLogger;
-  } else if (config2.logger !== false) {
-    logger = config2.logger;
-  }
-  let schema;
-  if (config2.schema) {
-    const tablesConfig = extractTablesRelationalConfig(config2.schema, createTableRelationsHelpers);
-    schema = {
-      fullSchema: config2.schema,
-      schema: tablesConfig.tables,
-      tableNamesMap: tablesConfig.tableNamesMap
-    };
-  }
-  const driver3 = new PgliteDriver(client, dialect, { logger, cache: config2.cache });
-  const session = driver3.createSession(schema);
-  const db = new PgliteDatabase(dialect, session, schema);
-  db.$client = client;
-  db.$cache = config2.cache;
-  if (db.$cache) {
-    db.$cache["invalidate"] = config2.cache?.onMutate;
-  }
-  return db;
-}
-function drizzle(...params) {
-  if (params[0] === undefined || typeof params[0] === "string") {
-    const instance2 = new qe2(params[0]);
-    return construct(instance2, params[1]);
-  }
-  if (isConfig(params[0])) {
-    const { connection, client, ...drizzleConfig } = params[0];
-    if (client)
-      return construct(client, drizzleConfig);
-    if (typeof connection === "object") {
-      const { dataDir, ...options } = connection;
-      const instance22 = new qe2(dataDir, options);
-      return construct(instance22, drizzleConfig);
-    }
-    const instance2 = new qe2(connection);
-    return construct(instance2, drizzleConfig);
-  }
-  return construct(params[0], params[1]);
-}
-((drizzle2) => {
-  function mock(config2) {
-    return construct({}, config2);
-  }
-  drizzle2.mock = mock;
-})(drizzle || (drizzle = {}));
-
 // ../../packages/psionic/src/persistence/services.ts
 class PGliteError extends exports_Schema.TaggedError()("PGliteError", {
   message: exports_Schema.String,
@@ -38543,19 +38564,19 @@ var ConversationRepositoryLive = exports_Layer.effect(ConversationRepository, ex
       return conversation;
     }),
     list: (userId = "local", includeArchived = false) => pgService.query(async (db) => {
-      let query = db.select().from(conversations).where(eq(conversations.userId, userId));
+      const conditions = [eq(conversations.userId, userId)];
       if (!includeArchived) {
-        query = query.where(eq(conversations.archived, false));
+        conditions.push(eq(conversations.archived, false));
       }
-      return await query.orderBy(desc(conversations.lastMessageAt), desc(conversations.createdAt));
+      return await db.select().from(conversations).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(conversations.lastMessageAt), desc(conversations.createdAt));
     }),
     update: (id2, updates) => pgService.query(async (db) => {
       const [updated] = await db.update(conversations).set(updates).where(eq(conversations.id, id2)).returning();
       return updated;
     }),
     delete: (id2) => pgService.query(async (db) => {
-      const result = await db.delete(conversations).where(eq(conversations.id, id2));
-      return result.rowCount > 0;
+      const result = await db.delete(conversations).where(eq(conversations.id, id2)).returning();
+      return result.length > 0;
     }),
     archive: (id2) => pgService.query(async (db) => {
       const [archived] = await db.update(conversations).set({ archived: true }).where(eq(conversations.id, id2)).returning();
@@ -38586,7 +38607,7 @@ var MessageRepositoryLive = exports_Layer.effect(MessageRepository, exports_Effe
     getConversation: (conversationId, limit = 100) => pgService.query(async (db) => {
       return await db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(desc(messages.createdAt)).limit(limit);
     }),
-    search: (query, userId = "local") => pgService.query(async (db) => {
+    search: (query, userId = "local") => pgService.query(async () => {
       const result = await pgService.client.query(`
             SELECT m.* FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
@@ -38598,156 +38619,85 @@ var MessageRepositoryLive = exports_Layer.effect(MessageRepository, exports_Effe
       return result.rows;
     }),
     delete: (id2) => pgService.query(async (db) => {
-      const result = await db.delete(messages).where(eq(messages.id, id2));
-      return result.rowCount > 0;
+      const result = await db.delete(messages).where(eq(messages.id, id2)).returning();
+      return result.length > 0;
     }),
-    watchConversation: (conversationId, callback) => exports_Effect.gen(function* () {
-      const { client } = yield* PGliteService;
-      const query = client.live.query(`SELECT * FROM messages
+    watchConversation: (conversationId, callback) => exports_Effect.sync(() => {
+      const intervalId = setInterval(async () => {
+        try {
+          const result = await pgService.client.query(`SELECT * FROM messages
+                 WHERE conversation_id = $1
+                 ORDER BY created_at ASC`, [conversationId]);
+          callback(result.rows);
+        } catch (error2) {
+          console.error("Error polling messages:", error2);
+        }
+      }, 2000);
+      pgService.client.query(`SELECT * FROM messages
              WHERE conversation_id = $1
-             ORDER BY created_at ASC`, [conversationId], (result) => callback(result.rows));
-      return () => query.unsubscribe();
+             ORDER BY created_at ASC`, [conversationId]).then((result) => callback(result.rows)).catch((error2) => console.error("Error fetching initial messages:", error2));
+      return () => clearInterval(intervalId);
     })
   };
 }));
-var PersistenceLive = (config2) => exports_Layer.mergeAll(PGliteServiceLive(config2), ConversationRepositoryLive, MessageRepositoryLive);
-// ../../packages/psionic/src/persistence/client.ts
-class ChatClient {
-  runtime;
-  listeners = new Map;
-  unsubscribers = new Map;
-  constructor(config2) {
-    this.runtime = exports_Runtime.make(PersistenceLive(config2)).runtime;
+// ../../packages/psionic/src/persistence/browser-pglite.ts
+var pgInstance = null;
+var dbInstance = null;
+var initPromise = null;
+async function initializePGlite(databaseName = "openagents-chat") {
+  if (pgInstance && dbInstance) {
+    return { pg: pgInstance, db: dbInstance };
   }
-  async createConversation(conversation = {}) {
-    const newConversation = {
-      userId: conversation.userId || "local",
-      title: conversation.title,
-      model: conversation.model,
-      metadata: conversation.metadata || {},
-      ...conversation
-    };
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* ConversationRepository;
-      return yield* repo.create(newConversation);
-    }));
+  if (initPromise) {
+    await initPromise;
+    return { pg: pgInstance, db: dbInstance };
   }
-  async getConversation(id2) {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* ConversationRepository;
-      return yield* repo.get(id2);
-    }));
-  }
-  async listConversations(userId = "local", includeArchived = false) {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* ConversationRepository;
-      return yield* repo.list(userId, includeArchived);
-    }));
-  }
-  async updateConversation(id2, updates) {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* ConversationRepository;
-      return yield* repo.update(id2, updates);
-    }));
-  }
-  async deleteConversation(id2) {
-    this.unsubscribeFromConversation(id2);
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* ConversationRepository;
-      return yield* repo.delete(id2);
-    }));
-  }
-  async archiveConversation(id2) {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* ConversationRepository;
-      return yield* repo.archive(id2);
-    }));
-  }
-  async sendMessage(message) {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* MessageRepository;
-      const sent = yield* repo.send(message);
-      if (message.role === "user") {
-        const conversationRepo = yield* ConversationRepository;
-        const conversation = yield* conversationRepo.get(message.conversationId);
-        if (conversation && !conversation.title) {
-          yield* conversationRepo.generateTitle(message.conversationId);
-        }
-      }
-      return sent;
-    }));
-  }
-  async getMessages(conversationId, limit) {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* MessageRepository;
-      const messages2 = yield* repo.getConversation(conversationId, limit);
-      return messages2.reverse();
-    }));
-  }
-  async searchMessages(query, userId = "local") {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* MessageRepository;
-      return yield* repo.search(query, userId);
-    }));
-  }
-  async deleteMessage(id2) {
-    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-      const repo = yield* MessageRepository;
-      return yield* repo.delete(id2);
-    }));
-  }
-  subscribeToConversation(conversationId, callback) {
-    if (!this.listeners.has(conversationId)) {
-      this.listeners.set(conversationId, new Set);
+  initPromise = (async () => {
+    try {
+      pgInstance = new qe2(`idb://${databaseName}`);
+      await pgInstance.waitReady;
+      dbInstance = drizzle(pgInstance);
+      await pgInstance.exec(`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id TEXT NOT NULL DEFAULT 'local',
+          title TEXT,
+          model TEXT,
+          last_message_at TIMESTAMP,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          archived BOOLEAN DEFAULT FALSE,
+          metadata JSONB DEFAULT '{}'::jsonb
+        );
+
+        CREATE TABLE IF NOT EXISTS messages (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
+          content TEXT NOT NULL,
+          model TEXT,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          metadata JSONB DEFAULT '{}'::jsonb
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+        CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+      `);
+    } catch (error2) {
+      console.error("Failed to initialize PGlite:", error2);
+      throw error2;
     }
-    this.listeners.get(conversationId).add(callback);
-    if (!this.unsubscribers.has(conversationId)) {
-      exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
-        const repo = yield* MessageRepository;
-        const unsubscribe = yield* repo.watchConversation(conversationId, (messages2) => {
-          const listeners = this.listeners.get(conversationId);
-          if (listeners) {
-            const orderedMessages = [...messages2].sort((a, b3) => new Date(a.createdAt).getTime() - new Date(b3.createdAt).getTime());
-            listeners.forEach((cb) => cb(orderedMessages));
-          }
-        });
-        this.unsubscribers.set(conversationId, unsubscribe);
-      }));
-    }
-    return () => {
-      const listeners = this.listeners.get(conversationId);
-      if (listeners) {
-        listeners.delete(callback);
-        if (listeners.size === 0) {
-          this.unsubscribeFromConversation(conversationId);
-        }
-      }
-    };
-  }
-  unsubscribeFromConversation(conversationId) {
-    const unsubscribe = this.unsubscribers.get(conversationId);
-    if (unsubscribe) {
-      unsubscribe();
-      this.unsubscribers.delete(conversationId);
-    }
-    this.listeners.delete(conversationId);
-  }
-  async startConversation(initialMessage, model, metadata2) {
-    const conversation = await this.createConversation({
-      model,
-      metadata: metadata2
-    });
-    const message = await this.sendMessage({
-      conversationId: conversation.id,
-      role: "user",
-      content: initialMessage,
-      metadata: {}
-    });
-    return { conversation, message };
-  }
+  })();
+  await initPromise;
+  return { pg: pgInstance, db: dbInstance };
 }
+
 // ../../packages/psionic/src/persistence/client-services.ts
-class BrowserPersistenceError extends exports_Data.TaggedError("BrowserPersistenceError") {
+class BrowserPersistenceError extends exports_Schema.TaggedError()("BrowserPersistenceError", {
+  message: exports_Schema.String,
+  cause: exports_Schema.Unknown
+}) {
 }
 
 class BrowserPGliteService extends exports_Context.Tag("BrowserPGliteService")() {
@@ -38759,45 +38709,13 @@ class BrowserConversationRepository extends exports_Context.Tag("BrowserConversa
 class BrowserMessageRepository extends exports_Context.Tag("BrowserMessageRepository")() {
 }
 var BrowserPGliteServiceLive = (databaseName = "openagents-chat") => exports_Layer.effect(BrowserPGliteService, exports_Effect.gen(function* () {
-  const pg = yield* exports_Effect.tryPromise({
-    try: async () => {
-      const client = new qe2(`idb://${databaseName}`);
-      await client.waitReady;
-      await client.exec(`
-          CREATE TABLE IF NOT EXISTS conversations (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id TEXT NOT NULL DEFAULT 'local',
-            title TEXT,
-            model TEXT,
-            last_message_at TIMESTAMP,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            archived BOOLEAN DEFAULT FALSE,
-            metadata JSONB DEFAULT '{}'::jsonb
-          );
-
-          CREATE TABLE IF NOT EXISTS messages (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-            role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
-            content TEXT NOT NULL,
-            model TEXT,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            metadata JSONB DEFAULT '{}'::jsonb
-          );
-
-          CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
-          CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at DESC);
-          CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
-          CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
-        `);
-      return client;
-    },
+  const { pg, db } = yield* exports_Effect.tryPromise({
+    try: () => initializePGlite(databaseName),
     catch: (error2) => new BrowserPersistenceError({
       message: "Failed to initialize PGlite",
       cause: error2
     })
   });
-  const db = drizzle(pg);
   return { db, pg };
 }));
 var BrowserConversationRepositoryLive = exports_Layer.effect(BrowserConversationRepository, exports_Effect.gen(function* () {
@@ -38825,11 +38743,11 @@ var BrowserConversationRepositoryLive = exports_Layer.effect(BrowserConversation
     }),
     list: (userId = "local", includeArchived = false) => exports_Effect.tryPromise({
       try: async () => {
-        let query = db.select().from(conversations).where(eq(conversations.userId, userId));
+        const conditions = [eq(conversations.userId, userId)];
         if (!includeArchived) {
-          query = query.where(eq(conversations.archived, false));
+          conditions.push(eq(conversations.archived, false));
         }
-        return query.orderBy(desc(conversations.lastMessageAt), desc(conversations.createdAt));
+        return db.select().from(conversations).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(conversations.lastMessageAt), desc(conversations.createdAt));
       },
       catch: (error2) => new BrowserPersistenceError({
         message: "Failed to list conversations",
@@ -38848,8 +38766,8 @@ var BrowserConversationRepositoryLive = exports_Layer.effect(BrowserConversation
     }),
     delete: (id2) => exports_Effect.tryPromise({
       try: async () => {
-        const result = await db.delete(conversations).where(eq(conversations.id, id2));
-        return result.rowsAffected > 0;
+        const result = await db.delete(conversations).where(eq(conversations.id, id2)).returning();
+        return result.length > 0;
       },
       catch: (error2) => new BrowserPersistenceError({
         message: `Failed to delete conversation ${id2}`,
@@ -38917,11 +38835,8 @@ var BrowserMessageRepositoryLive = exports_Layer.effect(BrowserMessageRepository
     }),
     getConversation: (conversationId, limit) => exports_Effect.tryPromise({
       try: async () => {
-        let query = db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(desc(messages.createdAt));
-        if (limit) {
-          query = query.limit(limit);
-        }
-        const results = await query;
+        const baseQuery = db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(desc(messages.createdAt));
+        const results = limit ? await baseQuery.limit(limit) : await baseQuery;
         return results.reverse();
       },
       catch: (error2) => new BrowserPersistenceError({
@@ -38931,8 +38846,8 @@ var BrowserMessageRepositoryLive = exports_Layer.effect(BrowserMessageRepository
     }),
     delete: (id2) => exports_Effect.tryPromise({
       try: async () => {
-        const result = await db.delete(messages).where(eq(messages.id, id2));
-        return result.rowsAffected > 0;
+        const result = await db.delete(messages).where(eq(messages.id, id2)).returning();
+        return result.length > 0;
       },
       catch: (error2) => new BrowserPersistenceError({
         message: `Failed to delete message ${id2}`,
@@ -38960,10 +38875,10 @@ var BrowserMessageRepositoryLive = exports_Layer.effect(BrowserMessageRepository
       let lastCount = 0;
       const checkInterval = setInterval(async () => {
         try {
-          const messages2 = await db.select().from(messages2).where(eq(messages2.conversationId, conversationId)).orderBy(messages2.createdAt);
-          if (messages2.length !== lastCount) {
-            lastCount = messages2.length;
-            callback(messages2);
+          const messageList = await db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
+          if (messageList.length !== lastCount) {
+            lastCount = messageList.length;
+            callback(messageList);
           }
         } catch (error2) {
           console.error("Watch error:", error2);
@@ -38977,12 +38892,14 @@ var BrowserPersistenceLive = (databaseName) => BrowserConversationRepositoryLive
 
 // ../../packages/psionic/src/persistence/browser-effect-client.ts
 class BrowserEffectChatClient {
+  managedRuntime;
   runtime;
   listeners = new Map;
   unsubscribers = new Map;
   constructor(databaseName) {
     const layer = BrowserPersistenceLive(databaseName);
-    this.runtime = exports_Runtime.makeFork(layer)(exports_Runtime.defaultRuntime);
+    this.managedRuntime = exports_ManagedRuntime.make(layer);
+    this.runtime = this.managedRuntime.runtime;
   }
   async createConversation(conversation = {}) {
     const newConversation = {
@@ -39067,17 +38984,157 @@ class BrowserEffectChatClient {
     }
     this.listeners.get(conversationId).add(callback);
     if (!this.unsubscribers.has(conversationId)) {
+      const self2 = this;
       const setupWatch = exports_Effect.gen(function* () {
         const repo = yield* BrowserMessageRepository;
         const unsubscribe = yield* repo.watchConversation(conversationId, (messages2) => {
-          const listeners = this.listeners.get(conversationId);
+          const listeners = self2.listeners.get(conversationId);
           if (listeners) {
             listeners.forEach((cb) => cb(messages2));
           }
         });
-        this.unsubscribers.set(conversationId, unsubscribe);
-      }).bind(this);
+        self2.unsubscribers.set(conversationId, unsubscribe);
+      });
       exports_Runtime.runPromise(this.runtime)(setupWatch).catch(console.error);
+    }
+    return () => {
+      const listeners = this.listeners.get(conversationId);
+      if (listeners) {
+        listeners.delete(callback);
+        if (listeners.size === 0) {
+          this.unsubscribeFromConversation(conversationId);
+        }
+      }
+    };
+  }
+  unsubscribeFromConversation(conversationId) {
+    const unsubscribe = this.unsubscribers.get(conversationId);
+    if (unsubscribe) {
+      unsubscribe();
+      this.unsubscribers.delete(conversationId);
+    }
+    this.listeners.delete(conversationId);
+  }
+  async startConversation(initialMessage, model, metadata2) {
+    const conversation = await this.createConversation({
+      model,
+      metadata: metadata2
+    });
+    const message = await this.sendMessage({
+      conversationId: conversation.id,
+      role: "user",
+      content: initialMessage,
+      metadata: {}
+    });
+    return { conversation, message };
+  }
+}
+// ../../packages/psionic/src/persistence/client.ts
+class ChatClient {
+  managedRuntime;
+  runtime;
+  listeners = new Map;
+  unsubscribers = new Map;
+  constructor(config2) {
+    const layer = exports_Layer.provide(exports_Layer.mergeAll(ConversationRepositoryLive, MessageRepositoryLive), PGliteServiceLive(config2));
+    this.managedRuntime = exports_ManagedRuntime.make(layer);
+    this.runtime = this.managedRuntime.runtime;
+  }
+  async createConversation(conversation = {}) {
+    const newConversation = {
+      userId: conversation.userId || "local",
+      title: conversation.title,
+      model: conversation.model,
+      metadata: conversation.metadata || {},
+      ...conversation
+    };
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* ConversationRepository;
+      return yield* repo.create(newConversation);
+    }));
+  }
+  async getConversation(id2) {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* ConversationRepository;
+      return yield* repo.get(id2);
+    }));
+  }
+  async listConversations(userId = "local", includeArchived = false) {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* ConversationRepository;
+      return yield* repo.list(userId, includeArchived);
+    }));
+  }
+  async updateConversation(id2, updates) {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* ConversationRepository;
+      return yield* repo.update(id2, updates);
+    }));
+  }
+  async deleteConversation(id2) {
+    this.unsubscribeFromConversation(id2);
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* ConversationRepository;
+      return yield* repo.delete(id2);
+    }));
+  }
+  async archiveConversation(id2) {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* ConversationRepository;
+      return yield* repo.archive(id2);
+    }));
+  }
+  async sendMessage(message) {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* MessageRepository;
+      const sent = yield* repo.send(message);
+      if (message.role === "user") {
+        const conversationRepo = yield* ConversationRepository;
+        const conversation = yield* conversationRepo.get(message.conversationId);
+        if (conversation && !conversation.title) {
+          yield* conversationRepo.generateTitle(message.conversationId);
+        }
+      }
+      return sent;
+    }));
+  }
+  async getMessages(conversationId, limit) {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* MessageRepository;
+      const messages2 = yield* repo.getConversation(conversationId, limit);
+      return messages2.reverse();
+    }));
+  }
+  async searchMessages(query, userId = "local") {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* MessageRepository;
+      return yield* repo.search(query, userId);
+    }));
+  }
+  async deleteMessage(id2) {
+    return exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+      const repo = yield* MessageRepository;
+      return yield* repo.delete(id2);
+    }));
+  }
+  subscribeToConversation(conversationId, callback) {
+    if (!this.listeners.has(conversationId)) {
+      this.listeners.set(conversationId, new Set);
+    }
+    this.listeners.get(conversationId).add(callback);
+    if (!this.unsubscribers.has(conversationId)) {
+      const self2 = this;
+      exports_Runtime.runPromise(this.runtime)(exports_Effect.gen(function* () {
+        const repo = yield* MessageRepository;
+        const unsubscribe = yield* repo.watchConversation(conversationId, (messages2) => {
+          const listeners = self2.listeners.get(conversationId);
+          if (listeners) {
+            const orderedMessages = [...messages2].sort((a, b3) => new Date(a.createdAt).getTime() - new Date(b3.createdAt).getTime());
+            listeners.forEach((cb) => cb(orderedMessages));
+          }
+        });
+        self2.unsubscribers.set(conversationId, unsubscribe);
+      }));
     }
     return () => {
       const listeners = this.listeners.get(conversationId);

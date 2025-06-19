@@ -1,4 +1,4 @@
-import { document, html, ChatClient } from "@openagentsinc/psionic"
+import { document, html } from "@openagentsinc/psionic"
 import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
@@ -744,8 +744,8 @@ export function chat() {
       </style>
 
       <script type="module">
-        // Import the Effect-based ChatClient from the bundled module
-        import { ChatClient } from '/js/chat-client.js'
+        // Import the Effect-based ChatClient from the bundled module with cache-busting
+        import { ChatClient } from '/js/chat-client.js?v=${Date.now()}'
         
         // Initialize ChatClient
         const chatClient = new ChatClient()

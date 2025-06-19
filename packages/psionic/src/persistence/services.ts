@@ -1,21 +1,27 @@
 /**
  * Effect services for PGlite persistence
  */
-import { PGlite } from '@electric-sql/pglite'
-import { live } from '@electric-sql/pglite/live'
-import { electricSync } from '@electric-sql/pglite-sync'
-import { Effect, Context, Layer, Schema, pipe } from 'effect'
-import { drizzle } from 'drizzle-orm/pglite'
-import { eq, desc, and, sql, isNull } from 'drizzle-orm'
-import { v4 as uuidv4 } from 'uuid'
-import { conversations, messages, type Conversation, type Message, type NewConversation, type NewMessage } from './schema'
+import { PGlite } from "@electric-sql/pglite"
+import { electricSync } from "@electric-sql/pglite-sync"
+import { live } from "@electric-sql/pglite/live"
+import { and, desc, eq } from "drizzle-orm"
+import { drizzle } from "drizzle-orm/pglite"
+import { Context, Effect, Layer, Schema } from "effect"
+import {
+  type Conversation,
+  conversations,
+  type Message,
+  messages,
+  type NewConversation,
+  type NewMessage
+} from "./schema"
 
 // Error types
 export class PGliteError extends Schema.TaggedError<PGliteError>()(
   "PGliteError",
   {
     message: Schema.String,
-    cause: Schema.Unknown,
+    cause: Schema.Unknown
   }
 ) {}
 
@@ -39,25 +45,26 @@ export interface PGliteConfig {
 }
 
 // Live implementation
-export const PGliteServiceLive = (config: PGliteConfig = {}) => Layer.effect(
-  PGliteService,
-  Effect.gen(function* () {
-    const databaseName = config.databaseName || 'openagents-chat'
-    
-    // Initialize PGlite with extensions
-    const client = yield* Effect.tryPromise({
-      try: async () => {
-        const extensions: any = { live }
-        if (config.enableSync) {
-          extensions.electricSync = electricSync
-        }
-        
-        const pg = new PGlite(`idb://${databaseName}`, {
-          extensions
-        })
+export const PGliteServiceLive = (config: PGliteConfig = {}) =>
+  Layer.effect(
+    PGliteService,
+    Effect.gen(function*() {
+      const databaseName = config.databaseName || "openagents-chat"
 
-        // Create tables
-        await pg.exec(`
+      // Initialize PGlite with extensions
+      const client = yield* Effect.tryPromise({
+        try: async () => {
+          const extensions: any = { live }
+          if (config.enableSync) {
+            extensions.electricSync = electricSync
+          }
+
+          const pg = new PGlite(`idb://${databaseName}`, {
+            extensions
+          })
+
+          // Create tables
+          await pg.exec(`
           -- Conversations table
           CREATE TABLE IF NOT EXISTS conversations (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -92,29 +99,32 @@ export const PGliteServiceLive = (config: PGliteConfig = {}) => Layer.effect(
           ON messages USING gin(to_tsvector('english', content));
         `)
 
-        return pg
-      },
-      catch: (error) => new PGliteError({
-        message: "Failed to initialize PGlite",
-        cause: error
+          return pg
+        },
+        catch: (error) =>
+          new PGliteError({
+            message: "Failed to initialize PGlite",
+            cause: error
+          })
       })
+
+      const db = drizzle(client)
+
+      const query = <T>(
+        fn: (db: ReturnType<typeof drizzle>) => Promise<T>
+      ) =>
+        Effect.tryPromise({
+          try: () => fn(db),
+          catch: (error) =>
+            new PGliteError({
+              message: "Query failed",
+              cause: error
+            })
+        })
+
+      return { client, db, query }
     })
-
-    const db = drizzle(client)
-
-    const query = <T>(
-      fn: (db: ReturnType<typeof drizzle>) => Promise<T>
-    ) => Effect.tryPromise({
-      try: () => fn(db),
-      catch: (error) => new PGliteError({
-        message: "Query failed",
-        cause: error
-      })
-    })
-
-    return { client, db, query }
-  })
-)
+  )
 
 // Conversation Repository
 export class ConversationRepository extends Context.Tag("ConversationRepository")<
@@ -122,7 +132,7 @@ export class ConversationRepository extends Context.Tag("ConversationRepository"
   {
     create: (conversation: NewConversation) => Effect.Effect<Conversation, PGliteError>
     get: (id: string) => Effect.Effect<Conversation | undefined, PGliteError>
-    list: (userId?: string, includeArchived?: boolean) => Effect.Effect<Conversation[], PGliteError>
+    list: (userId?: string, includeArchived?: boolean) => Effect.Effect<Array<Conversation>, PGliteError>
     update: (id: string, updates: Partial<Conversation>) => Effect.Effect<Conversation | undefined, PGliteError>
     delete: (id: string) => Effect.Effect<boolean, PGliteError>
     archive: (id: string) => Effect.Effect<boolean, PGliteError>
@@ -132,7 +142,7 @@ export class ConversationRepository extends Context.Tag("ConversationRepository"
 
 export const ConversationRepositoryLive = Layer.effect(
   ConversationRepository,
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     const pgService = yield* PGliteService
 
     return {
@@ -148,15 +158,18 @@ export const ConversationRepositoryLive = Layer.effect(
           return conversation
         }),
 
-      list: (userId = 'local', includeArchived = false) =>
+      list: (userId = "local", includeArchived = false) =>
         pgService.query(async (db) => {
-          let query = db.select().from(conversations).where(eq(conversations.userId, userId))
+          const conditions = [eq(conversations.userId, userId)]
           
           if (!includeArchived) {
-            query = query.where(eq(conversations.archived, false))
+            conditions.push(eq(conversations.archived, false))
           }
-          
-          return await query.orderBy(desc(conversations.lastMessageAt), desc(conversations.createdAt))
+
+          return await db.select()
+            .from(conversations)
+            .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+            .orderBy(desc(conversations.lastMessageAt), desc(conversations.createdAt))
         }),
 
       update: (id, updates) =>
@@ -170,8 +183,8 @@ export const ConversationRepositoryLive = Layer.effect(
 
       delete: (id) =>
         pgService.query(async (db) => {
-          const result = await db.delete(conversations).where(eq(conversations.id, id))
-          return result.rowCount > 0
+          const result = await db.delete(conversations).where(eq(conversations.id, id)).returning()
+          return result.length > 0
         }),
 
       archive: (id) =>
@@ -190,23 +203,23 @@ export const ConversationRepositoryLive = Layer.effect(
             .from(messages)
             .where(and(
               eq(messages.conversationId, conversationId),
-              eq(messages.role, 'user')
+              eq(messages.role, "user")
             ))
             .orderBy(messages.createdAt)
             .limit(1)
-          
+
           if (!firstMessage) {
             return "New Conversation"
           }
-          
+
           // Generate title from first message (truncate to 50 chars)
-          const title = firstMessage.content.slice(0, 50) + (firstMessage.content.length > 50 ? '...' : '')
-          
+          const title = firstMessage.content.slice(0, 50) + (firstMessage.content.length > 50 ? "..." : "")
+
           // Update conversation with title
           await db.update(conversations)
             .set({ title })
             .where(eq(conversations.id, conversationId))
-          
+
           return title
         })
     }
@@ -218,16 +231,19 @@ export class MessageRepository extends Context.Tag("MessageRepository")<
   MessageRepository,
   {
     send: (message: NewMessage) => Effect.Effect<Message, PGliteError>
-    getConversation: (conversationId: string, limit?: number) => Effect.Effect<Message[], PGliteError>
-    search: (query: string, userId?: string) => Effect.Effect<Message[], PGliteError>
+    getConversation: (conversationId: string, limit?: number) => Effect.Effect<Array<Message>, PGliteError>
+    search: (query: string, userId?: string) => Effect.Effect<Array<Message>, PGliteError>
     delete: (id: string) => Effect.Effect<boolean, PGliteError>
-    watchConversation: (conversationId: string, callback: (messages: Message[]) => void) => Effect.Effect<() => void, PGliteError>
+    watchConversation: (
+      conversationId: string,
+      callback: (messages: Array<Message>) => void
+    ) => Effect.Effect<() => void, PGliteError>
   }
 >() {}
 
 export const MessageRepositoryLive = Layer.effect(
   MessageRepository,
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     const pgService = yield* PGliteService
 
     return {
@@ -253,50 +269,67 @@ export const MessageRepositoryLive = Layer.effect(
             .limit(limit)
         }),
 
-      search: (query, userId = 'local') =>
-        pgService.query(async (db) => {
+      search: (query, userId = "local") =>
+        pgService.query(async () => {
           // Using PostgreSQL full-text search
-          const result = await pgService.client.query(`
+          const result = await pgService.client.query(
+            `
             SELECT m.* FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
             WHERE c.user_id = $1
             AND to_tsvector('english', m.content) @@ plainto_tsquery('english', $2)
             ORDER BY m.created_at DESC
             LIMIT 50
-          `, [userId, query])
+          `,
+            [userId, query]
+          )
 
-          return result.rows as Message[]
+          return result.rows as Array<Message>
         }),
 
       delete: (id) =>
         pgService.query(async (db) => {
-          const result = await db.delete(messages).where(eq(messages.id, id))
-          return result.rowCount > 0
+          const result = await db.delete(messages).where(eq(messages.id, id)).returning()
+          return result.length > 0
         }),
 
       watchConversation: (conversationId, callback) =>
-        Effect.gen(function* () {
-          const { client } = yield* PGliteService
+        Effect.sync(() => {
+          // Poll for changes every 2 seconds
+          const intervalId = setInterval(async () => {
+            try {
+              const result = await pgService.client.query<Message>(
+                `SELECT * FROM messages
+                 WHERE conversation_id = $1
+                 ORDER BY created_at ASC`,
+                [conversationId]
+              )
+              callback(result.rows)
+            } catch (error) {
+              console.error('Error polling messages:', error)
+            }
+          }, 2000)
 
-          // Use PGlite's live query feature
-          const query = client.live.query<Message>(
+          // Initial fetch
+          pgService.client.query<Message>(
             `SELECT * FROM messages
              WHERE conversation_id = $1
              ORDER BY created_at ASC`,
-            [conversationId],
-            (result) => callback(result.rows)
-          )
+            [conversationId]
+          ).then(result => callback(result.rows))
+          .catch(error => console.error('Error fetching initial messages:', error))
 
           // Return cleanup function
-          return () => query.unsubscribe()
+          return () => clearInterval(intervalId)
         })
     }
   })
 )
 
 // Combined layer for easy usage
-export const PersistenceLive = (config?: PGliteConfig) => Layer.mergeAll(
-  PGliteServiceLive(config),
-  ConversationRepositoryLive,
-  MessageRepositoryLive
-)
+export const PersistenceLive = (config?: PGliteConfig) =>
+  Layer.mergeAll(
+    PGliteServiceLive(config),
+    ConversationRepositoryLive,
+    MessageRepositoryLive
+  )

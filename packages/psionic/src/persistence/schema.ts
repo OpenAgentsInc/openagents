@@ -2,38 +2,38 @@
  * Database schema definitions for chat persistence
  * Using Drizzle ORM with PGlite
  */
-import { pgTable, text, timestamp, jsonb, uuid, boolean, index } from 'drizzle-orm/pg-core'
-import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
+import type { InferInsertModel, InferSelectModel } from "drizzle-orm"
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core"
 
 // Conversations table
-export const conversations = pgTable('conversations', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: text('user_id').notNull().default('local'), // Default for local-only usage
-  title: text('title'),
-  model: text('model'), // Selected AI model
-  lastMessageAt: timestamp('last_message_at'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  archived: boolean('archived').default(false),
-  metadata: jsonb('metadata').$type<{
+export const conversations = pgTable("conversations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull().default("local"), // Default for local-only usage
+  title: text("title"),
+  model: text("model"), // Selected AI model
+  lastMessageAt: timestamp("last_message_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  archived: boolean("archived").default(false),
+  metadata: jsonb("metadata").$type<{
     systemPrompt?: string
     temperature?: number
     maxTokens?: number
     // Other model-specific settings
-  }>().default({}),
+  }>().default({})
 }, (table) => ({
-  userIdIdx: index('idx_user_created').on(table.userId, table.createdAt),
-  archivedIdx: index('idx_archived').on(table.archived),
+  userIdIdx: index("idx_user_created").on(table.userId, table.createdAt),
+  archivedIdx: index("idx_archived").on(table.archived)
 }))
 
 // Messages table
-export const messages = pgTable('messages', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  conversationId: uuid('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
-  role: text('role').notNull().$type<'user' | 'assistant' | 'system' | 'tool'>(),
-  content: text('content').notNull(), // Main text content
-  model: text('model'), // AI model used (null for user messages)
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  metadata: jsonb('metadata').$type<{
+export const messages = pgTable("messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull().$type<"user" | "assistant" | "system" | "tool">(),
+  content: text("content").notNull(), // Main text content
+  model: text("model"), // AI model used (null for user messages)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  metadata: jsonb("metadata").$type<{
     // Message parts for complex messages
     parts?: Array<{
       _tag: string
@@ -60,7 +60,7 @@ export const messages = pgTable('messages', {
     }>
     // File/image attachments
     attachments?: Array<{
-      type: 'image' | 'file'
+      type: "image" | "file"
       url?: string
       data?: string // base64
       mediaType?: string
@@ -68,10 +68,10 @@ export const messages = pgTable('messages', {
     }>
     // Any other provider-specific metadata
     [key: string]: unknown
-  }>().default({}),
+  }>().default({})
 }, (table) => ({
-  conversationIdx: index('idx_conversation_created').on(table.conversationId, table.createdAt),
-  roleIdx: index('idx_role').on(table.role),
+  conversationIdx: index("idx_conversation_created").on(table.conversationId, table.createdAt),
+  roleIdx: index("idx_role").on(table.role)
   // Full-text search index will be created via raw SQL
 }))
 

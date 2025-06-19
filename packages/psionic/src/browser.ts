@@ -4,22 +4,22 @@
  */
 
 // Core templates (browser-safe)
-export { html, css } from './core/templates'
+export { css, html } from "./core/templates"
 
 // Browser-safe persistence
 export {
-  // Schema types
-  type Conversation,
-  type NewConversation,
-  type Message,
-  type NewMessage,
-  type MessageWithConversation,
+  BrowserConversationRepository,
   // Browser Effect client
   BrowserEffectChatClient,
+  BrowserMessageRepository,
   // Browser services (if you want to use them directly)
   BrowserPersistenceError,
+  BrowserPersistenceLive,
   BrowserPGliteService,
-  BrowserConversationRepository,
-  BrowserMessageRepository,
-  BrowserPersistenceLive
-} from './persistence'
+  // Schema types
+  type Conversation,
+  type Message,
+  type MessageWithConversation,
+  type NewConversation,
+  type NewMessage
+} from "./persistence"

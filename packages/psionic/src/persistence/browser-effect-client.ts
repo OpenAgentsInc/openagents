@@ -2,29 +2,30 @@
  * Browser-safe chat client using Effect
  * This provides a simple Promise-based API while using Effect internally
  */
-import { Effect, Runtime } from 'effect'
-import type { Conversation, Message, NewConversation, NewMessage } from './schema'
-import { 
-  BrowserConversationRepository, 
-  BrowserMessageRepository, 
-  BrowserPersistenceLive 
-} from './client-services'
+import { Effect, ManagedRuntime, Runtime } from "effect"
+import { BrowserConversationRepository, BrowserMessageRepository, BrowserPersistenceLive } from "./client-services"
+import type { Conversation, Message, NewConversation, NewMessage } from "./schema"
 
 export class BrowserEffectChatClient {
+  private managedRuntime: ManagedRuntime.ManagedRuntime<
+    BrowserConversationRepository | BrowserMessageRepository,
+    never
+  >
   private runtime: Runtime.Runtime<BrowserConversationRepository | BrowserMessageRepository>
-  private listeners: Map<string, Set<(messages: Message[]) => void>> = new Map()
+  private listeners: Map<string, Set<(messages: Array<Message>) => void>> = new Map()
   private unsubscribers: Map<string, () => void> = new Map()
 
   constructor(databaseName?: string) {
-    // Create runtime with browser persistence services
+    // Create runtime using ManagedRuntime
     const layer = BrowserPersistenceLive(databaseName)
-    this.runtime = Runtime.makeFork(layer)(Runtime.defaultRuntime)
+    this.managedRuntime = ManagedRuntime.make(layer) as any
+    this.runtime = (this.managedRuntime as any).runtime
   }
 
   // Conversation methods
   async createConversation(conversation: Partial<NewConversation> = {}): Promise<Conversation> {
     const newConversation: NewConversation = {
-      userId: conversation.userId || 'local',
+      userId: conversation.userId || "local",
       title: conversation.title || null,
       model: conversation.model || null,
       metadata: conversation.metadata || {},
@@ -33,7 +34,7 @@ export class BrowserEffectChatClient {
     }
 
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserConversationRepository
         return yield* repo.create(newConversation)
       })
@@ -42,16 +43,16 @@ export class BrowserEffectChatClient {
 
   async getConversation(id: string): Promise<Conversation | undefined> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserConversationRepository
         return yield* repo.get(id)
       })
     )
   }
 
-  async listConversations(userId = 'local', includeArchived = false): Promise<Conversation[]> {
+  async listConversations(userId = "local", includeArchived = false): Promise<Array<Conversation>> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserConversationRepository
         return yield* repo.list(userId, includeArchived)
       })
@@ -60,7 +61,7 @@ export class BrowserEffectChatClient {
 
   async updateConversation(id: string, updates: Partial<Conversation>): Promise<Conversation | undefined> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserConversationRepository
         return yield* repo.update(id, updates)
       })
@@ -70,9 +71,9 @@ export class BrowserEffectChatClient {
   async deleteConversation(id: string): Promise<boolean> {
     // Clean up any listeners for this conversation
     this.unsubscribeFromConversation(id)
-    
+
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserConversationRepository
         return yield* repo.delete(id)
       })
@@ -81,7 +82,7 @@ export class BrowserEffectChatClient {
 
   async archiveConversation(id: string): Promise<boolean> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserConversationRepository
         return yield* repo.archive(id)
       })
@@ -91,36 +92,36 @@ export class BrowserEffectChatClient {
   // Message methods
   async sendMessage(message: NewMessage): Promise<Message> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserMessageRepository
         const sent = yield* repo.send(message)
-        
+
         // Auto-generate title if this is the first user message
-        if (message.role === 'user') {
+        if (message.role === "user") {
           const conversationRepo = yield* BrowserConversationRepository
           const conversation = yield* conversationRepo.get(message.conversationId)
           if (conversation && !conversation.title) {
             yield* conversationRepo.generateTitle(message.conversationId)
           }
         }
-        
+
         return sent
       })
     )
   }
 
-  async getMessages(conversationId: string, limit?: number): Promise<Message[]> {
+  async getMessages(conversationId: string, limit?: number): Promise<Array<Message>> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserMessageRepository
         return yield* repo.getConversation(conversationId, limit)
       })
     )
   }
 
-  async searchMessages(query: string, userId = 'local'): Promise<Message[]> {
+  async searchMessages(query: string, userId = "local"): Promise<Array<Message>> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserMessageRepository
         return yield* repo.search(query, userId)
       })
@@ -129,7 +130,7 @@ export class BrowserEffectChatClient {
 
   async deleteMessage(id: string): Promise<boolean> {
     return Runtime.runPromise(this.runtime)(
-      Effect.gen(function* () {
+      Effect.gen(function*() {
         const repo = yield* BrowserMessageRepository
         return yield* repo.delete(id)
       })
@@ -139,7 +140,7 @@ export class BrowserEffectChatClient {
   // Live updates
   subscribeToConversation(
     conversationId: string,
-    callback: (messages: Message[]) => void
+    callback: (messages: Array<Message>) => void
   ): () => void {
     // Store callback
     if (!this.listeners.has(conversationId)) {
@@ -149,18 +150,19 @@ export class BrowserEffectChatClient {
 
     // Set up live query if not already active
     if (!this.unsubscribers.has(conversationId)) {
-      const setupWatch = Effect.gen(function* () {
+      const self = this
+      const setupWatch = Effect.gen(function*() {
         const repo = yield* BrowserMessageRepository
         const unsubscribe = yield* repo.watchConversation(conversationId, (messages) => {
           // Notify all listeners for this conversation
-          const listeners = this.listeners.get(conversationId)
+          const listeners = self.listeners.get(conversationId)
           if (listeners) {
-            listeners.forEach(cb => cb(messages))
+            listeners.forEach((cb) => cb(messages))
           }
         })
-        this.unsubscribers.set(conversationId, unsubscribe)
-      }).bind(this)
-      
+        self.unsubscribers.set(conversationId, unsubscribe)
+      })
+
       Runtime.runPromise(this.runtime)(setupWatch).catch(console.error)
     }
 
@@ -201,7 +203,7 @@ export class BrowserEffectChatClient {
     // Send initial message
     const message = await this.sendMessage({
       conversationId: conversation.id,
-      role: 'user',
+      role: "user",
       content: initialMessage,
       metadata: {}
     })
