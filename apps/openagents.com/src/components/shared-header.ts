@@ -11,7 +11,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
       <div class="header-content">
         <a href="/" class="brand">OpenAgents</a>
         <nav class="header-nav">
-          <a href="/chat" class="nav-link ${current === "chat" ? "active" : ""}">◊ Chat</a>
+          <!-- <a href="/chat" class="nav-link ${current === "chat" ? "active" : ""}">◊ Chat</a> -->
           <a href="/docs" class="nav-link ${current === "docs" ? "active" : ""}">§ Docs</a>
           <a href="/blog" class="nav-link ${current === "blog" ? "active" : ""}">¶ Blog</a>
           <div class="theme-switcher-container">
