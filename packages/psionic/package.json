@@ -25,7 +25,8 @@
     "elysia": "^1.3.5",
     "gray-matter": "^4.0.3",
     "jsdom": "^26.1.0",
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.1.0",
+    "shiki": "^3.6.0"
   },
   "devDependencies": {
     "@openagentsinc/autotest": "workspace:*",

@@ -1,4 +1,5 @@
 import { css } from "@openagentsinc/psionic"
+import { syntaxHighlightingStyles } from "./styles/syntax-highlighting"
 
 // Import WebTUI CSS (will be included via link tags)
 export const webtuiStyles = css`
@@ -65,6 +66,7 @@ export const webtuiStyles = css`
 // Base styles for layout and WebTUI integration
 export const baseStyles = css`
   ${webtuiStyles}
+  ${syntaxHighlightingStyles}
   
   /* Default to zinc dark theme if no theme class is present */
   :root:has(body:not([class*="theme-"])) {
