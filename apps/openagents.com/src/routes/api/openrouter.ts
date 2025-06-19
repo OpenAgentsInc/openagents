@@ -1,6 +1,6 @@
 import * as HttpClientNode from "@effect/platform-node/NodeHttpClient"
 import * as Ai from "@openagentsinc/ai"
-import { Effect, Layer, Option, Stream } from "effect"
+import { Effect, Layer, Stream } from "effect"
 import * as Redacted from "effect/Redacted"
 import { Elysia } from "elysia"
 
