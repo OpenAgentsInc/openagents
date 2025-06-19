@@ -1,14 +1,13 @@
 /**
  * @since 1.0.0
  */
-import * as ReadonlyArray from "effect/Array"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import * as Stream from "effect/Stream"
 import { AiError } from "../../core/AiError.js"
 import * as AiLanguageModel from "../../core/AiLanguageModel.js"
-import type * as AiResponse from "../../core/AiResponse.js"
+import * as AiResponse from "../../core/AiResponse.js"
 import * as InternalUtilities from "./internal/utilities.js"
 import { OpenRouterClient, type StreamCompletionRequest } from "./OpenRouterClient.js"
 import { OpenRouterConfig } from "./OpenRouterConfig.js"
@@ -78,7 +77,17 @@ export const makeLanguageModel = (
 
       return Effect.scoped(
         Stream.runCollect(client.stream(openRouterRequest)).pipe(
-          Effect.map((chunks) => ReadonlyArray.flatten(ReadonlyArray.fromIterable(chunks))),
+          Effect.map((chunks) => {
+            const responses: AiResponse.AiResponse[] = []
+            for (const chunk of chunks) {
+              responses.push(...chunk.parts.map(part => 
+                AiResponse.AiResponse.make({ parts: [part] }, { disableValidation: true })
+              ))
+            }
+            return AiResponse.AiResponse.make({ 
+              parts: responses.flatMap(r => r.parts) 
+            }, { disableValidation: true })
+          }),
           Effect.mapError((error) =>
             new AiError({
               module: "OpenRouterLanguageModel",

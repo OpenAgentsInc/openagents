@@ -2,8 +2,6 @@
  * @since 1.0.0
  * @internal
  */
-import * as ReadonlyArray from "effect/Array"
-import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
 import * as Schema from "effect/Schema"
 import type * as AiInput from "../../../core/AiInput.js"
@@ -43,14 +41,24 @@ export const MessageContentPart = Schema.Union(
   })
 )
 
+type OpenRouterMessage = {
+  readonly role: string
+  readonly content: string | ReadonlyArray<unknown>
+  readonly name?: string | undefined
+  readonly tool_calls?: ReadonlyArray<unknown> | undefined
+  readonly tool_call_id?: string | undefined
+}
+
 export const convertToOpenRouterMessages = (
   messages: ReadonlyArray<AiInput.Message>
-): ReadonlyArray<unknown> =>
-  ReadonlyArray.filterMap(messages, (message) => {
+): ReadonlyArray<OpenRouterMessage> => {
+  const result: Array<OpenRouterMessage> = []
+  
+  for (const message of messages) {
     if (message._tag === "UserMessage") {
       const parts = message.parts
       if (parts.length === 0) {
-        return Option.none()
+        continue
       }
 
       const content: Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }> = []
@@ -95,15 +103,15 @@ export const convertToOpenRouterMessages = (
       }
 
       if (content.length === 0) {
-        return Option.none()
+        continue
       } else if (content.length === 1 && content[0].type === "text") {
-        return Option.some({
+        result.push({
           role: "user",
           content: content[0].text!,
           name: message.userName
         })
       } else {
-        return Option.some({
+        result.push({
           role: "user",
           content,
           name: message.userName
@@ -135,39 +143,31 @@ export const convertToOpenRouterMessages = (
       }
 
       if (toolCalls.length > 0) {
-        return Option.some({
+        result.push({
           role: "assistant",
-          content: textContent || null,
+          content: textContent || "",
           tool_calls: toolCalls
         })
       } else if (textContent) {
-        return Option.some({
+        result.push({
           role: "assistant",
           content: textContent
         })
-      } else {
-        return Option.none()
       }
     } else if (message._tag === "ToolMessage") {
       const parts = message.parts
-      if (parts.length === 0) {
-        return Option.none()
-      }
-
-      const results: Array<unknown> = []
-
+      
       for (const part of parts) {
         if (part._tag === "ToolCallResultPart") {
-          results.push({
+          result.push({
             tool_call_id: part.id,
             role: "tool",
             content: Predicate.isString(part.result) ? part.result : JSON.stringify(part.result)
           })
         }
       }
-
-      return results.length > 0 ? Option.some(results) : Option.none()
     }
-
-    return Option.none()
-  }).flat()
+  }
+  
+  return result
+}
