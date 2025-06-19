@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import matter from "gray-matter"
 import { readdir, readFile, writeFile } from "node:fs/promises"

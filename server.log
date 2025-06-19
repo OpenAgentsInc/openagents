@@ -1,1 +1,10 @@
-error: Module not found "src/index.ts"
+
+> @openagentsinc/openagents.com@0.0.0 dev /Users/christopherdavid/code/openagents/worktrees/llms-txt/apps/openagents.com
+> bun run --hot src/index.ts
+
+📚 Component explorer enabled at /components
+🧠 OpenAgents is running at http://0.0.0.0:3003
+undefined
+/Users/christopherdavid/code/openagents/worktrees/llms-txt/apps/openagents.com:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @openagentsinc/openagents.com@0.0.0 dev: `bun run --hot src/index.ts`
+Command failed with signal "SIGTERM"

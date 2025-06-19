@@ -23,7 +23,7 @@ jobs:
         uses: ./.github/actions/setup
       - run: pnpm codegen
       - name: Generate llms.txt
-        run: bun run scripts/generate-llms-txt.ts
+        run: pnpm tsx scripts/generate-llms-txt.ts
       - name: Check source state
         run: git add packages/*/src && git diff-index --cached HEAD --exit-code packages/*/src
 

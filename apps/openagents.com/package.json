@@ -7,7 +7,7 @@
     "dev": "bun run --hot src/index.ts",
     "build": "tsc && bun run generate:llms-txt",
     "typecheck": "tsc --noEmit",
-    "generate:llms-txt": "bun ../../scripts/generate-llms-txt.ts"
+    "generate:llms-txt": "tsx ../../scripts/generate-llms-txt.ts"
   },
   "dependencies": {
     "@openagentsinc/nostr": "workspace:*",

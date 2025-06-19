@@ -22,16 +22,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: '20.14.0'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install
 
       - name: Generate llms.txt
-        run: bun run scripts/generate-llms-txt.ts
+        run: pnpm tsx scripts/generate-llms-txt.ts
 
       - name: Validate llms.txt format
         run: |
