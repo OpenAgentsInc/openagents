@@ -1,4 +1,4 @@
-import * as HttpClientNode from "@effect/platform-node/NodeHttpClient"
+import * as HttpClientBun from "@effect/platform-bun/BunHttpClient"
 import * as Ai from "@openagentsinc/ai"
 import { Effect, Layer, Stream } from "effect"
 import * as Redacted from "effect/Redacted"
@@ -82,7 +82,7 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
 
           // Provide the required layers
           const layers = Layer.merge(
-            HttpClientNode.layer,
+            HttpClientBun.layer,
             Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {})
           )
 

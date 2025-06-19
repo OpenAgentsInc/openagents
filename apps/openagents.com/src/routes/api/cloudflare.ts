@@ -1,4 +1,4 @@
-import * as HttpClientNode from "@effect/platform-node/NodeHttpClient"
+import * as HttpClientBun from "@effect/platform-bun/BunHttpClient"
 import * as Ai from "@openagentsinc/ai"
 import { Config, Effect, Layer, Stream } from "effect"
 import { Elysia } from "elysia"
@@ -106,7 +106,7 @@ export const cloudflareApi = new Elysia({ prefix: "/api/cloudflare" })
 
           // Provide the required layers
           const layers = Layer.merge(
-            HttpClientNode.layer,
+            HttpClientBun.layer,
             Layer.succeed(Ai.Cloudflare.CloudflareConfig, {})
           )
 

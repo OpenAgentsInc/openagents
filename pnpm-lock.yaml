@@ -121,6 +121,9 @@ importers:
       '@effect/platform':
         specifier: 0.84.6
         version: 0.84.6(effect@3.16.3)
+      '@effect/platform-bun':
+        specifier: ^0.70.2
+        version: 0.70.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3)
       '@effect/platform-node':
         specifier: 0.85.2
         version: 0.85.2(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
@@ -422,12 +425,21 @@ importers:
 
   packages/psionic:
     dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.3.3
+        version: 0.3.3
+      '@electric-sql/pglite-sync':
+        specifier: ^0.3.6
+        version: 0.3.6(@electric-sql/pglite@0.3.3)
       '@elysiajs/static':
         specifier: ^1.3.0
         version: 1.3.0(elysia@1.3.5)
       dompurify:
         specifier: ^3.2.6
         version: 3.2.6
+      drizzle-orm:
+        specifier: ^0.44.2
+        version: 0.44.2(@electric-sql/pglite@0.3.3)
       effect:
         specifier: 3.16.3
         version: 3.16.3
@@ -446,6 +458,9 @@ importers:
       shiki:
         specifier: ^3.6.0
         version: 3.6.0
+      uuid:
+        specifier: ^11.1.0
+        version: 11.1.0
     devDependencies:
       '@openagentsinc/autotest':
         specifier: workspace:*
@@ -462,6 +477,9 @@ importers:
       '@types/markdown-it':
         specifier: ^14.1.2
         version: 14.1.2
+      '@types/uuid':
+        specifier: ^10.0.0
+        version: 10.0.0
 
   packages/sdk:
     dependencies:
@@ -1341,7 +1359,7 @@ packages:
     dependencies:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/workflow': 0.1.14(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(effect@3.16.3)
       effect: 3.16.3
     dev: false
@@ -1379,24 +1397,6 @@ packages:
     peerDependencies:
       '@effect/platform': ^0.81.1
       effect: ^3.14.22
-      ioredis: ^5
-      lmdb: ^3
-    peerDependenciesMeta:
-      ioredis:
-        optional: true
-      lmdb:
-        optional: true
-    dependencies:
-      '@effect/platform': 0.84.6(effect@3.16.3)
-      effect: 3.16.3
-      uuid: 11.1.0
-    dev: false
-
-  /@effect/experimental@0.48.12(@effect/platform@0.84.6)(effect@3.16.3):
-    resolution: {integrity: sha512-tRCt57mdArna62L3xu7HIlGXOwHoUDZOQCbMqzQX29TtMflY26mCb9GF3/6s2DsTDWVUCCOroHnfA/XNP+uS/w==}
-    peerDependencies:
-      '@effect/platform': ^0.84.11
-      effect: ^3.16.7
       ioredis: ^5
       lmdb: ^3
     peerDependenciesMeta:
@@ -1488,7 +1488,7 @@ packages:
       '@effect/cluster': 0.38.16(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(@effect/workflow@0.1.14)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
       '@parcel/watcher': 2.5.1
       effect: 3.16.3
       multipasta: 0.2.5
@@ -1549,7 +1549,7 @@ packages:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/platform-node-shared': 0.39.16(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
       effect: 3.16.3
       mime: 3.0.0
       undici: 7.10.0
@@ -1676,14 +1676,14 @@ packages:
       '@effect/io': 0.15.3
       fast-check: 3.23.2
 
-  /@effect/sql@0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3):
+  /@effect/sql@0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-DZarU+4NTwIYO8MALaRVg1rRN5gdrJW7nJLECl6nSTwbXRamo6GSarXUiACqE4csZZ7C2K6Jtu99UbEqZ3Iomw==}
     peerDependencies:
       '@effect/experimental': ^0.48.12
       '@effect/platform': ^0.84.11
       effect: ^3.16.7
     dependencies:
-      '@effect/experimental': 0.48.12(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/experimental': 0.45.1(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@opentelemetry/semantic-conventions': 1.34.0
       effect: 3.16.3
@@ -1751,6 +1751,36 @@ packages:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
       effect: 3.16.3
+    dev: false
+
+  /@electric-sql/client@1.0.0:
+    resolution: {integrity: sha512-kGiVbBIlMqc/CeJpWZuLjxNkm0836NWxeMtIWH2w5IUK8pUL13hyxg3ZkR7+FlTGhpKuZRiCP5nPOH9D6wbhPw==}
+    optionalDependencies:
+      '@rollup/rollup-darwin-arm64': 4.43.0
+    dev: false
+
+  /@electric-sql/experimental@1.0.0(@electric-sql/client@1.0.0):
+    resolution: {integrity: sha512-wOKZyph3cvJ4J5fDwqDpR7nilPOHEFwAtbAM5X/PhV3JZCSzmkbosaQRWsxbHQ80MJv7gNFP960+TyqGAjqouQ==}
+    peerDependencies:
+      '@electric-sql/client': 1.0.0
+    dependencies:
+      '@electric-sql/client': 1.0.0
+    optionalDependencies:
+      '@rollup/rollup-darwin-arm64': 4.43.0
+    dev: false
+
+  /@electric-sql/pglite-sync@0.3.6(@electric-sql/pglite@0.3.3):
+    resolution: {integrity: sha512-fZDfoLlfYBBBPwPWV+PSskzW8jQR3hpHxWomovcYxCnP0+dAz4i+N+ybwFeDbYW8VoflGQatC4g+sJPYImoFEA==}
+    peerDependencies:
+      '@electric-sql/pglite': 0.3.3
+    dependencies:
+      '@electric-sql/client': 1.0.0
+      '@electric-sql/experimental': 1.0.0(@electric-sql/client@1.0.0)
+      '@electric-sql/pglite': 0.3.3
+    dev: false
+
+  /@electric-sql/pglite@0.3.3:
+    resolution: {integrity: sha512-JrvHOx9q0yvKEby0bK8qzGTVw6K+yEg8enxDWb2IwNKr5XZxRrBb+GNIqoAIP7yXyhRg5jcENWmdHmtnAT87vA==}
     dev: false
 
   /@elysiajs/static@1.3.0(elysia@1.3.5):
@@ -5487,6 +5517,10 @@ packages:
   /@types/unist@3.0.3:
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
 
+  /@types/uuid@10.0.0:
+    resolution: {integrity: sha512-7gqG38EyHgyP1S+7+xomFtL+ZNHcKv6DwNaCZmJmo1vgMugyF3TCnXVg4t1uk89mLNwnLtnY3TpOpCOyp1/xHQ==}
+    dev: true
+
   /@types/uuid@9.0.8:
     resolution: {integrity: sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA==}
     dev: true
@@ -7298,6 +7332,101 @@ packages:
     resolution: {integrity: sha512-IrPdXQsk2BbzvCBGBOTmmSH5SodmqZNt4ERAZDmW4CT+tL8VtvinqywuANaFu4bOMWki16nqf0e4oC0QIaDr/g==}
     engines: {node: '>=10'}
     dev: true
+
+  /drizzle-orm@0.44.2(@electric-sql/pglite@0.3.3):
+    resolution: {integrity: sha512-zGAqBzWWkVSFjZpwPOrmCrgO++1kZ5H/rZ4qTGeGOe18iXGVJWf3WPfHOVwFIbmi8kHjfJstC6rJomzGx8g/dQ==}
+    peerDependencies:
+      '@aws-sdk/client-rds-data': '>=3'
+      '@cloudflare/workers-types': '>=4'
+      '@electric-sql/pglite': '>=0.2.0'
+      '@libsql/client': '>=0.10.0'
+      '@libsql/client-wasm': '>=0.10.0'
+      '@neondatabase/serverless': '>=0.10.0'
+      '@op-engineering/op-sqlite': '>=2'
+      '@opentelemetry/api': ^1.4.1
+      '@planetscale/database': '>=1.13'
+      '@prisma/client': '*'
+      '@tidbcloud/serverless': '*'
+      '@types/better-sqlite3': '*'
+      '@types/pg': '*'
+      '@types/sql.js': '*'
+      '@upstash/redis': '>=1.34.7'
+      '@vercel/postgres': '>=0.8.0'
+      '@xata.io/client': '*'
+      better-sqlite3: '>=7'
+      bun-types: '*'
+      expo-sqlite: '>=14.0.0'
+      gel: '>=2'
+      knex: '*'
+      kysely: '*'
+      mysql2: '>=2'
+      pg: '>=8'
+      postgres: '>=3'
+      prisma: '*'
+      sql.js: '>=1'
+      sqlite3: '>=5'
+    peerDependenciesMeta:
+      '@aws-sdk/client-rds-data':
+        optional: true
+      '@cloudflare/workers-types':
+        optional: true
+      '@electric-sql/pglite':
+        optional: true
+      '@libsql/client':
+        optional: true
+      '@libsql/client-wasm':
+        optional: true
+      '@neondatabase/serverless':
+        optional: true
+      '@op-engineering/op-sqlite':
+        optional: true
+      '@opentelemetry/api':
+        optional: true
+      '@planetscale/database':
+        optional: true
+      '@prisma/client':
+        optional: true
+      '@tidbcloud/serverless':
+        optional: true
+      '@types/better-sqlite3':
+        optional: true
+      '@types/pg':
+        optional: true
+      '@types/sql.js':
+        optional: true
+      '@upstash/redis':
+        optional: true
+      '@vercel/postgres':
+        optional: true
+      '@xata.io/client':
+        optional: true
+      better-sqlite3:
+        optional: true
+      bun-types:
+        optional: true
+      expo-sqlite:
+        optional: true
+      gel:
+        optional: true
+      knex:
+        optional: true
+      kysely:
+        optional: true
+      mysql2:
+        optional: true
+      pg:
+        optional: true
+      postgres:
+        optional: true
+      prisma:
+        optional: true
+      sql.js:
+        optional: true
+      sqlite3:
+        optional: true
+    dependencies:
+      '@electric-sql/pglite': 0.3.3
+    dev: false
 
   /dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}

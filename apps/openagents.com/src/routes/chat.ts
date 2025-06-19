@@ -1,4 +1,4 @@
-import { document, html } from "@openagentsinc/psionic"
+import { document, html, ChatClient } from "@openagentsinc/psionic"
 import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
@@ -33,9 +33,9 @@ export function chat() {
             </button>
           </div>
           
-          <div class="chat-history">
-            <div class="history-placeholder">
-              <p>Chat history will appear here</p>
+          <div class="chat-history" id="chat-history">
+            <div class="history-loading">
+              <p>Loading conversations...</p>
             </div>
           </div>
           
@@ -279,11 +279,44 @@ export function chat() {
           padding: 0.5rem;
         }
 
-        .history-placeholder {
+        .history-loading {
           text-align: center;
           color: var(--foreground0);
           margin-top: 2rem;
           font-size: 0.85em;
+        }
+
+        .conversation-item {
+          padding: 0.75rem;
+          margin-bottom: 0.25rem;
+          cursor: pointer;
+          border: 1px solid transparent;
+          transition: all 0.2s ease;
+          border-radius: 4px;
+        }
+
+        .conversation-item:hover {
+          background: var(--background2);
+          border-color: var(--foreground2);
+        }
+
+        .conversation-item.active {
+          background: var(--background2);
+          border-color: var(--foreground0);
+        }
+
+        .conversation-title {
+          font-weight: 500;
+          color: var(--foreground1);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .conversation-meta {
+          font-size: 0.75em;
+          color: var(--foreground0);
+          margin-top: 0.25rem;
         }
 
         .sidebar-footer {
@@ -302,34 +335,35 @@ export function chat() {
           flex: 1;
           display: flex;
           flex-direction: column;
+          background: var(--background0);
         }
 
         .model-bar {
           padding: 0.75rem 1rem;
+          background: var(--background1);
           border-bottom: 1px solid var(--foreground2);
           display: flex;
           align-items: center;
           gap: 1rem;
-          background: var(--background1);
         }
 
         .sidebar-toggle-main {
-          width: 2.5rem;
-          height: 2.5rem;
+          display: none;
+          width: 2rem;
+          height: 2rem;
           padding: 0;
           font-size: 1.2em;
-          display: none;
         }
 
         .model-indicator {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          font-size: 0.9em;
         }
 
         .model-label {
           color: var(--foreground0);
+          font-size: 0.9em;
         }
 
         .model-name {
@@ -341,71 +375,70 @@ export function chat() {
         .chat-messages {
           flex: 1;
           overflow-y: auto;
-          padding: 2rem;
+          padding: 1.5rem;
           display: flex;
           flex-direction: column;
-          gap: 1rem;
-          max-width: 48rem;
-          margin: 0 auto;
-          width: 100%;
         }
 
-        /* Empty State */
         .empty-state {
-          margin: auto;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
           text-align: center;
-          padding: 2rem;
         }
 
         .empty-state h2 {
           color: var(--foreground1);
           margin-bottom: 2rem;
-          font-size: 1.75em;
+          font-size: 1.8rem;
         }
 
         .example-prompts {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          grid-template-columns: repeat(2, 1fr);
           gap: 1rem;
           max-width: 600px;
-          margin: 0 auto;
         }
 
         .example-prompt {
           padding: 1rem;
           text-align: left;
           font-size: 0.9em;
-          line-height: 1.4;
           cursor: pointer;
-          background: var(--background1);
-          transition: all 0.2s;
+          transition: all 0.2s ease;
         }
 
         .example-prompt:hover {
-          background: var(--background2);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
-        /* Chat Messages */
         .chat-message {
-          display: flex;
-          gap: 1rem;
+          margin-bottom: 1.5rem;
+          max-width: 800px;
+          width: 100%;
         }
 
         .message-role {
-          font-weight: 600;
-          font-size: 0.9em;
-          color: var(--foreground1);
-          min-width: 80px;
+          font-size: 0.85em;
+          color: var(--foreground0);
+          margin-bottom: 0.5rem;
+          font-weight: 500;
         }
 
         .message-content {
-          flex: 1;
+          background: var(--background1);
+          padding: 1rem;
+          border-radius: 8px;
           line-height: 1.6;
-          color: var(--foreground1);
+          white-space: pre-wrap;
+          word-wrap: break-word;
         }
 
         .message-content.streaming::after {
-          content: "▋";
+          content: '▌';
           animation: blink 1s infinite;
         }
 
@@ -416,16 +449,16 @@ export function chat() {
 
         /* Input Area */
         .chat-input-area {
-          padding: 1rem 2rem 2rem;
-          max-width: 48rem;
-          margin: 0 auto;
-          width: 100%;
+          padding: 1rem;
+          background: var(--background1);
+          border-top: 1px solid var(--foreground2);
         }
 
         .input-wrapper {
           display: flex;
           gap: 0.5rem;
-          align-items: flex-end;
+          max-width: 800px;
+          margin: 0 auto;
         }
 
         #chat-input {
@@ -433,26 +466,24 @@ export function chat() {
           min-height: 2.5rem;
           max-height: 10rem;
           resize: none;
+          padding: 0.75rem;
           font-size: 0.95em;
-          line-height: 1.5;
-          padding: 0.5rem 0.75rem;
+          font-family: inherit;
+          line-height: 1.4;
         }
 
         #chat-send {
-          padding: 0.5rem 1.5rem;
-          height: 2.5rem;
+          align-self: flex-end;
+          padding: 0.75rem 1.5rem;
         }
 
         /* Settings Modal */
         .settings-modal {
-          width: 90%;
           max-width: 600px;
-          max-height: 80vh;
+          width: 90%;
           padding: 0;
-          border: 1px solid var(--foreground2);
           background: var(--background0);
-          margin: auto;
-          overflow: hidden;
+          color: var(--foreground1);
         }
 
         .settings-modal::backdrop {
@@ -469,8 +500,7 @@ export function chat() {
 
         .modal-header h2 {
           margin: 0;
-          font-size: 1.25em;
-          color: var(--foreground1);
+          font-size: 1.25rem;
         }
 
         .close-btn {
@@ -483,8 +513,8 @@ export function chat() {
 
         .modal-content {
           padding: 1.5rem;
+          max-height: 70vh;
           overflow-y: auto;
-          max-height: calc(80vh - 4rem);
         }
 
         .settings-section {
@@ -493,20 +523,25 @@ export function chat() {
 
         .settings-section h3 {
           margin: 0 0 1rem 0;
-          font-size: 1.1em;
-          color: var(--foreground1);
+          font-size: 1.1rem;
+          color: var(--foreground0);
         }
 
         .model-select {
           width: 100%;
-          padding: 0.5rem;
+          padding: 0.75rem;
+          background: var(--background1);
+          color: var(--foreground1);
+          border: 1px solid var(--foreground2);
+          border-radius: 4px;
+          font-family: inherit;
           font-size: 0.95em;
         }
 
-        /* Provider Status */
         .provider-status {
-          padding: 0.75rem;
+          padding: 1rem;
           margin-bottom: 0.5rem;
+          background: var(--background1);
         }
 
         .provider-header {
@@ -517,19 +552,52 @@ export function chat() {
 
         .provider-name {
           font-weight: 500;
-          color: var(--foreground1);
         }
 
-        /* API Key Section */
+        .status-indicator {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--foreground2);
+        }
+
+        .status-dot.checking {
+          background: #f59e0b;
+          animation: pulse 1s infinite;
+        }
+
+        .status-dot.online {
+          background: #10b981;
+        }
+
+        .status-dot.offline {
+          background: #ef4444;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        .status-text {
+          font-size: 0.85em;
+          color: var(--foreground0);
+        }
+
         .api-key-section {
-          margin-bottom: 1rem;
+          margin-bottom: 1.5rem;
         }
 
         .api-key-section label {
           display: block;
           margin-bottom: 0.5rem;
-          font-size: 0.9em;
-          color: var(--foreground1);
+          font-weight: 500;
         }
 
         .api-key-input-wrapper {
@@ -544,7 +612,6 @@ export function chat() {
         .api-key-status {
           margin-top: 0.5rem;
           font-size: 0.85em;
-          color: var(--foreground0);
         }
 
         .api-key-status.success {
@@ -555,43 +622,7 @@ export function chat() {
           color: #ef4444;
         }
 
-        /* Status Indicators */
-        .status-indicator {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .status-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          background-color: var(--foreground2);
-          transition: background-color 0.3s;
-        }
-
-        .status-dot.checking {
-          animation: pulse 1s infinite;
-        }
-
-        .status-dot.online {
-          background-color: #10b981;
-        }
-
-        .status-dot.offline {
-          background-color: #ef4444;
-        }
-
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-
-        /* Model List */
         .model-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
           max-height: 300px;
           overflow-y: auto;
         }
@@ -712,14 +743,21 @@ export function chat() {
         }
       </style>
 
-      <script>
+      <script type="module">
+        // Import the Effect-based ChatClient from the bundled module
+        import { ChatClient } from '/js/chat-client.js'
+        
+        // Initialize ChatClient
+        const chatClient = new ChatClient()
+        
         // Chat state
-        let chatMessages = []
+        let currentConversationId = null
         let currentModel = ''
         let currentProvider = 'cloudflare' // Default to cloudflare
         let isStreaming = false
         let openRouterApiKey = localStorage.getItem('openRouterApiKey') || ''
         let cloudflareAvailable = true // Assume available by default
+        let messageUnsubscribe = null
 
         // UI Elements
         let elements = {}
@@ -737,6 +775,7 @@ export function chat() {
             chatInput: document.getElementById('chat-input'),
             chatSend: document.getElementById('chat-send'),
             chatMessages: document.getElementById('chat-messages'),
+            chatHistory: document.getElementById('chat-history'),
             modelSelect: document.getElementById('chat-model-select'),
             currentModelName: document.getElementById('current-model-name'),
             emptyState: document.getElementById('empty-state'),
@@ -750,6 +789,119 @@ export function chat() {
             openrouterSave: document.getElementById('openrouter-save'),
             openrouterStatus: document.getElementById('openrouter-status')
           }
+        }
+
+        // Format timestamp
+        const formatTimestamp = (date) => {
+          const now = new Date()
+          const messageDate = new Date(date)
+          const diffMs = now - messageDate
+          const diffMins = Math.floor(diffMs / 60000)
+          const diffHours = Math.floor(diffMins / 60)
+          const diffDays = Math.floor(diffHours / 24)
+
+          if (diffMins < 1) return 'Just now'
+          if (diffMins < 60) return \`\${diffMins}m ago\`
+          if (diffHours < 24) return \`\${diffHours}h ago\`
+          if (diffDays < 7) return \`\${diffDays}d ago\`
+          return messageDate.toLocaleDateString()
+        }
+
+        // Load conversations into sidebar
+        const loadConversations = async () => {
+          try {
+            const conversations = await chatClient.listConversations()
+            
+            if (conversations.length === 0) {
+              elements.chatHistory.innerHTML = \`
+                <div class="history-loading">
+                  <p>No conversations yet</p>
+                </div>
+              \`
+              return
+            }
+
+            elements.chatHistory.innerHTML = conversations.map(conv => \`
+              <div class="conversation-item \${conv.id === currentConversationId ? 'active' : ''}" 
+                   data-id="\${conv.id}"
+                   onclick="switchConversation('\${conv.id}')">
+                <div class="conversation-title">\${conv.title || 'New Conversation'}</div>
+                <div class="conversation-meta">
+                  \${conv.model ? conv.model.split('/').pop() : 'No model'} • \${formatTimestamp(conv.lastMessageAt || conv.createdAt)}
+                </div>
+              </div>
+            \`).join('')
+          } catch (error) {
+            console.error('Failed to load conversations:', error)
+            elements.chatHistory.innerHTML = \`
+              <div class="history-loading">
+                <p>Failed to load conversations</p>
+              </div>
+            \`
+          }
+        }
+
+        // Switch to a different conversation
+        window.switchConversation = async (conversationId) => {
+          if (conversationId === currentConversationId) return
+          
+          // Unsubscribe from previous conversation
+          if (messageUnsubscribe) {
+            messageUnsubscribe()
+            messageUnsubscribe = null
+          }
+          
+          currentConversationId = conversationId
+          
+          // Load conversation details
+          const conversation = await chatClient.getConversation(conversationId)
+          if (conversation) {
+            // Update model
+            if (conversation.model) {
+              currentModel = conversation.model
+              elements.modelSelect.value = currentModel
+              handleModelSelection()
+            }
+            
+            // Load messages
+            await loadMessages(conversationId)
+            
+            // Subscribe to live updates
+            messageUnsubscribe = chatClient.subscribeToConversation(conversationId, (messages) => {
+              renderMessages(messages)
+            })
+          }
+          
+          // Update UI
+          loadConversations()
+        }
+
+        // Load messages for a conversation
+        const loadMessages = async (conversationId) => {
+          try {
+            const messages = await chatClient.getMessages(conversationId)
+            renderMessages(messages)
+          } catch (error) {
+            console.error('Failed to load messages:', error)
+          }
+        }
+
+        // Render messages to UI
+        const renderMessages = (messages) => {
+          elements.chatMessages.innerHTML = ''
+          
+          if (messages.length === 0) {
+            elements.chatMessages.appendChild(elements.emptyState.cloneNode(true))
+            return
+          }
+          
+          messages.forEach(msg => {
+            if (msg.role !== 'system') {
+              addMessageToUI(msg.role, msg.content, false, false)
+            }
+          })
+          
+          elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight
         }
 
         // Format file size
@@ -806,14 +958,6 @@ export function chat() {
             elements.chatSend.disabled = false
             elements.chatInput.placeholder = 'Type your message...'
             elements.chatInput.focus()
-            
-            // Don't clear empty state here - only clear when actually sending a message
-            if (chatMessages.length === 0) {
-              chatMessages = [{
-                role: 'system',
-                content: 'You are a helpful assistant.'
-              }]
-            }
           } else {
             elements.chatInput.disabled = true
             elements.chatSend.disabled = true
@@ -916,9 +1060,26 @@ export function chat() {
               const status = await response.json()
               updateOllamaStatus(status)
             } catch (error) {
-              console.error('Error checking Ollama:', error)
+              console.error('Failed to check Ollama status:', error)
               updateOllamaStatus({ online: false })
             }
+          }
+        }
+
+        // Update Cloudflare status
+        const updateCloudflareStatus = (online) => {
+          if (!elements.cloudflareStatusDot || !elements.cloudflareStatusText) return
+
+          elements.cloudflareStatusDot.classList.remove('checking', 'online', 'offline')
+          
+          if (online) {
+            elements.cloudflareStatusDot.classList.add('online')
+            elements.cloudflareStatusText.textContent = 'Available'
+            cloudflareAvailable = true
+          } else {
+            elements.cloudflareStatusDot.classList.add('offline')
+            elements.cloudflareStatusText.textContent = 'Not configured'
+            cloudflareAvailable = false
           }
         }
 
@@ -928,30 +1089,12 @@ export function chat() {
             elements.cloudflareStatusDot.classList.add('checking')
             try {
               const response = await fetch('/api/cloudflare/status')
-              const status = await response.json()
-              updateCloudflareStatus(status)
+              const data = await response.json()
+              updateCloudflareStatus(data.available)
             } catch (error) {
-              console.error('Error checking Cloudflare:', error)
-              updateCloudflareStatus({ available: false })
+              console.error('Failed to check Cloudflare status:', error)
+              updateCloudflareStatus(false)
             }
-          }
-        }
-
-        // Update Cloudflare status
-        const updateCloudflareStatus = (status) => {
-          if (!elements.cloudflareStatusDot || !elements.cloudflareStatusText) return
-
-          elements.cloudflareStatusDot.classList.remove('checking', 'online', 'offline')
-
-          if (status.available) {
-            elements.cloudflareStatusDot.classList.add('online')
-            elements.cloudflareStatusText.textContent = 'Configured'
-            cloudflareAvailable = true
-            updateCloudflareModels()
-          } else {
-            elements.cloudflareStatusDot.classList.add('offline')
-            elements.cloudflareStatusText.textContent = 'Not configured'
-            cloudflareAvailable = false
           }
         }
 
@@ -970,12 +1113,11 @@ export function chat() {
           const cloudflareModels = [
             { value: '@cf/meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
             { value: '@cf/meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B' },
-            { value: '@cf/meta/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision' },
-            { value: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B' },
-            { value: '@cf/google/gemma-2-9b-it', name: 'Gemma 2 9B' },
-            { value: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill' },
-            { value: '@cf/qwen/qwen1.5-7b-chat-awq', name: 'Qwen 1.5 7B Chat' },
-            { value: '@cf/microsoft/phi-2', name: 'Phi-2' }
+            { value: '@cf/meta/llama-3-8b-instruct', name: 'Llama 3 8B' },
+            { value: '@cf/meta/llama-2-7b-chat-fp16', name: 'Llama 2 7B' },
+            { value: '@hf/thebloke/neural-chat-7b-v3-1-awq', name: 'Neural Chat 7B' },
+            { value: '@cf/deepseek-ai/deepseek-math-7b-instruct', name: 'DeepSeek Math 7B' },
+            { value: '@cf/deepseek-ai/deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 Distill 70B' }
           ]
 
           cloudflareModels.forEach(model => {
@@ -990,11 +1132,10 @@ export function chat() {
 
         // Save OpenRouter API key
         const saveOpenRouterApiKey = () => {
-          if (!elements.openrouterApiKey || !elements.openrouterStatus) return
-          
           const apiKey = elements.openrouterApiKey.value.trim()
+          
           if (!apiKey) {
-            elements.openrouterStatus.textContent = 'API key is required'
+            elements.openrouterStatus.textContent = 'Please enter an API key'
             elements.openrouterStatus.className = 'api-key-status error'
             return
           }
@@ -1044,7 +1185,7 @@ export function chat() {
         }
 
         // Handle model selection
-        const handleModelSelection = () => {
+        const handleModelSelection = async () => {
           const selected = elements.modelSelect.value
           if (!selected) {
             currentModel = ''
@@ -1064,10 +1205,14 @@ export function chat() {
           updateModelIndicator()
           updateChatInput()
           
+          // Update current conversation's model if we have one
+          if (currentConversationId) {
+            await chatClient.updateConversation(currentConversationId, { model: currentModel })
+          }
         }
 
         // Add message to UI
-        const addMessageToUI = (role, content, streaming = false) => {
+        const addMessageToUI = (role, content, streaming = false, save = true) => {
           const messageDiv = document.createElement('div')
           messageDiv.className = 'chat-message'
           
@@ -1089,45 +1234,42 @@ export function chat() {
         }
 
         // Handle example prompt click
-        const handleExamplePrompt = (prompt) => {
+        const handleExamplePrompt = async (prompt) => {
           // Force stop any streaming in progress
           isStreaming = false
           
-          // Clear existing chat and start fresh
-          chatMessages = [{
-            role: 'system',
-            content: 'You are a helpful assistant.'
-          }]
-          elements.chatMessages.innerHTML = ''
+          // Create new conversation
+          const result = await chatClient.startConversation(prompt, currentModel, {
+            systemPrompt: 'You are a helpful assistant.'
+          })
           
-          // Just fill the input - we always have a model selected now
-          elements.chatInput.value = prompt
-          autoResizeTextarea()
-          elements.chatInput.focus()
-          // Auto-submit the message
-          sendChatMessage()
+          currentConversationId = result.conversation.id
+          
+          // Subscribe to live updates
+          if (messageUnsubscribe) {
+            messageUnsubscribe()
+          }
+          messageUnsubscribe = chatClient.subscribeToConversation(currentConversationId, (messages) => {
+            renderMessages(messages)
+          })
+          
+          // Clear messages and add the user message
+          elements.chatMessages.innerHTML = ''
+          addMessageToUI('user', prompt, false, false)
+          
+          // Update conversations list
+          await loadConversations()
+          
+          // Send to AI
+          await sendToAI(prompt, result.message.id)
         }
 
-        // Send chat message
-        const sendChatMessage = async () => {
-          if (isStreaming || !currentModel || !elements.chatInput.value.trim()) return
-          
-          const message = elements.chatInput.value.trim()
-          elements.chatInput.value = ''
-          autoResizeTextarea()
-          
-          // Hide empty state when sending first message
-          if (elements.emptyState && elements.emptyState.style.display !== 'none') {
-            elements.emptyState.style.display = 'none'
-          }
-          
-          // Add user message
-          chatMessages.push({ role: 'user', content: message })
-          addMessageToUI('user', message)
+        // Send message to AI
+        const sendToAI = async (content, userMessageId) => {
+          isStreaming = true
           
           // Add assistant message placeholder
-          const assistantDiv = addMessageToUI('assistant', '', true)
-          isStreaming = true
+          const assistantDiv = addMessageToUI('assistant', '', true, false)
           
           try {
             let endpoint = ''
@@ -1144,6 +1286,10 @@ export function chat() {
             } else if (currentProvider === 'cloudflare') {
               endpoint = '/api/cloudflare/chat'
             }
+            
+            // Get all messages for context
+            const messages = await chatClient.getMessages(currentConversationId)
+            const chatMessages = messages.map(m => ({ role: m.role, content: m.content }))
             
             const response = await fetch(endpoint, {
               method: 'POST',
@@ -1193,8 +1339,14 @@ export function chat() {
             // Remove streaming indicator
             assistantDiv.classList.remove('streaming')
             
-            // Add to messages
-            chatMessages.push({ role: 'assistant', content: assistantMessage })
+            // Save assistant message
+            await chatClient.sendMessage({
+              conversationId: currentConversationId,
+              role: 'assistant',
+              content: assistantMessage,
+              model: currentModel,
+              metadata: {}
+            })
             
           } catch (error) {
             console.error('Chat error:', error)
@@ -1203,6 +1355,53 @@ export function chat() {
           } finally {
             isStreaming = false
           }
+        }
+
+        // Send chat message
+        const sendChatMessage = async () => {
+          if (isStreaming || !currentModel || !elements.chatInput.value.trim()) return
+          
+          const message = elements.chatInput.value.trim()
+          elements.chatInput.value = ''
+          autoResizeTextarea()
+          
+          // Create conversation if needed
+          if (!currentConversationId) {
+            const result = await chatClient.startConversation(message, currentModel, {
+              systemPrompt: 'You are a helpful assistant.'
+            })
+            currentConversationId = result.conversation.id
+            
+            // Subscribe to live updates
+            if (messageUnsubscribe) {
+              messageUnsubscribe()
+            }
+            messageUnsubscribe = chatClient.subscribeToConversation(currentConversationId, (messages) => {
+              renderMessages(messages)
+            })
+            
+            // Update conversations list
+            await loadConversations()
+          } else {
+            // Save user message
+            await chatClient.sendMessage({
+              conversationId: currentConversationId,
+              role: 'user',
+              content: message,
+              metadata: {}
+            })
+          }
+          
+          // Hide empty state
+          if (elements.emptyState && elements.emptyState.style.display !== 'none') {
+            elements.emptyState.style.display = 'none'
+          }
+          
+          // Add to UI
+          addMessageToUI('user', message, false, false)
+          
+          // Send to AI
+          await sendToAI(message)
         }
 
         // Initialize event listeners
@@ -1268,11 +1467,15 @@ export function chat() {
           
           // New chat button
           if (elements.newChatBtn) {
-            elements.newChatBtn.addEventListener('click', () => {
-              chatMessages = [{
-                role: 'system',
-                content: 'You are a helpful assistant.'
-              }]
+            elements.newChatBtn.addEventListener('click', async () => {
+              // Clear current conversation
+              currentConversationId = null
+              if (messageUnsubscribe) {
+                messageUnsubscribe()
+                messageUnsubscribe = null
+              }
+              
+              // Clear messages
               elements.chatMessages.innerHTML = ''
               
               // Re-add the empty state
@@ -1309,6 +1512,7 @@ export function chat() {
               elements.emptyState = document.getElementById('empty-state')
               
               updateChatInput()
+              loadConversations()
             })
           }
           
@@ -1323,7 +1527,7 @@ export function chat() {
         }
 
         // Initialize on page load
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
           // Reset streaming state on page load
           isStreaming = false
           
@@ -1367,6 +1571,15 @@ export function chat() {
           
           // Auto-check Ollama status periodically
           setInterval(checkOllamaStatus, 30000)
+          
+          // Load conversations
+          await loadConversations()
+          
+          // If we have conversations, load the most recent one
+          const conversations = await chatClient.listConversations()
+          if (conversations.length > 0) {
+            await switchConversation(conversations[0].id)
+          }
         })
       </script>
     `

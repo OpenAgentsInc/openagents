@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "build": "tsc && bun run generate:llms-txt",
+    "build": "tsc && bun run build:client && bun run generate:llms-txt",
+    "build:client": "bun run src/build-client.ts",
     "typecheck": "tsc --noEmit",
     "generate:llms-txt": "tsx ../../scripts/generate-llms-txt.ts"
   },
   "dependencies": {
     "@effect/platform": "0.84.6",
+    "@effect/platform-bun": "^0.70.2",
     "@effect/platform-node": "0.85.2",
     "@openagentsinc/ai": "workspace:*",
     "@openagentsinc/nostr": "workspace:*",
