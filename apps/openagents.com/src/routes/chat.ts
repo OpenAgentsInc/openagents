@@ -1090,6 +1090,16 @@ export function chat() {
 
         // Handle example prompt click
         const handleExamplePrompt = (prompt) => {
+          // Force stop any streaming in progress
+          isStreaming = false
+          
+          // Clear existing chat and start fresh
+          chatMessages = [{
+            role: 'system',
+            content: 'You are a helpful assistant.'
+          }]
+          elements.chatMessages.innerHTML = ''
+          
           // Just fill the input - we always have a model selected now
           elements.chatInput.value = prompt
           autoResizeTextarea()
@@ -1314,6 +1324,9 @@ export function chat() {
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', () => {
+          // Reset streaming state on page load
+          isStreaming = false
+          
           initElements()
           initEventListeners()
           
