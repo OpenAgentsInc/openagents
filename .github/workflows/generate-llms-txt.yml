@@ -35,7 +35,7 @@ jobs:
         run: pnpm install
 
       - name: Generate llms.txt
-        run: pnpm tsx scripts/generate-llms-txt.ts
+        run: pnpm exec tsx scripts/generate-llms-txt.ts
 
       - name: Validate llms.txt format
         run: |
