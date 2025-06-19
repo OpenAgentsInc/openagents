@@ -202,6 +202,9 @@ importers:
 
   packages/ai:
     dependencies:
+      '@effect/experimental':
+        specifier: 0.45.1
+        version: 0.45.1(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/platform':
         specifier: 0.84.6
         version: 0.84.6(effect@3.16.3)
@@ -1314,7 +1317,7 @@ packages:
     dependencies:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/workflow': 0.1.14(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(effect@3.16.3)
       effect: 3.16.3
     dev: false
@@ -1347,11 +1350,11 @@ packages:
       prettier-linter-helpers: 1.0.0
     dev: true
 
-  /@effect/experimental@0.48.12(@effect/platform@0.84.6)(effect@3.16.3):
-    resolution: {integrity: sha512-tRCt57mdArna62L3xu7HIlGXOwHoUDZOQCbMqzQX29TtMflY26mCb9GF3/6s2DsTDWVUCCOroHnfA/XNP+uS/w==}
+  /@effect/experimental@0.45.1(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-vfr8z0UalIk0fWHnPwOPzvkKKzVvyPqZuXB0VMyMeSK0uZkXPC3yPaiP/2rvuyeLbLXXMZqo1DF40106GUvfjg==}
     peerDependencies:
-      '@effect/platform': ^0.84.11
-      effect: ^3.16.7
+      '@effect/platform': ^0.81.1
+      effect: ^3.14.22
       ioredis: ^5
       lmdb: ^3
     peerDependenciesMeta:
@@ -1443,7 +1446,7 @@ packages:
       '@effect/cluster': 0.38.16(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(@effect/workflow@0.1.14)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
       '@parcel/watcher': 2.5.1
       effect: 3.16.3
       multipasta: 0.2.5
@@ -1504,7 +1507,7 @@ packages:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/platform-node-shared': 0.39.16(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
       effect: 3.16.3
       mime: 3.0.0
       undici: 7.10.0
@@ -1631,14 +1634,14 @@ packages:
       '@effect/io': 0.15.3
       fast-check: 3.23.2
 
-  /@effect/sql@0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3):
+  /@effect/sql@0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-DZarU+4NTwIYO8MALaRVg1rRN5gdrJW7nJLECl6nSTwbXRamo6GSarXUiACqE4csZZ7C2K6Jtu99UbEqZ3Iomw==}
     peerDependencies:
       '@effect/experimental': ^0.48.12
       '@effect/platform': ^0.84.11
       effect: ^3.16.7
     dependencies:
-      '@effect/experimental': 0.48.12(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/experimental': 0.45.1(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@opentelemetry/semantic-conventions': 1.34.0
       effect: 3.16.3

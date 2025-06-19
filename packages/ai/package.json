@@ -25,6 +25,7 @@
     "coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@effect/experimental": "0.45.1",
     "@effect/platform": "0.84.6",
     "@effect/platform-node": "0.85.2",
     "@effect/schema": "0.75.5",

@@ -4,7 +4,7 @@
 import * as Sse from "@effect/experimental/Sse"
 import * as HttpBody from "@effect/platform/HttpBody"
 import * as HttpClient from "@effect/platform/HttpClient"
-import type * as HttpClientError from "@effect/platform/HttpClientError"
+import * as HttpClientError from "@effect/platform/HttpClientError"
 import * as HttpClientRequest from "@effect/platform/HttpClientRequest"
 import * as Config from "effect/Config"
 import type { ConfigError } from "effect/ConfigError"
@@ -68,10 +68,10 @@ export declare namespace OpenRouterClient {
   export interface Service {
     readonly streamRequest: <A>(
       request: HttpClientRequest.HttpClientRequest
-    ) => Stream.Stream<A, HttpClientError.HttpClientError>
+    ) => Stream.Stream<A, HttpClientError.HttpClientError, never>
     readonly stream: (
       request: StreamCompletionRequest
-    ) => Stream.Stream<AiResponse.AiResponse, HttpClientError.HttpClientError>
+    ) => Stream.Stream<AiResponse.AiResponse, HttpClientError.HttpClientError, never>
   }
 }
 
@@ -133,8 +133,8 @@ export const make = (options: {
         Stream.unwrapScoped,
         Stream.decodeText(),
         Stream.pipeThroughChannel(Sse.makeChannel()),
-        Stream.takeWhile((event) => event.data !== "[DONE]"),
-        Stream.map((event) => JSON.parse(event.data) as A)
+        Stream.takeWhile((event: Sse.Sse) => event.data !== "[DONE]"),
+        Stream.map((event: Sse.Sse) => JSON.parse(event.data) as A)
       )
 
     const stream = (request: StreamCompletionRequest) =>
