@@ -603,7 +603,7 @@ export const registerResource: {
   ): <
     E,
     R,
-    const Completions extends Partial<ResourceCompletions<Schemas>> = Record<string, never>
+    const Completions extends Partial<ResourceCompletions<Schemas>> = {}
   >(options: {
     readonly name: string
     readonly description?: string | undefined
@@ -752,7 +752,7 @@ export const resource: {
   ): <
     E,
     R,
-    const Completions extends Partial<ResourceCompletions<Schemas>> = Record<string, never>
+    const Completions extends Partial<ResourceCompletions<Schemas>> = {}
   >(options: {
     readonly name: string
     readonly description?: string | undefined

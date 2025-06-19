@@ -133,8 +133,8 @@ export const make = (options: {
         Stream.unwrapScoped,
         Stream.decodeText(),
         Stream.pipeThroughChannel(Sse.makeChannel()),
-        Stream.takeWhile((event: Sse.Sse) => event.data !== "[DONE]"),
-        Stream.map((event: Sse.Sse) => JSON.parse(event.data) as A)
+        Stream.takeWhile((event: Sse.Event) => event.data !== "[DONE]"),
+        Stream.map((event: Sse.Event) => JSON.parse(event.data) as A)
       )
 
     const stream = (request: StreamCompletionRequest) =>
