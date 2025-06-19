@@ -7,6 +7,7 @@ import { blogIndex, blogPost } from './routes/blog'
 import { chat } from './routes/chat'
 import { ollamaApi } from './routes/api/ollama'
 import { openrouterApi } from './routes/api/openrouter'
+import { cloudflareApi } from './routes/api/cloudflare'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -43,6 +44,7 @@ app.route('/chat', chat)
 // Mount API routes
 app.elysia.use(ollamaApi)
 app.elysia.use(openrouterApi)
+app.elysia.use(cloudflareApi)
 
 // Serve llms.txt
 app.elysia.get('/llms.txt', async () => {
