@@ -1,5 +1,5 @@
 import { document, html } from "@openagentsinc/psionic"
-import { navigation } from "../components/navigation"
+import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
 export function chat() {
@@ -7,7 +7,7 @@ export function chat() {
     title: "Chat - OpenAgents",
     styles: baseStyles,
     body: html`
-      ${navigation({ current: "chat" })}
+      ${sharedHeader({ current: "chat" })}
       
       <div class="chat-container">
         <!-- Chat History Sidebar -->
@@ -54,8 +54,8 @@ export function chat() {
 
         <!-- Main Chat Area -->
         <div class="chat-main">
-          <!-- Chat Header -->
-          <div class="chat-header">
+          <!-- Model Indicator Bar -->
+          <div class="model-bar">
             <button 
               id="sidebar-toggle-main"
               is-="button" 
@@ -207,11 +207,31 @@ export function chat() {
       </div>
 
       <style>
+        /* Prevent page scrolling */
+        html, body {
+          margin: 0;
+          padding: 0;
+          height: 100vh;
+          overflow: hidden;
+          position: fixed;
+          width: 100%;
+        }
+        
+        /* ASCII Header fix */
+        .ascii-header {
+          position: sticky;
+          top: 0;
+          z-index: 100;
+          flex-shrink: 0;
+        }
+        
         /* Main Layout */
         .chat-container {
           display: flex;
-          height: calc(100vh - 60px);
+          height: calc(100vh - 4rem); /* Adjust for ASCII header height */
           background: var(--background0);
+          position: relative;
+          overflow: hidden;
         }
 
         /* Chat Sidebar */
@@ -284,12 +304,13 @@ export function chat() {
           flex-direction: column;
         }
 
-        .chat-header {
-          padding: 1rem;
+        .model-bar {
+          padding: 0.75rem 1rem;
           border-bottom: 1px solid var(--foreground2);
           display: flex;
           align-items: center;
           gap: 1rem;
+          background: var(--background1);
         }
 
         .sidebar-toggle-main {
