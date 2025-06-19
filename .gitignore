@@ -15,6 +15,7 @@ scratchpad/*
 .env.test.local
 .env.production.local
 .tsbuildinfo*
+worktrees/
 
 # Generated TypeScript files in src directories
 packages/*/src/**/*.d.ts
