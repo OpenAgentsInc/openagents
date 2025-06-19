@@ -664,7 +664,7 @@ export function chat() {
             { value: '@cf/meta/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision', size: '11B' },
             { value: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B', size: '3B' },
             { value: '@cf/google/gemma-2-9b-it', name: 'Gemma 2 9B', size: '9B' },
-            { value: '@cf/deepseek-ai/deepseek-coder-6.7b-instruct-awq', name: 'DeepSeek Coder', size: '6.7B' },
+            { value: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill', size: '32B' },
             { value: '@cf/qwen/qwen1.5-7b-chat-awq', name: 'Qwen 1.5 7B Chat', size: '7B' },
             { value: '@cf/microsoft/phi-2', name: 'Phi-2', size: '2.7B' }
           ]
@@ -714,7 +714,7 @@ export function chat() {
             { value: '@cf/meta/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision' },
             { value: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B' },
             { value: '@cf/google/gemma-2-9b-it', name: 'Gemma 2 9B' },
-            { value: '@cf/deepseek-ai/deepseek-coder-6.7b-instruct-awq', name: 'DeepSeek Coder 6.7B' },
+            { value: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill 32B' },
             { value: '@cf/qwen/qwen1.5-7b-chat-awq', name: 'Qwen 1.5 7B Chat' },
             { value: '@cf/microsoft/phi-2', name: 'Phi-2' }
           ]

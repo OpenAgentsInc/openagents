@@ -128,8 +128,8 @@ export const models = {
   QWEN_1_5_14B_CHAT: "@cf/qwen/qwen1.5-14b-chat-awq",
 
   // Code Models
-  DEEPSEEK_CODER_6_7B: "@cf/deepseek-ai/deepseek-coder-6.7b-instruct-awq",
-  CODELLAMA_7B_INSTRUCT: "@cf/meta/code-llama-13b-instruct-awq",
+  DEEPSEEK_R1_DISTILL_32B: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+  DEEPSEEK_MATH_7B: "@cf/deepseek-ai/deepseek-math-7b-instruct",
 
   // Phi Models
   PHI_2: "@cf/microsoft/phi-2",
@@ -190,12 +190,12 @@ export const presets = {
     }),
 
   /**
-   * Code generation specialist
+   * DeepSeek R1 reasoning model
    */
-  deepseek_coder: (options?: Partial<Parameters<typeof makeLanguageModel>[0]>) =>
+  deepseek_r1: (options?: Partial<Parameters<typeof makeLanguageModel>[0]>) =>
     makeLanguageModel({
-      model: models.DEEPSEEK_CODER_6_7B,
-      temperature: 0.3,
+      model: models.DEEPSEEK_R1_DISTILL_32B,
+      temperature: 0.7,
       maxTokens: 4096,
       ...options
     }),
