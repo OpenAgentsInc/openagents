@@ -115,6 +115,15 @@ importers:
 
   apps/openagents.com:
     dependencies:
+      '@effect/platform':
+        specifier: 0.84.6
+        version: 0.84.6(effect@3.16.3)
+      '@effect/platform-node':
+        specifier: 0.85.2
+        version: 0.85.2(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
+      '@openagentsinc/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai/dist
       '@openagentsinc/nostr':
         specifier: workspace:*
         version: link:../../packages/nostr/dist
@@ -127,6 +136,9 @@ importers:
       '@openagentsinc/ui':
         specifier: workspace:*
         version: link:../../packages/ui/dist
+      effect:
+        specifier: 3.16.3
+        version: 3.16.3
       elysia:
         specifier: ^1.3.5
         version: 1.3.5(exact-mirror@0.1.2)(file-type@21.0.0)(typescript@5.8.3)
@@ -1317,7 +1329,7 @@ packages:
     dependencies:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/workflow': 0.1.14(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(effect@3.16.3)
       effect: 3.16.3
     dev: false
@@ -1355,6 +1367,24 @@ packages:
     peerDependencies:
       '@effect/platform': ^0.81.1
       effect: ^3.14.22
+      ioredis: ^5
+      lmdb: ^3
+    peerDependenciesMeta:
+      ioredis:
+        optional: true
+      lmdb:
+        optional: true
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      effect: 3.16.3
+      uuid: 11.1.0
+    dev: false
+
+  /@effect/experimental@0.48.12(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-tRCt57mdArna62L3xu7HIlGXOwHoUDZOQCbMqzQX29TtMflY26mCb9GF3/6s2DsTDWVUCCOroHnfA/XNP+uS/w==}
+    peerDependencies:
+      '@effect/platform': ^0.84.11
+      effect: ^3.16.7
       ioredis: ^5
       lmdb: ^3
     peerDependenciesMeta:
@@ -1446,7 +1476,7 @@ packages:
       '@effect/cluster': 0.38.16(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(@effect/workflow@0.1.14)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
       '@parcel/watcher': 2.5.1
       effect: 3.16.3
       multipasta: 0.2.5
@@ -1507,7 +1537,7 @@ packages:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/platform-node-shared': 0.39.16(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3)
       effect: 3.16.3
       mime: 3.0.0
       undici: 7.10.0
@@ -1634,14 +1664,14 @@ packages:
       '@effect/io': 0.15.3
       fast-check: 3.23.2
 
-  /@effect/sql@0.37.12(@effect/experimental@0.45.1)(@effect/platform@0.84.6)(effect@3.16.3):
+  /@effect/sql@0.37.12(@effect/experimental@0.48.12)(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-DZarU+4NTwIYO8MALaRVg1rRN5gdrJW7nJLECl6nSTwbXRamo6GSarXUiACqE4csZZ7C2K6Jtu99UbEqZ3Iomw==}
     peerDependencies:
       '@effect/experimental': ^0.48.12
       '@effect/platform': ^0.84.11
       effect: ^3.16.7
     dependencies:
-      '@effect/experimental': 0.45.1(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/experimental': 0.48.12(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@opentelemetry/semantic-conventions': 1.34.0
       effect: 3.16.3

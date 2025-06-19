@@ -1,6 +1,6 @@
-import * as HttpClient from "@effect/platform/HttpClient"
+import * as HttpClientNode from "@effect/platform-node/NodeHttpClient"
 import * as Ai from "@openagentsinc/ai"
-import { Effect, Layer, Stream } from "effect"
+import { Effect, Layer, Option, Stream } from "effect"
 import * as Redacted from "effect/Redacted"
 import { Elysia } from "elysia"
 
@@ -20,34 +20,26 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
       const encoder = new TextEncoder() // Start streaming in background using Effect patterns
       ;(async () => {
         try {
-          // Create the chat effect using the OpenRouter provider
+          // Create the chat effect using the OpenRouter client
           const chatProgram = Effect.gen(function*() {
-            const languageModel = yield* Ai.OpenRouter.makeOpenRouterLanguageModel({
-              modelId: model
-            })
+            const client = yield* Ai.OpenRouter.OpenRouterClient
 
-            // Create the request
-            const request = {
+            // Get the stream
+            const responseStream = client.stream({
+              model,
               messages: messages.map((msg: any) => ({
                 role: msg.role,
                 content: msg.content
-              })),
-              config: {
-                temperature: 0.7,
-                maxTokens: 4096
-              }
-            }
-
-            // Get the stream
-            const responseStream = yield* languageModel.generateStream(request)
+              }))
+            })
 
             // Process the stream
             yield* responseStream.pipe(
-              Stream.tap((response) =>
+              Stream.tap((response: any) =>
                 Effect.sync(() => {
                   // Convert AiResponse to OpenAI-compatible format
                   for (const part of response.parts) {
-                    if (part._tag === "text") {
+                    if (part._tag === "TextPart") {
                       const chunk = {
                         id: "chatcmpl-" + Math.random().toString(36).substring(2),
                         object: "chat.completion.chunk",
@@ -62,7 +54,7 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
                         }]
                       }
                       writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`)).catch(() => {})
-                    } else if (part._tag === "finish") {
+                    } else if (part._tag === "FinishPart") {
                       const chunk = {
                         id: "chatcmpl-" + Math.random().toString(36).substring(2),
                         object: "chat.completion.chunk",
@@ -84,22 +76,17 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
           })
 
           // Create the layers
-          const HttpClientLive = HttpClient.layer
+          const HttpClientLive = HttpClientNode.layer
           const OpenRouterClientLive = Ai.OpenRouter.layerOpenRouterClient({
             apiKey: Redacted.make(apiKey),
             referer: "https://openagents.com",
             title: "OpenAgents"
           })
-
           // Run the program with layers
           await Effect.runPromise(
             chatProgram.pipe(
-              Effect.provide(Layer.mergeAll(HttpClientLive, OpenRouterClientLive)),
-              Effect.tapError((error) =>
-                Effect.sync(() => {
-                  console.error("OpenRouter chat error:", error)
-                  return error
-                })
+              Effect.provide(
+                Layer.mergeAll(HttpClientLive, OpenRouterClientLive)
               )
             )
           )
