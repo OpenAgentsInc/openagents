@@ -716,10 +716,10 @@ export function chat() {
         // Chat state
         let chatMessages = []
         let currentModel = ''
-        let currentProvider = 'ollama' // 'ollama', 'openrouter', or 'cloudflare'
+        let currentProvider = 'cloudflare' // Default to cloudflare
         let isStreaming = false
         let openRouterApiKey = localStorage.getItem('openRouterApiKey') || ''
-        let cloudflareAvailable = false
+        let cloudflareAvailable = true // Assume available by default
 
         // UI Elements
         let elements = {}
@@ -1064,13 +1064,6 @@ export function chat() {
           updateModelIndicator()
           updateChatInput()
           
-          // If there was a pending prompt, use it now
-          if (window.pendingPrompt && currentModel) {
-            elements.chatInput.value = window.pendingPrompt
-            autoResizeTextarea()
-            elements.chatInput.focus()
-            window.pendingPrompt = null
-          }
         }
 
         // Add message to UI
@@ -1097,17 +1090,7 @@ export function chat() {
 
         // Handle example prompt click
         const handleExamplePrompt = (prompt) => {
-          // Store the prompt for later use
-          const pendingPrompt = prompt
-          
-          if (!currentModel) {
-            // Open settings and show a message
-            openSettings()
-            // Set a flag to use this prompt after model selection
-            window.pendingPrompt = pendingPrompt
-            return
-          }
-          
+          // Just fill the input - we always have a model selected now
           elements.chatInput.value = prompt
           autoResizeTextarea()
           elements.chatInput.focus()
@@ -1329,6 +1312,31 @@ export function chat() {
         window.addEventListener('DOMContentLoaded', () => {
           initElements()
           initEventListeners()
+          
+          // Set default model to Cloudflare Llama
+          const defaultModel = '@cf/meta/llama-3.1-70b-instruct'
+          const savedModel = localStorage.getItem('selectedModel')
+          
+          // Use saved model or default
+          currentModel = savedModel || defaultModel
+          
+          // Determine provider based on model format
+          if (currentModel.startsWith('@cf/')) {
+            currentProvider = 'cloudflare'
+          } else if (currentModel.includes('/')) {
+            currentProvider = 'openrouter'
+          } else {
+            currentProvider = 'ollama'
+          }
+          
+          // Update UI to reflect selected model
+          if (elements.modelSelect) {
+            // Add Cloudflare models first
+            updateCloudflareModels()
+            elements.modelSelect.value = currentModel
+          }
+          updateModelIndicator()
+          updateChatInput()
           
           // Load saved API key
           if (openRouterApiKey && elements.openrouterApiKey) {
