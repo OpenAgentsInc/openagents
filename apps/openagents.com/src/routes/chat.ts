@@ -49,6 +49,7 @@ export function chat() {
               </div>
               <div id="openrouter-status" class="api-key-status"></div>
             </form>
+
           </div>
 
           <!-- Models List Card -->
@@ -360,9 +361,10 @@ export function chat() {
         // Chat state
         let chatMessages = []
         let currentModel = ''
-        let currentProvider = 'ollama' // 'ollama' or 'openrouter'
+        let currentProvider = 'ollama' // 'ollama', 'openrouter', or 'cloudflare'
         let isStreaming = false
         let openRouterApiKey = localStorage.getItem('openRouterApiKey') || ''
+        let cloudflareAvailable = false // Determined by server configuration
 
         // Format file size
         const formatSize = (bytes) => {
@@ -628,7 +630,121 @@ export function chat() {
           }, 3000)
         }
 
-        // Update send message to handle both providers
+        // Check if Cloudflare is available and add models
+        const checkCloudflareAvailability = async () => {
+          try {
+            const response = await fetch('/api/cloudflare/status')
+            const data = await response.json()
+            
+            if (data.available) {
+              cloudflareAvailable = true
+              addCloudflareModels()
+              updateCloudflareModelsList()
+            }
+          } catch (error) {
+            console.log('Cloudflare not configured on server')
+            cloudflareAvailable = false
+          }
+        }
+
+        // Update the Available Models list with Cloudflare models
+        const updateCloudflareModelsList = () => {
+          const modelListCard = document.getElementById('model-list-card')
+          const modelList = document.getElementById('model-list')
+          
+          if (!modelListCard || !modelList) return
+          
+          // Show the model list card
+          modelListCard.style.display = 'block'
+          
+          // Add Cloudflare models to the list
+          const cloudflareModels = [
+            { value: '@cf/meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B', size: '70B' },
+            { value: '@cf/meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B', size: '8B' },
+            { value: '@cf/meta/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision', size: '11B' },
+            { value: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B', size: '3B' },
+            { value: '@cf/google/gemma-2-9b-it', name: 'Gemma 2 9B', size: '9B' },
+            { value: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill', size: '32B' },
+            { value: '@cf/qwen/qwen1.5-7b-chat-awq', name: 'Qwen 1.5 7B Chat', size: '7B' },
+            { value: '@cf/microsoft/phi-2', name: 'Phi-2', size: '2.7B' }
+          ]
+          
+          // Add a header for Cloudflare models
+          const cloudflareHeader = document.createElement('div')
+          cloudflareHeader.style.marginTop = modelList.children.length > 0 ? '1rem' : '0'
+          cloudflareHeader.style.marginBottom = '0.5rem'
+          cloudflareHeader.style.fontWeight = 'bold'
+          cloudflareHeader.style.color = 'var(--foreground0)'
+          cloudflareHeader.textContent = 'Cloudflare Models'
+          modelList.appendChild(cloudflareHeader)
+          
+          cloudflareModels.forEach(model => {
+            const item = document.createElement('div')
+            item.className = 'model-item'
+            item.innerHTML = \`
+              <div class="model-name">\${model.name}</div>
+              <div style="font-size: 0.8em; color: var(--foreground2);">
+                \${model.value} • \${model.size}
+              </div>
+            \`
+            modelList.appendChild(item)
+          })
+        }
+
+        // Add Cloudflare models to dropdown (server-configured)
+        const addCloudflareModels = () => {
+          const dropdown = document.getElementById('chat-model-select')
+          
+          if (!dropdown || !cloudflareAvailable) return
+          
+          // Check if Cloudflare option group already exists
+          let cloudflareGroup = dropdown.querySelector('optgroup[label="Cloudflare"]')
+          if (!cloudflareGroup) {
+            cloudflareGroup = document.createElement('optgroup')
+            cloudflareGroup.label = 'Cloudflare'
+            dropdown.appendChild(cloudflareGroup)
+          } else {
+            cloudflareGroup.innerHTML = ''
+          }
+          
+          // Add popular Cloudflare models
+          const cloudflareModels = [
+            { value: '@cf/meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B (Recommended)' },
+            { value: '@cf/meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B' },
+            { value: '@cf/meta/llama-3.2-11b-vision-instruct', name: 'Llama 3.2 11B Vision' },
+            { value: '@cf/meta/llama-3.2-3b-instruct', name: 'Llama 3.2 3B' },
+            { value: '@cf/google/gemma-2-9b-it', name: 'Gemma 2 9B' },
+            { value: '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', name: 'DeepSeek R1 Distill 32B' },
+            { value: '@cf/qwen/qwen1.5-7b-chat-awq', name: 'Qwen 1.5 7B Chat' },
+            { value: '@cf/microsoft/phi-2', name: 'Phi-2' }
+          ]
+          
+          const savedModel = localStorage.getItem('selectedModel')
+          let autoSelected = false
+          
+          cloudflareModels.forEach((model, index) => {
+            const option = document.createElement('option')
+            option.value = model.value
+            option.textContent = model.name
+            
+            // Auto-select the first model (Llama 3.1 70B) if no saved model or if saved model doesn't exist
+            if ((index === 0 && !savedModel) || (savedModel === model.value)) {
+              option.selected = true
+              currentModel = model.value
+              autoSelected = true
+              localStorage.setItem('selectedModel', currentModel)
+            }
+            
+            cloudflareGroup.appendChild(option)
+          })
+          
+          // Enable chat input if auto-selected
+          if (autoSelected) {
+            setTimeout(() => enableChatInput(), 100)
+          }
+        }
+
+        // Update send message to handle all providers
         const sendChatMessage = async () => {
           const input = document.getElementById('chat-input')
           const sendButton = document.getElementById('chat-send')
@@ -637,7 +753,13 @@ export function chat() {
           if (!message || !currentModel || isStreaming) return
           
           // Determine provider from model name
-          currentProvider = currentModel.includes('/') ? 'openrouter' : 'ollama'
+          if (currentModel.startsWith('@cf/')) {
+            currentProvider = 'cloudflare'
+          } else if (currentModel.includes('/')) {
+            currentProvider = 'openrouter'
+          } else {
+            currentProvider = 'ollama'
+          }
           
           chatMessages.push({ role: 'user', content: message })
           addMessageToUI('user', message)
@@ -651,7 +773,13 @@ export function chat() {
           let assistantContent = ''
           
           try {
-            const endpoint = currentProvider === 'openrouter' ? '/api/openrouter/chat' : '/api/ollama/chat'
+            let endpoint = '/api/ollama/chat'
+            if (currentProvider === 'openrouter') {
+              endpoint = '/api/openrouter/chat'
+            } else if (currentProvider === 'cloudflare') {
+              endpoint = '/api/cloudflare/chat'
+            }
+            
             const headers = {
               'Content-Type': 'application/json'
             }
@@ -659,6 +787,7 @@ export function chat() {
             if (currentProvider === 'openrouter' && openRouterApiKey) {
               headers['X-API-Key'] = openRouterApiKey
             }
+            // Cloudflare uses server-side configuration, no client credentials needed
             
             const response = await fetch(endpoint, {
               method: 'POST',
@@ -701,11 +830,11 @@ export function chat() {
                       throw new Error(parsed.error)
                     }
                     
-                    // Handle both Ollama and OpenRouter response formats
+                    // Handle Ollama, OpenRouter, and Cloudflare response formats
                     let content = ''
                     if (currentProvider === 'ollama' && parsed.message?.content) {
                       content = parsed.message.content
-                    } else if (currentProvider === 'openrouter' && parsed.choices?.[0]?.delta?.content) {
+                    } else if ((currentProvider === 'openrouter' || currentProvider === 'cloudflare') && parsed.choices?.[0]?.delta?.content) {
                       content = parsed.choices[0].delta.content
                     }
                     
@@ -772,6 +901,9 @@ export function chat() {
               }
             })
           }
+
+          // Check if Cloudflare is available on server
+          checkCloudflareAvailability()
 
           // Model dropdown handler
           const modelDropdown = document.getElementById('chat-model-select')

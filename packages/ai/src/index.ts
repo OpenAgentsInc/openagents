@@ -17,6 +17,12 @@ export * as Ollama from "./providers/ollama/index.js"
 export * as OpenRouter from "./providers/openrouter/index.js"
 
 /**
+ * Cloudflare Workers AI provider for edge-native inference
+ * @since 1.0.0
+ */
+export * as Cloudflare from "./providers/cloudflare/index.js"
+
+/**
  * Internal exports for CLI integration
  * @since 1.0.0
  */
