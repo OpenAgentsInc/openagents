@@ -83,12 +83,13 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
             title: "OpenAgents"
           })
           // Run the program with layers
-          await chatProgram.pipe(
+          const runnable = chatProgram.pipe(
             Effect.provide(
               Layer.mergeAll(HttpClientLive, OpenRouterClientLive)
-            ),
-            Effect.runPromise
+            )
           )
+          
+          await Effect.runPromise(runnable)
 
           // Send completion signal
           await writer.write(encoder.encode(`data: [DONE]\n\n`))
