@@ -20,17 +20,14 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
       const encoder = new TextEncoder() // Start streaming in background using Effect patterns
       ;(async () => {
         try {
-          // Create the layers
-          const HttpClientLive = HttpClientNode.layer
-          const OpenRouterClientLive = Ai.OpenRouter.layerOpenRouterClient({
-            apiKey: Redacted.make(apiKey),
-            referer: "https://openagents.com",
-            title: "OpenAgents"
-          })
-
           // Create and run the chat program
           const program = Effect.gen(function*() {
-            const client = yield* Ai.OpenRouter.OpenRouterClient
+            // Create the client directly using make
+            const client = yield* Ai.OpenRouter.makeOpenRouterClient({
+              apiKey: Redacted.make(apiKey),
+              referer: "https://openagents.com",
+              title: "OpenAgents"
+            })
 
             // Get the stream
             const responseStream = client.stream({
@@ -81,11 +78,19 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
               ),
               Stream.runDrain
             )
-          }).pipe(
-            Effect.provide(Layer.mergeAll(HttpClientLive, OpenRouterClientLive))
+          })
+
+          // Provide the required layers
+          const layers = Layer.merge(
+            HttpClientNode.layer,
+            Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {})
           )
 
-          await Effect.runPromise(program)
+          await Effect.runPromise(
+            program.pipe(
+              Effect.provide(layers)
+            )
+          )
 
           // Send completion signal
           await writer.write(encoder.encode(`data: [DONE]\n\n`))
