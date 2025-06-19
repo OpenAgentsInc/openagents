@@ -223,12 +223,18 @@ importers:
       '@effect/platform-node':
         specifier: 0.85.2
         version: 0.85.2(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
+      '@effect/rpc':
+        specifier: 0.61.15
+        version: 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/schema':
         specifier: 0.75.5
         version: 0.75.5(effect@3.16.3)
       effect:
         specifier: 3.16.3
         version: 3.16.3
+      find-my-way-ts:
+        specifier: ^0.1.5
+        version: 0.1.5
       gpt-tokenizer:
         specifier: ^3.0.1
         version: 3.0.1
