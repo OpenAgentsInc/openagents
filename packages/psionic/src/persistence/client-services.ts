@@ -77,7 +77,7 @@ export const BrowserPGliteServiceLive = (databaseName = "openagents-chat") =>
     BrowserPGliteService,
     Effect.gen(function*() {
       // Initialize PGlite outside of Effect context to avoid Node.js dependencies
-      const { pg, db } = yield* Effect.tryPromise({
+      const { db, pg } = yield* Effect.tryPromise({
         try: () => initializePGlite(databaseName),
         catch: (error) =>
           new BrowserPersistenceError({
@@ -126,7 +126,7 @@ export const BrowserConversationRepositoryLive = Layer.effect(
         Effect.tryPromise({
           try: async () => {
             const conditions = [eq(conversations.userId, userId)]
-            
+
             if (!includeArchived) {
               conditions.push(eq(conversations.archived, false))
             }
@@ -272,7 +272,7 @@ export const BrowserMessageRepositoryLive = Layer.effect(
               .where(eq(messages.conversationId, conversationId))
               .orderBy(desc(messages.createdAt))
 
-            const results = limit 
+            const results = limit
               ? await baseQuery.limit(limit)
               : await baseQuery
 

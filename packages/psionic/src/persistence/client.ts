@@ -4,7 +4,14 @@
  */
 import { Effect, Layer, ManagedRuntime, Runtime } from "effect"
 import type { Conversation, Message, NewConversation, NewMessage } from "./schema"
-import { ConversationRepository, ConversationRepositoryLive, MessageRepository, MessageRepositoryLive, PGliteServiceLive, type PGliteConfig } from "./services"
+import {
+  ConversationRepository,
+  ConversationRepositoryLive,
+  MessageRepository,
+  MessageRepositoryLive,
+  type PGliteConfig,
+  PGliteServiceLive
+} from "./services"
 
 export class ChatClient {
   private managedRuntime: any
@@ -151,6 +158,7 @@ export class ChatClient {
 
     // Set up live query if not already active
     if (!this.unsubscribers.has(conversationId)) {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
       const self = this
       Runtime.runPromise(this.runtime)(
         Effect.gen(function*() {

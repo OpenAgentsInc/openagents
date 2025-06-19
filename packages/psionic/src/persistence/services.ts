@@ -161,7 +161,7 @@ export const ConversationRepositoryLive = Layer.effect(
       list: (userId = "local", includeArchived = false) =>
         pgService.query(async (db) => {
           const conditions = [eq(conversations.userId, userId)]
-          
+
           if (!includeArchived) {
             conditions.push(eq(conversations.archived, false))
           }
@@ -306,7 +306,7 @@ export const MessageRepositoryLive = Layer.effect(
               )
               callback(result.rows)
             } catch (error) {
-              console.error('Error polling messages:', error)
+              console.error("Error polling messages:", error)
             }
           }, 2000)
 
@@ -316,8 +316,8 @@ export const MessageRepositoryLive = Layer.effect(
              WHERE conversation_id = $1
              ORDER BY created_at ASC`,
             [conversationId]
-          ).then(result => callback(result.rows))
-          .catch(error => console.error('Error fetching initial messages:', error))
+          ).then((result) => callback(result.rows))
+            .catch((error) => console.error("Error fetching initial messages:", error))
 
           // Return cleanup function
           return () => clearInterval(intervalId)

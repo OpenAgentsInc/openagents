@@ -106,11 +106,11 @@ export class BrowserChatClient {
     if (!this.db) throw new Error("Database not initialized")
 
     const conditions = [eq(conversations.userId, userId)]
-    
+
     if (!includeArchived) {
       conditions.push(eq(conversations.archived, false))
     }
-    
+
     return this.db.select()
       .from(conversations)
       .where(conditions.length === 1 ? conditions[0] : and(...conditions))

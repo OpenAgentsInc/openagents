@@ -150,6 +150,7 @@ export class BrowserEffectChatClient {
 
     // Set up live query if not already active
     if (!this.unsubscribers.has(conversationId)) {
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
       const self = this
       const setupWatch = Effect.gen(function*() {
         const repo = yield* BrowserMessageRepository
