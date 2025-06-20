@@ -48,6 +48,8 @@
       "@openagentsinc/nostr/test/*": ["./packages/nostr/test/*.ts"],
       "@openagentsinc/psionic": ["./packages/psionic/src/index.ts"],
       "@openagentsinc/psionic/*": ["./packages/psionic/src/*.ts"],
+      "@openagentsinc/relay": ["./packages/relay/src/index.ts"],
+      "@openagentsinc/relay/*": ["./packages/relay/src/*.ts"],
       "@openagentsinc/openagents.com": ["./apps/openagents.com/src/index.ts"],
       "@openagentsinc/openagents.com/*": ["./apps/openagents.com/src/*.ts"],
       "@openagentsinc/ui": ["./packages/ui/src/index.js"],

@@ -17,6 +17,7 @@
     "@openagentsinc/ai": "workspace:*",
     "@openagentsinc/nostr": "workspace:*",
     "@openagentsinc/psionic": "workspace:*",
+    "@openagentsinc/relay": "workspace:*",
     "@openagentsinc/sdk": "workspace:*",
     "@openagentsinc/ui": "workspace:*",
     "effect": "3.16.3",

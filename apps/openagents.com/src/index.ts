@@ -1,4 +1,5 @@
 import { createPsionicApp } from '@openagentsinc/psionic'
+import { createRelayPlugin } from '@openagentsinc/relay'
 import { home } from './routes/home'
 import { agents } from './routes/agents'
 import { docs, docPage } from './routes/docs'
@@ -45,6 +46,16 @@ app.route('/chat', chat)
 app.elysia.use(ollamaApi)
 app.elysia.use(openrouterApi)
 app.elysia.use(cloudflareApi)
+
+// Mount Nostr relay
+app.elysia.use(createRelayPlugin({
+  path: '/relay',
+  maxConnections: 1000,
+  enableCors: true,
+  rateLimitEnabled: false, // Agent-friendly
+  enableMetrics: true,
+  metricsPath: '/relay/metrics'
+}))
 
 // Serve llms.txt
 app.elysia.get('/llms.txt', async () => {

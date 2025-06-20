@@ -6,6 +6,7 @@
     { "path": "packages/cli" },
     { "path": "packages/nostr" },
     { "path": "packages/psionic" },
+    { "path": "packages/relay" },
     { "path": "packages/sdk" },
     { "path": "apps/openagents.com" }
   ]
