@@ -1,8 +1,15 @@
 import { document, html } from "@openagentsinc/psionic"
+import { Agent } from "@openagentsinc/sdk"
 import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
-export function home() {
+export async function home() {
+  // Generate a new agent using the SDK
+  const mnemonic = await Agent.generateMnemonic()
+  const agent = await Agent.createFromMnemonic(mnemonic, {
+    name: "Demo Agent"
+  })
+
   return document({
     title: "OpenAgents",
     styles: baseStyles,
@@ -30,6 +37,16 @@ export function home() {
           </div>
         </main>
       </div>
+
+      <script>
+        // Log agent info to browser console
+        console.log("=== OpenAgents SDK Demo ===");
+        console.log("Generated agent npub:", "${agent.nostrKeys.public}");
+        console.log("Agent name:", "${agent.name}");
+        console.log("Agent ID:", "${agent.id}");
+        console.log("Generated at:", new Date().toISOString());
+        console.log("========================");
+      </script>
 
       <style>
         html, body {
