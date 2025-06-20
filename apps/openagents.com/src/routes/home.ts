@@ -152,25 +152,29 @@ export async function home() {
           const { name, capital, metabolicRate } = event.detail;
           
           try {
-            // Import SDK dynamically
-            const { Agent } = await import('@openagentsinc/sdk');
+            // Create a mock agent for demo purposes
+            // In a real implementation, this would call a server endpoint
+            const agentId = \`agent_\${Date.now()}_\${Math.random().toString(36).substring(2, 10)}\`;
+            const mockPublicKey = \`npub\${Array.from({length: 58}, () => Math.floor(Math.random() * 36).toString(36)).join('')}\`;
+            const mockPrivateKey = Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
             
-            // Generate mnemonic and create agent
-            const mnemonic = await Agent.generateMnemonic();
-            const agent = await Agent.createFromMnemonic(mnemonic, {
+            const agent = {
+              id: agentId,
               name: name,
-              initial_capital: capital,
-              stop_price: metabolicRate
-            });
-            
-            // Store mnemonic separately (in real app, this should be encrypted)
-            const agentData = {
-              ...agent,
-              mnemonic: mnemonic // Store for recovery
+              nostrKeys: {
+                public: mockPublicKey,
+                private: mockPrivateKey
+              },
+              birthTimestamp: Date.now(),
+              generation: 0,
+              lifecycleState: 'bootstrapping',
+              balance: capital,
+              metabolicRate: metabolicRate,
+              mnemonic: 'demo mnemonic for ' + name // In real app, generate actual mnemonic
             };
             
             // Add to agents array
-            agents.push(agentData);
+            agents.push(agent);
             
             // Save and update display
             saveAgents();
