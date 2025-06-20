@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@effect/platform": "0.84.6",
-    "@effect/platform-bun": "^0.70.2",
+    "@effect/platform-bun": "^0.70.4",
     "@effect/platform-node": "0.85.2",
     "@openagentsinc/ai": "workspace:*",
     "@openagentsinc/nostr": "workspace:*",

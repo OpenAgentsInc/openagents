@@ -122,8 +122,8 @@ importers:
         specifier: 0.84.6
         version: 0.84.6(effect@3.16.3)
       '@effect/platform-bun':
-        specifier: ^0.70.2
-        version: 0.70.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3)
+        specifier: ^0.70.4
+        version: 0.70.4(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/platform-node':
         specifier: 0.85.2
         version: 0.85.2(@effect/cluster@0.38.16)(@effect/platform@0.84.6)(@effect/rpc@0.61.15)(@effect/sql@0.37.12)(effect@3.16.3)
@@ -1465,6 +1465,24 @@ packages:
       - utf-8-validate
     dev: false
 
+  /@effect/platform-bun@0.70.4(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-588s9gg9RR/Y+8yoF4yXem1bptQUMDj+PEdYT8Hh+8Fw9pVlsmFt42v53vPxEEbyJRiAN6QOPoaUg5hExQ8i/g==}
+    peerDependencies:
+      '@effect/cluster': ^0.39.4
+      '@effect/platform': ^0.85.2
+      '@effect/rpc': ^0.62.4
+      '@effect/sql': ^0.38.2
+      effect: ^3.16.8
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
+      '@effect/platform-node-shared': 0.40.4(@effect/platform@0.84.6)(effect@3.16.3)
+      effect: 3.16.3
+      multipasta: 0.2.5
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+    dev: false
+
   /@effect/platform-node-shared@0.16.4(@effect/platform@0.66.3)(effect@3.16.3):
     resolution: {integrity: sha512-JIg2qEKmTEnWGEMm0ZetfJ6RrEb1eWdCqhCdmxiFVU9YpNdkMpG1xASCBRX3n/13IUleb5tFLjhnLResEg3Y0A==}
     peerDependencies:
@@ -1511,6 +1529,25 @@ packages:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@parcel/watcher': 2.5.1
+      effect: 3.16.3
+      multipasta: 0.2.5
+      ws: 8.18.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+    dev: false
+
+  /@effect/platform-node-shared@0.40.4(@effect/platform@0.84.6)(effect@3.16.3):
+    resolution: {integrity: sha512-EfnRTSHKs33OTfKN9pF+G2AyxMXm/+4rKrGM8yEw56Ij6QV5dq2g28yi0eOH7BytvilnreVmcbAec7M77EArgg==}
+    peerDependencies:
+      '@effect/cluster': ^0.39.4
+      '@effect/platform': ^0.85.2
+      '@effect/rpc': ^0.62.4
+      '@effect/sql': ^0.38.2
+      effect: ^3.16.8
+    dependencies:
+      '@effect/platform': 0.84.6(effect@3.16.3)
       '@parcel/watcher': 2.5.1
       effect: 3.16.3
       multipasta: 0.2.5

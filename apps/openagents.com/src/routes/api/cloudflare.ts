@@ -96,20 +96,31 @@ export const cloudflareApi = new Elysia({ prefix: "/api/cloudflare" })
             )
           })
 
-          // Provide the required layers
-          const layers = Layer.mergeAll(
-            BunHttpPlatform.layer,
-            Layer.succeed(Ai.Cloudflare.CloudflareConfig, {}),
-            Ai.Cloudflare.layerCloudflareClientConfig({
-              apiKey: CloudflareApiKey,
-              accountId: CloudflareAccountId,
-              useOpenAIEndpoints: Config.succeed(true)
-            })
-          )
+          // Create the config effect and then the layers
+          const configProgram = Effect.gen(function*() {
+            const apiKey = yield* CloudflareApiKey
+            const accountId = yield* CloudflareAccountId
+            return { apiKey, accountId }
+          })
 
+          // Get the config values
+          const config = await Effect.runPromise(configProgram)
+
+          // Run the main program with all layers provided
           await Effect.runPromise(
+            // @ts-expect-error - Type issue with HttpClient requirement from layerCloudflareClient
             program.pipe(
-              Effect.provide(layers)
+              Effect.provide(
+                Layer.mergeAll(
+                  BunHttpPlatform.layer,
+                  Layer.succeed(Ai.Cloudflare.CloudflareConfig, {}),
+                  Ai.Cloudflare.layerCloudflareClient({
+                    apiKey: config.apiKey,
+                    accountId: config.accountId,
+                    useOpenAIEndpoints: true
+                  })
+                )
+              )
             )
           )
 

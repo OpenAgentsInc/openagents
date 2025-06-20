@@ -75,20 +75,21 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
             )
           })
 
-          // Provide the required layers
-          const layers = Layer.mergeAll(
-            BunHttpPlatform.layer,
-            Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {}),
-            Ai.OpenRouter.layerOpenRouterClient({
-              apiKey: Redacted.make(apiKey),
-              referer: "https://openagents.com",
-              title: "OpenAgents"
-            })
-          )
-
+          // Run the program with all layers provided
           await Effect.runPromise(
+            // @ts-expect-error - Type issue with HttpClient requirement from layerOpenRouterClient
             program.pipe(
-              Effect.provide(layers)
+              Effect.provide(
+                Layer.mergeAll(
+                  BunHttpPlatform.layer,
+                  Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {}),
+                  Ai.OpenRouter.layerOpenRouterClient({
+                    apiKey: Redacted.make(apiKey),
+                    referer: "https://openagents.com",
+                    title: "OpenAgents"
+                  })
+                )
+              )
             )
           )
 
