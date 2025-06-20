@@ -281,10 +281,10 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
             const program = Effect.gen(function*() {
               const database = yield* RelayDatabase
               console.log("[Admin Debug] Database service obtained")
-              
+
               const testEvents = yield* database.queryEvents([{ limit: 5 }])
               console.log(`[Admin Debug] Query returned ${testEvents.length} events`)
-              
+
               return {
                 status: "ok",
                 eventCount: testEvents.length,
@@ -313,25 +313,23 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
             // Real database queries for overview
             const program = Effect.gen(function*() {
               const database = yield* RelayDatabase
-              
+
               // Get actual event count from database
               const allEvents = yield* database.queryEvents([{ limit: 1000 }])
-              
+
               console.log(`[Admin] Fetched ${allEvents.length} events from database`)
-              
+
               // Extract real metrics from events
-              const agentEvents = allEvents.filter(e => e.kind === 31337) // Agent profiles
-              const serviceEvents = allEvents.filter(e => e.kind === 31990) // Service offerings
-              const messageEvents = allEvents.filter(e => e.kind === 1) // Text notes
-              const uniqueAgents = new Set(allEvents.map(e => e.pubkey)).size
-              const recentEvents = allEvents.filter(e => 
-                e.created_at > Math.floor(Date.now() / 1000) - 24 * 60 * 60
-              )
+              const agentEvents = allEvents.filter((e) => e.kind === 31337) // Agent profiles
+              const serviceEvents = allEvents.filter((e) => e.kind === 31990) // Service offerings
+              const messageEvents = allEvents.filter((e) => e.kind === 1) // Text notes
+              const uniqueAgents = new Set(allEvents.map((e) => e.pubkey)).size
+              const recentEvents = allEvents.filter((e) => e.created_at > Math.floor(Date.now() / 1000) - 24 * 60 * 60)
 
               // Calculate service metrics from events
               const serviceCount = serviceEvents.length
-              const availableServices = serviceEvents.filter(e => 
-                e.tags.some(t => t[0] === "status" && t[1] === "available")
+              const availableServices = serviceEvents.filter((e) =>
+                e.tags.some((t) => t[0] === "status" && t[1] === "available")
               ).length
 
               return {
@@ -451,25 +449,25 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
             // Get agents from database events only
             const program = Effect.gen(function*() {
               const database = yield* RelayDatabase
-              
+
               // Get all events and extract agent data
               const allEvents = yield* database.queryEvents([{ limit: 1000 }])
               console.log(`[Admin] Processing ${allEvents.length} events for agent analysis`)
-              
-              const agentEvents = allEvents.filter(e => e.kind === 31337) // Agent profiles
-              const allAgentPubkeys = new Set(allEvents.map(e => e.pubkey))
-              
+
+              const agentEvents = allEvents.filter((e) => e.kind === 31337) // Agent profiles
+              const allAgentPubkeys = new Set(allEvents.map((e) => e.pubkey))
+
               // Build agent list from events
               const agentProfiles = new Map()
-              
+
               // First pass: Process explicit agent profile events
-              agentEvents.forEach(event => {
+              agentEvents.forEach((event) => {
                 try {
                   const content = JSON.parse(event.content || "{}")
-                  const name = event.tags.find(t => t[0] === "name")?.[1] || 
-                              content.name || 
-                              `Agent-${event.pubkey.slice(0, 8)}`
-                  
+                  const name = event.tags.find((t) => t[0] === "name")?.[1] ||
+                    content.name ||
+                    `Agent-${event.pubkey.slice(0, 8)}`
+
                   agentProfiles.set(event.pubkey, {
                     pubkey: event.pubkey,
                     name,
@@ -479,7 +477,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
                     services: content.capabilities || [],
                     last_activity: new Date(event.created_at * 1000).toISOString()
                   })
-                } catch (e) {
+                } catch {
                   // Fallback for unparseable content
                   agentProfiles.set(event.pubkey, {
                     pubkey: event.pubkey,
@@ -492,13 +490,13 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
                   })
                 }
               })
-              
+
               // Second pass: Add any other active pubkeys as basic agents
-              allAgentPubkeys.forEach(pubkey => {
+              allAgentPubkeys.forEach((pubkey) => {
                 if (!agentProfiles.has(pubkey)) {
-                  const userEvents = allEvents.filter(e => e.pubkey === pubkey)
+                  const userEvents = allEvents.filter((e) => e.pubkey === pubkey)
                   const latestEvent = userEvents.sort((a, b) => b.created_at - a.created_at)[0]
-                  
+
                   agentProfiles.set(pubkey, {
                     pubkey,
                     name: `User-${pubkey.slice(0, 8)}`,
@@ -510,7 +508,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
                   })
                 }
               })
-              
+
               const agents = Array.from(agentProfiles.values())
 
               return {
@@ -546,7 +544,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
             const program = Effect.gen(function*() {
               const database = yield* RelayDatabase
 
-              // Get recent events for tag analysis (last 24 hours)  
+              // Get recent events for tag analysis (last 24 hours)
               const yesterday = Math.floor(Date.now() / 1000) - 24 * 60 * 60
               const recentEvents = yield* database.queryEvents([{ since: yesterday, limit: 1000 }])
 
@@ -580,7 +578,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
               const mockChannels = [
                 {
                   id: "general",
-                  name: "General Discussion", 
+                  name: "General Discussion",
                   message_count: 42,
                   last_message_at: new Date().toISOString(),
                   creator_pubkey: Object.keys(tagStats["p"] || {})[0] || "unknown"
