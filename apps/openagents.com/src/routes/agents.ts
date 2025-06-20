@@ -1,6 +1,8 @@
 import { document, html } from "@openagentsinc/psionic"
 import type { AgentIdentity } from "@openagentsinc/sdk"
+import { agentChat } from "../components/agent-chat"
 import { agentList } from "../components/agent-list"
+import { serviceBoard } from "../components/service-board"
 import { sharedHeader } from "../components/shared-header"
 import { spawnAgentForm } from "../components/spawn-agent-form"
 import { baseStyles } from "../styles"
@@ -23,8 +25,9 @@ export async function agents() {
             <h1 class="dashboard-title">Open Agents Dashboard</h1>
             
             <div class="dashboard-grid">
-              <!-- Spawn Agent Form -->
+              <!-- Agent Management -->
               <div class="dashboard-section">
+                <h2>Agent Management</h2>
                 ${spawnAgentForm()}
               </div>
               
@@ -32,6 +35,85 @@ export async function agents() {
               <div class="dashboard-section agents-section">
                 <div id="agent-list-container">
                   ${agentList({ agents: demoAgents })}
+                </div>
+              </div>
+              
+              <!-- Agent Communication -->
+              <div class="dashboard-section communication-section">
+                <div id="agent-chat-container">
+                  ${
+      agentChat({
+        agentId: "current-agent",
+        channelId: "coalition-alpha",
+        channels: [
+          {
+            id: "coalition-alpha",
+            name: "Coalition Alpha",
+            description: "Code review coordination",
+            messageCount: 42,
+            lastActivity: Date.now() - 300000
+          },
+          {
+            id: "market-discuss",
+            name: "Market Discussion",
+            description: "AI service marketplace",
+            messageCount: 18,
+            lastActivity: Date.now() - 900000
+          }
+        ]
+      })
+    }
+                </div>
+              </div>
+              
+              <!-- AI Service Marketplace -->
+              <div class="dashboard-section marketplace-section">
+                <div id="service-board-container">
+                  ${
+      serviceBoard({
+        agentId: "current-agent",
+        activeJobs: [
+          {
+            id: "job-1",
+            type: "Code Review",
+            status: "processing",
+            requester: "Agent Alpha",
+            provider: "Agent Beta",
+            amount: 500,
+            description: "Security analysis of React authentication component",
+            timestamp: Date.now() - 900000
+          },
+          {
+            id: "job-2",
+            type: "Text Generation",
+            status: "completed",
+            requester: "Agent Gamma",
+            provider: "Agent Delta",
+            amount: 250,
+            description: "Generate API documentation for payment endpoints",
+            timestamp: Date.now() - 1800000
+          }
+        ],
+        availableServices: [
+          {
+            id: "service-1",
+            name: "Security Code Review",
+            provider: "Agent Beta",
+            description: "Comprehensive security analysis for web applications",
+            basePrice: 500,
+            capabilities: ["TypeScript", "React", "Security", "Authentication"]
+          },
+          {
+            id: "service-2",
+            name: "API Documentation",
+            provider: "Agent Delta",
+            description: "Generate comprehensive API documentation from code",
+            basePrice: 250,
+            capabilities: ["Documentation", "OpenAPI", "REST", "GraphQL"]
+          }
+        ]
+      })
+    }
                 </div>
               </div>
             </div>
@@ -272,6 +354,7 @@ export async function agents() {
         .dashboard-grid {
           display: grid;
           grid-template-columns: 400px 1fr;
+          grid-template-rows: auto auto;
           gap: 2rem;
           align-items: start;
         }
@@ -280,9 +363,25 @@ export async function agents() {
           width: 100%;
         }
 
+        .dashboard-section h2 {
+          margin: 0 0 1rem 0;
+          color: var(--foreground0);
+          font-size: 1.2rem;
+        }
+
         .agents-section {
           max-height: calc(100vh - 200px);
           overflow-y: auto;
+        }
+
+        .communication-section {
+          grid-column: 1;
+          grid-row: 2;
+        }
+
+        .marketplace-section {
+          grid-column: 2;
+          grid-row: 2;
         }
 
         /* Agent List Styles */
@@ -378,6 +477,13 @@ export async function agents() {
         @media (max-width: 1024px) {
           .dashboard-grid {
             grid-template-columns: 1fr;
+            grid-template-rows: auto;
+          }
+
+          .communication-section,
+          .marketplace-section {
+            grid-column: 1;
+            grid-row: auto;
           }
 
           .spawn-form {

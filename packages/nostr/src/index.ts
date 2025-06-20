@@ -17,6 +17,20 @@ export * as Schema from "./core/Schema.js"
 export * as Nip06Service from "./nip06/Nip06Service.js"
 
 /**
+ * NIP-28: Public Chat Channel Service
+ * Implements channel creation, messaging, and subscription functionality
+ * @module
+ */
+export * as Nip28Service from "./nip28/Nip28Service.js"
+
+/**
+ * NIP-90: Data Vending Machine Service
+ * Implements AI service marketplace with job request/result protocol
+ * @module
+ */
+export * as Nip90Service from "./nip90/Nip90Service.js"
+
+/**
  * Cryptographic operations for Nostr
  * @module
  */
