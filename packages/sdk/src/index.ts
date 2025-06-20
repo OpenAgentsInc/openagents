@@ -3,9 +3,8 @@
  * @module
  */
 
-import { Effect, Console } from "effect"
-// TODO: Re-enable after build order is fixed
-// import * as NostrLib from "@openagentsinc/nostr"
+import { Effect, Console, Layer } from "effect"
+import * as NostrLib from "../../nostr/src/index.js"
 
 // Core branded types for type safety
 type Satoshis = number & { readonly brand: unique symbol }
@@ -194,11 +193,14 @@ export namespace Agent {
    * @returns Agent identity and basic info
    */
   export function create(config: AgentConfig = {}): AgentIdentity {
+    // Note: This function returns a stub for backward compatibility.
+    // For proper key generation, use createFromMnemonic() or generateMnemonic() + createFromMnemonic()
+    console.warn("Agent.create() uses stub keys. Use Agent.generateMnemonic() + Agent.createFromMnemonic() for proper key generation.")
+    
     // Generate deterministic ID from timestamp and random
     const id = `agent_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
     
-    // Generate proper Nostr keys using NIP-06 (deterministic from mnemonic)
-    // For now using random keys, but this will be enhanced with proper mnemonic generation
+    // STUB: Generate random keys for backward compatibility
     const privateKey = Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('')
     const publicKey = `npub${Array.from({length: 58}, () => Math.floor(Math.random() * 36).toString(36)).join('')}`
     
@@ -227,33 +229,28 @@ export namespace Agent {
     mnemonic: string, 
     config: AgentConfig = {}
   ): Promise<AgentIdentity> {
-    // TODO: Re-enable after build order is fixed
     // Use actual NIP-06 service for proper key derivation
-    // const keys = await Effect.gen(function*() {
-    //   const nip06 = yield* NostrLib.Nip06Service.Nip06Service
-    //   return yield* nip06.deriveAllKeys(mnemonic as NostrLib.Schema.Mnemonic)
-    // }).pipe(
-    //   Effect.provide(
-    //     NostrLib.Nip06Service.Nip06ServiceLive.pipe(
-    //       Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
-    //     )
-    //   ),
-    //   Effect.runPromise
-    // )
-    
-    // STUB: Generate random keys until Nostr service is available
-    const privateKey = Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('')
-    const publicKey = `npub${Array.from({length: 58}, () => Math.floor(Math.random() * 36).toString(36)).join('')}`
+    const keys = await Effect.gen(function*() {
+      const nip06 = yield* NostrLib.Nip06Service.Nip06Service
+      return yield* nip06.deriveAllKeys(mnemonic as NostrLib.Schema.Mnemonic)
+    }).pipe(
+      Effect.provide(
+        NostrLib.Nip06Service.Nip06ServiceLive.pipe(
+          Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
+        )
+      ),
+      Effect.runPromise
+    )
     
     // Create deterministic ID from the public key
-    const id = `agent_${publicKey.slice(-12)}`
+    const id = `agent_${keys.npub.slice(-12)}`
     
     const agent: AgentIdentity = {
       id,
-      name: config.name || `Agent-${publicKey.slice(-8)}`,
+      name: config.name || `Agent-${keys.npub.slice(-8)}`,
       nostrKeys: {
-        public: asNostrPubKey(publicKey),
-        private: asNostrPrivKey(privateKey)
+        public: asNostrPubKey(keys.npub),
+        private: asNostrPrivKey(keys.privateKey)
       },
       birthTimestamp: asTimestamp(Date.now()),
       generation: 0
@@ -266,25 +263,20 @@ export namespace Agent {
   /**
    * Generate a new BIP39 mnemonic for agent creation
    * @param wordCount Number of words in mnemonic (12, 15, 18, 21, or 24)
-   * @returns 12-word mnemonic phrase
+   * @returns BIP39 mnemonic phrase
    */
   export async function generateMnemonic(wordCount: 12 | 15 | 18 | 21 | 24 = 12): Promise<string> {
-    // TODO: Re-enable after build order is fixed
-    // const mnemonic = await Effect.gen(function*() {
-    //   const nip06 = yield* NostrLib.Nip06Service.Nip06Service
-    //   return yield* nip06.generateMnemonic(wordCount)
-    // }).pipe(
-    //   Effect.provide(
-    //     NostrLib.Nip06Service.Nip06ServiceLive.pipe(
-    //       Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
-    //     )
-    //   ),
-    //   Effect.runPromise
-    // )
-    
-    // STUB: Generate a dummy mnemonic until Nostr service is available
-    const words = ['abandon', 'ability', 'able', 'about', 'above', 'absent', 'absorb', 'abstract', 'absurd', 'abuse', 'access', 'accident']
-    const mnemonic = Array.from({length: wordCount}, () => words[Math.floor(Math.random() * words.length)]).join(' ')
+    const mnemonic = await Effect.gen(function*() {
+      const nip06 = yield* NostrLib.Nip06Service.Nip06Service
+      return yield* nip06.generateMnemonic(wordCount)
+    }).pipe(
+      Effect.provide(
+        NostrLib.Nip06Service.Nip06ServiceLive.pipe(
+          Layer.provide(NostrLib.CryptoService.CryptoServiceLive)
+        )
+      ),
+      Effect.runPromise
+    )
     
     return mnemonic
   }
