@@ -60,6 +60,12 @@
     "@babel/plugin-transform-export-namespace-from": "^7.25.9",
     "@babel/plugin-transform-modules-commonjs": "^7.25.9",
     "babel-plugin-annotate-pure-calls": "^0.4.0",
-    "@effect/build-utils": "^0.7.8"
+    "@effect/build-utils": "^0.7.8",
+    "@types/ws": "^8.5.14",
+    "ws": "^8.18.0",
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.3.3",
+    "vitest": "^3.2.1",
+    "@effect/vitest": "^0.23.3"
   }
 }

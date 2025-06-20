@@ -6,7 +6,7 @@ import type { Schema as NostrSchema } from "@openagentsinc/nostr"
 import { Client } from "@planetscale/database"
 import { and, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/planetscale-serverless"
-import { Config, Context, Effect, Layer, Schema } from "effect"
+import { Config, Context, Effect, Layer, Schema, Secret } from "effect"
 import * as schema from "./schema.js"
 
 // Type aliases for cleaner code
@@ -104,10 +104,10 @@ const validateEvent = (event: NostrEvent): Effect.Effect<void, ValidationError> 
       )
     }
 
-    if (!event.sig || event.sig.length !== 128) {
+    if (!event.sig || event.sig.length < 128 || event.sig.length > 130) {
       return yield* Effect.fail(
         new ValidationError({
-          message: "Invalid signature",
+          message: `Invalid signature length: ${event.sig?.length}`,
           event
         })
       )
@@ -216,8 +216,7 @@ const extractEventTags = (event: NostrEvent): Array<schema.NewEventTag> => {
         event_id: event.id,
         tag_name: tag[0],
         tag_value: tag[1],
-        tag_index: index,
-        created_at: event.created_at
+        tag_index: index
       })
     }
   })
@@ -232,10 +231,12 @@ export const RelayDatabaseLive = Layer.effect(
     const config = yield* DatabaseConfig
 
     // Create PlanetScale client
+    // Config.secret returns a Secret value, use Secret.value to extract it
+    const password = Secret.value(config.password)
+    const connectionString =
+      `mysql://${config.username}:${password}@${config.host}/${config.name}?ssl={"rejectUnauthorized":true}`
     const client = new Client({
-      host: config.host,
-      username: config.username,
-      password: config.password as unknown as string // Config.secret provides string value
+      url: connectionString
     })
 
     const db = drizzle(client, { schema })

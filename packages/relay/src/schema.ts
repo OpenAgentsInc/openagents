@@ -40,14 +40,13 @@ export const event_tags = mysqlTable("event_tags", {
   event_id: varchar("event_id", { length: 64 }).notNull().references(() => events.id, { onDelete: "cascade" }),
   tag_name: varchar("tag_name", { length: 64 }).notNull(), // e, p, t, etc.
   tag_value: varchar("tag_value", { length: 255 }).notNull(),
-  tag_index: bigint("tag_index", { mode: "number" }).notNull(), // Position in tag array
-  created_at: bigint("created_at", { mode: "number" }).notNull() // Copied from event for sorting
+  tag_index: bigint("tag_index", { mode: "number" }).notNull() // Position in tag array
 }, (table) => ({
   // Tag filtering indexes
   tagNameValueIdx: index("idx_tag_name_value").on(table.tag_name, table.tag_value),
   eventIdIdx: index("idx_event_id").on(table.event_id),
   tagNameIdx: index("idx_tag_name").on(table.tag_name),
-  tagValueCreatedIdx: index("idx_tag_value_created").on(table.tag_value, table.created_at)
+  tagValueIdx: index("idx_tag_value").on(table.tag_value)
 }))
 
 /**
