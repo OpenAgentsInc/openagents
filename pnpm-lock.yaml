@@ -24,6 +24,10 @@ patchedDependencies:
 importers:
 
   .:
+    dependencies:
+      ws:
+        specifier: ^8.18.2
+        version: 8.18.2
     devDependencies:
       '@babel/cli':
         specifier: 7.27.2
@@ -7626,7 +7630,7 @@ packages:
       whatwg-encoding: 3.1.1
       whatwg-mimetype: 4.0.0
       whatwg-url: 14.2.0
-      ws: 8.18.0
+      ws: 8.18.2
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - bufferutil
@@ -8661,7 +8665,7 @@ packages:
       debug: 4.4.1
       devtools-protocol: 0.0.1367902
       typed-query-selector: 2.12.0
-      ws: 8.18.0
+      ws: 8.18.2
     transitivePeerDependencies:
       - bare-buffer
       - bufferutil
