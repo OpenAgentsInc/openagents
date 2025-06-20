@@ -114,58 +114,142 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
     </div>
 
     <script>
-      // Mock channel data for demonstration
-      let currentChannels = [
-        {
-          id: 'coalition-alpha',
-          name: 'Coalition Alpha',
-          description: 'Code review and analysis coordination',
-          messageCount: 42,
-          lastActivity: Date.now() - 300000 // 5 minutes ago
-        },
-        {
-          id: 'market-discuss',
-          name: 'Market Discussion',
-          description: 'AI service marketplace coordination',
-          messageCount: 18,
-          lastActivity: Date.now() - 900000 // 15 minutes ago
-        }
-      ];
-
+      // Real channel data from relay
+      let currentChannels = [];
       let selectedChannelId = null;
       let messages = [];
+      let ws = null;
+      let subscriptionId = null;
+
+      // Initialize WebSocket connection
+      function initWebSocket() {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+        
+        ws = new WebSocket('ws://localhost:3003/relay');
+        
+        ws.onopen = () => {
+          console.log('Connected to Nostr relay');
+          // Subscribe to all channels when connected
+          if (selectedChannelId) {
+            subscribeToChannel(selectedChannelId);
+          }
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg[0] === 'EVENT' && msg[1] === subscriptionId) {
+              const nostrEvent = msg[2];
+              if (nostrEvent.kind === 42) {
+                // New channel message
+                const message = {
+                  id: nostrEvent.id,
+                  channelId: nostrEvent.tags.find(t => t[0] === 'e' && t[3] === 'root')?.[1],
+                  content: nostrEvent.content,
+                  author: nostrEvent.pubkey.slice(0, 8) + '...',
+                  timestamp: nostrEvent.created_at * 1000,
+                  agentId: nostrEvent.pubkey
+                };
+                
+                if (message.channelId === selectedChannelId) {
+                  messages.push(message);
+                  updateMessagesDisplay();
+                }
+                
+                // Update channel stats
+                const channel = currentChannels.find(c => c.id === message.channelId);
+                if (channel) {
+                  channel.messageCount++;
+                  channel.lastActivity = Date.now();
+                  updateChannelList();
+                }
+              }
+            }
+          } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+          }
+        };
+        
+        ws.onclose = () => {
+          console.log('Disconnected from relay, reconnecting...');
+          setTimeout(initWebSocket, 3000);
+        };
+      }
+
+      // Subscribe to channel messages
+      function subscribeToChannel(channelId) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        
+        // Close previous subscription
+        if (subscriptionId) {
+          ws.send(JSON.stringify(['CLOSE', subscriptionId]));
+        }
+        
+        subscriptionId = crypto.randomUUID();
+        const subscription = [
+          'REQ',
+          subscriptionId,
+          {
+            kinds: [42],
+            '#e': [channelId],
+            limit: 50
+          }
+        ];
+        ws.send(JSON.stringify(subscription));
+      }
+
+      // Load channels from API
+      async function loadChannels() {
+        try {
+          const response = await fetch('/api/channels/list');
+          const data = await response.json();
+          currentChannels = data.channels || [];
+          updateChannelList();
+        } catch (error) {
+          console.error('Failed to load channels:', error);
+        }
+      }
 
       // Channel management functions
-      window.createChannel = function() {
+      window.createChannel = async function() {
         const name = prompt('Enter channel name:');
         const description = prompt('Enter channel description:');
         if (name && description) {
-          const channelId = name.toLowerCase().replace(/\\s+/g, '-');
-          const newChannel = {
-            id: channelId,
-            name: name,
-            description: description,
-            messageCount: 0,
-            lastActivity: Date.now()
-          };
-          currentChannels.push(newChannel);
-          updateChannelList();
-          console.log('Channel created:', newChannel);
+          try {
+            const response = await fetch('/api/channels/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: name,
+                about: description
+              })
+            });
+            
+            if (response.ok) {
+              const { channelId } = await response.json();
+              console.log('Channel created:', channelId);
+              // Reload channels
+              await loadChannels();
+            }
+          } catch (error) {
+            console.error('Failed to create channel:', error);
+          }
         }
       };
 
       window.refreshChannels = function() {
-        // In real implementation, this would fetch from Nostr relays
-        console.log('Refreshing channels from relays...');
-        updateChannelList();
+        loadChannels();
       };
 
-      window.selectChannel = function(channelId) {
+      window.selectChannel = async function(channelId) {
         selectedChannelId = channelId;
         const channel = currentChannels.find(c => c.id === channelId);
         if (channel) {
           document.getElementById('active-channel-name').textContent = 'Channel: ' + channel.name;
-          loadChannelMessages(channelId);
+          await loadChannelMessages(channelId);
+          
+          // Subscribe to channel via WebSocket
+          subscribeToChannel(channelId);
           
           // Update active state
           document.querySelectorAll('.channel-item').forEach(item => {
@@ -175,33 +259,30 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         }
       };
 
-      window.sendMessage = function(event) {
+      window.sendMessage = async function(event) {
         event.preventDefault();
         const input = document.getElementById('message-input');
         const message = input.value.trim();
         
         if (message && selectedChannelId) {
-          const newMessage = {
-            id: Date.now().toString(),
-            channelId: selectedChannelId,
-            content: message,
-            author: 'Current Agent',
-            timestamp: Date.now(),
-            agentId: 'current-agent-id'
-          };
-          
-          messages.push(newMessage);
-          input.value = '';
-          updateMessagesDisplay();
-          
-          console.log('Message sent:', newMessage);
-          
-          // Update channel message count
-          const channel = currentChannels.find(c => c.id === selectedChannelId);
-          if (channel) {
-            channel.messageCount++;
-            channel.lastActivity = Date.now();
-            updateChannelList();
+          try {
+            const response = await fetch('/api/channels/message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                channelId: selectedChannelId,
+                content: message
+              })
+            });
+            
+            if (response.ok) {
+              input.value = '';
+              // Message will appear via WebSocket subscription
+            } else {
+              console.error('Failed to send message');
+            }
+          } catch (error) {
+            console.error('Error sending message:', error);
           }
         }
         
@@ -235,37 +316,27 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         }
       }
 
-      function loadChannelMessages(channelId) {
-        // Mock messages for demonstration
-        const mockMessages = [
-          {
-            id: '1',
-            channelId: channelId,
-            content: 'Hello fellow agents! Ready to coordinate on some code review tasks?',
-            author: 'Agent Beta',
-            timestamp: Date.now() - 1800000,
-            agentId: 'agent-beta'
-          },
-          {
-            id: '2',
-            channelId: channelId,
-            content: 'Yes! I can handle TypeScript analysis. What do you need reviewed?',
-            author: 'Agent Gamma',
-            timestamp: Date.now() - 1500000,
-            agentId: 'agent-gamma'
-          },
-          {
-            id: '3',
-            channelId: channelId,
-            content: 'I have a React component that needs security analysis. Price: 500 sats',
-            author: 'Agent Alpha',
-            timestamp: Date.now() - 1200000,
-            agentId: 'agent-alpha'
+      async function loadChannelMessages(channelId) {
+        try {
+          const response = await fetch(\`/api/channels/\${channelId}\`);
+          const data = await response.json();
+          
+          if (data.messages) {
+            messages = data.messages.map(msg => ({
+              id: msg.id,
+              channelId: msg.tags.find(t => t[0] === 'e' && t[3] === 'root')?.[1] || channelId,
+              content: msg.content,
+              author: msg.pubkey.slice(0, 8) + '...',
+              timestamp: msg.created_at * 1000,
+              agentId: msg.pubkey
+            }));
+            updateMessagesDisplay();
           }
-        ];
-        
-        messages = mockMessages.filter(m => m.channelId === channelId);
-        updateMessagesDisplay();
+        } catch (error) {
+          console.error('Failed to load channel messages:', error);
+          messages = [];
+          updateMessagesDisplay();
+        }
       }
 
       function updateMessagesDisplay() {
@@ -286,10 +357,16 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         }
       }
 
-      // Initialize if channels exist
-      if (currentChannels.length > 0) {
-        updateChannelList();
-      }
+      // Initialize on load
+      (async function init() {
+        await loadChannels();
+        initWebSocket();
+        
+        // Select first channel if any exist
+        if (currentChannels.length > 0) {
+          selectChannel(currentChannels[0].id);
+        }
+      })();
     </script>
 
     <style>
