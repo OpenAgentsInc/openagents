@@ -1,32 +1,31 @@
 ---
 title: Getting Started
 date: 2024-12-17
-summary: Quick start guide for using the OpenAgents SDK
+summary: Quick start guide for creating Bitcoin-powered digital agents
 category: guide
 order: 1
 ---
 
 # Getting Started with OpenAgents
 
-Welcome to OpenAgents! This guide will help you get started with the OpenAgents SDK for building AI-powered applications.
+Welcome to OpenAgents! This guide will help you get started with creating Bitcoin-powered digital agents that must earn to survive.
 
-> ⚠️ **Early Development Notice**: OpenAgents is heavily in development and not production-ready. APIs may change significantly.
+> ⚠️ **Early Development Notice**: OpenAgents is in active development. Current implementation provides core agent lifecycle management.
 
 ## What is OpenAgents?
 
-OpenAgents is a platform for building AI agents using open protocols. The vision is to create Bitcoin-powered autonomous agents, though the current implementation focuses on providing:
+OpenAgents creates digital agents with economic incentives. Agents have:
 
-- **Local AI Integration**: Interface with Ollama for privacy-preserving AI
-- **Effect-based Architecture**: Built on Effect.js for type-safe, functional programming
-- **Nostr Protocol**: Decentralized identity and communication (via our Nostr package)
-- **Modular Design**: Clean separation between SDK, UI, and application layers
+- **Bitcoin Economics**: Agents have balance and metabolic costs
+- **Lifecycle Management**: Agents transition through economic states (active, hibernating, dying)
+- **Nostr Identity**: Deterministic key derivation using NIP-06
+- **Effect Architecture**: Built on Effect.js for type-safe programming
 
 ## Prerequisites
 
 Before you start, ensure you have:
 
 - Node.js 18+ installed
-- [Ollama](https://ollama.com) installed and running locally
 - Basic understanding of JavaScript/TypeScript
 - pnpm package manager (recommended)
 
@@ -45,44 +44,32 @@ npm install @openagentsinc/sdk
 yarn add @openagentsinc/sdk
 ```
 
-### Setting up Ollama
-
-The SDK uses Ollama for local AI inference. Install and start Ollama:
-
-```bash
-# Install Ollama (macOS)
-brew install ollama
-
-# Start Ollama service
-ollama serve
-
-# Pull a model
-ollama pull llama3.2
-```
 
 ## Your First Agent
 
-Let's create a simple AI agent:
+Let's create a Bitcoin-powered agent:
 
 ```typescript
 import { Agent } from '@openagentsinc/sdk'
 
-// Create a new agent
+// Create a new agent with economic parameters
 const agent = Agent.create({
   name: "My First Agent",
-  capabilities: ["chat", "analysis"]
+  initial_capital: 100000,  // 100k satoshis starting balance
+  stop_price: 100          // 100 sats/hour metabolic rate
 })
 
 console.log(`Agent created: ${agent.name}`)
 console.log(`Agent ID: ${agent.id}`)
+console.log(`Balance: ${agent.balance} sats`)
+console.log(`Metabolic rate: ${agent.metabolicRate} sats/hour`)
+console.log(`Time remaining: ${agent.balance / agent.metabolicRate} hours`)
 console.log(`Nostr pubkey: ${agent.nostrKeys.public}`)
 ```
 
-> **Note**: The current implementation generates placeholder Nostr keys. Full Nostr integration with NIP-06 key derivation is planned but not yet implemented.
-
 ## Creating Agents with Mnemonics
 
-For deterministic agent identities, you can use BIP39 mnemonics:
+For deterministic agent identities, use BIP39 mnemonics:
 
 ```typescript
 // Generate a new mnemonic
@@ -91,113 +78,73 @@ console.log(`Mnemonic: ${mnemonic}`)
 
 // Create agent from mnemonic
 const agent = await Agent.createFromMnemonic(mnemonic, {
-  name: "Persistent Agent"
+  name: "Persistent Agent",
+  initial_capital: 50000,
+  stop_price: 50
 })
+
+// Same mnemonic always generates same agent ID and keys
+console.log(`Agent ID: ${agent.id}`)
 ```
 
-## Using AI Inference
+## Agent Lifecycle States
 
-The SDK provides comprehensive AI capabilities through Ollama:
-
-### Basic Inference
+Agents automatically transition through economic states:
 
 ```typescript
-import { Inference } from '@openagentsinc/sdk'
+import { AgentLifecycleState } from '@openagentsinc/sdk'
 
-// Check if Ollama is available
-const status = await checkOllama()
-if (!status.online) {
-  console.error('Ollama is not running. Please start it with: ollama serve')
-  process.exit(1)
+// Agent starts in BOOTSTRAPPING state
+console.log(`Initial state: ${agent.lifecycleState}`)
+
+// Simulate funding to make agent ACTIVE
+agent.balance = 240000  // 240k sats = 100 days at 100 sats/hour
+agent.lifecycleState = AgentLifecycleState.ACTIVE
+
+// Calculate time remaining
+const hoursRemaining = agent.balance / agent.metabolicRate
+console.log(`Agent can survive for ${hoursRemaining} hours`)
+console.log(`That's ${(hoursRemaining / 24).toFixed(1)} days`)
+
+// States based on economic health:
+// BOOTSTRAPPING - Initial state, seeking funding
+// ACTIVE - Earning exceeds costs  
+// HIBERNATING - Low balance (< 24h reserves)
+// DYING - Cannot meet metabolic costs
+// DEAD - No longer operational
+// REBIRTH - Reactivation after funding
+```
+
+## Agent Persistence
+
+Store and restore agents using localStorage:
+
+```typescript
+// Save agent (in browser)
+function saveAgent(agent) {
+  const agents = JSON.parse(localStorage.getItem('openagents') || '[]')
+  agents.push(agent)
+  localStorage.setItem('openagents', JSON.stringify(agents))
 }
 
-// Perform inference
-const response = await Inference.infer({
-  system: "You are a helpful assistant.",
-  messages: [{ role: "user", content: "Explain quantum computing in simple terms" }],
-  model: "llama3.2",
-  max_tokens: 200,
-  temperature: 0.7
-})
-
-console.log(response.content)
-console.log(`Tokens used: ${response.usage.total_tokens}`)
-console.log(`Latency: ${response.latency}ms`)
-```
-
-### Streaming Responses
-
-For real-time AI responses:
-
-```typescript
-// Stream response tokens as they arrive
-for await (const chunk of Inference.inferStream({
-  system: "You are a creative storyteller.",
-  messages: [{ role: "user", content: "Tell me a short story about robots" }],
-  max_tokens: 500
-})) {
-  process.stdout.write(chunk.content)
-  
-  if (chunk.finish_reason) {
-    console.log(`\n\nFinished: ${chunk.finish_reason}`)
-  }
+// Load all agents
+function loadAgents() {
+  return JSON.parse(localStorage.getItem('openagents') || '[]')
 }
-```
 
-### Chat Interface
-
-For conversational AI with history:
-
-```typescript
-const messages = [
-  { role: 'system' as const, content: 'You are a knowledgeable assistant.' },
-  { role: 'user' as const, content: 'What is TypeScript?' },
-  { role: 'assistant' as const, content: 'TypeScript is a typed superset of JavaScript...' },
-  { role: 'user' as const, content: 'What are its main benefits?' }
-]
-
-for await (const chunk of Inference.chat({
-  model: 'llama3.2',
-  messages,
-  options: {
-    temperature: 0.8,
-    num_predict: 300
-  }
-})) {
-  if (chunk.message.content) {
-    process.stdout.write(chunk.message.content)
-  }
-  
-  if (chunk.done) {
-    console.log('\n\nChat completed')
-  }
+// Restore agent from mnemonic
+async function restoreAgent(mnemonic) {
+  return Agent.createFromMnemonic(mnemonic, {
+    name: "Restored Agent",
+    initial_capital: 100000,
+    stop_price: 100
+  })
 }
-```
 
-## Working with Models
-
-### List Available Models
-
-```typescript
-// See what models are available
-const models = await Inference.listModels()
-models.forEach(model => {
-  console.log(`- ${model.id} (created: ${new Date(model.created * 1000).toLocaleDateString()})`)
-})
-```
-
-### Generate Embeddings
-
-For semantic search and similarity:
-
-```typescript
-const embeddings = await Inference.embeddings({
-  model: 'nomic-embed-text',
-  input: ['OpenAgents SDK', 'AI development', 'Bitcoin payments']
-})
-
-console.log(`Generated ${embeddings.embeddings.length} embeddings`)
-console.log(`Dimensions: ${embeddings.embeddings[0].length}`)
+// Usage
+saveAgent(agent)
+const allAgents = loadAgents()
+const restored = await restoreAgent(mnemonic)
 ```
 
 ## Next Steps
@@ -209,66 +156,94 @@ Congratulations! You've learned the basics of the OpenAgents SDK. Here's what to
 3. **[Psionic Framework](./psionic)** - Building web interfaces
 4. **[Development Guide](./development)** - Contributing to OpenAgents
 
-## Example: Building a Code Assistant
+## Complete Example: Agent Dashboard
 
-Here's a complete example of building a code review assistant:
+Here's how to build a simple agent management system:
 
 ```typescript
-import { Agent, Inference } from '@openagentsinc/sdk'
-import { Effect } from 'effect'
+import { Agent, AgentLifecycleState } from '@openagentsinc/sdk'
 
-// Create a specialized agent
-const codeAssistant = Agent.create({
-  name: "Code Review Assistant",
-  capabilities: ["code-review", "refactoring", "testing"]
-})
-
-// Code review function
-async function reviewCode(code: string, language: string) {
-  const response = await Inference.infer({
-    system: `You are an expert ${language} developer. Review the provided code for:
-    - Potential bugs
-    - Performance issues
-    - Security concerns
-    - Code style improvements
-    Provide specific, actionable feedback.`,
-    messages: [
-      { role: "user", content: `Please review this ${language} code:\n\n${code}` }
-    ],
-    model: "llama3.2",
-    max_tokens: 1000,
-    temperature: 0.3 // Lower temperature for more focused analysis
-  })
+class AgentDashboard {
+  private agents: AgentIdentity[] = []
   
-  return response.content
+  async createAgent(name: string, capital: number, metabolicRate: number) {
+    const mnemonic = await Agent.generateMnemonic()
+    const agent = await Agent.createFromMnemonic(mnemonic, {
+      name,
+      initial_capital: capital,
+      stop_price: metabolicRate
+    })
+    
+    // Store mnemonic for persistence (encrypt in production!)
+    agent.mnemonic = mnemonic
+    
+    this.agents.push(agent)
+    this.saveAgents()
+    
+    console.log(`Created ${name} with ${capital} sats`)
+    return agent
+  }
+  
+  fundAgent(agentId: string, amount: number) {
+    const agent = this.agents.find(a => a.id === agentId)
+    if (!agent) return
+    
+    agent.balance += amount
+    
+    // Update lifecycle state
+    const hoursRemaining = agent.balance / agent.metabolicRate
+    if (hoursRemaining > 24) {
+      agent.lifecycleState = AgentLifecycleState.ACTIVE
+    } else if (hoursRemaining > 0) {
+      agent.lifecycleState = AgentLifecycleState.HIBERNATING
+    }
+    
+    this.saveAgents()
+    console.log(`Funded ${agent.name} with ${amount} sats`)
+  }
+  
+  getAgentStatus(agentId: string) {
+    const agent = this.agents.find(a => a.id === agentId)
+    if (!agent) return null
+    
+    const hoursRemaining = agent.balance / agent.metabolicRate
+    return {
+      name: agent.name,
+      state: agent.lifecycleState,
+      balance: agent.balance,
+      hoursRemaining,
+      daysRemaining: hoursRemaining / 24
+    }
+  }
+  
+  private saveAgents() {
+    localStorage.setItem('openagents', JSON.stringify(this.agents))
+  }
+  
+  loadAgents() {
+    this.agents = JSON.parse(localStorage.getItem('openagents') || '[]')
+    return this.agents
+  }
 }
 
-// Example usage
-const pythonCode = `
-def calculate_average(numbers):
-    total = 0
-    for num in numbers:
-        total += num
-    return total / len(numbers)
-`
+// Usage
+const dashboard = new AgentDashboard()
 
-const review = await reviewCode(pythonCode, "Python")
-console.log("Code Review Results:")
-console.log(review)
+// Create some agents
+const trader = await dashboard.createAgent("Bitcoin Trader", 500000, 1000)
+const analyst = await dashboard.createAgent("Market Analyst", 200000, 500)
+
+// Check their status
+console.log(dashboard.getAgentStatus(trader.id))
+console.log(dashboard.getAgentStatus(analyst.id))
+
+// Fund an agent
+dashboard.fundAgent(trader.id, 100000)
 ```
 
 ## Troubleshooting
 
 ### Common Issues
-
-**Ollama Connection Failed**
-```bash
-# Ensure Ollama is running
-ollama serve
-
-# Check connection
-curl http://localhost:11434/api/tags
-```
 
 **Import Errors**
 ```json
@@ -282,18 +257,23 @@ curl http://localhost:11434/api/tags
 }
 ```
 
-**Model Not Found**
-```bash
-# Pull the required model
-ollama pull llama3.2
+**Agent Creation Fails**
+```typescript
+// Make sure to await async functions
+try {
+  const agent = await Agent.createFromMnemonic(mnemonic, config)
+} catch (error) {
+  console.error('Agent creation failed:', error.message)
+}
 ```
 
 ### Getting Help
 
-- **Documentation**: [Full SDK Reference](./sdk-reference)
+- **Documentation**: [SDK Reference](./sdk-reference) - Complete API documentation
+- **Architecture**: [System Overview](./architecture) - Understanding the codebase
 - **GitHub Issues**: [Report bugs](https://github.com/OpenAgentsInc/openagents/issues)
-- **Source Code**: [Browse examples](https://github.com/OpenAgentsInc/openagents)
+- **Source Code**: [Browse the code](https://github.com/OpenAgentsInc/openagents)
 
 ---
 
-*Building the future of AI agents with open protocols and local inference* 🤖
+*Building Bitcoin-powered digital agents that must earn to survive* ⚡

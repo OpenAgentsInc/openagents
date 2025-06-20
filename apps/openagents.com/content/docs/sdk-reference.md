@@ -1,14 +1,14 @@
 ---
 title: SDK Reference
 date: 2024-12-17
-summary: Complete API documentation for the OpenAgents SDK
+summary: OpenAgents SDK for creating Bitcoin-powered digital agents
 category: reference
 order: 2
 ---
 
 # SDK Reference
 
-Complete API documentation for the @openagentsinc/sdk package. The SDK provides AI agent creation, inference capabilities, and integration with local AI models through Ollama.
+API documentation for the @openagentsinc/sdk package. The SDK provides Bitcoin-powered digital agent creation, identity management, and lifecycle control.
 
 > ⚠️ **Early Development Notice**: The SDK is under active development. APIs may change between versions.
 
@@ -23,20 +23,13 @@ pnpm add @openagentsinc/sdk
 ```typescript
 import { 
   Agent,           // Agent creation and management
-  Inference,       // AI inference capabilities
-  Compute,         // Resource management (placeholder)
-  Nostr,           // Nostr protocol integration (placeholder)
-  checkOllama      // Ollama connectivity check
 } from '@openagentsinc/sdk'
 
 // TypeScript types
 import type {
   AgentIdentity,
   AgentLifecycleState,
-  InferenceRequest,
-  InferenceResponse,
-  ChatMessage,
-  OllamaStatus
+  AgentConfig
 } from '@openagentsinc/sdk'
 ```
 
@@ -56,15 +49,8 @@ Creates a new agent with optional configuration.
 ```typescript
 interface AgentConfig {
   name?: string              // Agent display name
-  sovereign?: boolean        // Reserved for future use
-  stop_price?: number        // Reserved for future use (satoshis)
-  pricing?: {                // Reserved for future use
-    subscription_monthly?: number
-    per_request?: number
-    enterprise_seat?: number
-  }
-  capabilities?: string[]    // Agent capabilities/features
-  initial_capital?: number   // Reserved for future use
+  initial_capital?: number   // Starting balance in satoshis
+  stop_price?: number        // Metabolic rate (sats per hour)
 }
 
 interface AgentIdentity {
@@ -75,18 +61,25 @@ interface AgentIdentity {
     private: string          // Nostr private key
   }
   birthTimestamp: number     // Creation timestamp
-  generation: number         // Agent generation (always 0)
+  generation: number         // Agent generation number
+  lifecycleState?: AgentLifecycleState  // Current state
+  balance?: number           // Current balance in satoshis
+  metabolicRate?: number     // Operational cost per hour
+  mnemonic?: string          // BIP39 mnemonic (for persistence)
 }
 ```
 
 **Example:**
 ```typescript
 const agent = Agent.create({
-  name: "Research Assistant",
-  capabilities: ["research", "analysis", "summarization"]
+  name: "Trading Agent",
+  initial_capital: 100000,  // 100k sats
+  stop_price: 100          // 100 sats/hour metabolic rate
 })
 
 console.log(`Created agent: ${agent.name} (${agent.id})`)
+console.log(`Balance: ${agent.balance} sats`)
+console.log(`Lifecycle: ${agent.lifecycleState}`)
 ```
 
 ### `Agent.createFromMnemonic(mnemonic, config?)`
@@ -104,10 +97,12 @@ Creates an agent from a BIP39 mnemonic phrase for deterministic identity.
 // Using an existing mnemonic
 const mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
 const agent = await Agent.createFromMnemonic(mnemonic, {
-  name: "Deterministic Agent"
+  name: "Persistent Agent",
+  initial_capital: 50000,
+  stop_price: 50
 })
 
-// The same mnemonic will always generate the same agent ID
+// The same mnemonic will always generate the same agent ID and keys
 ```
 
 ### `Agent.generateMnemonic(wordCount?)`
@@ -128,418 +123,121 @@ console.log(`Generated mnemonic: ${mnemonic}`)
 // Save this mnemonic securely - it's the agent's identity seed
 ```
 
-### `Agent.createLightningInvoice(agent, params)`
-
-Creates a Lightning Network invoice (currently returns stub data).
-
-> **Note**: Lightning payments are not yet implemented. This returns placeholder data.
-
-**Parameters:**
-- `agent`: `AgentIdentity` object
-- `params`: Invoice parameters
-
-**Returns:** `LightningInvoice`
-
-```typescript
-interface LightningInvoice {
-  bolt11: string          // BOLT11 invoice string (stub)
-  amount: number          // Amount in satoshis
-  memo: string            // Invoice description
-  payment_hash: string    // Payment hash
-  expires_at: number      // Expiration timestamp
-  status: "pending" | "paid" | "expired"
-}
-```
 
 ### Agent Lifecycle States
 
+Agents transition through economic lifecycle states based on their balance and metabolic costs:
+
 ```typescript
 enum AgentLifecycleState {
-  BOOTSTRAPPING = "bootstrapping",  // Initial state
-  ACTIVE = "active",                // Operational
-  HIBERNATING = "hibernating",      // Low activity
-  DYING = "dying",                  // Shutting down
-  DEAD = "dead"                     // Terminated
+  BOOTSTRAPPING = "bootstrapping",  // Initial state, seeking funding
+  ACTIVE = "active",                // Earning exceeds costs
+  HIBERNATING = "hibernating",      // Low balance, reduced activity
+  REPRODUCING = "reproducing",      // Successful agent creating offspring
+  DYING = "dying",                  // Cannot meet metabolic costs
+  DEAD = "dead",                    // No longer operational
+  REBIRTH = "rebirth"               // Reactivation after funding
 }
 ```
 
-## Inference Namespace
+**State Transitions:**
+- Agents start in `BOOTSTRAPPING` state
+- Move to `ACTIVE` when earning exceeds metabolic rate
+- Enter `HIBERNATING` when balance is low (< 24h reserves)
+- Enter `DYING` when unable to pay metabolic costs
+- Can be moved to `REBIRTH` with new funding
+- `REPRODUCING` state for successful agents creating offspring
 
-The `Inference` namespace provides AI model interactions via Ollama.
+## Agent Economic Model
 
-### `Inference.infer(request)`
+OpenAgents implements an economic model where agents must earn Bitcoin to survive:
 
-Performs synchronous AI inference.
+### Economic Properties
 
-**Parameters:**
-- `request`: `InferenceRequest` object
+- **Balance**: Agent's current Bitcoin balance in satoshis
+- **Metabolic Rate**: Operational cost per hour in satoshis
+- **Time Remaining**: Calculated as `balance / metabolicRate` hours
+- **Initial Capital**: Starting balance when created
 
-**Returns:** `Promise<InferenceResponse>`
+### Economic Lifecycle
+
+Agents automatically transition between lifecycle states based on their economic health:
 
 ```typescript
-interface InferenceRequest {
-  system: string                    // System prompt
-  messages: Array<{                 // Conversation history
-    role: string
-    content: string
-  }>
-  max_tokens: number                // Maximum response tokens
-  temperature?: number              // Randomness (0-2, default: 0.8)
-  model?: string                    // Model name (default: "llama3.2")
-  stream?: boolean                  // Enable streaming (use inferStream instead)
-  response_format?: {               // Output format
-    type: "json_object"
-  }
-  seed?: number                     // Reproducible generation
-  top_p?: number                    // Nucleus sampling
-  frequency_penalty?: number        // Reduce repetition
-  presence_penalty?: number         // Encourage new topics
-}
-
-interface InferenceResponse {
-  content: string                   // Generated text
-  usage: {
-    prompt_tokens: number           // Input token count
-    completion_tokens: number       // Output token count
-    total_tokens: number            // Total tokens used
-  }
-  model: string                     // Model used
-  latency: number                   // Response time (ms)
-  finish_reason?: "stop" | "length" | "content_filter" | null
-}
-```
-
-**Example:**
-```typescript
-const response = await Inference.infer({
-  system: "You are a helpful coding assistant. Be concise.",
-  messages: [
-    { role: "user", content: "Write a TypeScript function to validate email addresses" }
-  ],
-  model: "llama3.2",
-  max_tokens: 500,
-  temperature: 0.7
+// Example agent economics
+const agent = Agent.create({
+  name: "Market Analyst",
+  initial_capital: 168000,  // 168k sats = 1 week at 1000 sats/hour
+  stop_price: 1000         // 1000 sats/hour metabolic rate
 })
 
-console.log(response.content)
-console.log(`Generated ${response.usage.completion_tokens} tokens in ${response.latency}ms`)
+// Calculate time remaining
+const hoursRemaining = agent.balance / agent.metabolicRate
+console.log(`Agent can survive for ${hoursRemaining} hours`)
+
+// State transitions happen automatically:
+// balance > 24h reserves = ACTIVE
+// balance < 24h reserves = HIBERNATING  
+// balance = 0 = DYING
 ```
 
-### `Inference.inferStream(request)`
+## Agent Persistence
 
-Performs streaming AI inference for real-time responses.
+Agents can be persisted using their BIP39 mnemonic:
 
-**Parameters:**
-- `request`: `InferenceRequest` object
-
-**Returns:** `AsyncGenerator<InferenceChunk>`
+### Local Storage Example
 
 ```typescript
-interface InferenceChunk {
-  content: string                   // Partial content
-  finish_reason?: "stop" | "length" | "content_filter" | null
-  model?: string                    // Model name
+// Save agent to browser localStorage
+function saveAgent(agent: AgentIdentity) {
+  const agents = JSON.parse(localStorage.getItem('openagents') || '[]')
+  agents.push(agent)
+  localStorage.setItem('openagents', JSON.stringify(agents))
+}
+
+// Load agents from localStorage
+function loadAgents(): AgentIdentity[] {
+  return JSON.parse(localStorage.getItem('openagents') || '[]')
+}
+
+// Restore agent from mnemonic
+async function restoreAgent(mnemonic: string): Promise<AgentIdentity> {
+  return Agent.createFromMnemonic(mnemonic)
 }
 ```
 
-**Example:**
+### Funding Agents
+
+Agents can receive funding to extend their operational time:
+
 ```typescript
-console.log("Assistant: ", end="")
-for await (const chunk of Inference.inferStream({
-  system: "You are a creative writer.",
-  messages: [
-    { role: "user", content: "Write a haiku about programming" }
-  ],
-  max_tokens: 100
-})) {
-  process.stdout.write(chunk.content)
+// Simulate funding an agent (in real implementation, this would be a Lightning payment)
+function fundAgent(agent: AgentIdentity, amount: number) {
+  agent.balance = (agent.balance || 0) + amount
   
-  if (chunk.finish_reason === "stop") {
-    console.log("\n\nCompleted!")
-  }
-}
-```
-
-### `Inference.chat(request)`
-
-Streaming chat interface with conversation history support.
-
-**Parameters:**
-- `request`: `ChatRequest` object
-
-**Returns:** `AsyncGenerator<ChatStreamChunk>`
-
-```typescript
-interface ChatRequest {
-  model: string                     // Model name
-  messages: ChatMessage[]           // Full conversation
-  stream?: boolean                  // Stream response (default: true)
-  options?: ChatOptions             // Model parameters
-  keep_alive?: string               // Model memory duration
-  format?: { type: string }         // Output format
-}
-
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
-
-interface ChatOptions {
-  temperature?: number              // Randomness
-  num_ctx?: number                  // Context window size
-  top_p?: number                    // Nucleus sampling
-  seed?: number                     // Reproducible output
-  num_predict?: number              // Max tokens to generate
-}
-
-interface ChatStreamChunk {
-  model: string
-  created_at: string
-  message: {
-    role: 'assistant'
-    content: string
-  }
-  done: boolean                     // Indicates completion
-  done_reason?: string
-  total_duration?: number           // Total time (nanoseconds)
-  load_duration?: number            // Model load time
-  prompt_eval_count?: number        // Prompt tokens evaluated
-  prompt_eval_duration?: number     // Prompt eval time
-  eval_count?: number               // Tokens generated
-  eval_duration?: number            // Generation time
-}
-```
-
-**Example:**
-```typescript
-const conversation: ChatMessage[] = [
-  { role: 'system', content: 'You are a TypeScript expert.' },
-  { role: 'user', content: 'What are generics?' },
-  { role: 'assistant', content: 'Generics are a way to create reusable components...' },
-  { role: 'user', content: 'Can you show me an example?' }
-]
-
-for await (const chunk of Inference.chat({
-  model: 'llama3.2',
-  messages: conversation,
-  options: {
-    temperature: 0.8,
-    num_predict: 300
-  }
-})) {
-  process.stdout.write(chunk.message.content)
+  // Update lifecycle state based on new balance
+  const hoursRemaining = agent.balance / (agent.metabolicRate || 100)
   
-  if (chunk.done) {
-    console.log(`\n\nStats: ${chunk.eval_count} tokens in ${chunk.eval_duration}ns`)
+  if (hoursRemaining > 24) {
+    agent.lifecycleState = AgentLifecycleState.ACTIVE
+  } else if (hoursRemaining > 0) {
+    agent.lifecycleState = AgentLifecycleState.HIBERNATING
   }
+  
+  console.log(`Agent funded with ${amount} sats. New balance: ${agent.balance}`)
+  console.log(`Time remaining: ${hoursRemaining.toFixed(1)} hours`)
 }
-```
-
-### `Inference.listModels()`
-
-Lists all available AI models in Ollama.
-
-**Returns:** `Promise<OllamaModelDetails[]>`
-
-```typescript
-interface OllamaModelDetails {
-  id: string                        // Model identifier
-  object: "model"
-  created: number                   // Unix timestamp
-  owned_by: string                  // Always "ollama"
-}
-```
-
-**Example:**
-```typescript
-const models = await Inference.listModels()
-
-console.log("Available models:")
-models.forEach(model => {
-  const date = new Date(model.created * 1000)
-  console.log(`- ${model.id} (added: ${date.toLocaleDateString()})`)
-})
-```
-
-### `Inference.embeddings(request)`
-
-Generate text embeddings for semantic search and similarity.
-
-**Parameters:**
-- `request`: `EmbeddingRequest` object
-
-**Returns:** `Promise<EmbeddingResponse>`
-
-```typescript
-interface EmbeddingRequest {
-  model: string                     // Embedding model name
-  input: string | string[]          // Text(s) to embed
-}
-
-interface EmbeddingResponse {
-  embeddings: number[][]            // Vector embeddings
-  model: string                     // Model used
-  usage: {
-    prompt_tokens: number           // Tokens processed
-    total_tokens: number            // Total token count
-  }
-}
-```
-
-**Example:**
-```typescript
-// Generate embeddings for semantic search
-const response = await Inference.embeddings({
-  model: 'nomic-embed-text',
-  input: [
-    'OpenAgents SDK documentation',
-    'Building AI agents with TypeScript',
-    'Local AI inference with Ollama'
-  ]
-})
-
-console.log(`Generated ${response.embeddings.length} embeddings`)
-console.log(`Embedding dimensions: ${response.embeddings[0].length}`)
-
-// Calculate cosine similarity between first two embeddings
-function cosineSimilarity(a: number[], b: number[]): number {
-  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0)
-  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0))
-  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0))
-  return dotProduct / (magnitudeA * magnitudeB)
-}
-
-const similarity = cosineSimilarity(
-  response.embeddings[0], 
-  response.embeddings[1]
-)
-console.log(`Similarity: ${(similarity * 100).toFixed(2)}%`)
-```
-
-## Nostr Namespace
-
-The `Nostr` namespace provides decentralized identity and communication features.
-
-> **Note**: Currently returns placeholder data. Full Nostr integration is available via the @openagentsinc/nostr package.
-
-### `Nostr.getUserStuff(pubkey?)`
-
-Retrieves Nostr user profile and social data.
-
-**Parameters:**
-- `pubkey` (optional): Nostr public key
-
-**Returns:** `NostrUserData`
-
-```typescript
-interface NostrUserData {
-  pubkey: string                    // Nostr public key
-  profile?: {
-    name?: string                   // Display name
-    about?: string                  // Bio/description
-    picture?: string                // Avatar URL
-    nip05?: string                  // NIP-05 identifier
-  }
-  relays: string[]                  // Connected relays
-  followers: number                 // Follower count
-  following: number                 // Following count
-}
-```
-
-## Compute Namespace
-
-The `Compute` namespace manages infrastructure and resources.
-
-> **Note**: Currently returns placeholder data. Container deployment features are planned.
-
-### `Compute.goOnline(config?)`
-
-Brings compute resources online.
-
-**Parameters:**
-- `config` (optional): Resource configuration
-
-**Returns:** `ConnectionStatus`
-
-```typescript
-interface ConnectionStatus {
-  connected: boolean
-  peers?: number                    // Connected peers
-  resources?: {
-    cpu: string                     // CPU allocation
-    memory: string                  // Memory allocation
-    storage: string                 // Storage allocation
-  }
-  uptime?: number                   // Uptime timestamp
-}
-```
-
-## Utility Functions
-
-### `checkOllama()`
-
-Checks if Ollama service is available and returns its status.
-
-**Returns:** `Promise<OllamaStatus>`
-
-```typescript
-interface OllamaStatus {
-  online: boolean                   // Service availability
-  models: OllamaModel[]             // Available models
-  modelCount: number                // Total model count
-  error?: string                    // Error message if offline
-}
-
-interface OllamaModel {
-  name: string                      // Model name
-  model: string                     // Model identifier
-  modified_at: string               // Last modified
-  size: number                      // Size in bytes
-  digest: string                    // Model hash
-  details?: {
-    parameter_size?: string         // Model size (e.g., "7B")
-    quantization_level?: string     // Quantization (e.g., "Q4_0")
-  }
-}
-```
-
-**Example:**
-```typescript
-// Check Ollama before using inference
-const status = await checkOllama()
-
-if (!status.online) {
-  console.error('Ollama is not running. Please start it with:')
-  console.error('ollama serve')
-  process.exit(1)
-}
-
-console.log(`Ollama is online with ${status.modelCount} models:`)
-status.models.forEach(model => {
-  const sizeMB = (model.size / 1024 / 1024).toFixed(0)
-  console.log(`- ${model.name} (${sizeMB} MB)`)
-})
 ```
 
 ## Error Handling
 
-The SDK uses standard JavaScript errors. Common error scenarios:
+The SDK uses standard JavaScript errors:
 
 ```typescript
 try {
-  const response = await Inference.infer({
-    system: "You are helpful",
-    messages: [{ role: "user", content: "Hello" }],
-    max_tokens: 100
-  })
+  const agent = await Agent.createFromMnemonic(invalidMnemonic)
 } catch (error) {
-  if (error.message.includes("Ollama is not available")) {
-    console.error("Please ensure Ollama is running")
-  } else if (error.message.includes("model")) {
-    console.error("Model not found. Pull it with: ollama pull <model>")
-  } else {
-    console.error("Inference failed:", error.message)
-  }
+  console.error("Agent creation failed:", error.message)
 }
 ```
 
@@ -549,163 +247,159 @@ The SDK is written in TypeScript and provides full type definitions:
 
 ```typescript
 import type {
-  // Agent types
   AgentIdentity,
   AgentConfig,
-  AgentLifecycleState,
-  
-  // Inference types
-  InferenceRequest,
-  InferenceResponse,
-  InferenceChunk,
-  ChatRequest,
-  ChatMessage,
-  ChatStreamChunk,
-  
-  // Embedding types
-  EmbeddingRequest,
-  EmbeddingResponse,
-  
-  // Utility types
-  OllamaStatus,
-  OllamaModel,
-  
-  // Placeholder types
-  LightningInvoice,
-  NostrUserData,
-  ConnectionStatus
+  AgentLifecycleState
 } from '@openagentsinc/sdk'
 ```
 
 ## Best Practices
 
-### 1. Always Check Ollama Status
+### 1. Secure Mnemonic Storage
 
 ```typescript
-// Start of your application
-const status = await checkOllama()
-if (!status.online) {
-  throw new Error("Ollama must be running")
+// In production, encrypt mnemonics before storing
+function saveAgentSecurely(agent: AgentIdentity) {
+  // DO NOT store mnemonics in plain text in production
+  // Use proper encryption for sensitive data
+  const encryptedMnemonic = encrypt(agent.mnemonic)
+  localStorage.setItem(`agent_${agent.id}`, JSON.stringify({
+    ...agent,
+    mnemonic: encryptedMnemonic
+  }))
 }
 ```
 
-### 2. Handle Streaming Errors
+### 2. Monitor Agent Economics
 
 ```typescript
-try {
-  for await (const chunk of Inference.inferStream(request)) {
-    // Process chunk
-  }
-} catch (error) {
-  console.error("Streaming failed:", error)
-  // Implement retry logic if needed
-}
-```
-
-### 3. Use Appropriate Models
-
-```typescript
-// For code: use code-specific models
-const codeResponse = await Inference.infer({
-  model: "codellama",
-  // ...
-})
-
-// For embeddings: use embedding models
-const embeddings = await Inference.embeddings({
-  model: "nomic-embed-text",
-  // ...
-})
-```
-
-### 4. Manage Conversation Context
-
-```typescript
-// Keep conversation history manageable
-const MAX_HISTORY = 10
-let messages: ChatMessage[] = [
-  { role: 'system', content: 'You are helpful.' }
-]
-
-function addMessage(role: 'user' | 'assistant', content: string) {
-  messages.push({ role, content })
+// Regularly check agent economic health
+function checkAgentHealth(agent: AgentIdentity) {
+  const hoursRemaining = agent.balance / agent.metabolicRate
   
-  // Keep only recent messages plus system prompt
-  if (messages.length > MAX_HISTORY + 1) {
-    messages = [messages[0], ...messages.slice(-MAX_HISTORY)]
-  }
-}
-```
-
-## Examples
-
-### Complete Example: Research Assistant
-
-```typescript
-import { Agent, Inference, checkOllama } from '@openagentsinc/sdk'
-
-async function createResearchAssistant() {
-  // Ensure Ollama is running
-  const status = await checkOllama()
-  if (!status.online) {
-    throw new Error("Ollama is required")
+  if (hoursRemaining < 24) {
+    console.warn(`Agent ${agent.name} needs funding soon!`)
   }
   
-  // Create specialized agent
-  const agent = Agent.create({
-    name: "Research Assistant",
-    capabilities: ["research", "analysis", "summarization"]
+  if (hoursRemaining < 1) {
+    console.error(`Agent ${agent.name} will die within an hour!`)
+  }
+}
+```
+
+### 3. Handle State Transitions
+
+```typescript
+// Update agent states based on economic conditions
+function updateAgentState(agent: AgentIdentity) {
+  const hoursRemaining = agent.balance / agent.metabolicRate
+  
+  if (hoursRemaining <= 0) {
+    agent.lifecycleState = AgentLifecycleState.DYING
+  } else if (hoursRemaining < 24) {
+    agent.lifecycleState = AgentLifecycleState.HIBERNATING
+  } else {
+    agent.lifecycleState = AgentLifecycleState.ACTIVE
+  }
+}
+```
+
+## Complete Example: Trading Agent
+
+```typescript
+import { Agent, AgentLifecycleState } from '@openagentsinc/sdk'
+
+// Create a Bitcoin trading agent
+async function createTradingAgent() {
+  // Generate a new mnemonic for the agent
+  const mnemonic = await Agent.generateMnemonic()
+  
+  // Create agent with initial capital and metabolic rate
+  const agent = await Agent.createFromMnemonic(mnemonic, {
+    name: "Bitcoin Trader",
+    initial_capital: 504000,  // 504k sats = 3 weeks at 1000 sats/hour
+    stop_price: 1000         // 1000 sats/hour operational cost
   })
   
   console.log(`Created ${agent.name} (${agent.id})`)
+  console.log(`Nostr pubkey: ${agent.nostrKeys.public}`)
+  console.log(`Initial balance: ${agent.balance} sats`)
+  console.log(`Metabolic rate: ${agent.metabolicRate} sats/hour`)
   
-  // Research function
-  async function research(topic: string): Promise<string> {
-    const response = await Inference.infer({
-      system: `You are a research assistant. Provide comprehensive, 
-               well-structured information about the given topic. 
-               Include key facts, recent developments, and cite sources 
-               when possible.`,
-      messages: [
-        { role: "user", content: `Research this topic: ${topic}` }
-      ],
-      model: "llama3.2",
-      max_tokens: 1000,
-      temperature: 0.7
-    })
-    
-    return response.content
+  // Calculate survival time
+  const hoursRemaining = agent.balance / agent.metabolicRate
+  console.log(`Can survive for: ${hoursRemaining} hours (${(hoursRemaining/24).toFixed(1)} days)`)
+  
+  // Agent management functions
+  function getStatus() {
+    const hours = agent.balance / agent.metabolicRate
+    return {
+      state: agent.lifecycleState,
+      balance: agent.balance,
+      hoursRemaining: hours,
+      daysRemaining: hours / 24
+    }
   }
   
-  // Summarization function
-  async function summarize(text: string, style: 'bullet' | 'paragraph' = 'bullet'): Promise<string> {
-    const response = await Inference.infer({
-      system: `You are an expert at summarization. Create a ${style} summary.`,
-      messages: [
-        { role: "user", content: `Summarize this text:\n\n${text}` }
-      ],
-      model: "llama3.2",
-      max_tokens: 300,
-      temperature: 0.3
-    })
+  function fundAgent(amount: number) {
+    agent.balance += amount
     
-    return response.content
+    // Update lifecycle state
+    const hours = agent.balance / agent.metabolicRate
+    if (hours > 24) {
+      agent.lifecycleState = AgentLifecycleState.ACTIVE
+    } else if (hours > 0) {
+      agent.lifecycleState = AgentLifecycleState.HIBERNATING
+    } else {
+      agent.lifecycleState = AgentLifecycleState.DYING
+    }
+    
+    console.log(`Agent funded with ${amount} sats`)
+    console.log(`New status:`, getStatus())
   }
   
-  return { agent, research, summarize }
+  function simulateMetabolicCost(hours: number) {
+    const cost = hours * agent.metabolicRate
+    agent.balance = Math.max(0, agent.balance - cost)
+    
+    // Update state based on remaining balance
+    const remainingHours = agent.balance / agent.metabolicRate
+    if (remainingHours <= 0) {
+      agent.lifecycleState = AgentLifecycleState.DYING
+    } else if (remainingHours < 24) {
+      agent.lifecycleState = AgentLifecycleState.HIBERNATING
+    }
+    
+    console.log(`Simulated ${hours} hours of operation (${cost} sats cost)`)
+    console.log(`New status:`, getStatus())
+  }
+  
+  return { agent, getStatus, fundAgent, simulateMetabolicCost, mnemonic }
 }
 
-// Usage
-const assistant = await createResearchAssistant()
-const research = await assistant.research("Effect.js for TypeScript")
-const summary = await assistant.summarize(research, 'bullet')
+// Usage example
+const trader = await createTradingAgent()
 
-console.log("Research Results:")
-console.log(research)
-console.log("\nSummary:")
-console.log(summary)
+// Save the mnemonic securely - this is the agent's identity!
+console.log(`\nIMPORTANT: Save this mnemonic securely!`)
+console.log(`Mnemonic: ${trader.mnemonic}`)
+
+// Simulate 48 hours of operation
+trader.simulateMetabolicCost(48)
+
+// Fund the agent
+trader.fundAgent(100000) // Add 100k sats
+
+// The agent can now be recreated from the mnemonic
+const restoredAgent = await Agent.createFromMnemonic(trader.mnemonic, {
+  name: "Bitcoin Trader", // Name needs to be provided again
+  initial_capital: 504000,
+  stop_price: 1000
+})
+
+console.log(`\nRestored agent ID matches: ${trader.agent.id === restoredAgent.id}`)
 ```
 
 ---
 
-*For more examples and guides, check out the [Getting Started](./getting-started) guide or browse the [source code](https://github.com/OpenAgentsInc/openagents).*
+*This covers the currently implemented SDK features. For more examples, check out the [Getting Started](./getting-started) guide or browse the [source code](https://github.com/OpenAgentsInc/openagents).*

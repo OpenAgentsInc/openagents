@@ -23,12 +23,14 @@ export enum AgentLifecycleState {
   BOOTSTRAPPING = "bootstrapping",
   ACTIVE = "active",
   HIBERNATING = "hibernating",
+  REPRODUCING = "reproducing",
   DYING = "dying",
-  DEAD = "dead"
+  DEAD = "dead",
+  REBIRTH = "rebirth"
 }
 
 // Core agent identity
-interface AgentIdentity {
+export interface AgentIdentity {
   id: string
   name: string
   nostrKeys: {
@@ -37,6 +39,10 @@ interface AgentIdentity {
   }
   birthTimestamp: UnixTimestamp
   generation: number
+  lifecycleState?: AgentLifecycleState
+  balance?: Satoshis
+  metabolicRate?: Satoshis
+  parentId?: string
 }
 
 // Agent configuration
@@ -61,6 +67,90 @@ interface LightningInvoice {
   payment_hash: string
   expires_at: UnixTimestamp
   status: "pending" | "paid" | "expired"
+}
+
+// NIP-OA Event Types
+export const NIP_OA_EVENT_KINDS = {
+  AGENT_PROFILE: 31337,
+  METABOLIC_COST: 31338,
+  BALANCE_PROOF: 31339,
+  SERVICE_FEEDBACK: 31340,
+  COALITION_PROFILE: 31341,
+  COALITION_JOB: 31342,
+  SERVICE_OFFERING: 31990
+} as const
+
+// Agent capability structure
+export interface AgentCapability {
+  id: string
+  name: string
+  description: string
+  pricing: {
+    base: number
+    per_unit?: string
+    unit_limit?: number
+  }
+  nip90_kinds?: number[]
+}
+
+// Agent profile content
+export interface AgentProfileContent {
+  description: string
+  avatar?: string
+  capabilities: AgentCapability[]
+  pricing_models?: {
+    subscription_monthly?: number
+    per_request?: number
+    bulk_discount?: Record<string, number>
+  }
+  constraints?: {
+    max_monthly_requests?: number
+    max_concurrent_jobs?: number
+    supported_languages?: string[]
+  }
+  metrics?: {
+    total_earned?: number
+    total_spent?: number
+    requests_completed?: number
+    average_rating?: number
+    uptime_percentage?: number
+  }
+}
+
+// Metabolic cost breakdown
+export interface MetabolicCostBreakdown {
+  compute?: {
+    provider: string
+    instance_type?: string
+    hours: number
+    rate_per_hour: number
+  }
+  storage?: {
+    provider: string
+    gb_stored: number
+    hours: number
+    rate_per_gb_hour: number
+  }
+  bandwidth?: {
+    provider: string
+    gb_transferred: number
+    rate_per_gb: number
+  }
+  inference?: {
+    provider: string
+    tokens: number
+    rate_per_token: number
+  }
+}
+
+// Balance proof structure
+export interface BalanceProofContent {
+  attestation?: string
+  breakdown?: {
+    hot_wallet?: number
+    channel_balance?: number
+    pending_earnings?: number
+  }
 }
 
 // Nostr user data structure
@@ -212,7 +302,10 @@ export namespace Agent {
         private: asNostrPrivKey(privateKey)
       },
       birthTimestamp: asTimestamp(Date.now()),
-      generation: 0
+      generation: 0,
+      lifecycleState: AgentLifecycleState.BOOTSTRAPPING,
+      balance: asSatoshis(config.initial_capital || 0),
+      metabolicRate: asSatoshis(config.stop_price || 100)
     }
     
     
@@ -253,7 +346,10 @@ export namespace Agent {
         private: asNostrPrivKey(keys.privateKey)
       },
       birthTimestamp: asTimestamp(Date.now()),
-      generation: 0
+      generation: 0,
+      lifecycleState: AgentLifecycleState.BOOTSTRAPPING,
+      balance: asSatoshis(config.initial_capital || 0),
+      metabolicRate: asSatoshis(config.stop_price || 100)
     }
     
     
@@ -302,6 +398,147 @@ export namespace Agent {
     
     
     return invoice
+  }
+  
+  /**
+   * Create agent profile event (NIP-OA kind 31337)
+   * @param agent The agent identity
+   * @param content Agent profile content
+   * @returns Nostr event object ready to be signed and published
+   */
+  export function createProfileEvent(agent: AgentIdentity, content: AgentProfileContent): any {
+    const tags = [
+      ["d", agent.id],
+      ["name", agent.name],
+      ["status", agent.lifecycleState || AgentLifecycleState.BOOTSTRAPPING],
+      ["sovereign", "true"],
+      ["birth", Math.floor(agent.birthTimestamp / 1000).toString()],
+      ["metabolic-rate", (agent.metabolicRate || 100).toString()],
+      ["balance", (agent.balance || 0).toString()],
+      ["generation", agent.generation.toString()]
+    ]
+    
+    if (agent.parentId) {
+      tags.push(["parent", agent.parentId])
+    }
+    
+    // Add capability hashes
+    content.capabilities.forEach(cap => {
+      tags.push(["h", cap.id])
+    })
+    
+    return {
+      kind: NIP_OA_EVENT_KINDS.AGENT_PROFILE,
+      tags,
+      content: JSON.stringify(content),
+      created_at: Math.floor(Date.now() / 1000),
+      pubkey: agent.nostrKeys.public.replace('npub', '') // Note: This is a stub, needs proper conversion
+    }
+  }
+  
+  /**
+   * Create metabolic cost event (NIP-OA kind 31338)
+   * @param agent The agent identity
+   * @param costs Metabolic cost breakdown
+   * @param period Time period for costs
+   * @returns Nostr event object
+   */
+  export function createMetabolicCostEvent(
+    agent: AgentIdentity,
+    costs: MetabolicCostBreakdown,
+    period: { start: UnixTimestamp, end: UnixTimestamp }
+  ): any {
+    const totalCost = 
+      (costs.compute ? costs.compute.hours * costs.compute.rate_per_hour : 0) +
+      (costs.storage ? costs.storage.gb_stored * costs.storage.hours * costs.storage.rate_per_gb_hour : 0) +
+      (costs.bandwidth ? costs.bandwidth.gb_transferred * costs.bandwidth.rate_per_gb : 0) +
+      (costs.inference ? costs.inference.tokens * costs.inference.rate_per_token : 0)
+    
+    const tags = [
+      ["d", `${agent.id}:metabolic:${period.start}`],
+      ["agent", agent.id],
+      ["period", period.start.toString(), period.end.toString()],
+      ["total", totalCost.toString()]
+    ]
+    
+    if (costs.compute) {
+      tags.push(["compute", (costs.compute.hours * costs.compute.rate_per_hour).toString(), costs.compute.hours.toString()])
+    }
+    if (costs.storage) {
+      tags.push(["storage", (costs.storage.gb_stored * costs.storage.hours * costs.storage.rate_per_gb_hour).toString(), costs.storage.gb_stored.toString()])
+    }
+    if (costs.bandwidth) {
+      tags.push(["bandwidth", (costs.bandwidth.gb_transferred * costs.bandwidth.rate_per_gb).toString(), costs.bandwidth.gb_transferred.toString()])
+    }
+    if (costs.inference) {
+      tags.push(["inference", (costs.inference.tokens * costs.inference.rate_per_token).toString(), costs.inference.tokens.toString()])
+    }
+    
+    return {
+      kind: NIP_OA_EVENT_KINDS.METABOLIC_COST,
+      tags,
+      content: JSON.stringify({ breakdown: costs }),
+      created_at: Math.floor(Date.now() / 1000),
+      pubkey: agent.nostrKeys.public.replace('npub', '')
+    }
+  }
+  
+  /**
+   * Create balance proof event (NIP-OA kind 31339)
+   * @param agent The agent identity
+   * @param balance Current balance in satoshis
+   * @param proof Payment hash or invoice as proof
+   * @returns Nostr event object
+   */
+  export function createBalanceProofEvent(
+    agent: AgentIdentity,
+    balance: Satoshis,
+    proof: string,
+    breakdown?: BalanceProofContent['breakdown']
+  ): any {
+    const tags = [
+      ["d", `${agent.id}:balance:${Date.now()}`],
+      ["agent", agent.id],
+      ["balance", balance.toString()],
+      ["proof", proof]
+    ]
+    
+    const content: BalanceProofContent = {}
+    if (breakdown) {
+      content.breakdown = breakdown
+    }
+    
+    return {
+      kind: NIP_OA_EVENT_KINDS.BALANCE_PROOF,
+      tags,
+      content: JSON.stringify(content),
+      created_at: Math.floor(Date.now() / 1000),
+      pubkey: agent.nostrKeys.public.replace('npub', '')
+    }
+  }
+  
+  /**
+   * Update agent lifecycle state
+   * @param agent The agent identity
+   * @param newState New lifecycle state
+   * @returns Updated agent identity
+   */
+  export function updateLifecycleState(agent: AgentIdentity, newState: AgentLifecycleState): AgentIdentity {
+    return {
+      ...agent,
+      lifecycleState: newState
+    }
+  }
+  
+  /**
+   * Check if agent can transition to rebirth state
+   * @param agent The agent identity
+   * @param paymentAmount Amount received in satoshis
+   * @returns True if agent can be rebirthed
+   */
+  export function canRebirth(agent: AgentIdentity, paymentAmount: Satoshis): boolean {
+    return agent.lifecycleState === AgentLifecycleState.DYING && 
+           paymentAmount >= (agent.metabolicRate || 100)
   }
 }
 
