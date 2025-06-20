@@ -10,9 +10,6 @@ export async function home() {
     name: "Demo Agent"
   })
 
-  // Log the agent's public key
-  console.log("Generated agent npub:", agent.nostrKeys.public)
-
   return document({
     title: "OpenAgents",
     styles: baseStyles,
@@ -40,6 +37,16 @@ export async function home() {
           </div>
         </main>
       </div>
+
+      <script>
+        // Log agent info to browser console
+        console.log("=== OpenAgents SDK Demo ===");
+        console.log("Generated agent npub:", "${agent.nostrKeys.public}");
+        console.log("Agent name:", "${agent.name}");
+        console.log("Agent ID:", "${agent.id}");
+        console.log("Generated at:", new Date().toISOString());
+        console.log("========================");
+      </script>
 
       <style>
         html, body {
