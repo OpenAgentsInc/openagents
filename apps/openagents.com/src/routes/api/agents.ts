@@ -3,7 +3,7 @@
  */
 
 import * as NostrLib from "@openagentsinc/nostr"
-import { RelayDatabase } from "@openagentsinc/relay"
+import { RelayDatabase, RelayDatabaseLive } from "@openagentsinc/relay"
 import * as SDK from "@openagentsinc/sdk"
 import { Effect, Layer } from "effect"
 
@@ -99,34 +99,26 @@ export async function POST(request: Request): Promise<Response> {
       }
     })
 
-    // Provide all necessary services for the Effect program
-    // The AgentProfileServiceLive is a stub, but we need to provide all its declared dependencies
-    const AppLayer = Layer.mergeAll(
-      Layer.succeed(
-        NostrLib.AgentProfileService.AgentProfileService,
-        NostrLib.AgentProfileService.AgentProfileServiceLive
-      ),
-      Layer.succeed(
-        RelayDatabase,
-        {
-          storeEvent: () => Effect.succeed(true),
-          getAgentProfile: () => Effect.succeed(null),
-          updateAgentProfile: () => Effect.succeed({} as any),
-          getActiveAgents: () => Effect.succeed([]),
-          queryEvents: () => Effect.succeed([]),
-          getEvent: () => Effect.succeed(null),
-          deleteEvent: () => Effect.succeed(true),
-          getServiceOfferings: () => Effect.succeed([]),
-          updateServiceOffering: () => Effect.succeed({} as any),
-          getJobRequests: () => Effect.succeed([]),
-          updateJobRequest: () => Effect.succeed({} as any),
-          getChannels: () => Effect.succeed([]),
-          updateChannelStats: () => Effect.succeed(undefined),
-          recordMetric: () => Effect.succeed(undefined),
-          getMetrics: () => Effect.succeed([])
-        }
-      )
+    // Build Effect layers for all required services
+    const baseLayer = Layer.merge(
+      NostrLib.WebSocketService.WebSocketServiceLive,
+      NostrLib.CryptoService.CryptoServiceLive
     )
+
+    const serviceLayer = Layer.merge(
+      NostrLib.EventService.EventServiceLive,
+      NostrLib.RelayService.RelayServiceLive
+    )
+
+    const nostrLayer = Layer.provideMerge(
+      Layer.provideMerge(NostrLib.AgentProfileService.AgentProfileServiceLive, serviceLayer),
+      baseLayer
+    )
+
+    // Database layer - use real database
+    const dbLayer = RelayDatabaseLive
+
+    const AppLayer = Layer.merge(nostrLayer, dbLayer)
 
     const result = await Effect.runPromise(
       program.pipe(
@@ -167,28 +159,10 @@ export async function GET(request: Request): Promise<Response> {
       }
     })
 
-    // Use stub database for now - in production this would use real database layer
+    // Use real database layer
     const result = await Effect.runPromise(
       program.pipe(
-        Effect.provide(
-          Layer.succeed(RelayDatabase, {
-            storeEvent: () => Effect.succeed(true),
-            getAgentProfile: () => Effect.succeed(null),
-            updateAgentProfile: () => Effect.succeed({} as any),
-            getActiveAgents: () => Effect.succeed([]),
-            queryEvents: () => Effect.succeed([]),
-            getEvent: () => Effect.succeed(null),
-            deleteEvent: () => Effect.succeed(true),
-            getServiceOfferings: () => Effect.succeed([]),
-            updateServiceOffering: () => Effect.succeed({} as any),
-            getJobRequests: () => Effect.succeed([]),
-            updateJobRequest: () => Effect.succeed({} as any),
-            getChannels: () => Effect.succeed([]),
-            updateChannelStats: () => Effect.succeed(undefined),
-            recordMetric: () => Effect.succeed(undefined),
-            getMetrics: () => Effect.succeed([])
-          })
-        )
+        Effect.provide(RelayDatabaseLive)
       )
     )
 

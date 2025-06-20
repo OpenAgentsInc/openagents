@@ -4,7 +4,7 @@
  * @module
  */
 
-import { Chunk, Context, Data, Effect, Layer, Schema, Stream } from "effect"
+import { Chunk, Context, Data, Effect, Layer, Option, Schema, Stream } from "effect"
 import type { EventParams, Filter, NostrEvent, PrivateKey, PublicKey, SubscriptionId } from "../core/Schema.js"
 import { EventService } from "../services/EventService.js"
 import { RelayService } from "../services/RelayService.js"
@@ -194,6 +194,8 @@ export interface SubmitJobFeedbackParams {
   resultEventId?: string
   status: JobStatus
   message: string
+  rating: number
+  comment?: string
   paymentHash?: string
   amount?: number
   privateKey: PrivateKey
@@ -288,6 +290,9 @@ export const Nip90ServiceLive = Layer.effect(
   Effect.gen(function*() {
     const eventService = yield* EventService
     const relayService = yield* RelayService
+
+    // Default relay for NIP-90 operations
+    const defaultRelay = "wss://relay.damus.io"
 
     const publishServiceOffering = (
       params: PublishServiceOfferingParams
@@ -601,19 +606,387 @@ export const Nip90ServiceLive = Layer.effect(
         return event
       }))
 
-    // Placeholder implementations for other methods
-    const submitJobFeedback = (_params: SubmitJobFeedbackParams) =>
-      Effect.fail(new Nip90InvalidInputError({ message: "Not implemented yet" }))
+    // Submit job feedback implementation
+    const submitJobFeedback = (params: SubmitJobFeedbackParams) =>
+      Effect.scoped(
+        Effect.gen(function*() {
+          const connection = yield* relayService.connect(defaultRelay).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90PublishError({
+                  message: "Failed to connect to relay",
+                  cause: error
+                })
+              )
+            )
+          )
 
-    const getJobStatus = (jobId: string) => Effect.fail(new Nip90JobNotFoundError({ jobId }))
+          // Create feedback event
+          const event = yield* eventService.create(
+            {
+              kind: 7000, // NIP-90 feedback kind
+              tags: [
+                ["e", params.jobId],
+                ["rating", params.rating.toString()],
+                ...(params.comment ? [["comment", params.comment]] : [])
+              ],
+              content: params.comment || ""
+            },
+            params.privateKey
+          ).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90PublishError({
+                  message: "Failed to create feedback event",
+                  cause: error
+                })
+              )
+            )
+          )
 
-    const monitorJob = (_jobId: string) => Stream.fail(new Nip90FetchError({ message: "Not implemented yet" }))
+          // Publish feedback
+          const published = yield* connection.publish(event).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90PublishError({
+                  message: "Failed to publish feedback",
+                  cause: error
+                })
+              )
+            )
+          )
 
-    const getJobRequests = (_providerPubkey: string, _filterOptions?: Partial<Filter>) =>
-      Effect.fail(new Nip90FetchError({ message: "Not implemented yet" }))
+          if (!published) {
+            return yield* Effect.fail(
+              new Nip90PublishError({ message: "Feedback rejected by relay" })
+            )
+          }
 
-    const subscribeToJobRequests = (_providerPubkey: string) =>
-      Stream.fail(new Nip90FetchError({ message: "Not implemented yet" }))
+          return event
+        })
+      )
+
+    const getJobStatus = (jobId: string) =>
+      Effect.scoped(
+        Effect.gen(function*() {
+          const connection = yield* relayService.connect(defaultRelay).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90FetchError({
+                  message: "Failed to connect to relay",
+                  cause: error
+                })
+              )
+            )
+          )
+
+          // Query for job result events
+          const filters: Array<Filter> = [{
+            kinds: [6000, 6001, 6002, 6003], // Job result kinds
+            "#e": [jobId as any],
+            limit: 1
+          }]
+
+          // Subscribe and get first event
+          const subscription = yield* connection.subscribe(
+            ("job-status-" + jobId) as SubscriptionId,
+            filters
+          ).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90FetchError({
+                  message: "Failed to subscribe",
+                  cause: error
+                })
+              )
+            )
+          )
+
+          const resultEvent = yield* subscription.events.pipe(
+            Stream.take(1),
+            Stream.runHead
+          ).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90FetchError({
+                  message: "Failed to get job status",
+                  cause: error
+                })
+              )
+            )
+          )
+
+          if (Option.isNone(resultEvent)) {
+            return yield* Effect.fail(new Nip90JobNotFoundError({ jobId }))
+          }
+
+          const event = Option.getOrThrow(resultEvent)
+
+          // Extract status from tags
+          const statusTag = event.tags.find((t) => t[0] === "status")
+          const status = statusTag?.[1] || "pending"
+
+          // Transform to JobMonitor format
+          const request: JobRequest = {
+            jobId,
+            serviceId: "",
+            requestKind: 5000,
+            input: "",
+            inputType: "text",
+            bidAmount: 0,
+            requester: event.pubkey,
+            provider: event.pubkey
+          }
+
+          const result: JobResult = {
+            jobId,
+            requestEventId: jobId,
+            resultKind: event.kind,
+            result: event.content,
+            status: status as JobStatus,
+            provider: event.pubkey
+          }
+
+          const monitor: JobMonitor = {
+            jobId,
+            request,
+            result,
+            status: status as JobStatus,
+            lastUpdate: event.created_at
+          }
+
+          return monitor
+        })
+      )
+
+    const monitorJob = (jobId: string) =>
+      Stream.unwrapScoped(
+        Effect.gen(function*() {
+          const connection = yield* relayService.connect(defaultRelay).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90FetchError({
+                  message: "Failed to connect to relay",
+                  cause: error
+                })
+              )
+            )
+          )
+
+          const filters: Array<Filter> = [{
+            kinds: [6000, 6001, 6002, 6003], // Job result kinds
+            "#e": [jobId as any]
+          }]
+
+          const subscription = yield* connection.subscribe(
+            ("monitor-" + jobId) as SubscriptionId,
+            filters
+          ).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90FetchError({
+                  message: "Failed to subscribe",
+                  cause: error
+                })
+              )
+            )
+          )
+
+          return subscription.events.pipe(
+            Stream.map((event) => {
+              // Transform event to JobMonitor
+              const request: JobRequest = {
+                jobId,
+                serviceId: "",
+                requestKind: 5000,
+                input: "",
+                inputType: "text",
+                bidAmount: 0,
+                requester: event.pubkey,
+                provider: event.pubkey
+              }
+
+              const statusTag = event.tags.find((t) => t[0] === "status")
+              const status = (statusTag?.[1] || "pending") as JobStatus
+
+              const result: JobResult = {
+                jobId,
+                requestEventId: jobId,
+                resultKind: event.kind,
+                result: event.content,
+                status,
+                provider: event.pubkey
+              }
+
+              const monitor: JobMonitor = {
+                jobId,
+                request,
+                result,
+                status,
+                lastUpdate: event.created_at
+              }
+
+              return monitor
+            }),
+            Stream.catchAll((error) =>
+              Stream.fail(
+                new Nip90FetchError({
+                  message: String(error)
+                })
+              )
+            )
+          )
+        })
+      )
+
+    const getJobRequests = (providerPubkey: string, filterOptions?: Partial<Filter>) =>
+      Effect.scoped(
+        Effect.gen(function*() {
+          const connection = yield* relayService.connect(defaultRelay)
+          const filters: Array<Filter> = [{
+            kinds: [5000, 5001, 5002, 5003, 5999], // Job request kinds
+            ...filterOptions,
+            limit: filterOptions?.limit || 50
+          }]
+
+          const subscription = yield* connection.subscribe(
+            ("job-requests-" + Date.now()) as SubscriptionId,
+            filters
+          )
+
+          // Collect events for 2 seconds
+          const events = yield* subscription.events.pipe(
+            Stream.filter((event) => {
+              // Filter by provider if their offering matches
+              const serviceTag = event.tags.find((t) => t[0] === "service")
+              return Boolean(serviceTag && serviceTag[1] === providerPubkey)
+            }),
+            Stream.map((event) => {
+              // Transform to JobRequest
+              try {
+                const content = JSON.parse(event.content)
+                const request: JobRequest = {
+                  jobId: event.id,
+                  serviceId: content.serviceId || "",
+                  requestKind: event.kind,
+                  input: content.input || "",
+                  inputType: content.inputType || "text",
+                  parameters: content.parameters,
+                  bidAmount: content.bidAmount || 0,
+                  requester: event.pubkey,
+                  provider: providerPubkey
+                }
+                return request
+              } catch {
+                // Return default if parsing fails
+                return {
+                  jobId: event.id,
+                  serviceId: "",
+                  requestKind: event.kind,
+                  input: "",
+                  inputType: "text" as JobInputType,
+                  bidAmount: 0,
+                  requester: event.pubkey,
+                  provider: providerPubkey
+                }
+              }
+            }),
+            Stream.take(100), // Take up to 100 events
+            Stream.interruptAfter("2 seconds"),
+            Stream.runCollect
+          )
+
+          return [...Chunk.toReadonlyArray(events)]
+        })
+      ).pipe(
+        Effect.catchAll((error) =>
+          Effect.fail(
+            new Nip90FetchError({
+              message: String(error)
+            })
+          )
+        )
+      )
+
+    const subscribeToJobRequests = (providerPubkey: string) =>
+      Stream.unwrapScoped(
+        Effect.gen(function*() {
+          const connection = yield* relayService.connect(defaultRelay).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90FetchError({
+                  message: "Failed to connect to relay",
+                  cause: error
+                })
+              )
+            )
+          )
+
+          const filters: Array<Filter> = [{
+            kinds: [5000, 5001, 5002, 5003, 5999], // Job request kinds
+            since: Math.floor(Date.now() / 1000)
+          }]
+
+          const subscription = yield* connection.subscribe(
+            ("job-requests-stream-" + Date.now()) as SubscriptionId,
+            filters
+          ).pipe(
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip90FetchError({
+                  message: "Failed to subscribe",
+                  cause: error
+                })
+              )
+            )
+          )
+
+          return subscription.events.pipe(
+            Stream.filter((event) => {
+              // Filter by provider if their offering matches
+              const serviceTag = event.tags.find((t) => t[0] === "service")
+              return !!(serviceTag && serviceTag[1] === providerPubkey)
+            }),
+            Stream.map((event) => {
+              // Transform to JobRequest
+              try {
+                const content = JSON.parse(event.content)
+                const request: JobRequest = {
+                  jobId: event.id,
+                  serviceId: content.serviceId || "",
+                  requestKind: event.kind,
+                  input: content.input || "",
+                  inputType: content.inputType || "text",
+                  parameters: content.parameters,
+                  bidAmount: content.bidAmount || 0,
+                  requester: event.pubkey,
+                  provider: providerPubkey
+                }
+                return request
+              } catch {
+                // Return default if parsing fails
+                return {
+                  jobId: event.id,
+                  serviceId: "",
+                  requestKind: event.kind,
+                  input: "",
+                  inputType: "text" as JobInputType,
+                  bidAmount: 0,
+                  requester: event.pubkey,
+                  provider: providerPubkey
+                }
+              }
+            }),
+            Stream.catchAll((error) =>
+              Stream.fail(
+                new Nip90FetchError({
+                  message: String(error)
+                })
+              )
+            )
+          )
+        })
+      )
 
     return {
       publishServiceOffering,

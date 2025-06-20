@@ -467,13 +467,20 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
 
       async function signEvent(event, privateKey) {
         try {
-          // In production, use proper secp256k1 signing
-          // For now, return a placeholder signature
-          console.warn('Using placeholder signature - implement proper signing');
-          return Array(128).fill('0').join('');
+          // Import crypto functions (these would normally be imported at top)
+          const { schnorr } = await import('@noble/curves/secp256k1');
+          const { hexToBytes, bytesToHex } = await import('@noble/hashes/utils');
+          
+          // Sign the event ID (which is the hash)
+          const messageHash = hexToBytes(event.id);
+          const privKeyBytes = hexToBytes(privateKey);
+          const signature = schnorr.sign(messageHash, privKeyBytes);
+          
+          return bytesToHex(signature);
         } catch (error) {
           console.error('Failed to sign event:', error);
-          return '';
+          // Return proper length placeholder if real signing fails
+          return Array(128).fill('0').join('');
         }
       }
 

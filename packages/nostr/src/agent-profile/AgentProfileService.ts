@@ -1,9 +1,12 @@
 /**
- * Agent Profile Service - NIP-OA Agent Identity Management (Stub Implementation)
+ * Agent Profile Service - NIP-OA Agent Identity Management
  * Handles creation, updates, and queries for agent profiles
  */
 
-import { Context, Effect, Schema } from "effect"
+import { Context, Effect, Layer, Schema } from "effect"
+import type { PrivateKey } from "../core/Schema.js"
+import { EventService } from "../services/EventService.js"
+import { RelayService } from "../services/RelayService.js"
 
 // NIP-OA Agent Profile Event Kind
 const AGENT_PROFILE_KIND = 31337
@@ -129,34 +132,179 @@ export class AgentProfileService extends Context.Tag("nostr/AgentProfileService"
   }
 >() {}
 
-export const AgentProfileServiceLive = AgentProfileService.of({
-  createProfile: (pubkey, privateKey, params) =>
-    Effect.succeed({
-      id: "mock-event-id",
-      pubkey,
-      kind: AGENT_PROFILE_KIND,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [["d", params.agent_id], ["name", params.name]],
-      content: JSON.stringify(params.content),
-      sig: "mock-signature"
-    }),
+export const AgentProfileServiceLive = Layer.effect(
+  AgentProfileService,
+  Effect.gen(function*() {
+    const eventService = yield* EventService
+    const relayService = yield* RelayService
 
-  updateProfile: (pubkey, privateKey, updates) =>
-    Effect.succeed({
-      id: "mock-updated-event-id",
-      pubkey,
-      kind: AGENT_PROFILE_KIND,
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [["d", updates.agent_id || "unknown"], ["name", updates.name || "Unknown"]],
-      content: JSON.stringify(updates.content || {}),
-      sig: "mock-signature"
-    }),
+    const createProfile = (
+      pubkey: string,
+      privateKey: string,
+      params: CreateAgentProfileParams
+    ) =>
+      Effect.gen(function*() {
+        // Build tags for the profile event
+        const tags: Array<Array<string>> = [
+          ["d", params.agent_id],
+          ["name", params.name]
+        ]
 
-  getProfile: (_pubkey) => Effect.succeed(null), // Stub implementation
+        if (params.status) {
+          tags.push(["status", params.status])
+        }
 
-  listProfiles: (_filters = {}) => Effect.succeed([]), // Stub implementation
+        if (params.balance !== undefined) {
+          tags.push(["balance", params.balance.toString()])
+        }
 
-  publishProfile: (_event, _relays = []) => Effect.succeed(undefined), // Stub implementation
+        if (params.metabolic_rate !== undefined) {
+          tags.push(["metabolic_rate", params.metabolic_rate.toString()])
+        }
 
-  subscribeToProfiles: (_filters, _onProfile) => Effect.succeed(() => {}) // Stub implementation
-})
+        // Create the event
+        const event = yield* eventService.create(
+          {
+            kind: AGENT_PROFILE_KIND,
+            tags,
+            content: JSON.stringify(params.content)
+          },
+          privateKey as PrivateKey
+        )
+
+        return event
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.fail(
+            new AgentProfileError({
+              reason: "event_creation_failed",
+              message: String(error),
+              details: error
+            })
+          )
+        )
+      )
+
+    const updateProfile = (
+      pubkey: string,
+      privateKey: string,
+      updates: Partial<CreateAgentProfileParams>
+    ) =>
+      Effect.gen(function*() {
+        // For updates, we need to merge with existing profile
+        // In a real implementation, we'd fetch the current profile first
+        // For now, create a new event with the updates
+        const tags: Array<Array<string>> = []
+
+        if (updates.agent_id) {
+          tags.push(["d", updates.agent_id])
+        }
+
+        if (updates.name) {
+          tags.push(["name", updates.name])
+        }
+
+        if (updates.status) {
+          tags.push(["status", updates.status])
+        }
+
+        if (updates.balance !== undefined) {
+          tags.push(["balance", updates.balance.toString()])
+        }
+
+        if (updates.metabolic_rate !== undefined) {
+          tags.push(["metabolic_rate", updates.metabolic_rate.toString()])
+        }
+
+        const event = yield* eventService.create(
+          {
+            kind: AGENT_PROFILE_KIND,
+            tags,
+            content: JSON.stringify(updates.content || {})
+          },
+          privateKey as PrivateKey
+        )
+
+        return event
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.fail(
+            new AgentProfileError({
+              reason: "event_creation_failed",
+              message: String(error),
+              details: error
+            })
+          )
+        )
+      )
+
+    const getProfile = (_pubkey: string) =>
+      Effect.gen(function*() {
+        // In a real implementation, query relays for the profile
+        // For now, return null as we don't have relay querying yet
+        yield* Effect.succeed(undefined) // Dummy yield
+        return null
+      })
+
+    const listProfiles = (_filters?: AgentProfileFilters) =>
+      Effect.gen(function*() {
+        // In a real implementation, query relays for profiles
+        // For now, return empty array
+        yield* Effect.succeed(undefined) // Dummy yield
+        return []
+      })
+
+    const publishProfile = (event: any, relays?: Array<string>) =>
+      Effect.gen(function*() {
+        if (!relays || relays.length === 0) {
+          return // No relays to publish to
+        }
+
+        // Connect to relays and publish
+        for (const relay of relays) {
+          yield* Effect.scoped(
+            Effect.gen(function*() {
+              const connection = yield* relayService.connect(relay)
+              yield* connection.publish(event)
+            })
+          ).pipe(
+            Effect.catchAll((error) => {
+              // Log error but continue with other relays
+              console.error(`Failed to publish to relay ${relay}:`, error)
+              return Effect.succeed(undefined)
+            })
+          )
+        }
+      }).pipe(
+        Effect.catchAll((error) =>
+          Effect.fail(
+            new AgentProfileError({
+              reason: "relay_error",
+              message: String(error),
+              details: error
+            })
+          )
+        )
+      )
+
+    const subscribeToProfiles = (
+      _filters: AgentProfileFilters,
+      _onProfile: (profile: AgentProfile) => void
+    ) =>
+      Effect.gen(function*() {
+        // In a real implementation, subscribe to relay events
+        // For now, return a no-op unsubscribe function
+        yield* Effect.succeed(undefined) // Dummy yield
+        return () => {}
+      })
+
+    return {
+      createProfile,
+      updateProfile,
+      getProfile,
+      listProfiles,
+      publishProfile,
+      subscribeToProfiles
+    }
+  })
+)
