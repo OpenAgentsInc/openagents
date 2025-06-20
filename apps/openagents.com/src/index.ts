@@ -6,6 +6,7 @@ import { docs, docPage } from './routes/docs'
 import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
 import { chat } from './routes/chat'
+import { admin } from './routes/admin'
 import { ollamaApi } from './routes/api/ollama'
 import { openrouterApi } from './routes/api/openrouter'
 import { cloudflareApi } from './routes/api/cloudflare'
@@ -41,6 +42,7 @@ app.route('/about', about)
 app.route('/blog', blogIndex)
 app.route('/blog/:slug', blogPost)
 app.route('/chat', chat)
+app.route('/admin', admin)
 
 // Mount API routes
 app.elysia.use(ollamaApi)
@@ -54,7 +56,9 @@ app.elysia.use(createRelayPlugin({
   enableCors: true,
   rateLimitEnabled: false, // Agent-friendly
   enableMetrics: true,
-  metricsPath: '/relay/metrics'
+  metricsPath: '/relay/metrics',
+  enableAdminApi: true, // Enable admin endpoints
+  adminPath: '/relay/admin'
 }))
 
 // Serve llms.txt
