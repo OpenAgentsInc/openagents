@@ -33,10 +33,10 @@ export interface RelayPluginConfig {
 // Create Psionic plugin for Nostr relay
 export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
   const {
+    adminPath = "/relay/admin",
+    enableAdminApi = false,
     enableCors = true,
     enableMetrics = true,
-    enableAdminApi = false,
-    adminPath = "/relay/admin",
     maxConnections = 1000,
     metricsPath = "/relay/metrics",
     path = "/relay",
@@ -49,7 +49,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
     const MainLayer = NostrRelayLive.pipe(
       Layer.provide(RelayDatabaseLive)
     )
-    
+
     // Create a database-only layer for admin endpoints
     const DatabaseLayer = RelayDatabaseLive
 
@@ -87,14 +87,14 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
     // Localhost-only middleware for admin endpoints
     const checkLocalhostOnly = (request: Request): boolean => {
       const hostname = new URL(request.url).hostname
-      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+      return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
     }
 
     const adminOnly = (handler: (request: Request) => Promise<Response> | Response) => {
       return async (request: Request) => {
         if (!checkLocalhostOnly(request)) {
           return Response.json(
-            { error: 'Admin endpoints only available on localhost' }, 
+            { error: "Admin endpoints only available on localhost" },
             { status: 403 }
           )
         }
@@ -274,221 +274,238 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
     // Admin API endpoints (localhost only)
     if (enableAdminApi) {
       // Admin overview with comprehensive stats
-      app.get(`${adminPath}/overview`, adminOnly(async () => {
-        try {
-          const program = Effect.gen(function*() {
-            const database = yield* RelayDatabase
-            const activeAgents = yield* database.getActiveAgents()
-            const channels = yield* database.getChannels()
-            const services = yield* database.getServiceOfferings()
-            
-            return {
-              relay: { /* We'll populate this separately */ },
-              connections: {
-                active: connections.size,
-                total: connections.size,
-                maxConnections
-              },
-              system: {
-                memory: process.memoryUsage(),
-                uptime: process.uptime(),
-                timestamp: new Date().toISOString()
-              },
-              agents: {
-                active: activeAgents.length,
-                total: activeAgents.length
-              },
-              channels: {
-                total: channels.length,
-                active: channels.filter(c => c.last_message_at && 
-                  new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000).length
-              },
-              services: {
-                available: services.filter(s => s.availability === 'available').length,
-                total: services.length
-              }
-            }
-          })
+      app.get(
+        `${adminPath}/overview`,
+        adminOnly(async () => {
+          try {
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
+              const activeAgents = yield* database.getActiveAgents()
+              const channels = yield* database.getChannels()
+              const services = yield* database.getServiceOfferings()
 
-          const overview = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-          return Response.json(overview)
-        } catch (error) {
-          console.error("Error getting admin overview:", error)
-          return Response.json({ error: "Failed to get admin overview" }, { status: 500 })
-        }
-      }))
+              return {
+                relay: {/* We'll populate this separately */},
+                connections: {
+                  active: connections.size,
+                  total: connections.size,
+                  maxConnections
+                },
+                system: {
+                  memory: process.memoryUsage(),
+                  uptime: process.uptime(),
+                  timestamp: new Date().toISOString()
+                },
+                agents: {
+                  active: activeAgents.length,
+                  total: activeAgents.length
+                },
+                channels: {
+                  total: channels.length,
+                  active: channels.filter((c) =>
+                    c.last_message_at &&
+                    new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
+                  ).length
+                },
+                services: {
+                  available: services.filter((s) => s.availability === "available").length,
+                  total: services.length
+                }
+              }
+            })
+
+            const overview = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
+            return Response.json(overview)
+          } catch (error) {
+            console.error("Error getting admin overview:", error)
+            return Response.json({ error: "Failed to get admin overview" }, { status: 500 })
+          }
+        })
+      )
 
       // Event analytics
-      app.get(`${adminPath}/events`, adminOnly(async (request) => {
-        try {
-          const url = new URL(request.url)
-          const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 1000)
-          const kind = url.searchParams.get('kind')
-          const since = url.searchParams.get('since')
-          
-          const program = Effect.gen(function*() {
-            const database = yield* RelayDatabase
-            
-            const filters = []
-            if (kind) {
-              filters.push({ kinds: [parseInt(kind)] })
-            }
-            if (since) {
-              filters.push({ since: parseInt(since) })
-            }
-            if (filters.length === 0) {
-              filters.push({ limit })
-            } else {
-              filters[0] = { ...filters[0], limit }
-            }
-            
-            const events = yield* database.queryEvents(filters)
-            
-            // Group by kind for analytics
-            const eventsByKind = events.reduce((acc, event) => {
-              acc[event.kind] = (acc[event.kind] || 0) + 1
-              return acc
-            }, {} as Record<number, number>)
-            
-            // Get top authors
-            const authorCounts = events.reduce((acc, event) => {
-              acc[event.pubkey] = (acc[event.pubkey] || 0) + 1
-              return acc
-            }, {} as Record<string, number>)
-            
-            const topAuthors = Object.entries(authorCounts)
-              .sort(([,a], [,b]) => b - a)
-              .slice(0, 10)
-              .map(([pubkey, count]) => ({ pubkey, count }))
-            
-            return {
-              events: events.slice(0, limit),
-              analytics: {
-                total: events.length,
-                byKind: eventsByKind,
-                topAuthors
-              }
-            }
-          })
+      app.get(
+        `${adminPath}/events`,
+        adminOnly(async (request) => {
+          try {
+            const url = new URL(request.url)
+            const limit = Math.min(parseInt(url.searchParams.get("limit") || "50"), 1000)
+            const kind = url.searchParams.get("kind")
+            const since = url.searchParams.get("since")
 
-          const eventData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-          return Response.json(eventData)
-        } catch (error) {
-          console.error("Error getting event analytics:", error)
-          return Response.json({ error: "Failed to get event analytics" }, { status: 500 })
-        }
-      }))
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
+
+              const filters = []
+              if (kind) {
+                filters.push({ kinds: [parseInt(kind)] })
+              }
+              if (since) {
+                filters.push({ since: parseInt(since) })
+              }
+              if (filters.length === 0) {
+                filters.push({ limit })
+              } else {
+                filters[0] = { ...filters[0], limit }
+              }
+
+              const events = yield* database.queryEvents(filters)
+
+              // Group by kind for analytics
+              const eventsByKind = events.reduce((acc, event) => {
+                acc[event.kind] = (acc[event.kind] || 0) + 1
+                return acc
+              }, {} as Record<number, number>)
+
+              // Get top authors
+              const authorCounts = events.reduce((acc, event) => {
+                acc[event.pubkey] = (acc[event.pubkey] || 0) + 1
+                return acc
+              }, {} as Record<string, number>)
+
+              const topAuthors = Object.entries(authorCounts)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 10)
+                .map(([pubkey, count]) => ({ pubkey, count }))
+
+              return {
+                events: events.slice(0, limit),
+                analytics: {
+                  total: events.length,
+                  byKind: eventsByKind,
+                  topAuthors
+                }
+              }
+            })
+
+            const eventData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
+            return Response.json(eventData)
+          } catch (error) {
+            console.error("Error getting event analytics:", error)
+            return Response.json({ error: "Failed to get event analytics" }, { status: 500 })
+          }
+        })
+      )
 
       // Agent analytics
-      app.get(`${adminPath}/agents`, adminOnly(async () => {
-        try {
-          const program = Effect.gen(function*() {
-            const database = yield* RelayDatabase
-            
-            const agents = yield* database.getActiveAgents()
-            const services = yield* database.getServiceOfferings()
-            
-            // Group services by agent
-            const servicesByAgent = services.reduce((acc, service) => {
-              const key = service.agent_pubkey
-              if (!acc[key]) acc[key] = []
-              acc[key].push(service)
-              return acc
-            }, {} as Record<string, any[]>)
-            
-            const agentAnalytics = agents.map(agent => ({
-              ...agent,
-              services: servicesByAgent[agent.pubkey] || [],
-              serviceCount: (servicesByAgent[agent.pubkey] || []).length
-            }))
-            
-            return {
-              agents: agentAnalytics,
-              summary: {
-                total: agents.length,
-                active: agents.filter(a => a.status === 'active').length,
-                totalBalance: agents.reduce((sum, a) => sum + (a.balance || 0), 0),
-                avgBalance: agents.length > 0 ? 
-                  agents.reduce((sum, a) => sum + (a.balance || 0), 0) / agents.length : 0
-              }
-            }
-          })
+      app.get(
+        `${adminPath}/agents`,
+        adminOnly(async () => {
+          try {
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
 
-          const agentData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-          return Response.json(agentData)
-        } catch (error) {
-          console.error("Error getting agent analytics:", error)
-          return Response.json({ error: "Failed to get agent analytics" }, { status: 500 })
-        }
-      }))
+              const agents = yield* database.getActiveAgents()
+              const services = yield* database.getServiceOfferings()
+
+              // Group services by agent
+              const servicesByAgent = services.reduce((acc, service) => {
+                const key = service.agent_pubkey
+                if (!acc[key]) acc[key] = []
+                acc[key].push(service)
+                return acc
+              }, {} as Record<string, Array<any>>)
+
+              const agentAnalytics = agents.map((agent) => ({
+                ...agent,
+                services: servicesByAgent[agent.pubkey] || [],
+                serviceCount: (servicesByAgent[agent.pubkey] || []).length
+              }))
+
+              return {
+                agents: agentAnalytics,
+                summary: {
+                  total: agents.length,
+                  active: agents.filter((a) => a.status === "active").length,
+                  totalBalance: agents.reduce((sum, a) => sum + (a.balance || 0), 0),
+                  avgBalance: agents.length > 0 ?
+                    agents.reduce((sum, a) => sum + (a.balance || 0), 0) / agents.length :
+                    0
+                }
+              }
+            })
+
+            const agentData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
+            return Response.json(agentData)
+          } catch (error) {
+            console.error("Error getting agent analytics:", error)
+            return Response.json({ error: "Failed to get agent analytics" }, { status: 500 })
+          }
+        })
+      )
 
       // Network analytics
-      app.get(`${adminPath}/network`, adminOnly(async () => {
-        try {
-          const program = Effect.gen(function*() {
-            const database = yield* RelayDatabase
-            
-            const channels = yield* database.getChannels()
-            
-            // Get recent events for tag analysis (last 24 hours)
-            const yesterday = Math.floor(Date.now() / 1000) - 24 * 60 * 60
-            const recentEvents = yield* database.queryEvents([{ since: yesterday, limit: 1000 }])
-            
-            // Analyze tags
-            const tagStats = recentEvents.reduce((acc, event) => {
-              event.tags.forEach(tag => {
-                if (tag.length >= 2) {
-                  const tagName = tag[0]
-                  const tagValue = tag[1]
-                  
-                  if (!acc[tagName]) acc[tagName] = {}
-                  acc[tagName][tagValue] = (acc[tagName][tagValue] || 0) + 1
-                }
-              })
-              return acc
-            }, {} as Record<string, Record<string, number>>)
-            
-            // Get trending hashtags (#t tags)
-            const trendingTags = Object.entries(tagStats['t'] || {})
-              .sort(([,a], [,b]) => b - a)
-              .slice(0, 20)
-              .map(([tag, count]) => ({ tag, count }))
-            
-            // Get mention network (#p tags)
-            const mentions = Object.entries(tagStats['p'] || {})
-              .sort(([,a], [,b]) => b - a)  
-              .slice(0, 20)
-              .map(([pubkey, count]) => ({ pubkey, count }))
-            
-            return {
-              channels: {
-                list: channels,
-                total: channels.length,
-                active: channels.filter(c => c.last_message_at && 
-                  new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000).length
-              },
-              tags: {
-                trending: trendingTags,
-                mentions,
-                tagStats: Object.keys(tagStats).reduce((acc, tagName) => {
-                  acc[tagName] = Object.keys(tagStats[tagName]).length
-                  return acc
-                }, {} as Record<string, number>)
-              },
-              activity: {
-                recentEvents: recentEvents.length,
-                timeframe: '24h'
-              }
-            }
-          })
+      app.get(
+        `${adminPath}/network`,
+        adminOnly(async () => {
+          try {
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
 
-          const networkData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-          return Response.json(networkData)
-        } catch (error) {
-          console.error("Error getting network analytics:", error)
-          return Response.json({ error: "Failed to get network analytics" }, { status: 500 })
-        }
-      }))
+              const channels = yield* database.getChannels()
+
+              // Get recent events for tag analysis (last 24 hours)
+              const yesterday = Math.floor(Date.now() / 1000) - 24 * 60 * 60
+              const recentEvents = yield* database.queryEvents([{ since: yesterday, limit: 1000 }])
+
+              // Analyze tags
+              const tagStats = recentEvents.reduce((acc, event) => {
+                event.tags.forEach((tag) => {
+                  if (tag.length >= 2) {
+                    const tagName = tag[0]
+                    const tagValue = tag[1]
+
+                    if (!acc[tagName]) acc[tagName] = {}
+                    acc[tagName][tagValue] = (acc[tagName][tagValue] || 0) + 1
+                  }
+                })
+                return acc
+              }, {} as Record<string, Record<string, number>>)
+
+              // Get trending hashtags (#t tags)
+              const trendingTags = Object.entries(tagStats["t"] || {})
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 20)
+                .map(([tag, count]) => ({ tag, count }))
+
+              // Get mention network (#p tags)
+              const mentions = Object.entries(tagStats["p"] || {})
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 20)
+                .map(([pubkey, count]) => ({ pubkey, count }))
+
+              return {
+                channels: {
+                  list: channels,
+                  total: channels.length,
+                  active: channels.filter((c) =>
+                    c.last_message_at &&
+                    new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
+                  ).length
+                },
+                tags: {
+                  trending: trendingTags,
+                  mentions,
+                  tagStats: Object.keys(tagStats).reduce((acc, tagName) => {
+                    acc[tagName] = Object.keys(tagStats[tagName]).length
+                    return acc
+                  }, {} as Record<string, number>)
+                },
+                activity: {
+                  recentEvents: recentEvents.length,
+                  timeframe: "24h"
+                }
+              }
+            })
+
+            const networkData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
+            return Response.json(networkData)
+          } catch (error) {
+            console.error("Error getting network analytics:", error)
+            return Response.json({ error: "Failed to get network analytics" }, { status: 500 })
+          }
+        })
+      )
 
       console.log(`🔧 Admin API available at ${adminPath} (localhost only)`)
     }
