@@ -179,66 +179,63 @@ export function serviceBoard({
     </div>
 
     <script>
-      // Mock data for demonstration
-      let currentJobs = [
-        {
-          id: 'job-1',
-          type: 'Code Review',
-          status: 'processing',
-          requester: 'Agent Alpha',
-          provider: 'Agent Beta',
-          amount: 500,
-          description: 'Security analysis of React authentication component',
-          timestamp: Date.now() - 900000
-        },
-        {
-          id: 'job-2', 
-          type: 'Text Generation',
-          status: 'completed',
-          requester: 'Agent Gamma',
-          provider: 'Agent Delta',
-          amount: 250,
-          description: 'Generate API documentation for payment endpoints',
-          timestamp: Date.now() - 1800000
-        },
-        {
-          id: 'job-3',
-          type: 'Code Generation',
-          status: 'pending',
-          requester: 'Current Agent',
-          provider: 'Agent Epsilon',
-          amount: 750,
-          description: 'Generate TypeScript interfaces from API schema',
-          timestamp: Date.now() - 300000
-        }
-      ];
+      // Real data from API - No more mocks!
+      let currentJobs = [];
+      let currentServices = [];
 
-      let currentServices = [
-        {
-          id: 'service-1',
-          name: 'Security Code Review',
-          provider: 'Agent Beta',
-          description: 'Comprehensive security analysis for web applications',
-          basePrice: 500,
-          capabilities: ['TypeScript', 'React', 'Security', 'Authentication']
-        },
-        {
-          id: 'service-2',
-          name: 'API Documentation',
-          provider: 'Agent Delta', 
-          description: 'Generate comprehensive API documentation from code',
-          basePrice: 250,
-          capabilities: ['Documentation', 'OpenAPI', 'REST', 'GraphQL']
-        },
-        {
-          id: 'service-3',
-          name: 'Code Generation',
-          provider: 'Agent Epsilon',
-          description: 'Generate boilerplate code and interfaces',
-          basePrice: 300,
-          capabilities: ['TypeScript', 'Code Generation', 'Interfaces', 'Schemas']
+      // Load real services from API
+      async function loadServices() {
+        try {
+          const response = await fetch('/api/services');
+          const data = await response.json();
+          
+          if (data.services) {
+            currentServices = data.services;
+            updateServicesList();
+            updateServicesCount();
+            console.log('Loaded real services from API:', currentServices);
+          }
+        } catch (error) {
+          console.error('Failed to load services:', error);
+          // Fallback to prevent UI breaking
+          currentServices = [
+            {
+              id: 'service-fallback',
+              name: 'Service Loading Failed',
+              provider: 'System',
+              description: 'Please check API connectivity',
+              basePrice: 0,
+              capabilities: ['Error']
+            }
+          ];
         }
-      ];
+      }
+
+      // Load real jobs from API
+      async function loadJobs() {
+        try {
+          const response = await fetch('/api/jobs');
+          const data = await response.json();
+          
+          if (data.jobs) {
+            currentJobs = data.jobs;
+            updateJobsList();
+            updateJobsCount();
+            console.log('Loaded real jobs from API:', currentJobs);
+          }
+        } catch (error) {
+          console.error('Failed to load jobs:', error);
+          // Fallback to prevent UI breaking
+          currentJobs = [];
+        }
+      }
+
+      // Save jobs via API (not needed for now - jobs are managed by NIP-90 events)
+      function saveJobs() {
+        // Jobs are now managed through NIP-90 events and stored in the relay
+        // This function is kept for compatibility but does nothing
+        console.log('Jobs are managed through NIP-90 events - no local storage needed');
+      }
 
       let activeTab = 'jobs';
 
@@ -256,39 +253,53 @@ export function serviceBoard({
       };
 
       // Service management functions
-      window.requestService = function() {
+      window.requestService = async function() {
         const serviceType = prompt('What type of AI service do you need?\\n\\nOptions:\\n- Code Review\\n- Text Generation\\n- Code Generation\\n- Data Analysis');
         const description = prompt('Describe what you need:');
         const budget = prompt('Your budget (in sats):');
         
         if (serviceType && description && budget) {
-          const newJob = {
-            id: 'job-' + Date.now(),
-            type: serviceType,
-            status: 'pending',
-            requester: 'Current Agent',
-            provider: 'Looking for provider...',
-            amount: parseInt(budget),
-            description: description,
-            timestamp: Date.now()
-          };
-          
-          currentJobs.unshift(newJob);
-          updateJobsList();
-          updateJobsCount();
-          
-          console.log('Service requested:', newJob);
-          alert('Service request created! Looking for available providers...');
+          try {
+            const response = await fetch('/api/services', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                serviceType,
+                description,
+                budget: parseInt(budget)
+              })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success && result.job) {
+              currentJobs.unshift(result.job);
+              updateJobsList();
+              updateJobsCount();
+              
+              console.log('Real service requested via NIP-90:', result.job);
+              alert('Service request created via NIP-90! Looking for available providers...');
+            } else {
+              throw new Error(result.error || 'Failed to create service request');
+            }
+          } catch (error) {
+            console.error('Service request failed:', error);
+            alert('Failed to create service request. Please try again.');
+          }
         }
       };
 
-      window.refreshServices = function() {
+      window.refreshServices = async function() {
         console.log('Refreshing services from Nostr relays...');
-        // In real implementation, this would fetch from relays
-        if (activeTab === 'jobs') {
-          updateJobsList();
-        } else {
-          updateServicesList();
+        try {
+          if (activeTab === 'jobs') {
+            await loadJobs();
+          } else {
+            await loadServices();
+          }
+        } catch (error) {
+          console.error('Failed to refresh data:', error);
+          alert('Failed to refresh data. Please check your connection.');
         }
       };
 
@@ -311,28 +322,39 @@ export function serviceBoard({
         }
       };
 
-      window.requestSpecificService = function(serviceId) {
+      window.requestSpecificService = async function(serviceId) {
         const service = currentServices.find(s => s.id === serviceId);
         if (service) {
           const description = prompt(\`Request \${service.name} from \${service.provider}\\n\\nBase price: \${service.basePrice} sats\\n\\nDescribe your specific requirements:\`);
           if (description) {
-            const newJob = {
-              id: 'job-' + Date.now(),
-              type: service.name,
-              status: 'pending',
-              requester: 'Current Agent',
-              provider: service.provider,
-              amount: service.basePrice,
-              description: description,
-              timestamp: Date.now()
-            };
-            
-            currentJobs.unshift(newJob);
-            updateJobsList();
-            updateJobsCount();
-            
-            console.log('Service requested:', newJob);
-            alert(\`Service requested from \${service.provider}! They will be notified.\`);
+            try {
+              const response = await fetch('/api/services', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  serviceType: service.name,
+                  description,
+                  budget: service.basePrice,
+                  targetAgentPubkey: service.agent_pubkey
+                })
+              });
+              
+              const result = await response.json();
+              
+              if (result.success && result.job) {
+                currentJobs.unshift(result.job);
+                updateJobsList();
+                updateJobsCount();
+                
+                console.log('Real targeted service requested via NIP-90:', result.job);
+                alert(\`Service requested from \${service.provider} via NIP-90! They will be notified.\`);
+              } else {
+                throw new Error(result.error || 'Failed to create service request');
+              }
+            } catch (error) {
+              console.error('Targeted service request failed:', error);
+              alert('Failed to request service. Please try again.');
+            }
           }
         }
       };
@@ -452,11 +474,43 @@ export function serviceBoard({
         }
       }
 
-      // Initialize with mock data
-      updateJobsList();
-      updateServicesList();
-      updateJobsCount();
-      updateServicesCount();
+      // Initialize with real data from APIs
+      document.addEventListener('DOMContentLoaded', async function() {
+        console.log('Initializing service board with real data...');
+        try {
+          // Load real services and jobs from APIs
+          await Promise.all([
+            loadServices(),
+            loadJobs()
+          ]);
+          console.log('Service board initialized with real data');
+        } catch (error) {
+          console.error('Failed to initialize service board:', error);
+          // Fallback to empty state
+          updateJobsList();
+          updateServicesList();
+          updateJobsCount();
+          updateServicesCount();
+        }
+      });
+      
+      // Also initialize immediately if DOM is already loaded
+      if (document.readyState === 'loading') {
+        // DOM is still loading, event listener will handle it
+      } else {
+        // DOM is already loaded, initialize now
+        setTimeout(async () => {
+          try {
+            await Promise.all([
+              loadServices(),
+              loadJobs()
+            ]);
+            console.log('Service board initialized with real data (immediate)');
+          } catch (error) {
+            console.error('Failed to initialize service board (immediate):', error);
+          }
+        }, 0);
+      }
     </script>
 
     <style>
