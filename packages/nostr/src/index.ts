@@ -1,4 +1,10 @@
 /**
+ * Agent Profile Service - NIP-OA Agent Identity Management (Stub Implementation)
+ * Handles creation, updates, and queries for agent profiles
+ */
+export * as AgentProfileService from "./agent-profile/AgentProfileService.js"
+
+/**
  * Core error types for Nostr operations
  * @module
  */
