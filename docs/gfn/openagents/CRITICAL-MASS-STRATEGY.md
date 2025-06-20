@@ -12,6 +12,8 @@ Reed's Law implementation faces a fundamental chicken-and-egg problem: exponenti
 
 ## Ecosystem Mapping: The Bitcoin+AI Network
 
+The Bitcoin+AI ecosystem represents a unique convergence of sound money principles and artificial intelligence capabilities. Unlike the broader crypto ecosystem driven by speculation, the Bitcoin+AI space focuses on sustainable value creation through computational work backed by economic reality. This alignment creates natural partnerships for agent coordination infrastructure.
+
 ### Tier 1: Infrastructure Partners (Must-Have Alliances)
 
 **Lightning Labs & Voltage** - Lightning Infrastructure
@@ -54,17 +56,23 @@ Reed's Law implementation faces a fundamental chicken-and-egg problem: exponenti
 
 ### Tier 3: Application Partners (Network Effect Accelerators)
 
-**AI16z & Eliza Framework** - Agent Token Infrastructure
-- *Partnership Value*: Existing agent development community and token coordination
-- *Collaboration Model*: Bridge Eliza agents to OpenAgents coalition capabilities
-- *Mutual Benefit*: They get enhanced coordination capabilities, we get existing agent ecosystem
-- *Specific Ask*: Coalition extensions for Eliza framework, token-Bitcoin bridge protocols
+**Bitcoin Mining Pools** (Ocean, Braiins, Foundry)
+- *Partnership Value*: Computational resources and Bitcoin-native infrastructure
+- *Collaboration Model*: Agent-optimized mining reward distribution and hashrate coordination
+- *Mutual Benefit*: They get new revenue streams from agent services, we get proven Bitcoin infrastructure
+- *Specific Ask*: Agent-specific mining pool APIs, stratum protocol extensions for agent coordination
 
-**Zerebro & AI Agent Token Projects** - Market Validation
-- *Partnership Value*: Proven market demand for autonomous AI agents
-- *Collaboration Model*: Integrate economic sustainability features into token agent projects
-- *Mutual Benefit*: They get sustainable economics, we get market-tested agent types
-- *Specific Ask*: Pilot Bitcoin economic layer for token agents, revenue sharing partnerships
+**Bitcoin Infrastructure Companies** (Block, Spiral, Blockstream)
+- *Partnership Value*: Enterprise Bitcoin adoption and Bitcoin protocol development expertise
+- *Collaboration Model*: Bitcoin-native agent coordination for enterprise operations and protocol improvements
+- *Mutual Benefit*: They get advanced Bitcoin utilization showcases, we get enterprise validation and protocol expertise
+- *Specific Ask*: Agent integration pilots, Bitcoin protocol optimization for agent use cases
+
+**Bitcoin Development Organizations** (Chaincode Labs, Spiral, HRF Bitcoin Fund)
+- *Partnership Value*: Bitcoin protocol research and development funding
+- *Collaboration Model*: Research grants for Bitcoin-native agent coordination protocols
+- *Mutual Benefit*: They advance Bitcoin utility and adoption, we get technical validation and funding
+- *Specific Ask*: Research grants for Bitcoin agent protocols, technical advisory relationships
 
 **Lightning Service Providers** (Strike, River, Cash App)
 - *Partnership Value*: User onboarding and fiat<>Bitcoin conversion for agent services
@@ -72,11 +80,25 @@ Reed's Law implementation faces a fundamental chicken-and-egg problem: exponenti
 - *Mutual Benefit*: They get new revenue categories, we get mainstream user access
 - *Specific Ask*: Agent marketplace integration, subscription billing for agent services
 
+**Bitcoin Hardware & Infrastructure** (Blockstream Satellite, Casa, Coldcard)
+- *Partnership Value*: Secure infrastructure and hardware wallet integration for agent Bitcoin management
+- *Collaboration Model*: Agent-optimized hardware wallets and satellite communication protocols
+- *Mutual Benefit*: They get new hardware use cases, we get proven security infrastructure
+- *Specific Ask*: Agent-specific hardware signing devices, satellite communication for global agent networks
+
+**Bitcoin Education & Media** (Bitcoin Magazine, Unchained, Bitcoin Twitter)
+- *Partnership Value*: Community education and narrative building around Bitcoin-native agents
+- *Collaboration Model*: Joint content creation and educational initiatives about agent economies
+- *Mutual Benefit*: They get cutting-edge content, we get community validation and adoption
+- *Specific Ask*: Conference speaking opportunities, technical content collaboration, community endorsements
+
 ## Partnership Models: From Competition to Collaboration
 
-### The Open Infrastructure Strategy
+### The Bitcoin-Native Open Infrastructure Strategy
 
-**Core Principle**: Build protocols, not platforms. Enable others to build competitive implementations while establishing OpenAgents as the coordination standard.
+**Core Principle**: Build Bitcoin-native protocols, not platforms. Enable others to build competitive implementations while establishing OpenAgents as the coordination standard for Bitcoin-powered agent economies.
+
+**The Bitcoin Alignment Advantage**: Unlike crypto projects with misaligned incentives, Bitcoin-native agent coordination aligns with Bitcoin's core principles: proof of work, economic scarcity, and value creation requirements. This philosophical alignment creates natural partnerships with the entire Bitcoin ecosystem.
 
 **Value Proposition to Partners**:
 - Access to Reed's Law exponential value creation without platform lock-in
@@ -185,7 +207,7 @@ const lightningPartnership: InfrastructurePartnership = {
 - Launch developer grants for building on OpenAgents protocols
 
 **Layer 2: Application Integration (Months 2-3)**  
-- Integrate existing agent projects (Eliza, token agents, etc.) with coalition capabilities
+- Integrate Bitcoin-native applications with agent coalition capabilities
 - Launch pilot enterprise projects demonstrating exponential value creation
 - Build marketplace for agent discovery and coalition formation
 - Establish economic sustainability metrics and success stories
@@ -228,9 +250,9 @@ const lightningPartnership: InfrastructurePartnership = {
    - Fedimint: Pitch coalition privacy and efficiency partnership
 
 2. **Brief existing relationships in Bitcoin+AI space**
-   - AI16z team: Explain coalition extensions for Eliza framework
    - Major Nostr client developers: Discuss agent-optimized relay development
    - Lightning service providers: Propose agent marketplace integration
+   - Bitcoin infrastructure companies: Explain agent coordination opportunities
 
 3. **Prepare partnership term sheets for conference signing**
    - Template agreements for different partnership types
@@ -288,10 +310,10 @@ const lightningPartnership: InfrastructurePartnership = {
 - Joint venture structure for industry-specific agent coalition development
 - Preferred partner status for companies demonstrating OpenAgents ecosystem commitment
 
-**Network Effects Rewards**: Token-based incentives for ecosystem contribution
-- Early partner tokens for infrastructure providers and protocol contributors
+**Network Effects Rewards**: Bitcoin-based incentives for ecosystem contribution
+- Early Bitcoin revenue sharing for infrastructure providers and protocol contributors
 - Ecosystem governance rights for companies contributing to open protocol development
-- Revenue sharing rights for partners helping achieve network effects critical mass
+- Enhanced revenue sharing for partners helping achieve network effects critical mass
 
 ## Technical Collaboration Framework
 
@@ -360,10 +382,10 @@ const lightningPartnership: InfrastructurePartnership = {
 - Network effects scaling faster than individual company capabilities
 
 **Crypto Speculation Risk**:
-- Focus on sustainable value creation over token price speculation
-- Economic accountability requirements preventing speculative bubbles  
-- Partnership agreements prioritizing utility over speculation
-- Long-term ecosystem development over short-term token gains
+- Focus on sustainable value creation over speculative bubbles
+- Economic accountability requirements preventing unsustainable growth  
+- Partnership agreements prioritizing utility over financial speculation
+- Long-term ecosystem development over short-term speculative gains
 
 ## Success Metrics and Milestones
 

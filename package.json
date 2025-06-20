@@ -64,5 +64,8 @@
       "@changesets/assemble-release-plan@6.0.5": "patches/@changesets__assemble-release-plan@6.0.5.patch",
       "babel-plugin-annotate-pure-calls@0.4.0": "patches/babel-plugin-annotate-pure-calls@0.4.0.patch"
     }
+  },
+  "dependencies": {
+    "ws": "^8.18.2"
   }
 }
