@@ -11,7 +11,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
-      '@openagentsinc/nostr': resolve(__dirname, '../nostr/dist/esm/index.js'),
+      '@openagentsinc/nostr': resolve(__dirname, '../nostr/src/index.ts'),
     },
   },
 })
