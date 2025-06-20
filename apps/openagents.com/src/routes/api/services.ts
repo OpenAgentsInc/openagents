@@ -16,8 +16,8 @@ export async function GET(request: Request): Promise<Response> {
 
       // Get service offerings from database
       const offerings = yield* database.getServiceOfferings({
-        agentPubkey: agentPubkey || undefined,
-        capabilities: capabilities || undefined
+        agentPubkey: agentPubkey ?? undefined,
+        capabilities: capabilities ?? undefined
       })
 
       // Get all agent profiles for provider names
@@ -54,11 +54,12 @@ export async function GET(request: Request): Promise<Response> {
                   pubkey: "agent_beta_pubkey",
                   agent_id: "agent-beta",
                   name: "Agent Beta",
-                  status: "active" as const,
+                  status: "active",
                   balance: 25000,
                   metabolic_rate: 120,
                   capabilities: ["TypeScript", "Security", "Code Review"],
                   last_activity: new Date(),
+                  profile_event_id: "profile_event_beta",
                   created_at: new Date(),
                   updated_at: new Date()
                 },
@@ -66,11 +67,12 @@ export async function GET(request: Request): Promise<Response> {
                   pubkey: "agent_delta_pubkey",
                   agent_id: "agent-delta",
                   name: "Agent Delta",
-                  status: "active" as const,
+                  status: "active",
                   balance: 30000,
                   metabolic_rate: 100,
                   capabilities: ["Documentation", "API Design"],
                   last_activity: new Date(),
+                  profile_event_id: "profile_event_delta",
                   created_at: new Date(),
                   updated_at: new Date()
                 }
@@ -106,6 +108,8 @@ export async function GET(request: Request): Promise<Response> {
                 }
               ]),
             updateServiceOffering: () => Effect.succeed({} as any),
+            getJobRequests: () => Effect.succeed([]),
+            updateJobRequest: () => Effect.succeed({} as any),
             getChannels: () => Effect.succeed([]),
             updateChannelStats: () => Effect.succeed(undefined),
             recordMetric: () => Effect.succeed(undefined),

@@ -101,7 +101,10 @@ export async function POST(request: Request): Promise<Response> {
 
     // Create proper Effect runtime with all required services
     const MainLayer = Layer.mergeAll(
-      NostrLib.AgentProfileService.AgentProfileServiceLive,
+      Layer.succeed(
+        NostrLib.AgentProfileService.AgentProfileService,
+        NostrLib.AgentProfileService.AgentProfileServiceLive
+      ),
       NostrLib.EventService.EventServiceLive,
       NostrLib.RelayService.RelayServiceLive,
       NostrLib.CryptoService.CryptoServiceLive,
@@ -111,9 +114,9 @@ export async function POST(request: Request): Promise<Response> {
     // We need to provide RelayDatabase layer as well
     const RelayLayer = Layer.mergeAll(
       MainLayer,
-      Layer.effect(
+      Layer.succeed(
         RelayDatabase,
-        Effect.succeed({
+        {
           storeEvent: () => Effect.succeed(true),
           getAgentProfile: () => Effect.succeed(null),
           updateAgentProfile: () => Effect.succeed({} as any),
@@ -123,11 +126,13 @@ export async function POST(request: Request): Promise<Response> {
           deleteEvent: () => Effect.succeed(true),
           getServiceOfferings: () => Effect.succeed([]),
           updateServiceOffering: () => Effect.succeed({} as any),
+          getJobRequests: () => Effect.succeed([]),
+          updateJobRequest: () => Effect.succeed({} as any),
           getChannels: () => Effect.succeed([]),
           updateChannelStats: () => Effect.succeed(undefined),
           recordMetric: () => Effect.succeed(undefined),
           getMetrics: () => Effect.succeed([])
-        })
+        }
       )
     )
 

@@ -68,6 +68,14 @@ export class RelayDatabase extends Context.Tag("RelayDatabase")<
       offering: schema.NewServiceOffering
     ) => Effect.Effect<schema.ServiceOffering, DatabaseError>
 
+    // Job requests (NIP-90)
+    readonly getJobRequests: (
+      filters?: { requesterPubkey?: string; providerPubkey?: string; status?: string }
+    ) => Effect.Effect<Array<schema.JobRequest>, DatabaseError>
+    readonly updateJobRequest: (
+      jobRequest: schema.NewJobRequest
+    ) => Effect.Effect<schema.JobRequest, DatabaseError>
+
     // Channel operations (NIP-28)
     readonly getChannels: () => Effect.Effect<Array<schema.Channel>, DatabaseError>
     readonly updateChannelStats: (channelId: string, messageCount: number) => Effect.Effect<void, DatabaseError>
@@ -660,6 +668,60 @@ export const RelayDatabaseLive = Layer.effect(
           })
       })
 
+    const getJobRequests = (filters?: { requesterPubkey?: string; providerPubkey?: string; status?: string }) =>
+      Effect.tryPromise({
+        try: async () => {
+          const conditions = []
+
+          if (filters?.requesterPubkey) {
+            conditions.push(eq(schema.job_requests.requester_pubkey, filters.requesterPubkey))
+          }
+
+          if (filters?.providerPubkey) {
+            conditions.push(eq(schema.job_requests.provider_pubkey, filters.providerPubkey))
+          }
+
+          if (filters?.status) {
+            conditions.push(eq(schema.job_requests.status, filters.status))
+          }
+
+          return await db.select()
+            .from(schema.job_requests)
+            .where(conditions.length > 0 ? and(...conditions) : undefined)
+            .orderBy(desc(schema.job_requests.created_at))
+        },
+        catch: (error) =>
+          new DatabaseError({
+            message: "Failed to get job requests",
+            cause: error,
+            operation: "get_job_requests"
+          })
+      })
+
+    const updateJobRequest = (jobRequest: schema.NewJobRequest) =>
+      Effect.tryPromise({
+        try: async () => {
+          await db.insert(schema.job_requests).values(jobRequest).onDuplicateKeyUpdate({
+            set: {
+              ...jobRequest,
+              updated_at: sql`NOW()`
+            }
+          })
+
+          // Since MySQL doesn't support returning, query for the updated record
+          const [updated] = await db.select().from(schema.job_requests).where(
+            eq(schema.job_requests.id, jobRequest.id)
+          ).limit(1)
+          return updated!
+        },
+        catch: (error) =>
+          new DatabaseError({
+            message: "Failed to update job request",
+            cause: error,
+            operation: "update_job_request"
+          })
+      })
+
     return {
       storeEvent,
       queryEvents,
@@ -670,6 +732,8 @@ export const RelayDatabaseLive = Layer.effect(
       getActiveAgents,
       getServiceOfferings,
       updateServiceOffering,
+      getJobRequests,
+      updateJobRequest,
       getChannels,
       updateChannelStats,
       recordMetric,

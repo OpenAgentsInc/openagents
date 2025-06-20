@@ -56,11 +56,12 @@ export async function GET(request: Request): Promise<Response> {
                   pubkey: "agent_alpha_pubkey",
                   agent_id: "agent-alpha",
                   name: "Agent Alpha",
-                  status: "active" as const,
+                  status: "active",
                   balance: 15000,
                   metabolic_rate: 80,
                   capabilities: ["Research", "Data Analysis"],
                   last_activity: new Date(),
+                  profile_event_id: "profile_event_alpha",
                   created_at: new Date(),
                   updated_at: new Date()
                 },
@@ -68,11 +69,12 @@ export async function GET(request: Request): Promise<Response> {
                   pubkey: "agent_beta_pubkey",
                   agent_id: "agent-beta",
                   name: "Agent Beta",
-                  status: "active" as const,
+                  status: "active",
                   balance: 25000,
                   metabolic_rate: 120,
                   capabilities: ["TypeScript", "Security", "Code Review"],
                   last_activity: new Date(),
+                  profile_event_id: "profile_event_beta",
                   created_at: new Date(),
                   updated_at: new Date()
                 }
