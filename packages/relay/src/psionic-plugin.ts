@@ -575,8 +575,8 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
                 .map(([pubkey, count]) => ({ pubkey, count }))
 
               // Real channel data from events (NIP-28)
-              const channelCreationEvents = allEvents.filter((e) => e.kind === 40) // Channel creation
-              const channelMessages = allEvents.filter((e) => e.kind === 42) // Channel messages
+              const channelCreationEvents = recentEvents.filter((e) => e.kind === 40) // Channel creation
+              const channelMessages = recentEvents.filter((e) => e.kind === 42) // Channel messages
 
               // Build channel list from actual events
               const channels = channelCreationEvents.map((event) => {
