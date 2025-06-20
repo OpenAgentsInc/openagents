@@ -10,5 +10,9 @@
     "moduleResolution": "bundler",
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/sdk" },
+    { "path": "../../packages/nostr" }
+  ]
 }

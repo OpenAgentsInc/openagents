@@ -1,8 +1,18 @@
 import { document, html } from "@openagentsinc/psionic"
+import { Agent } from "@openagentsinc/sdk"
 import { sharedHeader } from "../components/shared-header"
 import { baseStyles } from "../styles"
 
-export function home() {
+export async function home() {
+  // Generate a new agent using the SDK
+  const mnemonic = await Agent.generateMnemonic()
+  const agent = await Agent.createFromMnemonic(mnemonic, {
+    name: "Demo Agent"
+  })
+
+  // Log the agent's public key
+  console.log("Generated agent npub:", agent.nostrKeys.public)
+
   return document({
     title: "OpenAgents",
     styles: baseStyles,

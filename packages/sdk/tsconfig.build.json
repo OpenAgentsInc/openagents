@@ -8,5 +8,8 @@
     "target": "ES2022",
     "moduleResolution": "NodeNext"
   },
-  "exclude": ["test", "examples", "dist", "build"]
+  "exclude": ["test", "examples", "dist", "build"],
+  "references": [
+    { "path": "../nostr/tsconfig.build.json" }
+  ]
 }

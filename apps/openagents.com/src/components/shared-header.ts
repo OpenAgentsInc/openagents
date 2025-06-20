@@ -38,6 +38,14 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         flex-shrink: 0;
         background: var(--background0);
         padding: 1rem 2rem;
+        --box-border-color: color-mix(in srgb, var(--background3) 50%, transparent);
+        --box-border-width: 1px;
+      }
+
+      /* Override box padding for more horizontal spacing */
+      .ascii-header[box-] {
+        padding-left: 2rem;
+        padding-right: 2rem;
       }
 
       .header-content {
