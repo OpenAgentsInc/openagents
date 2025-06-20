@@ -1,47 +1,57 @@
 import * as Nostr from "@openagentsinc/nostr"
-import { RelayDatabase } from "@openagentsinc/relay"
-import { DATABASE_HOST, DATABASE_NAME, DATABASE_PASSWORD, DATABASE_USERNAME } from "@openagentsinc/relay/database"
-import { Effect, Runtime } from "effect"
+import { RelayDatabase, RelayDatabaseLive } from "@openagentsinc/relay"
+import { Effect, Layer, Runtime } from "effect"
 import { Elysia } from "elysia"
 
 // Create a runtime with database layer
 const runtime = Runtime.defaultRuntime
-
-// Nostr service layer
-const NostrServiceLayer = Nostr.Client.layer({
-  relays: ["ws://localhost:3003/relay"],
-  autoConnect: true
-})
 
 export const channelsApi = new Elysia({ prefix: "/api/channels" })
   // Create a new channel
   .post("/create", async ({ body }: { body: { name: string; about?: string; picture?: string } }) => {
     try {
       const program = Effect.gen(function*() {
-        const nostr = yield* Nostr.Client.Client
-        const nip28 = yield* Nostr.Nip28.Nip28Service
+        const crypto = yield* Nostr.CryptoService.CryptoService
+        const nip28 = yield* Nostr.Nip28Service.Nip28Service
 
-        // Generate keys for this session (in production, use actual user keys)
-        const { privateKey } = yield* Nostr.Crypto.generateKeyPair()
+        // Generate keypair for the channel creator
+        const privateKey = yield* crypto.generatePrivateKey()
+        const publicKey = yield* crypto.getPublicKey(privateKey)
 
-        // Create channel
-        const channelEvent = yield* nip28.createChannel({
+        // Create channel using NIP-28 service - build params conditionally
+        const createParams: any = {
           name: body.name,
-          about: body.about || "",
-          picture: body.picture || "",
+          privateKey,
           relays: ["ws://localhost:3003/relay"]
-        })
+        }
 
-        // Sign and publish event
-        const signedEvent = yield* Nostr.Event.signEvent(channelEvent, privateKey)
-        yield* nostr.publish(signedEvent)
+        if (body.about) {
+          createParams.about = body.about
+        }
+        if (body.picture) {
+          createParams.picture = body.picture
+        }
 
-        return { channelId: signedEvent.id }
+        const channelEvent = yield* nip28.createChannel(createParams)
+
+        return {
+          channelId: channelEvent.id,
+          publicKey,
+          event: channelEvent
+        }
       })
 
-      const result = await Runtime.runPromise(runtime)(
-        program.pipe(Effect.provide(NostrServiceLayer))
+      // Build service layers
+      const NostrLayer = Layer.mergeAll(
+        Nostr.CryptoService.CryptoServiceLive,
+        Nostr.EventService.EventServiceLive,
+        Nostr.WebSocketService.WebSocketServiceLive,
+        Nostr.RelayService.RelayServiceLive,
+        Nostr.Nip28Service.Nip28ServiceLive
       )
+
+      const programWithServices = Effect.provide(program, NostrLayer) as any
+      const result = await Effect.runPromise(programWithServices)
 
       return result
     } catch (error) {
@@ -53,42 +63,64 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
     }
   })
   // Send a message to a channel
-  .post("/message", async ({ body }: { body: { channelId: string; content: string; replyTo?: string } }) => {
-    try {
-      const program = Effect.gen(function*() {
-        const nostr = yield* Nostr.Client.Client
-        const nip28 = yield* Nostr.Nip28.Nip28Service
+  .post(
+    "/message",
+    async ({ body }: { body: { channelId: string; content: string; replyTo?: string; privateKey?: string } }) => {
+      try {
+        const program = Effect.gen(function*() {
+          const crypto = yield* Nostr.CryptoService.CryptoService
+          const nip28 = yield* Nostr.Nip28Service.Nip28Service
 
-        // Generate keys for this session (in production, use actual user keys)
-        const { privateKey } = yield* Nostr.Crypto.generateKeyPair()
+          // Use provided private key or generate new one
+          let privateKey: Nostr.Schema.PrivateKey
+          if (body.privateKey) {
+            privateKey = body.privateKey as Nostr.Schema.PrivateKey
+          } else {
+            privateKey = yield* crypto.generatePrivateKey()
+          }
 
-        // Create message event
-        const messageEvent = yield* nip28.sendChannelMessage(
-          body.channelId,
-          body.content,
-          body.replyTo
+          // Send message using NIP-28 service - build params conditionally
+          const params: any = {
+            channelId: body.channelId as Nostr.Schema.EventId,
+            content: body.content,
+            privateKey,
+            relayHint: "ws://localhost:3003/relay"
+          }
+
+          if (body.replyTo) {
+            params.replyToEventId = body.replyTo as Nostr.Schema.EventId
+          }
+
+          const messageEvent = yield* nip28.sendChannelMessage(params)
+
+          return {
+            messageId: messageEvent.id,
+            event: messageEvent
+          }
+        })
+
+        // Build service layers
+        const NostrLayer = Layer.mergeAll(
+          Nostr.CryptoService.CryptoServiceLive,
+          Nostr.EventService.EventServiceLive,
+          Nostr.WebSocketService.WebSocketServiceLive,
+          Nostr.RelayService.RelayServiceLive,
+          Nostr.Nip28Service.Nip28ServiceLive
         )
 
-        // Sign and publish event
-        const signedEvent = yield* Nostr.Event.signEvent(messageEvent, privateKey)
-        yield* nostr.publish(signedEvent)
+        const programWithServices = Effect.provide(program, NostrLayer) as any
+        const result = await Effect.runPromise(programWithServices)
 
-        return { messageId: signedEvent.id }
-      })
-
-      const result = await Runtime.runPromise(runtime)(
-        program.pipe(Effect.provide(NostrServiceLayer))
-      )
-
-      return result
-    } catch (error) {
-      console.error("Failed to send message:", error)
-      return new Response(JSON.stringify({ error: "Failed to send message" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      })
+        return result
+      } catch (error) {
+        console.error("Failed to send message:", error)
+        return new Response(JSON.stringify({ error: "Failed to send message" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        })
+      }
     }
-  })
+  )
   // List all channels
   .get("/list", async () => {
     try {
@@ -102,12 +134,7 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       })
 
       // Create database layer
-      const DatabaseLayer = RelayDatabase.layer({
-        host: DATABASE_HOST,
-        username: DATABASE_USERNAME,
-        password: DATABASE_PASSWORD,
-        database: DATABASE_NAME
-      })
+      const DatabaseLayer = RelayDatabaseLive
 
       const result = await Runtime.runPromise(runtime)(
         program.pipe(Effect.provide(DatabaseLayer))
@@ -139,7 +166,7 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
         // Get recent messages
         const messages = yield* database.queryEvents([{
           kinds: [42],
-          "#e": [params.id],
+          "#e": [params.id as Nostr.Schema.EventId],
           limit: 100
         }])
 
@@ -147,12 +174,7 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
       })
 
       // Create database layer
-      const DatabaseLayer = RelayDatabase.layer({
-        host: DATABASE_HOST,
-        username: DATABASE_USERNAME,
-        password: DATABASE_PASSWORD,
-        database: DATABASE_NAME
-      })
+      const DatabaseLayer = RelayDatabaseLive
 
       const result = await Runtime.runPromise(runtime)(
         program.pipe(Effect.provide(DatabaseLayer))
