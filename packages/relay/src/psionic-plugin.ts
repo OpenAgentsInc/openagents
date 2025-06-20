@@ -57,6 +57,8 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
 
     // Track WebSocket connections
     const connections = new Map<string, WebSocketConnection>()
+    // Track WebSocket to connectionId mapping
+    const wsToConnectionId = new Map<any, string>()
 
     // Generate unique connection ID
     const generateConnectionId = (): string => `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -105,13 +107,69 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
     // WebSocket endpoint
     app.ws(path, {
       message: async (ws, message) => {
-        const connectionId = (ws as any).data?.connectionId
-        const connection = connections.get(connectionId)
+        console.log(`[WebSocket] MESSAGE HANDLER CALLED!`)
+        console.log(`[WebSocket] Raw message type:`, typeof message)
+        console.log(`[WebSocket] Raw message:`, message)
+        console.log(`[WebSocket] Message string:`, String(message))
+        console.log(`[WebSocket] Message substring:`, String(message).substring(0, 100))
 
+        // Debug WebSocket data structure
+        console.log(`[WebSocket] WebSocket data object:`, (ws as any).data)
+        console.log(`[WebSocket] WebSocket data keys:`, Object.keys((ws as any).data || {}))
+
+        // Try both methods to get connectionId
+        const connectionIdFromData = (ws as any).data?.connectionId
+        const connectionIdFromMap = wsToConnectionId.get(ws)
+
+        console.log(`[WebSocket] Connection ID from data:`, connectionIdFromData)
+        console.log(`[WebSocket] Connection ID from map:`, connectionIdFromMap)
+        console.log(`[WebSocket] Map size:`, wsToConnectionId.size)
+
+        const connectionId = connectionIdFromMap || connectionIdFromData
+        console.log(`[WebSocket] Final connection ID:`, connectionId)
+        let connection = connections.get(connectionId)
+        console.log(`[WebSocket] Connection found:`, !!connection)
+        console.log(`[WebSocket] Total connections:`, connections.size)
+
+        // If no connection found, try to find it by WebSocket or create a temporary handler
         if (!connection || !connection.isActive) {
           console.warn(`Message received for inactive connection: ${connectionId}`)
-          return
+
+          // Try to create a temporary connection handler for this message
+          try {
+            const tempConnectionId = connectionId || generateConnectionId()
+            const program = Effect.gen(function*() {
+              const relay = yield* NostrRelay
+              const handler = yield* relay.handleConnection(tempConnectionId)
+              return handler
+            })
+
+            const tempHandler = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
+
+            // Create temporary connection
+            const tempConnection: WebSocketConnection = {
+              id: tempConnectionId,
+              ws,
+              handler: tempHandler,
+              isActive: true,
+              connectedAt: new Date()
+            }
+
+            // Store it and use it
+            connections.set(tempConnectionId, tempConnection)
+            if (connectionId) wsToConnectionId.set(ws, connectionId)
+
+            connection = tempConnection
+            console.log(`[Relay] Created temporary connection: ${tempConnectionId}`)
+          } catch (error) {
+            console.error(`Failed to create temporary connection:`, error)
+            ws.send(JSON.stringify(["NOTICE", "error: could not process message"]))
+            return
+          }
         }
+
+        // Send debug acknowledgment
+        ws.send(JSON.stringify(["NOTICE", `DEBUG: Message handler called for ${connectionId}`]))
 
         // Rate limiting check
         if (!checkRateLimit(connectionId)) {
@@ -119,11 +177,27 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
           return
         }
 
-        // Process message through relay
-        const program = connection.handler.processMessage(String(message))
+        // Process message through relay - handle both string and object messages
+        let messageStr: string
+        if (typeof message === "string") {
+          messageStr = message
+        } else {
+          // Message is already parsed as object/array, convert back to JSON string
+          messageStr = JSON.stringify(message)
+        }
+
+        const program = connection.handler.processMessage(messageStr)
 
         try {
-          await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
+          const responses = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
+
+          console.log(`[Plugin] Got responses from relay:`, responses)
+
+          // Send all response messages back to the client
+          for (const response of responses) {
+            console.log(`[Plugin] Sending response:`, response)
+            ws.send(response)
+          }
         } catch (error) {
           console.error(`Error processing message from ${connectionId}:`, error)
           ws.send(JSON.stringify(["NOTICE", "error: message processing failed"]))
@@ -131,8 +205,11 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
       },
 
       open: async (ws) => {
+        console.log(`[WebSocket] OPEN HANDLER CALLED!`)
+
         // Check connection limit
         if (connections.size >= maxConnections) {
+          console.log(`[WebSocket] Connection limit reached: ${connections.size}/${maxConnections}`)
           ws.close(1008, "Connection limit reached")
           return
         }
@@ -140,13 +217,21 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         const connectionId = generateConnectionId()
         ;(ws as any).data = { connectionId }
 
+        // Store WebSocket to connectionId mapping
+        wsToConnectionId.set(ws, connectionId)
+
         console.log(`[Relay] New connection: ${connectionId}`)
+        console.log(`[Relay] Total connections before creation: ${connections.size}`)
+        console.log(`[Relay] Stored ws->connectionId mapping`)
 
         try {
           // Create relay connection handler
           const program = Effect.gen(function*() {
+            console.log(`[Relay] Creating handler for ${connectionId}`)
             const relay = yield* NostrRelay
+            console.log(`[Relay] Got NostrRelay service`)
             const handler = yield* relay.handleConnection(connectionId)
+            console.log(`[Relay] Created connection handler`)
 
             // Store connection
             const connection: WebSocketConnection = {
@@ -157,17 +242,30 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
               connectedAt: new Date()
             }
             connections.set(connectionId, connection)
+            console.log(`[Relay] Stored connection ${connectionId}, total connections: ${connections.size}`)
 
             return handler
           })
 
-          await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
+          const handler = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
+          console.log(`[Relay] Connection ${connectionId} fully initialized`)
+          console.log(`[Relay] Handler created:`, !!handler)
+          console.log(`[Relay] Total connections after creation: ${connections.size}`)
 
           // Send initial relay info
+          console.log(`[Relay] Sending initial NOTICE to ${connectionId}`)
           ws.send(JSON.stringify([
             "NOTICE",
             `Connected to OpenAgents relay. Connection ID: ${connectionId}`
           ]))
+
+          // Send debug info that will be visible to client
+          ws.send(JSON.stringify([
+            "NOTICE",
+            `DEBUG: Connection created successfully. Handlers registered.`
+          ]))
+
+          console.log(`[Relay] NOTICE sent successfully`)
         } catch (error) {
           console.error(`Failed to initialize connection ${connectionId}:`, error)
           ws.close(1011, "Internal server error")
@@ -175,7 +273,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
       },
 
       close: async (ws) => {
-        const connectionId = (ws as any).data?.connectionId
+        const connectionId = wsToConnectionId.get(ws) || (ws as any).data?.connectionId
         const connection = connections.get(connectionId)
 
         if (connection) {
@@ -190,6 +288,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
           }
 
           connections.delete(connectionId)
+          wsToConnectionId.delete(ws)
         }
       }
     })

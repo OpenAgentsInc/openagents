@@ -107,6 +107,7 @@ export const channels = mysqlTable("channels", {
   about: text("about"),
   picture: varchar("picture", { length: 500 }),
   creator_pubkey: varchar("creator_pubkey", { length: 64 }).notNull(),
+  created_by: varchar("created_by", { length: 64 }).notNull(), // Alternative name for creator_pubkey
   message_count: bigint("message_count", { mode: "number" }).default(0),
   last_message_at: timestamp("last_message_at"),
   created_at: timestamp("created_at").defaultNow().notNull(),

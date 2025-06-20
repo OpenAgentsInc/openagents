@@ -41,25 +41,40 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
         }
       })
 
-      // Build service layers
-      const NostrLayer = Layer.mergeAll(
-        Nostr.CryptoService.CryptoServiceLive,
-        Nostr.EventService.EventServiceLive,
+      // Build service layers in dependency order
+      const baseLayer = Layer.merge(
         Nostr.WebSocketService.WebSocketServiceLive,
-        Nostr.RelayService.RelayServiceLive,
-        Nostr.Nip28Service.Nip28ServiceLive
+        Nostr.CryptoService.CryptoServiceLive
       )
 
-      const programWithServices = Effect.provide(program, NostrLayer) as any
-      const result = await Effect.runPromise(programWithServices)
+      const serviceLayer = Layer.merge(
+        Nostr.EventService.EventServiceLive,
+        Nostr.RelayService.RelayServiceLive
+      )
+
+      const fullLayer = Layer.provideMerge(
+        Layer.provideMerge(Nostr.Nip28Service.Nip28ServiceLive, serviceLayer),
+        baseLayer
+      )
+
+      const result = await Effect.runPromise(
+        program.pipe(Effect.provide(fullLayer))
+      )
 
       return result
     } catch (error) {
-      console.error("Failed to create channel:", error)
-      return new Response(JSON.stringify({ error: "Failed to create channel" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      })
+      console.error("Failed to create channel - Full error:", error)
+      console.error("Error stack:", error instanceof Error ? error.stack : "No stack")
+      return new Response(
+        JSON.stringify({
+          error: "Failed to create channel",
+          details: error instanceof Error ? error.message : String(error)
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
     }
   })
   // Send a message to a channel
@@ -99,17 +114,25 @@ export const channelsApi = new Elysia({ prefix: "/api/channels" })
           }
         })
 
-        // Build service layers
-        const NostrLayer = Layer.mergeAll(
-          Nostr.CryptoService.CryptoServiceLive,
-          Nostr.EventService.EventServiceLive,
+        // Build service layers in dependency order
+        const baseLayer = Layer.merge(
           Nostr.WebSocketService.WebSocketServiceLive,
-          Nostr.RelayService.RelayServiceLive,
-          Nostr.Nip28Service.Nip28ServiceLive
+          Nostr.CryptoService.CryptoServiceLive
         )
 
-        const programWithServices = Effect.provide(program, NostrLayer) as any
-        const result = await Effect.runPromise(programWithServices)
+        const serviceLayer = Layer.merge(
+          Nostr.EventService.EventServiceLive,
+          Nostr.RelayService.RelayServiceLive
+        )
+
+        const fullLayer = Layer.provideMerge(
+          Layer.provideMerge(Nostr.Nip28Service.Nip28ServiceLive, serviceLayer),
+          baseLayer
+        )
+
+        const result = await Effect.runPromise(
+          program.pipe(Effect.provide(fullLayer))
+        )
 
         return result
       } catch (error) {

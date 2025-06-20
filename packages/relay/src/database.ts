@@ -365,6 +365,7 @@ export const RelayDatabaseLive = Layer.effect(
                     about: metadata.about || "",
                     picture: metadata.picture || "",
                     creator_pubkey: event.pubkey,
+                    created_by: event.pubkey, // Add created_by field
                     message_count: 0,
                     created_at: new Date(event.created_at * 1000)
                   }).onDuplicateKeyUpdate({
