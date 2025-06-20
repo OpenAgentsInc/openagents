@@ -574,22 +574,48 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
                 .slice(0, 20)
                 .map(([pubkey, count]) => ({ pubkey, count }))
 
-              // Mock channel data since we don't have channel events yet
-              const mockChannels = [
-                {
-                  id: "general",
-                  name: "General Discussion",
-                  message_count: 42,
-                  last_message_at: new Date().toISOString(),
-                  creator_pubkey: Object.keys(tagStats["p"] || {})[0] || "unknown"
+              // Real channel data from events (NIP-28)
+              const channelCreationEvents = allEvents.filter((e) => e.kind === 40) // Channel creation
+              const channelMetadataEvents = allEvents.filter((e) => e.kind === 41) // Channel metadata
+              const channelMessages = allEvents.filter((e) => e.kind === 42) // Channel messages
+              
+              // Build channel list from actual events
+              const channels = channelCreationEvents.map((event) => {
+                const channelId = event.tags.find((t) => t[0] === "e")?.[1] || event.id
+                const messagesInChannel = channelMessages.filter((msg) => 
+                  msg.tags.some((t) => t[0] === "e" && t[1] === channelId)
+                )
+                
+                try {
+                  const metadata = JSON.parse(event.content || "{}")
+                  return {
+                    id: channelId,
+                    name: metadata.name || `Channel ${channelId.slice(0, 8)}`,
+                    message_count: messagesInChannel.length,
+                    last_message_at: messagesInChannel.length > 0 
+                      ? new Date(Math.max(...messagesInChannel.map((m) => m.created_at)) * 1000).toISOString()
+                      : new Date(event.created_at * 1000).toISOString(),
+                    creator_pubkey: event.pubkey
+                  }
+                } catch {
+                  return {
+                    id: channelId,
+                    name: `Channel ${channelId.slice(0, 8)}`,
+                    message_count: messagesInChannel.length,
+                    last_message_at: new Date(event.created_at * 1000).toISOString(),
+                    creator_pubkey: event.pubkey
+                  }
                 }
-              ]
+              })
 
               return {
                 channels: {
-                  list: mockChannels,
-                  total: mockChannels.length,
-                  active: 1
+                  list: channels,
+                  total: channels.length,
+                  active: channels.filter((c) => {
+                    const lastMessageTime = new Date(c.last_message_at).getTime()
+                    return lastMessageTime > Date.now() - 24 * 60 * 60 * 1000 // Active in last 24h
+                  }).length
                 },
                 tags: {
                   trending: trendingTags,
