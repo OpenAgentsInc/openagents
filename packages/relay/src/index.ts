@@ -1,23 +1,39 @@
 /**
- * Database service combining Effect SQL with Drizzle ORM
- * Provides type-safe database operations for Nostr relay
+ * OpenAgents Nostr Relay
+ * Full-featured Nostr relay with NIP-01 support, Effect.js architecture,
+ * and PlanetScale database backend
  */
-export * as database from "./database.js"
 
-/**
- * Psionic framework integration for Nostr relay
- * Mounts relay as WebSocket endpoint at /relay
- */
-export * as psionic-plugin from "./psionic-plugin.js"
+// Core relay exports
+export {
+  NostrRelay,
+  NostrRelayLive,
+  type ConnectionHandler,
+  type RelayStats,
+  RelayError,
+  MessageError
+} from "./relay.js"
 
-/**
- * Core Nostr relay implementation
- * Handles WebSocket connections, subscriptions, and NIP-01 protocol
- */
-export * as relay from "./relay.js"
+// Database layer exports
+export {
+  RelayDatabase,
+  RelayDatabaseLive,
+  DatabaseError,
+  ValidationError
+} from "./database.js"
 
-/**
- * Database schema for Nostr relay event storage
- * Optimized for NIP-01 filter queries and agent coordination
- */
-export * as schema from "./schema.js"
+// Schema exports
+export * from "./schema.js"
+
+// Psionic integration exports
+export {
+  createRelayPlugin,
+  mountRelay,
+  type RelayPluginConfig
+} from "./psionic-plugin.js"
+
+// Re-export some common types from nostr package
+import type { Schema } from "@openagentsinc/nostr"
+export type NostrEvent = Schema.NostrEvent
+export type Filter = Schema.Filter  
+export type ClientMessage = Schema.ClientMessage
