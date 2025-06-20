@@ -25,9 +25,6 @@ export async function home() {
                 <a href="/docs" is-="button" variant-="foreground1" box-="square">
                   View the docs →
                 </a>
-                <a href="/agents" is-="button" variant-="foreground1" box-="square">
-                  Agent Dashboard →
-                </a>
               </div>
             </div>
           </div>
