@@ -47,7 +47,7 @@ describe("Nostr Relay Unit Tests", () => {
       const result = await Effect.runPromise(
         handler.processMessage(JSON.stringify(["EVENT", testEvent]))
       )
-      
+
       expect(Array.isArray(result)).toBe(true)
       expect(result.length).toBeGreaterThan(0)
       // Should contain an OK message
@@ -70,7 +70,7 @@ describe("Nostr Relay Unit Tests", () => {
       const result = await Effect.runPromise(
         handler.processMessage(JSON.stringify(reqMessage))
       )
-      
+
       expect(Array.isArray(result)).toBe(true)
       expect(result.length).toBeGreaterThan(0)
       // Should contain EOSE message
@@ -211,7 +211,7 @@ describe("Nostr Relay Unit Tests", () => {
       const result = await Effect.runPromise(
         handler.processMessage(JSON.stringify(["EVENT", invalidEvent]))
       )
-      
+
       expect(Array.isArray(result)).toBe(true)
       expect(result.length).toBeGreaterThan(0)
       // Should contain an OK message even for invalid events (mock always succeeds)
