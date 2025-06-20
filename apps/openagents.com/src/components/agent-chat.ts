@@ -114,12 +114,28 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
     </div>
 
     <script>
+
       // Real channel data from relay
       let currentChannels = [];
       let selectedChannelId = null;
       let messages = [];
       let ws = null;
       let subscriptionId = null;
+      let channelSubscriptionId = null;
+
+      // Get current agent's keys from localStorage
+      function getAgentKeys() {
+        const keys = localStorage.getItem('agent-keys');
+        if (!keys) return null;
+        try {
+          const parsed = JSON.parse(keys);
+          const activeAgent = localStorage.getItem('active-agent');
+          return parsed[activeAgent] || Object.values(parsed)[0] || null;
+        } catch (e) {
+          console.error('Failed to parse agent keys:', e);
+          return null;
+        }
+      }
 
       // Initialize WebSocket connection
       function initWebSocket() {
@@ -130,6 +146,7 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         ws.onopen = () => {
           console.log('Connected to Nostr relay');
           // Subscribe to all channels when connected
+          subscribeToChannels();
           if (selectedChannelId) {
             subscribeToChannel(selectedChannelId);
           }
@@ -138,6 +155,39 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         ws.onmessage = (event) => {
           try {
             const msg = JSON.parse(event.data);
+            
+            // Handle channel list events (kind 40)
+            if (msg[0] === 'EVENT' && msg[1] === channelSubscriptionId) {
+              const nostrEvent = msg[2];
+              if (nostrEvent.kind === 40) {
+                // Channel creation event
+                try {
+                  const channelData = JSON.parse(nostrEvent.content);
+                  const channel = {
+                    id: nostrEvent.id,
+                    name: channelData.name || 'Unnamed Channel',
+                    description: channelData.about || '',
+                    messageCount: 0,
+                    lastActivity: nostrEvent.created_at * 1000,
+                    creatorPubkey: nostrEvent.pubkey
+                  };
+                  
+                  // Add or update channel
+                  const existingIndex = currentChannels.findIndex(c => c.id === channel.id);
+                  if (existingIndex >= 0) {
+                    currentChannels[existingIndex] = { ...currentChannels[existingIndex], ...channel };
+                  } else {
+                    currentChannels.push(channel);
+                  }
+                  
+                  updateChannelList();
+                } catch (e) {
+                  console.error('Failed to parse channel content:', e);
+                }
+              }
+            }
+            
+            // Handle message events (kind 42)
             if (msg[0] === 'EVENT' && msg[1] === subscriptionId) {
               const nostrEvent = msg[2];
               if (nostrEvent.kind === 42) {
@@ -165,6 +215,11 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
                 }
               }
             }
+            
+            // Handle end of stored events
+            if (msg[0] === 'EOSE') {
+              console.log('End of stored events for subscription:', msg[1]);
+            }
           } catch (e) {
             console.error('Failed to parse WebSocket message:', e);
           }
@@ -174,6 +229,27 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
           console.log('Disconnected from relay, reconnecting...');
           setTimeout(initWebSocket, 3000);
         };
+      }
+
+      // Subscribe to all channels (kind 40)
+      function subscribeToChannels() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        
+        // Close previous subscription if exists
+        if (channelSubscriptionId) {
+          ws.send(JSON.stringify(['CLOSE', channelSubscriptionId]));
+        }
+        
+        channelSubscriptionId = 'channels-' + crypto.randomUUID();
+        const subscription = [
+          'REQ',
+          channelSubscriptionId,
+          {
+            kinds: [40],
+            limit: 100
+          }
+        ];
+        ws.send(JSON.stringify(subscription));
       }
 
       // Subscribe to channel messages
@@ -198,47 +274,52 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         ws.send(JSON.stringify(subscription));
       }
 
-      // Load channels from API
-      async function loadChannels() {
-        try {
-          const response = await fetch('/api/channels/list');
-          const data = await response.json();
-          currentChannels = data.channels || [];
-          updateChannelList();
-        } catch (error) {
-          console.error('Failed to load channels:', error);
-        }
-      }
-
       // Channel management functions
       window.createChannel = async function() {
         const name = prompt('Enter channel name:');
         const description = prompt('Enter channel description:');
         if (name && description) {
           try {
-            const response = await fetch('/api/channels/create', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: name,
-                about: description
-              })
-            });
-            
-            if (response.ok) {
-              const { channelId } = await response.json();
-              console.log('Channel created:', channelId);
-              // Reload channels
-              await loadChannels();
+            const agentKeys = getAgentKeys();
+            if (!agentKeys || !agentKeys.privateKey) {
+              alert('No agent keys found. Please create an agent first.');
+              return;
+            }
+
+            // Use direct WebSocket event creation
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              // Create channel event manually
+              const event = {
+                kind: 40,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [],
+                content: JSON.stringify({ name, about: description }),
+                pubkey: agentKeys.publicKey
+              };
+              
+              // Sign event (simplified - in production use proper signing)
+              const eventId = generateEventId(event);
+              event.id = eventId;
+              event.sig = await signEvent(event, agentKeys.privateKey);
+              
+              // Send event to relay
+              ws.send(JSON.stringify(['EVENT', event]));
+              console.log('Channel creation event sent');
+            } else {
+              alert('Not connected to relay. Please wait and try again.');
             }
           } catch (error) {
             console.error('Failed to create channel:', error);
+            alert('Failed to create channel: ' + error.message);
           }
         }
       };
 
       window.refreshChannels = function() {
-        loadChannels();
+        // Channels are loaded via WebSocket subscription
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          subscribeToChannels();
+        }
       };
 
       window.selectChannel = async function(channelId) {
@@ -266,23 +347,38 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         
         if (message && selectedChannelId) {
           try {
-            const response = await fetch('/api/channels/message', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                channelId: selectedChannelId,
-                content: message
-              })
-            });
-            
-            if (response.ok) {
+            const agentKeys = getAgentKeys();
+            if (!agentKeys || !agentKeys.privateKey) {
+              alert('No agent keys found. Please create an agent first.');
+              return false;
+            }
+
+            // Use direct WebSocket event creation
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              // Create message event manually
+              const event = {
+                kind: 42,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [['e', selectedChannelId, '', 'root']],
+                content: message,
+                pubkey: agentKeys.publicKey
+              };
+              
+              // Sign event (simplified - in production use proper signing)
+              const eventId = generateEventId(event);
+              event.id = eventId;
+              event.sig = await signEvent(event, agentKeys.privateKey);
+              
+              // Send event to relay
+              ws.send(JSON.stringify(['EVENT', event]));
+              console.log('Message event sent');
               input.value = '';
-              // Message will appear via WebSocket subscription
             } else {
-              console.error('Failed to send message');
+              alert('Not connected to relay. Please wait and try again.');
             }
           } catch (error) {
             console.error('Error sending message:', error);
+            alert('Failed to send message: ' + error.message);
           }
         }
         
@@ -317,26 +413,12 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
       }
 
       async function loadChannelMessages(channelId) {
-        try {
-          const response = await fetch(\`/api/channels/\${channelId}\`);
-          const data = await response.json();
-          
-          if (data.messages) {
-            messages = data.messages.map(msg => ({
-              id: msg.id,
-              channelId: msg.tags.find(t => t[0] === 'e' && t[3] === 'root')?.[1] || channelId,
-              content: msg.content,
-              author: msg.pubkey.slice(0, 8) + '...',
-              timestamp: msg.created_at * 1000,
-              agentId: msg.pubkey
-            }));
-            updateMessagesDisplay();
-          }
-        } catch (error) {
-          console.error('Failed to load channel messages:', error);
-          messages = [];
-          updateMessagesDisplay();
-        }
+        // Clear existing messages
+        messages = [];
+        updateMessagesDisplay();
+        
+        // Messages will be loaded via WebSocket subscription to kind 42 events
+        // No REST API call needed - subscribeToChannel() handles this
       }
 
       function updateMessagesDisplay() {
@@ -357,15 +439,50 @@ export function agentChat({ agentId: _agentId, channelId, channels = [] }: Agent
         }
       }
 
+      // Helper functions for event signing (simplified fallback)
+      async function generateEventId(event) {
+        try {
+          // Serialize event for hashing
+          const serialized = JSON.stringify([
+            0,
+            event.pubkey,
+            event.created_at,
+            event.kind,
+            event.tags,
+            event.content
+          ]);
+          
+          // Hash using Web Crypto API
+          const encoder = new TextEncoder();
+          const data = encoder.encode(serialized);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (error) {
+          console.error('Failed to generate event ID:', error);
+          // Fallback to random ID
+          return crypto.randomUUID().replace(/-/g, '');
+        }
+      }
+
+      async function signEvent(event, privateKey) {
+        try {
+          // In production, use proper secp256k1 signing
+          // For now, return a placeholder signature
+          console.warn('Using placeholder signature - implement proper signing');
+          return Array(128).fill('0').join('');
+        } catch (error) {
+          console.error('Failed to sign event:', error);
+          return '';
+        }
+      }
+
       // Initialize on load
       (async function init() {
-        await loadChannels();
+        // Initialize WebSocket connection
         initWebSocket();
         
-        // Select first channel if any exist
-        if (currentChannels.length > 0) {
-          selectChannel(currentChannels[0].id);
-        }
+        // Channels will be loaded via WebSocket subscription
       })();
     </script>
 
