@@ -278,51 +278,20 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         `${adminPath}/overview`,
         adminOnly(async () => {
           try {
-            // Try to get real data from database, fall back to mock data if not available
-            let overview
-            try {
-              const program = Effect.gen(function*() {
-                const database = yield* RelayDatabase
-                const activeAgents = yield* database.getActiveAgents()
-                const channels = yield* database.getChannels()
-                const services = yield* database.getServiceOfferings()
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
+              const activeAgents = yield* database.getActiveAgents()
+              const channels = yield* database.getChannels()
+              const services = yield* database.getServiceOfferings()
 
-                return {
-                  relay: { eventsStored: 0, eventsServed: 0 },
-                  connections: {
-                    active: connections.size,
-                    total: connections.size,
-                    maxConnections
-                  },
-                  system: {
-                    memory: process.memoryUsage(),
-                    uptime: process.uptime(),
-                    timestamp: new Date().toISOString()
-                  },
-                  agents: {
-                    active: activeAgents.length,
-                    total: activeAgents.length
-                  },
-                  channels: {
-                    total: channels.length,
-                    active: channels.filter((c) =>
-                      c.last_message_at &&
-                      new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
-                    ).length
-                  },
-                  services: {
-                    available: services.filter((s) => s.availability === "available").length,
-                    total: services.length
-                  }
-                }
-              })
+              // Get actual event count from database
+              const allEvents = yield* database.queryEvents([{ limit: 50000 }])
 
-              overview = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-            } catch {
-              // Fall back to mock data if database is not available
-              console.warn("Database not available, using mock data")
-              overview = {
-                relay: { eventsStored: 42, eventsServed: 128 },
+              return {
+                relay: {
+                  eventsStored: allEvents.length,
+                  eventsServed: allEvents.length
+                },
                 connections: {
                   active: connections.size,
                   total: connections.size,
@@ -334,24 +303,31 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
                   timestamp: new Date().toISOString()
                 },
                 agents: {
-                  active: 3,
-                  total: 5
+                  active: activeAgents.filter((a) => a.status === "active").length,
+                  total: activeAgents.length
                 },
                 channels: {
-                  total: 8,
-                  active: 4
+                  total: channels.length,
+                  active: channels.filter((c) =>
+                    c.last_message_at &&
+                    new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
+                  ).length
                 },
                 services: {
-                  available: 12,
-                  total: 15
+                  available: services.filter((s) => s.availability === "available").length,
+                  total: services.length
                 }
               }
-            }
+            })
 
+            const overview = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
             return Response.json(overview)
           } catch (error) {
             console.error("Error getting admin overview:", error)
-            return Response.json({ error: "Failed to get admin overview" }, { status: 500 })
+            return Response.json({
+              error: "Failed to get admin overview",
+              details: error instanceof Error ? error.message : String(error)
+            }, { status: 500 })
           }
         })
       )
@@ -366,96 +342,59 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
             const kind = url.searchParams.get("kind")
             const since = url.searchParams.get("since")
 
-            // Try database first, fall back to mock data
-            try {
-              const program = Effect.gen(function*() {
-                const database = yield* RelayDatabase
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
 
-                const filters = []
-                if (kind) {
-                  filters.push({ kinds: [parseInt(kind)] })
-                }
-                if (since) {
-                  filters.push({ since: parseInt(since) })
-                }
-                if (filters.length === 0) {
-                  filters.push({ limit })
-                } else {
-                  filters[0] = { ...filters[0], limit }
-                }
+              const filters = []
+              if (kind) {
+                filters.push({ kinds: [parseInt(kind)] })
+              }
+              if (since) {
+                filters.push({ since: parseInt(since) })
+              }
+              if (filters.length === 0) {
+                filters.push({ limit })
+              } else {
+                filters[0] = { ...filters[0], limit }
+              }
 
-                const events = yield* database.queryEvents(filters)
+              const events = yield* database.queryEvents(filters)
 
-                // Group by kind for analytics
-                const eventsByKind = events.reduce((acc, event) => {
-                  acc[event.kind] = (acc[event.kind] || 0) + 1
-                  return acc
-                }, {} as Record<number, number>)
+              // Group by kind for analytics
+              const eventsByKind = events.reduce((acc, event) => {
+                acc[event.kind] = (acc[event.kind] || 0) + 1
+                return acc
+              }, {} as Record<number, number>)
 
-                // Get top authors
-                const authorCounts = events.reduce((acc, event) => {
-                  acc[event.pubkey] = (acc[event.pubkey] || 0) + 1
-                  return acc
-                }, {} as Record<string, number>)
+              // Get top authors
+              const authorCounts = events.reduce((acc, event) => {
+                acc[event.pubkey] = (acc[event.pubkey] || 0) + 1
+                return acc
+              }, {} as Record<string, number>)
 
-                const topAuthors = Object.entries(authorCounts)
-                  .sort(([, a], [, b]) => b - a)
-                  .slice(0, 10)
-                  .map(([pubkey, count]) => ({ pubkey, count }))
+              const topAuthors = Object.entries(authorCounts)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 10)
+                .map(([pubkey, count]) => ({ pubkey, count }))
 
-                return {
-                  events: events.slice(0, limit),
-                  analytics: {
-                    total: events.length,
-                    byKind: eventsByKind,
-                    topAuthors
-                  }
-                }
-              })
-
-              const eventData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-              return Response.json(eventData)
-            } catch {
-              console.warn("Database not available for events, using mock data")
-              // Mock event data
-              const mockEvents = [
-                {
-                  id: "mock_event_1",
-                  pubkey: "npub1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-                  created_at: Math.floor(Date.now() / 1000) - 3600,
-                  kind: 1,
-                  tags: [["p", "npub1234"], ["t", "nostr"]],
-                  content: "Hello from the admin dashboard! This is a mock event for testing.",
-                  sig: "mock_signature_1"
-                },
-                {
-                  id: "mock_event_2",
-                  pubkey: "npub9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba",
-                  created_at: Math.floor(Date.now() / 1000) - 1800,
-                  kind: 31337,
-                  tags: [["d", "agent_001"], ["name", "TestAgent"]],
-                  content: JSON.stringify({ capabilities: ["code-review", "testing"] }),
-                  sig: "mock_signature_2"
-                }
-              ]
-
-              const filteredEvents = kind ? mockEvents.filter((e) => e.kind === parseInt(kind)) : mockEvents
-
-              return Response.json({
-                events: filteredEvents.slice(0, limit),
+              return {
+                events: events.slice(0, limit),
                 analytics: {
-                  total: filteredEvents.length,
-                  byKind: { 1: 1, 31337: 1 },
-                  topAuthors: [
-                    { pubkey: "npub1234567890abcdef", count: 1 },
-                    { pubkey: "npub9876543210fedcba", count: 1 }
-                  ]
+                  total: events.length,
+                  byKind: eventsByKind,
+                  topAuthors
                 }
-              })
-            }
+              }
+            })
+
+            const eventData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
+            return Response.json(eventData)
           } catch (error) {
             console.error("Error getting event analytics:", error)
-            return Response.json({ error: "Failed to get event analytics" }, { status: 500 })
+            return Response.json({
+              error: "Failed to get event analytics",
+              details: error instanceof Error ? error.message : String(error)
+            }, { status: 500 })
           }
         })
       )
@@ -465,88 +404,47 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         `${adminPath}/agents`,
         adminOnly(async () => {
           try {
-            try {
-              const program = Effect.gen(function*() {
-                const database = yield* RelayDatabase
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
 
-                const agents = yield* database.getActiveAgents()
-                const services = yield* database.getServiceOfferings()
+              const agents = yield* database.getActiveAgents()
+              const services = yield* database.getServiceOfferings()
 
-                // Group services by agent
-                const servicesByAgent = services.reduce((acc, service) => {
-                  const key = service.agent_pubkey
-                  if (!acc[key]) acc[key] = []
-                  acc[key].push(service)
-                  return acc
-                }, {} as Record<string, Array<any>>)
+              // Group services by agent
+              const servicesByAgent = services.reduce((acc, service) => {
+                const key = service.agent_pubkey
+                if (!acc[key]) acc[key] = []
+                acc[key].push(service)
+                return acc
+              }, {} as Record<string, Array<any>>)
 
-                const agentAnalytics = agents.map((agent) => ({
-                  ...agent,
-                  services: servicesByAgent[agent.pubkey] || [],
-                  serviceCount: (servicesByAgent[agent.pubkey] || []).length
-                }))
+              const agentAnalytics = agents.map((agent) => ({
+                ...agent,
+                services: servicesByAgent[agent.pubkey] || [],
+                serviceCount: (servicesByAgent[agent.pubkey] || []).length
+              }))
 
-                return {
-                  agents: agentAnalytics,
-                  summary: {
-                    total: agents.length,
-                    active: agents.filter((a) => a.status === "active").length,
-                    totalBalance: agents.reduce((sum, a) => sum + (a.balance || 0), 0),
-                    avgBalance: agents.length > 0 ?
-                      agents.reduce((sum, a) => sum + (a.balance || 0), 0) / agents.length :
-                      0
-                  }
-                }
-              })
-
-              const agentData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-              return Response.json(agentData)
-            } catch {
-              console.warn("Database not available for agents, using mock data")
-              // Mock agent data
-              const mockAgents = [
-                {
-                  pubkey: "npub1agent1234567890abcdef",
-                  name: "CodeReviewBot",
-                  status: "active",
-                  balance: 50000,
-                  serviceCount: 2,
-                  services: [],
-                  last_activity: new Date().toISOString()
-                },
-                {
-                  pubkey: "npub1agent9876543210fedcba",
-                  name: "TestingAgent",
-                  status: "active",
-                  balance: 25000,
-                  serviceCount: 1,
-                  services: [],
-                  last_activity: new Date(Date.now() - 1800000).toISOString()
-                },
-                {
-                  pubkey: "npub1agentabcdef1234567890",
-                  name: "DocumentationAgent",
-                  status: "hibernating",
-                  balance: 5000,
-                  serviceCount: 0,
-                  services: [],
-                  last_activity: new Date(Date.now() - 86400000).toISOString()
-                }
-              ]
-
-              return Response.json({
-                agents: mockAgents,
+              return {
+                agents: agentAnalytics,
                 summary: {
-                  total: mockAgents.length,
-                  active: mockAgents.filter((a) => a.status === "active").length,
-                  totalBalance: mockAgents.reduce((sum, a) => sum + a.balance, 0),
-                  avgBalance: mockAgents.reduce((sum, a) => sum + a.balance, 0) / mockAgents.length
+                  total: agents.length,
+                  active: agents.filter((a) => a.status === "active").length,
+                  totalBalance: agents.reduce((sum, a) => sum + (a.balance || 0), 0),
+                  avgBalance: agents.length > 0 ?
+                    agents.reduce((sum, a) => sum + (a.balance || 0), 0) / agents.length :
+                    0
                 }
-              })
-            }
+              }
+            })
+
+            const agentData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
+            return Response.json(agentData)
           } catch (error) {
             console.error("Error getting agent analytics:", error)
-            return Response.json({ error: "Failed to get agent analytics" }, { status: 500 })
+            return Response.json({
+              error: "Failed to get agent analytics",
+              details: error instanceof Error ? error.message : String(error)
+            }, { status: 500 })
           }
         })
       )
@@ -556,127 +454,73 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         `${adminPath}/network`,
         adminOnly(async () => {
           try {
-            try {
-              const program = Effect.gen(function*() {
-                const database = yield* RelayDatabase
+            const program = Effect.gen(function*() {
+              const database = yield* RelayDatabase
 
-                const channels = yield* database.getChannels()
+              const channels = yield* database.getChannels()
 
-                // Get recent events for tag analysis (last 24 hours)
-                const yesterday = Math.floor(Date.now() / 1000) - 24 * 60 * 60
-                const recentEvents = yield* database.queryEvents([{ since: yesterday, limit: 1000 }])
+              // Get recent events for tag analysis (last 24 hours)
+              const yesterday = Math.floor(Date.now() / 1000) - 24 * 60 * 60
+              const recentEvents = yield* database.queryEvents([{ since: yesterday, limit: 1000 }])
 
-                // Analyze tags
-                const tagStats = recentEvents.reduce((acc, event) => {
-                  event.tags.forEach((tag) => {
-                    if (tag.length >= 2) {
-                      const tagName = tag[0]
-                      const tagValue = tag[1]
+              // Analyze tags
+              const tagStats = recentEvents.reduce((acc, event) => {
+                event.tags.forEach((tag) => {
+                  if (tag.length >= 2) {
+                    const tagName = tag[0]
+                    const tagValue = tag[1]
 
-                      if (!acc[tagName]) acc[tagName] = {}
-                      acc[tagName][tagValue] = (acc[tagName][tagValue] || 0) + 1
-                    }
-                  })
-                  return acc
-                }, {} as Record<string, Record<string, number>>)
-
-                // Get trending hashtags (#t tags)
-                const trendingTags = Object.entries(tagStats["t"] || {})
-                  .sort(([, a], [, b]) => b - a)
-                  .slice(0, 20)
-                  .map(([tag, count]) => ({ tag, count }))
-
-                // Get mention network (#p tags)
-                const mentions = Object.entries(tagStats["p"] || {})
-                  .sort(([, a], [, b]) => b - a)
-                  .slice(0, 20)
-                  .map(([pubkey, count]) => ({ pubkey, count }))
-
-                return {
-                  channels: {
-                    list: channels,
-                    total: channels.length,
-                    active: channels.filter((c) =>
-                      c.last_message_at &&
-                      new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
-                    ).length
-                  },
-                  tags: {
-                    trending: trendingTags,
-                    mentions,
-                    tagStats: Object.keys(tagStats).reduce((acc, tagName) => {
-                      acc[tagName] = Object.keys(tagStats[tagName]).length
-                      return acc
-                    }, {} as Record<string, number>)
-                  },
-                  activity: {
-                    recentEvents: recentEvents.length,
-                    timeframe: "24h"
+                    if (!acc[tagName]) acc[tagName] = {}
+                    acc[tagName][tagValue] = (acc[tagName][tagValue] || 0) + 1
                   }
-                }
-              })
+                })
+                return acc
+              }, {} as Record<string, Record<string, number>>)
 
-              const networkData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
-              return Response.json(networkData)
-            } catch {
-              console.warn("Database not available for network, using mock data")
-              // Mock network data
-              return Response.json({
+              // Get trending hashtags (#t tags)
+              const trendingTags = Object.entries(tagStats["t"] || {})
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 20)
+                .map(([tag, count]) => ({ tag, count }))
+
+              // Get mention network (#p tags)
+              const mentions = Object.entries(tagStats["p"] || {})
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 20)
+                .map(([pubkey, count]) => ({ pubkey, count }))
+
+              return {
                 channels: {
-                  list: [
-                    {
-                      id: "channel_001",
-                      name: "General Discussion",
-                      message_count: 156,
-                      last_message_at: new Date().toISOString(),
-                      creator_pubkey: "npub1creator123"
-                    },
-                    {
-                      id: "channel_002",
-                      name: "Agent Coordination",
-                      message_count: 89,
-                      last_message_at: new Date(Date.now() - 3600000).toISOString(),
-                      creator_pubkey: "npub1creator456"
-                    },
-                    {
-                      id: "channel_003",
-                      name: "Code Reviews",
-                      message_count: 34,
-                      last_message_at: new Date(Date.now() - 7200000).toISOString(),
-                      creator_pubkey: "npub1creator789"
-                    }
-                  ],
-                  total: 8,
-                  active: 4
+                  list: channels,
+                  total: channels.length,
+                  active: channels.filter((c) =>
+                    c.last_message_at &&
+                    new Date(c.last_message_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
+                  ).length
                 },
                 tags: {
-                  trending: [
-                    { tag: "nostr", count: 45 },
-                    { tag: "bitcoin", count: 32 },
-                    { tag: "ai", count: 28 },
-                    { tag: "agents", count: 21 },
-                    { tag: "development", count: 18 }
-                  ],
-                  mentions: [
-                    { pubkey: "npub1popular123", count: 12 },
-                    { pubkey: "npub1active456", count: 8 },
-                    { pubkey: "npub1helpful789", count: 6 }
-                  ],
-                  tagStats: {
-                    t: 25,
-                    p: 18,
-                    e: 12
-                  }
+                  trending: trendingTags,
+                  mentions,
+                  tagStats: Object.keys(tagStats).reduce((acc, tagName) => {
+                    acc[tagName] = Object.keys(tagStats[tagName]).length
+                    return acc
+                  }, {} as Record<string, number>)
                 },
                 activity: {
-                  recentEvents: 67,
+                  recentEvents: recentEvents.length,
                   timeframe: "24h"
                 }
-              })
-            }
+              }
+            })
+
+            const networkData = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(DatabaseLayer)))
+            return Response.json(networkData)
           } catch (error) {
             console.error("Error getting network analytics:", error)
-            return Response.json({ error: "Failed to get network analytics" }, { status: 500 })
+            return Response.json({
+              error: "Failed to get network analytics",
+              details: error instanceof Error ? error.message : String(error)
+            }, { status: 500 })
           }
         })
       )
