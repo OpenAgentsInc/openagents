@@ -12,6 +12,7 @@
   "references": [
     { "path": "../../packages/ai" },
     { "path": "../../packages/psionic" },
-    { "path": "../../packages/sdk" }
+    { "path": "../../packages/sdk" },
+    { "path": "../../packages/relay" }
   ]
 }
