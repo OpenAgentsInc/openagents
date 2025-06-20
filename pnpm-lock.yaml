@@ -421,12 +421,18 @@ importers:
 
   packages/relay:
     dependencies:
+      '@effect/experimental':
+        specifier: ^0.47.0
+        version: 0.47.0(@effect/platform@0.83.0)(effect@3.16.3)
+      '@effect/platform':
+        specifier: ^0.83.0
+        version: 0.83.0(effect@3.16.3)
       '@effect/sql':
-        specifier: ^0.38.1
-        version: 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
+        specifier: ^0.37.0
+        version: 0.37.12(@effect/experimental@0.47.0)(@effect/platform@0.83.0)(effect@3.16.3)
       '@effect/sql-mysql2':
-        specifier: ^0.38.1
-        version: 0.38.1(@effect/sql@0.38.1)(effect@3.16.3)
+        specifier: ^0.37.0
+        version: 0.37.0(@effect/experimental@0.47.0)(@effect/platform@0.83.0)(@effect/sql@0.37.12)(effect@3.16.3)
       '@planetscale/database':
         specifier: ^1.19.0
         version: 1.19.0
@@ -458,6 +464,15 @@ importers:
       '@effect/build-utils':
         specifier: ^0.7.8
         version: 0.7.8
+      '@effect/vitest':
+        specifier: ^0.23.3
+        version: 0.23.3(effect@3.16.3)(vitest@3.2.1)
+      '@noble/curves':
+        specifier: ^1.8.1
+        version: 1.8.1
+      '@noble/hashes':
+        specifier: ^1.3.3
+        version: 1.3.3
       '@openagentsinc/nostr':
         specifier: workspace:*
         version: link:../nostr/dist
@@ -467,6 +482,9 @@ importers:
       '@types/node':
         specifier: ^22.15.29
         version: 22.15.29
+      '@types/ws':
+        specifier: ^8.5.14
+        version: 8.5.14
       babel-plugin-annotate-pure-calls:
         specifier: 0.4.0
         version: 0.4.0(patch_hash=lz2aochwly4t7pzapzh4fqay4m)(@babel/core@7.27.4)
@@ -476,6 +494,12 @@ importers:
       drizzle-kit:
         specifier: ^0.30.1
         version: 0.30.1
+      vitest:
+        specifier: 3.2.1
+        version: 3.2.1(@types/node@22.15.29)(tsx@4.19.4)
+      ws:
+        specifier: ^8.18.0
+        version: 8.18.0
     publishDirectory: dist
 
   packages/sdk:
@@ -1294,6 +1318,24 @@ packages:
       uuid: 11.1.0
     dev: false
 
+  /@effect/experimental@0.47.0(@effect/platform@0.83.0)(effect@3.16.3):
+    resolution: {integrity: sha512-CuQF3QhOBF7lbYru/6j27gVKKw3nVAv+F39iaY0Kga4diSHGhf+XwPBG7peTerZVwtH+DycP44yzInkLr1RDxg==}
+    peerDependencies:
+      '@effect/platform': ^0.83.0
+      effect: ^3.15.5
+      ioredis: ^5
+      lmdb: ^3
+    peerDependenciesMeta:
+      ioredis:
+        optional: true
+      lmdb:
+        optional: true
+    dependencies:
+      '@effect/platform': 0.83.0(effect@3.16.3)
+      effect: 3.16.3
+      uuid: 11.1.0
+    dev: false
+
   /@effect/experimental@0.49.1(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-puU0tZR+vEQ8RwdBXkMXVGlV5WG4tyVQA6J5LCJJoDnHDzNmEKsEjcjrD6YKmt/MNr9Jdm0H5LkkEfRYTiCL2g==}
     peerDependencies:
@@ -1441,6 +1483,17 @@ packages:
       - utf-8-validate
     dev: false
 
+  /@effect/platform@0.83.0(effect@3.16.3):
+    resolution: {integrity: sha512-Y2mjzupdLvGDccfJQ2UCzQDusYy1xbdQkfjk9hhZmkiUHnrpcCgNoN6uC4UywuwQWX38ZsoMV82wmRI7zeq1vg==}
+    peerDependencies:
+      effect: ^3.15.5
+    dependencies:
+      effect: 3.16.3
+      find-my-way-ts: 0.1.5
+      msgpackr: 1.11.4
+      multipasta: 0.2.5
+    dev: false
+
   /@effect/platform@0.84.6(effect@3.16.3):
     resolution: {integrity: sha512-DjrGIK3rnAit/eHI+iDToiiFvlyAQrsBuLBhu5I5dkJ7+KGQXjSclR50V1bUrtkC5DlBrv0qNtbWskE23eZsHQ==}
     peerDependencies:
@@ -1503,15 +1556,17 @@ packages:
       fast-check: 3.23.2
     dev: false
 
-  /@effect/sql-mysql2@0.38.1(@effect/sql@0.38.1)(effect@3.16.3):
-    resolution: {integrity: sha512-hHvSqpmAihESgsOVsxyJzybOBTLGNW/KZlU3yOPxoL7imKIBjnLr3OBMF0Mgg4R6gwWS9T0XcYUzMgKLtdMA7w==}
+  /@effect/sql-mysql2@0.37.0(@effect/experimental@0.47.0)(@effect/platform@0.83.0)(@effect/sql@0.37.12)(effect@3.16.3):
+    resolution: {integrity: sha512-b6JVs/cMgWVnDeqmUy8SvxxpAzEtWU5iSq6cAIFe1dYJA66pDUy4pjygYps0QBoPVRgqynq1Yd2XXjceZja++w==}
     peerDependencies:
-      '@effect/experimental': ^0.48.1
-      '@effect/platform': ^0.84.1
-      '@effect/sql': ^0.37.1
-      effect: ^3.16.1
+      '@effect/experimental': ^0.47.0
+      '@effect/platform': ^0.83.0
+      '@effect/sql': ^0.36.0
+      effect: ^3.15.5
     dependencies:
-      '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/experimental': 0.47.0(@effect/platform@0.83.0)(effect@3.16.3)
+      '@effect/platform': 0.83.0(effect@3.16.3)
+      '@effect/sql': 0.37.12(@effect/experimental@0.47.0)(@effect/platform@0.83.0)(effect@3.16.3)
       '@opentelemetry/semantic-conventions': 1.34.0
       effect: 3.16.3
       mysql2: 3.11.5
@@ -1526,6 +1581,20 @@ packages:
     dependencies:
       '@effect/experimental': 0.45.1(@effect/platform@0.84.6)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
+      '@opentelemetry/semantic-conventions': 1.34.0
+      effect: 3.16.3
+      uuid: 11.1.0
+    dev: false
+
+  /@effect/sql@0.37.12(@effect/experimental@0.47.0)(@effect/platform@0.83.0)(effect@3.16.3):
+    resolution: {integrity: sha512-DZarU+4NTwIYO8MALaRVg1rRN5gdrJW7nJLECl6nSTwbXRamo6GSarXUiACqE4csZZ7C2K6Jtu99UbEqZ3Iomw==}
+    peerDependencies:
+      '@effect/experimental': ^0.48.12
+      '@effect/platform': ^0.84.11
+      effect: ^3.16.7
+    dependencies:
+      '@effect/experimental': 0.47.0(@effect/platform@0.83.0)(effect@3.16.3)
+      '@effect/platform': 0.83.0(effect@3.16.3)
       '@opentelemetry/semantic-conventions': 1.34.0
       effect: 3.16.3
       uuid: 11.1.0
@@ -3233,7 +3302,6 @@ packages:
     engines: {node: ^14.21.3 || >=16}
     dependencies:
       '@noble/hashes': 1.7.1
-    dev: false
 
   /@noble/curves@1.9.2:
     resolution: {integrity: sha512-HxngEd2XUcg9xi20JkwlLCtYwfoFw4JGkuZpT+WlsPD4gB/cxkvTD8fSsoAnphGZhFdZYKeQIPCuFlWPm1uE0g==}
@@ -3245,12 +3313,10 @@ packages:
   /@noble/hashes@1.3.3:
     resolution: {integrity: sha512-V7/fPHgl+jsVPXqqeOzT8egNj2iBIVt+ECeMMG8TdcnTikP3oaBtUVqpT/gYCR68aEBJSF+XbYUxStjbFMqIIA==}
     engines: {node: '>= 16'}
-    dev: false
 
   /@noble/hashes@1.7.1:
     resolution: {integrity: sha512-B8XBPsn4vT/KJAGqDzbwztd+6Yte3P4V7iafm24bxgDe/mlRuK6xmWPuCNrKt2vDafZ8MfJLlchDG/vYafQEjQ==}
     engines: {node: ^14.21.3 || >=16}
-    dev: false
 
   /@noble/hashes@1.8.0:
     resolution: {integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==}

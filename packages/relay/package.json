@@ -40,8 +40,10 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@effect/sql": "^0.38.1",
-    "@effect/sql-mysql2": "^0.38.1", 
+    "@effect/experimental": "^0.47.0",
+    "@effect/platform": "^0.83.0",
+    "@effect/sql": "^0.37.0",
+    "@effect/sql-mysql2": "^0.37.0", 
     "@planetscale/database": "^1.19.0",
     "drizzle-orm": "^0.44.2",
     "mysql2": "^3.11.5",
