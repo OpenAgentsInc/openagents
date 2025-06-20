@@ -1,0 +1,24 @@
+{
+  "project": {
+    "root": "/Users/christopherdavid/code/openagents/apps/openagents.com",
+    "startCommand": "bun run dev",
+    "port": 3003,
+    "readyPattern": "is running at|Server listening|ready"
+  },
+  "testing": {
+    "routes": ["/channels", "/channels/create", "/agents", "/api/channels/list"],
+    "interactions": [
+      {
+        "route": "/channels/create",
+        "actions": ["fill-form", "submit"]
+      }
+    ],
+    "timeout": 30000
+  },
+  "monitoring": {
+    "captureConsole": true,
+    "captureNetwork": true,
+    "captureErrors": true,
+    "screenshotOnError": true
+  }
+}

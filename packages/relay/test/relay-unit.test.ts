@@ -43,11 +43,16 @@ describe("Nostr Relay Unit Tests", () => {
 
       const handler = await Effect.runPromise(relay.handleConnection("test-conn-1"))
 
-      // processMessage returns void - it sends responses through WebSocket
-      // This should not throw
-      await expect(
-        Effect.runPromise(handler.processMessage(JSON.stringify(["EVENT", testEvent])))
-      ).resolves.toBeUndefined()
+      // processMessage now returns response arrays
+      const result = await Effect.runPromise(
+        handler.processMessage(JSON.stringify(["EVENT", testEvent]))
+      )
+      
+      expect(Array.isArray(result)).toBe(true)
+      expect(result.length).toBeGreaterThan(0)
+      // Should contain an OK message
+      expect(result[0]).toContain("OK")
+      expect(result[0]).toContain(testEvent.id)
     })
 
     test("should parse REQ messages", async () => {
@@ -61,10 +66,16 @@ describe("Nostr Relay Unit Tests", () => {
       const handler = await Effect.runPromise(relay.handleConnection("test-conn-2"))
       const reqMessage = ["REQ", "sub123", { kinds: [1], limit: 10 }]
 
-      // This should not throw
-      await expect(
-        Effect.runPromise(handler.processMessage(JSON.stringify(reqMessage)))
-      ).resolves.toBeUndefined()
+      // Should return EOSE message for REQ
+      const result = await Effect.runPromise(
+        handler.processMessage(JSON.stringify(reqMessage))
+      )
+      
+      expect(Array.isArray(result)).toBe(true)
+      expect(result.length).toBeGreaterThan(0)
+      // Should contain EOSE message
+      expect(result[result.length - 1]).toContain("EOSE")
+      expect(result[result.length - 1]).toContain("sub123")
     })
 
     test("should parse CLOSE messages", async () => {
@@ -87,7 +98,11 @@ describe("Nostr Relay Unit Tests", () => {
         handler.processMessage(JSON.stringify(["CLOSE", "sub456"]))
       )
 
-      expect(closeResult).toBeUndefined() // CLOSE doesn't return a response
+      expect(Array.isArray(closeResult)).toBe(true)
+      expect(closeResult.length).toBeGreaterThan(0)
+      // Should contain CLOSED message
+      expect(closeResult[0]).toContain("CLOSED")
+      expect(closeResult[0]).toContain("sub456")
     })
 
     test("should handle invalid messages gracefully", async () => {
@@ -192,10 +207,16 @@ describe("Nostr Relay Unit Tests", () => {
         // missing sig
       }
 
-      // Mock database always returns success
-      await expect(
-        Effect.runPromise(handler.processMessage(JSON.stringify(["EVENT", invalidEvent])))
-      ).resolves.toBeUndefined()
+      // Mock database always returns success, so we get OK response
+      const result = await Effect.runPromise(
+        handler.processMessage(JSON.stringify(["EVENT", invalidEvent]))
+      )
+      
+      expect(Array.isArray(result)).toBe(true)
+      expect(result.length).toBeGreaterThan(0)
+      // Should contain an OK message even for invalid events (mock always succeeds)
+      expect(result[0]).toContain("OK")
+      expect(result[0]).toContain(invalidEvent.id)
     })
   })
 })
