@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
+    "dev": "bun run --hot --env-file=../../.env src/index.ts",
     "build": "tsc && bun run build:client && bun run generate:llms-txt",
     "build:client": "bun run src/build-client.ts",
     "typecheck": "tsc --noEmit",
