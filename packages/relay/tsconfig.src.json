@@ -1,14 +1,18 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src"],
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"],
   "references": [
-    { "path": "../nostr" },
+    { "path": "../nostr/tsconfig.src.json" },
     { "path": "../psionic" }
   ],
   "compilerOptions": {
     "types": ["node"],
     "outDir": "build/src",
     "tsBuildInfoFile": ".tsbuildinfo/src.tsbuildinfo",
-    "rootDir": "src"
+    "rootDir": "src",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true
   }
 }

@@ -1,14 +1,15 @@
 {
   "extends": "./tsconfig.src.json",
   "references": [
-    { "path": "../nostr" },
-    { "path": "../psionic" }
+    { "path": "../nostr/tsconfig.build.json" },
+    { "path": "../psionic/tsconfig.json" }
   ],
   "compilerOptions": {
     "types": ["node"],
     "tsBuildInfoFile": ".tsbuildinfo/build.tsbuildinfo",
     "outDir": "build/esm",
     "declarationDir": "build/dts",
-    "stripInternal": true
+    "stripInternal": true,
+    "rootDir": "src"
   }
 }

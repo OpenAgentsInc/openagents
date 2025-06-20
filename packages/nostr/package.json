@@ -13,6 +13,9 @@
     "access": "public",
     "directory": "dist"
   },
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/dts/index.d.ts",
   "scripts": {
     "codegen": "build-utils prepare-v2",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2 && pnpm fix-dist",
