@@ -5,6 +5,9 @@ export { html, css, document } from './core/templates'
 // Markdown exports
 export * from './markdown'
 
+// Persistence exports
+export * from './persistence'
+
 // Type exports
 export type { 
   PsionicConfig, 
