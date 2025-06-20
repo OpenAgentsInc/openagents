@@ -12,18 +12,18 @@ const testRelayConnection = (relayUrl: string) => Effect.gen(function*() {
   const ws = new WebSocket(relayUrl)
   
   // Track messages
-  const messages: any[] = []
+  const messages: Array<any> = []
   let isConnected = false
   
   // Set up event handlers
   ws.on('message', (data) => {
     const msg = JSON.parse(data.toString())
     messages.push(msg)
-    yield* Console.log(`Received: ${JSON.stringify(msg)}`)
+    console.log(`Received: ${JSON.stringify(msg)}`)
   })
   
   ws.on('error', (error) => {
-    yield* Console.error(`WebSocket error: ${error}`)
+    console.error(`WebSocket error: ${error}`)
   })
   
   // Wait for connection

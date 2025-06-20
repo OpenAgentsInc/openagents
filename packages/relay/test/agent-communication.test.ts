@@ -1,6 +1,5 @@
 import { Effect } from "effect"
 import { describe, expect, test } from "vitest"
-import { WebSocket } from "ws"
 import { createTestEvent, generateTestKeypair, TestNip06Live } from "./test-helpers.js"
 
 /**
@@ -17,7 +16,7 @@ describe("Agent Communication Tests", () => {
 
     const program = Effect.gen(function*() {
       const { privateKey, publicKey } = yield* generateTestKeypair()
-      
+
       // Create agent profile metadata event (kind 0)
       const agentProfile = yield* createTestEvent(
         privateKey,
@@ -57,7 +56,7 @@ describe("Agent Communication Tests", () => {
       // Generate two agent keypairs
       const agent1 = yield* generateTestKeypair(1)
       const agent2 = yield* generateTestKeypair(2)
-      
+
       // Create public channel creation event (kind 40)
       const channelEvent = yield* createTestEvent(
         agent1.privateKey,
@@ -101,7 +100,7 @@ describe("Agent Communication Tests", () => {
     const program = Effect.gen(function*() {
       const client = yield* generateTestKeypair(1)
       const serviceProvider = yield* generateTestKeypair(2)
-      
+
       // Create DVM request event (kind 5000-5999)
       const dvmRequest = yield* createTestEvent(
         client.privateKey,
@@ -153,15 +152,15 @@ describe("Agent Communication Tests", () => {
     })
 
     const result = await Effect.runPromise(program.pipe(Effect.provide(TestNip06Live)))
-    
+
     // Verify DVM request
     expect(result.dvmRequest.kind).toBe(5001)
     expect(result.dvmRequest.tags).toContainEqual(["output", "text/plain"])
-    
+
     // Verify DVM response
     expect(result.dvmResponse.kind).toBe(6001)
     expect(result.dvmResponse.tags).toContainEqual(["request", result.dvmRequest.id])
-    
+
     // Verify DVM feedback
     expect(result.dvmFeedback.kind).toBe(7000)
     expect(result.dvmFeedback.tags).toContainEqual(["rating", "5"])
@@ -175,7 +174,7 @@ describe("Agent Communication Tests", () => {
 
     const program = Effect.gen(function*() {
       const agent = yield* generateTestKeypair()
-      
+
       // Create service announcement event (kind 31990)
       const serviceAnnouncement = yield* createTestEvent(
         agent.privateKey,
@@ -206,3 +205,4 @@ describe("Agent Communication Tests", () => {
     expect(result.serviceAnnouncement.tags).toContainEqual(["status", "active"])
   })
 })
+
