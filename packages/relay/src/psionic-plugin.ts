@@ -576,23 +576,22 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
 
               // Real channel data from events (NIP-28)
               const channelCreationEvents = allEvents.filter((e) => e.kind === 40) // Channel creation
-              const channelMetadataEvents = allEvents.filter((e) => e.kind === 41) // Channel metadata
               const channelMessages = allEvents.filter((e) => e.kind === 42) // Channel messages
-              
+
               // Build channel list from actual events
               const channels = channelCreationEvents.map((event) => {
                 const channelId = event.tags.find((t) => t[0] === "e")?.[1] || event.id
-                const messagesInChannel = channelMessages.filter((msg) => 
+                const messagesInChannel = channelMessages.filter((msg) =>
                   msg.tags.some((t) => t[0] === "e" && t[1] === channelId)
                 )
-                
+
                 try {
                   const metadata = JSON.parse(event.content || "{}")
                   return {
                     id: channelId,
                     name: metadata.name || `Channel ${channelId.slice(0, 8)}`,
                     message_count: messagesInChannel.length,
-                    last_message_at: messagesInChannel.length > 0 
+                    last_message_at: messagesInChannel.length > 0
                       ? new Date(Math.max(...messagesInChannel.map((m) => m.created_at)) * 1000).toISOString()
                       : new Date(event.created_at * 1000).toISOString(),
                     creator_pubkey: event.pubkey
