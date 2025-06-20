@@ -78,6 +78,7 @@ export async function home() {
           background: var(--background1);
           min-width: 400px;
           max-width: 600px;
+          margin-top: -3rem;
         }
 
         .notice-title {
