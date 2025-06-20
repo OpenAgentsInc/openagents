@@ -1,11 +1,53 @@
 import { css } from "@openagentsinc/psionic"
 import { syntaxHighlightingStyles } from "./styles/syntax-highlighting"
 
-// Import WebTUI CSS (will be included via link tags)
+// Import WebTUI CSS and theme files
 export const webtuiStyles = css`
   @import '/webtui/index.css';
+  @import '/webtui/theme-zinc.css';
+  @import '/webtui/theme-catppuccin.css';
+  @import '/webtui/theme-gruvbox.css';
+  @import '/webtui/theme-nord.css';
+  @import '/webtui/theme-ayu.css';
+  @import '/webtui/theme-flexoki.css';
+  @import '/webtui/theme-monokai.css';
+  @import '/webtui/theme-onedark.css';
+  @import '/webtui/theme-tokyonight.css';
+  @import '/webtui/theme-tron.css';
+`
+
+// Base styles for layout and WebTUI integration
+export const baseStyles = css`
+  ${webtuiStyles}
+  ${syntaxHighlightingStyles}
   
-  /* Override base :root colors for themes */
+  /* Default zinc dark theme */
+  :root {
+    --background0: #09090b;
+    --background1: #18181b;
+    --background2: #27272a;
+    --background3: #3f3f46;
+    --foreground0: #a1a1aa;
+    --foreground1: #d4d4d8;
+    --foreground2: #e4e4e7;
+    --accent: #71717a;
+    --success: #52525b;
+    --warning: #a1a1aa;
+    --danger: #52525b;
+    --surface0: #18181b;
+    --surface1: #27272a;
+    --surface2: #3f3f46;
+    --overlay0: #52525b;
+    --overlay1: #71717a;
+    --overlay2: #a1a1aa;
+    --font-size: 16px;
+    --line-height: 1.3;
+    --font-weight-bold: 700;
+    --font-weight-normal: 400;
+    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  
+  /* Zinc theme override for consistency */
   :root:has(.theme-zinc) {
     --background0: #09090b;
     --background1: #18181b;
@@ -18,80 +60,6 @@ export const webtuiStyles = css`
     --success: #52525b;
     --warning: #a1a1aa;
     --danger: #52525b;
-    --surface0: #18181b;
-    --surface1: #27272a;
-    --surface2: #3f3f46;
-    --overlay0: #52525b;
-    --overlay1: #71717a;
-    --overlay2: #a1a1aa;
-    --font-size: 16px;
-    --line-height: 1.3;
-    --font-weight-bold: 700;
-    --font-weight-normal: 400;
-    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-  }
-  
-  
-  :root:has(.theme-catppuccin) {
-    --background0: #1e1e2e;
-    --background1: #313244;
-    --background2: #45475a;
-    --background3: #585b70;
-    --foreground0: #bac2de;
-    --foreground1: #cdd6f4;
-    --foreground2: #f5e0dc;
-  }
-  
-  :root:has(.theme-gruvbox) {
-    --background0: #282828;
-    --background1: #3c3836;
-    --background2: #504945;
-    --background3: #665c54;
-    --foreground0: #bdae93;
-    --foreground1: #ebdbb2;
-    --foreground2: #fbf1c7;
-  }
-  
-  :root:has(.theme-nord) {
-    --background0: #2e3440;
-    --background1: #3b4252;
-    --background2: #434c5e;
-    --background3: #4c566a;
-    --foreground0: #d8dee9;
-    --foreground1: #e5e9f0;
-    --foreground2: #eceff4;
-  }
-`
-
-// Base styles for layout and WebTUI integration
-export const baseStyles = css`
-  ${webtuiStyles}
-  ${syntaxHighlightingStyles}
-  
-  /* Default to zinc dark theme if no theme class is present */
-  :root:has(body:not([class*="theme-"])) {
-    --background0: #09090b;
-    --background1: #18181b;
-    --background2: #27272a;
-    --background3: #3f3f46;
-    --foreground0: #a1a1aa;
-    --foreground1: #d4d4d8;
-    --foreground2: #e4e4e7;
-    --accent: #71717a;
-    --success: #52525b;
-    --warning: #a1a1aa;
-    --danger: #52525b;
-    --surface0: #18181b;
-    --surface1: #27272a;
-    --surface2: #3f3f46;
-    --overlay0: #52525b;
-    --overlay1: #71717a;
-    --overlay2: #a1a1aa;
-    --font-size: 16px;
-    --line-height: 1.3;
-    --font-weight-bold: 700;
-    --font-weight-normal: 400;
-    --font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   }
   
   html, body {
