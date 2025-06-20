@@ -16,8 +16,6 @@ This is an OpenAgents Effect monorepo for building Bitcoin-powered digital agent
 
 ### Apps (User-facing applications)
 - **`@openagentsinc/openagents.com`** - Main website built with Psionic
-- **`@openagentsinc/pylon`** - SDK demo application
-- **`@openagentsinc/playground`** - UI component testing playground
 
 ## Essential Commands
 
@@ -85,8 +83,6 @@ sdk → nostr (NIP-06 key derivation)
 cli → ai (AI features)
 ui → (standalone, WebTUI CSS)
 psionic → (standalone, web framework)
-pylon → sdk (demo app)
-playground → ui (component testing)
 openagents.com → psionic, sdk, nostr (main website)
 ```
 

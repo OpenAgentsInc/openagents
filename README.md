@@ -23,20 +23,20 @@ OpenAgents is built as a monorepo using pnpm workspaces, with a clean separation
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Applications                             │
-├─────────────────────────┬─────────────────────┬─────────────────┤
-│   openagents.com        │      pylon          │   playground    │
-│  (Main Website)         │  (SDK Demo)         │  (UI Testing)   │
-├─────────────────────────┴─────────────────────┴─────────────────┤
+├─────────────────────────────────────────────────────────────────┤
+│                     openagents.com                               │
+│                    (Main Website)                                │
+├─────────────────────────────────────────────────────────────────┤
 │                         Core Packages                            │
 ├─────────────────┬───────────────┬───────────────────────────────┤
 │      sdk        │     nostr     │            psionic            │
 │ (Agent Runtime) │  (Protocol)   │      (Web Framework)          │
 ├─────────────────┴───────────────┴───────────────────────────────┤
 │                      Support Packages                            │
-├──────────────┬──────────────┬──────────────┬───────────────────┤
-│      ui      │      ai      │     cli      │    storybook      │
-│  (WebTUI)    │ (AI Provider)│  (CLI Demo)  │ (Component Dev)   │
-└──────────────┴──────────────┴──────────────┴───────────────────┘
+├──────────────┬──────────────┬─────────────────────────────────┤
+│      ui      │      ai      │              cli                │
+│  (WebTUI)    │ (AI Provider)│          (CLI Demo)             │
+└──────────────┴──────────────┴─────────────────────────────────┘
 ```
 
 ### Key Dependencies
@@ -44,7 +44,6 @@ OpenAgents is built as a monorepo using pnpm workspaces, with a clean separation
 - **SDK → Nostr**: Uses NIP-06 for deterministic key derivation from mnemonics
 - **CLI → AI**: Integrates AI capabilities into command-line interface
 - **OpenAgents.com → Psionic, SDK, Nostr, UI**: Main website uses all core components
-- **Pylon → SDK**: Demonstrates SDK capabilities in a minimal app
 
 ### Development Workflow
 
@@ -87,11 +86,6 @@ pnpm --filter=@openagentsinc/sdk codegen
 ### AI
 - **`@openagentsinc/ai`** - Claude Code integration and AI provider abstraction
 
-### Development Tools
-- **`@openagentsinc/storybook`** - Component development and documentation
-
 ## Apps
 
 - **`@openagentsinc/openagents.com`** - Main website built with Psionic
-- **`@openagentsinc/pylon`** - OpenAgents SDK demo application
-- **`@openagentsinc/playground`** - UI component testing environment

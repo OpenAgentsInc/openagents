@@ -45,9 +45,7 @@ Privacy and control through:
 ```
 openagents/
 ├── apps/                    # User-facing applications
-│   ├── openagents.com/      # Main website (Psionic + WebTUI)
-│   ├── pylon/               # SDK demo application
-│   └── playground/          # UI component testing
+│   └── openagents.com/      # Main website (Psionic + WebTUI)
 ├── packages/                # Reusable libraries
 │   ├── sdk/                 # Core OpenAgents SDK
 │   ├── nostr/               # Nostr protocol implementation
@@ -55,8 +53,7 @@ openagents/
 │   ├── cli/                 # Command-line interface (demo)
 │   ├── ui/                  # WebTUI component library
 │   ├── psionic/             # Web framework
-│   ├── autotest/            # Browser automation testing
-│   └── storybook/           # Component development
+│   └── autotest/            # Browser automation testing
 ├── docs/                    # Technical documentation
 ├── CLAUDE.md               # AI assistant instructions
 └── README.md               # Project overview

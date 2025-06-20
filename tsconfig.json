@@ -7,8 +7,6 @@
     { "path": "packages/nostr" },
     { "path": "packages/psionic" },
     { "path": "packages/sdk" },
-    { "path": "apps/openagents.com" },
-    { "path": "apps/playground" },
-    { "path": "apps/pylon" }
+    { "path": "apps/openagents.com" }
   ]
 }
