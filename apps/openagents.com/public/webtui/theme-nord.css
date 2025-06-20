@@ -1,0 +1,25 @@
+/* Nord (Dark) */
+:root:has(.theme-nord) {
+  /* Backgrounds - Polar Night */
+  --background0: #2e3440; /* Main background */
+  --background1: #3b4252; /* Slightly lighter */
+  --background2: #434c5e; /* Hover/selection */
+  --background3: #4c566a; /* Lightest background */
+  
+  /* Foregrounds - Snow Storm */
+  --foreground0: #d8dee9; /* Dim text */
+  --foreground1: #e5e9f0; /* Normal text */
+  --foreground2: #eceff4; /* Bright text */
+  
+  /* Accent colors - Frost & Aurora */
+  --accent: #88c0d0; /* Frost blue */
+  --success: #a3be8c; /* Aurora green */
+  --warning: #ebcb8b; /* Aurora yellow */
+  --danger: #bf616a; /* Aurora red */
+  
+  /* Overlays */
+  --overlay0: rgba(0, 0, 0, 0.7);
+  --overlay1: rgba(0, 0, 0, 0.5);
+  --overlay2: rgba(0, 0, 0, 0.3);
+  --overlay3: rgba(0, 0, 0, 0.1);
+}
