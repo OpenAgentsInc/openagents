@@ -1322,7 +1322,7 @@ export namespace Inference {
 export const helloWorld = Console.log("Hello from OpenAgents SDK!")
 export const runHelloWorld = (): void => Effect.runSync(helloWorld)
 
-// Legacy Ollama functionality (kept for Pylon compatibility)
+// Legacy Ollama functionality (kept for backward compatibility)
 interface OllamaModel {
   name: string
   model: string

@@ -120,22 +120,6 @@ bun dev
 # Visit http://localhost:3000
 ```
 
-#### Pylon Demo
-
-```bash
-cd apps/pylon
-bun dev
-# Visit http://localhost:3001
-```
-
-#### UI Playground
-
-```bash
-cd apps/playground
-pnpm dev
-# Visit http://localhost:5173
-```
-
 ## Code Style Guidelines
 
 ### TypeScript
