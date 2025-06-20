@@ -1,7 +1,6 @@
 {
   "name": "@openagentsinc/relay",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "license": "CC0-1.0",
   "description": "Nostr relay with NIP-01 support and Effect.js architecture",
