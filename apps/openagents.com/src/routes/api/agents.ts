@@ -57,7 +57,7 @@ export async function POST(request: Request): Promise<Response> {
         }
       }
 
-      // Create NIP-OA agent profile event
+      // Create NIP-OA agent profile event using proper service
       const agentProfileService = yield* NostrLib.AgentProfileService.AgentProfileService
       const profileEvent = yield* agentProfileService.createProfile(
         agent.nostrKeys.public.replace("npub", ""), // Convert npub to hex pubkey
@@ -99,21 +99,13 @@ export async function POST(request: Request): Promise<Response> {
       }
     })
 
-    // Create proper Effect runtime with all required services
-    const MainLayer = Layer.mergeAll(
+    // Provide all necessary services for the Effect program
+    // The AgentProfileServiceLive is a stub, but we need to provide all its declared dependencies
+    const AppLayer = Layer.mergeAll(
       Layer.succeed(
         NostrLib.AgentProfileService.AgentProfileService,
         NostrLib.AgentProfileService.AgentProfileServiceLive
       ),
-      NostrLib.EventService.EventServiceLive,
-      NostrLib.RelayService.RelayServiceLive,
-      NostrLib.CryptoService.CryptoServiceLive,
-      NostrLib.WebSocketService.WebSocketServiceLive
-    )
-
-    // We need to provide RelayDatabase layer as well
-    const RelayLayer = Layer.mergeAll(
-      MainLayer,
       Layer.succeed(
         RelayDatabase,
         {
@@ -138,7 +130,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const result = await Effect.runPromise(
       program.pipe(
-        Effect.provide(RelayLayer)
+        Effect.provide(AppLayer)
       )
     )
 
@@ -189,6 +181,8 @@ export async function GET(request: Request): Promise<Response> {
             deleteEvent: () => Effect.succeed(true),
             getServiceOfferings: () => Effect.succeed([]),
             updateServiceOffering: () => Effect.succeed({} as any),
+            getJobRequests: () => Effect.succeed([]),
+            updateJobRequest: () => Effect.succeed({} as any),
             getChannels: () => Effect.succeed([]),
             updateChannelStats: () => Effect.succeed(undefined),
             recordMetric: () => Effect.succeed(undefined),

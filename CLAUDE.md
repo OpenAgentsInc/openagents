@@ -354,3 +354,32 @@ If database queries fail:
 **NEVER** modify production database manually - always use migration scripts.
 
 See [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) for complete documentation.
+
+## FORBIDDEN DEVELOPMENT PATTERNS
+
+### ❌ NEVER Create "Simpler Mocks" 
+
+**ABSOLUTELY FORBIDDEN**: Replacing complex service architecture with "simpler" implementations.
+
+**Examples of BANNED thought processes**:
+- "Let me fix this by replacing the complex service usage with a simpler mock implementation"
+- "I'll just remove the Effect services and use basic mocks instead"
+- "This is too complex, let me simplify it"
+
+**Why This is FORBIDDEN**:
+- The Effect service architecture is **intentionally designed** for type safety and dependency injection
+- Complex layers exist to ensure proper service composition and error handling
+- "Simpler" implementations break the architectural integrity and type safety guarantees
+
+**REQUIRED Approach Instead**:
+- **Figure out how to make all services work together properly**
+- **Fix TypeScript errors by providing proper service layers, not by removing them**
+- **Understand and respect the existing Effect.js architecture**
+- **When service integration is complex, that complexity serves a purpose**
+
+**Correct Mindset**:
+- "How do I properly provide all required services in the Layer?"
+- "What Effect dependencies am I missing and how do I provide them?"
+- "How does the existing architecture expect this to be wired together?"
+
+**Never take shortcuts. Never simplify. Always respect the architectural decisions that were made for production systems.**

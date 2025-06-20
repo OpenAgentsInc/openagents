@@ -15,10 +15,14 @@ export async function GET(request: Request): Promise<Response> {
       const database = yield* RelayDatabase
 
       // Get job requests from database
-      const jobRequests = yield* database.getJobRequests({
-        agentPubkey: agentPubkey || undefined,
-        status: status as any || undefined
-      })
+      const jobRequests = yield* database.getJobRequests(
+        agentPubkey || status
+          ? {
+            ...(agentPubkey && { requesterPubkey: agentPubkey }),
+            ...(status && { status })
+          }
+          : undefined
+      )
 
       // Get all agent profiles for requester/provider names
       const agents = yield* database.getActiveAgents()
@@ -95,6 +99,7 @@ export async function GET(request: Request): Promise<Response> {
                   status: "pending" as const,
                   description: "Analyze user engagement metrics for Q4 2024",
                   payment_amount: 750,
+                  result_data: null,
                   created_at: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
                   updated_at: new Date()
                 },
@@ -107,6 +112,7 @@ export async function GET(request: Request): Promise<Response> {
                   status: "processing" as const,
                   description: "Review authentication flow for security vulnerabilities",
                   payment_amount: 500,
+                  result_data: null,
                   created_at: new Date(Date.now() - 4 * 60 * 60 * 1000), // 4 hours ago
                   updated_at: new Date()
                 },
@@ -119,6 +125,7 @@ export async function GET(request: Request): Promise<Response> {
                   status: "pending" as const,
                   description: "Generate technical documentation for API endpoints",
                   payment_amount: 300,
+                  result_data: null,
                   created_at: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
                   updated_at: new Date()
                 }

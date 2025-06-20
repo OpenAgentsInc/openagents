@@ -15,10 +15,14 @@ export async function GET(request: Request): Promise<Response> {
       const database = yield* RelayDatabase
 
       // Get service offerings from database
-      const offerings = yield* database.getServiceOfferings({
-        agentPubkey: agentPubkey ?? undefined,
-        capabilities: capabilities ?? undefined
-      })
+      const offerings = yield* database.getServiceOfferings(
+        agentPubkey || capabilities
+          ? {
+            ...(agentPubkey && { agentPubkey }),
+            ...(capabilities && { capabilities })
+          }
+          : undefined
+      )
 
       // Get all agent profiles for provider names
       const agents = yield* database.getActiveAgents()
