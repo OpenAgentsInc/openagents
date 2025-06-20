@@ -86,7 +86,7 @@ Our path to implementing Reed's Law requires abandoning platform competition in 
 ### Ecosystem Partner Tiers
 
 **Tier 1: Infrastructure Partners (Must-Have Alliances)**
-*   **Lightning (Lightning Labs, Voltage):** For agent payment processing. We provide transaction volume; they provide proven payment rails.
+*   **Lightning (Lightning Labs, Lightspark, Voltage):** For agent payment processing. We provide transaction volume; they provide proven payment rails.
 *   **Identity (Synonym, Slashtags):** For Bitcoin-native agent identity. We expand their use case; they provide production-ready key management.
 *   **Privacy (Fedimint, Cashu):** For privacy-preserving coalition accounting. We provide a high-volume use case; they provide efficiency and privacy.
 
@@ -99,7 +99,7 @@ Our path to implementing Reed's Law requires abandoning platform competition in 
 *   **Compute (Bitcoin Mining Pools):** For computational resources and hashrate coordination.
 *   **Enterprise (Block, Spiral):** For enterprise validation and adoption.
 *   **Finance (Strike, River, Cash App):** For user onboarding and fiat gateways.
-*   **Hardware (Blockstream, Casa):** For secure agent key management.
+*   **Hardware (Blockstream, Umbrel, Raspiblitz, Block):** For secure agent key management.
 *   **Media (Bitcoin Magazine, etc.):** For narrative building and community adoption.
 
 ### The Three-Layer Launch Strategy
