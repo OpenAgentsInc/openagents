@@ -229,30 +229,44 @@ export async function agents() {
           return stateColors[state] || 'background2';
         }
         
-        // Handle spawn agent event
+        // Handle spawn agent event - REAL IMPLEMENTATION
         window.addEventListener('spawn-agent', async (event) => {
           const { name, capital, metabolicRate } = event.detail;
           
           try {
-            // Create a mock agent for demo purposes
-            // In a real implementation, this would call a server endpoint
-            const agentId = \`agent_\${Date.now()}_\${Math.random().toString(36).substring(2, 10)}\`;
-            const mockPublicKey = \`npub\${Array.from({length: 58}, () => Math.floor(Math.random() * 36).toString(36)).join('')}\`;
-            const mockPrivateKey = Array.from({length: 64}, () => Math.floor(Math.random() * 16).toString(16)).join('');
+            // Call real agent creation API
+            const response = await fetch('/api/agents', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name,
+                capital,
+                metabolicRate
+              })
+            });
+            
+            const result = await response.json();
+            
+            if (!result.success) {
+              throw new Error(result.error || 'Failed to create agent');
+            }
             
             const agent = {
-              id: agentId,
-              name: name,
+              id: result.agent.id,
+              name: result.agent.name,
               nostrKeys: {
-                public: mockPublicKey,
-                private: mockPrivateKey
+                public: result.agent.publicKey,
+                private: result.agent.mnemonic // Store mnemonic for recovery
               },
               birthTimestamp: Date.now(),
               generation: 0,
-              lifecycleState: 'bootstrapping',
-              balance: capital,
-              metabolicRate: metabolicRate,
-              mnemonic: 'demo mnemonic for ' + name // In real app, generate actual mnemonic
+              lifecycleState: result.agent.lifecycleState || 'bootstrapping',
+              balance: result.agent.balance,
+              metabolicRate: result.agent.metabolicRate,
+              mnemonic: result.agent.mnemonic,
+              profile: result.profile // Include database profile
             };
             
             // Add to agents array
@@ -262,10 +276,11 @@ export async function agents() {
             saveAgents();
             updateAgentList();
             
-            console.log('Agent spawned:', agent);
+            console.log('Real agent spawned:', agent);
+            console.log('Agent profile in database:', result.profile);
             
-            // Show success message
-            alert(\`Agent "\${name}" spawned successfully!\\nPublic key: \${agent.nostrKeys.public}\`);
+            // Show success message with real public key
+            alert(\`Agent "\${name}" spawned successfully!\\nReal Nostr public key: \${agent.nostrKeys.public}\\nAgent ID: \${agent.id}\\n\\nThis agent now has a real identity on the Nostr network!\`);
           } catch (error) {
             console.error('Failed to spawn agent:', error);
             alert('Failed to spawn agent: ' + error.message);

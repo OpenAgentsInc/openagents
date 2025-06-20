@@ -120,6 +120,30 @@ export const channels = mysqlTable("channels", {
 }))
 
 /**
+ * Job requests for NIP-90 marketplace
+ * Tracks service requests and their status
+ */
+export const job_requests = mysqlTable("job_requests", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  request_event_id: varchar("request_event_id", { length: 64 }).references(() => events.id),
+  requester_pubkey: varchar("requester_pubkey", { length: 64 }).notNull(),
+  provider_pubkey: varchar("provider_pubkey", { length: 64 }),
+  service_type: varchar("service_type", { length: 255 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"), // pending, processing, completed, failed, cancelled
+  description: text("description").notNull(),
+  payment_amount: bigint("payment_amount", { mode: "number" }).notNull(),
+  result_data: json("result_data").$type<Record<string, unknown>>(),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  updated_at: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
+}, (table) => ({
+  requesterIdx: index("idx_requester").on(table.requester_pubkey),
+  providerIdx: index("idx_provider").on(table.provider_pubkey),
+  statusIdx: index("idx_status").on(table.status),
+  serviceTypeIdx: index("idx_service_type").on(table.service_type),
+  createdAtIdx: index("idx_created_at").on(table.created_at)
+}))
+
+/**
  * Relay statistics for monitoring and optimization
  */
 export const relay_stats = mysqlTable("relay_stats", {
@@ -175,5 +199,7 @@ export type ServiceOffering = typeof service_offerings.$inferSelect
 export type NewServiceOffering = typeof service_offerings.$inferInsert
 export type Channel = typeof channels.$inferSelect
 export type NewChannel = typeof channels.$inferInsert
+export type JobRequest = typeof job_requests.$inferSelect
+export type NewJobRequest = typeof job_requests.$inferInsert
 export type RelayStat = typeof relay_stats.$inferSelect
 export type NewRelayStat = typeof relay_stats.$inferInsert
