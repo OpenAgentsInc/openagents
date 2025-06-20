@@ -25,7 +25,7 @@
     }
   },
   "scripts": {
-    "codegen": "build-utils prepare-v2",
+    "codegen": "echo 'Relay package exports are manually managed - skipping codegen'",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2 && pnpm fix-dist",
     "build-esm": "tsc -b tsconfig.build.json",
     "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
@@ -61,17 +61,5 @@
     "@babel/plugin-transform-modules-commonjs": "^7.25.9",
     "babel-plugin-annotate-pure-calls": "^0.4.0",
     "@effect/build-utils": "^0.7.8"
-  },
-  "effect": {
-    "generateExports": {
-      "include": [
-        "**/*.ts"
-      ]
-    },
-    "generateIndex": {
-      "include": [
-        "**/*.ts"
-      ]
-    }
   }
 }
