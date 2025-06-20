@@ -205,4 +205,3 @@ describe("Agent Communication Tests", () => {
     expect(result.serviceAnnouncement.tags).toContainEqual(["status", "active"])
   })
 })
-
