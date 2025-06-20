@@ -14,6 +14,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
           <!-- <a href="/chat" class="nav-link ${current === "chat" ? "active" : ""}">◊ Chat</a> -->
           <a href="/docs" class="nav-link ${current === "docs" ? "active" : ""}">§ Docs</a>
           <a href="/blog" class="nav-link ${current === "blog" ? "active" : ""}">¶ Blog</a>
+          <a href="/admin" class="nav-link admin-link ${current === "admin" ? "active" : ""}" style="display: none;">⚙ Admin</a>
           <div class="theme-switcher-container">
             <select id="theme-select" class="theme-select" onchange="switchTheme(this.value)">
               <option value="zinc">Zinc</option>
@@ -171,6 +172,16 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
             themeSelect.value = savedTheme;
             switchTheme(savedTheme);
           }
+        }
+      })();
+      
+      // Show admin link only on localhost
+      (function() {
+        const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+        const adminLink = document.querySelector('.admin-link');
+        
+        if (adminLink && isLocalhost) {
+          adminLink.style.display = 'inline-block';
         }
       })();
       
