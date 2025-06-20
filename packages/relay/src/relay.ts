@@ -60,7 +60,7 @@ export class NostrRelay extends Context.Tag("NostrRelay")<
 
 // Connection handler for individual WebSocket connections
 export interface ConnectionHandler {
-  readonly processMessage: (rawMessage: string) => Effect.Effect<void, MessageError>
+  readonly processMessage: (rawMessage: string) => Effect.Effect<Array<string>, MessageError>
   readonly close: () => Effect.Effect<void>
   readonly subscribe: (
     subscriptionId: SubscriptionId,
@@ -214,9 +214,11 @@ export const NostrRelayLive = Layer.effect(
         // Track active subscriptions for this connection
         const activeSubscriptions = yield* Ref.make<HashMap.HashMap<SubscriptionId, SubscriptionState>>(HashMap.empty())
 
-        const processMessage = (rawMessage: string): Effect.Effect<void, MessageError> =>
+        const processMessage = (rawMessage: string): Effect.Effect<Array<string>, MessageError> =>
           Effect.gen(function*() {
+            console.log(`[${connectionId}] Processing message:`, rawMessage)
             const message = yield* parseClientMessage(rawMessage)
+            const responses: Array<string> = []
 
             switch (message[0]) {
               case "EVENT": {
@@ -237,6 +239,8 @@ export const NostrRelayLive = Layer.effect(
                   stored,
                   stored ? "" : "error: failed to store event"
                 )
+                console.log(`[${connectionId}] Created OK message:`, okMessage)
+                responses.push(okMessage)
 
                 // Broadcast to matching subscriptions if stored
                 if (stored) {
@@ -244,8 +248,7 @@ export const NostrRelayLive = Layer.effect(
                   yield* Ref.update(stats, (s) => ({ ...s, eventsStored: s.eventsStored + 1 }))
                 }
 
-                // Note: In real implementation, we'd send the OK message back via WebSocket
-                console.log(`[${connectionId}] ${okMessage}`)
+                console.log(`[${connectionId}] Responses array:`, responses)
                 break
               }
 
@@ -274,12 +277,14 @@ export const NostrRelayLive = Layer.effect(
                 // Send existing events
                 for (const event of existingEvents) {
                   const eventMessage = createRelayMessage("EVENT", subscriptionId, event)
+                  responses.push(eventMessage)
                   console.log(`[${connectionId}] ${eventMessage}`)
                   yield* Ref.update(stats, (s) => ({ ...s, eventsServed: s.eventsServed + 1 }))
                 }
 
                 // Send EOSE
                 const eoseMessage = createRelayMessage("EOSE", subscriptionId)
+                responses.push(eoseMessage)
                 console.log(`[${connectionId}] ${eoseMessage}`)
 
                 break
@@ -292,10 +297,14 @@ export const NostrRelayLive = Layer.effect(
                 yield* Ref.update(activeSubscriptions, HashMap.remove(subscriptionId as any))
 
                 const closedMessage = createRelayMessage("CLOSED", subscriptionId, "subscription closed")
+                responses.push(closedMessage)
                 console.log(`[${connectionId}] ${closedMessage}`)
                 break
               }
             }
+
+            console.log(`[${connectionId}] Returning responses:`, responses)
+            return responses
           })
 
         const close = (): Effect.Effect<void> =>

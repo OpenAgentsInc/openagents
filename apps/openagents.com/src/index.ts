@@ -7,9 +7,11 @@ import { about } from './routes/about'
 import { blogIndex, blogPost } from './routes/blog'
 import { chat } from './routes/chat'
 import { admin } from './routes/admin'
+import { channelsRoute, channelViewRoute, channelCreateRoute } from './routes/channels'
 import { ollamaApi } from './routes/api/ollama'
 import { openrouterApi } from './routes/api/openrouter'
 import { cloudflareApi } from './routes/api/cloudflare'
+import { channelsApi } from './routes/api/channels'
 import { navigation } from './components/navigation'
 import { baseStyles } from './styles'
 import path from 'path'
@@ -43,11 +45,15 @@ app.route('/blog', blogIndex)
 app.route('/blog/:slug', blogPost)
 app.route('/chat', chat)
 app.route('/admin', admin)
+app.route('/channels', channelsRoute)
+app.route('/channels/create', channelCreateRoute)
+app.route('/channels/:id', channelViewRoute)
 
 // Mount API routes
 app.elysia.use(ollamaApi)
 app.elysia.use(openrouterApi)
 app.elysia.use(cloudflareApi)
+app.elysia.use(channelsApi)
 
 // Mount Nostr relay
 app.elysia.use(createRelayPlugin({

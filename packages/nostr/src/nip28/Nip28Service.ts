@@ -208,8 +208,9 @@ export const Nip28ServiceLive = Layer.effect(
           )
         )
 
-        // Publish to relay
-        const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+        // Publish to relay - prefer local relay first
+        const relayUrl = params.relays?.[0] || "ws://localhost:3003/relay"
+        const connection = yield* relayService.connect(relayUrl).pipe(
           Effect.catchAll((error) =>
             Effect.fail(
               new Nip28PublishError({
@@ -242,7 +243,7 @@ export const Nip28ServiceLive = Layer.effect(
       channelId: EventId
     ): Effect.Effect<ChannelMetadata, Nip28FetchError | Nip28ChannelNotFoundError> =>
       Effect.scoped(Effect.gen(function*() {
-        const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+        const connection = yield* relayService.connect("ws://localhost:3003/relay").pipe(
           Effect.catchAll((error) =>
             Effect.fail(
               new Nip28FetchError({
@@ -331,7 +332,7 @@ export const Nip28ServiceLive = Layer.effect(
           )
         )
 
-        const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+        const connection = yield* relayService.connect("ws://localhost:3003/relay").pipe(
           Effect.catchAll((error) =>
             Effect.fail(
               new Nip28PublishError({
@@ -399,7 +400,7 @@ export const Nip28ServiceLive = Layer.effect(
           )
         )
 
-        const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+        const connection = yield* relayService.connect("ws://localhost:3003/relay").pipe(
           Effect.catchAll((error) =>
             Effect.fail(
               new Nip28PublishError({
@@ -433,7 +434,7 @@ export const Nip28ServiceLive = Layer.effect(
       filterOptions?: Partial<Filter>
     ): Effect.Effect<Array<ChannelMessage>, Nip28FetchError> =>
       Effect.scoped(Effect.gen(function*() {
-        const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+        const connection = yield* relayService.connect("ws://localhost:3003/relay").pipe(
           Effect.catchAll((error) =>
             Effect.fail(
               new Nip28FetchError({
@@ -486,7 +487,7 @@ export const Nip28ServiceLive = Layer.effect(
     ): Stream.Stream<ChannelMessage, Nip28FetchError> =>
       Stream.unwrapScoped(
         Effect.gen(function*() {
-          const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+          const connection = yield* relayService.connect("ws://localhost:3003/relay").pipe(
             Effect.catchAll((error) =>
               Effect.fail(
                 new Nip28FetchError({
@@ -554,7 +555,7 @@ export const Nip28ServiceLive = Layer.effect(
           )
         )
 
-        const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+        const connection = yield* relayService.connect("ws://localhost:3003/relay").pipe(
           Effect.catchAll((error) =>
             Effect.fail(
               new Nip28PublishError({
@@ -606,7 +607,7 @@ export const Nip28ServiceLive = Layer.effect(
           )
         )
 
-        const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
+        const connection = yield* relayService.connect("ws://localhost:3003/relay").pipe(
           Effect.catchAll((error) =>
             Effect.fail(
               new Nip28PublishError({

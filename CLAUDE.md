@@ -287,3 +287,70 @@ For detailed usage, configuration options, and troubleshooting, see [docs/autote
 **Quick Reference**: Most common pattern is `<element is-="component" variant-="foreground1" box-="square">content</element>`
 
 **DO NOT explore the component library manually** - everything you need is documented in [docs/components.md](docs/components.md).
+
+## Database Migrations
+
+**CRITICAL**: This project uses PlanetScale MySQL with Drizzle ORM. Database schema issues can block development.
+
+### Schema Management
+
+- **Single Source of Truth**: `packages/relay/src/schema.ts` defines all database tables
+- **Migration Scripts**: Use `packages/relay/scripts/run-migration.ts` for schema changes  
+- **Configuration**: `packages/relay/drizzle.config.ts` connects to PlanetScale
+
+### When Schema and Database Don't Match
+
+**Symptoms**:
+- Error: "Unknown column 'X' in 'field list'"
+- API endpoints returning 500 errors
+- Database queries failing
+
+**Solution Process**:
+
+1. **Check Schema vs Database**:
+   ```bash
+   cd packages/relay
+   bun scripts/run-migration.ts  # Shows current vs expected columns
+   ```
+
+2. **Add Missing Columns**:
+   - Update migration script with new columns
+   - Run migration to add missing fields
+   - Rebuild relay package
+
+3. **Common Missing Columns**:
+   - `creator_pubkey VARCHAR(64) NOT NULL` - For channel ownership
+   - `message_count BIGINT DEFAULT 0` - For channel stats  
+   - `updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` - For record tracking
+
+### Migration Commands
+
+```bash
+# Generate migration (reference only)
+cd packages/relay && pnpm db:generate
+
+# Run custom migration (PREFERRED)
+cd packages/relay && bun scripts/run-migration.ts
+
+# Rebuild after migration
+pnpm --filter=@openagentsinc/relay build
+
+# Test database connectivity
+curl http://localhost:3003/api/channels/list
+```
+
+### Emergency Fixes
+
+If database queries fail:
+
+1. Check error message for missing column name
+2. Add column to `scripts/run-migration.ts`:
+   ```typescript
+   { name: 'missing_column', sql: 'ADD COLUMN missing_column VARCHAR(64) NOT NULL DEFAULT ""' }
+   ```
+3. Run migration script
+4. Rebuild and test
+
+**NEVER** modify production database manually - always use migration scripts.
+
+See [DATABASE_MIGRATION_GUIDE.md](DATABASE_MIGRATION_GUIDE.md) for complete documentation.
