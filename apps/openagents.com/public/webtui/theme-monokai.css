@@ -1,0 +1,25 @@
+/* Monokai (Dark) */
+:root:has(.theme-monokai) {
+  /* Backgrounds */
+  --background0: #2d2a2e; /* Main background */
+  --background1: #353236; /* Slightly lighter */
+  --background2: #403e41; /* Hover/selection */
+  --background3: #4b494c; /* Lightest background */
+  
+  /* Foregrounds */
+  --foreground0: #727072; /* Dim text */
+  --foreground1: #fcfcfa; /* Normal text */
+  --foreground2: #ffffff; /* Bright text */
+  
+  /* Accent colors */
+  --accent: #78dce8; /* Cyan */
+  --success: #a9dc76; /* Green */
+  --warning: #ffd866; /* Yellow */
+  --danger: #ff6188; /* Red */
+  
+  /* Overlays */
+  --overlay0: rgba(0, 0, 0, 0.7);
+  --overlay1: rgba(0, 0, 0, 0.5);
+  --overlay2: rgba(0, 0, 0, 0.3);
+  --overlay3: rgba(0, 0, 0, 0.1);
+}

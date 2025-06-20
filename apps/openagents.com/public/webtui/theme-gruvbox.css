@@ -1,0 +1,25 @@
+/* Gruvbox (Dark) */
+:root:has(.theme-gruvbox) {
+  /* Backgrounds */
+  --background0: #282828; /* Main background */
+  --background1: #3c3836; /* Slightly lighter */
+  --background2: #504945; /* Hover/selection */
+  --background3: #665c54; /* Lightest background */
+  
+  /* Foregrounds */
+  --foreground0: #bdae93; /* Dim text */
+  --foreground1: #ebdbb2; /* Normal text */
+  --foreground2: #fbf1c7; /* Bright text */
+  
+  /* Accent colors */
+  --accent: #83a598; /* Aqua */
+  --success: #b8bb26; /* Green */
+  --warning: #fabd2f; /* Yellow */
+  --danger: #fb4934; /* Red */
+  
+  /* Overlays */
+  --overlay0: rgba(0, 0, 0, 0.7);
+  --overlay1: rgba(0, 0, 0, 0.5);
+  --overlay2: rgba(0, 0, 0, 0.3);
+  --overlay3: rgba(0, 0, 0, 0.1);
+}
