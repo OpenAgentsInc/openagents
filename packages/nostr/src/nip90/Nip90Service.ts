@@ -4,15 +4,8 @@
  * @module
  */
 
-import { Effect, Context, Data, Schema, Layer, Stream, Chunk } from "effect"
-import {
-  NostrEvent,
-  EventParams,
-  Filter,
-  PublicKey,
-  PrivateKey,
-  SubscriptionId
-} from "../core/Schema.js"
+import { Chunk, Context, Data, Effect, Layer, Schema, Stream } from "effect"
+import type { EventParams, Filter, NostrEvent, PrivateKey, PublicKey, SubscriptionId } from "../core/Schema.js"
 import { EventService } from "../services/EventService.js"
 import { RelayService } from "../services/RelayService.js"
 
@@ -79,7 +72,7 @@ export class Nip90PaymentError extends Data.TaggedError("Nip90PaymentError")<{
 // --- Job Status Types ---
 export const JobStatus = Schema.Literal(
   "payment-required",
-  "processing", 
+  "processing",
   "error",
   "success",
   "partial"
@@ -93,7 +86,7 @@ export type JobInputType = Schema.Schema.Type<typeof JobInputType>
 // --- Service Schemas ---
 export const ServiceCapabilitySchema = Schema.Struct({
   id: Schema.String,
-  name: Schema.String, 
+  name: Schema.String,
   description: Schema.String,
   inputTypes: Schema.Array(JobInputType),
   outputType: Schema.String,
@@ -166,9 +159,9 @@ export interface PublishServiceOfferingParams {
   serviceId: string
   name: string
   description: string
-  capabilities: ServiceCapability[]
+  capabilities: Array<ServiceCapability>
   lightningAddress?: string
-  relayHints?: string[]
+  relayHints?: Array<string>
   privateKey: PrivateKey
 }
 
@@ -210,7 +203,7 @@ export interface JobMonitor {
   jobId: string
   request: JobRequest
   result?: JobResult
-  feedback?: JobFeedback[]
+  feedback?: Array<JobFeedback>
   status: JobStatus
   lastUpdate: number
 }
@@ -235,7 +228,7 @@ export class Nip90Service extends Context.Tag("nostr/Nip90Service")<
         provider?: PublicKey
         maxPrice?: number
       }
-    ) => Effect.Effect<ServiceOffering[], Nip90FetchError>
+    ) => Effect.Effect<Array<ServiceOffering>, Nip90FetchError>
 
     /**
      * Request a job from a service provider (Kind 5000-5999)
@@ -278,7 +271,7 @@ export class Nip90Service extends Context.Tag("nostr/Nip90Service")<
     readonly getJobRequests: (
       providerPubkey: string,
       filterOptions?: Partial<Filter>
-    ) => Effect.Effect<JobRequest[], Nip90FetchError>
+    ) => Effect.Effect<Array<JobRequest>, Nip90FetchError>
 
     /**
      * Subscribe to incoming job requests for a service provider
@@ -292,19 +285,21 @@ export class Nip90Service extends Context.Tag("nostr/Nip90Service")<
 // --- Service Implementation ---
 export const Nip90ServiceLive = Layer.effect(
   Nip90Service,
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     const eventService = yield* EventService
     const relayService = yield* RelayService
 
     const publishServiceOffering = (
       params: PublishServiceOfferingParams
     ): Effect.Effect<NostrEvent, Nip90InvalidInputError | Nip90PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         // Validate inputs
         if (!params.serviceId || !params.name || params.capabilities.length === 0) {
-          return yield* Effect.fail(new Nip90InvalidInputError({ 
-            message: "Service ID, name, and capabilities are required" 
-          }))
+          return yield* Effect.fail(
+            new Nip90InvalidInputError({
+              message: "Service ID, name, and capabilities are required"
+            })
+          )
         }
 
         // Create service offering content
@@ -318,14 +313,14 @@ export const Nip90ServiceLive = Layer.effect(
         })
 
         // Build tags for service offering
-        const tags: string[][] = [
+        const tags: Array<Array<string>> = [
           ["d", params.serviceId], // NIP-33 addressable event
           ["name", params.name],
           ["about", params.description]
         ]
 
         // Add capability tags
-        params.capabilities.forEach(cap => {
+        params.capabilities.forEach((cap) => {
           tags.push(["t", cap.id])
           tags.push(["k", cap.pricing.basePrice.toString()])
         })
@@ -342,33 +337,39 @@ export const Nip90ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to create service offering event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to create service offering event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         // Publish to relay
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to publish service offering", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to publish service offering",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip90PublishError({ message: "Service offering rejected by relay" }))
         }
@@ -382,17 +383,19 @@ export const Nip90ServiceLive = Layer.effect(
         provider?: PublicKey
         maxPrice?: number
       }
-    ): Effect.Effect<ServiceOffering[], Nip90FetchError> =>
-      Effect.scoped(Effect.gen(function* () {
+    ): Effect.Effect<Array<ServiceOffering>, Nip90FetchError> =>
+      Effect.scoped(Effect.gen(function*() {
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90FetchError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90FetchError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const filter: Filter = {
           kinds: [31990],
           ...(filters?.provider && { authors: [filters.provider] }),
@@ -400,26 +403,30 @@ export const Nip90ServiceLive = Layer.effect(
         }
 
         const subscription = yield* connection.subscribe("service-discovery" as SubscriptionId, [filter]).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90FetchError({ 
-              message: "Failed to subscribe to service offerings", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90FetchError({
+                message: "Failed to subscribe to service offerings",
+                cause: error
+              })
+            )
           )
         )
 
         const events = yield* Stream.runCollect(subscription.events).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90FetchError({ 
-              message: "Failed to collect service offerings", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90FetchError({
+                message: "Failed to collect service offerings",
+                cause: error
+              })
+            )
           )
         )
 
         // Transform events to ServiceOffering format
-        const services: ServiceOffering[] = Chunk.toReadonlyArray(events)
-          .map(event => {
+        const services: Array<ServiceOffering> = Chunk.toReadonlyArray(events)
+          .map((event) => {
             try {
               const content = JSON.parse(event.content)
               return {
@@ -431,7 +438,7 @@ export const Nip90ServiceLive = Layer.effect(
                 lightningAddress: content.lightningAddress,
                 relayHints: content.relayHints
               } as ServiceOffering
-            } catch (error) {
+            } catch {
               return null
             }
           })
@@ -439,7 +446,7 @@ export const Nip90ServiceLive = Layer.effect(
 
         // Apply price filtering if specified
         if (filters?.maxPrice) {
-          return services.filter(service => 
+          return services.filter((service) =>
             service.capabilities.some((cap: any) => cap.pricing.basePrice <= filters.maxPrice!)
           )
         }
@@ -450,11 +457,13 @@ export const Nip90ServiceLive = Layer.effect(
     const requestJob = (
       params: RequestJobParams
     ): Effect.Effect<NostrEvent, Nip90InvalidInputError | Nip90PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         if (!params.input || params.bidAmount <= 0) {
-          return yield* Effect.fail(new Nip90InvalidInputError({ 
-            message: "Job input and valid bid amount are required" 
-          }))
+          return yield* Effect.fail(
+            new Nip90InvalidInputError({
+              message: "Job input and valid bid amount are required"
+            })
+          )
         }
 
         // Create job request content
@@ -467,7 +476,7 @@ export const Nip90ServiceLive = Layer.effect(
         })
 
         // Build tags for job request
-        const tags: string[][] = [
+        const tags: Array<Array<string>> = [
           ["p", params.providerPubkey], // Provider pubkey
           ["amount", params.bidAmount.toString(), "sats"],
           ["service", params.serviceId]
@@ -487,32 +496,38 @@ export const Nip90ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to create job request event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to create job request event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to publish job request", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to publish job request",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip90PublishError({ message: "Job request rejected by relay" }))
         }
@@ -526,7 +541,7 @@ export const Nip90ServiceLive = Layer.effect(
     const submitJobResult = (
       params: SubmitJobResultParams
     ): Effect.Effect<NostrEvent, Nip90InvalidInputError | Nip90PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         // Implementation similar to requestJob but for result events (6000-6999)
         const content = JSON.stringify({
           jobId: params.jobId,
@@ -547,32 +562,38 @@ export const Nip90ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to create job result event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to create job result event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip90PublishError({ 
-              message: "Failed to publish job result", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip90PublishError({
+                message: "Failed to publish job result",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip90PublishError({ message: "Job result rejected by relay" }))
         }
@@ -581,19 +602,17 @@ export const Nip90ServiceLive = Layer.effect(
       }))
 
     // Placeholder implementations for other methods
-    const submitJobFeedback = (params: SubmitJobFeedbackParams) => 
+    const submitJobFeedback = (_params: SubmitJobFeedbackParams) =>
       Effect.fail(new Nip90InvalidInputError({ message: "Not implemented yet" }))
 
-    const getJobStatus = (jobId: string) => 
-      Effect.fail(new Nip90JobNotFoundError({ jobId }))
+    const getJobStatus = (jobId: string) => Effect.fail(new Nip90JobNotFoundError({ jobId }))
 
-    const monitorJob = (jobId: string) => 
-      Stream.fail(new Nip90FetchError({ message: "Not implemented yet" }))
+    const monitorJob = (_jobId: string) => Stream.fail(new Nip90FetchError({ message: "Not implemented yet" }))
 
-    const getJobRequests = (providerPubkey: string, filterOptions?: Partial<Filter>) => 
+    const getJobRequests = (_providerPubkey: string, _filterOptions?: Partial<Filter>) =>
       Effect.fail(new Nip90FetchError({ message: "Not implemented yet" }))
 
-    const subscribeToJobRequests = (providerPubkey: string) => 
+    const subscribeToJobRequests = (_providerPubkey: string) =>
       Stream.fail(new Nip90FetchError({ message: "Not implemented yet" }))
 
     return {

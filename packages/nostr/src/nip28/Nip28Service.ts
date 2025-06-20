@@ -4,16 +4,8 @@
  * @module
  */
 
-import { Effect, Context, Data, Schema, Layer, Stream, Chunk } from "effect"
-import type {
-  NostrEvent,
-  EventParams,
-  Filter,
-  EventId,
-  PublicKey,
-  PrivateKey,
-  SubscriptionId
-} from "../core/Schema.js"
+import { Chunk, Context, Data, Effect, Layer, Schema, Stream } from "effect"
+import type { EventId, EventParams, Filter, NostrEvent, PrivateKey, PublicKey, SubscriptionId } from "../core/Schema.js"
 import { EventService } from "../services/EventService.js"
 import { RelayService } from "../services/RelayService.js"
 
@@ -44,7 +36,7 @@ export const ChannelMetadataContentSchema = Schema.Struct({
   name: Schema.String, // NIP-28 implies name is required for kind 40 content
   about: Schema.optional(Schema.String),
   picture: Schema.optional(Schema.String),
-  relays: Schema.optional(Schema.Array(Schema.String)), // NIP-28 mentions this for kind 40 content too
+  relays: Schema.optional(Schema.Array(Schema.String)) // NIP-28 mentions this for kind 40 content too
 })
 export type ChannelMetadataContent = Schema.Schema.Type<
   typeof ChannelMetadataContentSchema
@@ -53,7 +45,7 @@ export type ChannelMetadataContent = Schema.Schema.Type<
 export const ChannelMessageContentSchema = Schema.String // Content is just a string for kind 42
 
 export const ModerationReasonContentSchema = Schema.Struct({
-  reason: Schema.String,
+  reason: Schema.String
 })
 export type ModerationReasonContent = Schema.Schema.Type<
   typeof ModerationReasonContentSchema
@@ -64,7 +56,7 @@ export interface CreateChannelParams {
   name: string
   about?: string
   picture?: string
-  relays?: string[] // Relays to include in the kind 40 content
+  relays?: Array<string> // Relays to include in the kind 40 content
   privateKey: PrivateKey
 }
 
@@ -74,7 +66,7 @@ export interface ChannelMetadata {
   picture?: string
   creatorPubkey: PublicKey
   channelId: EventId // Kind 40 event ID
-  relays?: string[]
+  relays?: Array<string>
 }
 
 export interface SendChannelMessageParams {
@@ -149,7 +141,7 @@ export class Nip28Service extends Context.Tag("nostr/Nip28Service")<
     readonly getChannelMessages: (
       channelId: EventId,
       filterOptions?: Partial<Filter>
-    ) => Effect.Effect<ChannelMessage[], Nip28FetchError>
+    ) => Effect.Effect<Array<ChannelMessage>, Nip28FetchError>
 
     /**
      * Subscribes to new messages for a channel.
@@ -177,14 +169,14 @@ export class Nip28Service extends Context.Tag("nostr/Nip28Service")<
 // --- Service Implementation ---
 export const Nip28ServiceLive = Layer.effect(
   Nip28Service,
-  Effect.gen(function* () {
+  Effect.gen(function*() {
     const eventService = yield* EventService
     const relayService = yield* RelayService
 
     const createChannel = (
       params: CreateChannelParams
     ): Effect.Effect<NostrEvent, Nip28InvalidInputError | Nip28PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         // Validate inputs
         if (!params.name.trim()) {
           return yield* Effect.fail(new Nip28InvalidInputError({ message: "Channel name cannot be empty" }))
@@ -206,33 +198,39 @@ export const Nip28ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to create channel event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to create channel event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         // Publish to relay
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to publish channel event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to publish channel event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip28PublishError({ message: "Channel event rejected by relay" }))
         }
@@ -243,16 +241,18 @@ export const Nip28ServiceLive = Layer.effect(
     const getChannelMetadata = (
       channelId: EventId
     ): Effect.Effect<ChannelMetadata, Nip28FetchError | Nip28ChannelNotFoundError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28FetchError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28FetchError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const filter: Filter = {
           ids: [channelId],
           kinds: [40],
@@ -260,20 +260,24 @@ export const Nip28ServiceLive = Layer.effect(
         }
 
         const subscription = yield* connection.subscribe("channel-metadata" as SubscriptionId, [filter]).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28FetchError({ 
-              message: "Failed to subscribe to channel metadata", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28FetchError({
+                message: "Failed to subscribe to channel metadata",
+                cause: error
+              })
+            )
           )
         )
 
         const events = yield* Stream.runCollect(subscription.events).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28FetchError({ 
-              message: "Failed to collect channel events", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28FetchError({
+                message: "Failed to collect channel events",
+                cause: error
+              })
+            )
           )
         )
 
@@ -301,7 +305,7 @@ export const Nip28ServiceLive = Layer.effect(
       picture?: string
       privateKey: PrivateKey
     }): Effect.Effect<NostrEvent, Nip28InvalidInputError | Nip28PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         // Create updated metadata content
         const content = JSON.stringify({
           name: params.name,
@@ -317,32 +321,38 @@ export const Nip28ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to create channel metadata event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to create channel metadata event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to publish metadata update", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to publish metadata update",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip28PublishError({ message: "Metadata update rejected by relay" }))
         }
@@ -353,13 +363,13 @@ export const Nip28ServiceLive = Layer.effect(
     const sendChannelMessage = (
       params: SendChannelMessageParams
     ): Effect.Effect<NostrEvent, Nip28InvalidInputError | Nip28PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         if (!params.content.trim()) {
           return yield* Effect.fail(new Nip28InvalidInputError({ message: "Message content cannot be empty" }))
         }
 
         // Build tags for channel message
-        const tags: string[][] = [
+        const tags: Array<Array<string>> = [
           ["e", params.channelId, params.relayHint || "", "root"]
         ]
 
@@ -379,32 +389,38 @@ export const Nip28ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to create message event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to create message event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to publish message", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to publish message",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip28PublishError({ message: "Message rejected by relay" }))
         }
@@ -415,17 +431,19 @@ export const Nip28ServiceLive = Layer.effect(
     const getChannelMessages = (
       channelId: EventId,
       filterOptions?: Partial<Filter>
-    ): Effect.Effect<ChannelMessage[], Nip28FetchError> =>
-      Effect.scoped(Effect.gen(function* () {
+    ): Effect.Effect<Array<ChannelMessage>, Nip28FetchError> =>
+      Effect.scoped(Effect.gen(function*() {
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28FetchError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28FetchError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const filter: Filter = {
           kinds: [42],
           "#e": [channelId],
@@ -433,29 +451,33 @@ export const Nip28ServiceLive = Layer.effect(
         }
 
         const subscription = yield* connection.subscribe("channel-messages" as SubscriptionId, [filter]).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28FetchError({ 
-              message: "Failed to subscribe to channel messages", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28FetchError({
+                message: "Failed to subscribe to channel messages",
+                cause: error
+              })
+            )
           )
         )
 
         const events = yield* Stream.runCollect(subscription.events).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28FetchError({ 
-              message: "Failed to collect channel messages", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28FetchError({
+                message: "Failed to collect channel messages",
+                cause: error
+              })
+            )
           )
         )
 
         // Transform events to ChannelMessage format
-        return Chunk.toReadonlyArray(events).map(event => ({
+        return Chunk.toReadonlyArray(events).map((event) => ({
           ...event,
           channelId,
-          replyToEventId: event.tags.find(tag => tag[0] === "e" && tag[3] === "reply")?.[1] as EventId,
-          replyToPubkey: event.tags.find(tag => tag[0] === "p")?.[1] as PublicKey
+          replyToEventId: event.tags.find((tag) => tag[0] === "e" && tag[3] === "reply")?.[1] as EventId,
+          replyToPubkey: event.tags.find((tag) => tag[0] === "p")?.[1] as PublicKey
         }))
       }))
 
@@ -463,13 +485,15 @@ export const Nip28ServiceLive = Layer.effect(
       channelId: EventId
     ): Stream.Stream<ChannelMessage, Nip28FetchError> =>
       Stream.unwrapScoped(
-        Effect.gen(function* () {
+        Effect.gen(function*() {
           const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-            Effect.catchAll((error) => 
-              Effect.fail(new Nip28FetchError({ 
-                message: "Failed to connect to relay", 
-                cause: error 
-              }))
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip28FetchError({
+                  message: "Failed to connect to relay",
+                  cause: error
+                })
+              )
             )
           )
 
@@ -479,25 +503,29 @@ export const Nip28ServiceLive = Layer.effect(
           }
 
           const subscription = yield* connection.subscribe("channel-messages-live" as SubscriptionId, [filter]).pipe(
-            Effect.catchAll((error) => 
-              Effect.fail(new Nip28FetchError({ 
-                message: "Failed to subscribe to channel messages", 
-                cause: error 
-              }))
+            Effect.catchAll((error) =>
+              Effect.fail(
+                new Nip28FetchError({
+                  message: "Failed to subscribe to channel messages",
+                  cause: error
+                })
+              )
             )
           )
 
           return Stream.map(subscription.events, (event) => ({
             ...event,
             channelId,
-            replyToEventId: event.tags.find(tag => tag[0] === "e" && tag[3] === "reply")?.[1] as EventId,
-            replyToPubkey: event.tags.find(tag => tag[0] === "p")?.[1] as PublicKey
+            replyToEventId: event.tags.find((tag) => tag[0] === "e" && tag[3] === "reply")?.[1] as EventId,
+            replyToPubkey: event.tags.find((tag) => tag[0] === "p")?.[1] as PublicKey
           })).pipe(
-            Stream.catchAll((error) => 
-              Stream.fail(new Nip28FetchError({ 
-                message: "Stream error in channel messages", 
-                cause: error 
-              }))
+            Stream.catchAll((error) =>
+              Stream.fail(
+                new Nip28FetchError({
+                  message: "Stream error in channel messages",
+                  cause: error
+                })
+              )
             )
           )
         })
@@ -506,7 +534,7 @@ export const Nip28ServiceLive = Layer.effect(
     const hideMessage = (
       params: HideMessageParams
     ): Effect.Effect<NostrEvent, Nip28InvalidInputError | Nip28PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         const content = params.reason || "User chose to hide this message"
 
         const eventParams: EventParams = {
@@ -516,32 +544,38 @@ export const Nip28ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to create hide message event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to create hide message event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to publish hide message event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to publish hide message event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip28PublishError({ message: "Hide message event rejected by relay" }))
         }
@@ -552,7 +586,7 @@ export const Nip28ServiceLive = Layer.effect(
     const muteUser = (
       params: MuteUserParams
     ): Effect.Effect<NostrEvent, Nip28InvalidInputError | Nip28PublishError> =>
-      Effect.scoped(Effect.gen(function* () {
+      Effect.scoped(Effect.gen(function*() {
         const content = params.reason || "User chose to mute this pubkey"
 
         const eventParams: EventParams = {
@@ -562,32 +596,38 @@ export const Nip28ServiceLive = Layer.effect(
         }
 
         const event = yield* eventService.create(eventParams, params.privateKey).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to create mute user event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to create mute user event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const connection = yield* relayService.connect("wss://relay.damus.io").pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to connect to relay", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to connect to relay",
+                cause: error
+              })
+            )
           )
         )
-        
+
         const published = yield* connection.publish(event).pipe(
-          Effect.catchAll((error) => 
-            Effect.fail(new Nip28PublishError({ 
-              message: "Failed to publish mute user event", 
-              cause: error 
-            }))
+          Effect.catchAll((error) =>
+            Effect.fail(
+              new Nip28PublishError({
+                message: "Failed to publish mute user event",
+                cause: error
+              })
+            )
           )
         )
-        
+
         if (!published) {
           return yield* Effect.fail(new Nip28PublishError({ message: "Mute user event rejected by relay" }))
         }
