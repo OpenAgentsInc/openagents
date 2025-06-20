@@ -12,7 +12,7 @@ OLLAMA_ORIGINS="*" ollama serve
 
 Or for specific origins:
 ```bash
-OLLAMA_ORIGINS="http://localhost:*,https://pylon.openagents.com" ollama serve
+OLLAMA_ORIGINS="http://localhost:*" ollama serve
 ```
 
 ## Option 2: Use Environment Variable
@@ -33,7 +33,7 @@ Create or edit `~/.ollama/config.json`:
 
 ```json
 {
-  "origins": ["http://localhost:*", "https://pylon.openagents.com"]
+  "origins": ["http://localhost:*"]
 }
 ```
 
