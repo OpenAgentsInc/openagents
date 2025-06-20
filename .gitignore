@@ -17,8 +17,6 @@ scratchpad/*
 .tsbuildinfo*
 worktrees/
 
-docs/gfn/
-
 # Generated TypeScript files in src directories
 packages/*/src/**/*.d.ts
 packages/*/src/**/*.d.ts.map
