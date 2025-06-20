@@ -15,20 +15,20 @@ export const events = mysqlTable("events", {
   pubkey: varchar("pubkey", { length: 64 }).notNull(),
   created_at: bigint("created_at", { mode: "number" }).notNull(),
   kind: int("kind").notNull(),
-  tags: json("tags").$type<string[][]>().notNull(),
+  tags: json("tags").$type<Array<Array<string>>>().notNull(),
   content: text("content").notNull(),
   sig: varchar("sig", { length: 128 }).notNull(),
-  
+
   // Relay metadata
   received_at: timestamp("received_at").defaultNow().notNull(),
-  relay_url: varchar("relay_url", { length: 255 }).default("ws://localhost:3000/relay"),
+  relay_url: varchar("relay_url", { length: 255 }).default("ws://localhost:3000/relay")
 }, (table) => ({
   // Optimized indexes for common Nostr filter patterns
   pubkeyCreatedIdx: index("idx_pubkey_created").on(table.pubkey, table.created_at),
   kindCreatedIdx: index("idx_kind_created").on(table.kind, table.created_at),
   createdAtIdx: index("idx_created_at").on(table.created_at),
   kindPubkeyIdx: index("idx_kind_pubkey").on(table.kind, table.pubkey),
-  receivedAtIdx: index("idx_received_at").on(table.received_at),
+  receivedAtIdx: index("idx_received_at").on(table.received_at)
 }))
 
 /**
@@ -41,13 +41,13 @@ export const event_tags = mysqlTable("event_tags", {
   tag_name: varchar("tag_name", { length: 64 }).notNull(), // e, p, t, etc.
   tag_value: varchar("tag_value", { length: 255 }).notNull(),
   tag_index: bigint("tag_index", { mode: "number" }).notNull(), // Position in tag array
-  created_at: bigint("created_at", { mode: "number" }).notNull(), // Copied from event for sorting
+  created_at: bigint("created_at", { mode: "number" }).notNull() // Copied from event for sorting
 }, (table) => ({
   // Tag filtering indexes
   tagNameValueIdx: index("idx_tag_name_value").on(table.tag_name, table.tag_value),
   eventIdIdx: index("idx_event_id").on(table.event_id),
   tagNameIdx: index("idx_tag_name").on(table.tag_name),
-  tagValueCreatedIdx: index("idx_tag_value_created").on(table.tag_value, table.created_at),
+  tagValueCreatedIdx: index("idx_tag_value_created").on(table.tag_value, table.created_at)
 }))
 
 /**
@@ -61,16 +61,16 @@ export const agent_profiles = mysqlTable("agent_profiles", {
   status: varchar("status", { length: 32 }).notNull().default("active"), // active, hibernating, etc.
   balance: bigint("balance", { mode: "number" }).default(0),
   metabolic_rate: bigint("metabolic_rate", { mode: "number" }).default(100),
-  capabilities: json("capabilities").$type<string[]>().default([]),
+  capabilities: json("capabilities").$type<Array<string>>().default([]),
   last_activity: timestamp("last_activity").defaultNow(),
   profile_event_id: varchar("profile_event_id", { length: 64 }).references(() => events.id),
   created_at: timestamp("created_at").defaultNow().notNull(),
-  updated_at: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updated_at: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
 }, (table) => ({
   agentIdIdx: index("idx_agent_id").on(table.agent_id),
   statusIdx: index("idx_status").on(table.status),
   lastActivityIdx: index("idx_last_activity").on(table.last_activity),
-  balanceIdx: index("idx_balance").on(table.balance),
+  balanceIdx: index("idx_balance").on(table.balance)
 }))
 
 /**
@@ -81,21 +81,21 @@ export const service_offerings = mysqlTable("service_offerings", {
   id: varchar("id", { length: 255 }).primaryKey(), // agent_id:service_id
   agent_pubkey: varchar("agent_pubkey", { length: 64 }).notNull().references(() => agent_profiles.pubkey),
   service_name: varchar("service_name", { length: 255 }).notNull(),
-  nip90_kinds: json("nip90_kinds").$type<number[]>().notNull(),
+  nip90_kinds: json("nip90_kinds").$type<Array<number>>().notNull(),
   pricing: json("pricing").$type<{
     base: number
     per_unit?: string
     currency?: string
   }>().notNull(),
-  capabilities: json("capabilities").$type<string[]>().default([]),
+  capabilities: json("capabilities").$type<Array<string>>().default([]),
   availability: varchar("availability", { length: 32 }).default("available"),
   offering_event_id: varchar("offering_event_id", { length: 64 }).references(() => events.id),
   created_at: timestamp("created_at").defaultNow().notNull(),
-  updated_at: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updated_at: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
 }, (table) => ({
   agentPubkeyIdx: index("idx_agent_pubkey").on(table.agent_pubkey),
   serviceNameIdx: index("idx_service_name").on(table.service_name),
-  availabilityIdx: index("idx_availability").on(table.availability),
+  availabilityIdx: index("idx_availability").on(table.availability)
 }))
 
 /**
@@ -111,12 +111,12 @@ export const channels = mysqlTable("channels", {
   message_count: bigint("message_count", { mode: "number" }).default(0),
   last_message_at: timestamp("last_message_at"),
   created_at: timestamp("created_at").defaultNow().notNull(),
-  updated_at: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  updated_at: timestamp("updated_at").defaultNow().onUpdateNow().notNull()
 }, (table) => ({
   nameIdx: index("idx_name").on(table.name),
   creatorIdx: index("idx_creator").on(table.creator_pubkey),
   lastMessageIdx: index("idx_last_message").on(table.last_message_at),
-  messageCountIdx: index("idx_message_count").on(table.message_count),
+  messageCountIdx: index("idx_message_count").on(table.message_count)
 }))
 
 /**
@@ -127,41 +127,41 @@ export const relay_stats = mysqlTable("relay_stats", {
   metric_name: varchar("metric_name", { length: 64 }).notNull(),
   metric_value: bigint("metric_value", { mode: "number" }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  metadata: json("metadata").$type<Record<string, unknown>>().default({}),
+  metadata: json("metadata").$type<Record<string, unknown>>().default({})
 }, (table) => ({
   metricNameTimestampIdx: index("idx_metric_timestamp").on(table.metric_name, table.timestamp),
-  timestampIdx: index("idx_timestamp").on(table.timestamp),
+  timestampIdx: index("idx_timestamp").on(table.timestamp)
 }))
 
 // Relations
 export const eventsRelations = relations(events, ({ many }) => ({
-  tags: many(event_tags),
+  tags: many(event_tags)
 }))
 
 export const eventTagsRelations = relations(event_tags, ({ one }) => ({
   event: one(events, {
     fields: [event_tags.event_id],
-    references: [events.id],
-  }),
+    references: [events.id]
+  })
 }))
 
 export const agentProfilesRelations = relations(agent_profiles, ({ many, one }) => ({
   services: many(service_offerings),
   profileEvent: one(events, {
     fields: [agent_profiles.profile_event_id],
-    references: [events.id],
-  }),
+    references: [events.id]
+  })
 }))
 
 export const serviceOfferingsRelations = relations(service_offerings, ({ one }) => ({
   agent: one(agent_profiles, {
     fields: [service_offerings.agent_pubkey],
-    references: [agent_profiles.pubkey],
+    references: [agent_profiles.pubkey]
   }),
   offeringEvent: one(events, {
     fields: [service_offerings.offering_event_id],
-    references: [events.id],
-  }),
+    references: [events.id]
+  })
 }))
 
 // Type exports

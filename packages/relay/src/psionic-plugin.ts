@@ -2,11 +2,11 @@
  * Psionic framework integration for Nostr relay
  * Mounts relay as WebSocket endpoint at /relay
  */
-import { Elysia } from "elysia"
-import { Effect, Layer, Runtime } from "effect"
 import type { PsionicApp } from "@openagentsinc/psionic"
-import { NostrRelay, NostrRelayLive, type ConnectionHandler } from "./relay.js"
+import { Effect, Layer, Runtime } from "effect"
+import type { Elysia } from "elysia"
 import { RelayDatabaseLive } from "./database.js"
+import { type ConnectionHandler, NostrRelay, NostrRelayLive } from "./relay.js"
 
 // WebSocket connection tracking
 interface WebSocketConnection {
@@ -31,73 +31,72 @@ export interface RelayPluginConfig {
 // Create Psionic plugin for Nostr relay
 export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
   const {
-    path = "/relay",
-    maxConnections = 1000,
     enableCors = true,
-    rateLimitEnabled = false,
-    rateLimitPerMinute = 60,
     enableMetrics = true,
-    metricsPath = "/relay/metrics"
+    maxConnections = 1000,
+    metricsPath = "/relay/metrics",
+    path = "/relay",
+    rateLimitEnabled = false,
+    rateLimitPerMinute = 60
   } = config
-  
+
   return (app: Elysia) => {
     // Create Effect runtime for the relay - compose layers properly
     const MainLayer = NostrRelayLive.pipe(
       Layer.provide(RelayDatabaseLive)
     )
-    
+
     const runtime = Runtime.defaultRuntime
-    
+
     // Track WebSocket connections
     const connections = new Map<string, WebSocketConnection>()
-    
+
     // Generate unique connection ID
-    const generateConnectionId = (): string => 
-      `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    
+    const generateConnectionId = (): string => `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
     // Rate limiting state
     const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
-    
+
     const checkRateLimit = (clientId: string): boolean => {
       if (!rateLimitEnabled) return true
-      
+
       const now = Date.now()
       const windowMs = 60 * 1000 // 1 minute
-      
+
       const current = rateLimitMap.get(clientId)
       if (!current || now > current.resetTime) {
         rateLimitMap.set(clientId, { count: 1, resetTime: now + windowMs })
         return true
       }
-      
+
       if (current.count >= rateLimitPerMinute) {
         return false
       }
-      
+
       current.count++
       return true
     }
-    
+
     // WebSocket endpoint
     app.ws(path, {
       message: async (ws, message) => {
         const connectionId = (ws as any).data?.connectionId
         const connection = connections.get(connectionId)
-        
+
         if (!connection || !connection.isActive) {
           console.warn(`Message received for inactive connection: ${connectionId}`)
           return
         }
-        
+
         // Rate limiting check
         if (!checkRateLimit(connectionId)) {
           ws.send(JSON.stringify(["NOTICE", "rate limited: too many requests"]))
           return
         }
-        
+
         // Process message through relay
         const program = connection.handler.processMessage(String(message))
-        
+
         try {
           await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
         } catch (error) {
@@ -105,25 +104,25 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
           ws.send(JSON.stringify(["NOTICE", "error: message processing failed"]))
         }
       },
-      
+
       open: async (ws) => {
         // Check connection limit
         if (connections.size >= maxConnections) {
           ws.close(1008, "Connection limit reached")
           return
         }
-        
+
         const connectionId = generateConnectionId()
         ;(ws as any).data = { connectionId }
-        
+
         console.log(`[Relay] New connection: ${connectionId}`)
-        
+
         try {
           // Create relay connection handler
           const program = Effect.gen(function*() {
             const relay = yield* NostrRelay
             const handler = yield* relay.handleConnection(connectionId)
-            
+
             // Store connection
             const connection: WebSocketConnection = {
               id: connectionId,
@@ -133,31 +132,30 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
               connectedAt: new Date()
             }
             connections.set(connectionId, connection)
-            
+
             return handler
           })
-          
+
           await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
-          
+
           // Send initial relay info
           ws.send(JSON.stringify([
-            "NOTICE", 
+            "NOTICE",
             `Connected to OpenAgents relay. Connection ID: ${connectionId}`
           ]))
-          
         } catch (error) {
           console.error(`Failed to initialize connection ${connectionId}:`, error)
           ws.close(1011, "Internal server error")
         }
       },
-      
+
       close: async (ws) => {
         const connectionId = (ws as any).data?.connectionId
         const connection = connections.get(connectionId)
-        
+
         if (connection) {
           console.log(`[Relay] Connection closed: ${connectionId}`)
-          
+
           // Clean up connection
           try {
             const program = connection.handler.close()
@@ -165,13 +163,12 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
           } catch (error) {
             console.error(`Error closing connection ${connectionId}:`, error)
           }
-          
+
           connections.delete(connectionId)
         }
-      },
-      
+      }
     })
-    
+
     // CORS headers for WebSocket upgrade
     if (enableCors) {
       app.options(path, ({ set }) => {
@@ -184,7 +181,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         return new Response(null, { status: 204 })
       })
     }
-    
+
     // Metrics endpoint
     if (enableMetrics) {
       app.get(metricsPath, async () => {
@@ -192,7 +189,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
           const program = Effect.gen(function*() {
             const relay = yield* NostrRelay
             const stats = yield* relay.getStats()
-            
+
             return {
               stats,
               connections: {
@@ -204,9 +201,9 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
               timestamp: new Date().toISOString()
             }
           })
-          
+
           const metrics = await Runtime.runPromise(runtime)(program.pipe(Effect.provide(MainLayer)))
-          
+
           return Response.json(metrics)
         } catch (error) {
           console.error("Error getting metrics:", error)
@@ -214,7 +211,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         }
       })
     }
-    
+
     // Health check endpoint
     app.get(`${path}/health`, () => ({
       status: "healthy",
@@ -222,7 +219,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
       connections: connections.size,
       uptime: process.uptime()
     }))
-    
+
     // Relay info endpoint (NIP-11)
     app.get(`${path}/info`, () => ({
       name: "OpenAgents Relay",
@@ -248,12 +245,12 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         publication: []
       }
     }))
-    
+
     console.log(`🔌 Nostr relay mounted at ${path}`)
     if (enableMetrics) {
       console.log(`📊 Relay metrics available at ${metricsPath}`)
     }
-    
+
     return app
   }
 }
@@ -263,6 +260,6 @@ export const mountRelay = (app: PsionicApp, config?: RelayPluginConfig) => {
   // Mount the relay plugin on the underlying Elysia instance
   const relayPlugin = createRelayPlugin(config)
   app.elysia.use(relayPlugin)
-  
+
   return app
 }
