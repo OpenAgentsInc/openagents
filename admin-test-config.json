@@ -1,0 +1,16 @@
+{
+  "serverCommand": "bun run dev",
+  "serverPort": 3003,
+  "serverHost": "0.0.0.0",
+  "routes": [
+    "/",
+    "/admin"
+  ],
+  "outputDir": ".autotest",
+  "screenshotFormat": "png",
+  "fullPage": true,
+  "timeout": 10000,
+  "monitorConsole": true,
+  "monitorNetwork": true,
+  "monitorPageErrors": true
+}

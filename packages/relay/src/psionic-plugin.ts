@@ -681,7 +681,7 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
         })
       )
 
-      console.log(`🔧 Admin API available at ${adminPath} (localhost only)`)
+      console.log(`🔧 Admin dashboard available at /admin (localhost only)`)
     }
 
     console.log(`🔌 Nostr relay mounted at ${path}`)

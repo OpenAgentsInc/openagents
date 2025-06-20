@@ -16,10 +16,6 @@ export async function admin() {
           <div class="dashboard-container">
             <h1 class="dashboard-title">Admin Dashboard</h1>
             
-            <!-- Warning for localhost only -->
-            <div id="localhost-warning" class="warning-banner" box-="square" style="display: none;">
-              <strong>Warning:</strong> Admin dashboard is only available on localhost
-            </div>
             
             <!-- Real-time Overview Cards -->
             <div class="metrics-grid">
@@ -213,12 +209,6 @@ export async function admin() {
       </div>
 
       <script>
-        // Check if running on localhost
-        const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-        
-        if (!isLocalhost) {
-          document.getElementById('localhost-warning').style.display = 'block';
-        }
         
         // Admin API base URL
         const ADMIN_API = '/relay/admin';
