@@ -1,4 +1,4 @@
-import * as HttpClientNode from "@effect/platform-node/NodeHttpClient"
+import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
 import { Config, Effect, Layer, Stream } from "effect"
 import { Elysia } from "elysia"
@@ -41,16 +41,8 @@ export const cloudflareApi = new Elysia({ prefix: "/api/cloudflare" })
         try {
           // Create and run the chat program
           const program = Effect.gen(function*() {
-            // Load configuration from environment
-            const apiKey = yield* CloudflareApiKey
-            const accountId = yield* CloudflareAccountId
-
-            // Create the client directly using make
-            const client = yield* Ai.Cloudflare.makeCloudflareClient({
-              apiKey,
-              accountId,
-              useOpenAIEndpoints: true // Use OpenAI-compatible endpoints for better streaming
-            })
+            // Get the client from context
+            const client = yield* Ai.Cloudflare.CloudflareClient
 
             // Get the stream
             const responseStream = client.stream({
@@ -104,15 +96,31 @@ export const cloudflareApi = new Elysia({ prefix: "/api/cloudflare" })
             )
           })
 
-          // Provide the required layers
-          const layers = Layer.merge(
-            HttpClientNode.layer,
-            Layer.succeed(Ai.Cloudflare.CloudflareConfig, {})
-          )
+          // Create the config effect and then the layers
+          const configProgram = Effect.gen(function*() {
+            const apiKey = yield* CloudflareApiKey
+            const accountId = yield* CloudflareAccountId
+            return { apiKey, accountId }
+          })
 
+          // Get the config values
+          const config = await Effect.runPromise(configProgram)
+
+          // Run the main program with all layers provided
           await Effect.runPromise(
+            // @ts-expect-error - Type issue with HttpClient requirement from layerCloudflareClient
             program.pipe(
-              Effect.provide(layers)
+              Effect.provide(
+                Layer.mergeAll(
+                  BunHttpPlatform.layer,
+                  Layer.succeed(Ai.Cloudflare.CloudflareConfig, {}),
+                  Ai.Cloudflare.layerCloudflareClient({
+                    apiKey: config.apiKey,
+                    accountId: config.accountId,
+                    useOpenAIEndpoints: true
+                  })
+                )
+              )
             )
           )
 

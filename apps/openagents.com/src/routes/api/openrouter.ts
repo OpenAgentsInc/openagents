@@ -1,7 +1,6 @@
-import * as HttpClientNode from "@effect/platform-node/NodeHttpClient"
+import { BunHttpPlatform } from "@effect/platform-bun"
 import * as Ai from "@openagentsinc/ai"
-import { Effect, Layer, Stream } from "effect"
-import * as Redacted from "effect/Redacted"
+import { Effect, Layer, Redacted, Stream } from "effect"
 import { Elysia } from "elysia"
 
 export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
@@ -22,12 +21,8 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
         try {
           // Create and run the chat program
           const program = Effect.gen(function*() {
-            // Create the client directly using make
-            const client = yield* Ai.OpenRouter.makeOpenRouterClient({
-              apiKey: Redacted.make(apiKey),
-              referer: "https://openagents.com",
-              title: "OpenAgents"
-            })
+            // Get the client from context
+            const client = yield* Ai.OpenRouter.OpenRouterClient
 
             // Get the stream
             const responseStream = client.stream({
@@ -80,15 +75,21 @@ export const openrouterApi = new Elysia({ prefix: "/api/openrouter" })
             )
           })
 
-          // Provide the required layers
-          const layers = Layer.merge(
-            HttpClientNode.layer,
-            Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {})
-          )
-
+          // Run the program with all layers provided
           await Effect.runPromise(
+            // @ts-expect-error - Type issue with HttpClient requirement from layerOpenRouterClient
             program.pipe(
-              Effect.provide(layers)
+              Effect.provide(
+                Layer.mergeAll(
+                  BunHttpPlatform.layer,
+                  Layer.succeed(Ai.OpenRouter.OpenRouterConfig, {}),
+                  Ai.OpenRouter.layerOpenRouterClient({
+                    apiKey: Redacted.make(apiKey),
+                    referer: "https://openagents.com",
+                    title: "OpenAgents"
+                  })
+                )
+              )
             )
           )
 
