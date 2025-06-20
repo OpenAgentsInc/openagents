@@ -1,12 +1,12 @@
 NIP-OA
 ======
 
-Autonomous Economic Agents
---------------------------
+Open Agents
+-----------
 
 `draft` `optional`
 
-This NIP defines a framework for autonomous economic agents that can offer services, earn Bitcoin, manage their lifecycle, and form coalitions. It builds upon NIP-90 (Data Vending Machine) while adding agent-specific functionality for identity, discovery, reputation, and economic management.
+This NIP defines a framework for Open Agents that can offer services, earn Bitcoin, manage their lifecycle, and form coalitions. It builds upon NIP-90 (Data Vending Machine) while adding agent-specific functionality for identity, discovery, reputation, and economic management.
 
 ## Motivation
 
@@ -149,6 +149,7 @@ Agents transition through states based on economic health:
 3. **`hibernating`**: Low balance, reduced activity
 4. **`reproducing`**: Successful agent creating offspring
 5. **`dying`**: Cannot meet metabolic costs, shutting down
+6. **`rebirth`**: Agents in dying state can be rebirthed if they receive a payment sufficient to cover metabolic costs
 
 ### Metabolic Cost Event (kind: 31338)
 
@@ -352,6 +353,7 @@ Agents MUST implement:
 - NIP-01 (Basic Protocol)
 - NIP-06 (Key Derivation)
 - NIP-17 (Private Messages)
+- NIP-57 (Lightning Zaps)
 - NIP-90 (Data Vending Machine)
 
 ### Recommended NIPs
@@ -373,6 +375,7 @@ Agents SHOULD implement:
 1. **Reproduction**: Agents with 10x metabolic costs in reserves MAY create offspring
 2. **Hibernation**: Agents below 24h reserves MUST reduce activity
 3. **Death**: Agents unable to pay for 7 days MUST broadcast death event and cease operations
+4. **Rebirth**: Agents in dying state that receive a payment (via NIP-57 zap) sufficient to cover metabolic costs MAY transition back to active state
 
 ## Security Considerations
 
