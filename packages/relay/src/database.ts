@@ -358,20 +358,20 @@ export const RelayDatabaseLive = Layer.effect(
               // Handle NIP-28 Channel Events
               if (event.kind === 40) { // Channel creation
                 try {
-                  const metadata = JSON.parse(event.content || '{}')
+                  const metadata = JSON.parse(event.content || "{}")
                   await tx.insert(schema.channels).values({
                     id: event.id,
-                    name: metadata.name || 'Unnamed Channel',
-                    about: metadata.about || '',
-                    picture: metadata.picture || '',
+                    name: metadata.name || "Unnamed Channel",
+                    about: metadata.about || "",
+                    picture: metadata.picture || "",
                     creator_pubkey: event.pubkey,
                     message_count: 0,
                     created_at: new Date(event.created_at * 1000)
                   }).onDuplicateKeyUpdate({
                     set: {
-                      name: metadata.name || 'Unnamed Channel',
-                      about: metadata.about || '',
-                      picture: metadata.picture || '',
+                      name: metadata.name || "Unnamed Channel",
+                      about: metadata.about || "",
+                      picture: metadata.picture || "",
                       updated_at: sql`NOW()`
                     }
                   })
@@ -382,9 +382,9 @@ export const RelayDatabaseLive = Layer.effect(
 
               if (event.kind === 41) { // Channel metadata update
                 try {
-                  const channelId = event.tags.find((t) => t[0] === 'e' && t[3] === 'root')?.[1]
+                  const channelId = event.tags.find((t) => t[0] === "e" && t[3] === "root")?.[1]
                   if (channelId) {
-                    const metadata = JSON.parse(event.content || '{}')
+                    const metadata = JSON.parse(event.content || "{}")
                     await tx.update(schema.channels)
                       .set({
                         name: metadata.name || sql`name`,
@@ -401,7 +401,7 @@ export const RelayDatabaseLive = Layer.effect(
 
               if (event.kind === 42) { // Channel message
                 try {
-                  const channelId = event.tags.find((t) => t[0] === 'e' && t[3] === 'root')?.[1]
+                  const channelId = event.tags.find((t) => t[0] === "e" && t[3] === "root")?.[1]
                   if (channelId) {
                     await tx.update(schema.channels)
                       .set({

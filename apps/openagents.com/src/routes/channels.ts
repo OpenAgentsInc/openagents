@@ -1,57 +1,76 @@
 import { createPsionicRoute } from "@openagentsinc/psionic"
-import { Effect } from "effect"
-import { sharedHeader } from "../components/shared-header"
-import { navigation } from "../components/navigation"
 import { html } from "@openagentsinc/psionic/browser"
+import { Effect } from "effect"
+import { navigation } from "../components/navigation"
+import { sharedHeader } from "../components/shared-header"
 import { styles } from "../styles"
 
 // Channel list component
-const channelList = (channels: Array<{
-  id: string
-  name: string
-  about: string | null
-  picture: string | null
-  creator_pubkey: string
-  message_count: number
-  last_message_at: Date | null
-}>) => html`
+const channelList = (
+  channels: Array<{
+    id: string
+    name: string
+    about: string | null
+    picture: string | null
+    creator_pubkey: string
+    message_count: number
+    last_message_at: Date | null
+  }>
+) =>
+  html`
   <div class="channels-container">
     <div class="channels-header">
       <h2>Public Channels</h2>
       <a href="/channels/create" is-="button" variant-="foreground1">Create Channel</a>
     </div>
     
-    ${channels.length === 0 ? html`
+    ${
+    channels.length === 0 ?
+      html`
       <div is-="card" box-="double" class="empty-state">
         <p>No channels yet. Be the first to create one!</p>
       </div>
-    ` : html`
+    ` :
+      html`
       <div class="channels-grid">
-        ${channels.map(channel => html`
+        ${
+        channels.map((channel) =>
+          html`
           <a href="/channels/${channel.id}" is-="card" box-="double" class="channel-card">
             <div class="channel-header">
-              ${channel.picture ? html`
+              ${
+            channel.picture ?
+              html`
                 <img src="${channel.picture}" alt="${channel.name}" class="channel-avatar">
-              ` : html`
+              ` :
+              html`
                 <div class="channel-avatar-placeholder">
                   ${channel.name.charAt(0).toUpperCase()}
                 </div>
-              `}
+              `
+          }
               <h3>${channel.name}</h3>
             </div>
-            <p class="channel-about">${channel.about || 'No description'}</p>
+            <p class="channel-about">${channel.about || "No description"}</p>
             <div class="channel-stats">
               <span>${channel.message_count} messages</span>
-              ${channel.last_message_at ? html`
+              ${
+            channel.last_message_at ?
+              html`
                 <span>Active ${formatRelativeTime(channel.last_message_at)}</span>
-              ` : html`
+              ` :
+              html`
                 <span>No messages yet</span>
-              `}
+              `
+          }
             </div>
           </a>
-        `)}
+        `
+        )
+      }
       </div>
-    `}
+    `
+  }
   </div>
 `
 
@@ -65,38 +84,47 @@ const channelChat = (
     created_at: number
     tags: Array<Array<string>>
   }>
-) => html`
+) =>
+  html`
   <div class="channel-view">
     <header is-="card" box-="square" class="channel-header">
       <a href="/channels" is-="button" variant-="foreground0">&larr; Back</a>
       <div class="channel-info">
         <h2>${channel.name}</h2>
-        <p>${channel.about || 'No description'}</p>
+        <p>${channel.about || "No description"}</p>
       </div>
     </header>
     
     <div class="messages-container" id="message-list">
-      ${messages.length === 0 ? html`
+      ${
+    messages.length === 0 ?
+      html`
         <div class="empty-messages">
           <p>No messages yet. Start the conversation!</p>
         </div>
-      ` : messages.map(msg => {
-        const isReply = msg.tags.some(t => t[0] === 'e' && t[3] === 'reply')
-        const replyTo = msg.tags.find(t => t[0] === 'e' && t[3] === 'reply')?.[1]
-        
+      ` :
+      messages.map((msg) => {
+        const isReply = msg.tags.some((t) => t[0] === "e" && t[3] === "reply")
+        const replyTo = msg.tags.find((t) => t[0] === "e" && t[3] === "reply")?.[1]
+
         return html`
-          <div class="message ${isReply ? 'reply' : ''}">
+          <div class="message ${isReply ? "reply" : ""}">
             <div class="message-header">
               <strong class="author">${msg.pubkey.slice(0, 8)}...</strong>
               <time>${formatTime(msg.created_at)}</time>
             </div>
-            ${isReply && replyTo ? html`
+            ${
+          isReply && replyTo ?
+            html`
               <div class="reply-indicator">Replying to ${replyTo.slice(0, 8)}...</div>
-            ` : ''}
+            ` :
+            ""
+        }
             <p class="message-content">${msg.content}</p>
           </div>
         `
-      })}
+      })
+  }
     </div>
     
     <form class="message-input-form" id="message-form">
@@ -213,7 +241,8 @@ const channelChat = (
 `
 
 // Channel creation form
-const channelCreateForm = () => html`
+const channelCreateForm = () =>
+  html`
   <div class="channel-create">
     <h2>Create New Channel</h2>
     
@@ -299,38 +328,37 @@ const channelCreateForm = () => html`
 // Helper functions
 function formatRelativeTime(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-  
-  if (seconds < 60) return 'just now'
+
+  if (seconds < 60) return "just now"
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
   return `${Math.floor(seconds / 86400)}d ago`
 }
 
 function formatTime(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit' 
+  return new Date(timestamp * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
   })
 }
 
 // Routes
 export const channelsRoute = createPsionicRoute({
   path: "/channels",
-  handler: () => Effect.gen(function*() {
-    // Fetch channels from API
-    let channels: any[] = []
-    try {
-      const response = yield* Effect.tryPromise(() => 
-        fetch('http://localhost:3003/api/channels/list')
-      )
-      const data = yield* Effect.tryPromise(() => response.json())
-      channels = data.channels || []
-    } catch (error) {
-      console.error("Failed to fetch channels:", error)
-    }
-    
-    return {
-      html: html`
+  handler: () =>
+    Effect.gen(function*() {
+      // Fetch channels from API
+      let channels: Array<any> = []
+      try {
+        const response = yield* Effect.tryPromise(() => fetch("http://localhost:3003/api/channels/list"))
+        const data = yield* Effect.tryPromise(() => response.json())
+        channels = data.channels || []
+      } catch (error) {
+        console.error("Failed to fetch channels:", error)
+      }
+
+      return {
+        html: html`
         <!DOCTYPE html>
         <html lang="en">
           <head>
@@ -421,35 +449,34 @@ export const channelsRoute = createPsionicRoute({
           </body>
         </html>
       `
-    }
-  })
+      }
+    })
 })
 
 export const channelViewRoute = createPsionicRoute({
   path: "/channels/:id",
-  handler: ({ params }) => Effect.gen(function*() {
-    const channelId = params.id
-    
-    // Fetch channel and messages from API
-    let channel = { id: channelId, name: "Unknown Channel", about: "" }
-    let messages: any[] = []
-    
-    try {
-      const response = yield* Effect.tryPromise(() => 
-        fetch(`http://localhost:3003/api/channels/${channelId}`)
-      )
-      const data = yield* Effect.tryPromise(() => response.json())
-      
-      if (data.channel) {
-        channel = data.channel
-        messages = data.messages || []
+  handler: ({ params }) =>
+    Effect.gen(function*() {
+      const channelId = params.id
+
+      // Fetch channel and messages from API
+      let channel = { id: channelId, name: "Unknown Channel", about: "" }
+      let messages: Array<any> = []
+
+      try {
+        const response = yield* Effect.tryPromise(() => fetch(`http://localhost:3003/api/channels/${channelId}`))
+        const data = yield* Effect.tryPromise(() => response.json())
+
+        if (data.channel) {
+          channel = data.channel
+          messages = data.messages || []
+        }
+      } catch (error) {
+        console.error("Failed to fetch channel:", error)
       }
-    } catch (error) {
-      console.error("Failed to fetch channel:", error)
-    }
-    
-    return {
-      html: html`
+
+      return {
+        html: html`
         <!DOCTYPE html>
         <html lang="en">
           <head>
@@ -554,14 +581,14 @@ export const channelViewRoute = createPsionicRoute({
           </body>
         </html>
       `
-    }
-  })
+      }
+    })
 })
 
 export const channelCreateRoute = createPsionicRoute({
   path: "/channels/create",
-  handler: () => Effect.gen(function*() {
-    return {
+  handler: () =>
+    Effect.sync(() => ({
       html: html`
         <!DOCTYPE html>
         <html lang="en">
@@ -608,6 +635,5 @@ export const channelCreateRoute = createPsionicRoute({
           </body>
         </html>
       `
-    }
-  })
+    }))
 })
