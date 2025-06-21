@@ -3,7 +3,7 @@
  * Extends chat capabilities with job discovery, bidding, and service delivery
  */
 
-import { Context, Data, Duration, Effect, Fiber, Layer, Schedule, Schema } from "effect"
+import { Context, Data, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
 import { AgentPersonality } from "./AutonomousChatAgent.js"
 
 import * as AI from "@openagentsinc/ai"
@@ -75,7 +75,7 @@ export class AutonomousMarketplaceAgent extends Context.Tag("sdk/AutonomousMarke
     readonly startMarketplaceLoop: (
       personality: MarketplacePersonality,
       agentKeys: { privateKey: string; publicKey: string }
-    ) => Effect.Effect<void, MarketplaceError>
+    ) => Effect.Effect<void, MarketplaceError, NostrLib.Nip90Service.Nip90Service>
 
     readonly stopMarketplaceLoop: (agentId: string) => Effect.Effect<void, never>
 
@@ -348,7 +348,7 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
     const startMarketplaceLoop = (
       personality: MarketplacePersonality,
       agentKeys: { privateKey: string; publicKey: string }
-    ): Effect.Effect<void, MarketplaceError, never> =>
+    ): Effect.Effect<void, MarketplaceError, NostrLib.Nip90Service.Nip90Service> =>
       Effect.gen(function*() {
         console.log(`Starting marketplace loop for ${personality.name}`)
 
@@ -365,35 +365,18 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
         // Publish service offering
         yield* publishServiceOffering(personality, agentKeys.privateKey)
 
-        // Start job discovery loop
+        // Start REAL job discovery using WebSocket subscription
         const jobDiscoveryLoop = Effect.gen(function*() {
-          // Subscribe to job requests - create a simple polling mechanism for now
-          yield* Effect.repeat(
-            Effect.gen(function*() {
-              // In a real implementation, this would be a WebSocket subscription
-              // For now, we'll simulate job discovery
-              console.log(`${personality.name} checking for new jobs...`)
+          console.log(`${personality.name} starting real-time job discovery...`)
 
-              // Simulate finding a job occasionally
-              if (Math.random() < 0.3) {
-                const job: NostrLib.Nip90Service.JobRequest = {
-                  jobId: `job_${Date.now()}_test`,
-                  serviceId: "test-service",
-                  requestKind: NostrLib.Nip90Service.NIP90_JOB_REQUEST_KINDS.CODE_REVIEW,
-                  input: "Test job input",
-                  inputType: "text",
-                  bidAmount: 500,
-                  requester: "test_requester",
-                  provider: ""
-                }
+          // Subscribe to actual job requests from Nostr relays
+          const jobStream = nip90Service.subscribeToJobRequests(agentKeys.publicKey)
 
-                console.log(`${personality.name} discovered job: ${job.jobId}`)
-
-                // Don't bid on own jobs
-                if (job.requester === agentKeys.publicKey) {
-                  return
-                }
-
+          yield* jobStream.pipe(
+            Stream.tap((job) => Effect.log(`${personality.name} discovered job: ${job.jobId}`)),
+            Stream.filter((job) => job.requester !== agentKeys.publicKey), // Don't bid on own jobs
+            Stream.mapEffect((job) =>
+              Effect.gen(function*() {
                 // Evaluate job
                 const evaluation = yield* evaluateJob(job, personality, economicState)
                 console.log(`${personality.name} evaluation:`, evaluation)
@@ -422,49 +405,55 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
                   // Start job execution in background
                   yield* Effect.fork(
                     Effect.gen(function*() {
-                      // Wait for payment confirmation (simulated for now)
-                      yield* Effect.sleep(Duration.seconds(5))
+                      // Monitor for payment confirmation
+                      const monitor = nip90Service.monitorJob(job.jobId)
 
-                      // Deliver service
-                      const delivery = yield* deliverService(job, personality)
+                      const paid = yield* monitor.pipe(
+                        Stream.takeUntil((m) => m.status !== "payment-required"),
+                        Stream.runLast
+                      )
 
-                      // Submit result
-                      const params: NostrLib.Nip90Service.SubmitJobResultParams = {
-                        jobId: job.jobId,
-                        requestEventId: job.jobId,
-                        resultKind: job.requestKind + 1000,
-                        result: delivery.result,
-                        status: delivery.status,
-                        computeTime: delivery.computeTime,
-                        privateKey: agentKeys.privateKey as NostrLib.Schema.PrivateKey
+                      if (paid && Option.isSome(paid) && paid.value.status === "processing") {
+                        // Deliver service
+                        const delivery = yield* deliverService(job, personality)
+
+                        // Submit result
+                        const params: NostrLib.Nip90Service.SubmitJobResultParams = {
+                          jobId: job.jobId,
+                          requestEventId: job.jobId,
+                          resultKind: job.requestKind + 1000,
+                          result: delivery.result,
+                          status: delivery.status,
+                          computeTime: delivery.computeTime,
+                          privateKey: agentKeys.privateKey as NostrLib.Schema.PrivateKey
+                        }
+
+                        if (delivery.tokensUsed !== undefined) {
+                          params.tokensUsed = delivery.tokensUsed
+                        }
+                        if (delivery.confidence !== undefined) {
+                          params.confidence = delivery.confidence
+                        }
+
+                        yield* nip90Service.submitJobResult(params)
+
+                        // Update economic state
+                        economicState.activeJobs.delete(job.jobId)
+                        economicState.completedJobs++
+                        economicState.totalEarnings += evaluation.bidAmount
+                        economicState.balance += evaluation.bidAmount
+
+                        console.log(`${personality.name} completed job ${job.jobId} for ${evaluation.bidAmount} sats`)
                       }
-
-                      if (delivery.tokensUsed !== undefined) {
-                        params.tokensUsed = delivery.tokensUsed
-                      }
-                      if (delivery.confidence !== undefined) {
-                        params.confidence = delivery.confidence
-                      }
-
-                      yield* nip90Service.submitJobResult(params)
-
-                      // Update economic state
-                      economicState.activeJobs.delete(job.jobId)
-                      economicState.completedJobs++
-                      economicState.totalEarnings += evaluation.bidAmount
-                      economicState.balance += evaluation.bidAmount
-
-                      console.log(`${personality.name} completed job ${job.jobId} for ${evaluation.bidAmount} sats`)
                     }).pipe(
                       Effect.catchAll((error) => Effect.log(`Job execution error: ${error}`))
                     )
                   )
                 }
-              }
-            }).pipe(
-              Effect.catchAll((error) => Effect.log(`Job discovery error: ${error}`))
+              })
             ),
-            Schedule.spaced(Duration.seconds(10))
+            Stream.catchAll((error) => Stream.fromEffect(Effect.log(`Job discovery stream error: ${error}`))),
+            Stream.runDrain
           )
         })
 
