@@ -103,13 +103,13 @@ export default function slides() {
       }
       
       .slide-5 {
-        color: #fff;
+        background: #000;
       }
       
-      .slide-5 .slide-content {
-        font-size: clamp(1.2rem, 3.5vw, 2rem);
-        max-width: 80%;
-        margin: 0 auto;
+      .slide-5 img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
       }
       
       .slide-6 {
@@ -117,6 +117,16 @@ export default function slides() {
       }
       
       .slide-6 .slide-content {
+        font-size: clamp(1.2rem, 3.5vw, 2rem);
+        max-width: 80%;
+        margin: 0 auto;
+      }
+      
+      .slide-7 {
+        color: #fff;
+      }
+      
+      .slide-7 .slide-content {
         font-size: clamp(2rem, 6vw, 4rem);
       }
       
@@ -180,11 +190,11 @@ export default function slides() {
         
         .slide-1 .slide-content,
         .slide-3 .slide-content,
-        .slide-6 .slide-content {
+        .slide-7 .slide-content {
           font-size: clamp(1.5rem, 5vw, 3rem);
         }
         
-        .slide-5 .slide-content {
+        .slide-6 .slide-content {
           font-size: clamp(1rem, 3vw, 1.5rem);
         }
       }
@@ -216,6 +226,10 @@ export default function slides() {
         </div>
         
         <div class="slide slide-5" data-slide="5">
+          <img src="/commander.png" alt="Commander">
+        </div>
+        
+        <div class="slide slide-6" data-slide="6">
           <div class="slide-content">
             <h2 style="margin-bottom: 2rem;">Psionic Framework</h2>
             <ul style="text-align: left; list-style: none; padding: 0;">
@@ -226,7 +240,7 @@ export default function slides() {
           </div>
         </div>
         
-        <div class="slide slide-6" data-slide="6">
+        <div class="slide slide-7" data-slide="7">
           <div class="slide-content">
             Join Us<span class="cursor"></span>
           </div>
@@ -239,12 +253,13 @@ export default function slides() {
           <div class="dot" data-goto="4"></div>
           <div class="dot" data-goto="5"></div>
           <div class="dot" data-goto="6"></div>
+          <div class="dot" data-goto="7"></div>
         </div>
       </div>
       
       <script>
         let currentSlide = 1;
-        const totalSlides = 6;
+        const totalSlides = 7;
         
         function showSlide(n) {
           // Remove active class from all slides and dots
@@ -293,7 +308,7 @@ export default function slides() {
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             prevSlide();
-          } else if (e.key >= '1' && e.key <= '6') {
+          } else if (e.key >= '1' && e.key <= '7') {
             goToSlide(e.key);
           }
         });
