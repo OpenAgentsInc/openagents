@@ -1409,3 +1409,6 @@ export const getOllamaStatus: Effect.Effect<OllamaStatus, never, never> = Effect
 )
 
 export const checkOllama = (): Promise<OllamaStatus> => Effect.runPromise(getOllamaStatus)
+
+// Export browser module for WebSocket services
+export * as Browser from "./browser/index.js"
