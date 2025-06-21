@@ -349,14 +349,25 @@ export function serviceBoard({ agentId: _agentId }: ServiceBoardProps = {}) {
                 // Handle job requests (kinds 5000-5300)
                 if (nostrEvent.kind >= 5000 && nostrEvent.kind <= 5300) {
                   try {
-                    const content = JSON.parse(nostrEvent.content)
+                    let content = {};
+                    let input = nostrEvent.content;
+                    
+                    // Try to parse as JSON, but fall back to plain text
+                    try {
+                      content = JSON.parse(nostrEvent.content);
+                      input = content.input || nostrEvent.content;
+                    } catch (jsonError) {
+                      // Content is plain text, not JSON
+                      console.log('Job request content is plain text:', nostrEvent.content);
+                    }
+                    
                     const jobRequest = {
                       jobId: nostrEvent.id,
-                      serviceId: content.serviceId,
+                      serviceId: content.serviceId || '',
                       requestKind: nostrEvent.kind,
-                      input: content.input || nostrEvent.content,
+                      input: input,
                       inputType: content.inputType || 'text',
-                      parameters: content.parameters,
+                      parameters: content.parameters || {},
                       bidAmount: content.bidAmount || 0,
                       requester: nostrEvent.pubkey,
                       provider: nostrEvent.tags.find(t => t[0] === 'p')?.[1] || '',
@@ -383,17 +394,28 @@ export function serviceBoard({ agentId: _agentId }: ServiceBoardProps = {}) {
                   if (jobTag) {
                     const jobId = jobTag[1]
                     try {
-                      const content = JSON.parse(nostrEvent.content)
+                      let content = {};
+                      let result = nostrEvent.content;
+                      
+                      // Try to parse as JSON, but fall back to plain text
+                      try {
+                        content = JSON.parse(nostrEvent.content);
+                        result = content.result || nostrEvent.content;
+                      } catch (jsonError) {
+                        // Content is plain text, not JSON
+                        console.log('Job result content is plain text:', nostrEvent.content);
+                      }
+                      
                       const jobResult = {
                         jobId: jobId,
                         requestEventId: jobId,
                         resultKind: nostrEvent.kind,
-                        result: content.result || nostrEvent.content,
+                        result: result,
                         status: content.status || 'success',
                         provider: nostrEvent.pubkey,
-                        computeTime: content.computeTime,
-                        tokensUsed: content.tokensUsed,
-                        confidence: content.confidence,
+                        computeTime: content.computeTime || 0,
+                        tokensUsed: content.tokensUsed || 0,
+                        confidence: content.confidence || 1.0,
                         created_at: nostrEvent.created_at
                       }
                       
