@@ -63,9 +63,130 @@ export async function agents() {
         </main>
       </div>
 
-      <script>
+      <script type="module">
+        // Import Effect.js and Nostr services from CDN
+        import { Effect, pipe, Runtime, Layer, Console } from "https://esm.sh/effect@3.10.3"
+        import { BrowserRuntime } from "https://esm.sh/@effect/platform-browser@0.79.1"
+        
         // Agent management state
         let agents = [];
+        let ws = null;
+        let effectRuntime = null;
+        
+        // Initialize WebSocket connection
+        function initializeWebSocket() {
+          ws = new WebSocket('ws://localhost:3003/relay');
+          
+          ws.onopen = () => {
+            console.log('Agents WebSocket connected');
+            
+            // Subscribe to agent profile events (kind 31337 - NIP-OA)
+            const agentSub = {
+              id: 'agents-' + Date.now(),
+              filters: [{ kinds: [31337], limit: 100 }]
+            };
+            ws.send(JSON.stringify(['REQ', agentSub.id, ...agentSub.filters]));
+          };
+          
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              
+              if (msg[0] === 'EVENT') {
+                const [, subId, nostrEvent] = msg;
+                
+                // Handle agent profile events
+                if (nostrEvent.kind === 31337) {
+                  handleAgentProfileEvent(nostrEvent);
+                }
+              } else if (msg[0] === 'OK') {
+                const [, eventId, success, message] = msg;
+                console.log('Event acknowledged:', eventId, success, message);
+                
+                // Find and update the agent that was just created
+                const pendingAgent = agents.find(a => a.pendingEventId === eventId);
+                if (pendingAgent && success) {
+                  pendingAgent.confirmed = true;
+                  delete pendingAgent.pendingEventId;
+                  updateAgentList();
+                }
+              }
+            } catch (e) {
+              console.error('Failed to parse WebSocket message:', e);
+            }
+          };
+          
+          ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+          };
+          
+          ws.onclose = () => {
+            console.log('WebSocket closed, reconnecting in 5s...');
+            setTimeout(initializeWebSocket, 5000);
+          };
+        }
+        
+        // Handle incoming agent profile events
+        function handleAgentProfileEvent(event) {
+          try {
+            const agentData = JSON.parse(event.content);
+            
+            // Extract metadata from tags
+            const getTagValue = (tagName) => {
+              const tag = event.tags.find(t => t[0] === tagName);
+              return tag ? tag[1] : null;
+            };
+            
+            const agentId = getTagValue('d');
+            const name = getTagValue('name');
+            const balance = parseInt(getTagValue('balance') || '0');
+            const metabolicRate = parseInt(getTagValue('metabolic_rate') || '100');
+            const status = getTagValue('status') || 'active';
+            
+            // Check if this is an update to existing agent
+            const existingIndex = agents.findIndex(a => a.id === agentId || a.nostrKeys?.public === event.pubkey);
+            
+            const agent = {
+              id: agentId,
+              eventId: event.id,
+              name: name || agentData.name,
+              nostrKeys: {
+                public: event.pubkey
+              },
+              birthTimestamp: event.created_at * 1000,
+              lifecycleState: status,
+              balance: balance,
+              metabolicRate: metabolicRate,
+              profile: agentData,
+              confirmed: true
+            };
+            
+            if (existingIndex >= 0) {
+              // Update existing agent
+              agents[existingIndex] = { ...agents[existingIndex], ...agent };
+            } else {
+              // Add new agent
+              agents.push(agent);
+            }
+            
+            saveAgents();
+            updateAgentList();
+          } catch (e) {
+            console.error('Failed to parse agent profile:', e);
+          }
+        }
+        
+        // Initialize Effect runtime with Nostr services
+        async function initializeEffectRuntime() {
+          try {
+            // Create a simple runtime without the full Nostr services for now
+            // In production, we'd properly wire up all the services
+            effectRuntime = Runtime.defaultRuntime;
+            console.log('Effect runtime initialized');
+          } catch (error) {
+            console.error('Failed to initialize Effect runtime:', error);
+          }
+        }
         
         // Load agents from localStorage
         function loadAgents() {
@@ -109,16 +230,15 @@ export async function agents() {
             <div class="agent-card" box-="square">
               <div class="agent-header">
                 <h3 class="agent-name">\${agent.name}</h3>
-                <span is-="badge" variant-="\${stateColor}" cap-="round">
-                  \${agent.lifecycleState || "bootstrapping"}
-                </span>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                  <span is-="badge" variant-="\${stateColor}" cap-="round">
+                    \${agent.lifecycleState || "bootstrapping"}
+                  </span>
+                  \${!agent.confirmed ? '<span is-="badge" variant-="foreground2" cap-="round">pending</span>' : ''}
+                </div>
               </div>
               
               <div class="agent-details">
-                <div class="detail-row">
-                  <span class="detail-label">ID:</span>
-                  <span class="detail-value">\${agent.id}</span>
-                </div>
                 <div class="detail-row">
                   <span class="detail-label">Public Key:</span>
                   <span class="detail-value npub" title="\${agent.nostrKeys.public}">
@@ -127,7 +247,7 @@ export async function agents() {
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Generation:</span>
-                  <span class="detail-value">\${agent.generation}</span>
+                  <span class="detail-value">\${agent.generation || 0}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Balance:</span>
@@ -143,6 +263,12 @@ export async function agents() {
                     \${hoursRemaining}h
                   </span>
                 </div>
+                \${agent.personality?.role ? \`
+                <div class="detail-row">
+                  <span class="detail-label">Role:</span>
+                  <span class="detail-value">\${agent.personality.role}</span>
+                </div>
+                \` : ''}
               </div>
               
               <div class="agent-actions">
@@ -171,56 +297,124 @@ export async function agents() {
           return stateColors[state] || 'background2';
         }
         
-        // Handle spawn agent event - REAL IMPLEMENTATION
+        // Handle spawn agent event - WebSocket Implementation
         window.addEventListener('spawn-agent', async (event) => {
           // Handle both old and new event formats
-          let name, capital, metabolicRate;
+          let name, capital, metabolicRate, personality;
           
           if (event.detail.personality) {
             // New format from spawn-agent-form
-            const { personality } = event.detail;
+            personality = event.detail.personality;
             name = personality.name;
             capital = 10000; // Default starting capital
             metabolicRate = 100; // Default metabolic rate
           } else {
             // Old format
             ({ name, capital, metabolicRate } = event.detail);
+            personality = { name };
           }
           
           try {
-            // Call real agent creation API
-            const response = await fetch('/api/agents', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                name,
-                capital,
-                metabolicRate
-              })
-            });
-            
-            const result = await response.json();
-            
-            if (!result.success) {
-              throw new Error(result.error || 'Failed to create agent');
+            // Ensure WebSocket is connected
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+              throw new Error('WebSocket not connected. Please refresh the page.');
             }
             
+            // Import noble for crypto operations
+            const { schnorr, utils } = await import('https://esm.sh/@noble/curves@1.2.0/secp256k1');
+            const { sha256 } = await import('https://esm.sh/@noble/hashes@1.3.2/sha256');
+            const { bytesToHex, hexToBytes } = await import('https://esm.sh/@noble/hashes@1.3.2/utils');
+            
+            // Generate a proper keypair for the agent
+            const privateKeyBytes = utils.randomPrivateKey();
+            const privateKey = bytesToHex(privateKeyBytes);
+            const publicKey = bytesToHex(schnorr.getPublicKey(privateKeyBytes));
+            
+            // Create agent profile content (NIP-OA format)
+            const agentProfileContent = {
+              description: personality.role ? \`An agent with the role of \${personality.role}\` : "An autonomous agent",
+              avatar: "", // Could generate an avatar URL
+              capabilities: [
+                {
+                  id: "chat",
+                  name: "Chat",
+                  description: "Engage in conversations",
+                  pricing: {
+                    base: 0,
+                    per_unit: "message",
+                    unit_limit: 100
+                  }
+                }
+              ],
+              constraints: {
+                max_monthly_requests: 10000,
+                max_concurrent_jobs: 10,
+                supported_languages: ["en"]
+              },
+              metrics: {
+                total_earned: 0,
+                total_spent: 0,
+                requests_completed: 0,
+                average_rating: 0,
+                uptime_percentage: 100
+              }
+            };
+            
+            // Create NIP-OA agent profile event (kind 31337)
+            const unsignedEvent = {
+              pubkey: publicKey,
+              created_at: Math.floor(Date.now() / 1000),
+              kind: 31337, // NIP-OA Agent Profile
+              tags: [
+                ['d', publicKey], // d-tag makes it replaceable by agent pubkey
+                ['name', name],
+                ['status', 'active'],
+                ['balance', capital.toString()],
+                ['metabolic_rate', metabolicRate.toString()]
+              ],
+              content: JSON.stringify(agentProfileContent)
+            };
+            
+            // Calculate event ID
+            const serialized = JSON.stringify([
+              0,
+              unsignedEvent.pubkey,
+              unsignedEvent.created_at,
+              unsignedEvent.kind,
+              unsignedEvent.tags,
+              unsignedEvent.content
+            ]);
+            const eventHash = sha256(new TextEncoder().encode(serialized));
+            const eventId = bytesToHex(eventHash);
+            
+            // Sign the event
+            const signature = bytesToHex(schnorr.sign(eventHash, privateKeyBytes));
+            
+            // Complete event
+            const signedEvent = {
+              ...unsignedEvent,
+              id: eventId,
+              sig: signature
+            };
+            
+            // Create local agent object immediately
             const agent = {
-              id: result.agent.id,
-              name: result.agent.name,
+              id: publicKey, // Use pubkey as ID
+              eventId: eventId,
+              pendingEventId: eventId, // Mark as pending until confirmed
+              name: name,
               nostrKeys: {
-                public: result.agent.publicKey,
-                private: result.agent.mnemonic // Store mnemonic for recovery
+                public: publicKey,
+                private: privateKey
               },
               birthTimestamp: Date.now(),
               generation: 0,
-              lifecycleState: result.agent.lifecycleState || 'bootstrapping',
-              balance: result.agent.balance,
-              metabolicRate: result.agent.metabolicRate,
-              mnemonic: result.agent.mnemonic,
-              profile: result.profile // Include database profile
+              lifecycleState: 'bootstrapping',
+              balance: capital,
+              metabolicRate,
+              personality,
+              profile: agentProfileContent,
+              confirmed: false
             };
             
             // Add to agents array
@@ -230,11 +424,15 @@ export async function agents() {
             saveAgents();
             updateAgentList();
             
-            console.log('Real agent spawned:', agent);
-            console.log('Agent profile in database:', result.profile);
+            // Send event to relay
+            ws.send(JSON.stringify(['EVENT', signedEvent]));
             
-            // Show success message with real public key
-            alert(\`Agent "\${name}" spawned successfully!\\nReal Nostr public key: \${agent.nostrKeys.public}\\nAgent ID: \${agent.id}\\n\\nThis agent now has a real identity on the Nostr network!\`);
+            console.log('Agent spawned via WebSocket:', agent);
+            console.log('Event sent to relay:', signedEvent);
+            
+            // Show success message
+            alert(\`Agent "\${name}" spawned successfully!\\n\\nNostr public key (npub):\\n\${publicKey.slice(0, 32)}...\\n\\nAgent is being published to the Nostr network...\`);
+            
           } catch (error) {
             console.error('Failed to spawn agent:', error);
             alert('Failed to spawn agent: ' + error.message);
@@ -263,8 +461,18 @@ export async function agents() {
           }
         };
         
-        // Load agents on page load
-        loadAgents();
+        // Make functions available globally
+        window.agents = agents;
+        window.updateAgentList = updateAgentList;
+        window.fundAgent = fundAgent;
+        window.viewAgentDetails = viewAgentDetails;
+        
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', () => {
+          loadAgents();
+          initializeWebSocket();
+          initializeEffectRuntime();
+        });
       </script>
 
       <style>
