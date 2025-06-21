@@ -10,6 +10,7 @@ import { AgentServiceLive } from "./AgentService.js"
 import { AutonomousChatAgentLive } from "./AutonomousChatAgent.js"
 import { AutonomousMarketplaceAgentLive } from "./AutonomousMarketplaceAgent.js"
 import { ChannelServiceLive } from "./ChannelService.js"
+import { EconomicSurvivalServiceLive } from "./EconomicSurvivalService.js"
 import { ServiceOfferingServiceLive } from "./ServiceOfferingService.js"
 import { SparkServiceLive } from "./SparkService.js"
 import { WebSocketServiceLive } from "./WebSocketService.js"
@@ -18,6 +19,7 @@ export * from "./AgentService.js"
 export * from "./AutonomousChatAgent.js"
 export * from "./AutonomousMarketplaceAgent.js"
 export * from "./ChannelService.js"
+export * from "./EconomicSurvivalService.js"
 export * from "./ServiceOfferingService.js"
 export * from "./SparkService.js"
 export * from "./WebSocketService.js"
@@ -70,6 +72,7 @@ export const createBrowserServicesLayer = (cloudflareConfig?: {
     ServiceOfferingServiceLive.pipe(Layer.provide(WebSocketServiceLive)),
     CloudflareLanguageModelLive,
     SparkServiceLive,
+    EconomicSurvivalServiceLive,
     AutonomousChatAgentLive.pipe(Layer.provide(Layer.merge(ChannelWithWebSocketLive, CloudflareLanguageModelLive))),
     AutonomousMarketplaceAgentLive.pipe(
       Layer.provide(Layer.mergeAll(
@@ -77,7 +80,8 @@ export const createBrowserServicesLayer = (cloudflareConfig?: {
         CloudflareLanguageModelLive,
         AutonomousChatAgentLive.pipe(Layer.provide(Layer.merge(ChannelWithWebSocketLive, CloudflareLanguageModelLive))),
         NostrServicesLive,
-        SparkServiceLive
+        SparkServiceLive,
+        EconomicSurvivalServiceLive
       ))
     )
   )
