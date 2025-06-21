@@ -3,12 +3,12 @@
  * Real-time NIP-90 marketplace operations
  */
 
-import { Schema as NostrSchema } from "@openagentsinc/nostr"
+import * as Nostr from "@openagentsinc/nostr"
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 import { WebSocketService } from "./WebSocketService.js"
 
 // Use NostrEvent type from the nostr package
-type NostrEvent = NostrSchema.NostrEvent
+type NostrEvent = Nostr.Schema.NostrEvent
 
 // Service offering schemas
 export const ServiceCapability = Schema.Struct({
