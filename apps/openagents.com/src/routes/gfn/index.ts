@@ -43,7 +43,7 @@ export default function gfn() {
   }))
 
   return document({
-    title: "GFN Interactive Formula - OpenAgents",
+    title: "Group-Forming Network Calculator - OpenAgents",
     styles: baseStyles + `
       .gfn-container {
         max-width: 1400px;
@@ -210,7 +210,7 @@ export default function gfn() {
         
         <div class="gfn-container">
           <div class="gfn-header">
-            <h1>Global Freedom Network Value Calculator</h1>
+            <h1>Group-Forming Network Value Calculator</h1>
             <p style="color: var(--foreground1); margin-bottom: 1rem;">
               Explore how network effects combine to create exponential value
             </p>

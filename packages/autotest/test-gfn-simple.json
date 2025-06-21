@@ -1,0 +1,5 @@
+{
+  "url": "http://localhost:3003/gfn",
+  "fullPage": true,
+  "waitForSelector": ".total-value"
+}

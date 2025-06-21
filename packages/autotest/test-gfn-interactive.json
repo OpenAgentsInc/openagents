@@ -1,0 +1,16 @@
+{
+  "url": "http://localhost:3003/gfn",
+  "fullPage": true,
+  "waitForSelector": ".total-value",
+  "interactions": [
+    {
+      "action": "click",
+      "selector": "button:has-text('OA 5yr')",
+      "timeout": 5000
+    },
+    {
+      "action": "wait",
+      "value": "2000"
+    }
+  ]
+}
