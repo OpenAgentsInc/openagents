@@ -71,15 +71,19 @@ export default function slides() {
       }
       
       .slide-3 {
-        color: #ff0;
+        color: #fff;
       }
       
       .slide-3 .slide-content {
-        font-size: clamp(4rem, 12vw, 10rem);
+        font-size: clamp(1.5rem, 5vw, 3rem);
       }
       
       .slide-4 {
-        color: #0ff;
+        color: #fff;
+      }
+      
+      .slide-4 .slide-content {
+        font-size: clamp(1.5rem, 5vw, 3rem);
       }
       
       .nav-dots {
@@ -103,15 +107,6 @@ export default function slides() {
       
       .dot.active {
         background: #fff;
-      }
-      
-      .controls {
-        position: fixed;
-        bottom: 1rem;
-        right: 1rem;
-        font-size: 0.8rem;
-        color: #fff;
-        opacity: 0.5;
       }
       
       /* Terminal cursor blink effect */
@@ -183,10 +178,6 @@ export default function slides() {
           <div class="dot" data-goto="2"></div>
           <div class="dot" data-goto="3"></div>
           <div class="dot" data-goto="4"></div>
-        </div>
-        
-        <div class="controls">
-          ← → or click
         </div>
       </div>
       
