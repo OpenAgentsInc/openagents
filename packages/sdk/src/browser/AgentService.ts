@@ -3,7 +3,7 @@
  * Real-time agent status and profile updates
  */
 
-import type { Schema as NostrSchema } from "@openagentsinc/nostr"
+import { Schema as NostrSchema } from "@openagentsinc/nostr"
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 import { WebSocketService } from "./WebSocketService.js"
 

@@ -3,7 +3,7 @@
  * Real-time channel operations using WebSocket streams
  */
 
-import type { Schema as NostrSchema } from "@openagentsinc/nostr"
+import { Schema as NostrSchema } from "@openagentsinc/nostr"
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 import { WebSocketService } from "./WebSocketService.js"
 
