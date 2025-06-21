@@ -1,0 +1,19 @@
+{
+  "project": {
+    "root": "/Users/christopherdavid/code/openagents/apps/openagents.com",
+    "startCommand": "bun dev",
+    "port": 3003,
+    "readyPattern": "OpenAgents is running at"
+  },
+  "testing": {
+    "baseUrl": "http://localhost:3003",
+    "routes": ["/gfn"],
+    "timeout": 30000
+  },
+  "monitoring": {
+    "captureConsole": true,
+    "captureNetwork": true,
+    "captureErrors": true,
+    "screenshotOnError": true
+  }
+}

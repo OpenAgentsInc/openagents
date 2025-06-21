@@ -38709,7 +38709,7 @@ class BrowserConversationRepository extends exports_Context.Tag("BrowserConversa
 class BrowserMessageRepository extends exports_Context.Tag("BrowserMessageRepository")() {
 }
 var BrowserPGliteServiceLive = (databaseName = "openagents-chat") => exports_Layer.effect(BrowserPGliteService, exports_Effect.gen(function* () {
-  const { pg, db } = yield* exports_Effect.tryPromise({
+  const { db, pg } = yield* exports_Effect.tryPromise({
     try: () => initializePGlite(databaseName),
     catch: (error2) => new BrowserPersistenceError({
       message: "Failed to initialize PGlite",

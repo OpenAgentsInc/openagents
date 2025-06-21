@@ -2,6 +2,7 @@ import { html } from "@openagentsinc/psionic"
 
 export function navigation({ current }: { current: string }) {
   const rightLinks = [
+    { href: "/gfn", label: "⚡ GFN", key: "gfn" },
     { href: "/docs", label: "§ Docs", key: "docs" },
     { href: "/components", label: "◊ Examples", key: "components" },
     { href: "https://github.com/openagentsinc/openagents", label: "§ Github", key: "github", external: true }
