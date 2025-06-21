@@ -56,6 +56,10 @@ export default function slides() {
         color: #fff;
       }
       
+      .slide-1 .slide-content {
+        font-size: clamp(1.5rem, 5vw, 3rem);
+      }
+      
       .slide-2 {
         color: #ff0;
       }
@@ -150,7 +154,7 @@ export default function slides() {
         
         <div class="slide slide-2" data-slide="2">
           <div class="slide-content">
-            2<sup>n</sup> &gt; n<sup>2</sup>
+            n &lt; n<sup>2</sup> &lt; 2<sup>n</sup>
           </div>
         </div>
         
