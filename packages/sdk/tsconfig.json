@@ -11,8 +11,8 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "paths": {
-      "@openagentsinc/nostr": ["../../packages/nostr/src/index.ts"],
-      "@openagentsinc/nostr/*": ["../../packages/nostr/src/*.ts"],
+      "@openagentsinc/nostr": ["../../packages/nostr/dist/dts"],
+      "@openagentsinc/nostr/*": ["../../packages/nostr/dist/dts/*"],
       "@openagentsinc/container": ["../../packages/container/src/index.ts"],
       "@openagentsinc/container/*": ["../../packages/container/src/*.ts"]
     }
