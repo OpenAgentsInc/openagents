@@ -365,6 +365,9 @@ importers:
       '@scure/bip39':
         specifier: ^1.6.0
         version: 1.6.0
+      bech32:
+        specifier: ^2.0.0
+        version: 2.0.0
       effect:
         specifier: 3.16.3
         version: 3.16.3
@@ -372,6 +375,9 @@ importers:
         specifier: 8.18.0
         version: 8.18.0
     devDependencies:
+      '@types/bech32':
+        specifier: ^1.1.8
+        version: 1.1.8
       '@types/ws':
         specifier: 8.5.14
         version: 8.5.14
@@ -4505,6 +4511,13 @@ packages:
       '@babel/types': 7.27.6
     dev: false
 
+  /@types/bech32@1.1.8:
+    resolution: {integrity: sha512-shvkfjHrDoGPhNHQvLjTESgDOzdcGQuyWgkbc2PQZSUdhwArt+gjfn9ehPyVPKQ1Vnams1deetvZxe0s98bl4g==}
+    deprecated: This is a stub types definition. bech32 provides its own type definitions, so you do not need this installed.
+    dependencies:
+      bech32: 2.0.0
+    dev: true
+
   /@types/bun@1.1.14:
     resolution: {integrity: sha512-opVYiFGtO2af0dnWBdZWlioLBoxSdDO5qokaazLhq8XQtGZbY4pY3/JxY8Zdf/hEwGubbp7ErZXoN1+h2yesxA==}
     dependencies:
@@ -5568,7 +5581,6 @@ packages:
 
   /bech32@2.0.0:
     resolution: {integrity: sha512-LcknSilhIGatDAsY1ak2I8VtGaHNhgMSYVxFrGLXv+xLHytaKZKcaUJJUE7qmBr7h33o5YQwP55pMI0xmkpJwg==}
-    dev: false
 
   /better-path-resolve@1.0.0:
     resolution: {integrity: sha512-pbnl5XzGBdrFU/wT4jqmJVPn2B6UHPBOhzMQkY/SPUPB6QtUXtmBHBIwCbXJol93mOpGMnQyP/+BB19q04xj7g==}
