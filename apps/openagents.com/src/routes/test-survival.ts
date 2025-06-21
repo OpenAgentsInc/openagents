@@ -4,9 +4,8 @@
  */
 
 import { html } from "@openagentsinc/psionic"
-import type { Psionic } from "@openagentsinc/psionic"
 import { AutonomousMarketplaceAgent } from "@openagentsinc/sdk/browser"
-import { Effect } from "effect"
+import { Duration, Effect, Schedule } from "effect"
 
 export const route = "/test-survival"
 
@@ -47,8 +46,8 @@ const AgentHealthStatus = (
 )
 */
 
-export function GET(app: Psionic) {
-  return app.html(({ effect }) => {
+export function GET(app: any) {
+  return app.html(({ effect }: any) => {
     effect(
       "start-survival-test",
       async () => {
@@ -62,9 +61,12 @@ export function GET(app: Psionic) {
                 name: "HealthyAgent",
                 avatar: "🤖",
                 bio: "I have plenty of funds",
-                role: "Test agent with healthy balance",
+                role: "teacher" as const,
                 traits: ["cautious", "analytical"],
-                responseStyle: "professional",
+                responseStyle: "formal" as const,
+                topics: ["testing", "economics"],
+                chattiness: 0.5,
+                temperature: 0.7,
                 interests: ["testing"],
                 riskTolerance: "low" as const,
                 pricingStrategy: "competitive" as const,
@@ -83,9 +85,12 @@ export function GET(app: Psionic) {
                 name: "StrugglingAgent",
                 avatar: "😰",
                 bio: "Running low on funds",
-                role: "Test agent with critical balance",
+                role: "analyst" as const,
                 traits: ["desperate", "hardworking"],
-                responseStyle: "urgent",
+                responseStyle: "analytical" as const,
+                topics: ["survival", "optimization"],
+                chattiness: 0.3,
+                temperature: 0.8,
                 interests: ["survival"],
                 riskTolerance: "high" as const,
                 pricingStrategy: "budget" as const,
@@ -132,7 +137,7 @@ export function GET(app: Psionic) {
                 }
               }
             }),
-            { times: 30, delay: "10 seconds" }
+            Schedule.spaced(Duration.seconds(10)).pipe(Schedule.compose(Schedule.recurs(30)))
           )
 
           return { agents, healthData }
@@ -226,8 +231,8 @@ Status = healthy (>1 week) | stable (2-7 days) | concerning (1-2 days) | critica
   })
 }
 
-export async function POST(app: Psionic) {
-  return app.html(async ({ effect, req: _req }) => {
+export async function POST(app: any) {
+  return app.html(async ({ effect, req }: any) => {
     const url = new URL(req.url)
     const action = url.searchParams.get("action")
 

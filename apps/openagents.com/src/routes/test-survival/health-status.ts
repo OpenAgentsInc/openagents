@@ -4,14 +4,13 @@
  */
 
 import { html } from "@openagentsinc/psionic"
-import type { Psionic } from "@openagentsinc/psionic"
 import { AutonomousMarketplaceAgent } from "@openagentsinc/sdk/browser"
 import { Effect } from "effect"
 
 export const route = "/test-survival/health-status"
 
-export function GET(app: Psionic) {
-  return app.html(({ effect }) => {
+export function GET(app: any) {
+  return app.html(({ effect }: any) => {
     effect(
       "get-health-status",
       async () => {
