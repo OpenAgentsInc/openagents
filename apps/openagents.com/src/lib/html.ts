@@ -9,7 +9,7 @@
  * @param {...any} values
  * @returns {string} HTML string
  */
-export function html(strings: TemplateStringsArray, ...values: any[]): string {
+export function html(strings: TemplateStringsArray, ...values: Array<any>): string {
   let result = strings[0]
   for (let i = 0; i < values.length; i++) {
     result += String(values[i]) + strings[i + 1]

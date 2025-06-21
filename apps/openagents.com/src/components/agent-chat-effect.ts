@@ -3,12 +3,7 @@
  * Pure Effect implementation - no React
  */
 
-import { 
-  BrowserServicesLive,
-  ChannelService,
-  type Channel, 
-  type ChannelMessage 
-} from "@openagentsinc/sdk/browser"
+import { BrowserServicesLive, type Channel, type ChannelMessage, ChannelService } from "@openagentsinc/sdk/browser"
 import { Effect, Ref, Stream } from "effect"
 import { dateUtils } from "../lib/date.js"
 import { html } from "../lib/html.js"

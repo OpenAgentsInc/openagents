@@ -21,6 +21,6 @@ export * from "./WebSocketService.js"
 export const BrowserServicesLive = Layer.mergeAll(
   WebSocketServiceLive,
   ChannelServiceLive.pipe(Layer.provide(WebSocketServiceLive)),
-  AgentServiceLive.pipe(Layer.provide(WebSocketServiceLive)), 
+  AgentServiceLive.pipe(Layer.provide(WebSocketServiceLive)),
   ServiceOfferingServiceLive.pipe(Layer.provide(WebSocketServiceLive))
 )
