@@ -296,7 +296,7 @@ export default function slides() {
           <div class="slide-content">
             <h3 style="font-size: clamp(1.5rem, 4vw, 2.2rem); margin-bottom: 2rem; text-shadow: 0 0 20px currentColor;">Reed's Law of Group-Forming Networks</h3>
             n &lt; n<sup>2</sup> &lt; 2<sup>n</sup>
-            <p style="font-size: clamp(1.5rem, 4vw, 2.2rem); margin-top: 2rem; text-shadow: 0 0 20px currentColor;">"mathematically overwhelming"</p>
+            <p style="font-size: clamp(1.2rem, 3vw, 1.8rem); margin-top: 3rem; text-shadow: 0 0 20px currentColor;">"mathematically overwhelming"</p>
           </div>
         </div>
 
