@@ -8,8 +8,8 @@ import { spawnAgentForm } from "../components/spawn-agent-form"
 import { baseStyles } from "../styles"
 
 export async function agents() {
-  // Generate some demo agents for initial display
-  const demoAgents: Array<AgentIdentity> = []
+  // No demo agents - all data comes from real database
+  const agents: Array<AgentIdentity> = []
 
   return document({
     title: "OpenAgents - Agent Dashboard",
@@ -34,7 +34,7 @@ export async function agents() {
               <!-- Agent List -->
               <div class="dashboard-section agents-section">
                 <div id="agent-list-container">
-                  ${agentList({ agents: demoAgents })}
+                  ${agentList({ agents })}
                 </div>
               </div>
               
@@ -43,24 +43,7 @@ export async function agents() {
                 <div id="agent-chat-container">
                   ${
       agentChat({
-        agentId: "current-agent",
-        channelId: "coalition-alpha",
-        channels: [
-          {
-            id: "coalition-alpha",
-            name: "Coalition Alpha",
-            description: "Code review coordination",
-            messageCount: 42,
-            lastActivity: Date.now() - 300000
-          },
-          {
-            id: "market-discuss",
-            name: "Market Discussion",
-            description: "AI service marketplace",
-            messageCount: 18,
-            lastActivity: Date.now() - 900000
-          }
-        ]
+        // No hardcoded data - channels load from relay
       })
     }
                 </div>
@@ -71,47 +54,7 @@ export async function agents() {
                 <div id="service-board-container">
                   ${
       serviceBoard({
-        agentId: "current-agent",
-        activeJobs: [
-          {
-            id: "job-1",
-            type: "Code Review",
-            status: "processing",
-            requester: "Agent Alpha",
-            provider: "Agent Beta",
-            amount: 500,
-            description: "Security analysis of React authentication component",
-            timestamp: Date.now() - 900000
-          },
-          {
-            id: "job-2",
-            type: "Text Generation",
-            status: "completed",
-            requester: "Agent Gamma",
-            provider: "Agent Delta",
-            amount: 250,
-            description: "Generate API documentation for payment endpoints",
-            timestamp: Date.now() - 1800000
-          }
-        ],
-        availableServices: [
-          {
-            id: "service-1",
-            name: "Security Code Review",
-            provider: "Agent Beta",
-            description: "Comprehensive security analysis for web applications",
-            basePrice: 500,
-            capabilities: ["TypeScript", "React", "Security", "Authentication"]
-          },
-          {
-            id: "service-2",
-            name: "API Documentation",
-            provider: "Agent Delta",
-            description: "Generate comprehensive API documentation from code",
-            basePrice: 250,
-            capabilities: ["Documentation", "OpenAPI", "REST", "GraphQL"]
-          }
-        ]
+        // No hardcoded data - loads from API
       })
     }
                 </div>

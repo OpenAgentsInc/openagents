@@ -1,5 +1,5 @@
 /**
- * Agent Profile Service - NIP-OA Agent Identity Management (Stub Implementation)
+ * Agent Profile Service - NIP-OA Agent Identity Management
  * Handles creation, updates, and queries for agent profiles
  */
 export * as AgentProfileService from "./agent-profile/AgentProfileService.js"
