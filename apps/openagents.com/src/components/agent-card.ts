@@ -1,24 +1,38 @@
 import { html } from "@openagentsinc/psionic"
-import type { AgentIdentity } from "@openagentsinc/sdk"
-import { AgentLifecycleState } from "@openagentsinc/sdk"
+
+// Local type definition to avoid SDK import
+interface AgentIdentity {
+  id: string
+  name: string
+  nostrKeys: {
+    public: string
+    private: string
+  }
+  birthTimestamp: number
+  generation: number
+  lifecycleState?: string
+  balance?: number
+  metabolicRate?: number
+  parentId?: string
+}
 
 export interface AgentCardProps {
   agent: AgentIdentity
-  onSelect?: (agent: AgentIdentity) => void
+  onSelect?: (agent: any) => void
 }
 
 export function agentCard({ agent, onSelect }: AgentCardProps) {
-  const stateColors: Record<AgentLifecycleState, string> = {
-    [AgentLifecycleState.BOOTSTRAPPING]: "background2",
-    [AgentLifecycleState.ACTIVE]: "foreground0",
-    [AgentLifecycleState.HIBERNATING]: "foreground2",
-    [AgentLifecycleState.REPRODUCING]: "accent",
-    [AgentLifecycleState.DYING]: "danger",
-    [AgentLifecycleState.DEAD]: "background3",
-    [AgentLifecycleState.REBIRTH]: "warning"
+  const stateColors: Record<string, string> = {
+    "bootstrapping": "background2",
+    "active": "foreground0",
+    "hibernating": "foreground2",
+    "reproducing": "accent",
+    "dying": "danger",
+    "dead": "background3",
+    "rebirth": "warning"
   }
 
-  const stateColor = stateColors[agent.lifecycleState || AgentLifecycleState.BOOTSTRAPPING] || "background2"
+  const stateColor = stateColors[agent.lifecycleState || "bootstrapping"] || "background2"
   const balance = agent.balance || 0
   const metabolicRate = agent.metabolicRate || 100
   const hoursRemaining = metabolicRate > 0 ? Math.floor(balance / metabolicRate) : 0

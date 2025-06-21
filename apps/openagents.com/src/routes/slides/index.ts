@@ -45,7 +45,7 @@ export default function slides() {
       
       .slide-content {
         text-align: center;
-        font-size: clamp(3rem, 10vw, 8rem);
+        font-size: clamp(2rem, 6vw, 4rem);
         font-weight: bold;
         text-shadow: 0 0 20px currentColor;
         line-height: 1.2;
@@ -56,16 +56,34 @@ export default function slides() {
         color: #fff;
       }
       
-      .slide-2 {
-        color: #ff0;
+      .slide-1 .slide-content {
+        font-size: clamp(2rem, 6vw, 4rem);
       }
       
-      .slide-2 .slide-content {
-        font-size: clamp(4rem, 12vw, 10rem);
+      .slide-2 {
+        background: #000;
+      }
+      
+      .slide-2 img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
       }
       
       .slide-3 {
-        color: #0ff;
+        color: #fff;
+      }
+      
+      .slide-3 .slide-content {
+        font-size: clamp(2rem, 6vw, 4rem);
+      }
+      
+      .slide-4 {
+        color: #fff;
+      }
+      
+      .slide-4 .slide-content {
+        font-size: clamp(2rem, 6vw, 4rem);
       }
       
       .nav-dots {
@@ -89,15 +107,6 @@ export default function slides() {
       
       .dot.active {
         background: #fff;
-      }
-      
-      .controls {
-        position: fixed;
-        bottom: 1rem;
-        right: 1rem;
-        font-size: 0.8rem;
-        color: #fff;
-        opacity: 0.5;
       }
       
       /* Terminal cursor blink effect */
@@ -132,11 +141,13 @@ export default function slides() {
       /* Mobile responsive */
       @media (max-width: 768px) {
         .slide-content {
-          font-size: clamp(2rem, 8vw, 4rem);
+          font-size: clamp(1.5rem, 5vw, 3rem);
         }
         
-        .slide-2 .slide-content {
-          font-size: clamp(2.5rem, 10vw, 5rem);
+        .slide-1 .slide-content,
+        .slide-3 .slide-content,
+        .slide-4 .slide-content {
+          font-size: clamp(1.5rem, 5vw, 3rem);
         }
       }
     `,
@@ -149,12 +160,16 @@ export default function slides() {
         </div>
         
         <div class="slide slide-2" data-slide="2">
-          <div class="slide-content">
-            2<sup>n</sup> &gt; n<sup>2</sup>
-          </div>
+          <img src="/openagents.png" alt="OpenAgents">
         </div>
         
         <div class="slide slide-3" data-slide="3">
+          <div class="slide-content">
+            n &lt; n<sup>2</sup> &lt; 2<sup>n</sup>
+          </div>
+        </div>
+        
+        <div class="slide slide-4" data-slide="4">
           <div class="slide-content">
             Join Us<span class="cursor"></span>
           </div>
@@ -164,16 +179,13 @@ export default function slides() {
           <div class="dot active" data-goto="1"></div>
           <div class="dot" data-goto="2"></div>
           <div class="dot" data-goto="3"></div>
-        </div>
-        
-        <div class="controls">
-          ← → or click
+          <div class="dot" data-goto="4"></div>
         </div>
       </div>
       
       <script>
         let currentSlide = 1;
-        const totalSlides = 3;
+        const totalSlides = 4;
         
         function showSlide(n) {
           // Remove active class from all slides and dots
@@ -222,7 +234,7 @@ export default function slides() {
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             prevSlide();
-          } else if (e.key >= '1' && e.key <= '3') {
+          } else if (e.key >= '1' && e.key <= '4') {
             goToSlide(e.key);
           }
         });

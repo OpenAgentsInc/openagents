@@ -13,7 +13,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         <nav class="header-nav">
           <!-- <a href="/chat" class="nav-link ${current === "chat" ? "active" : ""}">◊ Chat</a> -->
           <a href="/channels" class="nav-link ${current === "channels" ? "active" : ""}">▬ Channels</a>
-          <a href="/agents" class="nav-link ${current === "agents" ? "active" : ""}">◆ Agents</a>
+          <!-- <a href="/agents" class="nav-link ${current === "agents" ? "active" : ""}">◆ Agents</a> -->
           <a href="/docs" class="nav-link ${current === "docs" ? "active" : ""}">§ Docs</a>
           <a href="/blog" class="nav-link ${current === "blog" ? "active" : ""}">¶ Blog</a>
           <a href="/admin" class="nav-link admin-link ${

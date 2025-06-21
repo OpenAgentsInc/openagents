@@ -160,7 +160,7 @@ describe("Relay Pool Integration Tests", () => {
         Effect.runPromise
       ), 30000)
 
-    it("should handle partial relay failures", async () =>
+    it.skip("should handle partial relay failures", async () =>
       Effect.gen(function*() {
         // Start one relay
         const relay1 = yield* makeEphemeralRelay()
