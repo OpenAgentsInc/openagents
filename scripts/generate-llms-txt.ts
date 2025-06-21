@@ -50,7 +50,27 @@ async function getAllDocs(docsDir: string): Promise<Array<DocMeta>> {
 }
 
 async function generateLlmsTxt(): Promise<string> {
-  const docsDir = join(process.cwd(), "apps/openagents.com/content/docs")
+  // Handle different working directories
+  const possiblePaths = [
+    join(process.cwd(), "content/docs"),
+    join(process.cwd(), "apps/openagents.com/content/docs"),
+    join(process.cwd(), "../content/docs"),
+    join(process.cwd(), "../../apps/openagents.com/content/docs")
+  ]
+  
+  let docsDir = "";
+  for (const path of possiblePaths) {
+    try {
+      await readdir(path);
+      docsDir = path;
+      break;
+    } catch {}
+  }
+  
+  if (!docsDir) {
+    throw new Error("Could not find docs directory in any of the expected locations");
+  }
+  
   const docs = await getAllDocs(docsDir)
 
   // Group docs by category
@@ -167,7 +187,28 @@ async function main() {
     console.log("Generating llms.txt from documentation...")
 
     const content = await generateLlmsTxt()
-    const outputPath = join(process.cwd(), "apps/openagents.com/static/llms.txt")
+    // Handle different output paths based on working directory
+    const possibleOutputPaths = [
+      join(process.cwd(), "static/llms.txt"),
+      join(process.cwd(), "apps/openagents.com/static/llms.txt"),
+      join(process.cwd(), "../static/llms.txt"),
+      join(process.cwd(), "../../apps/openagents.com/static/llms.txt")
+    ]
+    
+    let outputPath = "";
+    for (const path of possibleOutputPaths) {
+      try {
+        // Try to find the static directory
+        const staticDir = path.replace(/\/llms\.txt$/, "");
+        await readdir(staticDir);
+        outputPath = path;
+        break;
+      } catch {}
+    }
+    
+    if (!outputPath) {
+      throw new Error("Could not find static directory in any of the expected locations");
+    }
 
     await writeFile(outputPath, content, "utf-8")
 
