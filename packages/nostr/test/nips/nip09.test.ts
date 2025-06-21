@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "@effect/vitest"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import type { PublicKey, Signature } from "../../src/core/Schema.js"
 import * as Nip09 from "../../src/nips/nip09.js"
 
@@ -132,7 +132,7 @@ describe("NIP-09", () => {
       }
 
       const result = Effect.runSyncExit(Nip09.validateDeletionEventStructure(validEvent))
-      expect(Effect.isSuccess(result)).toBe(true)
+      expect(Exit.isSuccess(result)).toBe(true)
     })
 
     it("should reject deletion event with wrong kind", () => {
@@ -147,7 +147,7 @@ describe("NIP-09", () => {
       }
 
       const result = Effect.runSyncExit(Nip09.validateDeletionEventStructure(invalidEvent))
-      expect(Effect.isFailure(result)).toBe(true)
+      expect(Exit.isFailure(result)).toBe(true)
     })
 
     it("should reject deletion event without event references", () => {
@@ -162,7 +162,7 @@ describe("NIP-09", () => {
       }
 
       const result = Effect.runSyncExit(Nip09.validateDeletionEventStructure(invalidEvent))
-      expect(Effect.isFailure(result)).toBe(true)
+      expect(Exit.isFailure(result)).toBe(true)
     })
   })
 })
