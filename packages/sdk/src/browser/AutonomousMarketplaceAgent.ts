@@ -3,8 +3,9 @@
  * Extends chat capabilities with job discovery, bidding, and service delivery
  */
 
-import { Context, Data, Duration, Effect, Fiber, Layer, Schema, Stream } from "effect"
+import { Context, Data, Duration, Effect, Fiber, Layer, Ref, Schema, Stream } from "effect"
 import { AgentPersonality } from "./AutonomousChatAgent.js"
+import { EconomicSurvivalService, type OperationalCosts, type FinancialHealthScore, type SurvivalAction } from "./EconomicSurvivalService.js"
 import { SparkService } from "./SparkService.js"
 
 import * as AI from "@openagentsinc/ai"
@@ -62,6 +63,12 @@ export interface AgentEconomicState {
   totalEarnings: number
   averageRating: number
   wallet?: any // Lightning wallet instance
+  // Survival tracking
+  isHibernating: boolean
+  lastHealthCheck?: FinancialHealthScore | undefined
+  currentSurvivalAction?: SurvivalAction | undefined
+  totalCostsTracked: number // Total operational costs in sats
+  incomeSatsPerHour: number // Recent income rate
 }
 
 // Errors
@@ -98,6 +105,14 @@ export class AutonomousMarketplaceAgent extends Context.Tag("sdk/AutonomousMarke
       personality: MarketplacePersonality,
       privateKey: string
     ) => Effect.Effect<NostrLib.Schema.NostrEvent, MarketplaceError>
+
+    readonly checkEconomicHealth: (
+      agentId: string
+    ) => Effect.Effect<FinancialHealthScore, MarketplaceError>
+
+    readonly getAgentState: (
+      agentId: string
+    ) => Effect.Effect<AgentEconomicState | undefined, never>
   }
 >() {}
 
@@ -254,9 +269,18 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
     const languageModel = yield* AI.AiLanguageModel.AiLanguageModel
     const nip90Service = yield* NostrLib.Nip90Service.Nip90Service
     const sparkService = yield* SparkService
+    const survivalService = yield* EconomicSurvivalService
+
+    // Operational costs configuration (can be adjusted based on actual costs)
+    const operationalCosts: OperationalCosts = {
+      aiInferenceCostPerToken: 0.01, // 0.01 sats per token
+      relayConnectionFeePerHour: 10, // 10 sats per hour
+      transactionFeeAverage: 5, // 5 sats per transaction
+      baseOperationalCostPerHour: 20 // 20 sats per hour idle cost
+    }
 
     // Active marketplace loops
-    const activeMarketplaceLoops = new Map<string, { stop: () => void }>()
+    const activeMarketplaceLoops = new Map<string, { stop: () => void; isHibernating: Ref.Ref<boolean> }>()
 
     // Agent economic states
     const agentStates = new Map<string, AgentEconomicState>()
@@ -310,14 +334,31 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
       economicState: AgentEconomicState
     ): Effect.Effect<JobEvaluation, MarketplaceError> =>
       Effect.gen(function*() {
-        // Check capacity
-        if (economicState.activeJobs.size >= personality.workloadCapacity) {
+        // Check if agent is hibernating
+        if (economicState.isHibernating) {
           return {
             shouldBid: false,
             bidAmount: 0,
-            reasoning: "At full capacity",
+            reasoning: "Agent is hibernating to preserve funds",
             confidence: 1.0,
             estimatedCompletionTime: 0
+          }
+        }
+
+        // Check capacity
+        if (economicState.activeJobs.size >= personality.workloadCapacity) {
+          // In emergency mode, might still accept if highly profitable
+          if (economicState.currentSurvivalAction?.type === "seek_urgent_work" &&
+              job.bidAmount > personality.minimumProfit * 3) {
+            // Override capacity limit for high-value jobs in emergency
+          } else {
+            return {
+              shouldBid: false,
+              bidAmount: 0,
+              reasoning: "At full capacity",
+              confidence: 1.0,
+              estimatedCompletionTime: 0
+            }
           }
         }
 
@@ -327,7 +368,9 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
           jobType.includes(spec.replace(/-/g, " "))
         )
 
-        if (!isSpecialized && personality.riskTolerance === "low") {
+        // In emergency mode, accept any job that meets minimum profit
+        if (!isSpecialized && personality.riskTolerance === "low" &&
+            economicState.currentSurvivalAction?.type !== "seek_urgent_work") {
           return {
             shouldBid: false,
             bidAmount: 0,
@@ -337,8 +380,46 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
           }
         }
 
-        // Use AI for detailed evaluation
-        return yield* evaluateJobWithAI(job, personality, economicState, languageModel)
+        // Get base evaluation from AI
+        const baseEvaluation = yield* evaluateJobWithAI(job, personality, economicState, languageModel)
+
+        // Adjust bid based on survival action
+        if (economicState.currentSurvivalAction && baseEvaluation.shouldBid) {
+          const basePricing = {
+            baseMultiplier: 1.0,
+            minimumProfit: personality.minimumProfit,
+            urgencyDiscount: 0.0,
+            qualityPremium: 0.0
+          }
+
+          // Get optimized pricing based on financial pressure
+          const optimizedPricing = yield* survivalService.optimizePricing(
+            economicState.lastHealthCheck!,
+            basePricing,
+            personality
+          ).pipe(
+            Effect.mapError((error) =>
+              new MarketplaceError({
+                reason: "job_evaluation_failed",
+                message: `Failed to optimize pricing: ${error.message}`
+              })
+            )
+          )
+
+          // Adjust bid amount based on optimized pricing
+          const adjustedBidAmount = Math.max(
+            optimizedPricing.minimumProfit,
+            Math.floor(baseEvaluation.bidAmount * optimizedPricing.baseMultiplier * (1 - optimizedPricing.urgencyDiscount))
+          )
+
+          return {
+            ...baseEvaluation,
+            bidAmount: adjustedBidAmount,
+            reasoning: `${baseEvaluation.reasoning} [Adjusted for ${economicState.currentSurvivalAction.type}]`
+          }
+        }
+
+        return baseEvaluation
       })
 
     const deliverService = (
@@ -347,7 +428,14 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
     ): Effect.Effect<ServiceDelivery, MarketplaceError> =>
       Effect.gen(function*() {
         // Deliver service using AI
-        return yield* deliverServiceWithAI(job, personality, languageModel)
+        const delivery = yield* deliverServiceWithAI(job, personality, languageModel)
+        
+        // Track AI inference cost
+        if (delivery.tokensUsed) {
+          yield* survivalService.trackOperationCost("ai_inference", delivery.tokensUsed)
+        }
+        
+        return delivery
       })
 
     const startMarketplaceLoop = (
@@ -388,12 +476,115 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
           completedJobs: 0,
           totalEarnings: 0,
           averageRating: 4.5,
-          wallet
+          wallet,
+          // Survival tracking
+          isHibernating: false,
+          lastHealthCheck: undefined,
+          currentSurvivalAction: undefined,
+          totalCostsTracked: 0,
+          incomeSatsPerHour: 0
         }
         agentStates.set(agentKeys.publicKey, economicState)
 
+        // Create hibernation ref for control
+        const hibernationRef = yield* Ref.make(false)
+
         // Publish service offering
         yield* publishServiceOffering(personality, agentKeys.privateKey)
+
+        // Start economic health monitoring loop
+        const healthMonitoringLoop = Effect.gen(function*() {
+          while (true) {
+            // Check health every 5 minutes
+            yield* Effect.sleep(Duration.minutes(5))
+
+            // Get current metrics
+            const metrics = yield* survivalService.getMetrics()
+
+            // Calculate metabolic cost
+            const metabolicCost = yield* survivalService.calculateMetabolicCost(metrics, operationalCosts).pipe(
+              Effect.mapError((error) =>
+                new MarketplaceError({
+                  reason: "job_evaluation_failed",
+                  message: `Failed to calculate metabolic cost: ${error.message}`
+                })
+              )
+            )
+
+            // Calculate income rate from recent earnings
+            const hoursSinceStart = (Date.now() - metrics.lastActivityTimestamp) / (1000 * 60 * 60)
+            economicState.incomeSatsPerHour = hoursSinceStart > 0 ? economicState.totalEarnings / hoursSinceStart : 0
+
+            // Assess financial health
+            const health = yield* survivalService.assessFinancialHealth(
+              economicState.balance,
+              metabolicCost,
+              economicState.incomeSatsPerHour
+            ).pipe(
+              Effect.mapError((error) =>
+                new MarketplaceError({
+                  reason: "job_evaluation_failed",
+                  message: `Failed to assess financial health: ${error.message}`
+                })
+              )
+            )
+
+            economicState.lastHealthCheck = health
+
+            // Decide survival action
+            const survivalAction = yield* survivalService.decideSurvivalAction(health, personality).pipe(
+              Effect.mapError((error) =>
+                new MarketplaceError({
+                  reason: "job_evaluation_failed",
+                  message: `Failed to decide survival action: ${error.message}`
+                })
+              )
+            )
+
+            economicState.currentSurvivalAction = survivalAction
+
+            console.log(`${personality.name} health check:`, {
+              balance: health.balanceSats,
+              burnRate: health.burnRateSatsPerHour,
+              runway: `${Math.floor(health.runwayHours)}h`,
+              status: health.healthStatus,
+              action: survivalAction.type
+            })
+
+            // Execute survival action
+            switch (survivalAction.type) {
+              case "hibernate":
+                if (!economicState.isHibernating) {
+                  yield* Ref.set(hibernationRef, true)
+                  economicState.isHibernating = true
+                  console.log(`${personality.name} entering hibernation mode: ${survivalAction.reason}`)
+                }
+                break
+
+              case "continue_normal":
+              case "reduce_activity":
+              case "seek_urgent_work":
+                if (economicState.isHibernating) {
+                  // Resume if balance has improved significantly
+                  const resumptionThreshold = personality.minimumProfit * 20 // 20x minimum profit as threshold
+                  if (economicState.balance >= resumptionThreshold) {
+                    yield* Ref.set(hibernationRef, false)
+                    economicState.isHibernating = false
+                    console.log(`${personality.name} resuming from hibernation`)
+                  }
+                }
+                break
+            }
+
+            // Track relay connection cost
+            yield* survivalService.trackOperationCost("relay_connection", 5 / 60) // 5 minutes worth
+          }
+        }).pipe(
+          Effect.catchAll((error) => Effect.log(`Health monitoring error: ${error}`))
+        )
+
+        // Start health monitoring in background
+        yield* Effect.fork(healthMonitoringLoop)
 
         // Start REAL job discovery using WebSocket subscription
         const jobDiscoveryLoop = Effect.gen(function*() {
@@ -405,6 +596,12 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
           yield* jobStream.pipe(
             Stream.tap((job) => Effect.log(`${personality.name} discovered job: ${job.jobId}`)),
             Stream.filter((job) => job.requester !== agentKeys.publicKey), // Don't bid on own jobs
+            Stream.filterEffect(() => 
+              // Check if agent is hibernating
+              Ref.get(hibernationRef).pipe(
+                Effect.map((isHibernating) => !isHibernating)
+              )
+            ),
             Stream.mapEffect((job) =>
               Effect.gen(function*() {
                 // Evaluate job
@@ -545,7 +742,8 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
 
         // Store the loop
         activeMarketplaceLoops.set(agentKeys.publicKey, {
-          stop: () => Effect.runSync(Fiber.interrupt(fiber))
+          stop: () => Effect.runSync(Fiber.interrupt(fiber)),
+          isHibernating: hibernationRef
         })
       })
 
@@ -560,12 +758,45 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
         }
       })
 
+    const checkEconomicHealth = (
+      agentId: string
+    ): Effect.Effect<FinancialHealthScore, MarketplaceError> =>
+      Effect.gen(function*() {
+        const state = agentStates.get(agentId)
+        if (!state) {
+          return yield* Effect.fail(
+            new MarketplaceError({
+              reason: "job_evaluation_failed",
+              message: "Agent state not found"
+            })
+          )
+        }
+
+        if (!state.lastHealthCheck) {
+          return yield* Effect.fail(
+            new MarketplaceError({
+              reason: "job_evaluation_failed",
+              message: "No health check data available yet"
+            })
+          )
+        }
+
+        return state.lastHealthCheck
+      })
+
+    const getAgentState = (
+      agentId: string
+    ): Effect.Effect<AgentEconomicState | undefined, never> =>
+      Effect.sync(() => agentStates.get(agentId))
+
     return {
       startMarketplaceLoop,
       stopMarketplaceLoop,
       evaluateJob,
       deliverService,
-      publishServiceOffering
+      publishServiceOffering,
+      checkEconomicHealth,
+      getAgentState
     }
   })
 )
