@@ -29,6 +29,7 @@ export default defineConfig({
       ...alias("ai"),
       ...alias("cli"),
       ...alias("domain"),
+      ...alias("nostr"),
       ...alias("server")
     },
     // Use the projects field instead of workspace file
