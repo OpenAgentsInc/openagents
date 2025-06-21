@@ -182,7 +182,7 @@ export const Nip44ServiceLive = Layer.succeed(
           const messageBuffer = Buffer.from(message, "utf8")
           const minPaddedSize = Math.max(32, Math.ceil(messageBuffer.length / 32) * 32)
           const paddingLength = minPaddedSize - messageBuffer.length
-          const paddedBuffer = paddingLength > 0 
+          const paddedBuffer = paddingLength > 0
             ? Buffer.concat([messageBuffer, Buffer.alloc(paddingLength, 0)])
             : messageBuffer
 
