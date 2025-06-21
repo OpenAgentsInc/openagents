@@ -3,12 +3,19 @@
  * Real-time agent status and profile updates
  */
 
-import * as Nostr from "@openagentsinc/nostr"
 import { Context, Data, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 import { WebSocketService } from "./WebSocketService.js"
 
-// Use NostrEvent type from the nostr package
-type NostrEvent = Nostr.Schema.NostrEvent
+// Nostr event type (inline definition to avoid import issues)
+type NostrEvent = {
+  id: string
+  pubkey: string
+  created_at: number
+  kind: number
+  tags: ReadonlyArray<ReadonlyArray<string>>
+  content: string
+  sig: string
+}
 
 // Agent schemas
 export const AgentProfile = Schema.Struct({
