@@ -4,7 +4,7 @@
  */
 
 import { html } from "@openagentsinc/psionic"
-import { AutonomousMarketplaceAgent } from "@openagentsinc/sdk/browser"
+import * as SDK from "@openagentsinc/sdk"
 import { Effect } from "effect"
 
 export const route = "/test-survival/health-status"
@@ -15,7 +15,7 @@ export function GET(app: any) {
       "get-health-status",
       async () => {
         const program = Effect.gen(function*() {
-          const marketplaceAgent = yield* AutonomousMarketplaceAgent
+          const marketplaceAgent = yield* SDK.Browser.AutonomousMarketplaceAgent
 
           // Get all agent states
           const agentIds = [

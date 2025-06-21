@@ -4,7 +4,7 @@
  */
 
 import { html } from "@openagentsinc/psionic"
-import { AutonomousMarketplaceAgent } from "@openagentsinc/sdk/browser"
+import * as SDK from "@openagentsinc/sdk"
 import { Duration, Effect, Schedule } from "effect"
 
 export const route = "/test-survival"
@@ -52,7 +52,7 @@ export function GET(app: any) {
       "start-survival-test",
       async () => {
         const program = Effect.gen(function*() {
-          const marketplaceAgent = yield* AutonomousMarketplaceAgent
+          const marketplaceAgent = yield* SDK.Browser.AutonomousMarketplaceAgent
 
           // Create test agents with different economic conditions
           const agents = [
