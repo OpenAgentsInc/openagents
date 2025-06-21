@@ -3,16 +3,17 @@
  * Demonstrates agent health monitoring and survival behaviors
  */
 
+import { html } from "@openagentsinc/psionic"
+import type { Psionic } from "@openagentsinc/psionic"
 import { AutonomousMarketplaceAgent } from "@openagentsinc/sdk/browser"
-import { Psionic, html, defineComponent } from "@openagentsinc/psionic"
 import { Effect } from "effect"
 
 export const route = "/test-survival"
 
-// Component: Agent Health Status Display
-const AgentHealthStatus = defineComponent(
-  "agent-health-status",
-  (props: { 
+// Component: Agent Health Status Display (defined for future use)
+/*
+const AgentHealthStatus = (
+  (props: {
     agentId: string
     name: string
     status: "healthy" | "stable" | "concerning" | "critical" | "emergency"
@@ -44,15 +45,16 @@ const AgentHealthStatus = defineComponent(
     `
   }
 )
+*/
 
 export function GET(app: Psionic) {
-  return app.html(({ req, effect }) => {
-    const startSurvivalTest = effect(
+  return app.html(({ effect }) => {
+    effect(
       "start-survival-test",
       async () => {
         const program = Effect.gen(function*() {
           const marketplaceAgent = yield* AutonomousMarketplaceAgent
-          
+
           // Create test agents with different economic conditions
           const agents = [
             {
@@ -109,8 +111,8 @@ export function GET(app: Psionic) {
           }
 
           // Monitor health periodically
-          const healthData: any[] = []
-          
+          const healthData: Array<any> = []
+
           // Check health every 10 seconds for demo
           yield* Effect.repeat(
             Effect.gen(function*() {
@@ -225,17 +227,17 @@ Status = healthy (>1 week) | stable (2-7 days) | concerning (1-2 days) | critica
 }
 
 export async function POST(app: Psionic) {
-  return app.html(async ({ req, effect }) => {
+  return app.html(async ({ effect, req: _req }) => {
     const url = new URL(req.url)
     const action = url.searchParams.get("action")
-    
+
     if (action === "start-test") {
       const result = await effect("start-survival-test")
-      
+
       if (!result) {
         return html`<p>Starting test...</p>`
       }
-      
+
       // Display initial agent states
       return html`
         <div hx-get="/test-survival/health-status" hx-trigger="every 5s" hx-swap="innerHTML">
@@ -243,7 +245,7 @@ export async function POST(app: Psionic) {
         </div>
       `
     }
-    
+
     return html`<p>Action completed</p>`
   })
 }

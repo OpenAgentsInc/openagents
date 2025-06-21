@@ -165,8 +165,7 @@ export const EconomicSurvivalServiceLive = Layer.effect(
           const transactionCostPerHour = transactionsPerHour * costs.transactionFeeAverage
 
           // Total metabolic cost
-          const totalCostPerHour =
-            costs.baseOperationalCostPerHour +
+          const totalCostPerHour = costs.baseOperationalCostPerHour +
             costs.relayConnectionFeePerHour +
             aiCostPerHour +
             transactionCostPerHour
@@ -209,7 +208,9 @@ export const EconomicSurvivalServiceLive = Layer.effect(
           // Calculate profitability ratio
           const profitabilityRatio = burnRateSatsPerHour > 0
             ? incomeSatsPerHour / burnRateSatsPerHour
-            : incomeSatsPerHour > 0 ? 10.0 : 1.0
+            : incomeSatsPerHour > 0
+            ? 10.0
+            : 1.0
 
           return {
             balanceSats,
@@ -234,8 +235,10 @@ export const EconomicSurvivalServiceLive = Layer.effect(
       Effect.try({
         try: () => {
           // Risk tolerance affects decision thresholds
-          const riskMultiplier = personality.riskTolerance === "high" ? 0.5
-            : personality.riskTolerance === "low" ? 2.0
+          const riskMultiplier = personality.riskTolerance === "high" ?
+            0.5
+            : personality.riskTolerance === "low" ?
+            2.0
             : 1.0
 
           switch (health.healthStatus) {
@@ -256,12 +259,14 @@ export const EconomicSurvivalServiceLive = Layer.effect(
             case "critical":
               return {
                 type: "seek_urgent_work" as const,
-                reason: `Only ${Math.floor(health.runwayHours)}h runway remaining - entering emergency job seeking mode`,
+                reason: `Only ${
+                  Math.floor(health.runwayHours)
+                }h runway remaining - entering emergency job seeking mode`,
                 minimumProfit: Math.floor(personality.minimumProfit * 0.5), // Accept lower profits
                 aggressiveness: 0.9
               }
 
-            case "emergency":
+            case "emergency": {
               // Consider hibernation based on balance and personality
               const hibernationThreshold = 1000 * riskMultiplier
               if (health.balanceSats < hibernationThreshold) {
@@ -278,6 +283,7 @@ export const EconomicSurvivalServiceLive = Layer.effect(
                   aggressiveness: 1.0
                 }
               }
+            }
           }
         },
         catch: (error) =>
@@ -295,7 +301,7 @@ export const EconomicSurvivalServiceLive = Layer.effect(
     ): Effect.Effect<PricingStrategy, EconomicSurvivalError> =>
       Effect.try({
         try: () => {
-          let adjustedPricing = { ...basePricing }
+          const adjustedPricing = { ...basePricing }
 
           // Adjust based on financial health
           switch (health.healthStatus) {
@@ -370,8 +376,7 @@ export const EconomicSurvivalServiceLive = Layer.effect(
         metrics.lastActivityTimestamp = Date.now()
       })
 
-    const getMetrics = (): Effect.Effect<AgentEconomicMetrics, never> =>
-      Effect.succeed({ ...metrics })
+    const getMetrics = (): Effect.Effect<AgentEconomicMetrics, never> => Effect.succeed({ ...metrics })
 
     return {
       calculateMetabolicCost,

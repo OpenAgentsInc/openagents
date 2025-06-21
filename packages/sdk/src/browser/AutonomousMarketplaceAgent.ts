@@ -5,7 +5,12 @@
 
 import { Context, Data, Duration, Effect, Fiber, Layer, Ref, Schema, Stream } from "effect"
 import { AgentPersonality } from "./AutonomousChatAgent.js"
-import { EconomicSurvivalService, type OperationalCosts, type FinancialHealthScore, type SurvivalAction } from "./EconomicSurvivalService.js"
+import {
+  EconomicSurvivalService,
+  type FinancialHealthScore,
+  type OperationalCosts,
+  type SurvivalAction
+} from "./EconomicSurvivalService.js"
 import { SparkService } from "./SparkService.js"
 
 import * as AI from "@openagentsinc/ai"
@@ -348,8 +353,10 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
         // Check capacity
         if (economicState.activeJobs.size >= personality.workloadCapacity) {
           // In emergency mode, might still accept if highly profitable
-          if (economicState.currentSurvivalAction?.type === "seek_urgent_work" &&
-              job.bidAmount > personality.minimumProfit * 3) {
+          if (
+            economicState.currentSurvivalAction?.type === "seek_urgent_work" &&
+            job.bidAmount > personality.minimumProfit * 3
+          ) {
             // Override capacity limit for high-value jobs in emergency
           } else {
             return {
@@ -369,8 +376,10 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
         )
 
         // In emergency mode, accept any job that meets minimum profit
-        if (!isSpecialized && personality.riskTolerance === "low" &&
-            economicState.currentSurvivalAction?.type !== "seek_urgent_work") {
+        if (
+          !isSpecialized && personality.riskTolerance === "low" &&
+          economicState.currentSurvivalAction?.type !== "seek_urgent_work"
+        ) {
           return {
             shouldBid: false,
             bidAmount: 0,
@@ -409,7 +418,9 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
           // Adjust bid amount based on optimized pricing
           const adjustedBidAmount = Math.max(
             optimizedPricing.minimumProfit,
-            Math.floor(baseEvaluation.bidAmount * optimizedPricing.baseMultiplier * (1 - optimizedPricing.urgencyDiscount))
+            Math.floor(
+              baseEvaluation.bidAmount * optimizedPricing.baseMultiplier * (1 - optimizedPricing.urgencyDiscount)
+            )
           )
 
           return {
@@ -429,12 +440,12 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
       Effect.gen(function*() {
         // Deliver service using AI
         const delivery = yield* deliverServiceWithAI(job, personality, languageModel)
-        
+
         // Track AI inference cost
         if (delivery.tokensUsed) {
           yield* survivalService.trackOperationCost("ai_inference", delivery.tokensUsed)
         }
-        
+
         return delivery
       })
 
@@ -596,7 +607,7 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
           yield* jobStream.pipe(
             Stream.tap((job) => Effect.log(`${personality.name} discovered job: ${job.jobId}`)),
             Stream.filter((job) => job.requester !== agentKeys.publicKey), // Don't bid on own jobs
-            Stream.filterEffect(() => 
+            Stream.filterEffect(() =>
               // Check if agent is hibernating
               Ref.get(hibernationRef).pipe(
                 Effect.map((isHibernating) => !isHibernating)
@@ -786,8 +797,7 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
 
     const getAgentState = (
       agentId: string
-    ): Effect.Effect<AgentEconomicState | undefined, never> =>
-      Effect.sync(() => agentStates.get(agentId))
+    ): Effect.Effect<AgentEconomicState | undefined, never> => Effect.sync(() => agentStates.get(agentId))
 
     return {
       startMarketplaceLoop,
