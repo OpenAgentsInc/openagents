@@ -1,6 +1,6 @@
 /**
  * GFN Formula Calculator
- * Implements the Global Freedom Network value calculation
+ * Implements the Group-Forming Network value calculation
  */
 
 export interface GFNParameters {
@@ -81,25 +81,25 @@ export const ANTHROPIC_PARAMS: GFNParameters = {
 }
 
 export const OPENAGENTS_CURRENT: GFNParameters = {
-  n: 100,
-  C: 0.6,
+  n: 10,
+  C: 0.1,
   alpha1: 0.05,
   alpha2: 0.25,
   alpha3: 0.70,
-  k1: 0.005,
-  k2: 0.002,
-  k3: 0.0005,
-  Q: 3.0,
-  M: 4.0,
-  D: 0.9
+  k1: 0.001,
+  k2: 0.0005,
+  k3: 0.00001,
+  Q: 0.5,
+  M: 1.0,
+  D: 0.1
 }
 
 export const OPENAGENTS_PROJECTIONS = {
   current: { ...OPENAGENTS_CURRENT },
-  sixMonths: { ...OPENAGENTS_CURRENT, n: 10_000, C: 0.7 },
-  oneYear: { ...OPENAGENTS_CURRENT, n: 500_000, C: 0.8 },
-  twoYears: { ...OPENAGENTS_CURRENT, n: 10_000_000, C: 0.85 },
-  fiveYears: { ...OPENAGENTS_CURRENT, n: 50_000_000, C: 0.9 }
+  sixMonths: { ...OPENAGENTS_CURRENT, n: 1_000, C: 0.3, Q: 1.0, M: 1.5, D: 0.3 },
+  oneYear: { ...OPENAGENTS_CURRENT, n: 10_000, C: 0.5, Q: 1.5, M: 2.0, D: 0.5 },
+  twoYears: { ...OPENAGENTS_CURRENT, n: 100_000, C: 0.7, Q: 2.0, M: 3.0, D: 0.7, k3: 0.0001 },
+  fiveYears: { ...OPENAGENTS_CURRENT, n: 1_000_000, C: 0.85, Q: 3.0, M: 4.0, D: 0.9, k1: 0.005, k2: 0.002, k3: 0.0005 }
 }
 
 /**
