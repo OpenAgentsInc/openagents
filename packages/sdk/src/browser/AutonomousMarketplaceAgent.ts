@@ -3,8 +3,9 @@
  * Extends chat capabilities with job discovery, bidding, and service delivery
  */
 
-import { Context, Data, Effect, Fiber, Layer, Option, Schema, Stream } from "effect"
+import { Context, Data, Duration, Effect, Fiber, Layer, Schema, Stream } from "effect"
 import { AgentPersonality } from "./AutonomousChatAgent.js"
+import { SparkService } from "./SparkService.js"
 
 import * as AI from "@openagentsinc/ai"
 import * as NostrLib from "@openagentsinc/nostr"
@@ -56,9 +57,11 @@ export type ServiceDelivery = Schema.Schema.Type<typeof ServiceDelivery>
 export interface AgentEconomicState {
   balance: number // sats
   activeJobs: Map<string, NostrLib.Nip90Service.JobRequest>
+  activeInvoices: Map<string, { invoiceId: string; invoice: string; amountSats: number }>
   completedJobs: number
   totalEarnings: number
   averageRating: number
+  wallet?: any // Lightning wallet instance
 }
 
 // Errors
@@ -74,8 +77,9 @@ export class AutonomousMarketplaceAgent extends Context.Tag("sdk/AutonomousMarke
   {
     readonly startMarketplaceLoop: (
       personality: MarketplacePersonality,
-      agentKeys: { privateKey: string; publicKey: string }
-    ) => Effect.Effect<void, MarketplaceError, NostrLib.Nip90Service.Nip90Service>
+      agentKeys: { privateKey: string; publicKey: string },
+      sparkMnemonic?: string
+    ) => Effect.Effect<void, MarketplaceError, NostrLib.Nip90Service.Nip90Service | SparkService>
 
     readonly stopMarketplaceLoop: (agentId: string) => Effect.Effect<void, never>
 
@@ -249,6 +253,7 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
   Effect.gen(function*() {
     const languageModel = yield* AI.AiLanguageModel.AiLanguageModel
     const nip90Service = yield* NostrLib.Nip90Service.Nip90Service
+    const sparkService = yield* SparkService
 
     // Active marketplace loops
     const activeMarketplaceLoops = new Map<string, { stop: () => void }>()
@@ -347,18 +352,43 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
 
     const startMarketplaceLoop = (
       personality: MarketplacePersonality,
-      agentKeys: { privateKey: string; publicKey: string }
-    ): Effect.Effect<void, MarketplaceError, NostrLib.Nip90Service.Nip90Service> =>
+      agentKeys: { privateKey: string; publicKey: string },
+      sparkMnemonic?: string
+    ): Effect.Effect<void, MarketplaceError, NostrLib.Nip90Service.Nip90Service | SparkService> =>
       Effect.gen(function*() {
         console.log(`Starting marketplace loop for ${personality.name}`)
 
+        // Create Spark wallet for Lightning payments
+        const { wallet } = yield* sparkService.createWallet(sparkMnemonic).pipe(
+          Effect.mapError((error) =>
+            new MarketplaceError({
+              reason: "payment_failed",
+              message: `Failed to create Lightning wallet: ${error.message}`
+            })
+          )
+        )
+
+        console.log(`Created Lightning wallet for ${personality.name}`)
+
+        // Get initial wallet info
+        const walletInfo = yield* sparkService.getWalletInfo(wallet).pipe(
+          Effect.mapError((error) =>
+            new MarketplaceError({
+              reason: "payment_failed",
+              message: `Failed to get wallet info: ${error.message}`
+            })
+          )
+        )
+
         // Initialize economic state
         const economicState: AgentEconomicState = {
-          balance: 1000, // Starting balance
+          balance: walletInfo.balanceSats,
           activeJobs: new Map(),
+          activeInvoices: new Map(),
           completedJobs: 0,
           totalEarnings: 0,
-          averageRating: 4.5
+          averageRating: 4.5,
+          wallet
         }
         agentStates.set(agentKeys.publicKey, economicState)
 
@@ -382,7 +412,20 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
                 console.log(`${personality.name} evaluation:`, evaluation)
 
                 if (evaluation.shouldBid) {
-                  // Submit bid (job result with payment-required status)
+                  // Create Lightning invoice for payment
+                  const invoice = yield* sparkService.createInvoice(wallet, {
+                    amountSats: evaluation.bidAmount,
+                    memo: `Payment for job ${job.jobId} - ${personality.name}`
+                  }).pipe(
+                    Effect.mapError((error) =>
+                      new MarketplaceError({
+                        reason: "payment_failed",
+                        message: `Failed to create invoice: ${error.message}`
+                      })
+                    )
+                  )
+
+                  // Submit bid with Lightning invoice
                   yield* nip90Service.submitJobResult({
                     jobId: job.jobId,
                     requestEventId: job.jobId,
@@ -391,59 +434,99 @@ export const AutonomousMarketplaceAgentLive = Layer.effect(
                       status: "payment-required",
                       bidAmount: evaluation.bidAmount,
                       estimatedTime: evaluation.estimatedCompletionTime,
-                      provider: personality.name
+                      provider: personality.name,
+                      invoice: invoice.invoice // Include Lightning invoice
                     }),
                     status: "payment-required" as NostrLib.Nip90Service.JobStatus,
                     privateKey: agentKeys.privateKey as NostrLib.Schema.PrivateKey
                   })
 
-                  console.log(`${personality.name} submitted bid for ${evaluation.bidAmount} sats`)
+                  console.log(
+                    `${personality.name} submitted bid for ${evaluation.bidAmount} sats with invoice: ${invoice.id}`
+                  )
 
-                  // Add to active jobs
+                  // Track invoice and job
                   economicState.activeJobs.set(job.jobId, job)
+                  economicState.activeInvoices.set(job.jobId, {
+                    invoiceId: invoice.id,
+                    invoice: invoice.invoice,
+                    amountSats: evaluation.bidAmount
+                  })
 
                   // Start job execution in background
                   yield* Effect.fork(
                     Effect.gen(function*() {
-                      // Monitor for payment confirmation
-                      const monitor = nip90Service.monitorJob(job.jobId)
+                      // Monitor Lightning invoice payment
+                      const invoiceInfo = economicState.activeInvoices.get(job.jobId)
+                      if (!invoiceInfo) return
 
-                      const paid = yield* monitor.pipe(
-                        Stream.takeUntil((m) => m.status !== "payment-required"),
-                        Stream.runLast
-                      )
+                      // Poll invoice status
+                      const checkPayment = Effect.gen(function*() {
+                        const status = yield* sparkService.getInvoiceStatus(wallet, invoiceInfo.invoiceId)
+                        return status
+                      })
 
-                      if (paid && Option.isSome(paid) && paid.value.status === "processing") {
-                        // Deliver service
-                        const delivery = yield* deliverService(job, personality)
+                      // Wait for payment (check every 5 seconds for up to 5 minutes)
+                      let attempts = 0
+                      const maxAttempts = 60 // 5 minutes
 
-                        // Submit result
-                        const params: NostrLib.Nip90Service.SubmitJobResultParams = {
-                          jobId: job.jobId,
-                          requestEventId: job.jobId,
-                          resultKind: job.requestKind + 1000,
-                          result: delivery.result,
-                          status: delivery.status,
-                          computeTime: delivery.computeTime,
-                          privateKey: agentKeys.privateKey as NostrLib.Schema.PrivateKey
+                      while (attempts < maxAttempts) {
+                        const status = yield* checkPayment
+
+                        if (status === "paid") {
+                          console.log(`${personality.name} received payment for job ${job.jobId}!`)
+
+                          // Deliver service
+                          const delivery = yield* deliverService(job, personality)
+
+                          // Submit result
+                          const params: NostrLib.Nip90Service.SubmitJobResultParams = {
+                            jobId: job.jobId,
+                            requestEventId: job.jobId,
+                            resultKind: job.requestKind + 1000,
+                            result: delivery.result,
+                            status: delivery.status,
+                            computeTime: delivery.computeTime,
+                            privateKey: agentKeys.privateKey as NostrLib.Schema.PrivateKey
+                          }
+
+                          if (delivery.tokensUsed !== undefined) {
+                            params.tokensUsed = delivery.tokensUsed
+                          }
+                          if (delivery.confidence !== undefined) {
+                            params.confidence = delivery.confidence
+                          }
+
+                          yield* nip90Service.submitJobResult(params)
+
+                          // Update economic state
+                          economicState.activeJobs.delete(job.jobId)
+                          economicState.activeInvoices.delete(job.jobId)
+                          economicState.completedJobs++
+                          economicState.totalEarnings += invoiceInfo.amountSats
+                          economicState.balance += invoiceInfo.amountSats
+
+                          console.log(
+                            `${personality.name} completed job ${job.jobId} for ${invoiceInfo.amountSats} sats`
+                          )
+                          break // Exit payment monitoring loop
+                        } else if (status === "expired") {
+                          console.log(`Invoice expired for job ${job.jobId}`)
+                          economicState.activeJobs.delete(job.jobId)
+                          economicState.activeInvoices.delete(job.jobId)
+                          break
                         }
 
-                        if (delivery.tokensUsed !== undefined) {
-                          params.tokensUsed = delivery.tokensUsed
-                        }
-                        if (delivery.confidence !== undefined) {
-                          params.confidence = delivery.confidence
-                        }
+                        // Wait 5 seconds before next check
+                        yield* Effect.sleep(Duration.seconds(5))
+                        attempts++
+                      }
 
-                        yield* nip90Service.submitJobResult(params)
-
-                        // Update economic state
+                      // Timeout - invoice not paid
+                      if (attempts >= maxAttempts) {
+                        console.log(`Payment timeout for job ${job.jobId}`)
                         economicState.activeJobs.delete(job.jobId)
-                        economicState.completedJobs++
-                        economicState.totalEarnings += evaluation.bidAmount
-                        economicState.balance += evaluation.bidAmount
-
-                        console.log(`${personality.name} completed job ${job.jobId} for ${evaluation.bidAmount} sats`)
+                        economicState.activeInvoices.delete(job.jobId)
                       }
                     }).pipe(
                       Effect.catchAll((error) => Effect.log(`Job execution error: ${error}`))
