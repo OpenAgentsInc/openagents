@@ -23,7 +23,6 @@ export function agentChat({ agentId: _agentId, channelId: initialChannelId }: Ag
     <script type="module">
       // Initialize Effect runtime when component mounts
       import { Effect, Stream, Ref } from "https://esm.sh/effect@3.10.3"
-      import { Browser } from "@openagentsinc/sdk"
       
       const container = document.getElementById('agent-chat-container')
       const initialChannelId = ${JSON.stringify(initialChannelId || null)}
