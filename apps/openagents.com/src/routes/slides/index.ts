@@ -80,12 +80,26 @@ export default function slides() {
       
       .slide-4 {
         background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
       }
       
       .slide-4 img {
-        max-width: 60%;
-        max-height: 60%;
+        max-width: 40%;
+        max-height: 40%;
         object-fit: contain;
+      }
+      
+      .slide-4 .tagline {
+        color: #fff;
+        font-size: clamp(1rem, 3vw, 1.5rem);
+        text-align: center;
+        margin-top: 2rem;
+        padding: 0 2rem;
+        max-width: 80%;
+        line-height: 1.6;
       }
       
       .slide-5 {
@@ -93,6 +107,16 @@ export default function slides() {
       }
       
       .slide-5 .slide-content {
+        font-size: clamp(1.2rem, 3.5vw, 2rem);
+        max-width: 80%;
+        margin: 0 auto;
+      }
+      
+      .slide-6 {
+        color: #fff;
+      }
+      
+      .slide-6 .slide-content {
         font-size: clamp(2rem, 6vw, 4rem);
       }
       
@@ -156,8 +180,12 @@ export default function slides() {
         
         .slide-1 .slide-content,
         .slide-3 .slide-content,
-        .slide-5 .slide-content {
+        .slide-6 .slide-content {
           font-size: clamp(1.5rem, 5vw, 3rem);
+        }
+        
+        .slide-5 .slide-content {
+          font-size: clamp(1rem, 3vw, 1.5rem);
         }
       }
     `,
@@ -181,9 +209,24 @@ export default function slides() {
         
         <div class="slide slide-4" data-slide="4">
           <img src="/sdk.png" alt="SDK">
+          <div class="tagline">
+            One SDK for Bitcoin, Lightning, Ecash, Ark, Nostr Wallet Connect,<br>
+            Data Vending Machines, Model Context Protocol, A2A, and more.
+          </div>
         </div>
         
         <div class="slide slide-5" data-slide="5">
+          <div class="slide-content">
+            <h2 style="margin-bottom: 2rem;">Psionic Framework</h2>
+            <ul style="text-align: left; list-style: none; padding: 0;">
+              <li style="margin-bottom: 1rem;">• Sync-first hypermedia framework on Bun & Elysia</li>
+              <li style="margin-bottom: 1rem;">• Built-in component explorer for rapid UI development</li>
+              <li style="margin-bottom: 1rem;">• Effect.js integration for functional composition</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="slide slide-6" data-slide="6">
           <div class="slide-content">
             Join Us<span class="cursor"></span>
           </div>
@@ -195,12 +238,13 @@ export default function slides() {
           <div class="dot" data-goto="3"></div>
           <div class="dot" data-goto="4"></div>
           <div class="dot" data-goto="5"></div>
+          <div class="dot" data-goto="6"></div>
         </div>
       </div>
       
       <script>
         let currentSlide = 1;
-        const totalSlides = 5;
+        const totalSlides = 6;
         
         function showSlide(n) {
           // Remove active class from all slides and dots
@@ -249,7 +293,7 @@ export default function slides() {
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             prevSlide();
-          } else if (e.key >= '1' && e.key <= '5') {
+          } else if (e.key >= '1' && e.key <= '6') {
             goToSlide(e.key);
           }
         });
