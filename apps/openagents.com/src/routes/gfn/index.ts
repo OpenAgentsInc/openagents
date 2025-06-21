@@ -1,44 +1,49 @@
-import { document, html } from '@openagentsinc/psionic';
-import { sharedHeader } from '../../components/shared-header.js';
-import { baseStyles } from '../../styles.js';
+import { document, html } from "@openagentsinc/psionic"
+import { sharedHeader } from "../../components/shared-header.js"
+import { baseStyles } from "../../styles.js"
+import type { GFNParameters } from "./gfn-calculator.js"
 import {
-  GFNParameters,
   calculateGFN,
-  formatValue,
-  formatNumber,
-  getInsights,
   DEFAULT_PARAMS,
+  formatNumber,
+  formatValue,
+  getInsights,
+  OPENAGENTS_PROJECTIONS,
   OPENAI_PARAMS,
-  ANTHROPIC_PARAMS,
-  OPENAGENTS_PROJECTIONS
-} from './gfn-calculator.js';
+  ANTHROPIC_PARAMS
+} from "./gfn-calculator.js"
 import {
+  createDominantEffectIndicator,
   createNetworkEffectChart,
-  createValueBreakdown,
   createProjectionChart,
-  createDominantEffectIndicator
-} from './gfn-visualizations.js';
+  createValueBreakdown
+} from "./gfn-visualizations.js"
 
 export default function gfn() {
   // Use default parameters initially
-  const params: GFNParameters = { ...DEFAULT_PARAMS };
-  
+  const params: GFNParameters = { ...DEFAULT_PARAMS }
+
   // Calculate results
-  const results = calculateGFN(params);
-  const insights = getInsights(params, results);
-  
+  const results = calculateGFN(params)
+  const insights = getInsights(params, results)
+
   // Calculate projections for OpenAgents
   const projections = Object.entries(OPENAGENTS_PROJECTIONS).map(([key, proj]) => ({
-    label: key === 'current' ? 'Now' : 
-           key === 'sixMonths' ? '6mo' :
-           key === 'oneYear' ? '1yr' :
-           key === 'twoYears' ? '2yr' : '5yr',
+    label: key === "current" ?
+      "Now" :
+      key === "sixMonths" ?
+      "6mo" :
+      key === "oneYear" ?
+      "1yr" :
+      key === "twoYears"
+      ? "2yr"
+      : "5yr",
     n: proj.n,
     value: calculateGFN(proj).totalValue
-  }));
-  
+  }))
+
   return document({
-    title: 'GFN Interactive Formula - OpenAgents',
+    title: "GFN Interactive Formula - OpenAgents",
     styles: baseStyles + `
       .gfn-container {
         max-width: 1400px;
@@ -201,7 +206,7 @@ export default function gfn() {
     `,
     body: html`
       <div class="fixed-layout">
-        ${sharedHeader({ current: 'gfn' })}
+        ${sharedHeader({ current: "gfn" })}
         
         <div class="gfn-container">
           <div class="gfn-header">
@@ -359,9 +364,11 @@ export default function gfn() {
               
               <div class="insights-panel">
                 <h3 style="margin-bottom: 1rem;">Key Insights</h3>
-                ${insights.map(insight => `
+                ${
+      insights.map((insight) => `
                   <div class="insight-item">${insight}</div>
-                `).join('')}
+                `).join("")
+    }
               </div>
               
               <div class="visualization-grid">
@@ -528,5 +535,5 @@ export default function gfn() {
         });
       </script>
     `
-  });
+  })
 }
