@@ -8,7 +8,7 @@ export default function slides() {
         margin: 0;
         padding: 0;
         background: #000;
-        color: #0f0;
+        color: #fff;
         font-family: "Berkeley Mono", "Cascadia Code", "Source Code Pro", monospace;
         overflow: hidden;
         height: 100vh;
@@ -53,7 +53,7 @@ export default function slides() {
       }
       
       .slide-1 {
-        color: #0f0;
+        color: #fff;
       }
       
       .slide-2 {
@@ -81,14 +81,14 @@ export default function slides() {
       .dot {
         width: 12px;
         height: 12px;
-        border: 2px solid #0f0;
+        border: 2px solid #fff;
         background: transparent;
         cursor: pointer;
         transition: background 0.3s;
       }
       
       .dot.active {
-        background: #0f0;
+        background: #fff;
       }
       
       .controls {
@@ -96,7 +96,7 @@ export default function slides() {
         bottom: 1rem;
         right: 1rem;
         font-size: 0.8rem;
-        color: #0f0;
+        color: #fff;
         opacity: 0.5;
       }
       
