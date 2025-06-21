@@ -35,10 +35,6 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         uses: ./.github/actions/setup
-      - name: Build dependencies first
-        run: pnpm --filter=@openagentsinc/ai run build && pnpm --filter=@openagentsinc/nostr run build
-      - name: Re-establish workspace links
-        run: pnpm install --force
       - run: pnpm check
 
   lint:
