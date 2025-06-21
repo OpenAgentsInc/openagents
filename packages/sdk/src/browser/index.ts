@@ -10,18 +10,37 @@ import { AgentServiceLive } from "./AgentService.js"
 import { AutonomousChatAgentLive } from "./AutonomousChatAgent.js"
 import { AutonomousMarketplaceAgentLive } from "./AutonomousMarketplaceAgent.js"
 import { ChannelServiceLive } from "./ChannelService.js"
+import { CoalitionFormationServiceLive } from "./CoalitionFormationService.js"
 import { EconomicSurvivalServiceLive } from "./EconomicSurvivalService.js"
+import { ProjectCoordinationServiceLive } from "./ProjectCoordinationService.js"
 import { ServiceOfferingServiceLive } from "./ServiceOfferingService.js"
 import { SparkServiceLive } from "./SparkService.js"
+import { TrustReputationServiceLive } from "./TrustReputationService.js"
 import { WebSocketServiceLive } from "./WebSocketService.js"
 
 export * from "./AgentService.js"
 export * from "./AutonomousChatAgent.js"
 export * from "./AutonomousMarketplaceAgent.js"
 export * from "./ChannelService.js"
+export {
+  // Re-export all except AgentProfile which conflicts with AgentService
+  AgentMatch,
+  Coalition,
+  CoalitionContract,
+  CoalitionFormationError,
+  CoalitionFormationService,
+  CoalitionFormationServiceLive,
+  CoalitionProposal,
+  CoalitionResult,
+  ComplexProject,
+  ProjectRequirement,
+  ViabilityScore
+} from "./CoalitionFormationService.js"
 export * from "./EconomicSurvivalService.js"
+export * from "./ProjectCoordinationService.js"
 export * from "./ServiceOfferingService.js"
 export * from "./SparkService.js"
+export * from "./TrustReputationService.js"
 export * from "./WebSocketService.js"
 
 /**
@@ -83,7 +102,11 @@ export const createBrowserServicesLayer = (cloudflareConfig?: {
         SparkServiceLive,
         EconomicSurvivalServiceLive
       ))
-    )
+    ),
+    // Multi-agent coordination services
+    CoalitionFormationServiceLive,
+    ProjectCoordinationServiceLive,
+    TrustReputationServiceLive
   )
 }
 
