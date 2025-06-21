@@ -3,8 +3,12 @@
  * Pure Effect implementation - no React
  */
 
-import { Browser } from "@openagentsinc/sdk"
-import type { Channel, ChannelMessage } from "@openagentsinc/sdk/browser"
+import { 
+  BrowserServicesLive,
+  ChannelService,
+  type Channel, 
+  type ChannelMessage 
+} from "@openagentsinc/sdk/browser"
 import { Effect, Ref, Stream } from "effect"
 import { dateUtils } from "../lib/date.js"
 import { html } from "../lib/html.js"
@@ -81,7 +85,7 @@ const renderMessages = (messages: Array<ChannelMessage>) => {
       <div class="message">
         <div class="message-header">
           <span class="message-author">${msg.pubkey.slice(0, 8)}...</span>
-          <span class="message-time">${dateUtils.formatRelativeTime(new Date(msg.created_at * 1000))}</span>
+          <span class="message-time">${dateUtils.formatRelativeTime(msg.created_at)}</span>
         </div>
         <div class="message-content">${msg.content}</div>
       </div>
@@ -146,7 +150,7 @@ const renderChat = (state: ChatState) => {
 export const createAgentChatProgram = (container: HTMLElement) =>
   Effect.gen(function*() {
     // Initialize services
-    const channelService = yield* Browser.ChannelService
+    const channelService = yield* ChannelService
     const stateRef = yield* Ref.make(createInitialState())
 
     // Helper to update UI
@@ -197,10 +201,7 @@ export const createAgentChatProgram = (container: HTMLElement) =>
             Effect.fork
           )
         }
-      }).pipe(
-        Effect.provide(Browser.BrowserServicesLive),
-        Effect.runPromise
-      )
+      })
 
     window.sendMessage = () => {
       const input = document.getElementById("message-input") as HTMLTextAreaElement
@@ -364,10 +365,11 @@ export function initAgentChat(container: HTMLElement) {
   document.head.appendChild(style)
 
   // Run the Effect program
-  createAgentChatProgram(container).pipe(
-    Effect.provide(Browser.BrowserServicesLive),
-    Effect.runPromise
-  ).catch((error) => {
+  Effect.runPromise(
+    createAgentChatProgram(container).pipe(
+      Effect.provide(BrowserServicesLive)
+    )
+  ).catch((error: any) => {
     console.error("Failed to initialize agent chat:", error)
     container.innerHTML = renderError(String(error))
   })

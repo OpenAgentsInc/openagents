@@ -12,6 +12,10 @@
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./browser": "./dist/dist/esm/browser/index.js"
+  },
   "scripts": {
     "codegen": "echo 'Skipping codegen for SDK package - manually managed exports'",
     "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && build-utils pack-v2",

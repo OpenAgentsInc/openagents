@@ -18,13 +18,9 @@ export * from "./WebSocketService.js"
  * Complete browser service layer
  * Provides all WebSocket-based services for frontend
  */
-export const BrowserServicesLive = Layer.merge(
+export const BrowserServicesLive = Layer.mergeAll(
   WebSocketServiceLive,
-  Layer.merge(
-    ChannelServiceLive,
-    Layer.merge(
-      AgentServiceLive,
-      ServiceOfferingServiceLive
-    )
-  )
+  ChannelServiceLive.pipe(Layer.provide(WebSocketServiceLive)),
+  AgentServiceLive.pipe(Layer.provide(WebSocketServiceLive)), 
+  ServiceOfferingServiceLive.pipe(Layer.provide(WebSocketServiceLive))
 )
