@@ -1,12 +1,27 @@
 import { html } from "@openagentsinc/psionic"
-import type { AgentIdentity } from "@openagentsinc/sdk"
 import { agentCard } from "./agent-card"
+
+// Local type definition to avoid SDK import
+interface AgentIdentity {
+  id: string
+  name: string
+  nostrKeys: {
+    public: string
+    private: string
+  }
+  birthTimestamp: number
+  generation: number
+  lifecycleState?: string
+  balance?: number
+  metabolicRate?: number
+  parentId?: string
+}
 
 export interface AgentListProps {
   agents: Array<AgentIdentity>
   title?: string
   emptyMessage?: string
-  onSelectAgent?: (agent: AgentIdentity) => void
+  onSelectAgent?: (agent: any) => void
 }
 
 export function agentList({
