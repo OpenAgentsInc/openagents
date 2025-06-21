@@ -61,14 +61,24 @@ export default function slides() {
       }
       
       .slide-2 {
-        color: #ff0;
+        background: #000;
       }
       
-      .slide-2 .slide-content {
-        font-size: clamp(4rem, 12vw, 10rem);
+      .slide-2 img {
+        max-width: 80%;
+        max-height: 80%;
+        object-fit: contain;
       }
       
       .slide-3 {
+        color: #ff0;
+      }
+      
+      .slide-3 .slide-content {
+        font-size: clamp(4rem, 12vw, 10rem);
+      }
+      
+      .slide-4 {
         color: #0ff;
       }
       
@@ -153,12 +163,16 @@ export default function slides() {
         </div>
         
         <div class="slide slide-2" data-slide="2">
+          <img src="/openagents.png" alt="OpenAgents">
+        </div>
+        
+        <div class="slide slide-3" data-slide="3">
           <div class="slide-content">
             n &lt; n<sup>2</sup> &lt; 2<sup>n</sup>
           </div>
         </div>
         
-        <div class="slide slide-3" data-slide="3">
+        <div class="slide slide-4" data-slide="4">
           <div class="slide-content">
             Join Us<span class="cursor"></span>
           </div>
@@ -168,6 +182,7 @@ export default function slides() {
           <div class="dot active" data-goto="1"></div>
           <div class="dot" data-goto="2"></div>
           <div class="dot" data-goto="3"></div>
+          <div class="dot" data-goto="4"></div>
         </div>
         
         <div class="controls">
@@ -177,7 +192,7 @@ export default function slides() {
       
       <script>
         let currentSlide = 1;
-        const totalSlides = 3;
+        const totalSlides = 4;
         
         function showSlide(n) {
           // Remove active class from all slides and dots
@@ -226,7 +241,7 @@ export default function slides() {
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             prevSlide();
-          } else if (e.key >= '1' && e.key <= '3') {
+          } else if (e.key >= '1' && e.key <= '4') {
             goToSlide(e.key);
           }
         });
