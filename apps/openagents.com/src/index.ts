@@ -8,6 +8,7 @@ import { blogIndex, blogPost } from './routes/blog'
 import { chat } from './routes/chat'
 import { admin } from './routes/admin'
 import { channelsRoute, channelViewRoute, channelCreateRoute } from './routes/channels'
+import gfn from './routes/gfn'
 import { ollamaApi } from './routes/api/ollama'
 import { openrouterApi } from './routes/api/openrouter'
 import { cloudflareApi } from './routes/api/cloudflare'
@@ -48,6 +49,7 @@ app.route('/admin', admin)
 app.route('/channels', channelsRoute)
 app.route('/channels/create', channelCreateRoute)
 app.route('/channels/:id', channelViewRoute)
+app.route('/gfn', gfn)
 
 // Mount API routes
 app.elysia.use(ollamaApi)
