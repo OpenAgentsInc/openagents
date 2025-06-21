@@ -1,518 +1,442 @@
 /**
- * Service Request Board Component - NIP-90 AI job requests and responses
+ * Service Request Board Component - Real-time NIP-90 AI marketplace with WebSocket
  */
 
 import { html } from "@openagentsinc/psionic"
 
 export interface ServiceBoardProps {
   agentId?: string
-  activeJobs?: Array<{
-    id: string
-    type: string
-    status: "pending" | "processing" | "completed" | "failed"
-    requester: string
-    provider: string
-    amount: number
-    description: string
-    timestamp: number
-  }>
-  availableServices?: Array<{
-    id: string
-    name: string
-    provider: string
-    description: string
-    basePrice: number
-    capabilities: Array<string>
-  }>
 }
 
-export function serviceBoard({
-  activeJobs = [],
-  agentId: _agentId,
-  availableServices = []
-}: ServiceBoardProps = {}) {
+export function serviceBoard({ agentId: _agentId }: ServiceBoardProps = {}) {
   return html`
-    <div class="service-board" box-="square">
-      <div class="board-header">
-        <h3>AI Service Marketplace</h3>
-        <div class="board-actions">
-          <button is-="button" size-="small" variant-="foreground1" onclick="requestService()">
-            Request Service
-          </button>
-          <button is-="button" size-="small" variant-="background1" onclick="refreshServices()">
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      <!-- Service Tabs -->
-      <div class="service-tabs">
-        <button class="tab-button active" onclick="switchTab('jobs')" id="jobs-tab">
-          Active Jobs
-          <span is-="badge" variant-="foreground0" size-="small" id="jobs-count">
-            ${activeJobs.length}
-          </span>
-        </button>
-        <button class="tab-button" onclick="switchTab('marketplace')" id="marketplace-tab">
-          Marketplace
-          <span is-="badge" variant-="background2" size-="small" id="services-count">
-            ${availableServices.length}
-          </span>
-        </button>
-      </div>
-
-      <!-- Active Jobs Tab -->
-      <div class="tab-content active" id="jobs-content">
-        <div class="jobs-list">
-          ${
-    activeJobs.length === 0 ?
-      html`<div class="empty-state">
-              <p>No active jobs. Request an AI service to get started.</p>
-            </div>` :
-      html`<div class="jobs-container" id="jobs-container">
-              ${
-        activeJobs.map((job) =>
-          html`
-                <div class="job-card" box-="square">
-                  <div class="job-header">
-                    <div class="job-info">
-                      <span class="job-type">${job.type}</span>
-                      <span is-="badge" variant-="${getStatusColor(job.status)}" size-="small">
-                        ${job.status}
-                      </span>
-                    </div>
-                    <div class="job-amount">
-                      <span class="amount">${job.amount} sats</span>
-                    </div>
-                  </div>
-                  
-                  <div class="job-details">
-                    <p class="job-description">${job.description}</p>
-                    <div class="job-participants">
-                      <span class="participant">From: ${job.requester}</span>
-                      <span class="participant">To: ${job.provider}</span>
-                    </div>
-                    <div class="job-timestamp">
-                      ${new Date(job.timestamp).toLocaleString()}
-                    </div>
-                  </div>
-                  
-                  <div class="job-actions">
-                    <button is-="button" size-="small" variant-="background1" 
-                            onclick="viewJobDetails('${job.id}')">
-                      Details
-                    </button>
-                    ${
-            job.status === "pending" ?
-              html`
-                      <button is-="button" size-="small" variant-="danger" 
-                              onclick="cancelJob('${job.id}')">
-                        Cancel
-                      </button>
-                    ` :
-              ""
-          }
-                  </div>
-                </div>
-              `
-        ).join("")
-      }
-            </div>`
-  }
-        </div>
-      </div>
-
-      <!-- Marketplace Tab -->
-      <div class="tab-content" id="marketplace-content">
-        <div class="marketplace-list">
-          ${
-    availableServices.length === 0 ?
-      html`<div class="empty-state">
-              <p>No services available. Agents will appear here when they offer AI services.</p>
-            </div>` :
-      html`<div class="services-container" id="services-container">
-              ${
-        availableServices.map((service) =>
-          html`
-                <div class="service-card" box-="square">
-                  <div class="service-header">
-                    <h4 class="service-name">${service.name}</h4>
-                    <div class="service-price">
-                      <span class="price">${service.basePrice} sats</span>
-                    </div>
-                  </div>
-                  
-                  <div class="service-details">
-                    <p class="service-description">${service.description}</p>
-                    <div class="service-provider">
-                      <span class="provider">Provider: ${service.provider}</span>
-                    </div>
-                    <div class="service-capabilities">
-                      ${
-            service.capabilities.map((cap) =>
-              html`
-                        <span is-="badge" variant-="background2" size-="small">${cap}</span>
-                      `
-            ).join("")
-          }
-                    </div>
-                  </div>
-                  
-                  <div class="service-actions">
-                    <button is-="button" size-="small" variant-="foreground1" 
-                            onclick="requestSpecificService('${service.id}')">
-                      Request Service
-                    </button>
-                    <button is-="button" size-="small" variant-="background1" 
-                            onclick="viewServiceDetails('${service.id}')">
-                      Details
-                    </button>
-                  </div>
-                </div>
-              `
-        ).join("")
-      }
-            </div>`
-  }
-        </div>
+    <div class="service-board" box-="square" id="service-board-container">
+      <div class="board-loading">
+        <div class="spinner"></div>
+        Initializing WebSocket connection...
       </div>
     </div>
-
-    <script>
-      // Real data from API - No more mocks!
-      let currentJobs = [];
-      let currentServices = [];
-
-      // Load real services from API
-      async function loadServices() {
-        try {
-          const response = await fetch('/api/services');
-          const data = await response.json();
-          
-          if (data.services) {
-            currentServices = data.services;
-            updateServicesList();
-            updateServicesCount();
-            console.log('Loaded real services from API:', currentServices);
-          }
-        } catch (error) {
-          console.error('Failed to load services:', error);
-          // Fallback to prevent UI breaking
-          currentServices = [
-            {
-              id: 'service-fallback',
-              name: 'Service Loading Failed',
-              provider: 'System',
-              description: 'Please check API connectivity',
-              basePrice: 0,
-              capabilities: ['Error']
-            }
-          ];
-        }
+    
+    <script type="module">
+      // Initialize WebSocket connection when component mounts
+      const container = document.getElementById('service-board-container')
+      
+      // State management
+      const state = {
+        services: new Map(),
+        jobRequests: new Map(),
+        jobResults: new Map(),
+        activeTab: 'jobs',
+        loading: true,
+        error: null,
+        ws: null
       }
-
-      // Load real jobs from API
-      async function loadJobs() {
-        try {
-          const response = await fetch('/api/jobs');
-          const data = await response.json();
-          
-          if (data.jobs) {
-            currentJobs = data.jobs;
-            updateJobsList();
-            updateJobsCount();
-            console.log('Loaded real jobs from API:', currentJobs);
-          }
-        } catch (error) {
-          console.error('Failed to load jobs:', error);
-          // Fallback to prevent UI breaking
-          currentJobs = [];
+      
+      // UI update function
+      function updateUI() {
+        if (state.loading) {
+          container.innerHTML = \`
+            <div class="board-loading">
+              <div class="spinner"></div>
+              Connecting to marketplace...
+            </div>
+          \`
+          return
         }
-      }
-
-      // Save jobs via API (not needed for now - jobs are managed by NIP-90 events)
-      function saveJobs() {
-        // Jobs are now managed through NIP-90 events and stored in the relay
-        // This function is kept for compatibility but does nothing
-        console.log('Jobs are managed through NIP-90 events - no local storage needed');
-      }
-
-      let activeTab = 'jobs';
-
-      // Tab management
-      window.switchTab = function(tabName) {
-        activeTab = tabName;
         
-        // Update tab buttons
-        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-        document.getElementById(tabName + '-tab').classList.add('active');
+        if (state.error) {
+          container.innerHTML = \`
+            <div class="board-error">
+              <p>Error: \${state.error}</p>
+              <button onclick="location.reload()">Retry</button>
+            </div>
+          \`
+          return
+        }
         
-        // Update tab content
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        document.getElementById(tabName + '-content').classList.add('active');
-      };
-
-      // Service management functions
-      window.requestService = async function() {
-        const serviceType = prompt('What type of AI service do you need?\\n\\nOptions:\\n- Code Review\\n- Text Generation\\n- Code Generation\\n- Data Analysis');
-        const description = prompt('Describe what you need:');
-        const budget = prompt('Your budget (in sats):');
+        const servicesList = Array.from(state.services.values())
+        const jobsList = Array.from(state.jobRequests.values())
         
-        if (serviceType && description && budget) {
-          try {
-            const response = await fetch('/api/services', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                serviceType,
-                description,
-                budget: parseInt(budget)
-              })
-            });
-            
-            const result = await response.json();
-            
-            if (result.success && result.job) {
-              currentJobs.unshift(result.job);
-              updateJobsList();
-              updateJobsCount();
-              
-              console.log('Real service requested via NIP-90:', result.job);
-              alert('Service request created via NIP-90! Looking for available providers...');
-            } else {
-              throw new Error(result.error || 'Failed to create service request');
-            }
-          } catch (error) {
-            console.error('Service request failed:', error);
-            alert('Failed to create service request. Please try again.');
-          }
-        }
-      };
+        container.innerHTML = \`
+          <div class="board-header">
+            <h3>AI Service Marketplace</h3>
+            <div class="board-actions">
+              <button is-="button" size-="small" variant-="foreground1" onclick="window.requestService()">
+                Request Service
+              </button>
+              <button is-="button" size-="small" variant-="background1" onclick="window.refreshData()">
+                Refresh
+              </button>
+            </div>
+          </div>
 
-      window.refreshServices = async function() {
-        console.log('Refreshing services from Nostr relays...');
-        try {
-          if (activeTab === 'jobs') {
-            await loadJobs();
-          } else {
-            await loadServices();
-          }
-        } catch (error) {
-          console.error('Failed to refresh data:', error);
-          alert('Failed to refresh data. Please check your connection.');
-        }
-      };
+          <!-- Service Tabs -->
+          <div class="service-tabs">
+            <button class="tab-button \${state.activeTab === 'jobs' ? 'active' : ''}" 
+                    onclick="window.switchTab('jobs')" id="jobs-tab">
+              Active Jobs
+              <span is-="badge" variant-="foreground0" size-="small">
+                \${jobsList.length}
+              </span>
+            </button>
+            <button class="tab-button \${state.activeTab === 'marketplace' ? 'active' : ''}" 
+                    onclick="window.switchTab('marketplace')" id="marketplace-tab">
+              Marketplace
+              <span is-="badge" variant-="background2" size-="small">
+                \${servicesList.length}
+              </span>
+            </button>
+          </div>
 
-      window.viewJobDetails = function(jobId) {
-        const job = currentJobs.find(j => j.id === jobId);
-        if (job) {
-          alert(\`Job Details:\\n\\nType: \${job.type}\\nStatus: \${job.status}\\nRequester: \${job.requester}\\nProvider: \${job.provider}\\nAmount: \${job.amount} sats\\nDescription: \${job.description}\\nCreated: \${new Date(job.timestamp).toLocaleString()}\`);
-        }
-      };
-
-      window.cancelJob = function(jobId) {
-        if (confirm('Are you sure you want to cancel this job?')) {
-          const jobIndex = currentJobs.findIndex(j => j.id === jobId);
-          if (jobIndex !== -1) {
-            currentJobs.splice(jobIndex, 1);
-            updateJobsList();
-            updateJobsCount();
-            console.log('Job cancelled:', jobId);
-          }
-        }
-      };
-
-      window.requestSpecificService = async function(serviceId) {
-        const service = currentServices.find(s => s.id === serviceId);
-        if (service) {
-          const description = prompt(\`Request \${service.name} from \${service.provider}\\n\\nBase price: \${service.basePrice} sats\\n\\nDescribe your specific requirements:\`);
-          if (description) {
-            try {
-              const response = await fetch('/api/services', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  serviceType: service.name,
-                  description,
-                  budget: service.basePrice,
-                  targetAgentPubkey: service.agent_pubkey
-                })
-              });
-              
-              const result = await response.json();
-              
-              if (result.success && result.job) {
-                currentJobs.unshift(result.job);
-                updateJobsList();
-                updateJobsCount();
-                
-                console.log('Real targeted service requested via NIP-90:', result.job);
-                alert(\`Service requested from \${service.provider} via NIP-90! They will be notified.\`);
-              } else {
-                throw new Error(result.error || 'Failed to create service request');
+          <!-- Active Jobs Tab -->
+          <div class="tab-content \${state.activeTab === 'jobs' ? 'active' : ''}" id="jobs-content">
+            <div class="jobs-list">
+              \${jobsList.length === 0 ? 
+                '<div class="empty-state"><p>No active jobs. Request an AI service to get started.</p></div>' :
+                \`<div class="jobs-container">
+                  \${jobsList.map(job => \`
+                    <div class="job-card" box-="square">
+                      <div class="job-header">
+                        <div class="job-info">
+                          <span class="job-type">\${getJobTypeName(job.requestKind)}</span>
+                          <span is-="badge" variant-="\${getJobStatusColor(job)}" size-="small">
+                            \${getJobStatus(job)}
+                          </span>
+                        </div>
+                        <div class="job-amount">
+                          <span class="amount">\${job.bidAmount} sats</span>
+                        </div>
+                      </div>
+                      
+                      <div class="job-details">
+                        <p class="job-description">\${job.input}</p>
+                        <div class="job-participants">
+                          <span class="participant">From: \${job.requester.slice(0, 8)}...</span>
+                          <span class="participant">To: \${job.provider.slice(0, 8)}...</span>
+                        </div>
+                        <div class="job-timestamp">
+                          \${new Date(job.created_at * 1000).toLocaleString()}
+                        </div>
+                      </div>
+                      
+                      <div class="job-actions">
+                        <button is-="button" size-="small" variant-="background1" 
+                                onclick="window.viewJobDetails('\${job.jobId}')">
+                          Details
+                        </button>
+                      </div>
+                    </div>
+                  \`).join('')}
+                </div>\`
               }
-            } catch (error) {
-              console.error('Targeted service request failed:', error);
-              alert('Failed to request service. Please try again.');
-            }
-          }
-        }
-      };
+            </div>
+          </div>
 
-      window.viewServiceDetails = function(serviceId) {
-        const service = currentServices.find(s => s.id === serviceId);
-        if (service) {
-          alert(\`Service Details:\\n\\nName: \${service.name}\\nProvider: \${service.provider}\\nBase Price: \${service.basePrice} sats\\nDescription: \${service.description}\\nCapabilities: \${service.capabilities.join(', ')}\`);
+          <!-- Marketplace Tab -->
+          <div class="tab-content \${state.activeTab === 'marketplace' ? 'active' : ''}" id="marketplace-content">
+            <div class="marketplace-list">
+              \${servicesList.length === 0 ? 
+                '<div class="empty-state"><p>No services available. Agents will appear here when they offer AI services.</p></div>' :
+                \`<div class="services-container">
+                  \${servicesList.map(service => \`
+                    <div class="service-card" box-="square">
+                      <div class="service-header">
+                        <h4 class="service-name">\${service.name}</h4>
+                        <div class="service-price">
+                          <span class="price">From \${getBasePrice(service)} sats</span>
+                        </div>
+                      </div>
+                      
+                      <div class="service-details">
+                        <p class="service-description">\${service.description}</p>
+                        <div class="service-provider">
+                          <span class="provider">Provider: \${service.provider.slice(0, 8)}...</span>
+                        </div>
+                        <div class="service-capabilities">
+                          \${service.capabilities.map(cap => \`
+                            <span is-="badge" variant-="background2" size-="small">\${cap.name}</span>
+                          \`).join('')}
+                        </div>
+                      </div>
+                      
+                      <div class="service-actions">
+                        <button is-="button" size-="small" variant-="foreground1" 
+                                onclick="window.requestSpecificService('\${service.serviceId}')">
+                          Request Service
+                        </button>
+                        <button is-="button" size-="small" variant-="background1" 
+                                onclick="window.viewServiceDetails('\${service.serviceId}')">
+                          Details
+                        </button>
+                      </div>
+                    </div>
+                  \`).join('')}
+                </div>\`
+              }
+            </div>
+          </div>
+        \`
+      }
+      
+      // Helper functions
+      function getJobTypeName(kind) {
+        const types = {
+          5000: 'Text Generation',
+          5001: 'Code Generation',
+          5100: 'Image Generation',
+          5200: 'Audio Generation',
+          5300: 'Video Generation'
         }
-      };
-
-      function getStatusColor(status) {
+        return types[kind] || 'Unknown Service'
+      }
+      
+      function getJobStatus(job) {
+        // Check if we have results
+        const results = state.jobResults.get(job.jobId)
+        if (results && results.length > 0) {
+          const latestResult = results[results.length - 1]
+          return latestResult.status
+        }
+        return 'pending'
+      }
+      
+      function getJobStatusColor(job) {
+        const status = getJobStatus(job)
         const colors = {
           'pending': 'background2',
-          'processing': 'foreground0', 
-          'completed': 'foreground0',
-          'failed': 'danger'
-        };
-        return colors[status] || 'background2';
-      }
-
-      function updateJobsList() {
-        const container = document.getElementById('jobs-container');
-        if (container && currentJobs.length > 0) {
-          container.innerHTML = currentJobs.map(job => \`
-            <div class="job-card" box-="square">
-              <div class="job-header">
-                <div class="job-info">
-                  <span class="job-type">\${job.type}</span>
-                  <span is-="badge" variant-="\${getStatusColor(job.status)}" size-="small">
-                    \${job.status}
-                  </span>
-                </div>
-                <div class="job-amount">
-                  <span class="amount">\${job.amount} sats</span>
-                </div>
-              </div>
-              
-              <div class="job-details">
-                <p class="job-description">\${job.description}</p>
-                <div class="job-participants">
-                  <span class="participant">From: \${job.requester}</span>
-                  <span class="participant">To: \${job.provider}</span>
-                </div>
-                <div class="job-timestamp">
-                  \${new Date(job.timestamp).toLocaleString()}
-                </div>
-              </div>
-              
-              <div class="job-actions">
-                <button is-="button" size-="small" variant-="background1" 
-                        onclick="viewJobDetails('\${job.id}')">
-                  Details
-                </button>
-                \${job.status === 'pending' ? \`
-                  <button is-="button" size-="small" variant-="danger" 
-                          onclick="cancelJob('\${job.id}')">
-                    Cancel
-                  </button>
-                \` : ''}
-              </div>
-            </div>
-          \`).join('');
+          'processing': 'foreground0',
+          'payment-required': 'danger',
+          'success': 'foreground0',
+          'error': 'danger',
+          'partial': 'foreground1'
         }
+        return colors[status] || 'background2'
       }
-
-      function updateServicesList() {
-        const container = document.getElementById('services-container');
-        if (container && currentServices.length > 0) {
-          container.innerHTML = currentServices.map(service => \`
-            <div class="service-card" box-="square">
-              <div class="service-header">
-                <h4 class="service-name">\${service.name}</h4>
-                <div class="service-price">
-                  <span class="price">\${service.basePrice} sats</span>
-                </div>
-              </div>
-              
-              <div class="service-details">
-                <p class="service-description">\${service.description}</p>
-                <div class="service-provider">
-                  <span class="provider">Provider: \${service.provider}</span>
-                </div>
-                <div class="service-capabilities">
-                  \${service.capabilities.map(cap => \`
-                    <span is-="badge" variant-="background2" size-="small">\${cap}</span>
-                  \`).join('')}
-                </div>
-              </div>
-              
-              <div class="service-actions">
-                <button is-="button" size-="small" variant-="foreground1" 
-                        onclick="requestSpecificService('\${service.id}')">
-                  Request Service
-                </button>
-                <button is-="button" size-="small" variant-="background1" 
-                        onclick="viewServiceDetails('\${service.id}')">
-                  Details
-                </button>
-              </div>
-            </div>
-          \`).join('');
-        }
-      }
-
-      function updateJobsCount() {
-        const countBadge = document.getElementById('jobs-count');
-        if (countBadge) {
-          countBadge.textContent = currentJobs.length;
-        }
-      }
-
-      function updateServicesCount() {
-        const countBadge = document.getElementById('services-count');
-        if (countBadge) {
-          countBadge.textContent = currentServices.length;
-        }
-      }
-
-      // Initialize with real data from APIs
-      document.addEventListener('DOMContentLoaded', async function() {
-        console.log('Initializing service board with real data...');
-        try {
-          // Load real services and jobs from APIs
-          await Promise.all([
-            loadServices(),
-            loadJobs()
-          ]);
-          console.log('Service board initialized with real data');
-        } catch (error) {
-          console.error('Failed to initialize service board:', error);
-          // Fallback to empty state
-          updateJobsList();
-          updateServicesList();
-          updateJobsCount();
-          updateServicesCount();
-        }
-      });
       
-      // Also initialize immediately if DOM is already loaded
-      if (document.readyState === 'loading') {
-        // DOM is still loading, event listener will handle it
-      } else {
-        // DOM is already loaded, initialize now
-        setTimeout(async () => {
-          try {
-            await Promise.all([
-              loadServices(),
-              loadJobs()
-            ]);
-            console.log('Service board initialized with real data (immediate)');
-          } catch (error) {
-            console.error('Failed to initialize service board (immediate):', error);
-          }
-        }, 0);
+      function getBasePrice(service) {
+        if (service.capabilities && service.capabilities.length > 0) {
+          const prices = service.capabilities.map(c => c.pricing.basePrice)
+          return Math.min(...prices)
+        }
+        return 0
       }
+      
+      // Window functions
+      window.switchTab = (tabName) => {
+        state.activeTab = tabName
+        updateUI()
+      }
+      
+      window.requestService = () => {
+        // Note: Real implementation needs key management
+        alert('Service requests require key management implementation')
+      }
+      
+      window.refreshData = () => {
+        console.log('Data refreshes automatically via WebSocket')
+      }
+      
+      window.viewJobDetails = (jobId) => {
+        const job = state.jobRequests.get(jobId)
+        if (job) {
+          const results = state.jobResults.get(jobId) || []
+          const status = getJobStatus(job)
+          
+          let details = \`Job Details:\\n\\nID: \${job.jobId}\\nType: \${getJobTypeName(job.requestKind)}\\nStatus: \${status}\\nRequester: \${job.requester}\\nProvider: \${job.provider}\\nBid: \${job.bidAmount} sats\\nInput: \${job.input}\\nCreated: \${new Date(job.created_at * 1000).toLocaleString()}\`
+          
+          if (results.length > 0) {
+            details += '\\n\\nResults:'
+            results.forEach((result, i) => {
+              details += \`\\n\\nResult #\${i + 1}:\\nStatus: \${result.status}\\nResult: \${result.result.slice(0, 100)}...\`
+            })
+          }
+          
+          alert(details)
+        }
+      }
+      
+      window.requestSpecificService = (serviceId) => {
+        const service = state.services.get(serviceId)
+        if (service) {
+          // Note: Real implementation needs key management
+          alert(\`Requesting service "\${service.name}" requires key management implementation\`)
+        }
+      }
+      
+      window.viewServiceDetails = (serviceId) => {
+        const service = state.services.get(serviceId)
+        if (service) {
+          let details = \`Service Details:\\n\\nID: \${service.serviceId}\\nName: \${service.name}\\nProvider: \${service.provider}\\nDescription: \${service.description}\`
+          
+          if (service.lightningAddress) {
+            details += \`\\nLightning Address: \${service.lightningAddress}\`
+          }
+          
+          if (service.capabilities && service.capabilities.length > 0) {
+            details += '\\n\\nCapabilities:'
+            service.capabilities.forEach(cap => {
+              details += \`\\n\\n- \${cap.name}\\n  Price: \${cap.pricing.basePrice} sats\\n  Description: \${cap.description}\`
+            })
+          }
+          
+          alert(details)
+        }
+      }
+      
+      // Initialize WebSocket connection
+      async function initialize() {
+        try {
+          // Direct WebSocket connection
+          const ws = new WebSocket('ws://localhost:3003/relay')
+          state.ws = ws
+          
+          ws.onopen = () => {
+            console.log('Service board WebSocket connected')
+            state.loading = false
+            
+            // Subscribe to service offerings (NIP-90 kind 31990)
+            const servicesSub = {
+              id: 'services-' + Date.now(),
+              filters: [{ kinds: [31990], limit: 100 }]
+            }
+            ws.send(JSON.stringify(['REQ', servicesSub.id, ...servicesSub.filters]))
+            
+            // Subscribe to job requests (NIP-90 kinds 5000-5300)
+            const jobsSub = {
+              id: 'jobs-' + Date.now(),
+              filters: [{ kinds: [5000, 5001, 5100, 5200, 5300], limit: 50 }]
+            }
+            ws.send(JSON.stringify(['REQ', jobsSub.id, ...jobsSub.filters]))
+            
+            // Subscribe to job results (NIP-90 kinds 6000-6300)
+            const resultsSub = {
+              id: 'results-' + Date.now(),
+              filters: [{ kinds: [6000, 6001, 6100, 6200, 6300], limit: 100 }]
+            }
+            ws.send(JSON.stringify(['REQ', resultsSub.id, ...resultsSub.filters]))
+            
+            updateUI()
+          }
+          
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data)
+              
+              if (msg[0] === 'EVENT') {
+                const [, subId, nostrEvent] = msg
+                
+                // Handle service offerings
+                if (nostrEvent.kind === 31990) {
+                  try {
+                    const content = JSON.parse(nostrEvent.content)
+                    const service = {
+                      serviceId: content.serviceId || nostrEvent.id,
+                      name: content.name,
+                      description: content.description,
+                      capabilities: content.capabilities || [],
+                      provider: nostrEvent.pubkey,
+                      lightningAddress: content.lightningAddress,
+                      relayHints: content.relayHints,
+                      created_at: nostrEvent.created_at
+                    }
+                    state.services.set(service.serviceId, service)
+                    updateUI()
+                  } catch (e) {
+                    console.error('Failed to parse service offering:', e)
+                  }
+                }
+                
+                // Handle job requests (kinds 5000-5300)
+                if (nostrEvent.kind >= 5000 && nostrEvent.kind <= 5300) {
+                  try {
+                    const content = JSON.parse(nostrEvent.content)
+                    const jobRequest = {
+                      jobId: nostrEvent.id,
+                      serviceId: content.serviceId,
+                      requestKind: nostrEvent.kind,
+                      input: content.input || nostrEvent.content,
+                      inputType: content.inputType || 'text',
+                      parameters: content.parameters,
+                      bidAmount: content.bidAmount || 0,
+                      requester: nostrEvent.pubkey,
+                      provider: nostrEvent.tags.find(t => t[0] === 'p')?.[1] || '',
+                      created_at: nostrEvent.created_at
+                    }
+                    state.jobRequests.set(jobRequest.jobId, jobRequest)
+                    
+                    // Subscribe to results for this job
+                    const jobResultSub = {
+                      id: 'job-result-' + jobRequest.jobId,
+                      filters: [{ kinds: [6000, 6001, 6100, 6200, 6300], '#e': [jobRequest.jobId], limit: 10 }]
+                    }
+                    ws.send(JSON.stringify(['REQ', jobResultSub.id, ...jobResultSub.filters]))
+                    
+                    updateUI()
+                  } catch (e) {
+                    console.error('Failed to parse job request:', e)
+                  }
+                }
+                
+                // Handle job results (kinds 6000-6300)
+                if (nostrEvent.kind >= 6000 && nostrEvent.kind <= 6300) {
+                  const jobTag = nostrEvent.tags.find(t => t[0] === 'e')
+                  if (jobTag) {
+                    const jobId = jobTag[1]
+                    try {
+                      const content = JSON.parse(nostrEvent.content)
+                      const jobResult = {
+                        jobId: jobId,
+                        requestEventId: jobId,
+                        resultKind: nostrEvent.kind,
+                        result: content.result || nostrEvent.content,
+                        status: content.status || 'success',
+                        provider: nostrEvent.pubkey,
+                        computeTime: content.computeTime,
+                        tokensUsed: content.tokensUsed,
+                        confidence: content.confidence,
+                        created_at: nostrEvent.created_at
+                      }
+                      
+                      const results = state.jobResults.get(jobId) || []
+                      results.push(jobResult)
+                      state.jobResults.set(jobId, results)
+                      updateUI()
+                    } catch (e) {
+                      console.error('Failed to parse job result:', e)
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.error('Failed to parse WebSocket message:', e)
+            }
+          }
+          
+          ws.onerror = (error) => {
+            console.error('Service board WebSocket error:', error)
+            state.error = 'Connection failed'
+            state.loading = false
+            updateUI()
+          }
+          
+          ws.onclose = () => {
+            console.log('Service board WebSocket closed')
+            state.error = 'Connection lost'
+            updateUI()
+          }
+          
+        } catch (error) {
+          console.error('Failed to initialize service board:', error)
+          state.error = error.message
+          state.loading = false
+          updateUI()
+        }
+      }
+      
+      // Start initialization
+      initialize()
     </script>
-
+    
     <style>
       .service-board {
         background: var(--background1);
@@ -678,6 +602,26 @@ export function serviceBoard({
         text-align: center;
         padding: 2rem;
       }
+      
+      /* Loading and error states */
+      .board-loading, .board-error {
+        text-align: center;
+        padding: 2rem;
+      }
+      
+      .spinner {
+        width: 2rem;
+        height: 2rem;
+        margin: 0 auto 1rem;
+        border: 2px solid var(--border);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
 
       /* Responsive */
       @media (max-width: 768px) {
@@ -707,14 +651,4 @@ export function serviceBoard({
       }
     </style>
   `
-}
-
-function getStatusColor(status: string): string {
-  const colors = {
-    "pending": "background2",
-    "processing": "foreground0",
-    "completed": "foreground0",
-    "failed": "danger"
-  }
-  return colors[status as keyof typeof colors] || "background2"
 }
