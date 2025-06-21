@@ -6,16 +6,11 @@
     "outDir": "build/esm",
     "module": "NodeNext",
     "target": "ES2022",
-    "moduleResolution": "NodeNext",
-    "paths": {
-      "@openagentsinc/nostr": ["../../packages/nostr/dist/dts"],
-      "@openagentsinc/nostr/*": ["../../packages/nostr/dist/dts/*"],
-      "@openagentsinc/container": ["../../packages/container/src/index.ts"],
-      "@openagentsinc/container/*": ["../../packages/container/src/*.ts"]
-    }
+    "moduleResolution": "NodeNext"
   },
   "exclude": ["test", "examples", "dist", "build"],
   "references": [
+    { "path": "../ai/tsconfig.build.json" },
     { "path": "../nostr/tsconfig.build.json" }
   ]
 }

@@ -10,43 +10,62 @@ import { Effect, Layer } from "effect"
 export async function POST(request: Request): Promise<Response> {
   try {
     const body = await request.json()
-    const { capital = 50000, metabolicRate = 100, name } = body
+    const { personality } = body
+
+    if (!personality || !personality.name || !personality.role) {
+      return new Response(
+        JSON.stringify({
+          error: "Missing required personality fields"
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    }
 
     // Create real agent with proper NIP-06 key derivation
     const program = Effect.gen(function*() {
       // Generate real BIP39 mnemonic
       const mnemonic = yield* Effect.promise(() => SDK.Agent.generateMnemonic())
 
+      // Helper to convert numbers to branded Satoshis type
+      const asSatoshis = (n: number) => n as any // Use SDK's branded type
+
       // Create agent from mnemonic (gets real keys)
       const agent = yield* Effect.promise(() =>
         SDK.Agent.createFromMnemonic(mnemonic, {
-          name,
-          initial_capital: capital,
-          stop_price: metabolicRate
+          name: personality.name,
+          initial_capital: asSatoshis(10000), // Default for chat agents
+          stop_price: asSatoshis(10) // Low cost for chat agents
         })
       )
 
-      // Create agent profile content for NIP-OA
+      // Create agent profile content for NIP-OA with personality data
       const profileContent: NostrLib.AgentProfileService.AgentProfileContent = {
-        description: `Autonomous agent specialized in ${name.toLowerCase()}`,
+        description:
+          `Autonomous chat agent with ${personality.role} personality. Communication style: ${personality.responseStyle}. Interests: ${
+            personality.topics.join(", ")
+          }. Traits: ${personality.traits.join(", ")}. Chattiness: ${personality.chattiness}`,
         capabilities: [
           {
-            id: "basic-tasks",
-            name: "Basic Task Execution",
-            description: "Can perform basic computational tasks",
+            id: "autonomous-chat",
+            name: "Autonomous Chat Participation",
+            description:
+              `Engages in conversations as a ${personality.role} with ${personality.responseStyle} communication style`,
             pricing: {
-              base: 100,
-              per_unit: "per task"
+              base: 1, // Minimal pricing for chat
+              per_unit: "per message"
             }
           }
         ],
         pricing_models: {
-          per_request: 100,
-          subscription_monthly: 10000
+          per_request: 1,
+          subscription_monthly: 100
         },
         constraints: {
-          max_concurrent_jobs: 5,
-          supported_languages: ["javascript", "typescript"]
+          max_concurrent_jobs: 1,
+          supported_languages: ["natural-language"]
         },
         metrics: {
           requests_completed: 0,
@@ -64,11 +83,11 @@ export async function POST(request: Request): Promise<Response> {
         agent.nostrKeys.private,
         {
           agent_id: agent.id,
-          name: agent.name,
+          name: personality.name,
           content: profileContent,
           status: "active",
-          balance: capital,
-          metabolic_rate: metabolicRate
+          balance: 10000, // Default for chat agents
+          metabolic_rate: 10 // Low cost for chat agents
         }
       )
 
@@ -87,11 +106,12 @@ export async function POST(request: Request): Promise<Response> {
         success: true,
         agent: {
           id: agent.id,
-          name: agent.name,
+          name: personality.name,
           publicKey: agent.nostrKeys.public,
           npub: agent.nostrKeys.public,
-          balance: capital,
-          metabolicRate,
+          personality,
+          balance: 10000,
+          metabolicRate: 10,
           lifecycleState: agent.lifecycleState,
           mnemonic // Include for recovery (in production, encrypt this)
         },

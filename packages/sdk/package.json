@@ -28,6 +28,7 @@
     "fix-dist": "node ../../scripts/fix-effect-dist.js"
   },
   "dependencies": {
+    "@openagentsinc/ai": "workspace:^",
     "@openagentsinc/container": "workspace:^",
     "@openagentsinc/nostr": "workspace:^",
     "effect": "3.16.3"

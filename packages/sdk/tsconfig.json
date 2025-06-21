@@ -9,17 +9,12 @@
     "lib": ["ESNext", "DOM"],
     "target": "ES2022",
     "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "paths": {
-      "@openagentsinc/nostr": ["../../packages/nostr/dist/dts"],
-      "@openagentsinc/nostr/*": ["../../packages/nostr/dist/dts/*"],
-      "@openagentsinc/container": ["../../packages/container/src/index.ts"],
-      "@openagentsinc/container/*": ["../../packages/container/src/*.ts"]
-    }
+    "moduleResolution": "NodeNext"
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "build"],
   "references": [
-    { "path": "../nostr" }
+    { "path": "../ai/tsconfig.json" },
+    { "path": "../nostr/tsconfig.json" }
   ]
 }
