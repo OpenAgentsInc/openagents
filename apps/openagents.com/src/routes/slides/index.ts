@@ -79,10 +79,20 @@ export default function slides() {
       }
       
       .slide-4 {
+        background: #000;
+      }
+      
+      .slide-4 img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
+      }
+      
+      .slide-5 {
         color: #fff;
       }
       
-      .slide-4 .slide-content {
+      .slide-5 .slide-content {
         font-size: clamp(2rem, 6vw, 4rem);
       }
       
@@ -146,7 +156,7 @@ export default function slides() {
         
         .slide-1 .slide-content,
         .slide-3 .slide-content,
-        .slide-4 .slide-content {
+        .slide-5 .slide-content {
           font-size: clamp(1.5rem, 5vw, 3rem);
         }
       }
@@ -170,6 +180,10 @@ export default function slides() {
         </div>
         
         <div class="slide slide-4" data-slide="4">
+          <img src="/sdk.png" alt="SDK">
+        </div>
+        
+        <div class="slide slide-5" data-slide="5">
           <div class="slide-content">
             Join Us<span class="cursor"></span>
           </div>
@@ -180,12 +194,13 @@ export default function slides() {
           <div class="dot" data-goto="2"></div>
           <div class="dot" data-goto="3"></div>
           <div class="dot" data-goto="4"></div>
+          <div class="dot" data-goto="5"></div>
         </div>
       </div>
       
       <script>
         let currentSlide = 1;
-        const totalSlides = 4;
+        const totalSlides = 5;
         
         function showSlide(n) {
           // Remove active class from all slides and dots
@@ -234,7 +249,7 @@ export default function slides() {
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             prevSlide();
-          } else if (e.key >= '1' && e.key <= '4') {
+          } else if (e.key >= '1' && e.key <= '5') {
             goToSlide(e.key);
           }
         });
