@@ -5,6 +5,16 @@
 export * as AiService from "./AiService.js"
 
 /**
+ * Core AI interfaces and types
+ * @since 1.0.0
+ */
+export * as AiLanguageModel from "./core/AiLanguageModel.js"
+export * as AiPrompt from "./core/AiInput.js"  
+export * as AiMessage from "./core/AiInput.js"
+export * as AiResponse from "./core/AiResponse.js"
+export * as AiError from "./core/AiError.js"
+
+/**
  * Ollama provider for local LLMs
  * @since 1.0.0
  */

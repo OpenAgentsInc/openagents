@@ -1,13 +1,13 @@
 import { html } from "@openagentsinc/psionic"
 
 export interface SpawnAgentFormProps {
-  onSpawn?: (name: string, initialCapital: number) => void
+  onSpawn?: (name: string, personality: any) => void
 }
 
 export function spawnAgentForm({ onSpawn: _onSpawn }: SpawnAgentFormProps = {}) {
   return html`
     <div class="spawn-form" box-="square">
-      <h3>Spawn New Agent</h3>
+      <h3>Create Autonomous Chat Agent</h3>
       
       <form id="spawn-agent-form" onsubmit="return handleSpawnAgent(event)">
         <div class="form-group">
@@ -17,47 +17,84 @@ export function spawnAgentForm({ onSpawn: _onSpawn }: SpawnAgentFormProps = {}) 
             type="text" 
             id="agent-name" 
             name="name"
-            placeholder="My Agent" 
+            placeholder="Alice" 
             box-="square"
             required
           >
         </div>
         
         <div class="form-group">
-          <label for="initial-capital">Initial Capital (sats)</label>
-          <input 
+          <label for="agent-role">Role/Personality</label>
+          <select 
             is-="input" 
-            type="number" 
-            id="initial-capital" 
-            name="capital"
-            min="0" 
-            value="10000" 
-            placeholder="10000" 
+            id="agent-role" 
+            name="role"
             box-="square"
             required
           >
-          <small>Agent needs capital to pay for metabolic costs</small>
+            <option value="">Select a role...</option>
+            <option value="teacher">Teacher - Explains concepts and helps others learn</option>
+            <option value="analyst">Analyst - Provides critical analysis and insights</option>
+            <option value="student">Student - Asks questions and seeks to understand</option>
+            <option value="entrepreneur">Entrepreneur - Focuses on business and opportunities</option>
+            <option value="artist">Artist - Brings creativity and aesthetic perspective</option>
+            <option value="skeptic">Skeptic - Questions assumptions and seeks evidence</option>
+            <option value="helper">Helper - Assists others and offers practical guidance</option>
+            <option value="comedian">Comedian - Adds humor and levity to conversations</option>
+          </select>
         </div>
         
         <div class="form-group">
-          <label for="metabolic-rate">Metabolic Rate (sats/hour)</label>
-          <input 
+          <label for="response-style">Communication Style</label>
+          <select 
             is-="input" 
-            type="number" 
-            id="metabolic-rate" 
-            name="metabolicRate"
-            min="1" 
-            value="100" 
-            placeholder="100" 
+            id="response-style" 
+            name="responseStyle"
             box-="square"
             required
           >
-          <small>Operational cost per hour</small>
+            <option value="casual">Casual - Relaxed and conversational</option>
+            <option value="formal">Formal - Professional and structured</option>
+            <option value="enthusiastic">Enthusiastic - Energetic and excited</option>
+            <option value="analytical">Analytical - Logical and detailed</option>
+            <option value="humorous">Humorous - Witty and playful</option>
+            <option value="concise">Concise - Brief and to the point</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="topics">Interests (comma-separated)</label>
+          <input 
+            is-="input" 
+            type="text" 
+            id="topics" 
+            name="topics"
+            placeholder="technology, business, art"
+            box-="square"
+          >
+          <small>Topics the agent is interested in discussing</small>
+        </div>
+        
+        <div class="form-group">
+          <label for="chattiness">Chattiness Level</label>
+          <input 
+            is-="input" 
+            type="range" 
+            id="chattiness" 
+            name="chattiness"
+            min="0.1" 
+            max="1" 
+            step="0.1"
+            value="0.5" 
+            box-="square"
+          >
+          <output for="chattiness" id="chattiness-value">0.5</output>
+          <small>How often the agent responds to messages (0.1 = rarely, 1.0 = very chatty)</small>
         </div>
         
         <div class="form-actions">
           <button is-="button" type="submit" variant-="foreground1" box-="square">
-            Spawn Agent
+            Create Agent
           </button>
           <button is-="button" type="button" variant-="background1" box-="square" onclick="resetSpawnForm()">
             Reset
@@ -67,20 +104,47 @@ export function spawnAgentForm({ onSpawn: _onSpawn }: SpawnAgentFormProps = {}) 
     </div>
 
     <script>
+      // Update chattiness display
+      document.getElementById('chattiness').addEventListener('input', (e) => {
+        document.getElementById('chattiness-value').textContent = e.target.value;
+      });
+
       function handleSpawnAgent(event) {
         event.preventDefault();
         const formData = new FormData(event.target);
-        const name = formData.get('name');
-        const capital = parseInt(formData.get('capital'));
-        const metabolicRate = parseInt(formData.get('metabolicRate'));
+        
+        const personality = {
+          name: formData.get('name'),
+          role: formData.get('role'),
+          responseStyle: formData.get('responseStyle'),
+          topics: formData.get('topics').split(',').map(t => t.trim()).filter(t => t),
+          chattiness: parseFloat(formData.get('chattiness')),
+          traits: [], // Will be set based on role
+          temperature: 0.7 // Default AI temperature
+        };
+        
+        // Set traits based on role
+        const roleTraits = {
+          teacher: ['helpful', 'patient', 'educational'],
+          analyst: ['analytical', 'critical', 'thorough'],
+          student: ['curious', 'eager', 'questioning'],
+          entrepreneur: ['practical', 'opportunity-focused', 'results-oriented'],
+          artist: ['creative', 'imaginative', 'expressive'],
+          skeptic: ['questioning', 'evidence-based', 'cautious'],
+          helper: ['supportive', 'practical', 'service-oriented'],
+          comedian: ['humorous', 'witty', 'entertaining']
+        };
+        
+        personality.traits = roleTraits[personality.role] || [];
         
         // Dispatch custom event that the homepage can listen to
         window.dispatchEvent(new CustomEvent('spawn-agent', {
-          detail: { name, capital, metabolicRate }
+          detail: { personality }
         }));
         
         // Reset form
         event.target.reset();
+        document.getElementById('chattiness-value').textContent = '0.5';
         return false;
       }
       

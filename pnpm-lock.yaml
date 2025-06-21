@@ -520,6 +520,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@openagentsinc/ai':
+        specifier: workspace:^
+        version: link:../ai/dist
       '@openagentsinc/container':
         specifier: workspace:^
         version: link:../container
