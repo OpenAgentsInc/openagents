@@ -18,7 +18,7 @@ export default function slides() {
         cursor: pointer;
         user-select: none;
       }
-      
+
       .slides-container {
         width: 100%;
         height: 100%;
@@ -27,7 +27,7 @@ export default function slides() {
         align-items: center;
         justify-content: center;
       }
-      
+
       .slide {
         position: absolute;
         width: 100%;
@@ -38,11 +38,11 @@ export default function slides() {
         opacity: 0;
         transition: opacity 0.5s ease-in-out;
       }
-      
+
       .slide.active {
         opacity: 1;
       }
-      
+
       .slide-content {
         text-align: center;
         font-size: clamp(2rem, 6vw, 4rem);
@@ -51,33 +51,33 @@ export default function slides() {
         line-height: 1.2;
         padding: 2rem;
       }
-      
+
       .slide-1 {
         color: #fff;
       }
-      
+
       .slide-1 .slide-content {
         font-size: clamp(2rem, 6vw, 4rem);
       }
-      
+
       .slide-2 {
         background: #000;
       }
-      
+
       .slide-2 img {
         max-width: 60%;
         max-height: 60%;
         object-fit: contain;
       }
-      
+
       .slide-3 {
         color: #fff;
       }
-      
+
       .slide-3 .slide-content {
         font-size: clamp(2rem, 6vw, 4rem);
       }
-      
+
       .slide-4 {
         background: #000;
         display: flex;
@@ -85,51 +85,61 @@ export default function slides() {
         align-items: center;
         justify-content: center;
       }
-      
+
       .slide-4 img {
         max-width: 40%;
         max-height: 40%;
         object-fit: contain;
       }
-      
+
       .slide-4 .tagline {
         color: #fff;
-        font-size: clamp(1rem, 3vw, 1.5rem);
+        font-size: clamp(1rem, 3vw, 1.2rem);
         text-align: center;
-        margin-top: 2rem;
+        margin-top: 3rem;
         padding: 0 2rem;
-        max-width: 80%;
+        max-width: 53%;
         line-height: 1.6;
       }
-      
+
       .slide-5 {
         background: #000;
       }
-      
+
       .slide-5 img {
         max-width: 60%;
         max-height: 60%;
         object-fit: contain;
       }
-      
+
       .slide-6 {
+        background: #000;
+      }
+
+      .slide-6 img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
+      }
+
+      .slide-7 {
         color: #fff;
       }
-      
-      .slide-6 .slide-content {
+
+      .slide-7 .slide-content {
         font-size: clamp(1.2rem, 3.5vw, 2rem);
         max-width: 80%;
         margin: 0 auto;
       }
-      
-      .slide-7 {
+
+      .slide-8 {
         color: #fff;
       }
-      
-      .slide-7 .slide-content {
+
+      .slide-8 .slide-content {
         font-size: clamp(2rem, 6vw, 4rem);
       }
-      
+
       .nav-dots {
         position: fixed;
         bottom: 2rem;
@@ -139,7 +149,7 @@ export default function slides() {
         gap: 1rem;
         z-index: 100;
       }
-      
+
       .dot {
         width: 12px;
         height: 12px;
@@ -148,17 +158,17 @@ export default function slides() {
         cursor: pointer;
         transition: background 0.3s;
       }
-      
+
       .dot.active {
         background: #fff;
       }
-      
+
       /* Terminal cursor blink effect */
       @keyframes blink {
         0%, 49% { opacity: 1; }
         50%, 100% { opacity: 0; }
       }
-      
+
       .cursor {
         display: inline-block;
         width: 0.8em;
@@ -168,7 +178,7 @@ export default function slides() {
         animation: blink 1s infinite;
         vertical-align: text-bottom;
       }
-      
+
       /* Glitch effect for slide transitions */
       @keyframes glitch {
         0%, 100% { transform: translate(0); }
@@ -177,24 +187,24 @@ export default function slides() {
         60% { transform: translate(2px, 2px); }
         80% { transform: translate(2px, -2px); }
       }
-      
+
       .slide.transitioning {
         animation: glitch 0.3s;
       }
-      
+
       /* Mobile responsive */
       @media (max-width: 768px) {
         .slide-content {
           font-size: clamp(1.5rem, 5vw, 3rem);
         }
-        
+
         .slide-1 .slide-content,
         .slide-3 .slide-content,
-        .slide-7 .slide-content {
+        .slide-8 .slide-content {
           font-size: clamp(1.5rem, 5vw, 3rem);
         }
-        
-        .slide-6 .slide-content {
+
+        .slide-7 .slide-content {
           font-size: clamp(1rem, 3vw, 1.5rem);
         }
       }
@@ -206,30 +216,34 @@ export default function slides() {
             Open Agents Win<span class="cursor"></span>
           </div>
         </div>
-        
+
         <div class="slide slide-2" data-slide="2">
           <img src="/openagents.png" alt="OpenAgents">
         </div>
-        
+
         <div class="slide slide-3" data-slide="3">
           <div class="slide-content">
             n &lt; n<sup>2</sup> &lt; 2<sup>n</sup>
           </div>
         </div>
-        
+
         <div class="slide slide-4" data-slide="4">
           <img src="/sdk.png" alt="SDK">
           <div class="tagline">
-            One SDK for Bitcoin, Lightning, Ecash, Ark, Nostr Wallet Connect,<br>
+            One SDK for Bitcoin, Lightning, Nostr, NWC, Ecash, Spark, Taproot Assets, Ark,
             Data Vending Machines, Model Context Protocol, A2A, and more.
           </div>
         </div>
-        
+
         <div class="slide slide-5" data-slide="5">
           <img src="/commander.png" alt="Commander">
         </div>
-        
+
         <div class="slide slide-6" data-slide="6">
+          <img src="/nipoa.png" alt="NIP-OA">
+        </div>
+
+        <div class="slide slide-7" data-slide="7">
           <div class="slide-content">
             <h2 style="margin-bottom: 2rem;">Psionic Framework</h2>
             <ul style="text-align: left; list-style: none; padding: 0;">
@@ -239,13 +253,13 @@ export default function slides() {
             </ul>
           </div>
         </div>
-        
-        <div class="slide slide-7" data-slide="7">
+
+        <div class="slide slide-8" data-slide="8">
           <div class="slide-content">
             Join Us<span class="cursor"></span>
           </div>
         </div>
-        
+
         <div class="nav-dots">
           <div class="dot active" data-goto="1"></div>
           <div class="dot" data-goto="2"></div>
@@ -254,13 +268,14 @@ export default function slides() {
           <div class="dot" data-goto="5"></div>
           <div class="dot" data-goto="6"></div>
           <div class="dot" data-goto="7"></div>
+          <div class="dot" data-goto="8"></div>
         </div>
       </div>
-      
+
       <script>
         let currentSlide = 1;
-        const totalSlides = 7;
-        
+        const totalSlides = 8;
+
         function showSlide(n) {
           // Remove active class from all slides and dots
           document.querySelectorAll('.slide').forEach(slide => {
@@ -269,37 +284,37 @@ export default function slides() {
           document.querySelectorAll('.dot').forEach(dot => {
             dot.classList.remove('active');
           });
-          
+
           // Wrap around
           if (n > totalSlides) currentSlide = 1;
           if (n < 1) currentSlide = totalSlides;
-          
+
           // Add active class to current slide and dot
           const activeSlide = document.querySelector(\`.slide[data-slide="\${currentSlide}"]\`);
           activeSlide.classList.add('active', 'transitioning');
           document.querySelector(\`.dot[data-goto="\${currentSlide}"]\`).classList.add('active');
-          
+
           // Remove transitioning class after animation
           setTimeout(() => {
             activeSlide.classList.remove('transitioning');
           }, 300);
         }
-        
+
         function nextSlide() {
           currentSlide++;
           showSlide(currentSlide);
         }
-        
+
         function prevSlide() {
           currentSlide--;
           showSlide(currentSlide);
         }
-        
+
         function goToSlide(n) {
           currentSlide = parseInt(n);
           showSlide(currentSlide);
         }
-        
+
         // Keyboard navigation
         document.addEventListener('keydown', (e) => {
           if (e.key === 'ArrowRight' || e.key === ' ') {
@@ -308,11 +323,11 @@ export default function slides() {
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             prevSlide();
-          } else if (e.key >= '1' && e.key <= '7') {
+          } else if (e.key >= '1' && e.key <= '8') {
             goToSlide(e.key);
           }
         });
-        
+
         // Click navigation
         document.addEventListener('click', (e) => {
           if (e.target.classList.contains('dot')) {
@@ -321,25 +336,25 @@ export default function slides() {
             nextSlide();
           }
         });
-        
+
         // Touch navigation for mobile
         let touchStartX = 0;
         let touchEndX = 0;
-        
+
         document.addEventListener('touchstart', (e) => {
           touchStartX = e.changedTouches[0].screenX;
         });
-        
+
         document.addEventListener('touchend', (e) => {
           touchEndX = e.changedTouches[0].screenX;
           handleSwipe();
         });
-        
+
         function handleSwipe() {
           if (touchEndX < touchStartX - 50) nextSlide();
           if (touchEndX > touchStartX + 50) prevSlide();
         }
-        
+
         // Fullscreen on F key
         document.addEventListener('keydown', (e) => {
           if (e.key === 'f' || e.key === 'F') {
