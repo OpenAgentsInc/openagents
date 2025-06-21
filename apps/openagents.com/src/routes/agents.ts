@@ -1,5 +1,4 @@
 import { document, html } from "@openagentsinc/psionic"
-import type { AgentIdentity } from "@openagentsinc/sdk"
 import { agentChat } from "../components/agent-chat"
 import { agentList } from "../components/agent-list"
 import { serviceBoard } from "../components/service-board"
@@ -9,7 +8,7 @@ import { baseStyles } from "../styles"
 
 export async function agents() {
   // No demo agents - all data comes from real database
-  const agents: Array<AgentIdentity> = []
+  const agents: Array<any> = []
 
   return document({
     title: "OpenAgents - Agent Dashboard",
@@ -174,7 +173,19 @@ export async function agents() {
         
         // Handle spawn agent event - REAL IMPLEMENTATION
         window.addEventListener('spawn-agent', async (event) => {
-          const { name, capital, metabolicRate } = event.detail;
+          // Handle both old and new event formats
+          let name, capital, metabolicRate;
+          
+          if (event.detail.personality) {
+            // New format from spawn-agent-form
+            const { personality } = event.detail;
+            name = personality.name;
+            capital = 10000; // Default starting capital
+            metabolicRate = 100; // Default metabolic rate
+          } else {
+            // Old format
+            ({ name, capital, metabolicRate } = event.detail);
+          }
           
           try {
             // Call real agent creation API
@@ -266,6 +277,41 @@ export async function agents() {
           font-family: "Berkeley Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
           position: fixed;
           width: 100%;
+        }
+
+        /* Fix input and select styling */
+        input[is-="input"],
+        input[type="text"],
+        input[type="number"],
+        select[is-="input"] {
+          width: 100%;
+          min-height: 2.5rem;
+          padding: 0.5rem 1rem;
+          background: var(--background2);
+          color: var(--foreground0);
+          border: 1px solid var(--background3);
+          font-family: inherit;
+          font-size: inherit;
+          box-sizing: border-box;
+        }
+
+        input[is-="input"]:focus,
+        select[is-="input"]:focus {
+          background: var(--background1);
+          border-color: var(--foreground2);
+          outline: none;
+        }
+
+        select[is-="input"] {
+          cursor: pointer;
+        }
+
+        /* Fix range input */
+        input[type="range"][is-="input"] {
+          min-height: auto;
+          padding: 0;
+          background: transparent;
+          border: none;
         }
 
         /* Fixed Header for Homepage */
