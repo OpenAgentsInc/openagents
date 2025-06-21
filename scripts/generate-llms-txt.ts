@@ -57,20 +57,22 @@ async function generateLlmsTxt(): Promise<string> {
     join(process.cwd(), "../content/docs"),
     join(process.cwd(), "../../apps/openagents.com/content/docs")
   ]
-  
-  let docsDir = "";
+
+  let docsDir = ""
   for (const path of possiblePaths) {
     try {
-      await readdir(path);
-      docsDir = path;
-      break;
-    } catch {}
+      await readdir(path)
+      docsDir = path
+      break
+    } catch {
+      // Directory doesn't exist, try next path
+    }
   }
-  
+
   if (!docsDir) {
-    throw new Error("Could not find docs directory in any of the expected locations");
+    throw new Error("Could not find docs directory in any of the expected locations")
   }
-  
+
   const docs = await getAllDocs(docsDir)
 
   // Group docs by category
@@ -194,20 +196,22 @@ async function main() {
       join(process.cwd(), "../static/llms.txt"),
       join(process.cwd(), "../../apps/openagents.com/static/llms.txt")
     ]
-    
-    let outputPath = "";
+
+    let outputPath = ""
     for (const path of possibleOutputPaths) {
       try {
         // Try to find the static directory
-        const staticDir = path.replace(/\/llms\.txt$/, "");
-        await readdir(staticDir);
-        outputPath = path;
-        break;
-      } catch {}
+        const staticDir = path.replace(/\/llms\.txt$/, "")
+        await readdir(staticDir)
+        outputPath = path
+        break
+      } catch {
+        // Directory doesn't exist, try next path
+      }
     }
-    
+
     if (!outputPath) {
-      throw new Error("Could not find static directory in any of the expected locations");
+      throw new Error("Could not find static directory in any of the expected locations")
     }
 
     await writeFile(outputPath, content, "utf-8")
