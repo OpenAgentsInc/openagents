@@ -3,14 +3,14 @@ import { sharedHeader } from "../../components/shared-header.js"
 import { baseStyles } from "../../styles.js"
 import type { GFNParameters } from "./gfn-calculator.js"
 import {
+  ANTHROPIC_PARAMS,
   calculateGFN,
   DEFAULT_PARAMS,
   formatNumber,
   formatValue,
   getInsights,
   OPENAGENTS_PROJECTIONS,
-  OPENAI_PARAMS,
-  ANTHROPIC_PARAMS
+  OPENAI_PARAMS
 } from "./gfn-calculator.js"
 import {
   createDominantEffectIndicator,
