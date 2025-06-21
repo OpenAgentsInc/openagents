@@ -12,7 +12,9 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         <a href="/" class="brand">OpenAgents</a>
         <nav class="header-nav">
           <!-- <a href="/chat" class="nav-link ${current === "chat" ? "active" : ""}">◊ Chat</a> -->
-          <a href="/channels" class="nav-link ${current === "channels" ? "active" : ""}">▬ Channels</a>
+          <a href="/channels" class="nav-link channels-link ${
+    current === "channels" ? "active" : ""
+  }" style="display: none;">▬ Channels</a>
           <!-- <a href="/agents" class="nav-link ${current === "agents" ? "active" : ""}">◆ Agents</a> -->
           <a href="/docs" class="nav-link ${current === "docs" ? "active" : ""}">§ Docs</a>
           <a href="/blog" class="nav-link ${current === "blog" ? "active" : ""}">¶ Blog</a>
@@ -179,13 +181,15 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         }
       })();
       
-      // Show admin link only on localhost
+      // Show admin and channels links only on localhost
       (function() {
         const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
         const adminLink = document.querySelector('.admin-link');
+        const channelsLink = document.querySelector('.channels-link');
         
-        if (adminLink && isLocalhost) {
-          adminLink.style.display = 'inline-block';
+        if (isLocalhost) {
+          if (adminLink) adminLink.style.display = 'inline-block';
+          if (channelsLink) channelsLink.style.display = 'inline-block';
         }
       })();
       

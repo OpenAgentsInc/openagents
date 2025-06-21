@@ -16,7 +16,7 @@ export async function home() {
           <div class="launch-notice" box-="square">
             <div class="notice-title">Welcome to OpenAgents</div>
             <div class="notice-content">
-              <p>We're launching a few new products on <strong>Saturday June 21</strong>.</p>
+              <p>We're announcing a few new products today at <a href="https://bitcoinfor.ai/" target="_blank" style="color: var(--foreground0); font-weight: 600;">Bitcoin for AI</a> at 5pm CT.</p>
               <p>In the meantime, explore our resources:</p>
               <div class="notice-links">
                 <a href="/blog" is-="button" variant-="foreground1" box-="square">
