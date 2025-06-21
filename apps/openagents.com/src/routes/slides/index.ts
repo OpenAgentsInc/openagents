@@ -86,24 +86,32 @@ export default function slides() {
         justify-content: center;
       }
 
-      .slide-4 img {
-        max-width: 40%;
-        max-height: 40%;
-        object-fit: contain;
+      .slide-4 h2 {
+        color: #fff;
+        font-size: clamp(2rem, 6vw, 4rem);
+        margin-bottom: 3rem;
+        text-shadow: 0 0 20px currentColor;
       }
 
-      .slide-4 .tagline {
-        color: #fff;
-        font-size: clamp(1rem, 3vw, 1.2rem);
-        text-align: center;
-        margin-top: 3rem;
-        padding: 0 2rem;
-        max-width: 53%;
-        line-height: 1.6;
+      .slide-4 img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
       }
 
       .slide-5 {
         background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .slide-5 h2 {
+        color: #fff;
+        font-size: clamp(2rem, 6vw, 4rem);
+        margin-bottom: 3rem;
+        text-shadow: 0 0 20px currentColor;
       }
 
       .slide-5 img {
@@ -114,12 +122,33 @@ export default function slides() {
 
       .slide-6 {
         background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .slide-6 h2 {
+        color: #fff;
+        font-size: clamp(2rem, 6vw, 4rem);
+        margin-bottom: 3rem;
+        text-shadow: 0 0 20px currentColor;
       }
 
       .slide-6 img {
-        max-width: 60%;
-        max-height: 60%;
+        max-width: 40%;
+        max-height: 40%;
         object-fit: contain;
+      }
+
+      .slide-6 .tagline {
+        color: #fff;
+        font-size: clamp(1rem, 3vw, 1.2rem);
+        text-align: center;
+        margin-top: 3rem;
+        padding: 0 2rem;
+        max-width: 53%;
+        line-height: 1.6;
       }
 
       .slide-7 {
@@ -133,10 +162,52 @@ export default function slides() {
       }
 
       .slide-8 {
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .slide-8 h2 {
+        color: #fff;
+        font-size: clamp(2rem, 6vw, 4rem);
+        margin-bottom: 3rem;
+        text-shadow: 0 0 20px currentColor;
+      }
+
+      .slide-8 img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
+      }
+
+      .slide-9 {
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .slide-9 h2 {
+        color: #fff;
+        font-size: clamp(2rem, 6vw, 4rem);
+        margin-bottom: 3rem;
+        text-shadow: 0 0 20px currentColor;
+      }
+
+      .slide-9 img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
+      }
+
+      .slide-10 {
         color: #fff;
       }
 
-      .slide-8 .slide-content {
+      .slide-10 .slide-content {
         font-size: clamp(2rem, 6vw, 4rem);
       }
 
@@ -200,7 +271,7 @@ export default function slides() {
 
         .slide-1 .slide-content,
         .slide-3 .slide-content,
-        .slide-8 .slide-content {
+        .slide-10 .slide-content {
           font-size: clamp(1.5rem, 5vw, 3rem);
         }
 
@@ -223,40 +294,60 @@ export default function slides() {
 
         <div class="slide slide-3" data-slide="3">
           <div class="slide-content">
+            <h3 style="font-size: clamp(1.5rem, 4vw, 2.2rem); margin-bottom: 2rem; text-shadow: 0 0 20px currentColor;">Reed's Law of Group-Forming Networks</h3>
             n &lt; n<sup>2</sup> &lt; 2<sup>n</sup>
           </div>
         </div>
 
         <div class="slide slide-4" data-slide="4">
-          <img src="/sdk.png" alt="SDK">
-          <div class="tagline">
-            One SDK for Bitcoin, Lightning, Nostr, NWC, Ecash, Spark, Taproot Assets, Ark,
-            Data Vending Machines, Model Context Protocol, A2A, and more.
-          </div>
+          <h2>OpenAgents Compute</h2>
+          <img src="/174small.png" alt="OpenAgents Compute - Episode 174">
         </div>
 
         <div class="slide slide-5" data-slide="5">
+          <h2>Commander</h2>
           <img src="/commander.png" alt="Commander">
         </div>
 
         <div class="slide slide-6" data-slide="6">
-          <img src="/nipoa.png" alt="NIP-OA">
+          <h2>OpenAgents SDK</h2>
+          <img src="/sdk.png" alt="SDK">
+          <div class="tagline">
+            One SDK for Bitcoin, Lightning, Nostr, NWC, L402, Ecash, Spark, Taproot Assets, Ark,
+            Data Vending Machines, Model Context Protocol, A2A, and more.
+          </div>
         </div>
 
         <div class="slide slide-7" data-slide="7">
           <div class="slide-content">
-            <h2 style="margin-bottom: 2rem;">Psionic Framework</h2>
-            <ul style="text-align: left; list-style: none; padding: 0;">
-              <li style="margin-bottom: 1rem;">• Sync-first hypermedia framework on Bun & Elysia</li>
-              <li style="margin-bottom: 1rem;">• Built-in component explorer for rapid UI development</li>
-              <li style="margin-bottom: 1rem;">• Effect.js integration for functional composition</li>
+            <h2 style="margin-bottom: 2rem; text-shadow: 0 0 20px currentColor;">Psionic</h2>
+            <ul style="text-align: left; list-style: none; padding: 0; font-size: clamp(1rem, 2.5vw, 1.5rem); text-shadow: none;">
+              <li style="margin-bottom: 1rem;">• Agent-first app framework</li>
+              <li style="margin-bottom: 1rem;">• Inspired by HyperCard & HTMX</li>
+              <li style="margin-bottom: 1rem;">• End-to-end type safety</li>
             </ul>
           </div>
         </div>
 
         <div class="slide slide-8" data-slide="8">
+          <h2>openagents.com</h2>
+          <img src="/dont.png" alt="Don't">
+        </div>
+
+        <div class="slide slide-9" data-slide="9">
+          <h2>Open Agents NIP</h2>
+          <img src="/nipoa.png" alt="NIP-OA">
+        </div>
+
+        <div class="slide slide-10" data-slide="10">
           <div class="slide-content">
-            Join Us<span class="cursor"></span>
+            <h2 style="margin-bottom: 3rem; text-shadow: 0 0 20px currentColor; font-size: clamp(1.5rem, 5vw, 3.5rem);">Join Us<span class="cursor"></span></h2>
+            <div style="font-size: clamp(1.2rem, 3vw, 1.8rem); line-height: 2;">
+              <p style="margin: 1rem 0;">X: @OpenAgentsInc</p>
+              <p style="margin: 1rem 0;">chris@openagents.com</p>
+              <p style="margin: 1rem 0;"><a href="https://github.com/OpenAgentsInc" style="color: #fff; text-decoration: none;">github.com/OpenAgentsInc</a></p>
+              <p style="margin: 1rem 0;"><a href="https://stacker.news/~openagents" style="color: #fff; text-decoration: none;">stacker.news/~openagents</a></p>
+            </div>
           </div>
         </div>
 
@@ -269,12 +360,14 @@ export default function slides() {
           <div class="dot" data-goto="6"></div>
           <div class="dot" data-goto="7"></div>
           <div class="dot" data-goto="8"></div>
+          <div class="dot" data-goto="9"></div>
+          <div class="dot" data-goto="10"></div>
         </div>
       </div>
 
       <script>
         let currentSlide = 1;
-        const totalSlides = 8;
+        const totalSlides = 10;
 
         function showSlide(n) {
           // Remove active class from all slides and dots
@@ -323,7 +416,7 @@ export default function slides() {
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             prevSlide();
-          } else if (e.key >= '1' && e.key <= '8') {
+          } else if (e.key >= '1' && e.key <= '9') {
             goToSlide(e.key);
           }
         });
