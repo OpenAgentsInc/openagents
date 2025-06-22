@@ -1,0 +1,85 @@
+/* Select/Dropdown Component
+ * Custom styled select with dark theme
+ */
+
+/* Base select styles */
+.oa-select {
+  @apply w-full px-3 py-2 bg-black border border-gray-700 rounded-lg;
+  @apply text-white;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  @apply transition-colors duration-200;
+  @apply appearance-none cursor-pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
+
+/* Select hover state */
+.oa-select:hover:not(:focus) {
+  @apply border-gray-600;
+}
+
+/* Custom dropdown container */
+.oa-dropdown {
+  @apply relative inline-block w-full;
+}
+
+/* Dropdown trigger button */
+.oa-dropdown-trigger {
+  @apply w-full px-3 py-2 bg-black border border-gray-700 rounded-lg;
+  @apply text-white text-left;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  @apply transition-colors duration-200;
+  @apply flex items-center justify-between;
+}
+
+/* Dropdown menu */
+.oa-dropdown-menu {
+  @apply absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 rounded-lg shadow-lg;
+  @apply max-h-60 overflow-auto;
+  @apply hidden;
+}
+
+/* Show dropdown menu */
+.oa-dropdown.open .oa-dropdown-menu {
+  @apply block;
+}
+
+/* Dropdown item */
+.oa-dropdown-item {
+  @apply px-3 py-2 hover:bg-gray-800 cursor-pointer transition-colors;
+  @apply flex items-center space-x-2;
+}
+
+/* Selected dropdown item */
+.oa-dropdown-item.selected {
+  @apply bg-gray-800 text-blue-400;
+}
+
+/* Dropdown item with image */
+.oa-dropdown-item-image {
+  @apply w-8 h-8 rounded-full object-cover;
+}
+
+/* Model dropdown specific styles */
+.oa-model-dropdown {
+  @apply oa-dropdown;
+}
+
+.oa-model-dropdown .oa-dropdown-trigger {
+  @apply flex items-center space-x-2 py-3;
+}
+
+.oa-model-dropdown .oa-model-image {
+  @apply w-6 h-6 rounded-full;
+}
+
+/* Size variants */
+.oa-select-sm {
+  @apply px-2 py-1 text-sm;
+}
+
+.oa-select-lg {
+  @apply px-4 py-3 text-lg;
+}

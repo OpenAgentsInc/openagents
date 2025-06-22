@@ -1,0 +1,70 @@
+/* File Upload Component
+ * Image/file upload interface
+ */
+
+/* File upload area */
+.oa-file-upload {
+  @apply relative;
+}
+
+/* Hidden input */
+.oa-file-input {
+  @apply hidden;
+}
+
+/* Upload button */
+.oa-file-upload-button {
+  @apply inline-flex items-center px-4 py-2 bg-gray-800 text-gray-300;
+  @apply border border-gray-700 rounded-lg;
+  @apply hover:bg-gray-700 hover:text-white transition-colors;
+  @apply cursor-pointer;
+}
+
+/* Drag and drop area */
+.oa-file-dropzone {
+  @apply border-2 border-dashed border-gray-700 rounded-lg;
+  @apply p-8 text-center;
+  @apply transition-colors;
+}
+
+.oa-file-dropzone.drag-over {
+  @apply border-blue-500 bg-blue-500/10;
+}
+
+.oa-file-dropzone-icon {
+  @apply w-12 h-12 mx-auto mb-4 text-gray-600;
+}
+
+.oa-file-dropzone-text {
+  @apply text-gray-400 mb-2;
+}
+
+.oa-file-dropzone-hint {
+  @apply text-sm text-gray-500;
+}
+
+/* File preview */
+.oa-file-preview {
+  @apply grid grid-cols-2 md:grid-cols-4 gap-4 mt-4;
+}
+
+.oa-file-preview-item {
+  @apply relative group;
+}
+
+.oa-file-preview-image {
+  @apply w-full h-24 object-cover rounded-lg;
+  @apply border border-gray-700;
+}
+
+.oa-file-preview-name {
+  @apply text-xs text-gray-400 mt-1 truncate;
+}
+
+.oa-file-preview-remove {
+  @apply absolute -top-2 -right-2 w-6 h-6;
+  @apply bg-red-600 text-white rounded-full;
+  @apply flex items-center justify-center;
+  @apply opacity-0 group-hover:opacity-100 transition-opacity;
+  @apply cursor-pointer hover:bg-red-700;
+}

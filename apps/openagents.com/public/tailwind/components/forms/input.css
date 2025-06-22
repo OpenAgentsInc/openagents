@@ -1,0 +1,68 @@
+/* Input Field Component
+ * Text input with dark theme styling
+ */
+
+/* Base input styles */
+.oa-input {
+  @apply w-full px-3 py-2 bg-black border border-gray-700 rounded-lg;
+  @apply text-white placeholder-gray-500;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  @apply transition-colors duration-200;
+}
+
+/* Input hover state */
+.oa-input:hover:not(:focus) {
+  @apply border-gray-600;
+}
+
+/* Input with error state */
+.oa-input-error {
+  @apply border-red-500 focus:ring-red-500;
+}
+
+/* Input with success state */
+.oa-input-success {
+  @apply border-green-500 focus:ring-green-500;
+}
+
+/* Input wrapper for icons */
+.oa-input-wrapper {
+  @apply relative;
+}
+
+/* Input with left icon */
+.oa-input-wrapper .oa-input-icon-left {
+  @apply absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none;
+}
+
+.oa-input-wrapper .oa-input.has-icon-left {
+  @apply pl-10;
+}
+
+/* Input with right icon */
+.oa-input-wrapper .oa-input-icon-right {
+  @apply absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500;
+}
+
+.oa-input-wrapper .oa-input.has-icon-right {
+  @apply pr-10;
+}
+
+/* Search input specific styling */
+.oa-input-search {
+  @apply oa-input rounded-full;
+}
+
+/* Size variants */
+.oa-input-sm {
+  @apply px-2 py-1 text-sm;
+}
+
+.oa-input-lg {
+  @apply px-4 py-3 text-lg;
+}
+
+/* Disabled state */
+.oa-input:disabled {
+  @apply bg-gray-900 cursor-not-allowed opacity-50;
+}
