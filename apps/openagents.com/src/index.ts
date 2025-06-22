@@ -79,6 +79,28 @@ app.elysia.use(channelsApi)
 //   adminPath: '/relay/admin'
 // }))
 
+// Serve Basecoat CSS from @openagentsinc/ui package
+app.elysia.get('/@openagentsinc/ui/basecoat', async () => {
+  try {
+    const basecoatPath = join(path.dirname(fileURLToPath(import.meta.url)), '../../../packages/ui/dist/basecoat/index.css')
+    const content = await readFile(basecoatPath, 'utf-8')
+    return new Response(content, {
+      headers: {
+        'Content-Type': 'text/css; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600'
+      }
+    })
+  } catch (error) {
+    console.error('Error loading Basecoat CSS:', error)
+    return new Response('/* Basecoat CSS not found */', {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/css; charset=utf-8'
+      }
+    })
+  }
+})
+
 // Serve llms.txt
 app.elysia.get('/llms.txt', async () => {
   try {
