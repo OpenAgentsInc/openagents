@@ -11,6 +11,16 @@ export class PsionicApp {
     this.config = config
   }
 
+  // Temporary getter for backward compatibility
+  // TODO: Remove when all apps are migrated to Effect-based API
+  get elysia(): any {
+    throw new Error(
+      "Psionic has been refactored to use Effect HTTP server. " +
+      "Direct access to Elysia is no longer supported. " +
+      "Please update your code to use the Effect-based API."
+    )
+  }
+
   route(path: string, handler: RouteHandler) {
     this.routes.push({ path, handler })
     return this
