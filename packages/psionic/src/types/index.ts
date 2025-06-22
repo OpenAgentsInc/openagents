@@ -17,7 +17,13 @@ export interface PsionicConfig {
   // relays?: string[]
 }
 
-export type RouteHandler = (context: any) => string | Promise<string>
+export type RouteHandler = (context: any) => string | Promise<string> | Response | Promise<Response> | any
+
+export interface ComponentExplorerOptions {
+  styles?: string
+  navigation?: string
+  baseClass?: string
+}
 
 // Future: Component interface
 export interface PsionicComponent {

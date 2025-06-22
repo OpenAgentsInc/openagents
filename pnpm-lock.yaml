@@ -229,7 +229,7 @@ importers:
         version: 0.84.6(effect@3.16.3)
       '@effect/platform-bun':
         specifier: ^0.70.2
-        version: 0.70.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3)
+        version: 0.70.2(@effect/cluster@0.39.4)(@effect/platform@0.84.6)(@effect/rpc@0.62.4)(@effect/sql@0.38.2)(effect@3.16.3)
       effect:
         specifier: 3.16.3
         version: 3.16.3
@@ -440,6 +440,9 @@ importers:
       '@types/uuid':
         specifier: ^10.0.0
         version: 10.0.0
+      elysia:
+        specifier: ^1.3.5
+        version: 1.3.5(exact-mirror@0.1.2)(file-type@21.0.0)(typescript@5.8.3)
 
   packages/relay:
     dependencies:
@@ -1492,22 +1495,6 @@ packages:
       effect: 3.16.3
     dev: false
 
-  /@effect/cluster@0.39.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(@effect/workflow@0.2.2)(effect@3.16.3):
-    resolution: {integrity: sha512-oU/UDcKzQDPoEHW+1wMLxJRmdlA5n/Ek7AG0vrKFQ7AiBxUpJwlJlym8BVgpRBVs3VTI+Jwigmx5z8rp1dJA+g==}
-    peerDependencies:
-      '@effect/platform': ^0.85.1
-      '@effect/rpc': ^0.62.2
-      '@effect/sql': ^0.38.1
-      '@effect/workflow': ^0.2.2
-      effect: ^3.16.8
-    dependencies:
-      '@effect/platform': 0.84.6(effect@3.16.3)
-      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/workflow': 0.2.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(effect@3.16.3)
-      effect: 3.16.3
-    dev: false
-
   /@effect/cluster@0.39.4(@effect/platform@0.84.6)(@effect/rpc@0.62.4)(@effect/sql@0.38.2)(@effect/workflow@0.2.4)(effect@3.16.3):
     resolution: {integrity: sha512-gHR3m/GAd5gQ2YXKJ4BX//fY1zjqRvZbKjxHuZ7+8KSvtaQbYelGDf/+DJ21nHusDL6hFJkMRSFaR7J2JYImHw==}
     peerDependencies:
@@ -1568,24 +1555,6 @@ packages:
       uuid: 11.1.0
     dev: false
 
-  /@effect/experimental@0.49.1(@effect/platform@0.84.6)(effect@3.16.3):
-    resolution: {integrity: sha512-puU0tZR+vEQ8RwdBXkMXVGlV5WG4tyVQA6J5LCJJoDnHDzNmEKsEjcjrD6YKmt/MNr9Jdm0H5LkkEfRYTiCL2g==}
-    peerDependencies:
-      '@effect/platform': ^0.85.1
-      effect: ^3.16.8
-      ioredis: ^5
-      lmdb: ^3
-    peerDependenciesMeta:
-      ioredis:
-        optional: true
-      lmdb:
-        optional: true
-    dependencies:
-      '@effect/platform': 0.84.6(effect@3.16.3)
-      effect: 3.16.3
-      uuid: 11.1.0
-    dev: false
-
   /@effect/experimental@0.49.2(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-0J4oEt2zlDoetg5pv+mE3eH+d7VMLeXIfvEu1VO7eA8CKoU4j8KYcN6E4YlIewmeXJJXNwlOW3IkUD0TQ1IBCg==}
     peerDependencies:
@@ -1608,7 +1577,7 @@ packages:
     resolution: {integrity: sha512-Wk7x6W7pI5C9ix/7xE2Ad9ruWrk26uJuc8IgVzxH98AoiHO1G0f8Cblj6N1WaLB0PTyQoQPmrNsIII2Th6ywuw==}
     dev: true
 
-  /@effect/platform-bun@0.70.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3):
+  /@effect/platform-bun@0.70.2(@effect/cluster@0.39.4)(@effect/platform@0.84.6)(@effect/rpc@0.62.4)(@effect/sql@0.38.2)(effect@3.16.3):
     resolution: {integrity: sha512-oq9erseR3YjlqXZZXk1VqB7q3WfmwTP9pwCSRd9X/xowLLRY1tx8Y1jjer3g5EGpF5nfoDLX5zTW3HEwQFHRWA==}
     peerDependencies:
       '@effect/cluster': ^0.39.2
@@ -1617,11 +1586,11 @@ packages:
       '@effect/sql': ^0.38.1
       effect: ^3.16.8
     dependencies:
-      '@effect/cluster': 0.39.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(@effect/workflow@0.2.2)(effect@3.16.3)
+      '@effect/cluster': 0.39.4(@effect/platform@0.84.6)(@effect/rpc@0.62.4)(@effect/sql@0.38.2)(@effect/workflow@0.2.4)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
-      '@effect/platform-node-shared': 0.40.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3)
-      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/platform-node-shared': 0.40.2(@effect/cluster@0.39.4)(@effect/platform@0.84.6)(@effect/rpc@0.62.4)(@effect/sql@0.38.2)(effect@3.16.3)
+      '@effect/rpc': 0.62.4(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.38.2(@effect/experimental@0.49.2)(@effect/platform@0.84.6)(effect@3.16.3)
       effect: 3.16.3
       multipasta: 0.2.5
     transitivePeerDependencies:
@@ -1672,7 +1641,7 @@ packages:
       - utf-8-validate
     dev: false
 
-  /@effect/platform-node-shared@0.40.2(@effect/cluster@0.39.2)(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(effect@3.16.3):
+  /@effect/platform-node-shared@0.40.2(@effect/cluster@0.39.4)(@effect/platform@0.84.6)(@effect/rpc@0.62.4)(@effect/sql@0.38.2)(effect@3.16.3):
     resolution: {integrity: sha512-f9FbZN1pTMlR4bTwlR/mER9Qqd1MwMdryn3cz5/lapmXvgrRxQ+vgGS15d286mZeoc6aHtXGEr0GgoPNDFscKw==}
     peerDependencies:
       '@effect/cluster': ^0.39.2
@@ -1681,10 +1650,10 @@ packages:
       '@effect/sql': ^0.38.1
       effect: ^3.16.8
     dependencies:
-      '@effect/cluster': 0.39.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(@effect/sql@0.38.1)(@effect/workflow@0.2.2)(effect@3.16.3)
+      '@effect/cluster': 0.39.4(@effect/platform@0.84.6)(@effect/rpc@0.62.4)(@effect/sql@0.38.2)(@effect/workflow@0.2.4)(effect@3.16.3)
       '@effect/platform': 0.84.6(effect@3.16.3)
-      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/sql': 0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/rpc': 0.62.4(@effect/platform@0.84.6)(effect@3.16.3)
+      '@effect/sql': 0.38.2(@effect/experimental@0.49.2)(@effect/platform@0.84.6)(effect@3.16.3)
       '@parcel/watcher': 2.5.1
       effect: 3.16.3
       multipasta: 0.2.5
@@ -1771,16 +1740,6 @@ packages:
       effect: 3.16.3
     dev: false
 
-  /@effect/rpc@0.62.2(@effect/platform@0.84.6)(effect@3.16.3):
-    resolution: {integrity: sha512-m9Vit6U0hZ/Yt/yKdz5fBoHI7cY4qFJdidYZTVqzAo5tctKQtfJFKjAn4Oq0TWVfbTC7JrCK0GM51j5iQuI33Q==}
-    peerDependencies:
-      '@effect/platform': ^0.85.1
-      effect: ^3.16.8
-    dependencies:
-      '@effect/platform': 0.84.6(effect@3.16.3)
-      effect: 3.16.3
-    dev: false
-
   /@effect/rpc@0.62.4(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-5oPVKLZEoqJs3hDAKIcpTRe5qvX1pA4U5ai0LL3pcVLpXZrv0z3mi0gslySM/q85IxrZo+sOcuo18OS2jsuA0g==}
     peerDependencies:
@@ -1845,20 +1804,6 @@ packages:
       uuid: 11.1.0
     dev: false
 
-  /@effect/sql@0.38.1(@effect/experimental@0.49.1)(@effect/platform@0.84.6)(effect@3.16.3):
-    resolution: {integrity: sha512-oS5s8j8C1W7rugZeDpwfRjrjfRaqUqhO+wtL1yRgXqE0px7fVI3y2Am5f6aq63cR9UMKOwFc5NzEl3Af9uYlSw==}
-    peerDependencies:
-      '@effect/experimental': ^0.49.1
-      '@effect/platform': ^0.85.1
-      effect: ^3.16.8
-    dependencies:
-      '@effect/experimental': 0.49.1(@effect/platform@0.84.6)(effect@3.16.3)
-      '@effect/platform': 0.84.6(effect@3.16.3)
-      '@opentelemetry/semantic-conventions': 1.34.0
-      effect: 3.16.3
-      uuid: 11.1.0
-    dev: false
-
   /@effect/sql@0.38.2(@effect/experimental@0.49.2)(@effect/platform@0.84.6)(effect@3.16.3):
     resolution: {integrity: sha512-hZNFlVDINrORcLyVuL8zhjjR3ghR4WxzQZZdqmkKKi3C5sE7AOl6TUNogkqmepKw0aLWF0MbLi46/htgeRtsCQ==}
     peerDependencies:
@@ -1892,18 +1837,6 @@ packages:
     dependencies:
       '@effect/platform': 0.84.6(effect@3.16.3)
       '@effect/rpc': 0.61.15(@effect/platform@0.84.6)(effect@3.16.3)
-      effect: 3.16.3
-    dev: false
-
-  /@effect/workflow@0.2.2(@effect/platform@0.84.6)(@effect/rpc@0.62.2)(effect@3.16.3):
-    resolution: {integrity: sha512-fAXH0S3roA1LUFItlXmHZPaL57ZWxySf4QveidOoZuB+1rXVKk79OX++Y1G+l7Omugb7JzsyL1JCt5qo+Detzg==}
-    peerDependencies:
-      '@effect/platform': ^0.85.1
-      '@effect/rpc': ^0.62.2
-      effect: ^3.16.8
-    dependencies:
-      '@effect/platform': 0.84.6(effect@3.16.3)
-      '@effect/rpc': 0.62.2(@effect/platform@0.84.6)(effect@3.16.3)
       effect: 3.16.3
     dev: false
 

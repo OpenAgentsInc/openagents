@@ -20,4 +20,6 @@ export type {
 
 // Component explorer exports
 export { discoverStories, renderComponentExplorer, renderStoryPage } from './components/discovery'
-export type { ComponentExplorerOptions } from './components/discovery'
+
+// Adapter exports for migration
+export { convertElysiaRouter } from './adapters/elysia-adapter'
