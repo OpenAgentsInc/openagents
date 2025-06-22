@@ -244,6 +244,19 @@ export class PsionicApp {
         this.get(path, handler)
         return this.elysia
       },
+      post: (path: string, handler: any) => {
+        this.post(path, handler)
+        return this.elysia
+      },
+      options: (path: string, handler: any) => {
+        // For now, just use GET as OPTIONS isn't implemented yet
+        this.get(path, handler)
+        return this.elysia
+      },
+      ws: (path: string, handlers: any) => {
+        this.websocket(path, handlers)
+        return this.elysia
+      },
       group: (prefix: string, fn: any) => {
         const groupRouter = {
           routes: [] as Array<any>,
