@@ -8,6 +8,9 @@
 /* Import Basecoat-compatible components */
 @import "./components.css";
 
+/* Import chat-specific styles */
+@import "./chat.css";
+
 /* OpenAgents Dark Theme Configuration */
 @layer base {
   :root {
