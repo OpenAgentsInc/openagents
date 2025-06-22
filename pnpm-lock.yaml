@@ -171,6 +171,9 @@ importers:
       '@types/bun':
         specifier: ^1.2.16
         version: 1.2.16
+      esbuild:
+        specifier: ^0.25.5
+        version: 0.25.5
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3

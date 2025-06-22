@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "bun run --hot --env-file=../../.env src/index.ts",
-    "build": "tsc && bun run build:client && bun run generate:llms-txt",
+    "build": "tsc && bun run build:client && bun run build:sdk && bun run generate:llms-txt",
     "build:client": "bun run src/build-client.ts",
+    "build:sdk": "bun run src/build-sdk-browser.ts",
     "typecheck": "tsc --noEmit",
     "generate:llms-txt": "tsx ../../scripts/generate-llms-txt.ts"
   },
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.2.16",
+    "esbuild": "^0.25.5",
     "gray-matter": "^4.0.3"
   }
 }
