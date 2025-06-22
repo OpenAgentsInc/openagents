@@ -4,6 +4,7 @@ import { Effect, Layer, pipe } from "effect"
 import { convertElysiaRouter } from "../adapters/elysia-adapter"
 import { discoverStories, renderComponentExplorer, renderStoryPage } from "../components/discovery"
 import type { ComponentExplorerOptions, PsionicConfig, RouteHandler } from "../types"
+import { wrapHtmlWithTailwind } from "../utils/tailwind"
 
 interface Route {
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH"
@@ -365,6 +366,7 @@ export class PsionicApp {
 
   private addRoute(router: HttpRouter.HttpRouter<any, any>, route: Route) {
     const { handler, method, path } = route
+    const config = this.config
 
     // Convert our RouteHandler to Effect handler
     const effectHandler = Effect.gen(function*() {
@@ -419,7 +421,9 @@ export class PsionicApp {
           })
         } else if (typeof result === "string") {
           if (result.trim().startsWith("<")) {
-            return HttpServerResponse.html(result)
+            // Inject Tailwind if enabled
+            const htmlWithTailwind = wrapHtmlWithTailwind(result, config)
+            return HttpServerResponse.html(htmlWithTailwind)
           } else {
             return HttpServerResponse.text(result)
           }

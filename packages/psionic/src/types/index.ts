@@ -13,6 +13,12 @@ export interface PsionicConfig {
     navigation?: string
     baseClass?: string
   }
+  // Tailwind CSS configuration
+  tailwind?: {
+    enabled?: boolean // Default: true
+    cdn?: boolean // Default: true (use Play CDN)
+    config?: string // Custom @theme CSS configuration
+  }
   // Future: WebSocket relay configuration
   // relays?: string[]
 }
