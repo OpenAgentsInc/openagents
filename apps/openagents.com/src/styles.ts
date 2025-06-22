@@ -3,8 +3,85 @@ import { syntaxHighlightingStyles } from "./styles/syntax-highlighting"
 
 // Base styles for OpenAgents v1 components
 export const baseStyles = css`
-  /* Import Tailwind OpenAgents v1 components */
-  @import '/tailwind/index.css';
+  /* Tailwind OpenAgents v1 components - inlined to avoid static file issues */
+  
+  /* Custom color definitions for dark theme */
+  :root {
+    --oa-black: #000000;
+    --oa-offblack: #0a0a0a;
+    --oa-darkgray: #333333;
+    --oa-gray: #666666;
+    --oa-lightgray: #999999;
+    --oa-white: #ffffff;
+    --oa-text: #e5e5e5;
+  }
+
+  /* Button Component */
+  .oa-button {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200 cursor-pointer inline-flex items-center justify-center;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .oa-button-primary {
+    @apply oa-button;
+    @apply bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500;
+    @apply active:bg-blue-800;
+  }
+
+  .oa-button-secondary {
+    @apply oa-button;
+    @apply bg-gray-700 text-gray-100 hover:bg-gray-600 focus:ring-gray-500;
+    @apply active:bg-gray-800;
+  }
+
+  /* Card Component */
+  .oa-card {
+    @apply bg-black border border-gray-800 rounded-lg;
+    @apply p-6;
+  }
+
+  .oa-card-shadow {
+    @apply oa-card shadow-lg shadow-black/50;
+  }
+
+  /* Header Component */
+  .oa-header {
+    @apply fixed top-0 left-0 right-0 z-30;
+    @apply bg-gray-950 border-b border-gray-800;
+    @apply px-4 py-3;
+  }
+
+  .oa-header-content {
+    @apply max-w-7xl mx-auto;
+    @apply flex items-center justify-between;
+  }
+
+  .oa-header-brand {
+    @apply flex items-center space-x-3;
+  }
+
+  .oa-header-title {
+    @apply text-lg font-semibold text-white;
+  }
+
+  .oa-header-nav {
+    @apply hidden md:flex items-center space-x-6;
+  }
+
+  .oa-header-nav-link {
+    @apply text-gray-400 hover:text-white transition-colors;
+    @apply text-sm font-medium;
+  }
+
+  .oa-header-nav-link.active {
+    @apply text-white;
+  }
+
+  .oa-header-mobile-button {
+    @apply md:hidden p-2 text-gray-400 hover:text-white;
+    @apply hover:bg-gray-800 rounded-lg transition-colors;
+  }
   
   ${syntaxHighlightingStyles}
   
