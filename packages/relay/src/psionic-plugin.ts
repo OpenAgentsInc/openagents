@@ -2,7 +2,6 @@
  * Psionic framework integration for Nostr relay
  * Mounts relay as WebSocket endpoint at /relay
  */
-import type { PsionicApp } from "@openagentsinc/psionic"
 import { Effect, Layer, Runtime } from "effect"
 import type { Elysia } from "elysia"
 import { RelayDatabase, RelayDatabaseLive } from "./database.js"
@@ -755,10 +754,11 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
 }
 
 // Helper function to mount relay on Psionic app
-export const mountRelay = (app: PsionicApp, config?: RelayPluginConfig) => {
-  // Mount the relay plugin on the underlying Elysia instance
-  const relayPlugin = createRelayPlugin(config)
-  app.elysia.use(relayPlugin)
-
-  return app
-}
+// TODO: Update this to work with Effect-based Psionic
+// export const mountRelay = (app: PsionicApp, config?: RelayPluginConfig) => {
+//   // Mount the relay plugin on the underlying Elysia instance
+//   const relayPlugin = createRelayPlugin(config)
+//   app.elysia.use(relayPlugin)
+//
+//   return app
+// }

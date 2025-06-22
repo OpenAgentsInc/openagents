@@ -28,7 +28,7 @@ export * from "./schema.js"
 // Psionic integration exports
 export {
   createRelayPlugin,
-  mountRelay,
+  // mountRelay, // TODO: Update to work with Effect-based Psionic
   type RelayPluginConfig
 } from "./psionic-plugin.js"
 
