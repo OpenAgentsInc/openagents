@@ -188,7 +188,12 @@ const makeNip04Service = () => ({
       }
     }),
 
-  createDirectMessage: (message: string, recipientPubkey: PublicKey, senderPrivkey: PrivateKey, conversationId?: string) =>
+  createDirectMessage: (
+    message: string,
+    recipientPubkey: PublicKey,
+    senderPrivkey: PrivateKey,
+    conversationId?: string
+  ) =>
     Effect.gen(function*() {
       const encrypted = yield* makeNip04Service().encryptMessage(
         message,
@@ -216,7 +221,7 @@ const makeNip04Service = () => ({
 
   parseDirectMessage: (event: DirectMessageEvent, recipientPrivkey: PrivateKey) =>
     Effect.gen(function*() {
-      const pTag = event.tags.find((tag: readonly string[]) => tag[0] === "p")
+      const pTag = event.tags.find((tag: ReadonlyArray<string>) => tag[0] === "p")
       if (!pTag || !pTag[1]) {
         return yield* Effect.fail(
           new Nip04Error({
@@ -236,7 +241,7 @@ const makeNip04Service = () => ({
         recipientPrivkey
       )
 
-      const conversationTag = event.tags.find((tag: readonly string[]) => tag[0] === "conversation")
+      const conversationTag = event.tags.find((tag: ReadonlyArray<string>) => tag[0] === "conversation")
       const conversationId = conversationTag?.[1]
 
       return {
