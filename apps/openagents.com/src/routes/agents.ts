@@ -64,14 +64,36 @@ export async function agents() {
       </div>
 
       <script type="module">
-        // Import Effect.js and Nostr services from CDN
-        import { Effect, pipe, Runtime, Layer, Console } from "https://esm.sh/effect@3.10.3"
-        import { BrowserRuntime } from "https://esm.sh/@effect/platform-browser@0.79.1"
+        // Import Effect and OpenAgents SDK browser services
+        import { Effect, Runtime, pipe, Layer } from "https://esm.sh/effect@3.10.3"
+        
+        // Import from local build - we'll serve this from the public directory
+        const sdkModule = await import('/js/openagents-sdk-browser.js');
+        const { AgentService, WebSocketService, createBrowserServicesLayer } = sdkModule;
         
         // Agent management state
         let agents = [];
         let ws = null;
-        let effectRuntime = null;
+        let runtime = null;
+        let agentService = null;
+        
+        // Initialize Effect runtime with browser services
+        async function initializeRuntime() {
+          try {
+            const layer = createBrowserServicesLayer();
+            runtime = await Effect.runPromise(
+              Runtime.make(layer)
+            );
+            console.log('OpenAgents SDK runtime initialized');
+            
+            // Get the agent service
+            agentService = await Effect.runPromise(
+              AgentService.pipe(Effect.provide(layer))
+            );
+          } catch (error) {
+            console.error('Failed to initialize OpenAgents SDK:', error);
+          }
+        }
         
         // Initialize WebSocket connection
         function initializeWebSocket() {
@@ -176,17 +198,6 @@ export async function agents() {
           }
         }
         
-        // Initialize Effect runtime with Nostr services
-        async function initializeEffectRuntime() {
-          try {
-            // Create a simple runtime without the full Nostr services for now
-            // In production, we'd properly wire up all the services
-            effectRuntime = Runtime.defaultRuntime;
-            console.log('Effect runtime initialized');
-          } catch (error) {
-            console.error('Failed to initialize Effect runtime:', error);
-          }
-        }
         
         // Load agents from localStorage
         function loadAgents() {
@@ -468,10 +479,10 @@ export async function agents() {
         window.viewAgentDetails = viewAgentDetails;
         
         // Initialize on page load
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
           loadAgents();
           initializeWebSocket();
-          initializeEffectRuntime();
+          await initializeRuntime();
         });
       </script>
 
