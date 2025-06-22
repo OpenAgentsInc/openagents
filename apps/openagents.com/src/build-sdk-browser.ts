@@ -19,19 +19,36 @@ async function buildSDKBundle() {
       external: [],
       plugins: [
         {
-          name: "browser-replacements",
+          name: "browser-overrides",
           setup(build) {
+            // Use browser version of Nostr package
+            build.onResolve({ filter: /^@openagentsinc\/nostr$/ }, () => ({
+              path: path.resolve(__dirname, "../../../packages/nostr/src/browser.ts")
+            }))
+
+            // Replace Node.js crypto-dependent NIPs with browser versions
+            build.onResolve({ filter: /nips\/nip04(\.ts|\.js)?$/ }, () => {
+              return {
+                path: path.resolve(__dirname, "../../../packages/nostr/src/nips/nip04-browser.ts")
+              }
+            })
+
+            build.onResolve({ filter: /nips\/nip44(\.ts|\.js)?$/ }, () => {
+              return {
+                path: path.resolve(__dirname, "../../../packages/nostr/src/nips/nip44-browser.ts")
+              }
+            })
+
             // Replace SparkService with browser stub
             build.onResolve({ filter: /\.\/SparkService\.js$/ }, (args) => {
               if (args.importer.includes("browser/index")) {
                 return {
-                  path: path.resolve(__dirname, "./stubs/SparkServiceStub.ts"),
-                  watchFiles: [path.resolve(__dirname, "./stubs/SparkServiceStub.ts")]
+                  path: path.resolve(__dirname, "./stubs/SparkServiceStub.ts")
                 }
               }
             })
 
-            // Stub out @buildonspark/spark-sdk completely
+            // Stub out @buildonspark/spark-sdk
             build.onResolve({ filter: /^@buildonspark\/spark-sdk$/ }, () => ({
               path: "spark-sdk-stub",
               namespace: "stub"
@@ -40,48 +57,6 @@ async function buildSDKBundle() {
             build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
               contents: "export const SparkWallet = {}",
               loader: "js"
-            }))
-
-            // Stub out Nostr crypto functions
-            build.onResolve({ filter: /^@openagentsinc\/nostr$/ }, () => ({
-              path: "nostr-stub",
-              namespace: "stub"
-            }))
-
-            build.onLoad({ filter: /^nostr-stub$/, namespace: "stub" }, () => ({
-              contents: `
-                import { Layer } from "effect"
-                
-                // Minimal Nostr stubs for browser
-                export const CryptoService = {
-                  CryptoServiceLive: Layer.empty
-                }
-                export const EventService = {
-                  EventServiceLive: Layer.empty
-                }
-                export const RelayService = {
-                  RelayServiceLive: Layer.empty
-                }
-                export const WebSocketService = {
-                  WebSocketServiceLive: Layer.empty
-                }
-                export const Nip90Service = {
-                  Nip90ServiceLive: Layer.empty,
-                  JobStatus: {
-                    Pending: "pending",
-                    Processing: "processing",
-                    Success: "success",
-                    Error: "error"
-                  }
-                }
-              `,
-              loader: "js"
-            }))
-
-            // Stub lightsparkdev packages
-            build.onResolve({ filter: /@lightsparkdev/ }, () => ({
-              path: "lightspark-stub",
-              namespace: "stub"
             }))
           }
         }
@@ -92,9 +67,10 @@ async function buildSDKBundle() {
       },
       loader: {
         ".ts": "ts",
+        ".tsx": "tsx",
         ".js": "js"
       },
-      resolveExtensions: [".ts", ".js"],
+      resolveExtensions: [".ts", ".tsx", ".js", ".json"],
       logLevel: "info"
     })
 
