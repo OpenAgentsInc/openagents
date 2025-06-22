@@ -9,7 +9,7 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
     <header class="oa-header">
       <div class="oa-header-content">
         <div class="oa-header-brand">
-          <h1 class="oa-header-title">OpenAgents</h1>
+          <a href="/" class="oa-header-title" style="text-decoration: none; color: inherit;">OpenAgents</a>
         </div>
         
         <nav class="oa-header-nav">
@@ -23,12 +23,6 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
   }" style="display: none;">Admin</a>
         </nav>
         
-        
-        <button class="oa-header-mobile-button" onclick="toggleMobileMenu()">
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-          </svg>
-        </button>
       </div>
     </header>
 
@@ -46,13 +40,6 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         }
       })();
       
-      // Mobile menu toggle
-      function toggleMobileMenu() {
-        // TODO: Implement mobile menu
-      }
-      
-      // Make functions available globally
-      window.toggleMobileMenu = toggleMobileMenu;
     </script>
   `
 }
