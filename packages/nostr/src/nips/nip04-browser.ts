@@ -115,11 +115,9 @@ export class Nip04Service extends Context.Tag("nips/Nip04Service")<
 >() {}
 
 // Implementation
-export const Nip04ServiceLive = Layer.succeed(
-  Nip04Service,
-  {
-    encryptMessage: (message, recipientPubkey, senderPrivkey) =>
-      Effect.gen(function*() {
+const makeNip04Service = (): typeof Nip04Service.Type => ({
+  encryptMessage: (message, recipientPubkey, senderPrivkey) =>
+    Effect.gen(function*() {
         try {
           const privkey = typeof senderPrivkey === "string" ? senderPrivkey : bytesToHex(senderPrivkey)
           const key = secp256k1.getSharedSecret(privkey, "02" + recipientPubkey)
@@ -192,8 +190,7 @@ export const Nip04ServiceLive = Layer.succeed(
 
     createDirectMessage: (message, recipientPubkey, senderPrivkey, conversationId) =>
       Effect.gen(function*() {
-        const service = yield* Nip04Service
-        const encrypted = yield* service.encryptMessage(
+        const encrypted = yield* makeNip04Service().encryptMessage(
           message,
           recipientPubkey,
           senderPrivkey
@@ -215,10 +212,10 @@ export const Nip04ServiceLive = Layer.succeed(
           content: encrypted.content,
           sig: "placeholder-signature" as Signature
         }
-      }).pipe(Effect.provide(Nip04ServiceLive)),
+      }),
 
-    parseDirectMessage: (event, recipientPrivkey) =>
-      Effect.gen(function*() {
+  parseDirectMessage: (event, recipientPrivkey) =>
+    Effect.gen(function*() {
         const pTag = event.tags.find((tag) => tag[0] === "p")
         if (!pTag || !pTag[1]) {
           return yield* Effect.fail(
@@ -233,8 +230,7 @@ export const Nip04ServiceLive = Layer.succeed(
         const recipientPubkey = pTag[1] as PublicKey
         const encryptedMessage = { content: event.content }
 
-        const service = yield* Nip04Service
-        const decryptedContent = yield* service.decryptMessage(
+        const decryptedContent = yield* makeNip04Service().decryptMessage(
           encryptedMessage,
           event.pubkey,
           recipientPrivkey
@@ -254,10 +250,10 @@ export const Nip04ServiceLive = Layer.succeed(
           },
           verified: true
         }
-      }).pipe(Effect.provide(Nip04ServiceLive)),
+      }),
 
-    deriveSharedSecret: (privateKey, publicKey) =>
-      Effect.try({
+  deriveSharedSecret: (privateKey, publicKey) =>
+    Effect.try({
         try: () => {
           const privkey = typeof privateKey === "string" ? privateKey : bytesToHex(privateKey)
           const key = secp256k1.getSharedSecret(privkey, "02" + publicKey)
@@ -314,7 +310,11 @@ export const Nip04ServiceLive = Layer.succeed(
           )
         }
       })
-  }
+})
+
+export const Nip04ServiceLive = Layer.succeed(
+  Nip04Service,
+  makeNip04Service()
 )
 
 // Helper functions

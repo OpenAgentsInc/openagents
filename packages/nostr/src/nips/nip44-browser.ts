@@ -191,10 +191,8 @@ export class Nip44Service extends Context.Tag("nips/Nip44Service")<
 >() {}
 
 // Implementation
-export const Nip44ServiceLive = Layer.succeed(
-  Nip44Service,
-  {
-    encrypt: (message, recipientPubkey, senderPrivkey) =>
+const makeNip44Service = (): typeof Nip44Service.Type => ({
+  encrypt: (message, recipientPubkey, senderPrivkey) =>
       Effect.gen(function*() {
         try {
           const conversationKey = getConversationKey(senderPrivkey, recipientPubkey)
@@ -273,17 +271,16 @@ export const Nip44ServiceLive = Layer.succeed(
 
     encryptFromPayload: (message, recipientPubkey, senderPrivkey) =>
       Effect.gen(function*() {
-        const service = yield* Nip44Service
-        const encrypted = yield* service.encrypt(message, recipientPubkey, senderPrivkey)
+        const encrypted = yield* makeNip44Service().encrypt(message, recipientPubkey, senderPrivkey)
         return encrypted.payload
-      }).pipe(Effect.provide(Nip44ServiceLive)),
+      }),
 
     decryptFromPayload: (payload, senderPubkey, recipientPrivkey) =>
       Effect.gen(function*() {
-        const service = yield* Nip44Service
+        const service = makeNip44Service()
         const parsed = yield* service.parsePayload(payload)
         return yield* service.decrypt(parsed, senderPubkey, recipientPrivkey)
-      }).pipe(Effect.provide(Nip44ServiceLive)),
+      }),
 
     parsePayload: (payload) =>
       Effect.gen(function*() {
@@ -372,7 +369,11 @@ export const Nip44ServiceLive = Layer.succeed(
           )
         }
       })
-  }
+})
+
+export const Nip44ServiceLive = Layer.succeed(
+  Nip44Service,
+  makeNip44Service()
 )
 
 // Helper functions
@@ -382,8 +383,7 @@ export const createEncryptedDirectMessage = (
   senderPrivkey: PrivateKey
 ): Effect.Effect<EncryptedDirectMessage, Nip44Error> =>
   Effect.gen(function*() {
-    const service = yield* Nip44Service
-    const encrypted = yield* service.encrypt(message, recipientPubkey, senderPrivkey)
+    const encrypted = yield* makeNip44Service().encrypt(message, recipientPubkey, senderPrivkey)
     const now = Math.floor(Date.now() / 1000)
 
     return {
@@ -395,7 +395,7 @@ export const createEncryptedDirectMessage = (
       content: encrypted.payload,
       sig: "placeholder-signature" as Signature
     }
-  }).pipe(Effect.provide(Nip44ServiceLive))
+  })
 
 export const isNip44Message = (event: EncryptedDirectMessage): boolean => {
   return event.tags.some((tag) => tag[0] === "nip44" && (tag[1] === "1" || tag[1] === "2"))
