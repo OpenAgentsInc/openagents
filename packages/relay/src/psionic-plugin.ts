@@ -755,10 +755,11 @@ export const createRelayPlugin = (config: RelayPluginConfig = {}) => {
 }
 
 // Helper function to mount relay on Psionic app
-export const mountRelay = (app: PsionicApp, config?: RelayPluginConfig) => {
-  // Mount the relay plugin on the underlying Elysia instance
-  const relayPlugin = createRelayPlugin(config)
-  app.elysia.use(relayPlugin)
-
-  return app
-}
+// TODO: Update this to work with Effect-based Psionic
+// export const mountRelay = (app: PsionicApp, config?: RelayPluginConfig) => {
+//   // Mount the relay plugin on the underlying Elysia instance
+//   const relayPlugin = createRelayPlugin(config)
+//   app.elysia.use(relayPlugin)
+//
+//   return app
+// }
