@@ -5,6 +5,12 @@
 export * as AgentProfileService from "./agent-profile/AgentProfileService.js"
 
 /**
+ * Browser entry point for @openagentsinc/nostr
+ * Uses browser-compatible crypto implementations
+ */
+export * as browser from "./browser.js"
+
+/**
  * Core error types for Nostr operations
  * @module
  */

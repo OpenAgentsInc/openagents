@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@effect/platform": "0.84.6",
+    "@noble/ciphers": "^0.5.1",
     "@noble/curves": "1.8.1",
     "@noble/hashes": "1.3.3",
     "@scure/base": "1.2.4",
@@ -46,11 +47,19 @@
     "generateExports": {
       "include": [
         "**/*.ts"
+      ],
+      "exclude": [
+        "nips/nip04-browser.ts",
+        "nips/nip44-browser.ts"
       ]
     },
     "generateIndex": {
       "include": [
         "**/*.ts"
+      ],
+      "exclude": [
+        "nips/nip04-browser.ts",
+        "nips/nip44-browser.ts"
       ]
     }
   }
