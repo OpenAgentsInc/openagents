@@ -1,0 +1,57 @@
+/* Button Component
+ * Primary and secondary button variants with dark theme
+ */
+
+/* Base button styles */
+.oa-button {
+  @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200 cursor-pointer inline-flex items-center justify-center;
+  @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black;
+  @apply disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+/* Primary button - blue background */
+.oa-button-primary {
+  @apply oa-button;
+  @apply bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500;
+  @apply active:bg-blue-800;
+}
+
+/* Secondary button - gray background */
+.oa-button-secondary {
+  @apply oa-button;
+  @apply bg-gray-700 text-gray-100 hover:bg-gray-600 focus:ring-gray-500;
+  @apply active:bg-gray-800;
+}
+
+/* Ghost button - transparent with border */
+.oa-button-ghost {
+  @apply oa-button;
+  @apply bg-transparent text-gray-300 border border-gray-600 hover:bg-gray-800 focus:ring-gray-500;
+  @apply active:bg-gray-900;
+}
+
+/* Danger button - red for destructive actions */
+.oa-button-danger {
+  @apply oa-button;
+  @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  @apply active:bg-red-800;
+}
+
+/* Size variants */
+.oa-button-sm {
+  @apply px-3 py-1.5 text-sm;
+}
+
+.oa-button-lg {
+  @apply px-6 py-3 text-lg;
+}
+
+/* Icon button - square aspect ratio */
+.oa-button-icon {
+  @apply p-2 aspect-square;
+}
+
+/* Full width button */
+.oa-button-full {
+  @apply w-full;
+}
