@@ -357,11 +357,8 @@ export class PsionicApp {
       )
     }
 
-    // Add 404 handler
-    router = pipe(
-      router,
-      HttpRouter.all("*", HttpServerResponse.text("Not found", { status: 404 }))
-    )
+    // Don't add a catch-all 404 handler as it conflicts with static file serving
+    // The static handler already returns 404 for missing files
 
     return router
   }
@@ -390,8 +387,7 @@ export class PsionicApp {
       if (params.length > 0) {
         // TODO: Proper param extraction with Effect Router
         // For now, we'll do basic pattern matching
-        const url = new URL(request.url)
-        const pathname = url.pathname
+        const pathname = request.url
 
         // Convert :param to regex pattern
         let pattern = path
