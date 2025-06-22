@@ -2,7 +2,6 @@
  * Psionic framework integration for Nostr relay
  * Mounts relay as WebSocket endpoint at /relay
  */
-import type { PsionicApp } from "@openagentsinc/psionic"
 import { Effect, Layer, Runtime } from "effect"
 import type { Elysia } from "elysia"
 import { RelayDatabase, RelayDatabaseLive } from "./database.js"
