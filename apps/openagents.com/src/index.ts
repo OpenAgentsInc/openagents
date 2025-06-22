@@ -37,6 +37,9 @@ const app = createPsionicApp({
   }
 })
 
+// Enable component explorer
+app.components()
+
 // Define routes
 app.route('/', home)
 app.route('/agents', agents)
