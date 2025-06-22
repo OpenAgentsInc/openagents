@@ -1,0 +1,92 @@
+/* Invoice Component
+ * Lightning invoice display with QR code
+ */
+
+/* Invoice container */
+.oa-invoice {
+  @apply bg-gray-900 border border-gray-800 rounded-lg p-6;
+  @apply text-center;
+}
+
+/* Invoice QR code */
+.oa-invoice-qr {
+  @apply bg-white p-4 rounded-lg inline-block mb-4;
+}
+
+.oa-invoice-qr img {
+  @apply w-48 h-48;
+}
+
+/* Invoice amount */
+.oa-invoice-amount {
+  @apply text-2xl font-mono font-bold text-white mb-2;
+}
+
+.oa-invoice-amount-sats {
+  @apply text-orange-500;
+}
+
+/* Invoice text */
+.oa-invoice-text {
+  @apply bg-black border border-gray-700 rounded-lg p-3 mb-4;
+  @apply font-mono text-xs text-gray-400;
+  @apply break-all select-all;
+  @apply max-h-20 overflow-y-auto;
+}
+
+/* Invoice actions */
+.oa-invoice-actions {
+  @apply flex items-center justify-center space-x-3;
+}
+
+/* Invoice status */
+.oa-invoice-status {
+  @apply inline-flex items-center space-x-2 mb-4;
+}
+
+.oa-invoice-status-icon {
+  @apply w-5 h-5;
+}
+
+.oa-invoice-status-text {
+  @apply text-sm;
+}
+
+.oa-invoice-status.pending {
+  @apply text-yellow-500;
+}
+
+.oa-invoice-status.paid {
+  @apply text-green-500;
+}
+
+.oa-invoice-status.expired {
+  @apply text-red-500;
+}
+
+/* Invoice timer */
+.oa-invoice-timer {
+  @apply text-sm text-gray-500 mb-2;
+}
+
+.oa-invoice-timer-urgent {
+  @apply text-orange-500;
+}
+
+/* Compact invoice */
+.oa-invoice-compact {
+  @apply flex items-center space-x-4 p-4;
+  @apply bg-gray-900 border border-gray-800 rounded-lg;
+}
+
+.oa-invoice-compact .oa-invoice-qr {
+  @apply p-2 mb-0;
+}
+
+.oa-invoice-compact .oa-invoice-qr img {
+  @apply w-24 h-24;
+}
+
+.oa-invoice-compact-details {
+  @apply flex-1 text-left;
+}

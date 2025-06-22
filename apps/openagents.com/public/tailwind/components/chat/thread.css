@@ -1,0 +1,105 @@
+/* Thread List Component
+ * Sidebar conversation thread list
+ */
+
+/* Thread list container */
+.oa-thread-list {
+  @apply h-full overflow-y-auto;
+  @apply bg-gray-950 border-r border-gray-800;
+}
+
+/* Thread list header */
+.oa-thread-list-header {
+  @apply px-4 py-3 border-b border-gray-800;
+  @apply flex items-center justify-between;
+}
+
+.oa-thread-list-title {
+  @apply text-sm font-medium text-gray-300;
+}
+
+/* Thread items container */
+.oa-thread-items {
+  @apply py-2;
+}
+
+/* Thread item */
+.oa-thread-item {
+  @apply px-4 py-3 hover:bg-gray-900 cursor-pointer;
+  @apply transition-colors;
+  @apply border-l-2 border-transparent;
+}
+
+.oa-thread-item:hover {
+  @apply border-l-gray-700;
+}
+
+.oa-thread-item.active {
+  @apply bg-gray-900 border-l-blue-500;
+}
+
+/* Thread content */
+.oa-thread-content {
+  @apply space-y-1;
+}
+
+.oa-thread-title {
+  @apply text-sm font-medium text-white;
+  @apply truncate;
+}
+
+.oa-thread-preview {
+  @apply text-xs text-gray-500;
+  @apply truncate;
+}
+
+.oa-thread-meta {
+  @apply flex items-center justify-between mt-1;
+}
+
+.oa-thread-time {
+  @apply text-xs text-gray-600;
+}
+
+.oa-thread-badge {
+  @apply inline-flex items-center px-1.5 py-0.5;
+  @apply bg-gray-800 text-gray-400 rounded text-xs;
+}
+
+/* Thread with avatar */
+.oa-thread-item-with-avatar {
+  @apply flex items-start space-x-3;
+}
+
+.oa-thread-avatar {
+  @apply w-8 h-8 rounded-full flex-shrink-0;
+  @apply bg-gray-700;
+}
+
+/* New thread button */
+.oa-thread-new {
+  @apply mx-4 my-2 px-4 py-2;
+  @apply bg-gray-800 hover:bg-gray-700;
+  @apply text-gray-300 hover:text-white;
+  @apply rounded-lg text-sm font-medium;
+  @apply transition-colors;
+  @apply flex items-center justify-center space-x-2;
+}
+
+/* Thread group */
+.oa-thread-group {
+  @apply mb-4;
+}
+
+.oa-thread-group-title {
+  @apply px-4 py-2 text-xs font-medium text-gray-500 uppercase;
+}
+
+/* Empty state */
+.oa-thread-empty {
+  @apply px-4 py-8 text-center;
+}
+
+.oa-thread-empty-text {
+  @apply text-sm text-gray-500;
+}

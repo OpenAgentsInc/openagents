@@ -1,0 +1,57 @@
+/* Textarea Component
+ * Multi-line text input with dark theme
+ */
+
+/* Base textarea styles */
+.oa-textarea {
+  @apply w-full px-3 py-2 bg-black border border-gray-700 rounded-lg;
+  @apply text-white placeholder-gray-500;
+  @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+  @apply transition-colors duration-200;
+  @apply resize-y min-h-[100px];
+}
+
+/* Textarea hover state */
+.oa-textarea:hover:not(:focus) {
+  @apply border-gray-600;
+}
+
+/* Auto-resizing textarea */
+.oa-textarea-auto {
+  @apply resize-none overflow-hidden;
+}
+
+/* Fixed size textarea */
+.oa-textarea-fixed {
+  @apply resize-none;
+}
+
+/* Textarea with error state */
+.oa-textarea-error {
+  @apply border-red-500 focus:ring-red-500;
+}
+
+/* Textarea with success state */
+.oa-textarea-success {
+  @apply border-green-500 focus:ring-green-500;
+}
+
+/* Size variants */
+.oa-textarea-sm {
+  @apply px-2 py-1 text-sm min-h-[80px];
+}
+
+.oa-textarea-lg {
+  @apply px-4 py-3 text-lg min-h-[120px];
+}
+
+/* Chat input textarea - special styling */
+.oa-textarea-chat {
+  @apply oa-textarea min-h-[60px] max-h-[200px];
+  @apply rounded-2xl px-4;
+}
+
+/* Disabled state */
+.oa-textarea:disabled {
+  @apply bg-gray-900 cursor-not-allowed opacity-50;
+}
