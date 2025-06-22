@@ -1,5 +1,5 @@
 import { createPsionicApp } from '@openagentsinc/psionic'
-import { createRelayPlugin } from '@openagentsinc/relay'
+// import { createRelayPlugin } from '@openagentsinc/relay'
 import { home } from './routes/home'
 import { agents } from './routes/agents'
 import { docs, docPage } from './routes/docs'
@@ -63,16 +63,17 @@ app.elysia.use(cloudflareApi)
 app.elysia.use(channelsApi)
 
 // Mount Nostr relay
-app.elysia.use(createRelayPlugin({
-  path: '/relay',
-  maxConnections: 1000,
-  enableCors: true,
-  rateLimitEnabled: false, // Agent-friendly
-  enableMetrics: true,
-  metricsPath: '/relay/metrics',
-  enableAdminApi: true, // Enable admin endpoints
-  adminPath: '/relay/admin'
-}))
+// TODO: Re-enable when WebSocket support is implemented in Effect
+// app.elysia.use(createRelayPlugin({
+//   path: '/relay',
+//   maxConnections: 1000,
+//   enableCors: true,
+//   rateLimitEnabled: false, // Agent-friendly
+//   enableMetrics: true,
+//   metricsPath: '/relay/metrics',
+//   enableAdminApi: true, // Enable admin endpoints
+//   adminPath: '/relay/admin'
+// }))
 
 // Serve llms.txt
 app.elysia.get('/llms.txt', async () => {
