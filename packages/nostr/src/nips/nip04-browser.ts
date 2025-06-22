@@ -215,7 +215,7 @@ export const Nip04ServiceLive = Layer.succeed(
           content: encrypted.content,
           sig: "placeholder-signature" as Signature
         }
-      }),
+      }).pipe(Effect.provide(Nip04ServiceLive)),
 
     parseDirectMessage: (event, recipientPrivkey) =>
       Effect.gen(function*() {
@@ -254,7 +254,7 @@ export const Nip04ServiceLive = Layer.succeed(
           },
           verified: true
         }
-      }),
+      }).pipe(Effect.provide(Nip04ServiceLive)),
 
     deriveSharedSecret: (privateKey, publicKey) =>
       Effect.try({

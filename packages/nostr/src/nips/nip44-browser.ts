@@ -276,14 +276,14 @@ export const Nip44ServiceLive = Layer.succeed(
         const service = yield* Nip44Service
         const encrypted = yield* service.encrypt(message, recipientPubkey, senderPrivkey)
         return encrypted.payload
-      }),
+      }).pipe(Effect.provide(Nip44ServiceLive)),
 
     decryptFromPayload: (payload, senderPubkey, recipientPrivkey) =>
       Effect.gen(function*() {
         const service = yield* Nip44Service
         const parsed = yield* service.parsePayload(payload)
         return yield* service.decrypt(parsed, senderPubkey, recipientPrivkey)
-      }),
+      }).pipe(Effect.provide(Nip44ServiceLive)),
 
     parsePayload: (payload) =>
       Effect.gen(function*() {
@@ -395,7 +395,7 @@ export const createEncryptedDirectMessage = (
       content: encrypted.payload,
       sig: "placeholder-signature" as Signature
     }
-  })
+  }).pipe(Effect.provide(Nip44ServiceLive))
 
 export const isNip44Message = (event: EncryptedDirectMessage): boolean => {
   return event.tags.some((tag) => tag[0] === "nip44" && (tag[1] === "1" || tag[1] === "2"))
