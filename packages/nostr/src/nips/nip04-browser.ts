@@ -116,7 +116,7 @@ export class Nip04Service extends Context.Tag("nips/Nip04Service")<
 
 // Implementation
 const makeNip04Service = () => ({
-  encryptMessage: (message, recipientPubkey, senderPrivkey) =>
+  encryptMessage: (message: string, recipientPubkey: PublicKey, senderPrivkey: PrivateKey) =>
     Effect.gen(function*() {
       try {
         const privkey = typeof senderPrivkey === "string" ? senderPrivkey : bytesToHex(senderPrivkey)
@@ -149,7 +149,7 @@ const makeNip04Service = () => ({
       }
     }),
 
-  decryptMessage: (encryptedMessage, senderPubkey, recipientPrivkey) =>
+  decryptMessage: (encryptedMessage: EncryptedMessage, senderPubkey: PublicKey, recipientPrivkey: PrivateKey) =>
     Effect.gen(function*() {
       try {
         const data = encryptedMessage.content
@@ -188,7 +188,7 @@ const makeNip04Service = () => ({
       }
     }),
 
-  createDirectMessage: (message, recipientPubkey, senderPrivkey, conversationId) =>
+  createDirectMessage: (message: string, recipientPubkey: PublicKey, senderPrivkey: PrivateKey, conversationId?: string) =>
     Effect.gen(function*() {
       const encrypted = yield* makeNip04Service().encryptMessage(
         message,
@@ -214,9 +214,9 @@ const makeNip04Service = () => ({
       }
     }),
 
-  parseDirectMessage: (event, recipientPrivkey) =>
+  parseDirectMessage: (event: DirectMessageEvent, recipientPrivkey: PrivateKey) =>
     Effect.gen(function*() {
-      const pTag = event.tags.find((tag) => tag[0] === "p")
+      const pTag = event.tags.find((tag: readonly string[]) => tag[0] === "p")
       if (!pTag || !pTag[1]) {
         return yield* Effect.fail(
           new Nip04Error({
@@ -236,7 +236,7 @@ const makeNip04Service = () => ({
         recipientPrivkey
       )
 
-      const conversationTag = event.tags.find((tag) => tag[0] === "conversation")
+      const conversationTag = event.tags.find((tag: readonly string[]) => tag[0] === "conversation")
       const conversationId = conversationTag?.[1]
 
       return {
@@ -252,7 +252,7 @@ const makeNip04Service = () => ({
       }
     }),
 
-  deriveSharedSecret: (privateKey, publicKey) =>
+  deriveSharedSecret: (privateKey: PrivateKey, publicKey: PublicKey) =>
     Effect.try({
       try: () => {
         const privkey = typeof privateKey === "string" ? privateKey : bytesToHex(privateKey)
@@ -267,13 +267,13 @@ const makeNip04Service = () => ({
         })
     }),
 
-  createConversationId: (pubkey1, pubkey2) =>
+  createConversationId: (pubkey1: PublicKey, pubkey2: PublicKey) =>
     Effect.sync(() => {
       const sortedKeys = [pubkey1, pubkey2].sort()
       return sortedKeys.join("-").substring(0, 16)
     }),
 
-  validateEncryption: (encryptedMessage) =>
+  validateEncryption: (encryptedMessage: EncryptedMessage) =>
     Effect.gen(function*() {
       const data = encryptedMessage.content
       const parts = data.split("?iv=")

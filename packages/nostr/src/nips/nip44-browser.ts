@@ -192,7 +192,7 @@ export class Nip44Service extends Context.Tag("nips/Nip44Service")<
 
 // Implementation
 const makeNip44Service = () => ({
-  encrypt: (message, recipientPubkey, senderPrivkey) =>
+  encrypt: (message: string, recipientPubkey: PublicKey, senderPrivkey: PrivateKey) =>
     Effect.gen(function*() {
       try {
         const conversationKey = getConversationKey(senderPrivkey, recipientPubkey)
@@ -224,7 +224,7 @@ const makeNip44Service = () => ({
       }
     }),
 
-  decrypt: (encryptedMessage, senderPubkey, recipientPrivkey) =>
+  decrypt: (encryptedMessage: VersionedEncryptedMessage, senderPubkey: PublicKey, recipientPrivkey: PrivateKey) =>
     Effect.gen(function*() {
       try {
         if (encryptedMessage.version !== 2) {
@@ -269,20 +269,20 @@ const makeNip44Service = () => ({
       }
     }),
 
-  encryptFromPayload: (message, recipientPubkey, senderPrivkey) =>
+  encryptFromPayload: (message: string, recipientPubkey: PublicKey, senderPrivkey: PrivateKey) =>
     Effect.gen(function*() {
       const encrypted = yield* makeNip44Service().encrypt(message, recipientPubkey, senderPrivkey)
       return encrypted.payload
     }),
 
-  decryptFromPayload: (payload, senderPubkey, recipientPrivkey) =>
+  decryptFromPayload: (payload: string, senderPubkey: PublicKey, recipientPrivkey: PrivateKey) =>
     Effect.gen(function*() {
       const service = makeNip44Service()
       const parsed = yield* service.parsePayload(payload)
       return yield* service.decrypt(parsed, senderPubkey, recipientPrivkey)
     }),
 
-  parsePayload: (payload) =>
+  parsePayload: (payload: string) =>
     Effect.gen(function*() {
       try {
         const data = base64.decode(payload)
@@ -318,7 +318,7 @@ const makeNip44Service = () => ({
       }
     }),
 
-  deriveConversationKey: (privateKey, publicKey) =>
+  deriveConversationKey: (privateKey: PrivateKey, publicKey: PublicKey) =>
     Effect.gen(function*() {
       try {
         const conversationKey = getConversationKey(privateKey, publicKey)
@@ -342,7 +342,7 @@ const makeNip44Service = () => ({
       }
     }),
 
-  validateFormat: (encryptedMessage) =>
+  validateFormat: (encryptedMessage: VersionedEncryptedMessage) =>
     Effect.gen(function*() {
       if (encryptedMessage.version !== 2) {
         return yield* Effect.fail(
