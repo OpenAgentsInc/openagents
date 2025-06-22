@@ -13,16 +13,16 @@ export async function home() {
 
         <!-- Main Content -->
         <main class="flex-1 flex items-center justify-center p-8 overflow-hidden">
-          <div class="box-terminal text-center py-12 px-16 min-w-[400px] max-w-[600px] -mt-12">
-            <div class="text-3xl font-bold text-[--color-terminal-fg] mb-8">Welcome to OpenAgents</div>
-            <div class="text-[--color-terminal-fg] opacity-90">
-              <p class="my-4 leading-relaxed">We're announcing a few new products today at <a href="https://bitcoinfor.ai/" target="_blank" class="text-[--color-terminal-accent] font-semibold hover:underline">Bitcoin for AI</a> at 5pm CT.</p>
+          <div class="oa-card oa-card-shadow text-center py-12 px-16 min-w-[400px] max-w-[600px] -mt-12">
+            <div class="text-3xl font-bold text-white mb-8">Welcome to OpenAgents</div>
+            <div class="text-gray-300">
+              <p class="my-4 leading-relaxed">We're announcing a few new products today at <a href="https://bitcoinfor.ai/" target="_blank" class="text-blue-400 font-semibold hover:underline">Bitcoin for AI</a> at 5pm CT.</p>
               <p class="my-4 leading-relaxed">In the meantime, explore our resources:</p>
               <div class="flex gap-6 justify-center mt-10">
-                <a href="/blog" class="btn-terminal">
+                <a href="/blog" class="oa-button-primary">
                   Read our blog →
                 </a>
-                <a href="/docs" class="btn-terminal">
+                <a href="/docs" class="oa-button-primary">
                   View the docs →
                 </a>
               </div>

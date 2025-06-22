@@ -6,61 +6,80 @@ interface HeaderOptions {
 
 export function sharedHeader({ current }: HeaderOptions = {}) {
   return html`
-    <!-- ASCII Box Header -->
-    <header class="fixed top-0 left-0 right-0 z-[1000] box-terminal bg-[--color-terminal-bg] px-8 py-4">
-      <div class="flex justify-between items-center max-w-[1200px] mx-auto">
-        <a href="/" class="text-xl font-bold text-[--color-terminal-fg] hover:text-[--color-terminal-accent] transition-colors">OpenAgents</a>
-        <nav class="flex items-center gap-6">
-          <!-- <a href="/chat" class="nav-link ${current === "chat" ? "active" : ""}">◊ Chat</a> -->
-          <a href="/channels" class="channels-link ${
-    current === "channels" ? "bg-[--color-terminal-border]" : ""
-  } text-[--color-terminal-fg] opacity-80 hover:opacity-100 hover:bg-[--color-terminal-border] px-2 py-1 rounded transition-all text-sm hidden">▬ Channels</a>
-          <!-- <a href="/agents" class="nav-link ${current === "agents" ? "active" : ""}">◆ Agents</a> -->
-          <a href="/docs" class="${
-    current === "docs" ? "bg-[--color-terminal-border]" : ""
-  } text-[--color-terminal-fg] opacity-80 hover:opacity-100 hover:bg-[--color-terminal-border] px-2 py-1 rounded transition-all text-sm">§ Docs</a>
-          <a href="/blog" class="${
-    current === "blog" ? "bg-[--color-terminal-border]" : ""
-  } text-[--color-terminal-fg] opacity-80 hover:opacity-100 hover:bg-[--color-terminal-border] px-2 py-1 rounded transition-all text-sm">¶ Blog</a>
-          <a href="/admin" class="admin-link ${
-    current === "admin" ? "bg-[--color-terminal-border]" : ""
-  } text-[--color-terminal-fg] opacity-80 hover:opacity-100 hover:bg-[--color-terminal-border] px-2 py-1 rounded transition-all text-sm hidden">⚙ Admin</a>
-          <div class="flex items-center ml-4">
-            <select id="theme-select" class="bg-[--color-terminal-bg] text-[--color-terminal-fg] border border-[--color-terminal-border] px-3 py-2 text-sm font-mono cursor-pointer hover:bg-[--color-terminal-border] focus:outline-none focus:border-[--color-terminal-accent] transition-all min-w-[120px]" onchange="switchTheme(this.value)">
-              <option value="zinc">Zinc</option>
-              <option value="ayu">Ayu</option>
-              <option value="catppuccin">Catppuccin</option>
-              <option value="flexoki">Flexoki</option>
-              <option value="gruvbox">Gruvbox</option>
-              <option value="monokai">Monokai</option>
-              <option value="nord">Nord</option>
-              <option value="onedark">One Dark</option>
-              <option value="tokyonight">Tokyo Night</option>
-              <option value="tron">Tron</option>
-            </select>
-          </div>
+    <header class="oa-header">
+      <div class="oa-header-content">
+        <div class="oa-header-brand">
+          <h1 class="oa-header-title">OpenAgents</h1>
+        </div>
+        
+        <nav class="oa-header-nav">
+          <a href="/channels" class="oa-header-nav-link channels-link ${
+    current === "channels" ? "active" : ""
+  }" style="display: none;">Channels</a>
+          <a href="/docs" class="oa-header-nav-link ${current === "docs" ? "active" : ""}">Docs</a>
+          <a href="/blog" class="oa-header-nav-link ${current === "blog" ? "active" : ""}">Blog</a>
+          <a href="/admin" class="oa-header-nav-link admin-link ${
+    current === "admin" ? "active" : ""
+  }" style="display: none;">Admin</a>
         </nav>
+        
+        <div class="oa-header-actions">
+          <div class="oa-dropdown">
+            <button class="oa-dropdown-trigger" onclick="toggleThemeDropdown()">
+              <span id="current-theme">Zinc</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            <div class="oa-dropdown-menu" id="theme-dropdown">
+              <div class="oa-dropdown-item" onclick="selectTheme('zinc')">Zinc</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('ayu')">Ayu</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('catppuccin')">Catppuccin</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('flexoki')">Flexoki</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('gruvbox')">Gruvbox</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('monokai')">Monokai</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('nord')">Nord</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('onedark')">One Dark</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('tokyonight')">Tokyo Night</div>
+              <div class="oa-dropdown-item" onclick="selectTheme('tron')">Tron</div>
+            </div>
+          </div>
+        </div>
+        
+        <button class="oa-header-mobile-button" onclick="toggleMobileMenu()">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+          </svg>
+        </button>
       </div>
     </header>
 
-    <style type="text/tailwindcss">
-      /* Responsive header adjustments */
-      @media (max-width: 768px) {
-        header > div {
-          @apply flex-col gap-4;
-        }
-        
-        nav {
-          @apply gap-4;
-        }
-        
-        nav > div {
-          @apply ml-0;
+    <script>
+      // Theme dropdown functionality
+      function toggleThemeDropdown() {
+        const dropdown = document.querySelector('.oa-dropdown');
+        if (dropdown) {
+          dropdown.classList.toggle('open');
         }
       }
-    </style>
-
-    <script>
+      
+      function selectTheme(theme) {
+        // Update dropdown text
+        const currentTheme = document.getElementById('current-theme');
+        if (currentTheme) {
+          currentTheme.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
+        }
+        
+        // Close dropdown
+        const dropdown = document.querySelector('.oa-dropdown');
+        if (dropdown) {
+          dropdown.classList.remove('open');
+        }
+        
+        // Switch theme
+        switchTheme(theme);
+      }
+      
       // Theme switching functionality
       function switchTheme(theme) {
         // Remove existing theme classes
@@ -76,17 +95,17 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
       // Initialize theme on page load
       (function() {
         const savedTheme = localStorage.getItem('openagents-theme') || 'zinc';
-        const themeSelect = document.getElementById('theme-select');
+        const currentThemeEl = document.getElementById('current-theme');
         
-        if (themeSelect) {
-          // Handle old 'light' or 'zinc-light' values for backwards compatibility
-          if (savedTheme === 'light' || savedTheme === 'zinc-light') {
-            themeSelect.value = 'zinc';
-            switchTheme('zinc');
-          } else {
-            themeSelect.value = savedTheme;
-            switchTheme(savedTheme);
-          }
+        if (currentThemeEl) {
+          currentThemeEl.textContent = savedTheme.charAt(0).toUpperCase() + savedTheme.slice(1);
+        }
+        
+        // Handle old 'light' or 'zinc-light' values for backwards compatibility
+        if (savedTheme === 'light' || savedTheme === 'zinc-light') {
+          switchTheme('zinc');
+        } else {
+          switchTheme(savedTheme);
         }
       })();
       
@@ -97,13 +116,29 @@ export function sharedHeader({ current }: HeaderOptions = {}) {
         const channelsLink = document.querySelector('.channels-link');
         
         if (isLocalhost) {
-          if (adminLink) adminLink.style.display = 'inline-block';
-          if (channelsLink) channelsLink.style.display = 'inline-block';
+          if (adminLink) adminLink.style.display = 'block';
+          if (channelsLink) channelsLink.style.display = 'block';
         }
       })();
       
-      // Make switchTheme available globally
+      // Mobile menu toggle
+      function toggleMobileMenu() {
+        // TODO: Implement mobile menu
+      }
+      
+      // Close dropdown when clicking outside
+      document.addEventListener('click', function(event) {
+        const dropdown = document.querySelector('.oa-dropdown');
+        if (dropdown && !dropdown.contains(event.target)) {
+          dropdown.classList.remove('open');
+        }
+      });
+      
+      // Make functions available globally
       window.switchTheme = switchTheme;
+      window.toggleThemeDropdown = toggleThemeDropdown;
+      window.selectTheme = selectTheme;
+      window.toggleMobileMenu = toggleMobileMenu;
     </script>
   `
 }

@@ -1,24 +1,11 @@
 import { css } from "@openagentsinc/psionic"
 import { syntaxHighlightingStyles } from "./styles/syntax-highlighting"
 
-// Import WebTUI CSS and theme files
-export const webtuiStyles = css`
-  @import '/webtui/index.css';
-  @import '/webtui/theme-zinc.css';
-  @import '/webtui/theme-catppuccin.css';
-  @import '/webtui/theme-gruvbox.css';
-  @import '/webtui/theme-nord.css';
-  @import '/webtui/theme-ayu.css';
-  @import '/webtui/theme-flexoki.css';
-  @import '/webtui/theme-monokai.css';
-  @import '/webtui/theme-onedark.css';
-  @import '/webtui/theme-tokyonight.css';
-  @import '/webtui/theme-tron.css';
-`
-
-// Base styles for layout and WebTUI integration
+// Base styles for OpenAgents v1 components
 export const baseStyles = css`
-  ${webtuiStyles}
+  /* Import Tailwind OpenAgents v1 components */
+  @import '/tailwind/index.css';
+  
   ${syntaxHighlightingStyles}
   
   /* Default zinc dark theme */

@@ -1,0 +1,81 @@
+/* Badge Component
+ * Status and count badges
+ */
+
+/* Base badge styles */
+.oa-badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+}
+
+/* Badge variants */
+.oa-badge-default {
+  @apply bg-gray-800 text-gray-300;
+}
+
+.oa-badge-primary {
+  @apply bg-blue-900 text-blue-300;
+}
+
+.oa-badge-success {
+  @apply bg-green-900 text-green-300;
+}
+
+.oa-badge-warning {
+  @apply bg-yellow-900 text-yellow-300;
+}
+
+.oa-badge-danger {
+  @apply bg-red-900 text-red-300;
+}
+
+.oa-badge-info {
+  @apply bg-cyan-900 text-cyan-300;
+}
+
+/* Badge with dot */
+.oa-badge-dot {
+  @apply flex items-center;
+}
+
+.oa-badge-dot::before {
+  @apply w-1.5 h-1.5 rounded-full mr-1.5;
+  @apply bg-current;
+  content: "";
+}
+
+/* Badge sizes */
+.oa-badge-sm {
+  @apply px-1.5 py-0 text-xs;
+}
+
+.oa-badge-lg {
+  @apply px-3 py-1 text-sm;
+}
+
+/* Pill badge */
+.oa-badge-pill {
+  @apply px-3;
+}
+
+/* Count badge */
+.oa-badge-count {
+  @apply bg-red-600 text-white min-w-[1.25rem] h-5;
+  @apply flex items-center justify-center;
+}
+
+/* Status badge with animation */
+.oa-badge-pulse {
+  @apply relative;
+}
+
+.oa-badge-pulse::before {
+  @apply absolute inset-0 rounded-full;
+  @apply bg-current opacity-75;
+  @apply animate-ping;
+  content: "";
+}
+
+/* Badge group */
+.oa-badge-group {
+  @apply inline-flex items-center space-x-1;
+}
