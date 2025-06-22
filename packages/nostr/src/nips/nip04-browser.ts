@@ -115,201 +115,201 @@ export class Nip04Service extends Context.Tag("nips/Nip04Service")<
 >() {}
 
 // Implementation
-const makeNip04Service = (): typeof Nip04Service.Type => ({
+const makeNip04Service = () => ({
   encryptMessage: (message, recipientPubkey, senderPrivkey) =>
     Effect.gen(function*() {
-        try {
-          const privkey = typeof senderPrivkey === "string" ? senderPrivkey : bytesToHex(senderPrivkey)
-          const key = secp256k1.getSharedSecret(privkey, "02" + recipientPubkey)
-          const normalizedKey = getNormalizedX(key)
+      try {
+        const privkey = typeof senderPrivkey === "string" ? senderPrivkey : bytesToHex(senderPrivkey)
+        const key = secp256k1.getSharedSecret(privkey, "02" + recipientPubkey)
+        const normalizedKey = getNormalizedX(key)
 
-          const iv = randomBytes(16)
-          const plaintext = utf8Encoder.encode(message)
+        const iv = randomBytes(16)
+        const plaintext = utf8Encoder.encode(message)
 
-          const cipher = cbc(normalizedKey, iv)
-          const ciphertext = cipher.encrypt(plaintext)
+        const cipher = cbc(normalizedKey, iv)
+        const ciphertext = cipher.encrypt(plaintext)
 
-          const ctb64 = base64.encode(new Uint8Array(ciphertext))
-          const ivb64 = base64.encode(new Uint8Array(iv))
-
-          return {
-            content: `${ctb64}?iv=${ivb64}`,
-            iv: ivb64,
-            mac: undefined
-          }
-        } catch (error) {
-          return yield* Effect.fail(
-            new Nip04Error({
-              reason: "encryption_failed",
-              message: `Failed to encrypt message: ${error}`,
-              recipient: recipientPubkey,
-              cause: error
-            })
-          )
-        }
-      }),
-
-    decryptMessage: (encryptedMessage, senderPubkey, recipientPrivkey) =>
-      Effect.gen(function*() {
-        try {
-          const data = encryptedMessage.content
-          const [ctb64, ivb64] = data.split("?iv=")
-
-          if (!ctb64 || !ivb64) {
-            return yield* Effect.fail(
-              new Nip04Error({
-                reason: "invalid_message",
-                message: "Invalid NIP-04 format",
-                sender: senderPubkey
-              })
-            )
-          }
-
-          const privkey = typeof recipientPrivkey === "string" ? recipientPrivkey : bytesToHex(recipientPrivkey)
-          const key = secp256k1.getSharedSecret(privkey, "02" + senderPubkey)
-          const normalizedKey = getNormalizedX(key)
-
-          const iv = base64.decode(ivb64)
-          const ciphertext = base64.decode(ctb64)
-
-          const cipher = cbc(normalizedKey, iv)
-          const plaintext = cipher.decrypt(ciphertext)
-
-          return utf8Decoder.decode(plaintext)
-        } catch (error) {
-          return yield* Effect.fail(
-            new Nip04Error({
-              reason: "decryption_failed",
-              message: `Failed to decrypt message: ${error}`,
-              sender: senderPubkey,
-              cause: error
-            })
-          )
-        }
-      }),
-
-    createDirectMessage: (message, recipientPubkey, senderPrivkey, conversationId) =>
-      Effect.gen(function*() {
-        const encrypted = yield* makeNip04Service().encryptMessage(
-          message,
-          recipientPubkey,
-          senderPrivkey
-        )
-
-        const tags: Array<Array<string>> = [["p", recipientPubkey]]
-        if (conversationId) {
-          tags.push(["conversation", conversationId])
-        }
-
-        const now = Math.floor(Date.now() / 1000)
+        const ctb64 = base64.encode(new Uint8Array(ciphertext))
+        const ivb64 = base64.encode(new Uint8Array(iv))
 
         return {
-          id: "placeholder-id",
-          pubkey: "placeholder-pubkey" as PublicKey,
-          created_at: now,
-          kind: 4 as const,
-          tags,
-          content: encrypted.content,
-          sig: "placeholder-signature" as Signature
+          content: `${ctb64}?iv=${ivb64}`,
+          iv: ivb64,
+          mac: undefined
         }
-      }),
+      } catch (error) {
+        return yield* Effect.fail(
+          new Nip04Error({
+            reason: "encryption_failed",
+            message: `Failed to encrypt message: ${error}`,
+            recipient: recipientPubkey,
+            cause: error
+          })
+        )
+      }
+    }),
+
+  decryptMessage: (encryptedMessage, senderPubkey, recipientPrivkey) =>
+    Effect.gen(function*() {
+      try {
+        const data = encryptedMessage.content
+        const [ctb64, ivb64] = data.split("?iv=")
+
+        if (!ctb64 || !ivb64) {
+          return yield* Effect.fail(
+            new Nip04Error({
+              reason: "invalid_message",
+              message: "Invalid NIP-04 format",
+              sender: senderPubkey
+            })
+          )
+        }
+
+        const privkey = typeof recipientPrivkey === "string" ? recipientPrivkey : bytesToHex(recipientPrivkey)
+        const key = secp256k1.getSharedSecret(privkey, "02" + senderPubkey)
+        const normalizedKey = getNormalizedX(key)
+
+        const iv = base64.decode(ivb64)
+        const ciphertext = base64.decode(ctb64)
+
+        const cipher = cbc(normalizedKey, iv)
+        const plaintext = cipher.decrypt(ciphertext)
+
+        return utf8Decoder.decode(plaintext)
+      } catch (error) {
+        return yield* Effect.fail(
+          new Nip04Error({
+            reason: "decryption_failed",
+            message: `Failed to decrypt message: ${error}`,
+            sender: senderPubkey,
+            cause: error
+          })
+        )
+      }
+    }),
+
+  createDirectMessage: (message, recipientPubkey, senderPrivkey, conversationId) =>
+    Effect.gen(function*() {
+      const encrypted = yield* makeNip04Service().encryptMessage(
+        message,
+        recipientPubkey,
+        senderPrivkey
+      )
+
+      const tags: Array<Array<string>> = [["p", recipientPubkey]]
+      if (conversationId) {
+        tags.push(["conversation", conversationId])
+      }
+
+      const now = Math.floor(Date.now() / 1000)
+
+      return {
+        id: "placeholder-id",
+        pubkey: "placeholder-pubkey" as PublicKey,
+        created_at: now,
+        kind: 4 as const,
+        tags,
+        content: encrypted.content,
+        sig: "placeholder-signature" as Signature
+      }
+    }),
 
   parseDirectMessage: (event, recipientPrivkey) =>
     Effect.gen(function*() {
-        const pTag = event.tags.find((tag) => tag[0] === "p")
-        if (!pTag || !pTag[1]) {
-          return yield* Effect.fail(
-            new Nip04Error({
-              reason: "invalid_message",
-              message: "Missing recipient p-tag",
-              messageId: event.id
-            })
-          )
-        }
-
-        const recipientPubkey = pTag[1] as PublicKey
-        const encryptedMessage = { content: event.content }
-
-        const decryptedContent = yield* makeNip04Service().decryptMessage(
-          encryptedMessage,
-          event.pubkey,
-          recipientPrivkey
+      const pTag = event.tags.find((tag) => tag[0] === "p")
+      if (!pTag || !pTag[1]) {
+        return yield* Effect.fail(
+          new Nip04Error({
+            reason: "invalid_message",
+            message: "Missing recipient p-tag",
+            messageId: event.id
+          })
         )
+      }
 
-        const conversationTag = event.tags.find((tag) => tag[0] === "conversation")
-        const conversationId = conversationTag?.[1]
+      const recipientPubkey = pTag[1] as PublicKey
+      const encryptedMessage = { content: event.content }
 
-        return {
-          content: decryptedContent,
-          metadata: {
-            sender: event.pubkey,
-            recipient: recipientPubkey,
-            timestamp: event.created_at,
-            messageId: event.id,
-            conversationId
-          },
-          verified: true
-        }
-      }),
+      const decryptedContent = yield* makeNip04Service().decryptMessage(
+        encryptedMessage,
+        event.pubkey,
+        recipientPrivkey
+      )
+
+      const conversationTag = event.tags.find((tag) => tag[0] === "conversation")
+      const conversationId = conversationTag?.[1]
+
+      return {
+        content: decryptedContent,
+        metadata: {
+          sender: event.pubkey,
+          recipient: recipientPubkey,
+          timestamp: event.created_at,
+          messageId: event.id,
+          conversationId
+        },
+        verified: true
+      }
+    }),
 
   deriveSharedSecret: (privateKey, publicKey) =>
     Effect.try({
-        try: () => {
-          const privkey = typeof privateKey === "string" ? privateKey : bytesToHex(privateKey)
-          const key = secp256k1.getSharedSecret(privkey, "02" + publicKey)
-          return getNormalizedX(key)
-        },
-        catch: (error) =>
+      try: () => {
+        const privkey = typeof privateKey === "string" ? privateKey : bytesToHex(privateKey)
+        const key = secp256k1.getSharedSecret(privkey, "02" + publicKey)
+        return getNormalizedX(key)
+      },
+      catch: (error) =>
+        new Nip04Error({
+          reason: "key_derivation_failed",
+          message: `Failed to derive shared secret: ${error}`,
+          cause: error
+        })
+    }),
+
+  createConversationId: (pubkey1, pubkey2) =>
+    Effect.sync(() => {
+      const sortedKeys = [pubkey1, pubkey2].sort()
+      return sortedKeys.join("-").substring(0, 16)
+    }),
+
+  validateEncryption: (encryptedMessage) =>
+    Effect.gen(function*() {
+      const data = encryptedMessage.content
+      const parts = data.split("?iv=")
+
+      if (parts.length !== 2) {
+        return yield* Effect.fail(
           new Nip04Error({
-            reason: "key_derivation_failed",
-            message: `Failed to derive shared secret: ${error}`,
+            reason: "invalid_message",
+            message: "Invalid NIP-04 format"
+          })
+        )
+      }
+
+      try {
+        base64.decode(parts[0])
+        base64.decode(parts[1])
+      } catch (error) {
+        return yield* Effect.fail(
+          new Nip04Error({
+            reason: "invalid_message",
+            message: "Invalid base64 encoding",
             cause: error
           })
-      }),
+        )
+      }
 
-    createConversationId: (pubkey1, pubkey2) =>
-      Effect.sync(() => {
-        const sortedKeys = [pubkey1, pubkey2].sort()
-        return sortedKeys.join("-").substring(0, 16)
-      }),
-
-    validateEncryption: (encryptedMessage) =>
-      Effect.gen(function*() {
-        const data = encryptedMessage.content
-        const parts = data.split("?iv=")
-
-        if (parts.length !== 2) {
-          return yield* Effect.fail(
-            new Nip04Error({
-              reason: "invalid_message",
-              message: "Invalid NIP-04 format"
-            })
-          )
-        }
-
-        try {
-          base64.decode(parts[0])
-          base64.decode(parts[1])
-        } catch (error) {
-          return yield* Effect.fail(
-            new Nip04Error({
-              reason: "invalid_message",
-              message: "Invalid base64 encoding",
-              cause: error
-            })
-          )
-        }
-
-        const ivBytes = base64.decode(parts[1])
-        if (ivBytes.length !== 16) {
-          return yield* Effect.fail(
-            new Nip04Error({
-              reason: "invalid_message",
-              message: `Invalid IV length: ${ivBytes.length}`
-            })
-          )
-        }
-      })
+      const ivBytes = base64.decode(parts[1])
+      if (ivBytes.length !== 16) {
+        return yield* Effect.fail(
+          new Nip04Error({
+            reason: "invalid_message",
+            message: `Invalid IV length: ${ivBytes.length}`
+          })
+        )
+      }
+    })
 })
 
 export const Nip04ServiceLive = Layer.succeed(
