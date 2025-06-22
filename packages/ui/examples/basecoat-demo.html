@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenAgents Basecoat UI Demo</title>
+  <link rel="stylesheet" href="../dist/basecoat/index.css">
+</head>
+<body class="bg-background text-foreground p-8">
+  <div class="max-w-6xl mx-auto space-y-12">
+    <h1 class="text-4xl font-bold mb-8">OpenAgents Basecoat UI Components</h1>
+    
+    <!-- Buttons Section -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold mb-4">Buttons</h2>
+      <div class="flex flex-wrap gap-4">
+        <button class="btn-primary">Primary Button</button>
+        <button class="btn-secondary">Secondary Button</button>
+        <button class="btn-destructive">Destructive</button>
+        <button class="btn-outline">Outline Button</button>
+        <button class="btn-ghost">Ghost Button</button>
+        <button class="btn-link">Link Button</button>
+      </div>
+      <div class="flex gap-4">
+        <button class="btn-primary btn-sm">Small</button>
+        <button class="btn-primary">Default</button>
+        <button class="btn-primary btn-lg">Large</button>
+        <button class="btn-primary btn-icon">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+          </svg>
+        </button>
+      </div>
+    </section>
+    
+    <!-- Form Elements Section -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold mb-4">Form Elements</h2>
+      
+      <div class="space-y-2">
+        <label class="label">Input Field</label>
+        <input type="text" class="input" placeholder="Enter text here...">
+      </div>
+      
+      <div class="space-y-2">
+        <label class="label">Textarea</label>
+        <textarea class="textarea" placeholder="Enter multiple lines of text..."></textarea>
+      </div>
+      
+      <div class="space-y-2">
+        <label class="label">Select</label>
+        <select class="select">
+          <option>Option 1</option>
+          <option>Option 2</option>
+          <option>Option 3</option>
+        </select>
+      </div>
+      
+      <div class="flex items-center space-x-2">
+        <input type="checkbox" id="checkbox1" class="checkbox">
+        <label for="checkbox1" class="label">Checkbox option</label>
+      </div>
+      
+      <div class="space-y-2">
+        <div class="flex items-center space-x-2">
+          <input type="radio" id="radio1" name="radio" class="radio">
+          <label for="radio1" class="label">Radio option 1</label>
+        </div>
+        <div class="flex items-center space-x-2">
+          <input type="radio" id="radio2" name="radio" class="radio">
+          <label for="radio2" class="label">Radio option 2</label>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Cards Section -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold mb-4">Cards</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Card Title</h3>
+            <p class="card-description">Card description goes here</p>
+          </div>
+          <div class="card-content">
+            <p>This is the card content area where you can put any content you want.</p>
+          </div>
+          <div class="card-footer">
+            <button class="btn-primary">Action</button>
+          </div>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Another Card</h3>
+          </div>
+          <div class="card-content">
+            <p>Cards are great for organizing content into distinct sections.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- Badges Section -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold mb-4">Badges</h2>
+      <div class="flex gap-2">
+        <span class="badge badge-default">Default</span>
+        <span class="badge badge-secondary">Secondary</span>
+        <span class="badge badge-destructive">Destructive</span>
+        <span class="badge badge-outline">Outline</span>
+      </div>
+    </section>
+    
+    <!-- Alerts Section -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold mb-4">Alerts</h2>
+      <div class="alert alert-default">
+        <p>This is a default alert message.</p>
+      </div>
+      <div class="alert alert-destructive">
+        <p>This is a destructive alert message for errors or warnings.</p>
+      </div>
+    </section>
+    
+    <!-- Custom OpenAgents Components -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold mb-4">OpenAgents Custom Components</h2>
+      
+      <!-- Pane Component -->
+      <div class="oa-pane">
+        <span class="oa-pane-title">Pane Title</span>
+        <div class="oa-pane-content">
+          <p>This is a pane component with a floating title, unique to OpenAgents design.</p>
+        </div>
+      </div>
+      
+      <!-- Balance Component -->
+      <div class="oa-balance">
+        <svg class="oa-balance-icon" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M13 10h-3v3h3v-3zm0-4h-3v3h3V6zm0 8h-3v3h3v-3zm-5-5v3H5v-3h3zm0 4H5v3h3v-3zm0 4H5v3h3v-3zm9-8v3h-3V6h3zm0 4h-3v3h3v-3zm0 4h-3v3h3v-3z"/>
+        </svg>
+        <span class="oa-balance-amount">21,000,000</span>
+        <span class="text-muted-foreground text-sm">sats</span>
+      </div>
+    </section>
+    
+    <!-- Table Section -->
+    <section class="space-y-4">
+      <h2 class="text-2xl font-semibold mb-4">Table</h2>
+      <table class="table">
+        <thead class="table-header">
+          <tr class="table-row">
+            <th class="table-head">Name</th>
+            <th class="table-head">Status</th>
+            <th class="table-head">Amount</th>
+          </tr>
+        </thead>
+        <tbody class="table-body">
+          <tr class="table-row">
+            <td class="table-cell">Transaction 1</td>
+            <td class="table-cell">
+              <span class="badge badge-default">Pending</span>
+            </td>
+            <td class="table-cell">1,000 sats</td>
+          </tr>
+          <tr class="table-row">
+            <td class="table-cell">Transaction 2</td>
+            <td class="table-cell">
+              <span class="badge badge-secondary">Complete</span>
+            </td>
+            <td class="table-cell">5,000 sats</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>

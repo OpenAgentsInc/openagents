@@ -1,0 +1,275 @@
+/* OpenAgents Basecoat-Compatible Components */
+
+@layer components {
+  /* Button Component - Basecoat-style with OpenAgents theming */
+  .btn {
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply px-4 py-2;
+  }
+  
+  .btn-primary {
+    @apply btn bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  }
+  
+  .btn-destructive {
+    @apply btn bg-destructive text-destructive-foreground hover:bg-destructive/90;
+  }
+  
+  .btn-outline {
+    @apply btn border border-input bg-background hover:bg-accent hover:text-accent-foreground;
+  }
+  
+  .btn-ghost {
+    @apply btn hover:bg-accent hover:text-accent-foreground;
+  }
+  
+  .btn-link {
+    @apply btn underline-offset-4 hover:underline text-primary;
+  }
+  
+  .btn-sm {
+    @apply h-9 px-3 rounded-md text-xs;
+  }
+  
+  .btn-lg {
+    @apply h-11 px-8 rounded-md;
+  }
+  
+  .btn-icon {
+    @apply h-10 w-10 p-0;
+  }
+  
+  /* Input Component */
+  .input {
+    @apply flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm;
+    @apply ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium;
+    @apply placeholder:text-muted-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  
+  /* Textarea Component */
+  .textarea {
+    @apply flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm;
+    @apply ring-offset-background placeholder:text-muted-foreground;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  
+  /* Card Component */
+  .card {
+    @apply rounded-lg border bg-card text-card-foreground shadow-sm;
+  }
+  
+  .card-header {
+    @apply flex flex-col space-y-1.5 p-6;
+  }
+  
+  .card-title {
+    @apply text-2xl font-semibold leading-none tracking-tight;
+  }
+  
+  .card-description {
+    @apply text-sm text-muted-foreground;
+  }
+  
+  .card-content {
+    @apply p-6 pt-0;
+  }
+  
+  .card-footer {
+    @apply flex items-center p-6 pt-0;
+  }
+  
+  /* Badge Component */
+  .badge {
+    @apply inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors;
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+  }
+  
+  .badge-default {
+    @apply border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  }
+  
+  .badge-secondary {
+    @apply border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  }
+  
+  .badge-destructive {
+    @apply border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80;
+  }
+  
+  .badge-outline {
+    @apply text-foreground;
+  }
+  
+  /* Alert Component */
+  .alert {
+    @apply relative w-full rounded-lg border p-4;
+  }
+  
+  .alert-default {
+    @apply bg-background text-foreground;
+  }
+  
+  .alert-destructive {
+    @apply border-destructive/50 text-destructive dark:border-destructive;
+  }
+  
+  /* Dialog/Modal Base (for custom implementation) */
+  .dialog-overlay {
+    @apply fixed inset-0 z-50 bg-black/80;
+  }
+  
+  .dialog-content {
+    @apply fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%];
+    @apply gap-4 border bg-background p-6 shadow-lg sm:rounded-lg;
+  }
+  
+  /* Label Component */
+  .label {
+    @apply text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+  }
+  
+  /* Select Component */
+  .select {
+    @apply flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm;
+    @apply ring-offset-background placeholder:text-muted-foreground;
+    @apply focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  
+  /* Checkbox Component */
+  .checkbox {
+    @apply h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  
+  .checkbox:checked {
+    @apply bg-primary text-primary-foreground;
+  }
+  
+  /* Radio Component */
+  .radio {
+    @apply aspect-square h-4 w-4 rounded-full border border-primary text-primary ring-offset-background;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  
+  /* Switch Component */
+  .switch {
+    @apply inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent;
+    @apply transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    @apply focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50;
+    @apply bg-input;
+  }
+  
+  .switch:checked {
+    @apply bg-primary;
+  }
+  
+  /* Separator Component */
+  .separator {
+    @apply bg-border;
+  }
+  
+  .separator-horizontal {
+    @apply h-[1px] w-full;
+  }
+  
+  .separator-vertical {
+    @apply h-full w-[1px];
+  }
+  
+  /* Skeleton Component (Loading) */
+  .skeleton {
+    @apply animate-pulse rounded-md bg-muted;
+  }
+  
+  /* Table Components */
+  .table {
+    @apply w-full caption-bottom text-sm;
+  }
+  
+  .table-header {
+    @apply [&_tr]:border-b;
+  }
+  
+  .table-body {
+    @apply [&_tr:last-child]:border-0;
+  }
+  
+  .table-row {
+    @apply border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted;
+  }
+  
+  .table-head {
+    @apply h-12 px-4 text-left align-middle font-medium text-muted-foreground;
+  }
+  
+  .table-cell {
+    @apply p-4 align-middle;
+  }
+  
+  /* Toast Component Base */
+  .toast {
+    @apply pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-6 pr-8 shadow-lg transition-all;
+  }
+  
+  .toast-default {
+    @apply border bg-background text-foreground;
+  }
+  
+  .toast-destructive {
+    @apply border-destructive bg-destructive text-destructive-foreground;
+  }
+  
+  /* Tooltip Base */
+  .tooltip {
+    @apply z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md;
+  }
+  
+  /* Dropdown Menu Base */
+  .dropdown-content {
+    @apply z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md;
+  }
+  
+  .dropdown-item {
+    @apply relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none;
+    @apply transition-colors focus:bg-accent focus:text-accent-foreground;
+    @apply data-[disabled]:pointer-events-none data-[disabled]:opacity-50;
+  }
+  
+  /* Tabs Component */
+  .tabs-list {
+    @apply inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground;
+  }
+  
+  .tabs-trigger {
+    @apply inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium;
+    @apply ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2;
+    @apply focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+    @apply data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm;
+  }
+  
+  .tabs-content {
+    @apply mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2;
+    @apply focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+  
+  /* Progress Component */
+  .progress {
+    @apply relative h-4 w-full overflow-hidden rounded-full bg-secondary;
+  }
+  
+  .progress-bar {
+    @apply h-full w-full flex-1 bg-primary transition-all;
+  }
+}
