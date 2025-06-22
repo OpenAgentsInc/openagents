@@ -1,7 +1,11 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Types
+    "types": ["@types/bun"],
+    
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
@@ -14,7 +18,7 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
 
-    // Best practices
+    // Best practices (inherited from base, but can be overridden)
     "strict": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
@@ -25,5 +29,9 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/psionic" }
+  ]
 }
