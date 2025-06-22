@@ -16,8 +16,8 @@ export class PsionicApp {
   get elysia(): any {
     throw new Error(
       "Psionic has been refactored to use Effect HTTP server. " +
-      "Direct access to Elysia is no longer supported. " +
-      "Please update your code to use the Effect-based API."
+        "Direct access to Elysia is no longer supported. " +
+        "Please update your code to use the Effect-based API."
     )
   }
 
