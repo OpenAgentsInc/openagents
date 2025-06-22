@@ -19,36 +19,36 @@ export class PsionicApp {
   start() {
     const port = this.config.port || 3000
     const host = this.config.host || "localhost"
-    
+
     // Build router by chaining routes
     let router = HttpRouter.empty
-    
-    for (const { path, handler } of this.routes) {
+
+    for (const { handler, path } of this.routes) {
       router = router.pipe(
         HttpRouter.get(
           path as any, // Temporary type assertion
-          Effect.gen(function* () {
+          Effect.gen(function*() {
             const result = yield* Effect.promise(() => Promise.resolve(handler({})))
-            
+
             // If result looks like HTML, set content type
             if (typeof result === "string" && result.trim().startsWith("<")) {
               return HttpServerResponse.html(result)
             }
-            
+
             return HttpServerResponse.text(result)
           })
         )
       )
     }
-    
+
     const HttpLive = HttpServer.serve(router).pipe(
       Layer.provide(BunHttpServer.layer({ port }))
     )
-    
+
     BunRuntime.runMain(Layer.launch(HttpLive))
-    
+
     console.log(`🧠 ${this.config.name || "Psionic"} is running at http://${host}:${port}`)
-    
+
     return this
   }
 }
