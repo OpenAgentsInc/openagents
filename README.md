@@ -77,7 +77,7 @@ pnpm --filter=@openagentsinc/sdk codegen
 - **`@openagentsinc/nostr`** - Effect-based Nostr protocol implementation
 
 ### Web Framework
-- **`@openagentsinc/psionic`** - Hypermedia web framework using Bun and Elysia
+- **[`@openagentsinc/psionic`](packages/psionic/README.md)** - Effect-based hypermedia web framework with built-in component explorer and documentation system
 
 ### Interfaces
 - **`@openagentsinc/cli`** - Command-line interface demo (placeholder for future development)
