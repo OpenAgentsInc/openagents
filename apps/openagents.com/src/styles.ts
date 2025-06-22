@@ -48,39 +48,49 @@ export const baseStyles = css`
   /* Header Component */
   .oa-header {
     @apply fixed top-0 left-0 right-0 z-30;
-    @apply bg-gray-950 border-b border-gray-800;
-    @apply px-4 py-3;
+    @apply bg-black/95 backdrop-blur-sm border-b border-gray-900;
+    @apply px-6 py-4;
   }
 
   .oa-header-content {
-    @apply max-w-7xl mx-auto;
+    @apply max-w-screen-xl mx-auto;
     @apply flex items-center justify-between;
   }
 
   .oa-header-brand {
-    @apply flex items-center space-x-3;
+    @apply flex items-center;
   }
 
   .oa-header-title {
-    @apply text-lg font-semibold text-white;
+    @apply text-xl font-bold text-white tracking-tight;
+    @apply hover:text-gray-200 transition-colors;
   }
 
   .oa-header-nav {
-    @apply hidden md:flex items-center space-x-6;
+    @apply flex items-center space-x-8;
   }
 
   .oa-header-nav-link {
-    @apply text-gray-400 hover:text-white transition-colors;
-    @apply text-sm font-medium;
+    @apply text-gray-400 hover:text-white transition-all duration-200;
+    @apply text-sm font-medium tracking-wide;
+    @apply relative;
+  }
+
+  .oa-header-nav-link:after {
+    @apply content-[''] absolute bottom-0 left-0 w-0 h-[2px];
+    @apply bg-blue-500 transition-all duration-200;
+  }
+
+  .oa-header-nav-link:hover:after {
+    @apply w-full;
   }
 
   .oa-header-nav-link.active {
     @apply text-white;
   }
 
-  .oa-header-mobile-button {
-    @apply md:hidden p-2 text-gray-400 hover:text-white;
-    @apply hover:bg-gray-800 rounded-lg transition-colors;
+  .oa-header-nav-link.active:after {
+    @apply w-full bg-white;
   }
   
   ${syntaxHighlightingStyles}
