@@ -176,6 +176,7 @@ const v1Styles = css`
     height: 28px;
     background-color: var(--white);
     color: var(--black);
+    border: none;
     border-radius: 4px;
     display: flex;
     align-items: center;
@@ -478,7 +479,7 @@ export async function home() {
                   oninput="this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 200) + 'px'; document.getElementById('sendBtn').disabled = !this.value.trim();"
                 ></textarea>
                 <button id="sendBtn" class="send-button" disabled>
-                  <svg class="w-[24px] h-[24px] m-0.5 flex flex-col justify-center items-center" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                   </svg>
@@ -701,7 +702,12 @@ export async function home() {
             
             input.disabled = false
             sendBtn.disabled = false
-            input.focus()
+            
+            // Force focus back to input with a small delay
+            setTimeout(() => {
+              input.focus()
+              input.setSelectionRange(input.value.length, input.value.length)
+            }, 50)
           }
         }
 
