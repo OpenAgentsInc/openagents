@@ -365,3 +365,6 @@ export const renderMarkdownWithHighlighting = renderMarkdownWithMetadata as (
   content: string,
   theme?: string
 ) => Promise<{ html: string; metadata: BlogPostMetadata }>
+
+// Export the core markdown rendering function for direct usage
+export { renderMarkdown }
