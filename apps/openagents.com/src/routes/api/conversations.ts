@@ -1,3 +1,4 @@
+import { Effect } from "effect"
 import { addMessage, createConversation, getConversations, updateConversationTitle } from "../../lib/chat-client"
 
 /**
@@ -23,7 +24,15 @@ export async function listConversations(_ctx: any) {
  */
 export async function createConversationRoute(ctx: any) {
   try {
-    const body = await ctx.request.json()
+    // Parse the request body from Effect HttpServerRequest
+    const bodyText = await Effect.runPromise(
+      Effect.gen(function*() {
+        const request = ctx.request
+        return yield* request.text
+      }) as Effect.Effect<string, never, never>
+    )
+
+    const body = JSON.parse(bodyText)
     const title = body.title || "New Conversation"
 
     const id = await createConversation(title)
@@ -43,9 +52,17 @@ export async function createConversationRoute(ctx: any) {
 /**
  * PATCH /api/conversations/:id - Update conversation title
  */
-export async function updateConversation(ctx: { params: { id: string }; request: Request }) {
+export async function updateConversation(ctx: any) {
   try {
-    const body = await ctx.request.json()
+    // Parse the request body from Effect HttpServerRequest
+    const bodyText = await Effect.runPromise(
+      Effect.gen(function*() {
+        const request = ctx.request
+        return yield* request.text
+      }) as Effect.Effect<string, never, never>
+    )
+
+    const body = JSON.parse(bodyText)
     const { title } = body
 
     if (!title) {
@@ -72,9 +89,17 @@ export async function updateConversation(ctx: { params: { id: string }; request:
 /**
  * POST /api/conversations/:id/messages - Add a message to a conversation
  */
-export async function addMessageRoute(ctx: { params: { id: string }; request: Request }) {
+export async function addMessageRoute(ctx: any) {
   try {
-    const body = await ctx.request.json()
+    // Parse the request body from Effect HttpServerRequest
+    const bodyText = await Effect.runPromise(
+      Effect.gen(function*() {
+        const request = ctx.request
+        return yield* request.text
+      }) as Effect.Effect<string, never, never>
+    )
+
+    const body = JSON.parse(bodyText)
     const { content, role } = body
 
     if (!role || !content) {

@@ -20,7 +20,7 @@ interface StoredMessage {
 
 // In-memory storage
 const conversations = new Map<string, StoredConversation>()
-const messages = new Map<string, StoredMessage[]>()
+const messages = new Map<string, Array<StoredMessage>>()
 
 // Simple ID generation
 function generateId(): string {
@@ -39,10 +39,10 @@ export async function createConversation(title?: string): Promise<string> {
     model: "llama-3.3-70b",
     metadata: {}
   }
-  
+
   conversations.set(id, conversation)
   messages.set(id, [])
-  
+
   return id
 }
 
@@ -58,7 +58,7 @@ export async function addMessage(
   if (!conversation) {
     throw new Error(`Conversation ${conversationId} not found`)
   }
-  
+
   const message: StoredMessage = {
     id: generateId(),
     conversationId,
@@ -68,11 +68,11 @@ export async function addMessage(
     model: "llama-3.3-70b",
     metadata: {}
   }
-  
+
   const conversationMessages = messages.get(conversationId) || []
   conversationMessages.push(message)
   messages.set(conversationId, conversationMessages)
-  
+
   // Update last message timestamp
   conversation.lastMessageAt = new Date()
   conversations.set(conversationId, conversation)
@@ -83,7 +83,7 @@ export async function addMessage(
  */
 export async function getConversations() {
   const allConversations = Array.from(conversations.values())
-  
+
   // Sort by lastMessageAt in descending order
   return allConversations.sort((a, b) => {
     const aTime = a.lastMessageAt?.getTime() || a.createdAt.getTime()
@@ -98,11 +98,11 @@ export async function getConversations() {
 export async function getConversationWithMessages(conversationId: string) {
   const conversation = conversations.get(conversationId)
   const conversationMessages = messages.get(conversationId) || []
-  
+
   if (!conversation) {
     throw new Error("Conversation not found")
   }
-  
+
   return { conversation, messages: conversationMessages }
 }
 
@@ -117,7 +117,7 @@ export async function updateConversationTitle(
   if (!conversation) {
     throw new Error(`Conversation ${conversationId} not found`)
   }
-  
+
   conversation.title = title
   conversations.set(conversationId, conversation)
 }
@@ -135,8 +135,6 @@ export async function deleteConversation(conversationId: string): Promise<void> 
  */
 export async function searchConversations(query: string) {
   const allConversations = Array.from(conversations.values())
-  
-  return allConversations.filter((conv) => 
-    conv.title?.toLowerCase().includes(query.toLowerCase())
-  )
+
+  return allConversations.filter((conv) => conv.title?.toLowerCase().includes(query.toLowerCase()))
 }
