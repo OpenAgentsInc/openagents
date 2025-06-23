@@ -153,15 +153,14 @@ const v1Styles = css`
     border-radius: 8px;
     padding: 0 12px;
     cursor: pointer;
-    transition: opacity 0.2s;
-  }
-
-  .thread-item-inner:active {
-    opacity: 0.9;
   }
 
   .thread-item-inner.active {
     background-color: var(--active-thread);
+  }
+
+  .thread-item-inner:active {
+    opacity: 0.9;
   }
 
   .thread-link {
@@ -327,64 +326,7 @@ const v1Styles = css`
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-  }
-
-  .sidebar-footer li {
-    margin: 0;
-    padding: 0;
-  }
-
-  .sidebar-footer-item {
-    position: relative;
-    z-index: 15;
-  }
-
-  .sidebar-footer-item > div {
-    position: relative;
-    border-radius: 8px;
-    padding: 0 12px;
-  }
-
-  .sidebar-footer-item > div:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-
-  .sidebar-footer-link {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
     gap: 8px;
-    padding: 4px 0;
-    text-decoration: none;
-    color: var(--gray);
-    transition: color 0.2s;
-    cursor: pointer;
-    font-size: 14px;
-  }
-
-  .sidebar-footer-link:hover {
-    color: var(--white);
-  }
-
-  .sidebar-footer-link > div:first-child {
-    flex-grow: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: pointer;
-  }
-
-  .sidebar-footer .beta-badge {
-    font-size: 12px;
-    opacity: 0.5;
-    color: var(--gray);
-  }
-
-  .sidebar-footer .external-icon {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
   }
 
   .sidebar-footer .footer-bottom {
@@ -543,49 +485,49 @@ export async function home() {
             <div class="sidebar-footer">
               <ol>
                 <li>
-                  <div class="sidebar-footer-item">
-                    <div>
-                      <a href="/store" class="sidebar-footer-link">
-                        <div>Agent Store</div>
-                        <div class="beta-badge">Beta</div>
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="/store" class="hover:text-white flex flex-row items-center gap-2 py-1">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Agent Store</div>
+                        <div class="text-xs text-gray opacity-50">Beta</div>
                       </a>
                     </div>
                   </div>
                 </li>
                 <li>
-                  <div class="sidebar-footer-item">
-                    <div>
-                      <a href="/plugins" class="sidebar-footer-link">
-                        <div>Plugins</div>
-                        <div class="beta-badge">Beta</div>
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="/plugins" class="hover:text-white flex flex-row items-center gap-2 py-1">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Plugins</div>
+                        <div class="text-xs text-gray opacity-50">Beta</div>
                       </a>
                     </div>
                   </div>
                 </li>
                 <li>
-                  <div class="sidebar-footer-item">
-                    <div>
-                      <a href="/blog" class="sidebar-footer-link">
-                        <div>Blog</div>
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="/blog" class="flex items-center gap-2 py-1 hover:text-white">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Blog</div>
                       </a>
                     </div>
                   </div>
                 </li>
                 <li>
-                  <div class="sidebar-footer-item">
-                    <div>
-                      <a href="/changelog" class="sidebar-footer-link">
-                        <div>Changelog</div>
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="/changelog" class="flex items-center gap-2 py-1 hover:text-white">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Changelog</div>
                       </a>
                     </div>
                   </div>
                 </li>
                 <li>
-                  <div class="sidebar-footer-item">
-                    <div>
-                      <a href="https://docs.openagents.com" target="_blank" class="sidebar-footer-link">
-                        <div>Docs & guides</div>
-                        <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="https://docs.openagents.com" target="_blank" class="hover:text-white flex flex-row items-center gap-2 py-1">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Docs & guides</div>
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                           <polyline points="15 3 21 3 21 9"></polyline>
                           <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -595,11 +537,11 @@ export async function home() {
                   </div>
                 </li>
                 <li>
-                  <div class="sidebar-footer-item">
-                    <div>
-                      <a href="https://stacker.news/~openagents" target="_blank" class="sidebar-footer-link">
-                        <div>Community</div>
-                        <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="https://stacker.news/~openagents" target="_blank" class="hover:text-white flex flex-row items-center gap-2 py-1">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Community</div>
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                           <polyline points="15 3 21 3 21 9"></polyline>
                           <line x1="10" y1="14" x2="21" y2="3"></line>
@@ -609,11 +551,11 @@ export async function home() {
                   </div>
                 </li>
                 <li>
-                  <div class="sidebar-footer-item">
-                    <div>
-                      <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="sidebar-footer-link">
-                        <div>Source code</div>
-                        <svg class="external-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <div class="relative z-[15]">
+                    <div class="group relative rounded-lg active:opacity-90 px-3">
+                      <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" class="hover:text-white flex flex-row items-center gap-2 py-1">
+                        <div class="select-none cursor-pointer relative grow overflow-hidden whitespace-nowrap">Source code</div>
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                           <polyline points="15 3 21 3 21 9"></polyline>
                           <line x1="10" y1="14" x2="21" y2="3"></line>
