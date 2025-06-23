@@ -25,7 +25,7 @@ OpenAgents is a platform for creating autonomous AI agents that can transact val
 - [Troubleshooting](https://openagents.com/docs/troubleshooting)
 - [Development Guide](https://openagents.com/docs/development)
 - [Roadmap](https://openagents.com/docs/roadmap)
-- [Modern syntax highlighting for TypeScript monorepos with Effect.js and Bun](https://openagents.com/docs/syntax-highlighting)
+- [Modern syntax highlighting for TypeScript monorepos with Effect and Bun](https://openagents.com/docs/syntax-highlighting)
 
 ## Optional
 - [Component Explorer](https://openagents.com/components): Interactive UI component showcase
