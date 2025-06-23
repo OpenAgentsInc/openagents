@@ -83,16 +83,16 @@ app.route('/slides', slides)
 app.route('/import', importRoute)
 
 // Mount API routes
-app.elysia.use(ollamaApi)
-app.elysia.use(openrouterApi)
-app.elysia.use(cloudflareApi)
-app.elysia.use(channelsApi)
+ollamaApi(app)
+openrouterApi(app)
+cloudflareApi(app)
+channelsApi(app)
 
 // Conversation API routes
-app.elysia.get('/api/conversations', listConversations)
-app.elysia.post('/api/conversations', createConversationRoute)
-app.elysia.patch('/api/conversations/:id', updateConversation)
-app.elysia.post('/api/conversations/:id/messages', addMessageRoute)
+app.get('/api/conversations', listConversations)
+app.post('/api/conversations', createConversationRoute)
+app.patch('/api/conversations/:id', updateConversation)
+app.post('/api/conversations/:id/messages', addMessageRoute)
 
 // Mount Nostr relay
 // TODO: Re-enable when WebSocket support is implemented in Effect
@@ -108,7 +108,7 @@ app.elysia.post('/api/conversations/:id/messages', addMessageRoute)
 // }))
 
 // Serve Basecoat CSS from @openagentsinc/ui package
-app.elysia.get('/@openagentsinc/ui/basecoat', async () => {
+app.get('/@openagentsinc/ui/basecoat', async () => {
   try {
     const basecoatPath = join(path.dirname(fileURLToPath(import.meta.url)), '../../../packages/ui/dist/basecoat/index.css')
     const content = await readFile(basecoatPath, 'utf-8')
@@ -130,7 +130,7 @@ app.elysia.get('/@openagentsinc/ui/basecoat', async () => {
 })
 
 // Serve llms.txt
-app.elysia.get('/llms.txt', async () => {
+app.get('/llms.txt', async () => {
   try {
     const llmsTxtPath = join(path.dirname(fileURLToPath(import.meta.url)), '../static/llms.txt')
     const content = await readFile(llmsTxtPath, 'utf-8')
