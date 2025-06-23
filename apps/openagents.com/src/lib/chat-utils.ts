@@ -206,9 +206,10 @@ export const chatClientScript = `
     input.value = '';
     autoResize();
     
-    // Add assistant message placeholder
+    // Add assistant message placeholder with unique ID
+    const messageId = \`assistant-message-\${Date.now()}\`;
     const assistantMessageHtml = \`
-      <div class="message" id="assistant-message">
+      <div class="message" id="\${messageId}">
         <div class="message-avatar assistant">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
@@ -216,7 +217,7 @@ export const chatClientScript = `
         </div>
         <div class="message-content">
           <div class="message-author">Assistant</div>
-          <div class="message-body" id="assistant-response"><div class="dot-flashing"></div></div>
+          <div class="message-body assistant-response-body"><div class="dot-flashing"></div></div>
         </div>
       </div>
     \`;
@@ -227,12 +228,16 @@ export const chatClientScript = `
     // Build conversation history
     const messages = [];
     
-    // Add existing messages from the DOM
+    // Add existing messages from the DOM (excluding loading dots)
     const existingMessages = messagesDiv.querySelectorAll('.message');
     existingMessages.forEach(msg => {
       const isUser = msg.querySelector('.message-avatar.user');
-      const content = msg.querySelector('.message-body')?.textContent?.trim();
-      if (content) {
+      const messageBody = msg.querySelector('.message-body');
+      const hasLoadingDots = messageBody?.querySelector('.dot-flashing');
+      const content = messageBody?.textContent?.trim();
+      
+      // Only add messages that have content and aren't just loading dots
+      if (content && !hasLoadingDots) {
         messages.push({
           role: isUser ? 'user' : 'assistant',
           content: content
@@ -264,7 +269,15 @@ export const chatClientScript = `
       const decoder = new TextDecoder();
       currentStreamReader = reader;
       
-      const assistantResponse = document.getElementById('assistant-response');
+      // Find the current assistant message body (the one we just added)
+      const currentAssistantMessage = document.getElementById(messageId);
+      const assistantResponse = currentAssistantMessage?.querySelector('.assistant-response-body');
+      
+      if (!assistantResponse) {
+        console.error('Could not find assistant response element');
+        throw new Error('Failed to find assistant response element');
+      }
+      
       let fullResponse = '';
       
       while (true) {
@@ -313,7 +326,7 @@ export const chatClientScript = `
         }
       } else {
         // No response received
-        document.getElementById('assistant-response').textContent = 'No response received. Please check if Cloudflare API is configured.';
+        assistantResponse.textContent = 'No response received. Please check if Cloudflare API is configured.';
       }
       
       // Reload conversations to update sidebar
@@ -321,7 +334,9 @@ export const chatClientScript = `
       
     } catch (error) {
       console.error('Failed to get response:', error);
-      document.getElementById('assistant-response').textContent = 'Sorry, I encountered an error. Please try again.';
+      if (assistantResponse) {
+        assistantResponse.textContent = 'Sorry, I encountered an error. Please try again.';
+      }
     } finally {
       isGenerating = false;
       submitButton.disabled = false;
