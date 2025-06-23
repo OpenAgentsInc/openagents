@@ -1,106 +1,93 @@
 import * as Nostr from "@openagentsinc/nostr"
 import { RelayDatabase, RelayDatabaseLive } from "@openagentsinc/relay"
-import { Effect, Layer, Runtime } from "effect"
+import { Effect, Layer } from "effect"
+import { HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import type { RouteContext } from "@openagentsinc/psionic"
 
-// Create a runtime with database layer
-const runtime = Runtime.defaultRuntime
+/**
+ * POST /api/channels/create - Create a new channel
+ */
+export function createChannel(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function* () {
+    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+    const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
+    const program = Effect.gen(function*() {
+      const crypto = yield* Nostr.CryptoService.CryptoService
+      const nip28 = yield* Nostr.Nip28Service.Nip28Service
 
-export const channelsApi = (app: any) => {
-  const prefix = "/api/channels"
+      // Generate keypair for the channel creator
+      const privateKey = yield* crypto.generatePrivateKey()
+      const publicKey = yield* crypto.getPublicKey(privateKey)
 
-  // Create a new channel
-  app.post(`${prefix}/create`, async (context: any) => {
-    try {
-      const bodyText = await Effect.runPromise(
-        Effect.gen(function*() {
-          return yield* context.request.text
-        }) as Effect.Effect<string, never, never>
-      )
-      const body = JSON.parse(bodyText) as { name: string; about?: string; picture?: string }
-      const program = Effect.gen(function*() {
-        const crypto = yield* Nostr.CryptoService.CryptoService
-        const nip28 = yield* Nostr.Nip28Service.Nip28Service
+      // Create channel using NIP-28 service - build params conditionally
+      const createParams: any = {
+        name: body.name,
+        privateKey,
+        relays: ["ws://localhost:3003/relay"]
+      }
 
-        // Generate keypair for the channel creator
-        const privateKey = yield* crypto.generatePrivateKey()
-        const publicKey = yield* crypto.getPublicKey(privateKey)
+      if (body.about) {
+        createParams.about = body.about
+      }
+      if (body.picture) {
+        createParams.picture = body.picture
+      }
 
-        // Create channel using NIP-28 service - build params conditionally
-        const createParams: any = {
-          name: body.name,
-          privateKey,
-          relays: ["ws://localhost:3003/relay"]
-        }
+      const channelEvent = yield* nip28.createChannel(createParams)
 
-        if (body.about) {
-          createParams.about = body.about
-        }
-        if (body.picture) {
-          createParams.picture = body.picture
-        }
+      return {
+        channelId: channelEvent.id,
+        publicKey,
+        event: channelEvent
+      }
+    })
 
-        const channelEvent = yield* nip28.createChannel(createParams)
+    // Build service layers in dependency order
+    const baseLayer = Layer.merge(
+      Nostr.WebSocketService.WebSocketServiceLive,
+      Nostr.CryptoService.CryptoServiceLive
+    )
 
-        return {
-          channelId: channelEvent.id,
-          publicKey,
-          event: channelEvent
-        }
-      })
+    const serviceLayer = Layer.merge(
+      Nostr.EventService.EventServiceLive,
+      Nostr.RelayService.RelayServiceLive
+    )
 
-      // Build service layers in dependency order
-      const baseLayer = Layer.merge(
-        Nostr.WebSocketService.WebSocketServiceLive,
-        Nostr.CryptoService.CryptoServiceLive
-      )
+    const fullLayer = Layer.provideMerge(
+      Layer.provideMerge(Nostr.Nip28Service.Nip28ServiceLive, serviceLayer),
+      baseLayer
+    )
 
-      const serviceLayer = Layer.merge(
-        Nostr.EventService.EventServiceLive,
-        Nostr.RelayService.RelayServiceLive
-      )
+    const result = yield* program.pipe(Effect.provide(fullLayer))
 
-      const fullLayer = Layer.provideMerge(
-        Layer.provideMerge(Nostr.Nip28Service.Nip28ServiceLive, serviceLayer),
-        baseLayer
-      )
-
-      const result = await Effect.runPromise(
-        program.pipe(Effect.provide(fullLayer))
-      )
-
-      return result
-    } catch (error) {
+    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+  }).pipe(
+    Effect.catchAll((error) => {
       console.error("Failed to create channel - Full error:", error)
       console.error("Error stack:", error instanceof Error ? error.stack : "No stack")
-      return new Response(
-        JSON.stringify({
+      return HttpServerResponse.json(
+        {
           error: "Failed to create channel",
           details: error instanceof Error ? error.message : String(error)
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        }
-      )
-    }
-  })
+        },
+        { status: 500 }
+      ).pipe(Effect.orDie)
+    })
+  )
+}
 
-  // Send a message to a channel
-  app.post(
-    `${prefix}/message`,
-    async (context: any) => {
-      try {
-        const bodyText = await Effect.runPromise(
-          Effect.gen(function*() {
-            return yield* context.request.text
-          }) as Effect.Effect<string, never, never>
-        )
-        const body = JSON.parse(bodyText) as {
-          channelId: string
-          content: string
-          replyTo?: string
-          privateKey?: string
-        }
+/**
+ * POST /api/channels/message - Send a message to a channel
+ */
+export function sendChannelMessage(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, HttpServerRequest.HttpServerRequest> {
+  return Effect.gen(function* () {
+    const bodyText = yield* ctx.request.text.pipe(Effect.orDie)
+      const body = JSON.parse(bodyText) as {
+        channelId: string
+        content: string
+        replyTo?: string
+        privateKey?: string
+      }
         const program = Effect.gen(function*() {
           const crypto = yield* Nostr.CryptoService.CryptoService
           const nip28 = yield* Nostr.Nip28Service.Nip28Service
@@ -149,54 +136,57 @@ export const channelsApi = (app: any) => {
           baseLayer
         )
 
-        const result = await Effect.runPromise(
-          program.pipe(Effect.provide(fullLayer))
-        )
+    const result = yield* program.pipe(Effect.provide(fullLayer))
 
-        return result
-      } catch (error) {
-        console.error("Failed to send message:", error)
-        return new Response(JSON.stringify({ error: "Failed to send message" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" }
-        })
-      }
-    }
+    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+  }).pipe(
+    Effect.catchAll((error) => {
+      console.error("Failed to send message:", error)
+      return HttpServerResponse.json(
+        { error: "Failed to send message" },
+        { status: 500 }
+      ).pipe(Effect.orDie)
+    })
   )
+}
 
-  // List all channels
-  app.get(`${prefix}/list`, async () => {
-    try {
-      const program = Effect.gen(function*() {
-        const database = yield* RelayDatabase
+/**
+ * GET /api/channels/list - List all channels
+ */
+export function listChannels(_ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+  return Effect.gen(function* () {
+    const program = Effect.gen(function*() {
+      const database = yield* RelayDatabase
 
-        // Get channels from database
-        const channels = yield* database.getChannels()
+      // Get channels from database
+      const channels = yield* database.getChannels()
 
-        return { channels }
-      })
+      return { channels }
+    })
 
-      // Create database layer
-      const DatabaseLayer = RelayDatabaseLive
+    // Create database layer
+    const DatabaseLayer = RelayDatabaseLive
 
-      const result = await Runtime.runPromise(runtime)(
-        program.pipe(Effect.provide(DatabaseLayer))
-      )
+    const result = yield* program.pipe(Effect.provide(DatabaseLayer))
 
-      return result
-    } catch (error) {
+    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+  }).pipe(
+    Effect.catchAll((error) => {
       console.error("Failed to list channels:", error)
-      return new Response(JSON.stringify({ error: "Failed to list channels" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      })
-    }
-  })
+      return HttpServerResponse.json(
+        { error: "Failed to list channels" },
+        { status: 500 }
+      ).pipe(Effect.orDie)
+    })
+  )
+}
 
-  // Get channel details and recent messages
-  app.get(`${prefix}/:id`, async (context: any) => {
-    try {
-      const { id } = context.params
+/**
+ * GET /api/channels/:id - Get channel details and recent messages
+ */
+export function getChannel(ctx: RouteContext): Effect.Effect<HttpServerResponse.HttpServerResponse, never, never> {
+  return Effect.gen(function* () {
+    const { id } = ctx.params
       const program = Effect.gen(function*() {
         const database = yield* RelayDatabase
 
@@ -221,24 +211,20 @@ export const channelsApi = (app: any) => {
       // Create database layer
       const DatabaseLayer = RelayDatabaseLive
 
-      const result = await Runtime.runPromise(runtime)(
-        program.pipe(Effect.provide(DatabaseLayer))
-      )
+    const result = yield* program.pipe(Effect.provide(DatabaseLayer))
 
-      if (result.error) {
-        return new Response(JSON.stringify(result), {
-          status: 404,
-          headers: { "Content-Type": "application/json" }
-        })
-      }
-
-      return result
-    } catch (error) {
-      console.error("Failed to get channel:", error)
-      return new Response(JSON.stringify({ error: "Failed to get channel" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      })
+    if (result.error) {
+      return yield* HttpServerResponse.json(result, { status: 404 }).pipe(Effect.orDie)
     }
-  })
+
+    return yield* HttpServerResponse.json(result).pipe(Effect.orDie)
+  }).pipe(
+    Effect.catchAll((error) => {
+      console.error("Failed to get channel:", error)
+      return HttpServerResponse.json(
+        { error: "Failed to get channel" },
+        { status: 500 }
+      ).pipe(Effect.orDie)
+    })
+  )
 }

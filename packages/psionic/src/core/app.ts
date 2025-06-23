@@ -1,4 +1,4 @@
-import { HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "@effect/platform"
+import { FetchHttpClient, HttpMiddleware, HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "@effect/platform"
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun"
 import { Effect, Layer, pipe } from "effect"
 import { convertElysiaRouter } from "../adapters/elysia-adapter"
@@ -412,7 +412,16 @@ export class PsionicApp {
 
       // Handle the request
       try {
-        const result = yield* Effect.promise(() => Promise.resolve(handler(context)))
+        // Check if handler returns an Effect
+        const handlerResult = handler(context)
+        
+        // If it's an Effect, yield it directly
+        if (handlerResult && typeof handlerResult === "object" && "_tag" in handlerResult && handlerResult._tag === "Effect") {
+          return yield* handlerResult
+        }
+        
+        // Otherwise, handle legacy Promise/value returns
+        const result = yield* Effect.promise(() => Promise.resolve(handlerResult))
 
         // Handle different response types
         if (result instanceof Response) {
@@ -469,11 +478,18 @@ export class PsionicApp {
 
     const router = this.buildRouter()
 
+    console.log("🔧 PSIONIC: Setting up HTTP server with FetchHttpClient.layer")
     const HttpLive = pipe(
       HttpServer.serve(HttpMiddleware.logger(router)),
       HttpServer.withLogAddress,
-      Layer.provide(BunHttpServer.layer({ port, hostname: host }))
+      Layer.provide(
+        Layer.merge(
+          BunHttpServer.layer({ port, hostname: host }),
+          FetchHttpClient.layer
+        )
+      )
     )
+    console.log("✅ PSIONIC: HTTP server layers configured")
 
     BunRuntime.runMain(Layer.launch(HttpLive) as any)
 
